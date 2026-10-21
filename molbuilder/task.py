@@ -107,7 +107,7 @@ def fixed_by_kind(calculation: str) -> Optional[Dict[str, Any]]:
     surface offers another (`engines/transport.md` § 3.8.2a,
     `web/task-setup.md` § 5.3; user, 2026-10-11): ``{"shape", "stages"}``
     for transport -- hierarchical; its five rungs, every one, in order (the
-    seed among them: the leads and the device start from its density, user
+    seed among them: the device starts from its density, user
     2026-10-12) -- and ``None`` for a kind that fixes neither.  The reader's
     check asks it, and Task setup's folder answer serves it, so the two
     cannot disagree."""

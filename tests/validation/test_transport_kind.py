@@ -198,11 +198,12 @@ def test_the_transmission_window_must_reach_the_bias_window(junction):
     Silent before this: the window gate was a catalogue note (plan P2);
     above a few volts the current was cut without a word.
     """
-    def issues(emax, rung):
+    def issues(emax, rung, n=401):
         cfg = SiestaConfig(system_label="t", bias_voltage_v=0.4,
                            electronic_temperature=300.0,
                            transmission_emin_ev=-emax,
-                           transmission_emax_ev=emax)
+                           transmission_emax_ev=emax,
+                           transmission_n_points=n)
         return validate(junction, cfg, calculation="transport", rung=rung)
 
     short = _find(issues(0.3, "transmission"), "config.transmission_emax_ev",
@@ -210,3 +211,8 @@ def test_the_transmission_window_must_reach_the_bias_window(junction):
     assert short and "0.329" in short[0].message and "widen" in short[0].message
     assert not _find(issues(0.4, "transmission"), "config.transmission_emax_ev")
     assert not _find(issues(0.3, "device"), "config.transmission_emax_ev")
+    # THE ENERGIES TBTRANS SAMPLES, not the window's edges: four mid-rule
+    # points on ±0.4 eV sit at ±0.3 eV, short of 0.329 eV -- refused here,
+    # as the record would leave that voltage out (record.sampled_window).
+    assert _find(issues(0.4, "transmission", n=4),
+                 "config.transmission_emax_ev", "error")

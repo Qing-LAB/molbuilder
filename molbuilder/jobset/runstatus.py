@@ -32,6 +32,8 @@ from ..runrecord import LaunchRecordError, launch_record
 from .commands import (block, command, launch_lines, launch_pending,
                        prep_group_lines)
 from .model import JobSet
+from .continuation import (gathered_lines, point_rows, points_state,
+                           taken_over)
 from .plan import resources_text
 
 # Engine-native warm-restart files keyed by the project id (system label),
@@ -262,54 +264,6 @@ MISSING = ("missing", "the job set names this run's folder; it is not on "
                       "disk", None)
 
 
-def point_rows(run, names, task, stage: str, *, launch, products, base):
-    """A SWEPT RUN'S POINTS AS `status` READS THEM -- `StageStatus.points`'
-    rows for ``run``: the folder each ran in, whether it is done, what it
-    started from (its `.continued-from`) and what it alone took (its
-    `.gathered-from`, beyond the run's own gather).  The one per-point
-    reader (`engines/transport.md` § 2a.11): the status door asks it for a
-    stage's latest run, the record for the run a transmission gathered
-    (§ 2a.12), so the two never read a point two ways.  Returns ``(rows,
-    running)``, the second whether any point not done is running."""
-    from ..parse.dirs import run_status
-    from ..transport.stages import points_in
-    from .continuation import done
-    from ..runrecord import read_continued_from
-    gathered = _gathered_lines(run)
-    pts, running = [], False
-    for pdir, pt in points_in(run, task, stage, base=base):
-        ok, why = done(pdir, names, launch=launch, products=products,
-                       launched_in=run)
-        # ITS RUN'S STATE AND VERDICT, the one status door's -- a point done
-        # finished; decided on these, never on the reason's words.
-        opened = pdir.is_dir()
-        st = (run_status(pdir, names.stem, launch=launch, launched_in=run)
-              if opened else None)
-        state = ("finished" if ok else st.state if st is not None
-                 else "pending")
-        converged = (st.verdict[1] if st is not None
-                     and st.verdict is not None else None)
-        running = running or state == "running"
-        unread = None
-        try:
-            src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
-                   else None)
-            src = str(src) if src is not None else None
-        except LaunchRecordError as exc:
-            # A RECORD THAT DOES NOT READ is said on its point's row, in
-            # its reader's words -- never read as a start, and never the
-            # whole status.
-            src, unread = None, str(exc)
-        took = [g for g in _gathered_lines(pdir) if g not in gathered]
-        pts.append({**pt.to_wire(),
-                    "point": pt.words(), "folder": f"{run.name}/{pt.rel}",
-                    "state": state, "done": ok, "why": why,
-                    "opened": opened, "converged": converged,
-                    "started_from": src, "start_unread": unread,
-                    "took": took})
-    return pts, running
-
-
 def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     """EVERY RUN OF A STAGE, each with its own state -- the root's bird's-eye
     (`web/results.md` § 2.4): each attempt in order and, for a swept rung,
@@ -409,10 +363,14 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
         return StageStatus(ref=ref, dir=d.name, state="unreadable",
                            detail=str(e), attempt=run.name)
     products = products_of(job.name, task.label, base_dir=base)
-    pts, running = point_rows(run, names, task, job.name, base=base,
-                              launch=launch,
-                              products=products)
-    summary = points_summary(pts)
+    if launch is None:
+        pts, _running = point_rows(run, names, task, job.name, base=base,
+                                   launch=launch, products=products)
+    else:
+        # THE ONE RULE the gather asks too (`continuation.points_state`).
+        state, detail, pts = points_state(run, names, task, job.name,
+                                          launch=launch, products=products,
+                                          base=base)
     # CONVERGED, in its own column (`job-system.md`, rule 4): yes for a rung
     # with an SCF (`STAGE_FACT`: the transmission converges nothing) when
     # every point's output says it converged; NO when one says it did not;
@@ -426,17 +384,6 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
     if launch is None:
         state, detail = "pending", _pending_detail(run, "prepared, not "
                                                         "launched")
-    elif running:
-        state, detail = "running", summary
-    elif all(p["opened"] and p["state"] in ("pending", "queued")
-             for p in _walked_here(pts, run, base)):
-        # NOTHING THIS RUN WALKS HAS RUN YET -- the points it took over
-        # from an earlier run are that run's, done before it was sent.
-        jid = launch.get("job_id")
-        state, detail = "queued", (f"queued as job {jid}" if jid
-                                   else "launched, nothing run yet")
-    else:
-        state, detail = points_verdict(pts)
     return StageStatus(
         ref=ref, dir=d.name, state=state, detail=detail,
         converged=converged,
@@ -444,64 +391,9 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
         relaunch_continues=job.relaunch_continues,
         script=str(job.script), carries=[w.name for w in job.warm],
         resources=resources_text(job.resources), points=pts,
-        gathered=_gathered_lines(run),
+        gathered=gathered_lines(run),
         tsgf=_tsgf_line(base, task, job, d, run if launch else None,
-                        attempts_in(d)))
-
-
-def points_summary(pts) -> str:
-    """THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
-    § 2a.11): *k of N points done (F frames × V voltages)*."""
-    n_done = sum(p["done"] for p in pts)
-    n_frames = len({p["frame"] for p in pts})
-    n_volts = len({p["bias_v"] for p in pts})
-    return (f"{n_done} of {len(pts)} points done ({n_frames} "
-            f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
-            f"voltage{'' if n_volts == 1 else 's'})")
-
-
-def points_verdict(pts) -> "tuple[str, str]":
-    """A run of points' state once nothing in it runs -- THE RUN'S STATE IS
-    ITS POINTS' RUNS': finished when every one finished -- converged or not,
-    which is the converged column's (`job-system.md`, rule 4) -- else
-    failed; the first point not done says why.  The one rule, asked by the
-    status door (:func:`_sweep_status`) and by the transport record for the
-    run its transmission gathered (`engines/transport.md` § 2a.12)."""
-    summary = points_summary(pts)
-    state = ("finished" if all(p["state"] == "finished" for p in pts)
-             else "failed")
-    first = next((p for p in pts if not p["done"]), None)
-    return state, (summary if first is None
-                   else f"{summary}; {first['point']}: {first['why']}")
-
-
-def _taken_over(p, here) -> bool:
-    """Whether a point was taken over from an earlier run -- its record
-    names the run that computed it (one hop, `engines/transport.md`
-    § 2a.11), a run outside ``here`` (`runrecord.RunRef`)."""
-    from ..runrecord import RunRef
-    said = p.get("started_from")
-    return bool(said) and not RunRef.read(said, shared=False).within(here)
-
-
-def _walked_here(pts, run: Path, base: Path) -> list:
-    """The points ``run`` walks itself -- every point but those it took
-    over from an earlier run (:func:`_taken_over`)."""
-    from ..runrecord import RunRef
-    here = RunRef.at(base, run)
-    return [p for p in pts if not (p["done"] and _taken_over(p, here))]
-
-
-def _gathered_lines(folder) -> List[str]:
-    """``<file> <- <run>`` for each entry of ``folder``'s ``.gathered-from``
-    (`runrecord.read_gathered_from`), in the order taken; ``[]`` when there
-    is none."""
-    from ..runrecord import read_gathered_from
-    try:
-        return [f"{fn} <- {src}" for src, fn in read_gathered_from(folder)]
-    except LaunchRecordError as exc:
-        # SAID ON ITS ROW, in its reader's words -- never the whole status.
-        return [str(exc)]
+                        attempts_in(d), going=state in ("queued", "running")))
 
 
 def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
@@ -561,24 +453,27 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         carries=[w.name for w in job.warm],
         resources=resources_text(job.resources),
         # WHAT THE RUN GATHERED (a transport rung), beside what it declares.
-        gathered=_gathered_lines(observed) if attempt is not None else [],
+        gathered=gathered_lines(observed) if attempt is not None else [],
         tsgf=_tsgf_line(base, task, job, home,
-                        attempt if launch else None, attempts_in(home)),
+                        attempt if launch else None, attempts_in(home),
+                        going=state in ("queued", "running")),
     )
 
 
-def _tsgf_line(base, task, job, stage_dir, run_dir, attempts) -> Optional[str]:
+def _tsgf_line(base, task, job, stage_dir, run_dir, attempts, *,
+               going: bool) -> Optional[str]:
     """The line about the leads' files of a rung that keeps them in a
     scratch folder (`Job.scratch_dir`; `transport.gf_files.status_line`):
     the newest run's -- ``run_dir`` ``None`` for a stage not launched, which
-    is answered with the estimate -- and, where the stage has older runs,
-    each older run's after it, newest first; ``None`` for every other
-    rung."""
+    is answered with the estimate; ``going`` whether that run is queued or
+    running -- and, where the stage has older runs, each older run's after
+    it, newest first, those having ended; ``None`` for every other rung."""
     if task is None or not job.scratch_dir:
         return None
     from ..paths import attempt_dir
     from ..transport.gf_files import status_line
-    first = status_line(base, task, stage_dir, run_dir, job.scratch_dir)
+    first = status_line(base, task, stage_dir, run_dir, job.scratch_dir,
+                        going=going)
     if run_dir is None or first is None or len(attempts) < 2:
         return first
     newest = attempt_dir(Path(stage_dir), max(attempts))
@@ -838,7 +733,7 @@ def _sweep_took_over(s: StageStatus) -> str:
     from ..runrecord import RunRef
     here = RunRef.read(f"{s.dir}/{s.attempt}", shared=False)
     taken = [(p["point"], p["started_from"]) for p in s.points
-             if _taken_over(p, here)]
+             if taken_over(p, here)]
     if not taken:
         return "nothing taken over -- every point walked"
     # THE RUN a point was taken over from, the run its point lies in.

@@ -18,7 +18,7 @@ _BYTES = 16
 
 
 def status_line(base, task, stage_dir, run_dir: Optional[Path],
-                scratch_dir: str) -> Optional[str]:
+                scratch_dir: str, *, going: bool = False) -> Optional[str]:
     """The device's one line (`engines/transport.md` § 2a.11, *Checked by
     the status verb*): for a launched run what its scratch folder holds;
     for a prepared stage the estimate, once the leads have run.
@@ -28,12 +28,12 @@ def status_line(base, task, stage_dir, run_dir: Optional[Path],
         return None
     if run_dir is not None:
         return _holds(Path(run_dir) / scratch_dir, scratch_dir, task.label,
-                      Path(stage_dir), task, base)
+                      Path(stage_dir), task, base, going=going)
     return _estimate_line(base, task, Path(stage_dir), scratch_dir)
 
 
 def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
-           task, base) -> str:
+           task, base, *, going: bool) -> str:
     if not folder.is_dir():
         return (f"{scratch_dir}/: not there (a run made before 2.22.0, "
                 f"whose pair lies in the run's folder)")
@@ -51,8 +51,12 @@ def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
         return (f"{scratch_dir}/: the {volts[0]} pair, 2 files, "
                 f"{gib_words(size)}")
     if len(files) == 1:
+        # ONE FILE OF THE PAIR: the round's first point writing the second
+        # while its run is going; a walk that stopped between the two
+        # writes once it has ended.
         return (f"{scratch_dir}/: one file, {files[0].name}, {gib_words(size)} "
-                f"-- a walk that did not reach its end; yours to remove")
+                + ("-- the round's pair being written" if going else
+                   "-- a walk that did not reach its end; yours to remove"))
     return (f"{scratch_dir}/: {len(files)} files, {gib_words(size)} -- "
             f"{', '.join(p.name for p in files)}; the walk leaves one "
             f"pair at most, so these are an edit's")

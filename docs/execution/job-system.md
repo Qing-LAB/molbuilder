@@ -181,6 +181,7 @@ that file's own door:
 | | **unreadable** | its launch record is there and does not read | `run.json` | § 5.3 | `runrecord.launch_record` |
 | | *converged* — its own column, never the state | the engine's own output says so | `<base>-run<N>.out` | § 5.3 | the same scan |
 | a point of a run of points | **done** / **not done** | its run finished, converged, and left what the rungs after it take | its marker, its output, those files | § 5.3, § 5.4 | `continuation.done` |
+| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going; queued: no point the run walks itself has started; else finished: every point's run finished, converged or not; failed: a point's run did not finish — it failed, or the walk stopped before it — the first point not done named | its `run.json`, its points' files (the row above), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`) — `status` and the gather ask it alike |
 
 **What a run started from is a record, not a state**: `.continued-from` —
 the one run it continues from — and `.gathered-from` — a transport rung's
@@ -331,9 +332,17 @@ a `run-N` a launch again opened — *opened by a launch whose send was refused*
 — `--stage`, the stage launched again alone. A first send refused saved the
 folder's state first; the next one saves it again when anything changed, and
 the way back is the state saved before the first launch that went. **A run of points** (a stage that
-sweeps the bias) is one run: *finished* once every point's run finished,
-converged or not — the *converged* column says *SCF NO* when one did not — and
-its row counts the points done.
+sweeps the bias) is one run, its state one rule that `status` and the gather
+both ask (`continuation.points_state`): *running* while a point runs, or
+between two points while a job launched from this machine that holds the run
+is going (`joblist.is_going`, § 6.0a — said *(between two points)*);
+*queued* while no point the run walks itself has started; else *finished*
+once every point's run finished, converged or not — the *converged* column
+says *SCF NO* when one did not — or *failed* when a point's run did not
+finish, naming the first point not done. A walk that stopped among its
+points — some run, the rest never reached — is a run that ended, failed,
+never one still queued; where no job holding the run is on file, or this machine
+cannot tell, the points say the state. Its row counts the points done.
 
 #### The next step — every group, where it stands, and the line that moves it
 
@@ -2521,8 +2530,9 @@ id, or beside a run left in the background, which is then named by its pid,
 | `launched_at` | when it went |
 
 **What it is doing is read fresh, each time** — one fact, one source, one
-answer (`joblist.is_going`), which `molbuilder jobs` asks of each job and
-`jobset scratch` of each job of its calculation (§ 5.3): a run
+answer (`joblist.is_going`), which `molbuilder jobs` asks of each job,
+`jobset scratch` of each job of its calculation (§ 5.3), and a run of
+points' state of the job that holds it (`continuation.points_state`): a run
 here is going while its process is (the same host, pid and start — a machine
 with no `/proc` says it cannot tell); a queue job while the scheduler lists
 it in a state not ended, said with that state and the scheduler's reason for
@@ -3123,7 +3133,7 @@ For someone extending the framework:
 | The sweep's reader — trials' artifacts → `bench-result.json` (the pure timing parsers are `molbuilder/bench/result.py`) | `molbuilder/jobset/summarize.py` |
 | The decision ledger (`jobset-decisions.log`, one JSON object per decision) | `molbuilder/jobset/ledger.py` |
 | The CLI verbs (`molbuilder jobset …`) | `molbuilder/jobset/_cli.py` |
-| The jobs launched from this machine — each launch's address, written by the one sender, read fresh, and whether a job is going (`is_going`, the one answer `molbuilder jobs` and `jobset scratch` ask; § 6.0a) | `molbuilder/joblist.py`; the verbs, `molbuilder/jobs_cli.py`; a queue job asked of the scheduler, `molbuilder/scheduler/queue.py`; each member's state, `runstatus.job_members` |
+| The jobs launched from this machine — each launch's address, written by the one sender, read fresh, and whether a job is going (`is_going`, the one answer `molbuilder jobs`, `jobset scratch` and a run of points' state (`continuation.points_state`) ask; § 6.0a) | `molbuilder/joblist.py`; the verbs, `molbuilder/jobs_cli.py`; a queue job asked of the scheduler, `molbuilder/scheduler/queue.py`; each member's state, `runstatus.job_members` |
 | The `.sbatch` header emission (shared with single-job) | `molbuilder/runwrap.py::render_sbatch` |
 
 **To add a new engine to the job system**, you write **one engine seam** — the

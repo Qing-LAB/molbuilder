@@ -625,8 +625,9 @@ with a warning. Nothing is refused for a row.
 **Every other row is its maker's** — the structure's rows and each frame's,
 any `info` and any channel: carried exactly as written into the calculation's
 record and data file, and shown on the pages — a row of the vocabulary below
-in its words, any other by its name and unit as written; never checked, never
-computed from (`frameset.read`, the one reader).
+in its words, any other by its name and unit as written; never computed
+from, and checked for one thing alone, a vocabulary name's unit (below)
+(`frameset.read`, the one reader).
 
 **A mode's frame set, as its maker writes it** — the vocabulary the frame
 generator writes ([`engines/vibration.md`](?doc=engines/vibration.md)
@@ -637,8 +638,9 @@ as variables of their own, the structure rows as its attributes. The names
 carry their units; a row's `unit` field, when written, spells the same unit in
 ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom` — and one of these names
 written with another unit is refused by name when the rows are read for a
-record, a data file or a page (`frame_average`, 2026-10-19): the one check
-made on a maker's rows, because the name itself is a claim about the unit.
+record, a data file or a page (`frame_average.check_units`, asked by
+`average_block`, `fill_data_file` and `answer`): the one check made on a
+maker's rows, because the name itself is a claim about the unit.
 Any other name's unit is carried as written:
 
 | where | name | kind | meaning | unit | on a page |

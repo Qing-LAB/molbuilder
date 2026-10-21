@@ -376,10 +376,13 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
         if scf is None:
             break
         # A GAMMA DEVICE AND A TRANSMISSION ASKED FOR K-POINTS: a SIESTA run
-        # at the one point k = 0 writes its Hamiltonian with no supercell,
-        # and tbtrans then stops in its set-up (`tbt_init.F90`, the check
-        # after `setup_kpoint_grid`).  Warned, never refused: tbtrans says
-        # it, and what to do is the person's (user, 2026-10-17).
+        # at the one point k = 0 writes its Hamiltonian with no supercell.
+        # tbtrans stops in its set-up (`tbt_init.F90`) only when its grid's
+        # FIRST k-point is not k = 0 -- its test reads that one point
+        # (`m_tbt_kpoint.F90`, `setup_kpoint_grid`); a grid whose first point
+        # is k = 0 (2 x 2, 1 x N by its own ordering) runs on, every k-point
+        # given the k = 0 Hamiltonian, its T(E) invalid.  Warned, never
+        # refused (user, 2026-10-17; 2026-10-20: "warn, worded truly").
         if (all(a.count == 1 and a.shift % 1.0 == 0.0 for a in scf.axes)
                 and any(a.count > 1 or a.shift % 1.0 != 0.0
                         for a in tbt.axes)):
@@ -389,9 +392,13 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 f"asks tbtrans for T(E) at several k-points, but kgrid = "
                 f"1 1 1 computes the device at one k-point only, so SIESTA "
                 f"saves its Hamiltonian in a form that works at that one "
-                f"point: tbtrans stops as it starts (\"Transiesta calculation "
-                f"was a Gamma calculation while you request transmission "
-                f"k-points\").  Raise kgrid in the electrode plane (x, y) -- "
+                f"point.  tbtrans stops as it starts (\"Transiesta "
+                f"calculation was a Gamma calculation while you request "
+                f"transmission k-points\") only when its grid's first "
+                f"k-point is not k = 0; where it is (a 2 x 2 or 1 x N grid), "
+                f"tbtrans runs on with the k = 0 Hamiltonian at every "
+                f"k-point, and its T(E) is invalid.  Raise kgrid in the "
+                f"electrode plane (x, y) -- "
                 f"it re-runs the seed, the leads and the device -- or leave "
                 f"tbt_k_grid blank or 1 1 1 (engines/transport.md 0.3b)",
                 "config.tbt_k_grid"))

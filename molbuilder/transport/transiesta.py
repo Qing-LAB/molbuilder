@@ -502,7 +502,14 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
         "# each one's atoms are the contiguous range written below.",
         "%block TS.Elecs",
     ]
-    for _label, block_name, _idxs in electrodes:
+    # LISTED BY LABEL, L FIRST: tbtrans writes the transmission of each
+    # pair of leads in the order this block lists them
+    # (`m_tbt_save.F90`), and the record reads `L-R` (`LEAD_PAIR`).  Each
+    # lead's place is its own block's `elec-pos`, so the order places
+    # nothing -- on the usual junction (L-electrode lower) it is the z
+    # order, the same text.
+    for _label, block_name, _idxs in sorted(
+            electrodes, key=lambda e: e[0] != REGION_LEFT_ELECTRODE):
         lines.append(f"  {block_name}")
     lines.append("%endblock TS.Elecs")
     lines.append("")
@@ -607,9 +614,13 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
     low_label = electrodes[0][0]
     plus_label = next(lab for lab, name, _i in electrodes
                       if chempot_for[name] == "Left")
+    # LISTED BY LABEL, L first (`%block TS.Elecs` above): on the usual
+    # junction the LOW-z lead is L, listed first -- the same line as ever.
     lines.append(
-        f"# {low_label} is the LOW-z lead: listed first, "
-        f"semi-inf-direction -A3.")
+        f"# {low_label} is the LOW-z lead: "
+        + ("listed first, " if low_label == REGION_LEFT_ELECTRODE
+           else "listed second (the leads are listed by label), ")
+        + "semi-inf-direction -A3.")
     lines.append(
         f"# {plus_label} carries mu = +V/2 (chem-pot Left), so "
         f"V = V_left - V_right.")

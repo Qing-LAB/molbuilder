@@ -432,8 +432,8 @@ def why_no_transport(engine: str) -> Optional[str]:
 #: is the rung's position in TRANSPORT_STAGES, one-based.
 RUNG_NOTES = {
     "seed": ("A closed periodic SCF of the whole junction.  It writes the "
-             "density every later stage starts from -- a starting guess "
-             "only: it spares the device iterations and changes no result.  "
+             "density the device starts from -- a starting guess only: it "
+             "spares the device iterations and changes no result.  "
              "k-points: the shared k-point grid in the electrode plane "
              "(x, y), and one k-point along z, because the cell is long "
              "along z and the device only starts from this density."),
@@ -442,8 +442,9 @@ RUNG_NOTES = {
                     "the left self-energy from, and the device takes them "
                     "as given.  k-points: the shared k-point grid in the "
                     "electrode plane (x, y), which must be the device's, "
-                    "and many k-points along z (100), because the lead's "
-                    "Hamiltonian and Fermi level depend on them."),
+                    "and many k-points along z (the lead's own count, 100 "
+                    "unless set), because the lead's Hamiltonian and Fermi "
+                    "level depend on them."),
     "electrode_R": ("The right lead, likewise, on the same k-points as the "
                     "left.  Two lead runs even when the leads are "
                     "identical, so the record stays auditable and the "

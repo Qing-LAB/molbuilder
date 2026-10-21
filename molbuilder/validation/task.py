@@ -597,13 +597,15 @@ def _window_reaches_the_bias(task, ladder) -> List[Issue]:
         return []
     emin = getattr(cfg, "transmission_emin_ev", None)
     emax = getattr(cfg, "transmission_emax_ev", None)
+    n = getattr(cfg, "transmission_n_points", None)
     temp = getattr(cfg, "electronic_temperature", None)
-    if emin is None or emax is None or temp is None:
+    if emin is None or emax is None or not n or temp is None:
         return []
     from ..constants import BOLTZMANN_EV_K
-    from ..transport.record import window_short_of
+    from ..transport.record import sampled_window, window_short_of
     largest = max(bias, key=lambda v: abs(float(v)))
-    short = window_short_of(emin, emax, largest, BOLTZMANN_EV_K * float(temp))
+    short = window_short_of(*sampled_window(emin, emax, n), largest,
+                            BOLTZMANN_EV_K * float(temp))
     return [Issue("error", short + " (engines/transport.md 2a.10)",
                   where="config.transmission_emax_ev",
                   stage="transmission")] if short else []

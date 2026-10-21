@@ -157,6 +157,8 @@ def average_block(n_frames: Optional[int], frame_set,
     sentence, why there is no average: nothing composed yet, one structure,
     or frames that do not each state a weight."""
     from .frameset import WEIGHT_ROW, WEIGHT_SUM_TOLERANCE
+    if frame_set is not None:
+        check_units(frame_set)
     weights = (list(frame_set.weights) if frame_set is not None
                and frame_set.weights is not None else None)
     # EVERY KEY, EVERY RECORD: the vocabulary's structure rows by their own
@@ -325,27 +327,42 @@ def answer(structure) -> Dict[str, object]:
     if structure is None:
         return {"n_frames": 1, "definition": None}
     rows = read(structure)
+    if rows is not None:
+        check_units(rows)
     return {"n_frames": structure.n_frames,
             "definition": _wire(rows, structure) if rows is not None
             else None}
 
 
+def check_units(rows) -> None:
+    """THE NAME CARRIES ITS UNIT (`model/structure.md` § 2.2f): a row of the
+    vocabulary -- the structure's or a frame's -- written with another unit
+    states a contradiction, refused by name (:class:`AverageError`) wherever
+    the rows are read for a record (:func:`average_block`), a data file
+    (:func:`fill_data_file`) or a page (:func:`answer`) -- never one unit on
+    the page and another in the data file.  ``rows`` is
+    `frameset.FrameRows`."""
+    for vocabulary, written in ((_STRUCTURE, rows.structure),
+                                *((_FRAME, frame) for frame in rows.frames)):
+        for r in written:
+            known = vocabulary.get(r["name"])
+            unit = r.get("unit")
+            if (known is not None and unit not in (None, "")
+                    and str(unit) != str(known.unit)):
+                raise AverageError(
+                    f"the frame set's row {r['name']!r} is written with the "
+                    f"unit {unit!r}; the vocabulary's name means "
+                    f"{known.unit!r} (model/structure.md 2.2f) -- write the "
+                    f"value in that unit, or give the row another name")
+
+
 def _said(name: str, unit: Any, vocabulary: Dict[str, Row],
           **value) -> Dict[str, Any]:
     """A row as a page says it: the vocabulary's words, kind and unit for a
-    row it knows where the row lives, else its name and unit as written."""
+    row it knows where the row lives (its unit checked first,
+    :func:`check_units`), else its name and unit as written."""
     known = vocabulary.get(name)
     if known is not None:
-        # THE NAME CARRIES ITS UNIT (`model/structure.md` § 2.2f): a row of
-        # the vocabulary written with another unit states a contradiction,
-        # refused by name -- never one unit on the page and another in the
-        # data file (2026-10-19).
-        if unit not in (None, "") and str(unit) != str(known.unit):
-            raise ValueError(
-                f"the frame set's row {name!r} is written with the unit "
-                f"{unit!r}; the vocabulary's name means {known.unit!r} "
-                f"(model/structure.md 2.2f) -- write the value in that unit, "
-                f"or give the row another name")
         return {"name": name, **value, "unit": known.unit,
                 "kind": known.kind, "words": known.words,
                 "page_unit": known.page_unit}
@@ -476,6 +493,7 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     from .frameset import read
     rows = read(structure) if structure is not None else None
     if rows is not None:
+        check_units(rows)
         masses = _masses(structure)
         if masses is not None:
             values[MASS_CHANNEL][:] = [_or_nan(m) for m in masses]

@@ -35,9 +35,10 @@ def test_a_perfect_channels_low_bias_current_is_g0_times_v():
     import numpy as np
 
     e = np.linspace(-2.0, 2.0, 4001).tolist()
-    got = linear_response_iv(e, [1.0] * len(e), [0.0, 0.2, 0.4, 3.9],
-                             kt_ev=0.0259)
-    for v, i in zip([0.0, 0.2, 0.4], got["current_a"]):
-        assert abs(i - G0 * v) < 1e-3 * G0 * max(v, 0.1), (v, i, G0 * v)
+    volts = [0.0, 0.2, 0.4, -0.2, 3.9]
+    got = linear_response_iv(e, [1.0] * len(e), volts, kt_ev=0.0259)
+    # SIGNED: I = G0·V at a negative voltage too -- μ_L,R = ±V/2.
+    for v, i in zip(volts[:4], got["current_a"]):
+        assert abs(i - G0 * v) < 1e-3 * G0 * max(abs(v), 0.1), (v, i, G0 * v)
     # THE NOTE IS KEYED BY THE ROW, never by a spelling of the voltage.
-    assert got["current_a"][3] is None and "does not reach" in got["notes"]["3"]
+    assert got["current_a"][4] is None and "does not reach" in got["notes"]["4"]

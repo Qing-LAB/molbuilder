@@ -289,11 +289,26 @@ def window_short_of(emin_ev: float, emax_ev: float, volts: float,
     reach = half + WINDOW_TAILS_KT * float(kt_ev)
     lo, hi = float(emin_ev), float(emax_ev)
     if reach > hi or -reach < lo:
-        return (f"the transmission window [{lo:g}, {hi:g}] eV does not reach "
+        return (f"the transmission's sampled window [{lo:g}, {hi:g}] eV "
+                f"does not reach "
                 f"±{reach:.3f} eV for {float(volts):g} V (V/2 + "
                 f"{WINDOW_TAILS_KT:g} kT at kT = {float(kt_ev):.4f} eV); "
                 f"widen it -- transmission_emin_ev / transmission_emax_ev")
     return None
+
+
+def sampled_window(emin_ev: float, emax_ev: float,
+                   n_points: int) -> Tuple[float, float]:
+    """The first and last energy TBtrans samples on a window of ``n_points``
+    -- the mid-rule's points, half a spacing inside each edge
+    (`m_integrate.f90`; the deck's ``method mid-rule``): what
+    :func:`window_short_of` is asked with by the transmission deck's gate
+    and the description's preflight, as the record asks it with the energies
+    the run wrote -- one rule, on the energies the current is integrated
+    over."""
+    lo, hi = float(emin_ev), float(emax_ev)
+    h = (hi - lo) / int(n_points)
+    return lo + h / 2.0, hi - h / 2.0
 
 
 def linear_response_iv(energies: List[float], trans: List[float],
@@ -313,7 +328,9 @@ def linear_response_iv(energies: List[float], trans: List[float],
     currents: List[Optional[float]] = []
     notes: Dict[str, str] = {}
     for v in voltages:
-        half = abs(float(v)) / 2.0
+        # SIGNED: μ_L, μ_R = ±V/2, so a negative voltage carries a
+        # negative current, as TBtrans's own does (`m_tbt_save.F90`).
+        half = float(v) / 2.0
         short = window_short_of(lo, hi, v, kt_ev)
         if short:
             currents.append(None)
@@ -440,11 +457,11 @@ def _stage_facts(calc, label: str) -> List[Dict]:
         # a product rung (the transmission) as for the device.  THE RUN THE
         # TRANSMISSION GATHERED answers for its own points when it is not
         # the stage's newest (§ 2a.12): the same per-point reader
-        # (`runstatus.point_rows`), asked for that run.
+        # (`continuation.point_rows`), asked for that run.
         points = s.points
         if run is not None and s.attempt and s.dir \
                 and run != base / s.dir / s.attempt and s.points:
-            from ..jobset.runstatus import point_rows
+            from ..jobset.continuation import point_rows
             from ..runrecord import launch_record
             from .stages import products_of
             from ..jobset.materialize import stage_home
@@ -491,10 +508,10 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             if run is not None and s.attempt and s.dir \
                     and run != base / s.dir / s.attempt and points:
                 # ITS STATE BY THE STATUS DOOR'S ONE RULE for a run of
-                # points (`runstatus.points_verdict`), on the rows that
+                # points (`continuation.points_verdict`), on the rows that
                 # door read for this run (`point_rows`, above), never a
                 # second rule.
-                from ..jobset.runstatus import points_verdict
+                from ..jobset.continuation import points_verdict
                 fact["state"], said = points_verdict(points)
                 fact["detail"] = (f"{said}; the run the transmission "
                                   f"gathered ({fact['attempt']}); the "
@@ -981,7 +998,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         rung["progress"] = {
             **running["progress"],
             **{k: running.get(k) for k in ("frame", "of", "bias_v")},
-            "after": len(pending) - at_i - 1}
+            # EVERY OTHER POINT NOT DONE is still to come, whatever order
+            # the walk runs them in (round by round, `submit._points_walk`).
+            "after": len(pending) - 1}
         measured = next((p for p in reversed(points_out)
                          if p.get("loop_elapsed_s")), None)
         if measured is not None:
@@ -1154,9 +1173,9 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                     out[f"current_{spin}_a"].extend(
                         None if i is None else i / 2.0 for i in got)
             # THE NOTES, KEYED BY THE ROW OF THE WHOLE TABLE: this frame's
-            # rows start at `base`, and a note keyed by its row within the
+            # rows start at `row0`, and a note keyed by its row within the
             # frame's own list is re-keyed by that offset.
-            base = len(out["voltages_v"])
+            row0 = len(out["voltages_v"])
             for v, i in zip(iv["voltages_v"], iv["current_a"]):
                 out["frame"].append(f)
                 out["voltages_v"].append(v)
@@ -1165,7 +1184,7 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                     zero["current_a_printed"] if same_volts(v, 0.0)
                     else None)
             for k, note in (iv.get("notes") or {}).items():
-                out["notes"][str(base + int(k))] = note
+                out["notes"][str(row0 + int(k))] = note
             if out["kt_ev"] is None:
                 out["kt_ev"], out["window_ev"] = iv["kt_ev"], iv["window_ev"]
         return out

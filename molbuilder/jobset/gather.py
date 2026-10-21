@@ -119,9 +119,8 @@ def transport_inputs(calc, stage: str, *, point=None,
         from .materialize import latest_attempt
         newest = latest_attempt(up_dir) if up_dir.is_dir() else None
         if up_points and newest is not None:
-            from ..parse.dirs import run_status
-            from ..parse.dirs.job import LIVE_STATES
             from ..runrecord import LaunchRecordError, launch_record
+            from .continuation import points_state
             _names = home.names(task.shape)
             try:
                 _launch = launch_record(newest, _names)
@@ -130,39 +129,42 @@ def transport_inputs(calc, stage: str, *, point=None,
                 # words, as the refusal it is (`job-system.md` R-L21).
                 raise PrepError(str(exc)) from None
             _prod = products_of(upstream, task.label, base_dir=base)
-            _pts = points_in(newest, task, upstream, base=base)
-            not_done = [f"{pt.words()} ({why})"
-                        for p_, pt in _pts
-                        for ok, why in [done(p_, _names, launch=_launch,
-                                             products=_prod,
-                                             launched_in=newest)]
-                        if not ok]
-            if not_done and _launch is not None and any(
-                    run_status(p_, _names.stem, launch=_launch,
-                               launched_in=newest).state
-                    in LIVE_STATES for p_, _pt in _pts):
-                # STILL QUEUED OR RUNNING: let it finish, as every run a
-                # stage builds on (`job-system.md` § 5.4).
-                raise PrepError(
-                    f"the {stage} stage takes {upstream}'s newest run, "
-                    f"{newest.relative_to(base)}, whole -- and it is still "
-                    f"queued or running ({len(_pts) - len(not_done)} of "
-                    f"{len(_pts)} points done).  Let it finish." + q2)
-            if not_done and _launch is None:
-                raise PrepError(
-                    f"the {stage} stage takes {upstream}'s newest run, "
-                    f"{newest.relative_to(base)}, whole -- and it has not "
-                    f"been launched.  Launch it --\n"
-                    + block(launch_pending(upstream, number_of(task, upstream),
-                                           newest.name, base=base)) + q2)
-            if not_done:
-                raise PrepError(
-                    f"the {stage} stage takes {upstream}'s newest run, "
-                    f"{newest.relative_to(base)}, whole -- and its points "
-                    f"{', '.join(not_done)} are not done.  Launch it again: "
-                    f"the next run takes the done points over and runs the "
-                    f"rest --\n"
-                    + block(launch_lines("task", upstream, base=base)) + q2)
+            if _launch is None:
+                _pts = points_in(newest, task, upstream, base=base)
+                if not all(done(p_, _names, launch=None, products=_prod,
+                                launched_in=newest)[0] for p_, _pt in _pts):
+                    raise PrepError(
+                        f"the {stage} stage takes {upstream}'s newest run, "
+                        f"{newest.relative_to(base)}, whole -- and it has "
+                        f"not been launched.  Launch it --\n"
+                        + block(launch_pending(upstream,
+                                               number_of(task, upstream),
+                                               newest.name, base=base))
+                        + q2)
+            else:
+                # THE ONE RULE the status door asks (`continuation.
+                # points_state`): a chain that stopped is a run that ended
+                # with points not done, never one still queued.
+                st, _d, rows = points_state(newest, _names, task, upstream,
+                                            launch=_launch, products=_prod,
+                                            base=base)
+                not_done = [f"{p['point']} ({p['why']})" for p in rows
+                            if not p["done"]]
+                if st in ("queued", "running"):
+                    raise PrepError(
+                        f"the {stage} stage takes {upstream}'s newest run, "
+                        f"{newest.relative_to(base)}, whole -- and it is "
+                        f"still {st} ({len(rows) - len(not_done)} of "
+                        f"{len(rows)} points done).  Let it finish." + q2)
+                if not_done:
+                    raise PrepError(
+                        f"the {stage} stage takes {upstream}'s newest run, "
+                        f"{newest.relative_to(base)}, whole -- and its "
+                        f"points {', '.join(not_done)} are not done.  Launch "
+                        f"it again: the next run takes the done points over "
+                        f"and runs the rest --\n"
+                        + block(launch_lines("task", upstream, base=base))
+                        + q2)
         else:
             c, st, _v, d = (read_run(base, task, upstream, newest,
                                      verdict=False)
@@ -284,8 +286,11 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     """The deck ``stage`` of ``calc`` renders NOW -- its text exactly as
     `prep task` writes it, from the calculation's template, junction and
     the rung's run card (`transport_rung`, `transport_spec`,
-    `script_emit.render_deck`).  A transport deck records no machine sizing,
-    so no allocation is needed to render it."""
+    `script_emit.render_deck`), and the person's own USER-CUSTOM zone of the
+    deck prep wrote for it, which prep keeps when it writes the deck again
+    (`script_emit.write_script`) -- so a keyword typed there is the same
+    engine input in the run and now.  A transport deck records no machine
+    sizing, so no allocation is needed to render it."""
     from .model import Resources
     from .prep_inputs import run_inputs
     base, task = calc.base, calc.task
@@ -298,9 +303,18 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     spec, cfg = transport_spec(task, stage, struct, config, state, point,
                                 base=base)
     with user_error_as_prep():
-        return _sc.render_deck(spec, struct, cfg, verbose=True,
+        text = _sc.render_deck(spec, struct, cfg, verbose=True,
                                dest_dir=base,
                                sources=transport_sources(_element)).text
+    # THE ZONE PREP KEEPS: from the deck prep wrote for this rung -- in its
+    # point's folder for a rung that runs per point (`prep`'s
+    # `prepare_deck`, `script_emit.merge_user_custom_from_target`).
+    job = calc.jobset.job(stage) if calc.jobset is not None else None
+    home = stage_home(base, task, stage)
+    if job is not None and home.dir is not None:
+        at = home.dir / point.rel if point is not None else home.dir
+        text = _sc.merge_user_custom_from_target(text, at / job.script)
+    return text
 
 
 __all__ = ["gather_sources", "transport_inputs", "gather_into",

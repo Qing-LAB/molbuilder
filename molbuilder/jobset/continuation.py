@@ -18,6 +18,8 @@ import dataclasses
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from ..runrecord import LaunchRecordError
+
 
 @dataclasses.dataclass(frozen=True)
 class Continuation:
@@ -834,3 +836,154 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
             # may start from it -- a force-constant stage may not while
             # it builds on `relax` (`engines/vibration.md` § 5.2a).
             "cold": sh.keeps_attempts_as_directories and not linked}
+
+
+def point_rows(run, names, task, stage: str, *, launch, products, base):
+    """A SWEPT RUN'S POINTS AS `status` READS THEM -- `StageStatus.points`'
+    rows for ``run``: the folder each ran in, whether it is done, what it
+    started from (its `.continued-from`) and what it alone took (its
+    `.gathered-from`, beyond the run's own gather).  The one per-point
+    reader (`engines/transport.md` § 2a.11): the status door asks it for a
+    stage's latest run, the record for the run a transmission gathered
+    (§ 2a.12), so the two never read a point two ways.  Returns ``(rows,
+    running)``, the second whether any point not done is running."""
+    from ..parse.dirs import run_status
+    from ..transport.stages import points_in
+    from ..runrecord import read_continued_from
+    gathered = gathered_lines(run)
+    pts, running = [], False
+    for pdir, pt in points_in(run, task, stage, base=base):
+        ok, why = done(pdir, names, launch=launch, products=products,
+                       launched_in=run)
+        # ITS RUN'S STATE AND VERDICT, the one status door's -- a point done
+        # finished; decided on these, never on the reason's words.
+        opened = pdir.is_dir()
+        st = (run_status(pdir, names.stem, launch=launch, launched_in=run)
+              if opened else None)
+        state = ("finished" if ok else st.state if st is not None
+                 else "pending")
+        converged = (st.verdict[1] if st is not None
+                     and st.verdict is not None else None)
+        running = running or state == "running"
+        unread = None
+        try:
+            src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
+                   else None)
+            src = str(src) if src is not None else None
+        except LaunchRecordError as exc:
+            # A RECORD THAT DOES NOT READ is said on its point's row, in
+            # its reader's words -- never read as a start, and never the
+            # whole status.
+            src, unread = None, str(exc)
+        took = [g for g in gathered_lines(pdir) if g not in gathered]
+        pts.append({**pt.to_wire(),
+                    "point": pt.words(), "folder": f"{run.name}/{pt.rel}",
+                    "state": state, "done": ok, "why": why,
+                    "opened": opened, "converged": converged,
+                    "started_from": src, "start_unread": unread,
+                    "took": took})
+    return pts, running
+
+
+def points_summary(pts) -> str:
+    """THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
+    § 2a.11): *k of N points done (F frames × V voltages)*."""
+    n_done = sum(p["done"] for p in pts)
+    n_frames = len({p["frame"] for p in pts})
+    n_volts = len({p["bias_v"] for p in pts})
+    return (f"{n_done} of {len(pts)} points done ({n_frames} "
+            f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
+            f"voltage{'' if n_volts == 1 else 's'})")
+
+
+def points_verdict(pts) -> "tuple[str, str]":
+    """A run of points' state once nothing in it runs -- THE RUN'S STATE IS
+    ITS POINTS' RUNS': finished when every one finished -- converged or not,
+    which is the converged column's (`job-system.md`, rule 4) -- else
+    failed; the first point not done says why.  The one rule, asked by
+    :func:`points_state` and by the transport record for the run its
+    transmission gathered (`engines/transport.md` § 2a.12)."""
+    summary = points_summary(pts)
+    state = ("finished" if all(p["state"] == "finished" for p in pts)
+             else "failed")
+    first = next((p for p in pts if not p["done"]), None)
+    return state, (summary if first is None
+                   else f"{summary}; {first['point']}: {first['why']}")
+
+
+def taken_over(p, here) -> bool:
+    """Whether a point was taken over from an earlier run -- its record
+    names the run that computed it (one hop, `engines/transport.md`
+    § 2a.11), a run outside ``here`` (`runrecord.RunRef`)."""
+    from ..runrecord import RunRef
+    said = p.get("started_from")
+    return bool(said) and not RunRef.read(said, shared=False).within(here)
+
+
+def _walked_here(pts, run: Path, base: Path) -> list:
+    """The points ``run`` walks itself -- every point but those it took
+    over from an earlier run (:func:`taken_over`)."""
+    from ..runrecord import RunRef
+    here = RunRef.at(base, run)
+    return [p for p in pts if not (p["done"] and taken_over(p, here))]
+
+
+def gathered_lines(folder) -> List[str]:
+    """``<file> <- <run>`` for each entry of ``folder``'s ``.gathered-from``
+    (`runrecord.read_gathered_from`), in the order taken; ``[]`` when there
+    is none."""
+    from ..runrecord import read_gathered_from
+    try:
+        return [f"{fn} <- {src}" for src, fn in read_gathered_from(folder)]
+    except LaunchRecordError as exc:
+        # SAID ON ITS ROW, in its reader's words -- never the whole status.
+        return [str(exc)]
+
+
+def points_state(run, names, task, stage: str, *, launch, products, base
+                 ) -> "Tuple[str, str, list]":
+    """A LAUNCHED RUN OF POINTS' STATE -- ``(state, detail, rows)``, the one
+    rule the status door and the gather ask (`engines/transport.md`
+    § 2a.11): ``running`` while a point runs, or between two points while a
+    job launched from this machine that holds the run is going
+    (`joblist.is_going`); ``queued`` while nothing the run walks itself has
+    started; else the points' verdict (:func:`points_verdict`) --
+    ``finished``, or ``failed`` naming the first point not done, a chain
+    that stopped among them: a point never reached is no point queued."""
+    pts, running = point_rows(run, names, task, stage, launch=launch,
+                              products=products, base=base)
+    summary = points_summary(pts)
+    if running:
+        return "running", summary, pts
+    if all(p["opened"] and p["state"] in ("pending", "queued")
+           for p in _walked_here(pts, run, base)):
+        # NOTHING THIS RUN WALKS HAS RUN YET -- the points it took over
+        # from an earlier run are that run's, done before it was sent.
+        jid = (launch or {}).get("job_id")
+        return "queued", (f"queued as job {jid}" if jid
+                          else "launched, nothing run yet"), pts
+    if any(not p["done"] for p in pts) and _walk_going(base, run):
+        return "running", summary + " (between two points)", pts
+    state, detail = points_verdict(pts)
+    return state, detail, pts
+
+
+def _walk_going(base, run) -> bool:
+    """Whether a job launched from this machine that holds ``run`` is
+    going -- its process, or its scheduler's list (`joblist.is_going`, the
+    one answer `molbuilder jobs` asks); ``False`` where none is on file or
+    this machine cannot tell, the points' verdict then said."""
+    from ..joblist import Asked, Job, every, is_going
+    from ..paths import run_folder_of
+    from ..runrecord import RunRef
+    want = RunRef.at(base, run)
+    asked = Asked()
+    for job in every():
+        if (not isinstance(job, Job)
+                or Path(job.calculation) != Path(base).resolve()):
+            continue
+        holds = any(str(run_folder_of(m["run"]) or m["run"]) == str(want)
+                    for m in job.members.values())
+        if holds and is_going(job, asked)[0] is True:
+            return True
+    return False

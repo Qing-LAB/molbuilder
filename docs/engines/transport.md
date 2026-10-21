@@ -154,7 +154,7 @@ than set (I8).
 | stage | program | in the electrode plane (x, y) | along z | what those k-points decide | what the engine does with them |
 |---|---|---|---|---|---|
 | **seed** | SIESTA | the shared k-point grid, `kgrid` | **1** | a starting density for the device — never part of its answer | a plain periodic run: it samples the grid as written |
-| **each lead** | SIESTA, `TS.HS.Save` | the shared k-point grid — it **must** be the device's | **`electrode_kz`**, 100 (warned below 50, refused at 1) | the lead's density, Hamiltonian, overlap and Fermi level, saved in its `.TSHS` | TranSIESTA compares the lead's grid and offset with the device's and stops on a mismatch (`ts_electrode.F90:1188–1235`); it warns only when a lead has fewer than 20 k-points along z (`:1193–1199`) |
+| **each lead** | SIESTA, `TS.HS.Save` | the shared k-point grid — it **must** be the device's | **`electrode_kz`**, 100 (warned below 50 and above 200, refused at 1) | the lead's density, Hamiltonian, overlap and Fermi level, saved in its `.TSHS` | TranSIESTA compares the lead's grid and offset with the device's and stops on a mismatch (`ts_electrode.F90:1188–1235`); it warns only when a lead has fewer than 20 k-points along z (`:1193–1199`) |
 | **device** | TranSIESTA | the shared k-point grid | **1**, offset 0 | the junction's density and Hamiltonian, at each bias | sets z to one k-point with offset 0 whatever the deck says, without a message (`ts_kpoint_scf.F90:87–92`) |
 | **transmission** | tbtrans | the transmission k-point grid, **`tbt_k_grid`** — its own; left blank, three times the shared grid | **1** | T(E) | rebuilds each lead's self-energy at its own k-points (`tbt_init.F90:208–210`), does not compare its grid with the shared one (`m_tbt_options.F90:694–695`), sets z to one k-point (`m_tbt_kpoint.F90:411–422`) |
 
@@ -163,12 +163,12 @@ than set (I8).
 ```mermaid
 flowchart TD
     KG["the shared k-point grid, kgrid<br/>in the electrode plane (x, y)<br/>one value, on the shared panel"]
-    KZ["the leads' k-points along z, electrode_kz<br/>100, warned below 50"]
+    KZ["the leads' k-points along z, electrode_kz<br/>100, warned outside 50–200"]
     TK["the transmission k-point grid, tbt_k_grid<br/>in the electrode plane (x, y)<br/>left blank: three times kgrid"]
     SEED["1 · seed — SIESTA, periodic<br/>samples kgrid × 1"]
     LEAD["2, 3 · each lead — SIESTA, bulk metal<br/>samples kgrid × electrode_kz"]
     LH["the lead's .TSHS<br/>H(R), S(R) and its Fermi level E_F"]
-    SE["Σ_L, Σ_R at each energy E<br/>and each k-point in the electrode plane<br/>the endless lead summed exactly (Lopez Sancho)<br/>from H − E_F·S: aligned to the lead's own E_F"]
+    SE["Σ_L, Σ_R at each energy E<br/>and each k-point in the electrode plane<br/>the endless lead summed exactly (Lopez Sancho)<br/>from H − (E_F − μ)·S: the lead's own E_F placed at its μ"]
     DEV["4 · device — TranSIESTA, NEGF<br/>samples kgrid × 1, z forced to 1<br/>G = [E·S − H − Σ_L − Σ_R]⁻¹"]
     DH["the device's .TS.HSX<br/>its converged H(R), S(R), per bias"]
     TB["5 · transmission — tbtrans<br/>samples tbt_k_grid × 1, z forced to 1<br/>Σ rebuilt at its own k-points"]
@@ -234,8 +234,10 @@ the lead's surface spreads into the half-infinite metal behind it — summed
 prints its name as it starts, `m_ts_electrode.F90:945`), and the z component
 of k set to zero (`ts_electrode.F90:1496–1507`; [`Brandbyge2002`]). **No
 k-point along z enters Σ.** What does enter is the lead's Hamiltonian, and its
-Fermi level: before the iteration TranSIESTA shifts each lead's blocks to that
-lead's own Fermi level E_F (`H₀₀ − E_F·S₀₀`, `m_ts_electrode.F90:1462, 1503`).
+Fermi level: before the iteration TranSIESTA shifts each lead's blocks by that
+lead's own Fermi level E_F less the lead's chemical potential μ
+(`H₀₀ − (E_F − μ)·S₀₀`, `m_ts_electrode.F90:1462, 1503`), so the lead's E_F
+sits at its μ = ±V/2 — at 0 V, μ = 0 and the shift is E_F itself.
 Both come from the lead's own SCF, a bulk-metal calculation whose density,
 bands and Fermi level converge only with many k-points along z. The reason is
 the cell's length: a thin lead cell (three Au(111) layers are ≈ 7 Å) has a
@@ -253,11 +255,15 @@ The manual: "If in doubt, use 100 k-points along the semi-infinite direction"
 [`SiestaManual542`]; the developer: "much simpler to just use a very high
 number (like 100)" [`Papior2019`]. TranSIESTA's own warning comes only below 20
 (`ts_electrode.F90:1193–1199`). molbuilder starts at **100**, warns below
-**50** — the manual's floor — and refuses 1 (`electrode_kz`'s `range` and
-`above`). The cost is small: only the two lead runs grow with this count, and
-a lead is a small cell. **To check it**, raise it and see that each lead's
-Fermi level stays put: the Results tab shows both leads' Fermi levels and says
-whether they agree within 0.05 eV (`transport/record.py`, `leads_agreement`).
+**50** — the manual's floor — and above **200**, and refuses 1
+(`electrode_kz`'s `range`, `[50, 200]`, and `above`). The cost is small: only the two lead runs grow with this count, and
+a lead is a small cell. **To check it**, run the leads again at a higher count
+and compare each lead's Fermi level with the one before: settled, it stays
+put. Nothing in molbuilder compares two counts for you. The Results tab shows
+both leads' Fermi levels and says whether the left lead's and the right lead's
+agree within 0.05 eV (`transport/record.py`, `leads_agreement`) — the two
+leads of one calculation compared with each other, which says nothing of
+whether their count along z is enough.
 
 #### Why one k-point along z on the device — and on the seed
 
@@ -441,23 +447,28 @@ warning added — the user: "yes to A, B and C".)*
 
 | the setting | starts at | why | the literature and the engine |
 |---|---|---|---|
-| **the leads' k-points along z** — `electrode_kz`, on each lead's tab | **100**; warned below **50**; 1 refused | It decides the lead's Hamiltonian and Fermi level, which every self-energy is built from and aligned to (§ 0.2). What matters is the number of k-points times the lead cell's length along z: a three-layer Au(111) lead (≈ 7 Å) with 100 points is sampled as finely as one point on a cell ≈ 700 Å long, far beyond what bulk gold needs. That makes 100 a safe default, and only the lead runs pay for it | "If in doubt, use 100 k-points along the semi-infinite direction"; "at least >50 should easily be reachable" [`SiestaManual542`]; "much simpler to just use a very high number (like 100)" [`Papior2019`]; TranSIESTA's own warning is below 20 (`ts_electrode.F90:1193–1199`) |
+| **the leads' k-points along z** — `electrode_kz`, on each lead's tab | **100**; warned below **50** and above **200**, the catalogue's recommended range; 1 refused | It decides the lead's Hamiltonian and Fermi level, which every self-energy is built from and aligned to (§ 0.2). What matters is the number of k-points times the lead cell's length along z: a three-layer Au(111) lead (≈ 7 Å) with 100 points is sampled as finely as one point on a cell ≈ 700 Å long, far beyond what bulk gold needs. That makes 100 a safe default, and only the lead runs pay for it | "If in doubt, use 100 k-points along the semi-infinite direction"; "at least >50 should easily be reachable" [`SiestaManual542`]; "much simpler to just use a very high number (like 100)" [`Papior2019`]; TranSIESTA's own warning is below 20 (`ts_electrode.F90:1193–1199`) |
 | **the shared k-point grid in the electrode plane** — `kgrid`, on the shared panel | the cited run's (§ 3.1) | One grid for the seed, both leads and the device: the device uses each lead as the bulk metal of its own electrode region, so both must be sampled on the same k-points (§ 0.2) | the leads' and the device's grids "should be the same" [`Papior2019`]; TranSIESTA stops if they differ (`ts_electrode.F90:1235`); a 4 × 4 grid converged the benchmark junctions' conductance to a few per cent [`Strange2008`] |
-| **the transmission k-point grid in the electrode plane** — `tbt_k_grid`, on the transmission's tab | **left blank: three times the shared grid's count along each direction it samples with more than one point**, worked out when the deck is written (`kmesh.transmission_start`, asked by `kmesh.mesh_for`; 4 4 1 → 12 12 1), so it follows the shared grid; a count of one stays one; z is 1 | T(E) has sharp structure from the leads' bands that the density does not have, so it needs more k-points — and a finer grid for it re-runs no SCF stage. **Three is molbuilder's starting point, not a converged answer**: no source gives a factor; three times a typical shared grid (3 × 3 to 5 × 5) lands at or above the grids published gold–benzenedithiol junctions converged at, for a third to a ninth of the cost of the 30 × 30–50 × 50 sometimes quoted. The person converges it (§ 0.3) | "the k-point sampling need typically be much higher in a tbtrans calculation" [`SiestaManual542`]; sparse sampling in the electrode plane gives strong, unphysical features in T(E), from the leads' van Hove singularities [`Thygesen2005`]; benzenedithiol between Au(111) leads of a 3 × 3 cross-section: Γ alone "fluctuates very much compared to the converged result", 8 irreducible k-points used [`Thygesen2005b`]; 4 × 4 converged to a few per cent [`Strange2008`]; graphene, whose density of states vanishes at E_F, needs far more — the worst case [`Falkenberg2015`]; converge by comparing the k-averaged T(E) of several grids, and use one transmission grid for every bias [`Papior2019`] |
+| **the transmission k-point grid in the electrode plane** — `tbt_k_grid`, on the transmission's tab | **left blank: three times the shared grid's count along each direction it samples with more than one point**, worked out when the deck is written (`kmesh.transmission_start`, asked by `kmesh.mesh_for`; 4 4 1 → 12 12 1), so it follows the shared grid; a count of one stays one; z is 1 | T(E) has sharp structure from the leads' bands that the density does not have, so it needs more k-points — and a finer grid for it re-runs no SCF stage. **Three is molbuilder's starting point, not a converged answer**: no source gives a factor; three times a typical shared grid (3 × 3 to 5 × 5) lands at or above the grids published gold–benzenedithiol junctions converged at, for about a quarter to a thirtieth of the cost of the 30 × 30–50 × 50 sometimes quoted (by § 0.3's count of the k-points computed: 9 × 9 to 15 × 15 is 41 to 113, against 452 to 1252). The person converges it (§ 0.3) | "the k-point sampling need typically be much higher in a tbtrans calculation" [`SiestaManual542`]; sparse sampling in the electrode plane gives strong, unphysical features in T(E), from the leads' van Hove singularities [`Thygesen2005`]; benzenedithiol between Au(111) leads of a 3 × 3 cross-section: Γ alone "fluctuates very much compared to the converged result", 8 irreducible k-points used [`Thygesen2005b`]; 4 × 4 converged to a few per cent [`Strange2008`]; graphene, whose density of states vanishes at E_F, needs far more — the worst case [`Falkenberg2015`]; converge by comparing the k-averaged T(E) of several grids, and use one transmission grid for every bias [`Papior2019`] |
 
-**Four warnings, never refusals.** Each is said by prep's settings gate on
-every stage's deck (`kmesh.check`, the one k-point check), and also when the
-Transport tab describes the calculation, on each stage's grid as the
-description resolves it (`transport/deck.ladder_mesh_findings`): a finding on
-the shared grid is shown once, beside the shared panel's control, and a
-finding on the transmission grid on the transmission's tab.
+**Four warnings, never refusals.** The first three are the one k-point
+check's (`kmesh.check`), said by prep's settings gate on every stage's deck,
+and also when the Transport tab describes the calculation, on each stage's
+grid as the description resolves it (`transport/deck.ladder_mesh_findings`):
+a finding on the shared grid is shown once, beside the shared panel's
+control, and a finding on the transmission grid on the transmission's tab.
+The fourth is `electrode_kz`'s recommended range in the catalogue,
+`[50, 200]`, warned as every item's range is: by the settings gate on each
+lead's deck (`validation/metadata.py`) and by the description's own check on
+a lead's value (`validation/task.py`, `_values_in_bounds`), both through
+`metadata.outside_range`.
 
 | warning | why | the literature |
 |---|---|---|
 | **one k-point along a direction the electrodes repeat in** — the shared grid, or a transmission grid the person set, at 1 along x or y while the structure repeats there. Never said for a direction that does not repeat (a chain or a wire in a box, where one point is exact), and one point is a legitimate quick first test | A single k-point in the electrode plane treats every sideways copy of the cell as in phase, so the metal's bands are seen at one place only. The warning's words name the remedy: the benchmark used 4 × 4 for a cell about 9 Å wide | with Γ alone, "a (unphysical) peak at the Fermi level" (an H₂ junction), and the conductance of benzenedithiol between gold raised from 0.24 to 0.37 G₀ [`Strange2008`]; the Γ-only error dominates the error from the cell's periodic images in a 3 × 3 supercell [`Thygesen2005`]; with TranSIESTA on an Au(111) junction the conductance was "more sensitive to the reciprocal-space sampling grid than the quality of the basis set", moving by up to a factor of five over the parameters tried [`Hoft2007`] |
 | **a transmission grid the person set coarser than the shared grid** along x or y (2026-10-13) | T(E) needs at least the k-points the density was converged on, and usually many more; most likely the shared grid was raised and the transmission's was left behind. A transmission grid left blank is three times the shared grid and is never coarser | tbtrans's sampling "should generally be much denser" [`SiestaManual542`] |
-| **a transmission grid the person set above the Γ point while the shared grid is Γ alone** (2026-10-17) | A device run at Γ alone writes its Hamiltonian with no supercell, and tbtrans then stops in its set-up: *"Transiesta calculation was a Gamma calculation while you request transmission k-points"* (`tbt_init.F90:166–171`; measured on the road's junction, 2026-10-16). Warned, never refused — tbtrans says it, and what to do is the person's *(user, 2026-10-17: "We should let tbtrans handle it. Prep can detect and warn but user decide what to do")*: the words name sampling the shared grid in the electrode plane (x, y) and running the device again, or the transmission at 1 1 1 | the engine's own check; tbtrans's message names SIESTA's `ForceAuxCell`, which molbuilder does not write |
-| **the leads' k-points along z below 50** | below the item's recommended range — a floor, not a proof of convergence: only raising the count and seeing the lead's Fermi level stay put shows it has settled | "at least >50 should easily be reachable" [`SiestaManual542`] |
+| **a transmission grid the person set above the Γ point while the shared grid is Γ alone** (2026-10-17) | A device run at Γ alone writes its Hamiltonian with no supercell. tbtrans stops in its set-up — *"Transiesta calculation was a Gamma calculation while you request transmission k-points"* (`tbt_init.F90:166–171`; measured on the road's junction, 2026-10-16) — only when its grid's first k-point is not k = 0: its test reads that one point (`m_tbt_kpoint.F90`, `setup_kpoint_grid`). A grid whose first point is k = 0 — 2 × 2, or 1 × N, by tbtrans's own ordering — runs on, every k-point given the k = 0 Hamiltonian, and its T(E) is invalid. Warned, never refused — what to do is the person's *(user, 2026-10-17; 2026-10-20: "warn, worded truly")*: the words say both outcomes and name sampling the shared grid in the electrode plane (x, y) and running the device again, or the transmission at 1 1 1 | the engine's own check, on the grid's first point; tbtrans's message names SIESTA's `ForceAuxCell`, which molbuilder does not write |
+| **the leads' k-points along z outside 50–200** | outside the item's recommended range. Below 50 is under the manual's floor — a floor, not a proof of convergence: only raising the count and seeing the lead's Fermi level stay put shows it has settled. Above 200 the two lead runs cost more | "at least >50 should easily be reachable" [`SiestaManual542`] |
 
 **The Γ-device warning, by example.** Two settings meet here: `kgrid`, the
 shared k-point grid of the seed, the leads and the device (the shared panel),
@@ -466,8 +477,13 @@ and `tbt_k_grid`, the transmission's (its tab; left blank, three times
 staying 1). With `kgrid = 1 1 1` the device is computed at one k-point only,
 and SIESTA saves its Hamiltonian in a compact form that is exact there and
 works nowhere else; a `tbt_k_grid` above 1 asks tbtrans for T(E) at several
-k-points, which that form cannot give — so tbtrans stops as it starts,
-before it computes anything, and only the transmission's launch fails:
+k-points, which that form cannot give. What tbtrans does then is decided by
+its grid's first k-point alone: its test reads that one point
+(`m_tbt_kpoint.F90`, `setup_kpoint_grid`) and stops the run only when it is
+not k = 0 (`tbt_init.F90:166–171`). So tbtrans either stops as it starts,
+before it computes anything, and only the transmission's launch fails — or,
+on a grid whose first point is k = 0, runs on, giving every k-point the
+k = 0 Hamiltonian, and writes a T(E) that is invalid:
 
 | `kgrid` | `tbt_k_grid` | what happens |
 |---|---|---|
@@ -475,7 +491,8 @@ before it computes anything, and only the transmission's launch fails:
 | `4 4 1` | `12 12 1` | runs |
 | `1 1 1` | blank, or `1 1 1` | runs, at one k-point (the one-point warning) |
 | `1 4 1` | `4 4 1` | runs: the device samples more than one k-point, so its Hamiltonian is saved whole |
-| **`1 1 1`** | **above 1, e.g. `4 4 1`** | **prep warns; tbtrans stops as it starts** |
+| **`1 1 1`** | **above 1, its first k-point not k = 0, e.g. `4 4 1`** | **prep warns; tbtrans stops as it starts** |
+| **`1 1 1`** | **above 1, its first k-point k = 0: `2 2 1`, or 1 × N such as `1 4 1`** | **prep warns; tbtrans runs on with the k = 0 Hamiltonian at every k-point, and its T(E) is invalid** |
 
 So it is said only of a transmission grid set by hand above 1 on a
 calculation whose shared grid is `1 1 1` — a quick test on a small junction,
@@ -491,7 +508,8 @@ neither way needs it.)*
 **Where each lives:** `electrode_kz`'s value and range in the catalogue; the
 three-times rule in `kmesh.transmission_start`, applied by `kmesh.mesh_for`
 to a blank `tbt_k_grid` and named in the deck's provenance block
-(`resolve.BLANK_ANSWERED_BY`); the warnings in `kmesh.check`. The references
+(`resolve.BLANK_ANSWERED_BY`); the first three warnings in `kmesh.check`,
+the fourth `electrode_kz`'s range, warned by `metadata.outside_range`. The references
 are `science/references.bib`'s, each checked against its publisher's record
 (Crossref) on 2026-10-09 or 2026-10-13; the method itself is
 [`Papior2017`]'s, after [`Brandbyge2002`].
@@ -504,7 +522,7 @@ rather than a crash — which is why they are guards in code and not advice.
 | # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
 | 1 | device `kz = 1` | **fixed**: the rung's mesh writes 1 (`kmesh.mesh_for`), the form draws the component locked, and every door refuses another value (`kmesh.fixed` through `template.why_not`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) *(an error in `validation._validate_transport_kind`, the kind's validator, from 2026-09-16 until 2026-09-30, beside a warning about the same axis in the SIESTA validator)* | ✅ on every door. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one was keyed on `TransportConfig` in `_ENGINE_VALIDATORS` while every rung resolved a `SiestaConfig`, so it dispatched for nothing — deleted 2026-09-17, the class 2026-10-02. Its OTHER checks — region contiguity, the region partition — went silent with it: see § 3.6a. The open-shell question is the electronic state's, asked on every rung since 2026-09-28.)* |
-| 2 | the leads' k-points along z are many (dense) | default **100**, a catalogue row (`electrode_kz`) that each lead's k-point grid reads for its count along z (§ 0.2) | ✅ **held** — the value reaches the deck (the lead's grid writes `0 0 100` as its row along z), it is editable in the template, and it is refused at 1 by its own limit (`above`) and warned below 50 by its range, on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1; `_validate_transport_kind` held both from 2026-09-17 until 2026-09-30). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
+| 2 | the leads' k-points along z are many (dense) | default **100**, a catalogue row (`electrode_kz`) that each lead's k-point grid reads for its count along z (§ 0.2) | ✅ **held** — the value reaches the deck (the lead's grid writes `0 0 100` as its row along z), it is editable in the template, and it is refused at 1 by its own limit (`above`) and warned below 50 and above 200 by its range, on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1; `_validate_transport_kind` held both from 2026-09-17 until 2026-09-30). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
 | 3 | the k-point grid in the electrode plane (x, y) and its offset are identical in lead and device — so the lead is the bulk of the device's electrode region (§ 0.2) | one shared `kgrid` and `kgrid_displacement`, which every stage's k-point grid reads (`kmesh.mesh_for`) — and TranSIESTA itself stops on *"found incompatible k-grids"* (`ts_electrode.F90:1235`) | ✅ by construction |
 | 3a | the junction is neutral | **error**, the electronic state's family (`validation/chemistry.py`, ES7) — and a cited run that carried a charge is refused at `init` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
 | 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
@@ -768,7 +786,8 @@ the lead's **broadening** — how fast an electron in the junction leaks into it
 Σ is one matrix for each energy and each k-point in the electrode plane,
 built from the lead's real-space H and S at whatever k-point is asked for,
 with the endless lead along z summed exactly (Lopez Sancho; no k-point along z
-is involved) and the blocks shifted to the lead's own Fermi level (§ 0.2). So
+is involved) and the blocks shifted by the lead's own Fermi level less its
+chemical potential, so its Fermi level sits at μ (§ 0.2). So
 the lead's k-points along z matter through its own SCF — they decide the
 Hamiltonian and Fermi level that Σ is made of — which is why there must be
 many of them; and its grid in the electrode plane must be the device's because
@@ -1169,14 +1188,17 @@ D since 2026-09-29). The lead's transport-axis k binds
 nothing in that sense; it simply changes a **result** the device consumes. Both
 force a re-run; only one is a rule about values.
 
-*Exact consumers must re-run; approximate ones need not.* The device reads the
-leads' Hamiltonians as **truth**, so a changed lead invalidates it. It reads the
-seed's density only as a **starting guess**, so a changed seed — or a seed
-converged on a different k-point grid in the electrode plane — leaves the device valid, merely
-started from a slightly different place. That is why changing the shared k-point
-grid rebuilds the leads, device and transmission but does **not** require the
-seed to be re-run: a density matrix is expressed over orbital pairs in real
-space, not over k-points, so it stays readable and serviceable.
+*Exact consumers must re-run; an approximate one re-runs by the gather's
+rule.* The device reads the leads' Hamiltonians as **truth**, so a changed lead
+invalidates it. It reads the seed's density only as a **starting guess**: a
+device started from another density — a changed seed, or one converged on a
+different k-point grid in the electrode plane — converges to the same answer
+from a slightly different place, since a density matrix is expressed over
+orbital pairs in real space, not over k-points. The gather asks one rule of
+every run it takes from, the seed's included: that run ran the same engine
+input as the deck its rung renders now (§ 6.1). So changing the shared
+k-point grid re-runs the seed too — with both leads, in group 1 — then the
+device and the transmission (§ 0.3).
 
 That asymmetry is also the argument for the transmission being its own stage:
 its parameters bind nothing, so re-running it against an unchanged device is
@@ -1197,16 +1219,15 @@ a contract.*  ⚠️ *This ended "none of them is implemented", which the banner
 200 lines above already contradicted.  Corrected 2026-09-23: ruling 1 (the
 relaxation DEFAULTS rather than seals) is built and is what
 `citation_defaults.py` does; the T(E) window, the two lead stages and the
-bias treatment are built; **Class C's per-stage defaults are NOT** — § 3.6a
-measures every rung taking `SiestaConfig()`'s own values, and § 2a.14's
-"what did NOT land" does not list it.  The default grouping is built (the
-row below).*
+bias treatment are built; **Class C's per-stage defaults are superseded by
+TD6**: one cited value starts every SCF stage (its row below, § 3.1).  The
+default grouping is built (the row below).*
 
 | | |
 |---|---|
 | **The relaxation DEFAULTS the Class A values; it does not seal them** | A transport calculation arrives pre-filled with the basis, functional and mesh cutoff of the relaxation it starts from, and the person **may change them** — a change applying to every stage at once. The worked case: relax with DZP because it is cheap and adequate for geometry, then move to TZP for transport because the longer orbital tails carry the metal–molecule coupling |
 | **The T(E) window belongs to the transmission** | Exposed and tunable **there only**. Consequence: the device deck has no reason to carry the `TBT.*` settings at all, so the two decks legitimately differ and each carries what its own binary reads. What keeps them consistent was never byte-identity; it is the shared Class A values |
-| **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
+| **Class C starts from the citation, stage by stage** *(TD6, the user 2026-10-09)* | Each SCF stage — the seed, both leads, the device — carries its own mixer and convergence criteria, never one shared set, since a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike; each starts from the one value the cited run converged with (`citation_defaults`, § 3.1) and is changed on its own tab (§ 2a.13). The leads' dense k-points along z are the catalogue's default, 100 (§ 0.2), not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The description's groups, 1 1 1 2 3: the preparatory block — seed and both leads — group 1, one submission, since none builds on another; the device group 2; the transmission group 3, each scan one job walking its points ([`engines/stages.md`](?doc=engines/stages.md) § 2; [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6). `jobset prep task` prepares every group at once (`--group 1 --group 2 --group 3` without a terminal); `jobset launch task` sends group 1, and group 2 once the seed and leads have finished — its first launch gathering their files — then group 3 ([`execution/job-system.md`](?doc=execution/job-system.md), *The task*). The device and the transmission never share a job: the transmission builds on the device, which you look at first |
 | **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). Both axes are built (§ 2a.11): a frame set is cited (§ 3.1, Q17-c), its points run (Q17-d) and its record carries each frame's point and the mode's average (§ 2a.12, Q17-e); its Results are built (`web/results.md` § 2.5, Q17-f, 2026-10-10) |
@@ -1232,8 +1253,10 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 
 > **Checked against real decks, 2026-09-16** — this was written before any of
 > it was built, so it was re-run afterwards rather than left as an
-> illustration. Editing the shared panel's `basis_size`, `mesh_cutoff` and
-> `max_scf_iter` and preparing the rungs again — never launched, each group is
+> illustration. Editing the shared panel's `basis_size` and `mesh_cutoff`, and
+> the template's `max_scf_iter` — Class C, not on the shared panel: each SCF
+> rung runs the template's value unless its own tab sets one (§ 2a.13) — and
+> preparing the rungs again — never launched, each group is
 > prepared again whole ([`execution/job-system.md`](?doc=execution/job-system.md),
 > *The task*) — gives
 > every rung the new values:
@@ -1244,7 +1267,7 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 > | `02_electrode_L` | TZP | 300.0 | 200 |
 > | `04_device` | TZP | 300.0 | 200 |
 >
-> One edit, three rungs — which is the first ruling of § 2a.7 working, and the
+> One template, three rungs — which is the first ruling of § 2a.7 working, and the
 > DZP→TZP case is exactly the one it exists for.
 
 **The shared panel — set once, governs all five stages.**
@@ -1263,8 +1286,8 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 | stage | what you set | why it differs |
 |---|---|---|
 | **seed** | mixing 0.05, budget 200 | a closed periodic warm-up; it only has to produce a serviceable density, so it can mix boldly and stop early |
-| **electrodes** | mixing 0.02, budget 300, **transport-axis k = 40** | a metallic bulk lead mixes cautiously — and 40 is the Fermi-level resolution, the reference energy everything downstream is measured against |
-| **device** | mixing 0.02, budget 400, bias **0 V** | an NEGF cycle on an open boundary is the hardest to converge here. Zero bias makes this a linear-response calculation (§ 2a.10) |
+| **electrodes** | mixing 0.02, budget 300, **k-points along z = 100** (`electrode_kz`, the catalogue's default; recommended 50–200, warned outside) | a metallic bulk lead mixes cautiously — and 100 k-points along z decide the lead's Hamiltonian and Fermi level, the reference energy everything downstream is measured against (§ 0.2) |
+| **device** | mixing 0.02, budget 400 | an NEGF cycle on an open boundary is the hardest to converge here. The bias is not set on this panel: it is Class D, each point's voltage the description's list, written by the rung (§ 2a.10) — at the one point 0 V this is a linear-response calculation |
 | **transmission** | window −3…+3 eV, 601 points, broadening 1 meV, 4 eigenchannels | wide enough to contain the resonances that matter, fine enough that none falls between points |
 
 **And then what a change costs — the whole reason for the classification:**
@@ -1272,7 +1295,7 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 | you change | what re-runs |
 |---|---|
 | basis TZP → DZP | **all five stages.** It is Class A; the leads and the device must be rebuilt together or the self-energy attaches to a Hamiltonian built differently |
-| lead transport-axis k 40 → 80 | **the two lead stages**, then the device and transmission that consume them — because the lead's Fermi level moved |
+| lead k-points along z 100 → 150 | **the seed and the two lead stages** — group 1, one job, run again whole — then the device and the transmission that consume the leads, because the lead's Fermi level moved |
 | device mixing 0.02 → 0.01 | **the device only.** The leads still stand; their Hamiltonians did not change |
 | transmission window ±3 → ±5 eV | **the transmission only**, and it takes seconds. The NEGF cycle is untouched — which is the entire argument for the transmission being its own stage |
 | cores 64 → 128 | re-runs, same answer. The old and new results remain comparable |
@@ -1463,7 +1486,11 @@ sum to 1 are averaged as written, with a warning *(user, 2026-10-09: "all
 weights should add up to 1 that's an explicit rule within error tolerance")*;
 frames that do not each state one have no average, said. Every other row,
 `info` and channel is carried as written into its record and data file and
-shown on the pages, never checked; transport never asks what made the frames,
+shown on the pages; the one check made on them is a vocabulary name's unit —
+a row of the mode's vocabulary written with another unit is refused by name
+wherever the rows are read for a record, a data file or a page
+(`frame_average.check_units`, [`model/structure.md`](?doc=model/structure.md)
+§ 2.2f). Transport never asks what made the frames,
 nor how many there are — that is the maker's. Another mode is
 another frame set and another transport calculation; how the modes' results
 are weighed against each other is the person's *(user, 2026-10-09: "it is
@@ -1563,8 +1590,8 @@ here is how many slices you pay for.
 
 | | what runs | what you get |
 |---|---|---|
-| **`low_bias_approximation: true`** | the device SCF converges **once, at 0 V**, and the transmission runs **once**, on it | **T(E, 0)** — one slice, a full energy curve; the I–V computed from it by the record for every listed voltage, **I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE**, μ_L,R = E_F ± eV/2 — the **linear-response approximation** |
-| **`low_bias_approximation: false`** | **every voltage gets its own device SCF** and its own transmission — a sweep (§ 2a.11) | **T(E, V)** — one slice per point; each point's current TBtrans's own integral over its window, with no approximation beyond the method itself |
+| **`low_bias_approximation: true`** | the device SCF converges **once, at 0 V**, and the transmission runs **once**, on it | **T(E, 0)** — one slice, a full energy curve; the I–V computed from it by the record for every listed voltage, **I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE**, μ_L,R = E_F ± eV/2 with V signed (`record.linear_response_iv`) — the **linear-response approximation**. A negative voltage carries a negative current, as TBtrans's own does, and I(−V) = −I(V): the one slice serves both signs |
+| **`low_bias_approximation: false`** | **every voltage gets its own device SCF** and its own transmission — a sweep (§ 2a.11) | **T(E, V)** — one slice per point; each point's current TBtrans's own integral over its window, with no approximation beyond the method itself; I(−V) is its own point's, and differs from −I(V) where T(E, −V) differs from T(E, V) inside the bias window — an asymmetric junction's rectification |
 
 The mechanism is the same in both cases; the difference is how many device SCFs
 are paid for, and therefore **what the result is entitled to be called**.
@@ -1667,18 +1694,24 @@ states. A template value until then answered a single-bias calculation, a
 second home beside the list (§ 2a.14).
 
 **The transmission window reaches the bias window** *(P2, 2026-10-08)*. A
-current is TBtrans's integral of T(E) over the window the transmission deck
-writes (`transmission_emin_ev … emax_ev`), weighted by both leads' Fermi
-functions at μ = ±V/2 — and TBtrans says nothing when the window cuts that
-integral short. So the window must reach **±(|V|/2 + 5 kT)** at the deck's
-electronic temperature. One rule, `record.window_short_of`, said in three
-places: the transmission deck's settings gate refuses a point whose own
-voltage the window does not reach; the description's preflight refuses a
-bias list whose largest voltage the resolved transmission rung's window does
-not reach (under the low-bias approximation every listed voltage is
-integrated over the one 0 V slice); and the record leaves a voltage it cannot
-integrate blank, naming the reach (§ 2a.12). The fix is always the same:
-widen the window.
+current is TBtrans's integral of T(E) over the energies the transmission deck
+has it sample — `transmission_n_points` points on `transmission_emin_ev …
+emax_ev` by the mid-rule (`method mid-rule`, `m_integrate.f90`), the first
+and the last half a spacing inside each edge — weighted by both leads' Fermi
+functions at μ = ±V/2, and TBtrans says nothing when those energies cut that
+integral short. So the energies it samples must reach **±(|V|/2 + 5 kT)** at
+the deck's electronic temperature. One rule, `record.window_short_of`, on the
+energies TBtrans samples: the transmission deck's settings gate and the
+description's preflight ask it with `record.sampled_window` — the mid-rule's
+first and last energy, worked out from the window and its point count — and
+the record with the energies the run wrote. The gate refuses a point whose
+own voltage they do not reach; the preflight refuses a bias list whose
+largest voltage the resolved transmission rung's do not reach (under the
+low-bias approximation every listed voltage is integrated over the one 0 V
+slice); the record leaves a voltage it cannot integrate blank, naming the
+reach (§ 2a.12). All three say it in the rule's one sentence, *the
+transmission's sampled window [lo, hi] eV does not reach ±… eV for … V*. The
+fix is always the same: widen the window.
 
 ### 2a.11 The directory structure — one place per run, and the axes visible in it
 
@@ -1766,9 +1799,10 @@ alone, so a polarized sweep read 0 of N done and was walked again)*). Its
 record is
 what its wrapper already writes as it ends — the conclusion marker and the
 outputs. A point has no record of its own beyond that: *queued*, *running*,
-*finished* and *failed* are the **run's**, read from the run's launch record
-and its points' files — each point's run by the one status door, the run
-finished once every point's has (`job-system.md`, *What marks each state*).
+*finished* and *failed* are the **run's**, read from the run's launch record,
+its points' files — each point's run by the one status door — and the jobs
+launched from this machine, by one rule (`continuation.points_state`, *One
+door for each place* below; `job-system.md`, *What marks each state*).
 
 **The walk.** `launch task` sends one job walking the run's points not done —
 **voltage by voltage, every frame's point at a voltage before the next
@@ -1818,11 +1852,13 @@ always one run whole.
 **The transmission takes one device run whole**: its first launch gathers each point's
 `.TS.HSX` from the device's **newest** run, every point of it done — the rule
 every hand-over follows (`job-system.md`, *The task*, *What a stage takes, and
-when*) — or is refused by that run's state, with the way on: still queued or
-running, the refusal counts its points done and says to let it finish; never
-launched, it names the launch line; ended with points not done, it names
-those points and says to launch it again, the next run taking the done points
-over (`gather.transport_inputs`); never 0 V from one run and 0.4 V from another.
+when*) — or is refused by that run's state, read by the one rule `status`
+reads it by (`continuation.points_state`, *One door for each place* below),
+with the way on: queued or running, the refusal counts its points done and
+says to let it finish; never launched, it names the launch line; ended with
+points not done — a walk that stopped among them included — it names those
+points and says to launch it again, the next run taking the done points over
+(`gather.transport_inputs`); never 0 V from one run and 0.4 V from another.
 
 **What it costs to be wrong about a point.** A point that does not converge
 within its iteration limit does not converge on the next walk either: the same
@@ -1843,9 +1879,20 @@ stage's; a swept run's point folders are `transport.stages.points_in(run, task,
 stage)`'s; the prepared point decks `transport.stages.point_folders(base, task,
 stage)`'s. Every reader asks them: prep, the gather, the walk, `status`, Task
 setup's count, the record and the Results ladder. **A swept rung has one row in `status`**: the
-run's state — *finished* when every point's run finished, converged or not,
-which the converged column says (*SCF NO* when a point did not converge) —
-and how many of its points are done (*3 of 5 points done*);
+run's state, by one rule the gather asks too (`continuation.points_state`) —
+*running* while a point runs, or between two points while a job launched
+from this machine that holds the run is going (`joblist.is_going`, the answer
+`molbuilder jobs` gives); *queued* while no point the run walks itself has
+started (a point taken over is the earlier run's); else its points' verdict
+(`continuation.points_verdict`): *finished* when every point's run finished,
+converged or not, which the converged column says (*SCF NO* when a point did
+not converge), or *failed* when a point's run did not finish, naming the
+first point not done. A walk that stopped among its points — some run,
+the rest never reached — is a run that ended, failed, never one still queued;
+where no job holding the run is on file, or this machine cannot tell, the
+points' verdict is said. Beside the state, how many of its points are done,
+with its axes (*3 of 5 points done (1 frame × 5 voltages)*, and *(between
+two points)* while the walk is between them);
 `status <stage>` says what the run gathered and what it continued from, read
 at the point (*0 V, 0.2 V taken over from run-1; the rest walked*), then lists
 the points — each run's state, done or not done and why, what each started
@@ -2101,8 +2148,8 @@ first. The lines, as the door prints them:
 | the device | the line |
 |---|---|
 | prepared, its leads not yet run | `tsgf/: one pair at a time; the size is known once the leads have run` |
-| prepared, its leads run | `tsgf/: one pair at a time, about 49.2 GiB a lead at 0 V and 116.0 GiB a lead at 0.2 V (1425 orbitals × 13 k-points × 125 and 294 energies)`. The orbital count is read from each lead's newest run's output (the reading pass's `n_orbitals`). The rest is read from the device's prepared deck — any frame's at each voltage, the decks being the same across frames: the k-grid, counted as TranSIESTA counts it (k and −k once), the pole energy and the temperature, the cutoff and the spacing, the spin. A frames-only or low-bias device has the 0 V number alone. Two leads that differ are said each: `L 49.2 GiB, R 31.0 GiB a lead at 0 V` and `(L 1425, R 1100 orbitals × …)`. A lead's output that does not give its orbital count: `tsgf/: one pair at a time; the size cannot be said -- L: <its output's name> states no orbital count` (or `does not read: <why>`). With the file switched off: `tsgf/: none -- the self-energies are kept in memory` |
-| launched, a run going or done | `tsgf/: the v0.2 pair, 2 files, 98.3 GiB` · `tsgf/: one file, AuBDT.v0.2.TSGFL, 49.2 GiB -- a walk that did not reach its end; yours to remove` · `tsgf/: 4 files, 196.6 GiB -- AuBDT.v0.2.TSGFL, AuBDT.v0.2.TSGFR, AuBDT.v0.4.TSGFL, AuBDT.v0.4.TSGFR; the walk leaves one pair at most, so these are an edit's` · `tsgf/: empty` · `tsgf/: none -- the self-energies are kept in memory` · `tsgf/: not there (a run made before 2.22.0, whose pair lies in the run's folder)`. A file counts when the one answer names it an engine's scratch (`warmfiles.is_scratch`: `*.TSGFL`, `*.TSGFR`). A stage with several runs says each run's, newest first, each after its run's name: `run-1: tsgf/: the v0.2 pair, 2 files, 98.3 GiB; run-0: tsgf/: empty` |
+| prepared, its leads run | `tsgf/: one pair at a time, about 49.2 GiB a lead at 0 V and 115.6 GiB a lead at 0.2 V (1425 orbitals × 13 k-points × 125 and 294 energies)`. The orbital count is read from each lead's newest run's output (the reading pass's `n_orbitals`). The rest is read from the device's prepared deck — any frame's at each voltage, the decks being the same across frames: the k-grid, counted as TranSIESTA counts it (k and −k once), the pole energy and the temperature, the cutoff and the spacing, the spin. A frames-only or low-bias device has the 0 V number alone. Two leads that differ are said each: `L 49.2 GiB, R 31.0 GiB a lead at 0 V` and `(L 1425, R 1100 orbitals × …)`. A lead's output that does not give its orbital count: `tsgf/: one pair at a time; the size cannot be said -- L: <its output's name> states no orbital count` (or `does not read: <why>`). With the file switched off: `tsgf/: none -- the self-energies are kept in memory` |
+| launched, a run going or done | `tsgf/: the v0.2 pair, 2 files, 231.3 GiB` · one file: `tsgf/: one file, AuBDT.v0.2.TSGFL, 115.6 GiB -- the round's pair being written` while the run is queued or running, `tsgf/: one file, AuBDT.v0.2.TSGFL, 115.6 GiB -- a walk that did not reach its end; yours to remove` once it has ended — the newest run's by its state as `status` reads it (`gf_files.status_line`'s `going`), an older run's, which has ended, always the second · `tsgf/: 4 files, 478.3 GiB -- AuBDT.v0.2.TSGFL, AuBDT.v0.2.TSGFR, AuBDT.v0.4.TSGFL, AuBDT.v0.4.TSGFR; the walk leaves one pair at most, so these are an edit's` · `tsgf/: empty` · `tsgf/: none -- the self-energies are kept in memory` · `tsgf/: not there (a run made before 2.22.0, whose pair lies in the run's folder)`. A file counts when the one answer names it an engine's scratch (`warmfiles.is_scratch`: `*.TSGFL`, `*.TSGFR`). A stage with several runs says each run's, newest first, each after its run's name: `run-1: tsgf/: the v0.2 pair, 2 files, 231.3 GiB; run-0: tsgf/: empty` |
 
 **The levers** — two on the device's tab, one on the device's run card
 (Task setup, `task-setup.md` § 6.2b: a run setting, the catalogue's
@@ -2113,7 +2160,7 @@ panel (§ 2a.13); every one written explicitly, never left to the engine:
 |---|---|---|---|
 | the k-points in the electrode plane | `kgrid` (the shared panel: one grid for every SCF rung) | the k-point count, linearly; it also converges the density and the transmission | 3×3×1 → 5 k-points: 18.9 GiB |
 | the equilibrium contour's poles | `negf_eq_pole_ev` | the pole count, *int(E / (π kT))*: 10 eV at 300 K is 123 poles; fewer poles integrate the equilibrium density less finely; TranSIESTA refuses fewer than 20 | 5 eV → 61 poles: 24.8 GiB |
-| the bias window's spacing | `negf_neq_spacing_ev` — the `delta` of `%block TS.Contour.nEq.line`, 0.01 eV, TranSIESTA's own default | the line's point count, *(|V| + 2·cutoff·kT) / delta*, rounded; coarser integrates the non-equilibrium density less finely | at 0.2 V, 0.02 eV → 23 line points in place of 46: 106.6 GiB in place of 116 |
+| the bias window's spacing | `negf_neq_spacing_ev` — the `delta` of `%block TS.Contour.nEq.line`, 0.01 eV, TranSIESTA's own default | the line's point count, *(|V| + 2·cutoff·kT) / delta*, rounded; coarser integrates the non-equilibrium density less finely | at 0.2 V, 0.02 eV → 23 line points in place of 46: 106.6 GiB in place of 115.6 |
 | no file at all | `ts_elecs_out_of_core` (the device's run card) — `TS.Elecs.Out-of-core`, true by default | false keeps the self-energies in memory and recomputes them at every SCF iteration: the disk to nothing, the time per iteration up by the recursion's cost; `tsgf/` stays empty | — |
 
 The spacing's block is written at every device point, with the window the
@@ -2210,9 +2257,10 @@ obtained by integrating the single zero-bias slice is labelled *linear response*
 beside the curve **and beside the I–V table** — not in metadata: the two kinds
 of I–V are different claims and look identical on a plot. Under the low-bias
 approximation the I–V table is the record's own (`record.linear_response_iv`):
-one current per listed voltage, computed from T(E, 0) with the Fermi tails at
-the deck's electronic temperature, and a voltage the window does not reach
-is a blank with the reach it would need. A sweep's point not done is a gap in
+one current per listed voltage, signed as the voltage is — I(−V) = −I(V),
+the one slice serving both signs (§ 2a.10) — computed from T(E, 0) with the
+Fermi tails at the deck's electronic temperature, and a voltage the energies
+the run wrote do not reach is a blank with the reach it would need. A sweep's point not done is a gap in
 the family and in the I–V, said as not done — never filled in (§ 2a.11).
 
 **The Fermi levels, each in its run's own frame.** The seed's and the leads'
@@ -2246,9 +2294,10 @@ its k-point × energy loop in its one sentence, as its run record states it
 share done and TBtrans's estimate of its time left, each completed pass's
 measured time, where it stopped), and `estimated_at` while that estimate
 stands. The transmission rung carries its running point's, naming that point,
-how many are still to come after it, and the last finished point in the
-ladder's order with its measured loop — the only time a point still to come is
-judged by; nothing projects it.
+how many other points are still to come — every other point pending,
+whatever order the walk runs them in (round by round, § 2a.11) — and the
+last finished point in the ladder's order with its measured loop — the only
+time a point still to come is judged by; nothing projects it.
 The report draws it on the rung's row and the point's line (`web/results.md`
 § 2.5).
 
@@ -2504,6 +2553,7 @@ naming one there is refused where it is written (§ 3.8.9).
 | `mixing_weight` | `SCF.Mixer.Weight` | How aggressively this run mixes | 3 |
 | `pulay_history` | `SCF.Mixer.History` | How many previous steps it mixes from | 3 |
 | `dm_tolerance` | `DM.Tolerance` | What counts as converged here | 3 |
+| `h_tolerance` | `SCF.H.Tolerance` | The Hamiltonian's criterion, beside the density's | 3 |
 | `dm_energy_tolerance` | `DM.EnergyTolerance` | The free-energy criterion's value | 3 |
 | `scf_energy_converge` | `SCF.FreeE.Converge` | The switch that arms it — the value alone does nothing | 3 |
 | `scf_must_converge` | `SCF.MustConverge` | Whether failing to converge stops the run or lets it continue | 3 |
@@ -2513,14 +2563,14 @@ naming one there is refused where it is written (§ 3.8.9).
 
 | parameter | keyword | the decision it is | tier |
 |---|---|---|---|
-| `electrode_kz` | `%block kgrid_Monkhorst_Pack` | **The leads' k-points along z, which decide the lead's Hamiltonian and Fermi level.** A lead is genuinely periodic along z; the device builds its self-energy from the lead's H and S and shifts it to the lead's own E_F (`m_ts_electrode.F90:1462`), so too few k-points put every transmission feature at the wrong energy (§ 0.2). 100 by default, warned below 50 [`SiestaManual542`]. **Per lead**, not shared: an asymmetric junction has different materials on the two sides | 3 |
+| `electrode_kz` | `%block kgrid_Monkhorst_Pack` | **The leads' k-points along z, which decide the lead's Hamiltonian and Fermi level.** A lead is genuinely periodic along z; the device builds its self-energy from the lead's H and S, shifted by the lead's own E_F less its chemical potential (`m_ts_electrode.F90:1462`), so too few k-points put every transmission feature at the wrong energy (§ 0.2). 100 by default; recommended 50–200, warned outside, 1 refused [`SiestaManual542`]. **Per lead**, not shared: an asymmetric junction has different materials on the two sides | 3 |
 
 **The device owns:**
 
 | parameter | keyword | the decision it is | tier |
 |---|---|---|---|
 | `negf_eq_pole_ev` | `TS.Contours.Eq.Pole` | Where the equilibrium contour's poles sit on the imaginary axis | 3 |
-| *the equilibrium contour* | `contour.eq` in each `%block TS.ChemPot.<name>` | **Stated, not left to the engine**: a circle and a tail whose lower bound sits below the seed's lowest eigenvalue — the manual's own rule. Without `contour.eq` TranSIESTA falls back to a continued fraction of 42 poles (`Src/m_ts_chem_pot.F90`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses a contour that cannot cover the spectrum | 2 |
+| *the equilibrium contour* | `TS.Contours.Eq.Pole`; no `contour.eq` in `%block TS.ChemPot.<name>` | **Stated by its pole energy, never left to the engine**: the device's `TS.ChemPot` blocks write no `contour.eq`, so TranSIESTA takes its continued-fraction branch and counts the poles from `TS.Contours.Eq.Pole`, the row above (§ 6.1c). Unwritten, that energy is TranSIESTA's own π·60·kT·0.7 — about 42 poles (`m_ts_chem_pot.F90:313–319`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses an energy that gives fewer than 20 poles at the run's temperature (§ 6.1c) | 2 |
 | `ts_elecs_eta_ev` | `TS.Elecs.Eta` | The leads' self-energy broadening in the device's NEGF loop. 1 meV, TranSIESTA's own default, written | 3 |
 | `negf_neq_spacing_ev` | `delta` in `%block TS.Contour.nEq.line` | **The bias window's energy spacing**, 0.01 eV — TranSIESTA's own default, written at every device point with the window the cutoff gives (§ 2a.11, *What a run's points share*: a lever on the leads' files); the block is unread at zero bias | 3 |
 | `ts_elecs_out_of_core` | `TS.Elecs.Out-of-core` | **Whether the leads' surface Green's functions are kept as files** (true, TranSIESTA's own default) or recomputed in memory at every SCF iteration (false: no `tsgf/` file, more time per iteration) — § 2a.11, *What a run's points share* | 3 |
@@ -2950,8 +3000,9 @@ are pinned by their sha256 in `slot-provenance.json`, as a cited run's files
 are, and a pair edited all the same is refused by name at the next prep,
 saying so. A frame set's
 per-frame promises (§ 2a.9) are checked at this door, frame by frame, naming
-the frame, before anything runs; its rows are carried as written, never
-checked ([`model/structure.md`](?doc=model/structure.md) § 2.2f). The pair's axis kinds are its own across the transport axis, and z
+the frame, before anything runs; its rows are carried as written, a
+vocabulary name's unit the one thing checked of them, where they are read for
+a record, a data file or a page ([`model/structure.md`](?doc=model/structure.md) § 2.2f). The pair's axis kinds are its own across the transport axis, and z
 is transport (§ 5 I8). The principal-layer condition reads the orbital ranges
 from the `.ion` files SIESTA leaves beside a run; a pair has none beside it,
 so the condition is *unverified* on the lead's notes, and TranSIESTA checks
@@ -2975,7 +3026,7 @@ leads and the device.
 
 **And how its SCF converged** *(TD6, the user 2026-10-09: "go with way 1")*:
 the cited deck's mixer and criteria — `SCF.Mixer.Weight`,
-`SCF.Mixer.History`, `DM.Tolerance`, `DM.EnergyTolerance`,
+`SCF.Mixer.History`, `DM.Tolerance`, `SCF.H.Tolerance`, `DM.EnergyTolerance`,
 `SCF.FreeE.Converge` — start every SCF stage (the seed, both leads, the
 device), each marked *from the junction you cited*. Unlike the settings above they
 are not shared: each SCF stage carries its own and may change it on its tab
@@ -3388,7 +3439,12 @@ cannot be done first.** Each line is falsifiable.
    [`siesta.md`](?doc=engines/siesta.md) § 6.1)*.
    `TBT.HS` stays a rung line derived from the label, with no row.
 3. **Every stage deck has a `.validation.txt` and a USER-CUSTOM zone**, and a
-   deck that fails its own read-back check refuses instead of running.
+   deck that fails its own read-back check refuses instead of running. A
+   keyword typed in a rung's USER-CUSTOM zone is the same engine input in the
+   run and in the deck the gather renders now: the gather's deck is the deck
+   exactly as prep writes it, the zone of the deck prep wrote for that rung —
+   its point's, for a rung with points — merged in
+   (`gather.rung_deck_now`, `script_emit.merge_user_custom_from_target`; § 6.1).
    **✅ DONE 2026-09-16 — all five** (§ 2a.14). It has already earned itself
    twice: the check gate caught a duplicated `SolutionMethod` the day the
    device layout was written, and the settings gate caught a fixture whose
@@ -3517,7 +3573,7 @@ fixed.**
 | **and they arrive as the ENGINE's defaults, which is a real change to what runs** | `siesta_config_for` fills 26 of `SiestaConfig`'s 66 fields from the transport description; the other **40 take `SiestaConfig()`'s own values**. So the seed deck now carries `SCF.Mixer.Weight 0.02`, `SCF.Mixer.History 8`, `MaxSCFIterations 1000`, `DM.Tolerance 1.0e-05`, `DM.EnergyTolerance 1.0e-04 eV` where it previously carried **nothing** and SIESTA's own 5.x values governed. `config/siesta.py` states those defaults' provenance plainly: they follow best practice for *"a small / medium … system that's **about to be relaxed**"*. A metallic Au junction warm-up is not that system, and **nobody has made the scientific case that 0.02 / 8 is right for it** — a conservative mixing weight is the usual choice for a metal, which is a reason to expect it is *safe*, not evidence that it is *tuned*. Treat this as a deliberate change of governing defaults pending that case, not as a free win |
 | ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opened a `PipelineLog` and carried it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=`. *(The arm went 2026-10-05, § 3.6 item 4: prep's one entry opens the log for every kind.)* |
-| ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` (plus any `*-electrode` name until 2026-10-02, when the leads became two exact names, § 4) — so a label transport genuinely cannot read is still named, which is § 4's rule |
+| ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. No check names an unconsumed label: a label outside the partition (`sort.PARTITION_LABELS`) is the person's, never refused, warned about or read (§ 4; [`science/validation.md`](?doc=science/validation.md) § 5) |
 | ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` was keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatched for no rung (the engine was deleted 2026-09-17, the class 2026-10-02) — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator *(the kz≠1 refusal it stood beside left it 2026-09-30: a component the kind fixes, `kmesh.fixed` — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* |
 | ~~`validate_subject` is unanswered, so the gate judges a frame the deck does not express~~ — **answered** (`transport/deck.py`: the structure as it arrived with its meshes and the rung; `wizard.as_structure` always states a cell — read 2026-10-18) | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | ~~the transport arm of `spec_for` silently drops `cell=`~~ | **Closed 2026-10-02 (M5 step 3).** The dispatch forwards only `(struct, config)` and the stage token (`names.stage`), so it now refuses by name every render argument it does not read — `cell`, `vibration`, `relaxed_by`, `trial` — instead of dropping it: a transport deck's cell is the composed junction's own (§ 2a.9) |
@@ -3707,7 +3763,7 @@ correct order".)*
 | **A tab offers** the items the rung owns (`stages` names it) and the items any rung may set (no `stages`) | never another rung's item — that is on its own tab — and never a shared one — that is card 2 |
 | **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count. **Every card is named with the rung** (*seed · Convergence targets*) and one sentence above them says the values are the rung's own over the template's — the schema's `stage` and `stage_words` *(user, 2026-10-09: "make sure the title and text in each panel for these stages are clear ... so the user is not confused by the repetition")* | the rung's own physics is what the eye lands on; the seed, both leads and the device each carry the same SCF settings with their own values, and each tab says whose they are |
 | **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`template.unread_overrides`, the description's check — `validation/task.py`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
-| **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, every one — the seed among them, since the leads and the device start from its density (user, 2026-10-12, withdrawing ruling Q4's skip) — and its shape hierarchical (`task.fixed_by_kind`, from `paths.KIND_ROLES`); the description's reader refuses anything else, naming the five rungs, and Task setup offers no control that would change either (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk; the reader took all three until 2026-10-11, and Task setup's stage table offered them |
+| **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, every one — the seed among them, since the device starts from its density (user, 2026-10-12, withdrawing ruling Q4's skip) — and its shape hierarchical (`task.fixed_by_kind`, from `paths.KIND_ROLES`); the description's reader refuses anything else, naming the five rungs, and Task setup offers no control that would change either (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk; the reader took all three until 2026-10-11, and Task setup's stage table offered them |
 | **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one that already holds a `task.json` (one calculation per folder), and one inside the citation (§ 3.1) — the checks `jobset init` asks, through the same two functions (`describe.refuse_described`, `compose.refuse_inside_citation`) — and writes the template and `task.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `jobset init`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | the refusal belongs to the door that writes; until 2026-10-11 the browser wrote the server's text through the content-blind layer and the one-folder refusal lived in the page alone |
 
 The numbered cards and the tab strip read as one order: **1 cite the junction
@@ -3815,7 +3871,7 @@ six scattered versions could not do.
 | the deck viewer | ✅ **done 2026-10-11**, for every calculation, not transport's alone — the Results ladder's *input* and *check report* on each run, each frame and each voltage, in the sidebar's file viewer ([`web/results.md`](?doc=web/results.md) § 2.4) |
 | `role` items never a control on any form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind — and shown read-only at the rung's answer since K7 (`locked`, `form-schema.md` § 1.1) |
 | the Task setup stage table offers no shared value as a column | ✅ **done 2026-09-24** — `/api/task-setup/columns` reads `shared` per kind (measured that morning: thirteen offered, `mesh_cutoff` and `basis_size` among them) |
-| an override on a rung the `stages` marker excludes is refused at `prep` | ✅ **done 2026-09-24** — beside the shared refusal in `_resolve_transport`; the describe door routed by the declaration since TR8, the other roads reached `resolve`, which knows no ownership |
+| an override on a rung the `stages` marker excludes is refused at `prep` | ✅ **done 2026-09-24** — beside the shared refusal, at the one `resolve` that `transport_rung.resolve_transport` asks; the describe door routed by the declaration since TR8, the other roads reached `resolve`, which knows no ownership |
 | a foreign rung's cell on the stage table is disabled, naming the owners | ✅ **done 2026-09-24** — the column payload carries `stages`; the cell is shown and not editable |
 | the shared values echoed read-only, with their source, on Task setup | ✅ **done 2026-10-11** — the *What came over* card's *Shared by every stage*, every value the kind shares with its source, from the folder answer's `template.shared` (`web/task-setup.md` § 3; `template.md` § 6.6 obligation 3) |
 | a value nobody chose is MARKED as such in the deck | ✅ **done 2026-10-11** — each deck's PROVENANCE block says who set each value it is rendered from, a value nobody chose *the template · not chosen*, and a setting left to the engine says so where its line would be, in its own `not_set` (`template.md` § 6.6 obligations 4 and 5; `job-contracts.md` § 3.2). *(The file's half — each value's source, obligation 2 — is built, K7.)* |
@@ -3929,9 +3985,9 @@ door's question.
 | the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group save what the citation asks (§ 3.8.1) | — | — | ✅ the citation's answers, each field's source named *(K7)* | ✅ kept off |
 | the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`template.unread_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
 | `jobset init` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
-| `prep` (`_resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
+| `prep` (`transport_rung.resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners, and the picker names the calculation's own rungs that read each item, on every kind whose rungs have roles (`web/task-setup.md` § 5, *2026-10-11*) | ✅ not a column | — | ✅ not a column |
-| Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)*; on a transport folder the rows are the ladder's rungs, fixed save the seed's removal, and each rung's own values are edited here once the description is written (`web/task-setup.md` § 5.3, *2026-10-11*) | — | — | — |
+| Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)*; on a transport folder the rows are the ladder's five rungs, fixed, the seed included (`task.fixed_by_kind`), and each rung's own values are edited here once the description is written (`web/task-setup.md` § 5.3, *2026-10-11*) | — | — | — |
 | Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ✅ *Shared by every stage*, on *What came over* *(2026-10-11)* | — | — | ✅ the file records the source, and the hover names it *(K7)* | — |
 | Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment` — the electrode rename, `swap_electrodes`, § 4; a frame set's card, § 3.8.1, from the folder answer's `frame_set`) *(built 2026-10-08, B8 U7 / T1; the frame set 2026-10-10, Q17-f4)* | — | — | — | ✅ the citation, named | — |
 | the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ✅ who set each value, in its PROVENANCE block — a value nobody chose *not chosen* (obligation 4, 2026-10-11) | ✅ |
@@ -3984,7 +4040,7 @@ k-points along z, the transmission k-point grid.
 | where you set it | the item, as the form labels it | what it samples | why it is set there |
 |---|---|---|---|
 | step 2, the shared panel | **k-point grid** (`kgrid`) — the shared k-point grid | in the electrode plane (x, y) — the electrodes are infinite surfaces, so the cell repeats sideways — for the seed, both leads and the device; along z, 1 | the device uses each lead as the bulk of its own electrode region, so the leads and the device must be sampled on the same k-points — TranSIESTA stops otherwise (§ 0.2). One value, never a single stage's |
-| each lead's tab | **Lead k-points along z** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z, and a short cell along z; its Hamiltonian and Fermi level — what every self-energy is built from and aligned to — need many k-points there (100 by default, warned below 50, 1 refused; § 0.2, § 0.3b). The seed, the device and the transmission take 1 along z |
+| each lead's tab | **Lead k-points along z** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z, and a short cell along z; its Hamiltonian and Fermi level — what every self-energy is built from and aligned to — need many k-points there (100 by default, warned below 50 and above 200, 1 refused; § 0.2, § 0.3b). The seed, the device and the transmission take 1 along z |
 | the transmission's tab | **Transmission k-point grid (x, y)** (`tbt_k_grid`) | in the electrode plane (x, y), for T(E) alone; along z, 1 | T(E) changes much faster from one k-point to the next than the density does, so it needs more k-points than the SCF stages; left blank it is three times the shared grid and follows it; set, it is the person's, warned if it is coarser than the shared grid (§ 0.3b); raising it re-runs the transmission alone |
 
 **The example on the page:** a gold junction three gold atoms wide (about
@@ -4026,7 +4082,7 @@ device. The convention (the *vocabulary* is owned by
   leads (`electrode_L`, `electrode_R`), and the sort places only
   `L-electrode`, `R-electrode`, `bridge` and `buffer` — an atom that carries
   none of the four is refused. Any other label, `tip-electrode` included,
-  rides along and is warned about below. TranSIESTA's own electrode names are
+  rides along, the person's (below). TranSIESTA's own electrode names are
   free strings in `%block TS.Elecs`; the emitter writes `L` and `R`.
   *(Until 2026-10-02 any label ending `-electrode`/`_electrode`/bare
   `electrode` was read as a lead, so a third one on atoms that also carried a
@@ -4045,17 +4101,23 @@ reads a meaning into its name ([`science/validation.md`](?doc=science/validation
 z-centroid** (lowest first), and the modern SIESTA 4.1+/5.x syntax is emitted — one
 `%block TS.Elec.<name>` per lead (`L-electrode` → `L`, `R-electrode` →
 `R`), a `%block TS.ChemPots` + per-name
-`%block TS.ChemPot.<name>`, and `SolutionMethod transiesta`. **The two halves have
-different owners**: the LOWER electrode gets `semi-inf-direction -A3` and the first
-`elec-pos` (decided by z — it is where the lead physically continues), while the
-`Left`/`Right` chempot binding follows the region's own NAME (`L-electrode` →
-`Left` → µ = +V/2). On a junction labeled the reverse of the usual convention
-these name different blocks, and the deck says so in a comment above the chempot
-blocks. Atoms
-labelled `buffer` emit `%block TS.Atoms.Buffer`, and each lead then also states
-its position explicitly (`elec-pos`) — with padding outermost, TranSIESTA's
-default first-N/last-N electrode placement no longer holds (2026-08-28, with
-the composite's P4). The legacy flat
+`%block TS.ChemPot.<name>`, and `SolutionMethod transiesta`. **`%block TS.Elecs`
+lists the leads by label, `L` first**: tbtrans writes the transmission of each
+pair of leads in the order this block lists them (`m_tbt_save.F90`), and the
+record reads the pair `L-R` (`transiesta.LEAD_PAIR`), so the file it reads is
+`…AVTRANS_L-R` on a junction labelled either way round. The list places no
+lead: each lead's place is its own block's `elec-pos`, always written — the
+manual lists it among the four lines a lead's block must carry — so
+TranSIESTA's default placement (the first electrode the first atoms, the last
+the last) is never relied on, with buffer atoms or without. **Placement and
+bias have different owners**: the LOWER electrode gets `semi-inf-direction -A3` and
+`elec-pos begin` at its first atom, the upper one `+A3` and `elec-pos end`
+at its last (decided by z — it is where the lead physically continues),
+while the `Left`/`Right` chempot binding follows the region's own NAME
+(`L-electrode` → `Left` → µ = +V/2). On a junction labeled the reverse of the
+usual convention these name different blocks, and the deck says so in a
+comment above the chempot blocks. Atoms labelled `buffer` emit
+`%block TS.Atoms.Buffer`. The legacy flat
 `TS.HSFileLeft/Right` keys still parse but lock a closed 2-terminal topology; the
 `TS.Elec` syntax unlocks multi-terminal, Bloch expansion, per-chempot contours.
 
@@ -4069,21 +4131,25 @@ SolutionMethod  transiesta
   HS                 junc_L-electrode.TSHS
   chem-pot           Left
   used-atoms         <N>        # atom count of the L-electrode region
+  elec-pos begin     1          # 1-based index of its first atom
   bloch              1 1 1
   semi-inf-direction -A3
 %endblock TS.Elec.L
 ```
 
 (`used-atoms` is the literal integer count of atoms in that electrode region;
-`bloch 1 1 1` is the transverse tiling — the lead cell is used as-is, no Bloch
-expansion in the shipped 2-terminal scope.)
+`elec-pos` places those atoms — `begin` and the index of the lower lead's
+first atom, `end` and the upper lead's last counted from the end (`-1` the
+last atom); `bloch 1 1 1` is the transverse tiling — the lead cell is used
+as-is, no Bloch expansion in the shipped 2-terminal scope.)
 
 > **Atom-ordering is load-bearing — and it follows GEOMETRY, not the label.**
 > TranSIESTA identifies electrode atoms by their **position** in the coordinates
-> block (first N atoms = first electrode), *not* by region label. The first
-> electrode is the one extending to `-A3`, so the **lower** block must come first;
-> the upper block first would aim its self-energy into the bridge. An
-> out-of-order structure produces silently wrong physics with no run-time error.
+> block — a lead is `used-atoms` contiguous atoms from its `elec-pos` — *not* by
+> region label. The lead extending to `-A3` is the **lower** one, so its range
+> must be the lower block's atoms; a range that held the bridge's would aim its
+> self-energy into the bridge. An out-of-order structure produces silently
+> wrong physics with no run-time error.
 >
 > **It is held by CONSTRUCTION, and that is the whole answer.**
 > `sort.sort_by(…, "transport")` orders the atoms `[lower][bridge][upper]` before any
@@ -4194,11 +4260,11 @@ run.
 | I6 | Lateral cell (a, b) | electrode = device | the lead tiles the device cross-section | **construction** — the extraction takes the device's `lat_a`/`lat_b` verbatim |
 | I7 | The k-point grid in the electrode plane (its x and y counts, kx and ky) and its offset | electrode **identical to** device | the lead is the bulk of the device's electrode region, so both SCF runs must sample the electrode plane on the same k-points (§ 0.2); TranSIESTA stops on *"found incompatible k-grids"* (`ts_electrode.F90:1235`) | **construction** — one shared `kgrid` and `kgrid_displacement`, which every stage's k-point grid reads (`kmesh.mesh_for`) *("commensurate — the two grids share a common factor" stood here until 2026-09-30; the engine requires them equal)* |
 | I8 | One k-point along z (kz = 1) | seed, device, transmission | the device and the transmission are open along z — the leads' self-energies stand in for everything beyond the cell — and both engines force one k-point there; the seed's density is only their starting point (§ 0.2) | **fixed** — the stage's k-point grid writes 1; `kmesh.fixed` through `template.why_not` refuses another value on every door |
-| I9 | The leads' k-points along z: many (converged) | electrode | a lead is a *periodic bulk* run along z, and a thin lead cell has a long Brillouin zone (BZ) along z, which few k-points sample coarsely; the lead's H and E_F are what every self-energy is built from (§ 0.2) | **`electrode_kz`'s own limit and range** — refused at 1 (`above`), warned below 50 (`range`, the manual's floor), on every door *(the kind's validator held both from 2026-09-17 until 2026-09-30)* |
+| I9 | The leads' k-points along z: many (converged) | electrode | a lead is a *periodic bulk* run along z, and a thin lead cell has a long Brillouin zone (BZ) along z, which few k-points sample coarsely; the lead's H and E_F are what every self-energy is built from (§ 0.2) | **`electrode_kz`'s own limit and range** — refused at 1 (`above`), warned below 50 (`range`, the manual's floor) and above 200, on every door *(the kind's validator held both from 2026-09-17 until 2026-09-30)* |
 | I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | **construction** — the extraction clones them |
 | I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of a cited run's `.ion` files; a cited pair has none beside it, so the lead's note says *unverified* and TranSIESTA checks the leads' connectivity when it runs (§ 3.1) |
 | I12 | no vacuum where the crystal continues — the room at the transport boundary is one layer spacing of the lead; a transverse axis declared periodic is reached across by the lead | every rung | a gap along transport = a severed lead, not a junction; vacuum on a periodic axis contradicts the declaration | **`cell.transport_vacuum`**, **`cell.transverse_vacuum`** — `_validate_transport_kind`, **error**, measured from the lead (§ 6.1c; re-homed 2026-09-17, measured from the lead since M5 step 2) |
-| P2 | the transmission window reaches the bias window — `transmission_emin_ev … emax_ev` covers ±(\|V\|/2 + 5 kT), both leads' Fermi tails at μ = ±V/2 | the transmission; the description | TBtrans integrates the current over its window and says nothing when the window cuts it short | **`config.transmission_emax_ev`** — one rule, `record.window_short_of`: the transmission deck's gate (**error**, its own V), the description's preflight (**error**, the largest listed V, the resolved transmission rung's window and temperature), the record (a voltage it does not integrate is blank with the reach named) (§ 2a.10; 2026-10-08) |
+| P2 | the transmission window reaches the bias window — the energies TBtrans samples on `transmission_emin_ev … emax_ev` reach ±(\|V\|/2 + 5 kT), both leads' Fermi tails at μ = ±V/2 | the transmission; the description | TBtrans integrates the current over the energies it samples and says nothing when they cut it short | **`config.transmission_emax_ev`** — one rule, `record.window_short_of`, on the energies TBtrans samples: the transmission deck's gate (**error**, its own V) and the description's preflight (**error**, the largest listed V, the resolved transmission rung's window, point count and temperature) ask it with `record.sampled_window` — the mid-rule's first and last energy, half a spacing inside each edge — and the record with the energies the run wrote (a voltage it does not integrate is blank with the reach named) (§ 2a.10; 2026-10-08) |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | **construction** — `TS.HS.Save` is a `role` item on the electrode rung |
 | I14 | The structure states its cell | citation | transport derives no box — the lateral pair is I6's, the period is the bulk repeat (§ 7), and a box from atom extents is neither (§ 2a.9) | `compose.py::_unusable_cell` — **refuses** at the citation door, which every rung's junction is composed through (ruled 2026-09-23) |
 | I15 | One species order | every rung | the order fixes each species' index in `ChemicalSpeciesLabel`, and that index the orbital ordering inside `.DM` and `.TSHS` (§ 2a.13) | **one rule** — `chemistry.species_order`, which every emitter asks; `species_order` is a `shared` item (`catalogue.template.toml`, `shared = ["optimization", "vibration", "transport"]`), so one value binds every rung; an override that omits a species the structure holds is refused (`transiesta._emit_geometry`). One rule, not one index: a lead ({Au}) and the device ({C, H, S, Au}) number their species differently, each by the same rule |
@@ -4466,7 +4532,7 @@ and a rung's first launch walks it, with what every stage continues from
 | gate | what it refuses |
 |---|---|
 | the upstream stage is prepared | citing a stage that was never set up |
-| its **newest** attempt FINISHED, **and it ran the same engine input as the deck that rung renders NOW** — from the current template, junction and run card (*the same engine input*, below); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11); for a swept transmission, the device's sweep run whose points are all done, each point its own (§ 2a.11) | integrating a result produced by a *different* calculation — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
+| its **newest** attempt FINISHED, **and it ran the same engine input as the deck that rung renders NOW** — the deck exactly as prep writes it: from the current template, junction and run card, and the person's USER-CUSTOM zone of the deck prep wrote for that rung — its point's folder's, for a rung with points — merged in as prep keeps it (`gather.rung_deck_now`, `script_emit.merge_user_custom_from_target`), so a keyword typed there is the same engine input in the run and now (*the same engine input*, below); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11); for a swept transmission, the device's sweep run whose points are all done, each point its own, its state read by the one rule `status` reads it by (`continuation.points_state`, § 2a.11) | integrating a result produced by a *different* calculation — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
 | that attempt actually holds the named file | a run that concluded without writing what it promised |
 
 The newest attempt is the one asked: one that fails a gate is refused by
@@ -4698,9 +4764,11 @@ cross-checked against the installed binaries (2026-09-29):
 **A defect this found, in the deck as it was written until 2026-09-29:** the
 transmission rung wrote `TBT.k                  2 2 1` — three integers,
 neither a list nor a block — so `tbtrans` skipped it and samples the SCF's grid from the same deck. It
-has not changed an answer yet: `jobset init` sets `tbt_k_grid` to the cited
-run's k-point grid in the electrode plane, which is the SCF's. But a person who raises it for the
-convergence study § 0.3 describes would be ignored in silence. Written
+changed no answer then: `jobset init` set `tbt_k_grid` to the cited
+run's k-point grid in the electrode plane, which was the SCF's. But a person who raised it for the
+convergence study § 0.3 describes was ignored in silence. *(`jobset init`
+leaves `tbt_k_grid` blank: left blank, it is three times the shared grid,
+`kmesh.transmission_start`, § 0.3b.)* Written
 `TBT.k [2 2 1]`, it is read. *(Nothing ever caught it: no transmission rung has
 run since `TBT.k` joined the deck on 2026-09-15. Since 2026-09-30 it is written
 as the block, which carries the offset.)*
@@ -5060,11 +5128,11 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 | XC | GGA-PBE | identical across every rung (I1) |
 | Pseudos | PseudoDojo PBE (Au/C/S/H), validated | `molbuilder pseudo check` gate ([van Setten 2018]) |
 | Basis | **DZP everywhere** | DZP = double-ζ + polarization (SIESTA PAO tier); drop to the smaller SZP for bulk-Au only after a `T(E)` check |
-| `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The config default is **300** (`SiestaConfig.mesh_cutoff`), and a transport rung takes the cited relaxation's own value (`transport/citation_defaults.py`); the § 3 example overrides to 400 |
+| `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The config default is **300** (`SiestaConfig.mesh_cutoff`), and a transport rung takes the cited relaxation's own value (`transport/citation_defaults.py`); 400 is set in the calculation's template, where it applies to every rung (§ 2a.7) |
 | `PAO.EnergyShift` | 0.01 Ry | sets orbital range → electrode thickness |
 | Shared k-point grid (x, y) | converge 2×2 → 4×4 → 6×6 | identical in device and electrode (I7) |
 | Device `kz` | **1** | open boundary (I8) |
-| Electrode `kz` | converge (default **100**; warned below 50, refused at 1) | dense bulk z-sampling (I9, § 0.2) |
+| Electrode `kz` | converge (default **100**; warned below 50 and above 200, refused at 1) | dense bulk z-sampling (I9, § 0.2) |
 | Electrode thickness | **~6 Au(111) layers** | the *electronic* principal layer, not the 3-layer geometric repeat |
 | z-vacuum | **0** | slab-junction model; nonzero ⇒ cluster model |
 
@@ -5114,8 +5182,9 @@ Three corrections that catch real mistakes:
   is 1 by rule ([`siesta.md`](?doc=engines/siesta.md) § 6.1) — so relax at the
   coarse mesh, cite that attempt, and raise the transport's `kgrid` in its
   template: the change applies to every SCF rung at once. The transmission's
-  `TBT.k` is its own item, `tbt_k_grid`, which starts at the cited grid and is
-  raised on the transmission rung. *(This said the cited
+  `TBT.k` is its own item, `tbt_k_grid`, which left blank is three times the
+  shared grid (`kmesh.transmission_start`, § 0.3b) and is set on the
+  transmission's tab. *(This said the cited
   grid could not be changed, "fdf-is-truth"; § 2a.7 has made it a default the
   person may change since 2026-09-16.)* Γ-only (1×1×1) is wrong for periodic
   metallic leads: even with the lead atoms frozen it gives a poorly defined `E_F`.

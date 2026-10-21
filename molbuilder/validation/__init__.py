@@ -463,10 +463,11 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     if rung == "transmission" and bias is not None and temp is not None:
         emin = getattr(cfg, "transmission_emin_ev", None)
         emax = getattr(cfg, "transmission_emax_ev", None)
-        if emin is not None and emax is not None:
+        n = getattr(cfg, "transmission_n_points", None)
+        if emin is not None and emax is not None and n:
             from ..constants import BOLTZMANN_EV_K
-            from ..transport.record import window_short_of
-            short = window_short_of(emin, emax, bias,
+            from ..transport.record import sampled_window, window_short_of
+            short = window_short_of(*sampled_window(emin, emax, n), bias,
                                     BOLTZMANN_EV_K * float(temp))
             if short:
                 out.append(Issue("error",
