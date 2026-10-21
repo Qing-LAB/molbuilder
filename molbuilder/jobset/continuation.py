@@ -949,7 +949,10 @@ def points_state(run, names, task, stage: str, *, launch, products, base
     (`joblist.is_going`); ``queued`` while nothing the run walks itself has
     started; else the points' verdict (:func:`points_verdict`) --
     ``finished``, or ``failed`` naming the first point not done, a chain
-    that stopped among them: a point never reached is no point queued."""
+    that stopped among them: a point never reached is no point queued.
+    A run the job the reader runs inside sent (:func:`_own_job_s`) is read
+    by its points alone: its walk has returned, and the job, the reader's
+    own, is still going (`job-system.md` § 6.0, *A sequence of groups*)."""
     pts, running = point_rows(run, names, task, stage, launch=launch,
                               products=products, base=base)
     summary = points_summary(pts)
@@ -961,17 +964,37 @@ def points_state(run, names, task, stage: str, *, launch, products, base
         # from an earlier run are that run's, done before it was sent --
         # unless its job is over: cancelled in the queue, or a process
         # that died before its first point.
-        if not _ended_before_a_point(base, run, names):
+        own = _own_job_s(launch)
+        if not own and not _ended_before_a_point(base, run, names):
             jid = (launch or {}).get("job_id")
             return "queued", (f"queued as job {jid}" if jid
                               else "launched, nothing run yet"), pts
         state, detail = points_verdict(pts)
-        return state, (detail + " -- its job ended before any point "
-                       "started"), pts
-    if any(not p["done"] for p in pts) and _walk_going(base, run):
+        return state, (detail + (" -- its walk ended before any point "
+                                 "started" if own else
+                                 " -- its job ended before any point "
+                                 "started")), pts
+    if (any(not p["done"] for p in pts) and not _own_job_s(launch)
+            and _walk_going(base, run)):
         return "running", summary + " (between two points)", pts
     state, detail = points_verdict(pts)
     return state, detail, pts
+
+
+def _own_job_s(launch) -> bool:
+    """Whether the job the reader runs inside (`joblist.inside_job`) sent
+    the run whose launch record is ``launch`` -- its sequence by name, and
+    its job by id where a queue gave one (run here, none: two going jobs of
+    one name cannot be, their groups held): then its walk has returned
+    before the reader reads it, and nothing asks the job, the reader's
+    own."""
+    from ..joblist import inside_job
+    got = inside_job()
+    if got is None or not isinstance(launch, dict):
+        return False
+    job, name = got
+    return (launch.get("sequence") == name
+            and launch.get("job_id") in (None, job))
 
 
 def _ended_before_a_point(base, run, names) -> bool:

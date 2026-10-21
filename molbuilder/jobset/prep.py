@@ -36,7 +36,7 @@ from pathlib import Path
 
 import numpy as np
 from typing import (TYPE_CHECKING, Callable, Dict, List, NamedTuple,
-                    Optional, Sequence)
+                    Optional, Sequence, Tuple)
 
 from .. import script_emit as _sc
 from .. import task as _task
@@ -1898,6 +1898,13 @@ class PrepAnswer:
     #: own) and ``writes`` (the files the group adds) -- as
     #: :func:`_prep_groups` planned it.  ``None`` for a group of one.
     group: Optional[dict] = None
+    #: THE LAST ANSWER OF A PREP WITH ``--one-job``: the sequence of groups'
+    #: one job (`job-system.md` § 6.0, *A sequence of groups*) --
+    #: ``numbers``, ``header`` (its file in ``launch/``, ``None`` with no
+    #: scheduler), ``launch`` (its header's lines and fit, as a group's),
+    #: ``less`` (each group asking less than the allocation, in words).
+    #: ``None`` otherwise.
+    sequence: Optional[dict] = None
     #: A PREVIEW: the plan, stopped before the save, named by its identity
     #: for the Prep that follows (`job-system.md` § 5.0), with what it would
     #: write.
@@ -2597,7 +2604,8 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
               env: Optional[str] = None, emit_sbatch: bool = True,
               on_found=None, preview: bool = False,
               plan_id: Optional[str] = None,
-              asked: Optional[dict] = None) -> List[PrepAnswer]:
+              asked: Optional[dict] = None,
+              one_job: bool = False) -> List[PrepAnswer]:
     """**`prep`, the verb** -- what `molbuilder jobset prep` and the Task
     setup tab's Prep both call (`job-system.md` § 5.0, § 5.3): `prep task`
     for the ``groups`` picked -- the description's group numbers, each group
@@ -2605,7 +2613,9 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
     (:func:`prep_bench`).  ``from_attempt`` is the `relax` run every
     force-constant stage it prepares is written at (`engines/vibration.md`
     § 5.2a).  ``asked`` is the question that picked the groups, with its
-    answer, written down after the save (§ 5.0, checkpoint 7)."""
+    answer, written down after the save (§ 5.0, checkpoint 7).  ``one_job``
+    -- `--one-job` -- writes too the one header of the groups as one job,
+    each launched in turn (§ 6.0, *A sequence of groups*)."""
     if kind == "bench":
         return [prep_bench(calc, stage, target=target,
                            allocation=allocation, from_attempt=from_attempt,
@@ -2615,7 +2625,8 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
     return _prep_groups(calc, list(groups), target=target,
                         allocation=allocation, from_attempt=from_attempt,
                         env=env, emit_sbatch=emit_sbatch, on_found=on_found,
-                        preview=preview, plan_id=plan_id, asked=asked)
+                        preview=preview, plan_id=plan_id, asked=asked,
+                        one_job=one_job)
 
 
 def _record_the_order(calc, *, refuse, asked, preview,
@@ -2731,9 +2742,62 @@ def group_header(base, task, number: int, jobs, environment, *,
               f"summed and the largest memory)"))
 
 
+def sequence_header(base, task, numbers: Sequence[int], jobs_of, points_of,
+                    environment, *, emit_sbatch: bool = True
+                    ) -> "Tuple[Optional[Walk], List[str]]":
+    """A SEQUENCE OF GROUPS' ONE HEADER (`job-system.md` § 6.0, *A sequence
+    of groups*) -- ``(its Walk, or None where no header is written; each
+    group asking less than it, in words)``: each group's own request
+    (`group.own_request`: its jobs ``jobs_of[n]``, a run of points' every
+    point -- ``points_of[n]`` of them), their one request
+    (`group.sequence_request`: one queue, the largest of each, the walls
+    summed), by the one header of a walk (:func:`walk_header_of`).  Asked by
+    prep's ``--one-job`` and by the sequence's launch, which compares what
+    it sends with what prep would write now.  Raises :class:`PrepError`
+    naming what the groups cannot share (R-P22)."""
+    from .group import (GroupError, own_request, sequence_names,
+                        sequence_request)
+    numbers = sorted(numbers)
+    requests = [(n, own_request(jobs_of[n], points_of.get(n, 0)))
+                for n in numbers]
+    words = ", ".join(map(str, numbers))
+    try:
+        shared = sequence_request(requests)
+    except GroupError as exc:
+        raise PrepError(f"groups {words} as one job: {exc} "
+                        f"(job-system.md R-P22)") from None
+    less = []
+    for n, r in requests:
+        short = [w for w, mine, all_ in (
+            ("ranks", r.mpi_np, shared.mpi_np),
+            ("cores per rank", r.cpus_per_task, shared.cpus_per_task))
+            if mine is not None and all_ is not None and mine < all_]
+        from .model import gpu_request
+        if gpu_request(shared).uses and not gpu_request(r).uses:
+            short.append("no GPU")
+        if short:
+            less.append(f"group {n} runs with its own card inside it -- "
+                        + ", ".join(f"{r.mpi_np} of {shared.mpi_np} ranks"
+                                    if w == "ranks" else
+                                    f"{r.cpus_per_task} of "
+                                    f"{shared.cpus_per_task} cores per rank"
+                                    if w == "cores per rank" else w
+                                    for w in short)
+                        + "; the rest of the allocation idle meanwhile")
+    walk = walk_header_of(
+        base, sequence_names(base, task, numbers), shared, environment,
+        engine=task.engine, emit_sbatch=emit_sbatch,
+        jobs=[j for n in numbers for j in jobs_of[n]],
+        what=(f"groups {words} as one job, each launched when the one "
+              f"before has finished (the largest request, the walls "
+              f"summed)"))
+    return walk, less
+
+
 def _prep_groups(calc, numbers: List[int], *, target, allocation,
                  from_attempt, env, emit_sbatch, on_found, preview,
-                 plan_id, asked=None) -> List[PrepAnswer]:
+                 plan_id, asked=None, one_job: bool = False
+                 ) -> List[PrepAnswer]:
     """**The groups picked, prepared** (`job-system.md`, *The task*, and
     § 5.0's checkpoints) -- each one job, in ONE plan.
 
@@ -2810,6 +2874,48 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             f"§ 2).")
     numbers = sorted(set(numbers))
     from .group import group_members
+    # A SEQUENCE OF GROUPS (`--one-job`, `job-system.md` § 6.0): the groups
+    # named, and of them the ones launched -- read as prepared, never
+    # prepared again -- the rest prepared here as any group is.
+    sequence: List[int] = []
+    if one_job:
+        from ..runrecord import LaunchRecordError
+        from .materialize import ever_launched
+        sequence = list(numbers)
+        if len(sequence) < 2:
+            raise _refuse("--one-job sends several groups as one job, and "
+                          f"names group {', '.join(map(str, sequence))} "
+                          "alone -- name every group it launches "
+                          "(job-system.md R-P22).")
+        old_rows = description.calc.jobset
+        launched_groups = []
+        for n in sequence:
+            jobs_n = [old_rows.job(st) if old_rows is not None else None
+                      for st in group_members(task, n)]
+            try:
+                ran = any(j is not None
+                          and ever_launched(description.calc, j)
+                          for j in jobs_n)
+            except LaunchRecordError as exc:
+                raise _refuse(str(exc)) from None
+            from .group import members_of, same_members
+            if ran and (any(j is None for j in jobs_n) or not all(
+                    same_members(members_of(j), group_members(task, n))
+                    for j in jobs_n)):
+                raise _refuse(
+                    f"group {n} was launched, and its members are not the "
+                    f"ones it was prepared with -- a launched group's "
+                    f"members are fixed (job-system.md § 5.0), so it is not "
+                    f"read as prepared for one job.")
+            if ran:
+                launched_groups.append(n)
+        numbers = [n for n in sequence if n not in launched_groups]
+        if not numbers:
+            named_ = ", ".join(map(str, sequence))
+            raise _refuse(
+                f"--one-job: every group named ({named_}) is launched "
+                f"already, so nothing is prepared -- send them one by one, "
+                f"each launched again (job-system.md R-P22).")
     members = {n: group_members(task, n) for n in numbers}
     group_of = {stage_key(st.name): st.group for st in task.stages}
     # 1a · THE JOBS PREPARED, matched by membership: a job whose members
@@ -2837,6 +2943,19 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             why = launched_already(description.calc, st)
             if why:
                 raise _refuse(why)
+        # A GROUP A SEQUENCE STILL GOING HOLDS: its job is about to launch
+        # the files it was prepared with, and a prep now would rewrite them
+        # under it (R-P23; `project-layout.md` § 1.6.3).
+        from .ready import held_by_sequence
+        held = held_by_sequence(description.calc, n)
+        if held is not None:
+            raise _refuse(
+                f"group {n} goes in job {held[0].id} -- a sequence of groups "
+                f"still going ({held[2]}) launches it with the files it was "
+                f"prepared with, and preparing it again would rewrite them "
+                f"under the job.  Prepare it once that job has ended, or stop "
+                f"the job first: molbuilder jobs stop {held[0].id}  "
+                f"(job-system.md R-P23)")
     missing = [n for n in whole if n not in numbers]
     if missing:
         from .commands import block, prep_group_lines
@@ -2917,6 +3036,44 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 "launch": _walk_said(got, environment.kind),
                 "writes": [str(w.relative_to(base))
                            for w in the_plan.writes() if w not in had]}
+        # THE SEQUENCE'S ONE HEADER (`--one-job`, `job-system.md` § 6.0):
+        # each group's own request -- this prep's members as planned, a
+        # launched group's as its rows stand -- together.
+        if sequence:
+            from ..transport.stages import frames_of, rung_points
+            jobs_of, points_of = {}, {}
+            for n in sequence:
+                if n in previews:
+                    jobs_of[n] = [a.job for a in previews[n]]
+                    points_of[n] = (len(previews[n][0].points or ())
+                                    if len(previews[n]) == 1 else 0)
+                else:
+                    jobs_of[n] = [old_js.job(st)
+                                  for st in group_members(task, n)]
+                    points_of[n] = (len(rung_points(
+                        task, jobs_of[n][0].name, frames=frames_of(base)))
+                        if len(jobs_of[n]) == 1 else 0)
+            got, less = sequence_header(base, task, sequence, jobs_of,
+                                        points_of, environment,
+                                        emit_sbatch=emit_sbatch)
+            if got is not None:
+                from .materialize import open_container
+                open_container(base, base / LAUNCH_DIR, the_plan)
+                the_plan.text(got.path, got.text)
+            else:
+                # NO HEADER THIS TIME (a machine with no queue,
+                # `--no-sbatch`), so none an earlier prep wrote is left to be
+                # sent as this one's (`job-system.md` § 5.0, checkpoint 6).
+                from .group import sequence_names
+                _left = base / LAUNCH_DIR / sequence_names(
+                    base, task, sequence).name(".sbatch")
+                if _left.is_file():
+                    the_plan.remove(_left)
+            sequence_said = {
+                "numbers": list(sequence),
+                "header": (str(got.path.relative_to(base))
+                           if got is not None else None),
+                "launch": _walk_said(got, environment.kind), "less": less}
         # A JOB FORMED AGAIN leaves no header of its old members behind --
         # named by its members' own files, a member the description no
         # longer holds among them (`group.header_of`).
@@ -2938,6 +3095,8 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             j.members = list(members[g]) if len(members[g]) > 1 else None
     js.write(base, plan=the_plan)
     answers = [a for n in numbers for a in previews[n]]
+    if sequence:
+        answers[-1].sequence = sequence_said
     #      THE REVIEWABLE PLAN, ONCE: the job set as this prep leaves it,
     #      and what every member's first launch takes.
     the_plan.text(base / _PLAN_FILE, stage_plan_text(
@@ -2990,6 +3149,9 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             ledger(base, "prep", "grouped", group=n, stages=members[n],
                    header=(str(headers[n].relative_to(base))
                            if headers[n] else None))
+    if sequence:
+        ledger(base, "prep", "sequenced", groups=sequence,
+               header=sequence_said["header"])
     return answers
 
 

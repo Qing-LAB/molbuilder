@@ -1071,9 +1071,17 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "target's record says `workstation` -- job-system.md "
                    "§ 6).  --no-sbatch writes none, and then no queue, wall "
                    "or memory is asked for.")
+@click.option("--one-job", "one_job", is_flag=True,
+              help="task: the groups named also as ONE job that launches "
+                   "each in turn, when the one before has finished -- its "
+                   "one header written too: one queue, the largest request "
+                   "any group asks for, the walls summed.  A group named "
+                   "that is launched already is read as prepared.  Then "
+                   "`launch task` with the same --group lines sends it "
+                   "(job-system.md 6.0, A sequence of groups).")
 def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
              mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
-             domain, target, emit_sbatch: bool) -> None:
+             domain, target, emit_sbatch: bool, one_job: bool) -> None:
     """Set the task's groups up to run -- each group one job -- and report
     what was done; or a benchmark of one stage.
 
@@ -1100,6 +1108,11 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
     try:
         bench_stage, _trial, _stages = _stage_words(kind, words, (), "prep",
                                                     groups=groups)
+        if one_job and kind != "task":
+            raise click.ClickException(
+                "--one-job sends a task's groups as one job; a benchmark's "
+                "trials are sent by their shelves (job-system.md 6.0, "
+                "R-P22).")
         # A SPELLING THAT IS NO AMOUNT is refused in the verb's voice,
         # naming the flag -- through the same readers the record uses
         # (`Resources`) -- before anything is asked, so an answer is never
@@ -1152,7 +1165,7 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
                             target=target, allocation=allocation,
                             from_attempt=from_attempt, env=env,
                             emit_sbatch=emit_sbatch, on_found=_show,
-                            asked=asked)
+                            asked=asked, one_job=one_job)
     except PrepError as e:
         _show(e.findings, e.notes)
         raise click.ClickException(str(e))
@@ -1179,17 +1192,29 @@ def _launch_unit(calc, *, told: dict, dry_run: bool = False):
     except ValueError as exc:
         raise click.ClickException(str(exc)) from None
     gs = state.groups
-    ready = state.launch_offer
+    # A GROUP A SEQUENCE STILL GOING HOLDS is that job's (R-L45): not
+    # offered, nor any stage of it, and said where it goes
+    # (`ready.held_by_sequence`).
+    from .group import group_members
+    from .ready import held_by_sequence
+    held = {g.number: held_by_sequence(calc, g.number) for g in gs}
+    held = {n: h for n, h in held.items() if h is not None}
+    in_held = {st for n in held for st in group_members(calc.task, n)}
+    ready = [n for n in state.launch_offer if n not in held]
     if len(ready) == 1:
         return ready[0], None
-    text = "the task's groups:\n" + state.text()
+    text = "the task's groups:\n" + state.text() + "".join(
+        f"\n  group {n} goes in job {h[0].id} -- "
+        + (f"after group {h[1]}" if h[1] is not None else "its first group")
+        + " (molbuilder jobs status)" for n, h in sorted(held.items()))
     if ready:
         offered = [str(n) for n in ready]
         question = "which group to launch?"
         lines_for = [ln for n in ready
                      for ln in launch_lines("task", base=base, groups=[n])]
     else:
-        again = [a.stage for g in gs for a in g.answers if a.launched]
+        again = [a.stage for g in gs for a in g.answers
+                 if a.launched and a.stage not in in_held]
         if not again:
             if not any(a.prepared for g in gs for a in g.answers):
                 raise click.ClickException(_nothing_prepared(calc))
@@ -1459,7 +1484,28 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         if g["launch"]["header"]:
             click.echo("  " + g["launch"]["said"])
             click.echo("  " + g["launch"]["fit"])
+    seq = ans.sequence
+    if seq is not None:
+        # THE SEQUENCE'S ONE JOB, once, after the last answer: its header,
+        # what it launches with, its fit, and each group asking less than
+        # it (`job-system.md` § 6.0, *A sequence of groups*).
+        nums = ", ".join(map(str, seq["numbers"]))
+        click.echo(f"groups {nums} -- one job, each group launched when the "
+                   f"one before has finished (the largest request any "
+                   f"asks, their walls summed)"
+                   + (f"; its header: {seq['header']}" if seq["header"]
+                      else ""))
+        if seq["launch"]["header"]:
+            click.echo("  " + seq["launch"]["said"])
+            click.echo("  " + seq["launch"]["fit"])
+        for line in seq["less"]:
+            click.echo("  " + line)
     if not last:
+        return
+    if seq is not None:
+        say_next("next -- send them as one job:\n"
+                 + block(launch_lines("task", base=base,
+                                      groups=seq["numbers"])))
         return
     say_next("next -- launch the group that can go, each group one job:\n"
              + block(launch_lines("task", base=base)))
@@ -1708,10 +1754,14 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 @jobset_group.command("launch", short_help="launch what is prepared")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("words", nargs=-1)
-@click.option("--group", "group", type=int, default=None, metavar="N",
+@click.option("--group", "groups", multiple=True, type=int, metavar="N",
               help="task: the group to launch, by its number in task.json "
                    "-- its stages as one job (engines/stages.md 2).  A "
-                   "group goes whole the first time.")
+                   "group goes whole the first time.  Repeated: the groups "
+                   "as ONE job that launches each in turn, when the one "
+                   "before has finished -- its header the one `prep task "
+                   "--group ... --one-job` wrote (job-system.md 6.0, A "
+                   "sequence of groups).")
 @click.option("--stage", "stages", multiple=True, metavar="NAME",
               help="task: ONE stage, by name or '#N' -- a member launched "
                    "again alone, or a group holding only it.")
@@ -1784,15 +1834,24 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "member's output to its log under launch/, and `jobset "
                    "status` follows the run.  Either way the question "
                    "offers the other one (job-system.md 6.0).")
+@click.option("--in-sequence", "in_sequence", default=None, metavar="NAME",
+              help="typed by a sequence of groups' walk alone: this group's "
+                   "launch runs inside the sequence NAME's job, each run "
+                   "recording that job (job-system.md 6.0).")
+@click.option("--in-job", "in_job", default=None, metavar="ID",
+              help="typed by a sequence of groups' walk alone, with "
+                   "--in-sequence: the job's address -- a queue job's id, "
+                   "or a walk run here's <host>-<pid>.")
 @click.option("--only", "only_side", default=None,
               type=click.Choice(["cpu", "gpu"]),
               help="a grouped bench: send just this side of a sweep that "
                    "spans CPU and GPU trials (generator.md § 4.3a).  The "
                    "other side stays pending; a later `launch bench` sends "
                    "it.")
-def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
+def submit_cmd(kind: str, words, groups, stages, bundle: str, mode: str,
                dry_run: bool, time_text, auto_yes, cold, from_attempt,
-               gather, foreground, trial_timeout_min, only_side) -> None:
+               gather, foreground, trial_timeout_min, in_sequence, in_job,
+               only_side) -> None:
     """Launch a prepared group, or a stage again: run it here (direct) --
     in the background, unless ``--foreground`` or your answer waits for it
     -- hand it to the machine's scheduler (submit), or ask the scheduler
@@ -1811,29 +1870,50 @@ def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
     # group by --group, or one stage by --stage, § 5.3), the mode and where
     # it came from, the flags as typed, which config files answered -- on
     # every line, the verb's refusals and the entry's alike.
-    told = {"kind": kind, "stage": list(stages) or None, "group": group,
+    groups = sorted(set(groups))
+    group = groups[0] if len(groups) == 1 else None
+    told = {"kind": kind, "stage": list(stages) or None,
+            "group": (group if len(groups) < 2 else list(groups)),
             "trial": None, "mode": mode,
-            "flags": _typed(click.get_current_context())}
+            "flags": _typed(click.get_current_context()),
+            # A GROUP'S LAUNCH INSIDE A SEQUENCE'S JOB, on every line.
+            **({"in_sequence": in_sequence, "in_job": in_job}
+               if in_sequence is not None else {})}
     try:
         stage, trial, stages = _stage_words(
-            kind, words, stages, "launch",
-            groups=([group] if group is not None else ()))
+            kind, words, stages, "launch", groups=groups)
+        if (in_sequence is None) != (in_job is None) or (
+                in_sequence is not None
+                and (kind != "task" or group is None or mode != "direct"
+                     or not foreground or not auto_yes or stages)):
+            raise click.ClickException(
+                "--in-sequence and --in-job are typed by a sequence of "
+                "groups' walk alone: both, with one --group, --mode direct "
+                "--foreground --yes (job-system.md 6.0; R-L46).")
         if kind == "task" and len(stages) > 1:
             raise click.ClickException(
                 "--stage names ONE stage -- a member launched again alone; "
                 "stages launched together are a group, by its number: "
                 "--group N (job-system.md § 5.3).")
-        if kind == "task" and stages and group is not None:
+        if kind == "task" and stages and groups:
             raise click.ClickException(
                 "--group and --stage are two answers to one question: the "
                 "group to launch, or one stage (job-system.md § 5.3).")
         if kind == "task" and stages:
             stage = stages[0]
         told.update(stage=stage, trial=trial)
-        _launch(told, kind, stage, trial, bundle, mode, dry_run,
-                time_text, auto_yes, trial_timeout_min, only_side, cold,
-                group, from_attempt=from_attempt, gather=gather,
-                foreground=foreground)
+        # A GROUP'S LAUNCH INSIDE A SEQUENCE'S JOB reads, from its plan to
+        # the last line it prints, as a reader inside that job
+        # (`joblist.inside`, `job-system.md` § 6.0).
+        from ..joblist import inside
+        with inside(in_job if in_sequence is not None else None,
+                    in_sequence):
+            _launch(told, kind, stage, trial, bundle, mode, dry_run,
+                    time_text, auto_yes, trial_timeout_min, only_side, cold,
+                    group, from_attempt=from_attempt, gather=gather,
+                    foreground=foreground,
+                    several=tuple(groups) if len(groups) > 1 else (),
+                    in_sequence=in_sequence, in_job=in_job)
     except SubmitError as e:
         # the entry's refusal, which the entry wrote down
         raise click.ClickException(str(e)) from None
@@ -1870,7 +1950,11 @@ def _how_runs_ended(results, plan, calc, sweep):
     `status` reads them -- and a submission any member of which did not
     finish is ``failed``, the row's own words its ``detail``.  It runs
     after the send, so nothing here is a refusal: a status that does not
-    read is said on each submission's line, and the launch ends with 1."""
+    read is said on each submission's line, and the launch ends with 1.
+    A group's launch inside a sequence's job reads as a reader inside that
+    job (`joblist.inside`, set around the whole launch by the verb): its
+    runs by their own files, its walk having returned (`job-system.md`
+    § 6.0, *A sequence of groups*)."""
     if not any(r.status == "ran" for r in results):
         return results
     from dataclasses import replace
@@ -1886,7 +1970,11 @@ def _how_runs_ended(results, plan, calc, sweep):
                         detail=f"the run ended, and how it ended could not "
                                f"be read: {exc}")
                 if r.status == "ran" else r for r in results]
-    members = {s.name: [m.job.name for m in s.members]
+    # A SEQUENCE OF GROUPS has no member of its own: every stage of its
+    # groups is read, a group it never reached said as its row stands.
+    members = {s.name: ([st for g in s.sequence["groups"]
+                         for st in g["stages"]] if s.sequence
+                        else [m.job.name for m in s.members])
                for s in plan.submissions}
     out = []
     for r in results:
@@ -1909,7 +1997,9 @@ def _how_runs_ended(results, plan, calc, sweep):
 def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
             dry_run: bool, time_text, auto_yes, trial_timeout_min, only_side,
             cold: bool, group=None, *, from_attempt=None,
-            gather: bool = False, foreground: bool = False) -> None:
+            gather: bool = False, foreground: bool = False,
+            several: tuple = (), in_sequence: Optional[str] = None,
+            in_job: Optional[str] = None) -> None:
     """The launch verb's body (:func:`submit_cmd`, which writes down any
     refusal it raises).  ``told`` is what the verb was told, filled in as
     the body learns it: the mode and where it came from, the stage as the
@@ -1945,7 +2035,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
     # an answer is never thrown away; the refusal says the launch as typed
     # with each mode.
     words = tuple(w for w in (stage, trial) if w is not None)
-    groups = [group] if group is not None else []
+    groups = list(several) or ([group] if group is not None else [])
 
     def each_mode() -> str:
         # THE LAUNCH AS TYPED, with each mode this machine takes -- a run
@@ -1987,7 +2077,11 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
         # The description's spelling from here on -- what the ledger
         # records and every line prints (plan § 5w K12) -- and a stage it
         # holds that is not prepared, said so (W55 D4).
-        if group is None and stage is None:
+        if several:
+            # SEVERAL GROUPS, one job launching each in turn: the entry
+            # plans it (`submit._plan_sequence`).
+            pass
+        elif group is None and stage is None:
             # NOTHING NAMED: the prepared groups whose upstream has
             # finished, one sent and several asked; none, the stages
             # launched before (`job-system.md`, *The task*, D3).
@@ -1996,7 +2090,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
                 group = told["group"] = picked
             else:
                 stage = picked
-        if group is None:
+        if group is None and not several:
             stage = told["stage"] = _described_stage(stage, calc)
             _refuse_unprepared(calc, stage)
             only = stage = told["stage"] = _resolve_stage_name(js, stage)
@@ -2005,7 +2099,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
     # THE WORDS EVERY PRINTED LAUNCH REPEATS: the stage and its trial; a
     # group by its number (``groups``).
     words = tuple(w for w in (stage, trial) if w is not None)
-    groups = [group] if group is not None else []
+    groups = list(several) or ([group] if group is not None else [])
     grouped = kind == "bench" and trial is None
 
     # THE QUEUE is the one the work's prep recorded (`submit.plan_launch`;
@@ -2035,13 +2129,23 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
                    if grouped else {}))
     # WHAT WAS ASKED BEFORE THE PLAN goes with it: written before its
     # refusal, or after the send's save (`plan_launch`'s ``held``).
+    inside = None
+    if in_sequence is not None:
+        # A GROUP'S LAUNCH INSIDE A SEQUENCE'S JOB (`job-system.md` § 6.0):
+        # its record read from the calculation's `launch/` (R-L46).
+        from .submit import Inside, SubmitError as _SE
+        try:
+            inside = Inside.of(base, in_sequence, in_job)
+        except _SE as exc:
+            raise click.ClickException(str(exc)) from None
     plan = plan_launch(calc, bench=bench, mode=mode, only=only,
                        side=only_side,
                        time_s=time_s, trial_timeout_s=_bound_s,
                        told=told, record=not dry_run, cold=cold,
                        group=group, from_attempt=from_attempt,
                        gather=gather, background=not foreground,
-                       held=[held_q] if held_q is not None else [])
+                       held=[held_q] if held_q is not None else [],
+                       groups=several, inside=inside)
     from .commands import command
     if mode == "ask":
         # NOTHING IS SAVED OR SENT: what was asked is written now.

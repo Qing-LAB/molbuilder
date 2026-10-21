@@ -57,6 +57,14 @@ def prep_group_lines(numbers, *, base) -> List[str]:
                     base=base)]
 
 
+def prep_sequence_lines(numbers, *, base) -> List[str]:
+    """The prep of the groups ``numbers`` as ONE job launching each in turn,
+    its header written too (`job-system.md` § 6.0, *A sequence of
+    groups*) -- one command."""
+    return [command("prep", *words_for(TASK, groups=sorted(numbers)),
+                    base=base, flags=("--one-job",))]
+
+
 def bundle_flag(base) -> str:
     """`` --bundle <address from the projects root>`` -- every time.  A line
     is pasted where its reader is, and the reader moves: an omitted
@@ -438,6 +446,7 @@ def stage_lines(kind: str, *, base, groups=(), stages=(),
 
 __all__ = ["PROG", "TASK", "BENCH", "words_for", "bundle_flag", "command",
            "configured_mode", "stage_group", "prep_group_lines",
+           "prep_sequence_lines",
            "launch_lines", "lines", "run_first", "name_a_stage",
            "block", "reason_of", "rollback", "redo_launched", "way_back",
            "order_recorded", "launch_pending",

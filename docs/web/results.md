@@ -427,7 +427,8 @@ root is itself the run: it answers a state and a record like any run directory
 order; two prepared stages answered nothing until 2026-10-19) — and its
 stages' runs are listed by run number (below), not as a ladder of folders. A bias sweep's rung is one run, its state the one rule
 `status` asks (`continuation.points_state`): *running* while a point runs, or
-between two points while its job is going; *queued* while nothing it walks
+between two points while its job is going (a sequence's group launch reading
+its own job's run by its points instead, [`execution/job-system.md`](?doc=execution/job-system.md) § 6.0); *queued* while nothing it walks
 has started; *finished* once every point's run finished, converged or not —
 its converged column says *SCF NO* when one did not — else *failed*; its
 detail counts the points done and names the first not done
@@ -447,7 +448,10 @@ next step** — the ladder answer's `steps`, [`execution/job-system.md`](?doc=ex
 *The task*, *The next step*: the next group's words and the lines that move it,
 as the terminal prints them — a group another molbuilder prepared says so in
 its words, and its prep line follows the launch line, *`# if the launch
-refuses it, first`* — and each later group's words. It is a hint, read
+refuses it, first`* — and each later group's words: a group a sequence still
+going holds, *goes in job N — after group K* (one job launching several
+groups in turn, [`execution/job-system.md`](?doc=execution/job-system.md)
+§ 6.0, *A sequence of groups*), its runs read as any once it is launched. It is a hint, read
 only — the page launches nothing — and it **says when it was read**, *read at
 14:05; returning to this tab, or Reload from current project dir, reads it
 again*: the panel reads the ladder again when the tab is shown again or the
@@ -886,7 +890,7 @@ four sections**, in the order a person asks them when a number looks wrong:
 |---|---|---|
 | **Verdict** | how the run ended, each phase's convergence, each finding as a sentence with its number; the last step's largest force on its free atoms and, when it is the larger, on the held atoms; the stress in the (x, y) plane, a transport run's electrode plane — its xx, yy and xy components, in kbar, as the engine printed them in the tensor the record keeps raw — or, for a TranSIESTA device, the sentence that it computes no forces or stress (`model/parse.md` § 5d.6); the earlier runs of the attempt and how each ended | `verdict`, `earlier` |
 | **Setup** | one table — parameter · default · asked · used — the rows where asked ≠ used first and marked; an item the deck does not set reads *engine default*; a key read to several values shows them all, and the engine's own echo beside them; then, folded with its count, the keys the engine read that no catalogue item names; then the pseudopotentials | `setup` |
-| **Computation** | engine, build and solver; host and environment; the launch asked beside the ranks the engine ran on; start, end, engine wall time, seconds per iteration by phase; TBtrans's account of its loop and, while its estimate stands, when it was made (a transmission); peak memory against its limit; the exit | `computation` |
+| **Computation** | engine, build and solver; host and environment; the launch asked beside the ranks the engine ran on — and, for a run a sequence's group sent, the sequence that sent it, by its name, its job the sequence's (`computation.launch.sequence`); start, end, engine wall time, seconds per iteration by phase; TBtrans's account of its loop and, while its estimate stands, when it was made (a transmission); peak memory against its limit; the exit | `computation` |
 | **Deck** | its path and sha256; whether it is still the stage's current deck; for a gathered rung, what was taken from which attempt; **View**, which opens it in the sidebar's text viewer (`projects.showPreview`) | `deck` |
 
 **Generic, so a new fact is a label.** The panel does not know engines or

@@ -167,6 +167,11 @@ const FIELDS = {
     // from the structure.
     job_id:         { label: "Job id", none: "none -- run here" },
     placed_on:      { label: "Placed on", none: "no queue -- run here" },
+    // A RUN A SEQUENCE OF GROUPS' JOB SENT names that sequence -- its job
+    // the sequence's (execution/job-system.md § 6.0); null for a run its
+    // launch sent itself.
+    sequence:       { label: "Sent by the sequence", style: MONO,
+                      none: "none -- its launch sent it" },
     ranks_asked:    { label: "Ranks asked" },
     ranks:          { label: "Ranks the engine ran on" },
     threads:        { label: "Threads per rank" },

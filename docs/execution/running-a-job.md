@@ -583,8 +583,10 @@ seconds, `MB_WALL_S`, and the run script counts it from the start
 |---|---|---|
 | one run, to a queue | on the send line, beside the launch claim ([`scheduler.md`](?doc=execution/scheduler.md) § 6a): the wall the header prep wrote carries, read off it by its kind's spelling (`Kind.directive_value`), or the launch's `--time` — the value `run.json`'s `placed_on.time` records (`submit._sbatch_request`) | the job's start, which its header says once ([`run-reports.md`](?doc=execution/run-reports.md) § 2.1b) |
 | a walk, to a queue — a group, a run of points, a benchmark's shelf | the same line, the job's one wall for every member: its header's — a group's and a run of points' its members' walls summed (`group.envelope`), a shelf's the benchmark's own — or the launch's `--time` | the job's start: a later member counts what the members before it left |
+| a sequence of groups, to a queue ([`job-system.md`](?doc=execution/job-system.md) § 6.0) | the same line, the job's one wall for every run of every group: its header's — every group's own wall summed (`group.sequence_request`) — or the launch's `--time`; each group's launch inside the job tells its runs nothing of their own (`submit._own_walls`) | the job's start: a later group counts what the groups before it left |
 | one run, here | in its environment (`submit._go`), the wall its own job states (`Resources.time`: § 5.3.1's chain at prep) — none stated, nothing | its run script's own start |
 | a walk, here | on each member's line of the walk script (`submit._walk_script`, `walls`), the wall that member's own job states — none stated, nothing | each member's run script's own start |
+| a sequence of groups, here | each group's launch tells its runs as a run here or a walk here is told, above: each its own card's | each run script's own start |
 
 From the two the run
 script counts what is left when it starts the engine, and hands the engine

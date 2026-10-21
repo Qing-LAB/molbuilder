@@ -16,6 +16,8 @@ from __future__ import annotations
 import os
 import signal
 import socket
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +28,34 @@ JOB_SCHEMA = "molbuilder/job@1"
 
 #: Where a process's start is read: Linux's own account of its processes.
 _PROC = Path("/proc")
+
+#: THE JOB A READER RUNS INSIDE -- a group's launch inside a sequence of
+#: groups' job (`job-system.md` § 6.0): ``(the job's address, the
+#: sequence's name)``.  A run of points that job sent -- an earlier group's,
+#: or its own group's after its walk returned -- is read by its own files,
+#: never by asking that job, which is the reader's own and still going.
+#: Set by :func:`inside`, scoped.
+_INSIDE: "ContextVar[Optional[Tuple[str, str]]]" = ContextVar(
+    "molbuilder_inside_job", default=None)
+
+
+@contextmanager
+def inside(job_id: Optional[str], sequence: Optional[str] = None):
+    """Read, within this block, as a reader running inside job ``job_id``,
+    the sequence ``sequence``'s (``None``: inside none) -- a group's launch
+    inside a sequence's job, from its plan to what it prints last."""
+    token = _INSIDE.set((str(job_id), str(sequence))
+                        if job_id is not None else None)
+    try:
+        yield
+    finally:
+        _INSIDE.reset(token)
+
+
+def inside_job() -> Optional[Tuple[str, str]]:
+    """``(the job's address, the sequence's name)`` the reader runs inside
+    (:func:`inside`), or ``None``."""
+    return _INSIDE.get()
 
 
 class JobFileError(ValueError):
@@ -65,6 +95,11 @@ class Job:
     #: the scheduler names it -- ``None`` when it could not be read.
     job_id: Optional[str] = None
     cluster: Optional[str] = None
+    #: A SEQUENCE OF GROUPS (`job-system.md` § 6.0): its name and each group
+    #: it launches, in order -- ``{"name", "groups": [{"number",
+    #: "stages"}]}`` -- its ``members`` added by each group's launch inside
+    #: it as it sends its runs; ``None`` for every other job.
+    sequence: Optional[dict] = None
     #: The file it was read from -- not written.
     path: Optional[Path] = field(default=None, compare=False)
 
@@ -72,6 +107,8 @@ class Job:
         return {"schema": JOB_SCHEMA, "id": self.id, "how": self.how,
                 "host": self.host, "calculation": self.calculation,
                 "members": {k: dict(v) for k, v in self.members.items()},
+                "sequence": (dict(self.sequence) if self.sequence is not None
+                             else None),
                 "launched_at": self.launched_at,
                 **({"background": self.background, "pid": self.pid,
                     "started": self.started} if self.how == "here" else
@@ -211,22 +248,40 @@ def is_going(job: "Job", here: "Asked") -> "Tuple[Optional[bool], str]":
 
 
 def run_here(*, pid: int, background: bool, calculation,
-             members: Dict[str, Dict[str, str]]) -> Job:
+             members: Dict[str, Dict[str, str]],
+             sequence: Optional[dict] = None) -> Job:
     """The address of a run here whose process exists."""
     host = this_host()
     return Job(id=f"{host}-{pid}", how="here", host=host,
                calculation=str(Path(calculation).resolve()),
                members=members, launched_at=_now(),
-               background=background, pid=pid, started=started_of(pid))
+               background=background, pid=pid, started=started_of(pid),
+               sequence=sequence)
 
 
 def queue_job(*, job_id: str, cluster: Optional[str], calculation,
-              members: Dict[str, Dict[str, str]]) -> Job:
+              members: Dict[str, Dict[str, str]],
+              sequence: Optional[dict] = None) -> Job:
     """The address of a job the scheduler took, by its id."""
     return Job(id=str(job_id), how="queue", host=this_host(),
                calculation=str(Path(calculation).resolve()),
                members=members, launched_at=_now(),
-               job_id=str(job_id), cluster=cluster)
+               job_id=str(job_id), cluster=cluster, sequence=sequence)
+
+
+def add_members(job_id: str, members: Dict[str, Dict[str, str]]) -> Job:
+    """The runs a group's launch inside a sequence sends, added to the
+    address of the job it rides (`job-system.md` § 6.0, *A sequence of
+    groups*) -- read, its ``members`` grown, written again by the one
+    writer; :class:`JobFileError` when no file holds that job or it does
+    not read."""
+    import dataclasses
+    job = find(job_id)
+    if job is None:
+        raise JobFileError(f"{_file_of(job_id)}: no job {job_id} is on file")
+    grown = dataclasses.replace(job, members={**job.members, **members})
+    write(grown)
+    return grown
 
 
 def write(job: Job) -> Path:
@@ -256,9 +311,22 @@ def read(path: Path) -> Job:
                    pid=int(d["pid"]) if here else None,
                    started=d.get("started") if here else None,
                    job_id=None if here else str(d["job_id"]),
-                   cluster=None if here else d.get("cluster"), path=path)
+                   cluster=None if here else d.get("cluster"),
+                   sequence=_sequence_of(d.get("sequence")), path=path)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         raise JobFileError(f"{path}: {exc}") from None
+
+
+def _sequence_of(raw) -> Optional[dict]:
+    """A job's ``sequence``, read: ``None`` -- not a sequence; else its name
+    and each group, its number and stages.  A file written before
+    sequences were recorded states none, and was no sequence."""
+    if raw is None:
+        return None
+    return {"name": str(raw["name"]),
+            "groups": [{"number": int(g["number"]),
+                        "stages": [str(s) for s in g["stages"]]}
+                       for g in raw["groups"]]}
 
 
 def every() -> List[Union[Job, JobFileError]]:
@@ -291,6 +359,7 @@ def forget(job: Job) -> None:
     _file_of(job.id).unlink(missing_ok=True)
 
 
-__all__ = ["JOB_SCHEMA", "Job", "JobFileError", "NotGoing", "every", "find",
+__all__ = ["JOB_SCHEMA", "Job", "JobFileError", "NotGoing", "add_members",
+           "every", "find", "inside", "inside_job",
            "forget", "going_here", "queue_job", "read", "run_here",
            "signal_here", "started_of", "this_host", "write"]

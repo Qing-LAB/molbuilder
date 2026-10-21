@@ -829,6 +829,14 @@ can spend a week computing from a geometry you would have rejected in a minute.
 > **The decision to continue is the user's, made after looking. molbuilder's job
 > is to make continuing correct once that decision is taken.**
 
+**Or made before, by naming the groups** *(the user, 2026-10-20)*: a sequence
+of groups ([`job-system.md`](?doc=execution/job-system.md) § 6.0, *A sequence
+of groups*) is one job that launches each group named when the one before it
+has finished — the decision to continue taken when the person names them, and
+said and recorded as that. Nothing chains by itself: every group is named, and
+each group's launch inside the job is the launch the person would type, with
+every gate it has.
+
 #### 1.6.1 A run and its tries — two counters
 
 *One vocabulary with `job-system.md` § Words: a **run** is one launch — the
@@ -934,7 +942,7 @@ Two small files answer the two questions *(the second decided by the user,
 
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
-| `run.json` (`molbuilder/run-launch@1`) — a flat stage's run's own `<basename>-run<N>.run.json` | `launch`, into the run — or, for a flat stage, beside its deck, one per run; a flat run's warm retry, by the run script through the monitor's bundle (`running-a-job.md` § 3.5) | when the launch succeeds: `sbatch` accepted it, or the direct process started; a retry's as it starts | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, **what it continued from**, and for a retry **the run it retries** | not launched: `launch` runs in this run |
+| `run.json` (`molbuilder/run-launch@1`) — a flat stage's run's own `<basename>-run<N>.run.json` | `launch`, into the run — or, for a flat stage, beside its deck, one per run; a flat run's warm retry, by the run script through the monitor's bundle (`running-a-job.md` § 3.5) | when the launch succeeds: `sbatch` accepted it, or the direct process started; a retry's as it starts | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, **what it continued from**, for a retry **the run it retries**, and for a run a sequence of groups' job sent **the sequence** — its mode, command, job id and placement then the job's ([`job-system.md`](?doc=execution/job-system.md) § 6.0) | not launched: `launch` runs in this run |
 | `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle>)`** (`parse/dirs/job.FINISH_FAILED`) | still running, or force-stopped: the files cannot tell which |
 | `.continued-from` — a flat stage's run's own `<basename>-run<N>.continued-from`, named for the run that continues | `launch`, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) | with the files it takes — a stage's run continuing from another, a run of points continuing, a point's start, a point taken over (the run that computed it, one hop); on the flat layout, whose restart files are the folder's, with the run's launch record | which run, as every record names one (`runrecord.RunRef`): its folder from the calculation's — on the flat layout the run whose restart files lie in the folder, the last run there of any stage (`runrecord.last_run`), by its own name, `<label>_<NN>_<stage>-run<N>`, which every file of it carries (ruled 2026-10-01; the last run's, 2026-10-12) | the run starts from the structure, or from what it gathered; a flat warm retry records the run it retries in its `run.json` alone (`continued_from`, `retry_of`) |
 | `<label>.last-run` — the flat layout only, one for the calculation's folder | the run script | the moment its engine starts — the dry run writes none | *this run is the last one here*: from then on the restart files and the results lying in the folder are its own; read by `runrecord.last_run` — what a launch says it reads, the record a relaunch writes, the run the folder speaks for on the Results page (`runs.speaking`) *(user, 2026-10-12)* | no run has started in the folder |
@@ -1042,8 +1050,10 @@ a stage again over a launched run**, reads the marker:
 #### 1.6.5 Continuing from an earlier run is a copy, not a link
 
 Because a stage that builds on another is launched after it, **the run you
-continue from has already finished** — that is what you just looked at. Its files are sitting on disk when
-you launch the next stage, so they are **copied**, as real files, then and there.
+continue from has already finished** — that is what you just looked at, or,
+in a sequence of groups, what the job's group before it just finished. Its
+files are sitting on disk when the next stage is launched, so they are
+**copied**, as real files, then and there.
 
 ```
 02_tight/run-0/<label>.XV  a real copy of 01_coarse/run-0/<label>.XV
@@ -1086,11 +1096,14 @@ runs in it, in place.
 
 **A stage starts because a person prepared it and launched it.** A `JobSet`
 carries no scheduler dependency and no instruction to take a file from another
-job; `jobset` cannot thread one and there is no flag that asks for it.
+job; `jobset` threads none between two jobs.
 
 **The reason is scientific rather than technical.** Whether stage 2 should start
 depends on what stage 1 actually produced, and that is a judgement — so no field
-in a description, and no flag at launch, is permitted to make it.
+in a description is permitted to make it; at launch, the person may make it in
+advance by naming both groups, one job launching each in turn (a sequence of
+groups, [`job-system.md`](?doc=execution/job-system.md) § 6.0), each group's
+launch inside it the launch they would type.
 
 **Stages that do not build on one another can share one job** *(user,
 2026-10-07/08 and 2026-10-11)*. No
@@ -1125,7 +1138,9 @@ every member's row is still there. A launched stage's row stays, and its
 job's header: its runs are read through them. Its first launch
 sends it whole; launched again, a stage goes alone or with its group, as you
 name it. Every group may be prepared at once; a stage that builds on another
-is launched after you have looked at the one it builds on.
+is launched after you have looked at the one it builds on — or, named with it
+at one launch, after it has finished, inside one job (a sequence of groups,
+[`job-system.md`](?doc=execution/job-system.md) § 6.0).
 
 #### 1.6.7 `--cold`, and running a stage by hand
 
@@ -2808,17 +2823,22 @@ benchmark's alone:
 <!-- /manifest -->
 
 A grouped launch — a benchmark's trials, a swept rung's points (each a frame
-and a voltage, `transport.md` § 2a.11), or a task's stages sharing one job, in order — keeps its machinery in a `launch/` folder:
+and a voltage, `transport.md` § 2a.11), a task's stages sharing one job, or a
+task's groups launched one after another in one job (a sequence,
+`job-system.md` § 6.0), in order — keeps its machinery in a `launch/` folder:
 `<stage>/launch/` for a sweep (its walk beside its `.log`), the container's
-`launch/` for a group of stages, and the benchmark's container for its trials;
-`run.json`'s command names the walk relative to that folder:
+`launch/` for a group of stages and for a sequence of groups, and the
+benchmark's container for its trials; `run.json`'s command names the walk
+relative to that folder — a run a sequence's group sent, the sequence's own
+(its job's line):
 
 <!-- manifest:launch -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias sweep's points, or a task's stages sharing one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
-| `<group>.sbatch` — only: a target with a scheduler, no `--no-sbatch` | its queue header — a task's group's, a run of points' walk's, a benchmark's shelf's | prep (`prep.walk_header_of`), written again at each prep; launch sends it | none | derived |
+| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias sweep's points, a task's stages sharing one job, or a task's groups launched one after another in one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.sbatch` — only: a target with a scheduler, no `--no-sbatch` | its queue header — a task's group's, a run of points' walk's, a benchmark's shelf's, a sequence of groups' | prep (`prep.walk_header_of`), written again at each prep; launch sends it | none | derived |
 | `<group>.log` | every member's output, in order | the group's sequencer, as it runs | none | record |
+| `<group>.launch.json` | a sequence of groups' launch record: its groups and their stages, how its one job was sent, its id -- what each run it sends records of that job | launch (`jobset/sequence.py`), before the job goes; its id once the scheduler gives it | `jobset.sequence.read_record` | record |
 <!-- /manifest -->
 
 ### 5.6 Files that exist only while they are written

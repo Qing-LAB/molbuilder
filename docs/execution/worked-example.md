@@ -356,8 +356,10 @@ fixes `jobset <verb> <kind> [<stage>]`, and `project-layout.md` § 8 and
 --from <run>`. What was genuinely open was one shape question — stage as the
 positional, or folder with `--stage` — **decided 2026-08-10 (user): the stage is
 the positional** — until 2026-10-08, when the task's stages came to be named
-with `--stage` ([`job-system.md`](?doc=execution/job-system.md), *The task*). There is no way to run a whole ladder
-unattended: `--chain` was deleted the same day, in both modes.
+with `--stage` ([`job-system.md`](?doc=execution/job-system.md), *The task*). A whole ladder runs
+unattended only as a sequence of groups the person names at one launch, each
+group launched in turn inside one job (`job-system.md` § 6.0); `--chain`, which
+ran the next stage on its own, was deleted that day, in both modes.
 
 So the entry point is:
 

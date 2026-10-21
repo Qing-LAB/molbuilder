@@ -164,9 +164,9 @@ FIELDS: "dict[str, Field]" = {
         shape=r"[0-9]+",
         example="48213"),
     "group": Field(
-        what="a launch group's name (`GroupNames.of_*`): a task's group, "
-             "its stages' tokens; a benchmark's side and shelf; a run of "
-             "points' walk",
+        what="a launch group's name (`GroupNames.of_*`): a task's group "
+             "or a sequence of groups, its stages' tokens; a benchmark's "
+             "side and shelf; a run of points' walk",
         shape=r"[A-Za-z0-9_.-]+",
         example="bench-group-cpu-G0K4C1"),
     "random": Field(
@@ -1482,14 +1482,15 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="`jobset summarize` (`run_summarize_jobset`)"),
     Artifact(name="{group}.run.sh",
              what="a launch group's sequencer: a benchmark's trials, a "
-                  "bias sweep's points, or a task's stages sharing one job, "
+                  "bias sweep's points, a task's stages sharing one job, or "
+                  "a task's groups launched one after another in one job, "
                   "in order",
              when="launch", level="launch", kind="derived",
              writer="launch (`jobset/submit.py`), written again at each "
                     "launch"),
     Artifact(name="{group}.sbatch",
              what="its queue header — a task's group's, a run of points' "
-                  "walk's, a benchmark's shelf's",
+                  "walk's, a benchmark's shelf's, a sequence of groups'",
              when="prep", level="launch", kind="derived",
              writer="prep (`prep.walk_header_of`), written again at each "
                     "prep; launch sends it",
@@ -1497,6 +1498,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name="{group}.log", what="every member's output, in order",
              when="run", level="launch", kind="record",
              writer="the group's sequencer, as it runs"),
+    Artifact(name="{group}.launch.json",
+             what="a sequence of groups' launch record: its groups and "
+                  "their stages, how its one job was sent, its id -- what "
+                  "each run it sends records of that job",
+             when="launch", level="launch", kind="record",
+             writer="launch (`jobset/sequence.py`), before the job goes; "
+                    "its id once the scheduler gives it",
+             door="jobset.sequence.read_record"),
     Artifact(name="{random}.tmp",
              what="a file being written; it replaces its target when the "
                   "write ends",
@@ -1698,10 +1707,11 @@ class RunNames:
 
 @dataclass(frozen=True)
 class GroupNames:
-    """A LAUNCH GROUP'S FILES -- a benchmark's walk or a bias sweep's chain:
-    the catalogue's launch-level rows ``{group}.run.sh``, ``{group}.sbatch``
-    and ``{group}.log``, filled with the group's name (`project-layout.md`
-    § 5).  The same two questions :class:`RunNames` answers -- :attr:`stem`
+    """A LAUNCH GROUP'S FILES -- a benchmark's walk, a bias sweep's chain, a
+    task's group, a sequence of groups: the catalogue's launch-level rows
+    ``{group}.run.sh``, ``{group}.sbatch``, ``{group}.log`` and a
+    sequence's ``{group}.launch.json``, filled with the group's name
+    (`project-layout.md` § 5).  The same two questions :class:`RunNames` answers -- :attr:`stem`
     and :meth:`name` -- so a header is rendered alike for a stage's run and
     a group's (`runwrap.render_sbatch`)."""
     group: str
@@ -1717,6 +1727,14 @@ class GroupNames:
         label and every member's token, in order --
         ``chain-t_group-01_seed-02_electrode_L-03_electrode_R``."""
         return cls(f"{label}_group-{'-'.join(tokens)}")
+
+    @classmethod
+    def of_sequence(cls, label: str, tokens) -> "GroupNames":
+        """A task's groups launched one after another in one job (a
+        sequence, `job-system.md` § 6.0): the calculation's label and every
+        member's token, in order --
+        ``chain-t_sequence-01_seed-02_electrode_L-03_electrode_R-04_device``."""
+        return cls(f"{label}_sequence-{'-'.join(tokens)}")
 
     @classmethod
     def of_points(cls, stem_: str) -> "GroupNames":

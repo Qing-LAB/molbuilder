@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -160,6 +160,78 @@ def job_of(jobset, stage: str):
     is that row (`job-system.md` § 5.0): the one door every reader asks,
     with the plan as the verb read it (`JobSet.of`, A16)."""
     return jobset.job(stage) if jobset is not None else None
+
+
+def held_by_sequence(calc, number: int, *, asked=None
+                     ) -> Optional[Tuple[object, Optional[int], str]]:
+    """THE ONE ANSWER to *does a sequence still going hold group ``number``*
+    (`job-system.md` § 6.0, *A sequence of groups*): ``(its job, the group
+    before it in the job -- ``None`` for the job's first --, the job's state
+    in words)`` for a job launched from this machine whose sequence names
+    the group's stages, which is GOING, and which has not launched the
+    group yet -- neither on its address nor by the group's own runs, whose
+    launch records name the sequence that sent them (`run.json`'s
+    ``sequence``: in that very queue job, or run here after it went); a job
+    this machine cannot ask about holds nothing.  ``None`` otherwise.
+    Asked by the next step, by every launch and prep of a group, and by the
+    bare launch's offer."""
+    from ..identity import stage_key
+    from ..joblist import Asked, Job, every, is_going
+    from .group import group_members, same_members
+    base, task = Path(calc.base), calc.task
+    stages = group_members(task, number)
+    keys = {stage_key(s) for s in stages}
+    asked = asked if asked is not None else Asked()
+    for job in every():
+        if (not isinstance(job, Job) or job.sequence is None
+                or Path(job.calculation) != base.resolve()):
+            continue
+        groups = job.sequence["groups"]
+        at = next((i for i, g in enumerate(groups)
+                   if same_members(g["stages"], stages)), None)
+        if at is None or keys & {stage_key(m) for m in job.members}:
+            continue
+        if _sent_by(calc, stages, job):
+            continue
+        going, said = is_going(job, asked)
+        if going is not True:
+            continue
+        return (job, groups[at - 1]["number"] if at else None, said)
+    return None
+
+
+def _sent_by(calc, stages, job) -> bool:
+    """Whether a member of ``stages`` has a newest run the sequence job
+    ``job`` sent -- its launch record naming that sequence, and that job by
+    its id (a queue job) or launched after it went (a walk run here)."""
+    from datetime import datetime
+    from ..runrecord import LaunchRecordError
+    from .materialize import newest_launch
+
+    def when(text):
+        try:
+            return datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    went = when(job.launched_at)
+    for st in stages:
+        row = job_of(calc.jobset, st)
+        if row is None:
+            continue
+        try:
+            rec = newest_launch(calc, row)
+        except LaunchRecordError:
+            continue
+        if not rec or rec.get("sequence") != job.sequence["name"]:
+            continue
+        if job.how == "queue":
+            if str(rec.get("job_id")) == str(job.job_id):
+                return True
+        else:
+            at = when(rec.get("launched_at"))
+            if at is not None and went is not None and at >= went:
+                return True
+    return False
 
 
 def launched_already(calc, stage: str) -> Optional[str]:

@@ -511,7 +511,11 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
     # the structure (`job-contracts.md` § 6.1) -- not "could not check".
     if not rec:
         return {}
-    keys = ["mode", "command", "job_id", "launched_at", "placed_on"]
+    # ``sequence``: the sequence of groups whose job sent it (`job-system.md`
+    # § 6.0), null for a run its launch sent itself -- a record written
+    # before sequences states none, and its launch sent it.
+    keys = ["mode", "command", "job_id", "launched_at", "placed_on",
+            "sequence"]
     # A folder of the run's own has one record, its launch's: where to
     # continue from and which run is retried are run 0's, so a later run
     # in it -- a warm retry -- is not given them.
@@ -626,6 +630,7 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                 ("computation.launch.mode", "computation.launch.command",
                  "computation.launch.job_id", "computation.launch.launched_at",
                  "computation.launch.placed_on",
+                 "computation.launch.sequence",
                  "computation.launch.continued_from",
                  "computation.launch.retry_of"),
                 (), _launch_record),

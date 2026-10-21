@@ -364,8 +364,9 @@ def test_a_benchmark_walks_its_unlaunched_trials_passing_the_launched_over(
 
 def test_a_benchmarks_per_trial_bound_is_the_walks(real_h2_bench):
     """Asked for five seconds a trial, the walk bounds each at the floor it
-    states: five minutes, killed thirty seconds after."""
+    states: five minutes, killed thirty seconds after -- the bound around
+    whatever runs the trial (`submit._walk_script`)."""
     walk = (real_h2_bench.bundle / "01_coarse" / "bench" / "launch"
             / "bench-group.run.sh").read_text()
-    for words in ("per-trial-bound=300s", "timeout -k 30 300 bash"):
+    for words in ("per-trial-bound=300s", "timeout -k 30 300 "):
         assert words in walk, words

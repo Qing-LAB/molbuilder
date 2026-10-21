@@ -269,6 +269,95 @@ def envelope(jobs: Sequence) -> "Resources":
         exclusive=any(j.resources.exclusive for j in jobs))
 
 
+def own_request(jobs: Sequence, points: int = 0) -> "Resources":
+    """The request a group's own job sends -- what its own header asks
+    (`job-system.md` § 6.0, *The placement*): its members' shared request
+    (:func:`envelope`) for several; a run of points', every point's wall
+    (``points`` of them); a stage's own, alone.  Its queue the placement's
+    domain, where prep placed it."""
+    import dataclasses
+    if len(jobs) > 1:
+        r = envelope(jobs)
+    elif points:
+        r = envelope([jobs[0]] * points)
+    else:
+        r = jobs[0].resources
+    domain = (jobs[0].placement or {}).get("domain") or r.domain
+    return dataclasses.replace(r, domain=domain)
+
+
+def sequence_request(requests: Sequence[Tuple[int, "Resources"]]
+                     ) -> "Resources":
+    """THE ONE REQUEST OF A SEQUENCE OF GROUPS (`job-system.md` § 6.0, *A
+    sequence of groups*) -- ``requests``, each group's number and its own
+    request (:func:`own_request`), in order -- or :class:`GroupError` naming
+    what they cannot share: one queue, every group's; the LARGEST ranks,
+    cores per rank and memory any group asks for; the walls summed; the
+    node whole when any asks it; the GPUs the groups that use them ask
+    alike -- one count, one binding.  A group asking less runs with its own
+    card inside it; one using no GPU runs on its cores."""
+    import dataclasses
+    from ..scheduler.quantities import (parse_gres_flag, parse_memory,
+                                        parse_walltime, slurm_time)
+    from .model import gpu_request
+    queues = {n: r.domain for n, r in requests}
+    if len(set(queues.values())) > 1:
+        raise GroupError(
+            "one job sits in one queue, and these groups name "
+            + ", ".join(f"group {n} {q!r}" for n, q in queues.items())
+            + " -- state one queue on their run cards, or send each alone")
+    gpu = [(n, r) for n, r in requests if gpu_request(r).uses]
+    # UNSTATED IS THE RULE'S, ON (`model.Resources.gpu_binding`): only an
+    # explicit off differs.
+    bindings = {n: r.gpu_binding is not False for n, r in gpu}
+    if len(set(bindings.values())) > 1:
+        raise GroupError(
+            "one job binds its GPUs one way, and these groups ask "
+            + ", ".join(f"group {n} {'on' if b else 'off'}"
+                        for n, b in bindings.items())
+            + " -- state the same `gpu_binding`, or send each alone")
+    # ONE SET OF GPUS: a group that uses GPUs runs its ranks over every GPU
+    # the job holds (the run script's rank helper spreads them over what the
+    # scheduler gives), so the groups that use them ask the same count.
+    counts = {n: parse_gres_flag(r.gres) for n, r in gpu}
+    if len(set(counts.values())) > 1:
+        raise GroupError(
+            "one job holds one set of GPUs, which every group using GPUs "
+            "runs on, and these groups ask "
+            + ", ".join(f"group {n} {c}" for n, c in counts.items())
+            + " -- state the same count, or send each alone")
+    rs = [r for _n, r in requests]
+
+    def largest(field: str):
+        got = [getattr(r, field) for r in rs]
+        return None if any(v is None for v in got) else max(got)
+    gres = max((r.gres for _n, r in gpu),
+               key=lambda g: parse_gres_flag(g) or 0, default=None)
+    walls = [r.time for r in rs]
+    mems = [str(r.mem) for r in rs if r.mem]
+    return dataclasses.replace(
+        rs[0], domain=rs[0].domain,
+        mpi_np=largest("mpi_np"), cpus_per_task=largest("cpus_per_task"),
+        gres=gres, use_gpu=bool(gpu),
+        gpu_binding=(gpu[0][1].gpu_binding if gpu
+                     else rs[0].gpu_binding),
+        time=(slurm_time(sum(parse_walltime(str(w)) for w in walls))
+              if all(walls) else None),
+        mem=("0" if "0" in mems
+             else max(mems, key=parse_memory) if mems else None),
+        exclusive=any(r.exclusive for r in rs))
+
+
+def sequence_names(base, task, numbers: Sequence[int]) -> GroupNames:
+    """The names of a sequence of groups' one job -- its header, walk, log
+    and launch record in `launch/`: the label and every member's token,
+    the groups in order (`runfiles.GroupNames.of_sequence`)."""
+    from .materialize import stage_home
+    return GroupNames.of_sequence(task.label, [
+        stage_home(base, task, n).token
+        for g in sorted(numbers) for n in group_members(task, g)])
+
+
 def number_of(task, stage: str) -> Optional[int]:
     """The group ``stage`` is in, as the description numbers it -- a name in
     any case one name (`engines/stages.md` § 2) -- or ``None`` for a stage
@@ -440,4 +529,4 @@ __all__ = ["GroupError", "SHARED", "card_shares",
            "check_groups", "envelope", "number_of", "named", "members_of",
            "same_members", "formed_again", "regrouped", "header_of",
            "group_members", "launched_without", "joined_launched",
-           "names_for"]
+           "names_for", "own_request", "sequence_names", "sequence_request"]

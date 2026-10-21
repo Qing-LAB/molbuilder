@@ -318,7 +318,8 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
                  launched_at: Optional[str] = None,
                  placed_on: Optional[dict] = None,
                  retry_of: Optional[int] = None,
-                 scheduler: Optional[dict] = None) -> Path:
+                 scheduler: Optional[dict] = None,
+                 sequence: Optional[str] = None) -> Path:
     """Record run ``run``'s launch where its stage's names put it
     (:func:`launch_record_path`) — ``molbuilder/run-launch@1`` -- through
     `persist`, so it is whole or absent, never half a file
@@ -347,6 +348,11 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
     ``stderr`` null where the job's id was not read -- the file the run
     door reads for how the scheduler ended the job (`scheduler.md` R16);
     ``null`` for a run here.
+
+    ``sequence`` is the name of the sequence of groups whose job sent the
+    run (`job-system.md` § 6.0, *A sequence of groups*) -- its other keys
+    then the job's, as the sequence's launch record states them; ``null``
+    for a run its launch sent itself.
     """
     from datetime import datetime, timezone
     p = launch_record_path(where, names, run)
@@ -368,6 +374,7 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
     body["placed_on"] = dict(placed_on) if placed_on else None
     body["retry_of"] = retry_of
     body["scheduler"] = dict(scheduler) if scheduler else None
+    body["sequence"] = sequence
     # ``ended`` null -- the scheduler has not been found to have forgotten
     # the job; :func:`record_ended` fills it, once.
     body["ended"] = None
@@ -429,7 +436,8 @@ def record_retry(where, names: "_rf.RunNames", retried: int) -> Path:
         command=said["command"], job_id=said["job_id"],
         continued_from=RunRef.named(names.run_name(retried)),
         placed_on=said["placed_on"],
-        retry_of=retried, scheduler=said.get("scheduler"))
+        retry_of=retried, scheduler=said.get("scheduler"),
+        sequence=said.get("sequence"))
 
 
 def retried_to(where, names: "_rf.RunNames", run: int) -> int:

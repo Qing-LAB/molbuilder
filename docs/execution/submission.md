@@ -69,7 +69,10 @@ making a judgement, which is theirs to make.
 **S4 — Nothing is submitted unseen**, and nothing run here unseen *(user,
 2026-10-05: a run here is shown and asked as a submission is)*. The full
 request, before the irreversible step — on every door: a stage, a group, a
-benchmark's shelf, a run of points, a run here. Prep prints every value it
+benchmark's shelf, a run of points, a run here, a sequence of groups — its
+job's line and header, its first group's plan in full, and each later group
+said as launched in the job when the one before has finished, its plan made
+then (`job-system.md` § 6.0). Prep prints every value it
 decided with where it came from, and every value of the header it writes; the
 launch shows the line as sent and every value of the header it sends, a wall
 it restates on the line. `--yes` is how a person

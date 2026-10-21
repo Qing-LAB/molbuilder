@@ -576,6 +576,24 @@ def ever_launched(calc, job) -> bool:
         attempt_dir(container, ns[-1]), names) is not None)
 
 
+def newest_launch(calc, job) -> Optional[dict]:
+    """The launch record of ``job``'s newest LAUNCHED run -- where its runs
+    are folders, the newest ``run-<n>`` whose record is there; where they
+    share a folder, its newest launched run's -- or ``None`` before its
+    first launch.  A record that does not read raises, as the one door does
+    (`runrecord.launch_record`)."""
+    jobset, base, sh = calc.jobset, Path(calc.base), calc.shape
+    names = run_names(jobset, job, sh)
+    container = base / job_dir_names(jobset, sh)[job.name]
+    if not sh.keeps_attempts_as_directories:
+        return runrecord.launch_record(container, names)
+    for n in reversed(attempts_in(container)):
+        rec = runrecord.launch_record(attempt_dir(container, n), names)
+        if rec is not None:
+            return rec
+    return None
+
+
 @dataclass(frozen=True)
 class Attempt:
     """One try at a stage: the directory, and what was put in it -- the

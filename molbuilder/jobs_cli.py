@@ -39,9 +39,25 @@ def _shown(job, said: str) -> list:
            f"run here on {job.host}, "
            f"{'in the background' if job.background else 'waited on'}, "
            f"pid {job.pid}")
-    return [f"{job.id}  {how} -- {said}",
+    seq = (f", a sequence of groups "
+           f"{', '.join(str(g['number']) for g in job.sequence['groups'])}"
+           if job.sequence else "")
+    return [f"{job.id}  {how}{seq} -- {said}",
             f"  launched {job.launched_at}; its calculation:",
             f"  {command('status', base=job.calculation)}"]
+
+
+def _not_reached(job) -> list:
+    """A SEQUENCE'S GROUPS NOT LAUNCHED YET -- none of their stages among
+    its members -- each said (`job-system.md` § 6.0a)."""
+    from .identity import stage_key
+    if not job.sequence:
+        return []
+    launched = {stage_key(m) for m in job.members}
+    return [f"    group {g['number']}  {', '.join(g['stages'])}  "
+            f"not launched yet"
+            for g in job.sequence["groups"]
+            if not launched & {stage_key(s) for s in g["stages"]}]
 
 
 def _record(job, decision: str, **facts) -> None:
@@ -76,6 +92,8 @@ def cmd_jobs_status() -> None:
         for stage, run, state in job_members(job.calculation,
                                              job.members):
             click.echo(f"    {stage}  {run}  {state}")
+        for line in _not_reached(job):
+            click.echo(line)
         if going is False:
             click.echo("  ended -- said once; its address is removed")
             forget(job)
@@ -117,7 +135,8 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
             f"Ctrl-C")
     said = confirm("\n".join(
         ["about to stop:", *_shown(job, saying),
-         *(f"    {stage}  {m['run']}" for stage, m in job.members.items())]),
+         *(f"    {stage}  {m['run']}" for stage, m in job.members.items()),
+         *_not_reached(job)]),
         auto_yes=yes, question="stop it?", default=False)
     # THE QUESTION AND ITS ANSWER, written down as a launch writes its own
     # -- a no, and nobody to ask, too (`job-system.md` § 6.0, step 5).

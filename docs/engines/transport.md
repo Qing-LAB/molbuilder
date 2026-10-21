@@ -1839,7 +1839,8 @@ their walls summed (`group.envelope`), sent as it is at every launch of the
 rung, warm or cold, the wall alone restated by `--time` — the walk script the
 launch writes, `…-sweep.run.sh`, and its log, `…-sweep.log`
 (`submit._points_walk`). Run here, each point is told its card's wall
-(`MB_WALL_S`, `running-a-job.md` § 3.6).
+(`MB_WALL_S`, `running-a-job.md` § 3.6) — inside a sequence's queue job, the
+job's wall from the job's start (`job-system.md` § 6.0).
 
 **Launched again — the run/stage contract's rule 3, read at the point**
 (`job-system.md`, *What molbuilder does for you*, 3): every launch is a new run,
@@ -1893,7 +1894,8 @@ setup's count, the record and the Results ladder. **A swept rung has one row in 
 run's state, by one rule the gather asks too (`continuation.points_state`) —
 *running* while a point runs, or between two points while a job launched
 from this machine that holds the run is going (`joblist.is_going`, the answer
-`molbuilder jobs` gives); *queued* while no point the run walks itself has
+`molbuilder jobs` gives) — never the job a reader runs inside, a sequence's,
+which reads its own runs of points by their points (`job-system.md` § 6.0); *queued* while no point the run walks itself has
 started (a point taken over is the earlier run's) and its job is not over —
 one cancelled in the queue, or a process that died before its first point, is
 a run that ended, its points' verdict *— its job ended before any point
@@ -2923,6 +2925,15 @@ molbuilder jobset prep task   --bundle BDT-Au/transport/BDTTrans
 molbuilder jobset launch task --bundle BDT-Au/transport/BDTTrans --mode submit
 #    ... and again for the device (a bias sweep launches as ONE walk
 #    walking the points), and again for the transmission
+#
+#    OR THE WHOLE LADDER AS ONE JOB, each group launched when the one before
+#    has finished (job-system.md § 6.0, *A sequence of groups*): one
+#    allocation, the largest any group asks for, the walls summed -- a
+#    transmission with GPU use off runs on its cores inside a GPU allocation.
+molbuilder jobset prep task   --bundle BDT-Au/transport/BDTTrans \
+    --group 1 --group 2 --group 3 --one-job
+molbuilder jobset launch task --bundle BDT-Au/transport/BDTTrans \
+    --group 1 --group 2 --group 3 --mode submit
 
 # 3. read the deliverable back
 molbuilder jobset summarize task        # -> <label>.transport.json + <label>.transport.nc + the I-V table
@@ -2932,7 +2943,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 |---|---|---|
 | `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
 | `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
-| `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
+| `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points; several `--group` as one job launching each in turn, each rung gathering from the runs the groups before it just finished (`job-system.md` § 6.0, *A sequence of groups*) | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
 | `jobset scratch [--empty] [-y]` | list the leads' surface Green's function files (`*.TSGFL`, `*.TSGFR`) the calculation's runs hold — a device that ran once, a walk that stopped before its end, a run prepared before 2.22.0 — each with its stage, size and path; a run still going keeps its own — held by a job launched from this machine that is going or whose state this machine cannot tell, or read queued or running by the run door — each kept file said with why; `--empty` removes the rest after one question, `remove them? [y/N]` (`job-system.md` § 5.3) | `jobset/_cli.py::scratch_cmd`, `jobset/runstatus.py::scratch_answer`, `jobset/materialize.py::scratch_in` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |

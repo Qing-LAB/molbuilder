@@ -257,6 +257,15 @@ def _job_id_of(kind, answer: str) -> str:
     return jid
 
 
+def _own_walls(mode: str, inside: Optional["Inside"]) -> bool:
+    """Whether each run is told its own card's wall (`running-a-job.md`
+    § 3.6): a run here, or a walk here -- unless it rides a sequence's job
+    sent to a queue, whose every run counts the job's wall from the job's
+    start, handed down unchanged."""
+    return mode == "direct" and not (inside is not None
+                                     and inside.in_a_queue_job)
+
+
 def _needs_header(mode: str, machine) -> bool:
     """Whether a submission's header must be there: it is sent
     (``submit``), or asked about where the machine has a scheduler to ask
@@ -305,7 +314,9 @@ def _no_sbatch(what: str, name: str, *, base, told, machine,
     here = block([launch_with(told["kind"], told["stage"], told["trial"],
                               base=base, mode="direct",
                               typed=told["flags"],
-                              groups=([told["group"]]
+                              groups=(told["group"]
+                                      if isinstance(told.get("group"), list)
+                                      else [told["group"]]
                                       if told.get("group") is not None
                                       else ()))])
     if machine.kind.queue:
@@ -697,6 +708,15 @@ class Submission:
     #: files in -- the header's own (:func:`_sbatch_request`): ``""``, the
     #: run's folder, or a walk's ``launch/`` -- ``None`` for a run here.
     outputs_in: Optional[str] = None
+    #: A SEQUENCE OF GROUPS (`job-system.md` § 6.0): ``{"name", "groups":
+    #: [{"number", "stages"}], "record"}`` -- its name, its groups in order
+    #: and its launch record's path -- its job walking the groups' launches,
+    #: no member of its own; ``None`` for every other submission.
+    sequence: Optional[dict] = None
+    #: What the plan shows before this submission's own line -- a
+    #: sequence's: its first group's plan, and each later group said
+    #: (:func:`_plan_sequence`).
+    preview: List["JobResult"] = field(default_factory=list)
 
     def scheduler_said(self, job_id: Optional[str],
                        run_dir: Path) -> Dict[str, Optional[str]]:
@@ -740,6 +760,52 @@ class Submission:
                     lines[i] = (f"{said} (this launch's --time; the header "
                                 f"says {had})")
         return tuple(lines)
+
+
+@dataclass(frozen=True)
+class Inside:
+    """A GROUP'S LAUNCH INSIDE A SEQUENCE'S JOB (`job-system.md` § 6.0, *A
+    sequence of groups*): the sequence's name, its launch record, and the
+    job's address -- a queue job's id, or a walk run here's
+    ``<host>-<pid>`` -- as its walk types them (``--in-sequence``,
+    ``--in-job``)."""
+    name: str
+    record: object
+    job: str
+    #: The scheduler kind of the calculation's machine, which names the
+    #: job's error file -- set by the plan, which reads the machine.
+    kind: object = None
+
+    @classmethod
+    def of(cls, base, name: str, job: str) -> "Inside":
+        """Read the sequence's launch record from the calculation's
+        `launch/` (`sequence.read_record`); a record not there or not
+        reading refused (R-L46)."""
+        from ..runfiles import GroupNames
+        from .sequence import SequenceError, read_record, record_path
+        try:
+            rec = read_record(record_path(base, GroupNames(name)))
+        except (SequenceError, ValueError) as exc:
+            raise SubmitError(f"--in-sequence {name}: {exc} -- a sequence's "
+                              f"own launch types it (job-system.md R-L46).")
+        return cls(name=name, record=rec, job=str(job))
+
+    @property
+    def in_a_queue_job(self) -> bool:
+        """Whether the job it rides was sent to a queue: then every run
+        inside it is told the JOB's wall, counted from the job's start, as
+        the members of any walk sent to a queue are -- never its own card's
+        (`running-a-job.md` § 3.6)."""
+        return self.record.mode == "submit"
+
+    def run_said(self, m) -> Dict[str, object]:
+        """What member ``m``'s launch record says of the job it rides: the
+        sequence's record's (`sequence.Record.run_said`), with the
+        sequence's name."""
+        said = self.record.run_said(
+            job_id=self.job if self.record.mode == "submit" else None,
+            run_dir=m.run_dir, base=m.base, kind=self.kind)
+        return {**said, "sequence": self.name}
 
 
 @dataclass
@@ -794,6 +860,10 @@ class LaunchPlan:
     saved: Optional[str] = None
     #: The calculation's engine, which the save reads its ignores by.
     engine: Optional[str] = None
+    #: A GROUP'S LAUNCH INSIDE A SEQUENCE'S JOB (:class:`Inside`): each run
+    #: it sends records that job, and it adds its runs to that job's
+    #: address instead of writing its own (`job-system.md` § 6.0).
+    inside: Optional["Inside"] = None
     #: QUESTIONS ASKED BEFORE THE PLAN -- which group to launch -- each a
     #: ledger line's facts, written with the send's own question: after the
     #: save, so the state saved holds no line of this launch, as it holds
@@ -839,6 +909,7 @@ class LaunchPlan:
         it."""
         out: List[JobResult] = list(self.skipped)
         for s in self.submissions:
+            out += list(s.preview)
             out += [JobResult(m.name, [], "takes", said=m.would())
                     for m in s.members if m.follows]
             out.append(JobResult(s.name, s.command, "planned",
@@ -1429,7 +1500,9 @@ def plan_launch(calc, *, mode: str,
                 from_attempt: Optional[str] = None,
                 gather: bool = False,
                 background: bool = False,
-                held: Sequence[dict] = ()) -> LaunchPlan:
+                held: Sequence[dict] = (),
+                groups: Sequence[int] = (),
+                inside: Optional[Inside] = None) -> LaunchPlan:
     """STEP 1 of `job-system.md` § 6.0 -- the whole launch of ``calc``, the
     calculation as the verb opened it (A16): its plan, or a benchmark's
     (``bench``: its set and the bench container it was read from) -- planned
@@ -1466,7 +1539,10 @@ def plan_launch(calc, *, mode: str,
     its first launch, the run it continues from and ``cold`` none; launched
     again, ``cold`` nothing of its own, ``from_attempt`` a run of the stage
     it builds on and ``gather`` a transport rung's inputs, taken anew
-    (`job-system.md` § 5.4).
+    (`job-system.md` § 5.4).  ``groups``, two or more: ONE job launching
+    each in turn (:func:`_plan_sequence`, `job-system.md` § 6.0, *A
+    sequence of groups*); ``inside``, a group's launch inside such a job
+    (:class:`Inside`).
 
     THE WORK IS READ OFF WHAT IS LAUNCHED.  A sweep with no trial named,
     sent to (or asked of) a scheduler, goes as ONE job per resource shelf
@@ -1483,19 +1559,28 @@ def plan_launch(calc, *, mode: str,
     asked = dict(mode=mode, only=only, side=side, time_s=time_s,
                  trial_timeout_s=trial_timeout_s, told=told, cold=cold,
                  group=group, from_attempt=from_attempt, gather=gather,
-                 background=background)
+                 background=background, groups=tuple(groups), inside=inside)
     try:
         # THE CALCULATION'S COPY OF ITS MACHINE'S RECORD READS, FIRST, for
         # every door in every mode (`configuration.md` M-3): a copy that does
         # not read is refused in its own words before any member is planned
         # -- and read ONCE for the whole launch (§ 3.2, *the machine*).
         machine = _machine_of(base)
+        if inside is not None:
+            inside = dataclasses.replace(inside, kind=machine.kind)
         jobset = calc.jobset if bench is None else bench[0]
-        plan = _planned(calc, jobset, machine=machine, mode=mode, only=only,
-                        side=side,
-                        time_s=time_s, trial_timeout_s=trial_timeout_s,
-                        told=told, cold=cold, group=group,
-                        from_attempt=from_attempt, gather=gather)
+        # A GROUP'S LAUNCH INSIDE A SEQUENCE'S JOB plans as a reader inside
+        # that job (`joblist.inside`): the runs its job holds read by their
+        # own files -- the gather's gates among them.
+        from ..joblist import inside as _inside_job
+        with _inside_job(inside.job if inside is not None else None,
+                         inside.name if inside is not None else None):
+            plan = _planned(calc, jobset, machine=machine, mode=mode,
+                            only=only, side=side, time_s=time_s,
+                            trial_timeout_s=trial_timeout_s, told=told,
+                            cold=cold, group=group,
+                            from_attempt=from_attempt, gather=gather,
+                            groups=groups, inside=inside)
     except SubmitError as exc:
         if record:
             for facts in held:
@@ -1537,6 +1622,7 @@ def plan_launch(calc, *, mode: str,
         return plan_launch(fresh, bench=again_bench, record=False, **asked)
 
     plan.remake = again
+    plan.inside = inside
     plan.held = list(held)
     plan.told, plan.records = dict(told), record
     # the queue's source is the entry's decision, on every line
@@ -1560,7 +1646,8 @@ def _refusal_kinds() -> tuple:
 def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
              trial_timeout_s, told,
              cold: bool = False, group=None, from_attempt=None,
-             gather: bool = False) -> LaunchPlan:
+             gather: bool = False, groups: Sequence[int] = (),
+             inside: Optional[Inside] = None) -> LaunchPlan:
     """:func:`plan_launch`'s body -- the plan, or the refusal it records;
     ``calc`` the calculation as the verb opened it (A16), ``jobset`` the
     set launched -- its ladder, or a sweep's from its bench container."""
@@ -1588,9 +1675,39 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         import functools
         described = functools.lru_cache(maxsize=None)(
             lambda: _checked(calc, machine))
+    if len(groups) > 1:
+        return _plan_sequence(calc, jobset, groups, machine=machine,
+                              mode=mode, time_s=time_s, told=told,
+                              one=bool(only or from_attempt or cold
+                                       or gather),
+                              described=described)
     members, number = ((_the_group(calc, group=group, only=only,
                                    one=bool(from_attempt or cold or gather)))
                        if jobset.kind == KIND_LADDER else (None, None))
+    if inside is not None and number is not None:
+        # THE GROUP THE SEQUENCE WAS SENT WITH, by its members: groups are
+        # matched by who they are, never by their number (`job-system.md`,
+        # *The task*), so a description renumbered since the job went is
+        # refused here, not launched as another group (R-L46).
+        from .group import group_members, same_members
+        sent = next((g["stages"] for g in inside.record.groups
+                     if int(g["number"]) == int(number)), None)
+        if sent is None or not same_members(sent, group_members(calc.task,
+                                                                number)):
+            raise SubmitError(
+                f"group {number} of the description is "
+                f"{', '.join(group_members(calc.task, number)) or 'none'}, "
+                f"and the sequence {inside.name} was sent with "
+                f"{', '.join(sent) if sent else 'no such group'} -- the "
+                f"description changed since the job went, so this group is "
+                f"not launched in it (job-system.md § 6.0; R-L46).")
+    if number is not None:
+        # A GROUP A SEQUENCE STILL GOING HOLDS is that job's to launch
+        # (`job-system.md` § 6.0, R-L45) -- but by its own walk.
+        from .ready import held_by_sequence
+        held = held_by_sequence(calc, number)
+        if held is not None and (inside is None or inside.job != held[0].id):
+            raise SubmitError(_held_by(held, number, base))
     if members is not None and len(members) == 1:
         only, members = members[0], None
 
@@ -1605,7 +1722,8 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
     if members:
         plan = _plan_group(calc, members, mode=mode,
                            time_s=time_s, told=told, number=number,
-                           described=described, machine=machine)
+                           described=described, machine=machine,
+                           inside=inside)
     elif jobset.kind == KIND_SWEEP and only is None and mode in ("submit", "ask"):
         plan = _plan_shelves(jobset, base, shape=shape, mode=mode, side=side,
                              time_s=time_s, trial_timeout_s=trial_timeout_s,
@@ -1617,7 +1735,8 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         plan = _plan_stage(calc, jobset, mode=mode, only=only,
                            time_s=time_s, told=told, cold=cold,
                            from_attempt=from_attempt, gather=gather,
-                           described=described, machine=machine)
+                           described=described, machine=machine,
+                           inside=inside)
     plan.queue = (domain, source)
     plan.engine = jobset.engine
     if number is not None and any(m.first for sub in plan.submissions
@@ -1849,7 +1968,8 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
         results += [JobResult(m.name, [], "takes", said=m.note())
                     for m in s.members if m.follows]
         try:
-            results += _go(s, plan.record, background=plan.background)
+            results += _go(s, plan.record, background=plan.background,
+                           inside=plan.inside)
         except SubmitError as exc:
             plan.record("refused", submission=s.name, reason=str(exc))
             if not plan.tolerant:
@@ -1892,7 +2012,8 @@ def _same_folder(plan: LaunchPlan) -> None:
         f"  Nothing was sent.  Launch again to see the new plan.")
 
 
-def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
+def _go(s: Submission, record, *, background: bool = False,
+        inside: Optional[Inside] = None) -> List[JobResult]:
     """THE ONE SENDER (`job-system.md` § 6.0, step 4) -- a stage, a shelf,
     a chain, here or to the scheduler: the line run where the plan said,
     each member's launch recorded by the one writer (:func:`_record_launch`),
@@ -1901,11 +2022,17 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
     started and left -- its own session, so closing the terminal does not
     end it, and nothing attached to it, because everything its scripts print
     already goes to their own files (the run script's runwrap log, a walk's
-    log) -- and the send does not wait."""
+    log) -- and the send does not wait.  A SEQUENCE OF GROUPS (``s.sequence``,
+    `job-system.md` § 6.0) has no member of its own: its address names its
+    groups, and its launch record gets the job's id once the scheduler
+    gives it.  A group's launch ``inside`` a sequence's job records each run
+    as that job's and adds its runs to that job's address, writing none of
+    its own."""
     env = {**os.environ, LAUNCH_CLAIM_VAR: LAUNCH_CLAIM}
     # A RUN HERE WITH A WALL ON ITS CARD is told it the same way a sent job
     # is (`running-a-job.md` § 3.6); one stating none runs until done.
-    if s.direct and s.sent is not None and s.sent.time:
+    if (s.direct and s.sent is not None and s.sent.time
+            and _own_walls("direct", inside)):
         from ..scheduler.kinds import WALL_VAR
         from ..scheduler.quantities import parse_walltime
         env[WALL_VAR] = str(parse_walltime(s.sent.time))
@@ -1928,14 +2055,28 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
         # attempt reading as never launched for its whole runtime.  A failed
         # START records nothing -- Popen raising means no process exists.
         for m in s.members:
-            _record_launch(m, mode="direct", command=s.command)
+            _record_launch(m, mode="direct", command=s.command,
+                           inside=inside)
+        unsent = _stamped(s, None)
         from .. import joblist
-        job, unkept = _keep(joblist.run_here(
-            pid=proc.pid, background=background,
-            calculation=s.members[0].base, members=_job_members(s)))
+        if inside is not None:
+            # RIDES A SEQUENCE'S JOB: its runs added to that job's address
+            # -- the job's to keep and to forget, never this launch's.
+            job, unkept = None, _ride(inside, s)
+        else:
+            job, unkept = _keep(joblist.run_here(
+                pid=proc.pid, background=background,
+                calculation=_calculation_of(s), members=_job_members(s),
+                sequence=_sequence_address(s)))
         record("launched", submission=s.name, command=s.command,
                members=names, **_member_facts(s),
-               **({"job": job.id} if unkept is None else {}),
+               **({"job": job.id} if job is not None and unkept is None
+                  else {}),
+               **({"not_on_address": unkept}
+                  if inside is not None and unkept else {}),
+               **({"record_unwritten": unsent} if unsent else {}),
+               **({"sequence": [g["number"] for g in s.sequence["groups"]]}
+                  if s.sequence else {}),
                **({"background": True, "pid": proc.pid} if background
                   else {}))
         if background:
@@ -1957,12 +2098,17 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
         finally:
             # A RUN WAITED ON is shown by its own launch, which says how it
             # ended -- or, stopped at its terminal, its stop: its address is
-            # done with (`job-system.md` § 6.0a).
-            joblist.forget(job)
+            # done with (`job-system.md` § 6.0a).  A launch inside a
+            # sequence's job wrote none.
+            if job is not None:
+                joblist.forget(job)
         # IT RAN HERE AND ENDED -- how it ended is the status door's, read
         # by the launch verb once every submission has gone (`_cli`,
         # `job-system.md`, *A run here, waited on*).
-        return ([JobResult(s.name, s.command, "ran", returncode=rc)]
+        return ([JobResult(s.name, s.command, "ran", returncode=rc,
+                           detail="; ".join(w for w in (
+                               unkept if inside is not None else None,
+                               unsent) if w) or None)]
                 + ([JobResult(m.name, [], "rides", said=s.rides)
                     for m in s.members] if s.rides else []))
     try:
@@ -1992,6 +2138,7 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
         _record_launch(m, mode="submit", command=s.command, job_id=jid,
                        placement=s.placement, sent=s.sent,
                        scheduler=s.scheduler_said(jid, m.run_dir))
+    unsent = _stamped(s, jid)
     kept = {}
     unkept = None
     if jid is not None:
@@ -1999,17 +2146,66 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
         from ..scheduler.queue import cluster
         job, unkept = _keep(joblist.queue_job(
             job_id=jid, cluster=cluster(s.machine.scheduler),
-            calculation=s.members[0].base,
-            members=_job_members(s)))
+            calculation=_calculation_of(s),
+            members=_job_members(s), sequence=_sequence_address(s)))
         kept = {"job": job.id} if unkept is None else {}
     record("launched", submission=s.name, command=s.command, job_id=jid,
-           domain=s.domain, members=names, **_member_facts(s), **kept)
+           domain=s.domain, members=names, **_member_facts(s), **kept,
+           **({"sequence": [g["number"] for g in s.sequence["groups"]]}
+              if s.sequence else {}),
+           **({"record_unwritten": unsent} if unsent else {}))
     return ([JobResult(s.name, s.command, "submitted", job_id=jid,
                        domain=s.domain,
-                       detail="; ".join(w for w in (unread, unkept) if w)
-                       or None)]
+                       detail="; ".join(w for w in (unread, unkept, unsent)
+                                        if w) or None)]
             + ([JobResult(m.name, [], "rides", said=s.rides, job_id=jid)
                 for m in s.members] if s.rides else []))
+
+
+def _stamped(s: "Submission", job_id: Optional[str]) -> Optional[str]:
+    """A sequence's launch record stamped as its job went
+    (`sequence.sent`) -- ``None``, or why it could not be, said on the
+    launch's line and in the ledger: the job went all the same, and its
+    runs read the record's facts, written before it went."""
+    if not s.sequence:
+        return None
+    from .sequence import SequenceError, sent
+    try:
+        sent(s.sequence["record"], job_id=job_id)
+    except (SequenceError, OSError) as exc:
+        return ("its launch record was not stamped with when it went"
+                + (f" and job {job_id}" if job_id else "") + f" ({exc})")
+    return None
+
+
+def _calculation_of(s: "Submission") -> Path:
+    """The calculation a submission's job belongs to -- its members', or,
+    for a sequence of groups, which has none, the folder its walk runs
+    from: the calculation's own."""
+    return s.members[0].base if s.members else Path(s.cwd)
+
+
+def _sequence_address(s: "Submission") -> Optional[dict]:
+    """What a sequence's job address says of it (`joblist.Job.sequence`):
+    its name and groups; ``None`` for every other submission."""
+    if not s.sequence:
+        return None
+    return {"name": s.sequence["name"], "groups": [
+        {"number": g["number"], "stages": list(g["stages"])}
+        for g in s.sequence["groups"]]}
+
+
+def _ride(inside: Inside, s: "Submission") -> Optional[str]:
+    """A group's launch inside a sequence's job: its runs added to that
+    job's address (`joblist.add_members`) -- ``None``, or why they could
+    not be, said on the launch's line: the job's runs record it all the
+    same, and are read by their own records."""
+    from .. import joblist
+    try:
+        joblist.add_members(inside.job, _job_members(s))
+    except (joblist.JobFileError, OSError) as exc:
+        return f"its runs are not on job {inside.job}'s address ({exc})"
+    return None
 
 
 def _job_members(s: "Submission") -> Dict[str, Dict[str, str]]:
@@ -2164,6 +2360,12 @@ def _empty_scratch_fn(when: str) -> List[str]:
     ]
 
 
+class WalkCommand(str):
+    """A walk step's command as shell words, run as they stand -- a group's
+    launch in a sequence of groups (`job-system.md` § 6.0); every other
+    step names a run script, which the walk runs with ``bash``."""
+
+
 def _walk_script(name: str, steps, *, where: str, log: str,
                  member_word: str = "trial",
                  bound_s: Optional[int] = None,
@@ -2176,11 +2378,13 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     one submission: a benchmark's trials (a shelf sent to a queue, or its
     unlaunched trials run here, `generator.md` § 4.3a), a group's stages
     (`project-layout.md` § 1.6.6), a swept rung's points
-    (`engines/transport.md` § 2a.11).  ``steps`` are ``(name, folder, run
-    script, its arguments, before)``: the folder from where the walk runs,
-    and ``before`` the files copied into it just before it starts --
-    ``(source, folder)`` pairs, a sweep's start (its `along` row); ``()``
-    for every other walk.  ``bound_s`` is a per-member bound, a member past
+    (`engines/transport.md` § 2a.11), a sequence's groups (`job-system.md`
+    § 6.0).  ``steps`` are ``(name, folder, run script, its arguments,
+    before)``: the folder from where the walk runs -- the run script run
+    with ``bash``, or a :class:`WalkCommand`, shell words run as they stand
+    (a group's launch) -- and ``before`` the files copied into it just
+    before it starts -- ``(source, folder)`` pairs, a sweep's start (its
+    `along` row); ``()`` for every other walk.  ``bound_s`` is a per-member bound, a member past
     it killed and read incomplete (a benchmark's).  A member that fails
     leaves the rest to run, and the walk exits nonzero when any failed --
     unless ``stop_on_failure`` (a device's points: the ones after a failed
@@ -2242,9 +2446,9 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "    _t0=$(date +%s)",
         f'    echo "[group] {when} -> ${{_name}} starts" >> "$LOG"',
         (f'    ( cd "${{_dir}}" && timeout -k 30 {bound_s} '
-         'bash "$@" ) >> "$LOG" 2>&1'
+         '"$@" ) >> "$LOG" 2>&1'
          if bound_s else
-         '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1'),
+         '    ( cd "${_dir}" && "$@" ) >> "$LOG" 2>&1'),
         "    _rc=$?",
         '    if [ "${_rc}" -eq 124 ]; then',
         (f'        echo "[group] ${{_name}} hit the {bound_s}s '
@@ -2266,8 +2470,10 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         if empties and k in empties:
             lines.append(f'empty_scratch {_shlex.quote(empties[k])}')
         wall = walls[k] if walls else None
+        what = (str(run_sh) if isinstance(run_sh, WalkCommand)
+                else f'bash "{run_sh}"')
         call = ((f"{WALL_VAR}={int(wall)} " if wall else "")
-                + f'run_member "{member}" "{folder}" "{run_sh}"'
+                + f'run_member "{member}" "{folder}" {what}'
                 + (f" {args}" if args else ""))
         # THE MEMBERS AFTER A FAILED ONE IN ITS CHAIN WOULD START FROM IT:
         # they are not run, and the walk goes on with the other chains.
@@ -2456,7 +2662,8 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
 
 
 def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
-                 time_s: Optional[int], told) -> None:
+                 time_s: Optional[int], told,
+                 inside: Optional[Inside] = None) -> None:
     """A RUN OF POINTS SENT: one submission walking ``m``'s run -- its
     points as :func:`_plan_member` opened and filled them -- into ``plan``
     (`engines/transport.md` § 2a.11).
@@ -2607,7 +2814,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         member_word="point", log=log,
         stop_on_failure=bool(hand), chains=chains,
         empties=empties, empty_at_end=scratch_at,
-        walls=([_wall_s(job.resources)] * len(steps) if mode == "direct"
+        walls=([_wall_s(job.resources)] * len(steps)
+               if _own_walls(mode, inside)
                else None))
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
@@ -2744,7 +2952,8 @@ def _member_facts(s: "Submission") -> Dict[str, object]:
 
 def _record_launch(m: "_Member", *, mode: str, command: List[str],
                    job_id: Optional[str] = None, placement=None,
-                   sent=None, scheduler: Optional[dict] = None) -> None:
+                   sent=None, scheduler: Optional[dict] = None,
+                   inside: Optional[Inside] = None) -> None:
     """Write member ``m``'s launch record in the folder its run runs in,
     named by its stage's names (`runrecord.write_launch`) -- carrying what
     it continues from, its own hand-over (`job-system.md` § 5.4).  Where a
@@ -2754,20 +2963,29 @@ def _record_launch(m: "_Member", *, mode: str, command: List[str],
     ``placement`` and ``scheduler`` are passed because submission is what
     knows where the job went and where its scheduler writes of it, and
     nothing downstream should have to work either out from a command
-    line."""
+    line.  A run a group's launch ``inside`` a sequence's job sends records
+    that job -- its mode, line, id, placement and scheduler as the
+    sequence's launch record states them, and its name (`job-system.md`
+    § 6.0, *A sequence of groups*)."""
     from ..runrecord import write_launch
     cont = m.continued
     if cont is not None and m.names.shared:
         hand_over(m.base, cont)
-    write_launch(m.run_dir, names=m.names, run=m.run, mode=mode,
-                 command=command, job_id=job_id,
+    said = (inside.run_said(m) if inside is not None else
+            {"mode": mode, "command": command, "job_id": job_id,
+             "placed_on": _placed_on(placement, sent),
+             "scheduler": scheduler, "sequence": None})
+    write_launch(m.run_dir, names=m.names, run=m.run, mode=said["mode"],
+                 command=said["command"], job_id=said["job_id"],
                  continued_from=cont.source if cont is not None else None,
-                 placed_on=_placed_on(placement, sent), scheduler=scheduler)
+                 placed_on=said["placed_on"], scheduler=said["scheduler"],
+                 sequence=said["sequence"])
 
 
 def _plan_group(calc, names: List[str], *, machine, mode: str, told,
                 number: int, time_s: Optional[int] = None,
-                described=None) -> LaunchPlan:
+                described=None, inside: Optional[Inside] = None
+                ) -> LaunchPlan:
     """ONE submission walking a GROUP's stages -- the description's group
     ``number``, its members ``names`` in the ladder's order, prepared as one
     job (`project-layout.md` § 1.6.6).  Each is planned as a stage alone is
@@ -2811,7 +3029,7 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
         where="a group's one job: " + ", ".join(names),
         member_word="stage", log=log,
         walls=([_wall_s(m.job.resources) for m in members]
-               if mode == "direct" else None))
+               if _own_walls(mode, inside) else None))
     launch_dir = base / LAUNCH_DIR
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
@@ -2866,11 +3084,197 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     return plan
 
 
+def _held_by(held, number: int, base) -> str:
+    """The refusal of a group a sequence still going holds (R-L45): its job,
+    what it is doing, and the line that stops it."""
+    job, after, said = held
+    return (f"group {number} goes in job {job.id} -- a sequence of groups "
+            f"still going ({said}) launches it "
+            + (f"after group {after}" if after is not None else "first")
+            + "; launch it alone or in another sequence once that job has "
+              "ended, or stop the job first:\n"
+            + block([f"molbuilder jobs stop {job.id}"])
+            + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
+
+
+def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
+                   machine, mode: str, time_s: Optional[int], told,
+                   one: bool, described) -> LaunchPlan:
+    """A SEQUENCE OF GROUPS (`job-system.md` § 6.0, *A sequence of
+    groups*): ONE submission whose walk launches each group named, in the
+    description's order, as `launch task --group N --mode direct` launches
+    it, on the job's node -- each planned when its turn comes, so each takes
+    what it builds on from the runs the groups before it have just finished.
+
+    Refused before anything is sent (R-L45): a flag that speaks for one
+    stage (``one``); a group not prepared, or a group a sequence still going
+    holds -- each group asked as its own launch asks it
+    (:func:`_the_group`, `ready.held_by_sequence`); under ``submit`` or
+    ``ask``,
+    no header prep wrote for exactly these groups (`prep task --group …
+    --one-job`), or one that is not what prep would write now.  The plan
+    shows the first group's plan, made as its own launch makes it now -- its
+    gates, its runs, what each takes -- and each group after it by its
+    stages; it writes the sequence's walk and its launch record
+    (`sequence.Record`), both before the job goes, since the job reads
+    them."""
+    import shlex
+    import sys
+    from ..runfiles import LAUNCH_DIR
+    from .commands import block, prep_sequence_lines
+    from .group import group_members, sequence_names
+    from .ready import held_by_sequence
+    from .sequence import Record, record_path, record_text
+    base, task = Path(calc.base), calc.task
+    if jobset.kind != KIND_LADDER:
+        raise SubmitError("several groups go as one job in a task, and this "
+                          "is a benchmark (job-system.md § 6.0).")
+    numbers = sorted(set(int(n) for n in numbers))
+    if one:
+        raise SubmitError(
+            "--stage, --cold, --from and --gather speak for one stage, and "
+            f"groups {', '.join(map(str, numbers))} go as one job of "
+            "several groups -- launch that stage alone (job-system.md "
+            "§ 6.0, *A sequence of groups*; R-L45).")
+    for n in numbers:
+        # EACH GROUP AS ITS OWN LAUNCH ASKS IT: described, prepared, its
+        # members not changed since -- and held by no sequence still going.
+        _the_group(calc, group=n, only=None, one=False)
+        held = held_by_sequence(calc, n)
+        if held is not None:
+            raise SubmitError(_held_by(held, n, base))
+    groups = [{"number": n, "stages": list(group_members(task, n))}
+              for n in numbers]
+    names = sequence_names(base, task, numbers)
+    words = ", ".join(map(str, numbers))
+    # THE FIRST GROUP'S PLAN, made as its own launch makes it now, run here
+    # inside the job -- its refusal is this launch's; nothing of it is
+    # written by this send: its own launch, inside the job, plans and
+    # writes it.
+    first = _planned(calc, jobset, machine=machine, mode="direct", only=None,
+                     side=None, time_s=None, trial_timeout_s=None, told=told,
+                     group=numbers[0])
+    preview = [r for r in first.shown() if r.status != "planned"]
+    preview += [JobResult(f"group {g['number']} ({', '.join(g['stages'])})",
+                          [], "takes",
+                          said=(f"launched in this job when group "
+                                f"{numbers[i]} has finished, taking what it "
+                                f"builds on then"))
+                for i, g in enumerate(groups[1:])]
+    plan = LaunchPlan(base, mode, [])
+    launch_dir = base / LAUNCH_DIR
+    walk_name = f"{LAUNCH_DIR}/{names.name('.run.sh')}"
+    log = f"{LAUNCH_DIR}/{names.name('.log')}"
+    rec_path = record_path(base, names)
+    # THE WALK: each group's launch, in order, the first that does not
+    # finish ending it -- THE MOLBUILDER SENDING IT, its interpreter run
+    # from the folder its package was imported from, which the job's node
+    # must see; the calculation by its full path; the job's address as its
+    # walk knows it (`job-system.md` § 6.0, *The walk*).
+    import molbuilder as _mb
+    home = Path(_mb.__file__).resolve().parent.parent
+    steps = [(f"group {g['number']}", str(home), WalkCommand(
+        " ".join([shlex.quote(sys.executable), "-m", "molbuilder", "jobset",
+                  "launch", "task", "--group", str(g["number"]), "--bundle",
+                  shlex.quote(str(base)), "--mode", "direct", "--foreground",
+                  "--yes", "--in-sequence", shlex.quote(names.stem),
+                  "--in-job", '"${MB_JOB_ID:-$(hostname)-$$}"'])), "", ())
+        for g in groups]
+    script = _walk_script(names.stem, steps,
+                          where=f"groups {words} in sequence, one job",
+                          member_word="group", log=log,
+                          stop_on_failure=True, chains=[0] * len(steps))
+    sequence = {"name": names.stem, "groups": groups, "record": rec_path}
+    if mode == "direct":
+        sub = Submission(names.stem, ["bash", walk_name], base, True, [],
+                         log=base / log, sequence=sequence, preview=preview)
+        rec = Record(groups=groups, mode="direct", command=sub.command,
+                     placed_on=None, scheduler=None)
+    else:
+        header = launch_dir / names.name(".sbatch")
+        jobs = [jobset.job(st) for g in groups for st in g["stages"]]
+        if mode == "submit" and not machine.kind.queue:
+            # NO QUEUE TO SEND TO: the one answer every door gives
+            # (`_no_sbatch`), the run here as a command.
+            raise SubmitError(_no_sbatch(
+                f"groups {words}", f"{LAUNCH_DIR}/{header.name}", base=base,
+                told=told, machine=machine))
+        if _needs_header(mode, machine) and not header.is_file():
+            raise SubmitError(
+                f"groups {words} go as one job, and prep wrote no header "
+                f"for them ({LAUNCH_DIR}/{header.name}) -- prepare them as "
+                f"one job first:\n"
+                + block(prep_sequence_lines(numbers, base=base))
+                + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
+        if header.is_file():
+            _sequence_header_is_prep_s(calc, numbers, groups, header,
+                                       described)
+            plan.reads.append(_as_found(header, base))
+        sent, placement, cmd, outputs_in = _sbatch_request(
+            header=header, placement=_placed_by_prep(jobs), time_s=time_s,
+            job_name=_scheduler_job_name(jobset, names.stem),
+            script=f"{LAUNCH_DIR}/{names.name('.sbatch')}", run_args=(),
+            machine=machine)
+        sub = Submission(names.stem, cmd, base, False, [],
+                         placement=placement, sent=sent, header=header,
+                         machine=machine, outputs_in=outputs_in,
+                         sequence=sequence, preview=preview)
+        plan.queue = _the_queue(jobs)
+        rec = Record(
+            groups=groups, mode="submit", command=cmd,
+            placed_on=_placed_on(placement, sent),
+            scheduler={"kind": machine.kind.name,
+                       "outputs_in": os.path.relpath(
+                           base / (outputs_in or ""), base)})
+    if mode != "ask":
+        open_container(base, launch_dir, plan.writes)
+        plan.writes.text(base / walk_name, script)
+        plan.writes.text(rec_path, record_text(rec))
+    plan.engine = jobset.engine
+    plan.submissions.append(sub)
+    return plan
+
+
+def _sequence_header_is_prep_s(calc, numbers, groups, header,
+                               described) -> None:
+    """THE SEQUENCE'S HEADER IS STILL WHAT PREP WOULD WRITE (R-L45, as a
+    group's is, R-L16): each group's own request as its rows stand now, the
+    sequence's one request rendered now (`prep.sequence_header`), compared
+    with the file, its stamps masked."""
+    from ..deck_record import without_stamps
+    from ..transport.stages import frames_of, rung_points
+    from .commands import block, prep_sequence_lines
+    from .errors import PrepError
+    from .prep import sequence_header
+    base, task, jobset = Path(calc.base), calc.task, calc.jobset
+    jobs_of = {g["number"]: [jobset.job(st) for st in g["stages"]]
+               for g in groups}
+    points_of = {n: (len(rung_points(task, js[0].name,
+                                     frames=frames_of(base)))
+                     if len(js) == 1 else 0) for n, js in jobs_of.items()}
+    try:
+        now, _less = sequence_header(base, task, numbers, jobs_of, points_of,
+                                     described().environment)
+    except PrepError as exc:
+        raise SubmitError(str(exc)) from None
+    if now is None or without_stamps(now.text.encode("utf-8")) != \
+            without_stamps(header.read_bytes()):
+        raise SubmitError(
+            f"the header of groups {', '.join(map(str, numbers))} as one "
+            f"job, {header.relative_to(base)}, is not what prep would write "
+            f"now -- a group was prepared again, or the header or the "
+            f"machine's record changed, since that prep.  Prepare them as "
+            f"one job again:\n" + block(prep_sequence_lines(numbers,
+                                                            base=base))
+            + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
+
+
 def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
                 only: Optional[str], time_s: Optional[int], told,
                 cold: bool = False,
                 from_attempt: Optional[str] = None, gather: bool = False,
-                described=None) -> LaunchPlan:
+                described=None, inside: Optional[Inside] = None
+                ) -> LaunchPlan:
     """The stage door's plan -- a task's stage, or a benchmark's named
     trial: one submission.
 
@@ -2916,7 +3320,8 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
             continue
         if m.points is not None:
             _points_walk(plan, m, calc, mode=mode,
-                         time_s=time_s, told=told, machine=machine)
+                         time_s=time_s, told=told, machine=machine,
+                         inside=inside)
             continue
         try:
             # A NAMED TRIAL'S way back is its benchmark's, not a group's.
