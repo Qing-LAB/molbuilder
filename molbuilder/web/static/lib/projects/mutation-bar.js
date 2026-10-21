@@ -31,8 +31,8 @@ let elProjBtn, elFolderBtn, elUploadBtn, elZipBtn;
 
 /* THE DOWNLOAD BUTTON'S WHOLE STATE, in one place.
  *
- * `zipBusy` is what the build is doing; `zipReport` is what the last
- * one produced.  Neither is written onto the element directly -- they
+ * `zipBusy` is what the download is doing; `zipReport` is what the last
+ * one held.  Neither is written onto the element directly -- they
  * are INPUTS to `_updateButtonEnablement`, which is the only function
  * that touches the button's label, tooltip or disabled flag.
  *
@@ -75,45 +75,58 @@ function _updateButtonEnablement() {
     : (root
        ? "Pick a folder in the sidebar first."
        : "Download " + _dirName(dir) + " as a .zip — the folder as it "
-         + "stands now: no checkpoint history (.git, .binsnapshots) and "
-         + "no workspace store."
+         + "stands now: no checkpoint history (.git, .binsnapshots), no "
+         + "workspace store and no engine scratch.  Its size is shown "
+         + "first."
          + (zipReport ? "  Last archive: " + zipReport : ""));
 }
 
-/* Compressing a results directory takes minutes, and the button is
- * the only place a person is looking.  So it SAYS what is happening
- * and refuses a second click until the browser's save has started
- * (user, 2026-08-29): "Zipping…" while the server builds, then the
- * navigation, then back to "Download".
- *
- * The archive is built by /api/files/zip_prepare and fetched by
- * token, which is what makes the two states knowable -- a plain
- * navigation reports neither its start nor its end. */
+/* THE DOWNLOAD ASKS FIRST, WITH ITS SIZE (`projects.md` § 4; user,
+ * 2026-10-20: "is there a way to add a UI warning for this operation").
+ * /api/files/zip_prepare reads names and sizes only, so the button says
+ * "Reading sizes…" for seconds, not minutes; the person then sees what the
+ * archive holds, what it leaves out and the line that copies the folder
+ * instead, and only "Download" sends a byte -- /api/files/download_zip
+ * streams the archive as it reads the files, its length exact, so the
+ * browser shows progress and a cut download reads as failed. */
 function _setZipBusy(busy, label) {
   zipBusy = !!busy;
   zipBusyLabel = label || "";
   _updateButtonEnablement();
 }
 
-/* WHAT THE ARCHIVE TURNED OUT TO BE.  The server counts the files, the
- * bytes and anything it had to leave behind, and answers all three.
- * `skipped` matters
- * most: those are symlinks pointing out of the projects tree, dropped
- * on purpose, and silently dropping a file is not an option. */
+/* A size as a person reads it, in the largest unit that keeps it above 1. */
+function _sizeWords(n) {
+  let v = Number(n) || 0;
+  for (const unit of ["bytes", "KB", "MB", "GB", "TB"]) {
+    if (v < 1024 || unit === "TB") {
+      return unit === "bytes" ? v + " bytes" : v.toFixed(1) + " " + unit;
+    }
+    v /= 1024;
+  }
+  return String(n);
+}
+
+/* WHAT THE ARCHIVE WOULD BE: its files and exact size; `skipped` -- links
+ * pointing out of the projects tree, left behind on purpose, never in
+ * silence; and what it leaves out, each with how much. */
 function _describeArchive(out) {
-  const mb = (Number(out.bytes) || 0) / (1024 * 1024);
-  const size = mb >= 1 ? mb.toFixed(1) + " MB"
-    : Math.max(1, Math.round((Number(out.bytes) || 0) / 1024)) + " KB";
-  let text = (Number(out.files) || 0) + " files, " + size;
+  let text = (Number(out.files) || 0) + " files, " + _sizeWords(out.bytes);
   if (Number(out.skipped) > 0) {
     text += " — " + out.skipped + " link(s) pointing outside the "
-      + "projects tree were left out";
+      + "projects tree left out";
   }
   return text;
 }
 
-/* The last path segment -- what the button is about to zip.  Naming the
- * target keeps a person from downloading a whole project by accident
+function _leftOutWords(out) {
+  const parts = (out.left_out || []).map((l) =>
+    l.what + " (" + l.files + " files, " + _sizeWords(l.bytes) + ")");
+  return parts.length ? "Left out: " + parts.join("; ") + "." : "";
+}
+
+/* The last path segment -- what the button is about to download.  Naming
+ * the target keeps a person from downloading a whole project by accident
  * (user, 2026-08-29). */
 function _dirName(dir) {
   const parts = String(dir || "").split("/").filter(Boolean);
@@ -123,7 +136,7 @@ function _dirName(dir) {
 async function _doDownloadZip() {
   const dir = readSelectionSlot(SS_DIR) || "";
   if (!dir || atProjectsRoot(dir)) return;
-  _setZipBusy(true, "Zipping…");
+  _setZipBusy(true, "Reading sizes…");
   let out = null;
   try {
     const r = await fetch("/api/files/zip_prepare", {
@@ -135,21 +148,24 @@ async function _doDownloadZip() {
   } catch (e) {
     out = { ok: false, error: String(e) };
   }
+  _setZipBusy(false, "");
   if (!out || !out.ok) {
-    _setZipBusy(false, "");
-    tell("error", (out && out.error) || "Could not build the archive.");
+    tell("error", (out && out.error) || "Could not read the folder.");
     return;
   }
-  zipReport = _dirName(dir) + ".zip — " + _describeArchive(out);
-  if (Number(out.skipped) > 0) {
-    // Not a tooltip matter: files the person expected to be in the
-    // archive are not in it, and they have to know before they carry
-    // it to another machine.
-    tell("warn", "Archive ready: " + zipReport + ".  Those links point "
-        + "outside the projects tree, so their targets could not be "
-        + "included.");
-  }
-  // The bytes exist: this navigation starts the save immediately.
+  const report = out.name + " — " + _describeArchive(out);
+  const body = [report];
+  const left = _leftOutWords(out);
+  if (left) body.push(left);
+  body.push("To copy it without a zip, from the machine it goes to: "
+            + out.rsync);
+  const go = await window.molbuilder.warningModal.confirm({
+    title:        "Download " + out.name + "?",
+    body:         body,
+    confirmLabel: "Download",
+  });
+  if (!go) return;
+  zipReport = report;
   _setZipBusy(true, "Saving…");
   window.location.assign(
     "/api/files/download_zip?token=" + encodeURIComponent(out.token));

@@ -2786,13 +2786,12 @@ class TestRootsContract:
 
 
 class TestDownloadZip:
-    """The *carry a calculation without ssh* door (user, 2026-08-28),
-    now in two halves (user, 2026-08-29): ``POST /api/files/zip_prepare``
-    builds the archive and answers what it is, ``GET
-    /api/files/download_zip?token=`` streams it.  The split exists so
-    the sidebar button can say *Zipping…* and stay unclickable until
-    the save starts -- a plain navigation reports neither end of a
-    build that takes minutes.
+    """The *carry a calculation without ssh* door (user, 2026-08-28), in
+    two halves: ``POST /api/files/zip_prepare`` reads names and sizes and
+    answers what the archive would be -- so the page asks first, with its
+    size (user, 2026-10-20) -- and ``GET /api/files/download_zip?token=``
+    streams it as it reads the files, its length exact
+    (`docs/web/projects.md` § 4).
     """
 
     @staticmethod
@@ -2831,8 +2830,10 @@ class TestDownloadZip:
             assert zf.read("BDT/water_spectra.spectra.json") \
                 == b'{"schema_version": 2}\n', "bytes must survive verbatim"
         assert body["name"] == "BDT.zip"
-        assert body["files"] == 2 and body["bytes"] > 0
-        assert body["skipped"] == 0
+        assert body["files"] == 2 and body["skipped"] == 0
+        # THE LENGTH IS EXACT, before a byte is sent: what the page shows
+        # is what arrives, and the browser can tell a cut download.
+        assert body["bytes"] == len(r.data) == int(r.headers["Content-Length"])
 
     def test_the_token_is_single_use(self, web, picker_root):
         """The temp file goes with the response, so a replayed token
@@ -2957,6 +2958,57 @@ class TestDownloadZip:
             "only STORAGE is excluded, not every dotfile")
         assert sorted(body["excluded"]) == [
             ".binsnapshots", ".git", ".molbuilder_workspace"]
+        left = {l["what"]: (l["files"], l["bytes"]) for l in body["left_out"]}
+        assert left[".git"] == (2, len(b"history\n")
+                                + len(b"ref: refs/heads/main\n"))
+        assert left[".binsnapshots"] == (1, len(b"snapshot\n"))
+        for e in (".git", ".binsnapshots", ".molbuilder_workspace"):
+            assert f"--exclude={e}" in body["rsync"], body["rsync"]
+
+    def test_an_engines_scratch_is_left_out_and_counted(self, web,
+                                                       picker_root):
+        """A device run's leads' Green's functions -- tens of GiB each,
+        recomputed by every run -- carried into the archive: the 2026-10-20
+        download of a 200 GB calculation, 98 GB of it these.  Left out by
+        the one answer the checkpoint asks (`warmfiles.is_scratch`), counted
+        in what the page shows, and named in the `rsync` line's exclusions
+        (`projects.md` § 4)."""
+        import io
+        import zipfile
+        from molbuilder.warmfiles import scratch_families
+        d = picker_root / "spectrum" / "device"
+        (d / "run-0" / "tsgf").mkdir(parents=True)
+        (d / "run-0" / "tsgf" / "AuBDT.v0.TSGFL").write_bytes(b"x" * 64)
+        (d / "run-0" / "tsgf" / "AuBDT.v0.TSGFR").write_bytes(b"y" * 32)
+        (d / "run-0" / "AuBDT.TSDE").write_bytes(b"density\n")
+        body, r = self._fetch(web, d)
+        assert r.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
+            names = zf.namelist()
+        assert names == ["device/run-0/AuBDT.TSDE"], names
+        left = {l["what"]: (l["files"], l["bytes"]) for l in body["left_out"]}
+        assert left["an engine's scratch"] == (2, 96)
+        for family in scratch_families():
+            assert family in body["rsync"], body["rsync"]
+
+    def test_a_file_that_shrank_cuts_the_download(self, web, picker_root):
+        """A file shorter when it is read than when it was sized, sent as a
+        whole archive: the far machine unpacks a zip missing bytes and nobody
+        is told.  The stream ends short of its stated length instead, so the
+        browser reads the download as failed (`projects.md` § 4)."""
+        d = picker_root / "spectrum" / "shrinks"
+        d.mkdir()
+        (d / "big.bin").write_bytes(b"z" * 4096)
+        pre = self._prepare(web, d).get_json()
+        (d / "big.bin").write_bytes(b"z" * 100)
+        r = web.get("/api/files/download_zip",
+                    query_string={"token": pre["token"]})
+        try:
+            got = len(r.get_data())
+        except OSError as exc:
+            assert "shorter" in str(exc)
+        else:
+            assert got < int(r.headers["Content-Length"])
 
     def test_a_current_big_result_rides_even_when_snapshotted(
             self, web, picker_root):

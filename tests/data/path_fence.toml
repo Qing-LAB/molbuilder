@@ -204,7 +204,7 @@ request = { query = { path = "{outside_file}" } }
 [[route]]
 rule = "/api/files/download_zip"
 method = "GET"
-takes_no_path = "A token minted by /api/files/zip_prepare; the archive it streams is a server-held temp file, never named by the request."
+takes_no_path = "A token minted by /api/files/zip_prepare; the archive it streams is read from the plan that call made, never named by the request."
 
 [[route]]
 rule = "/api/files/list"

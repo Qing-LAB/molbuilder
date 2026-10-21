@@ -48,7 +48,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -615,113 +614,133 @@ def _zip_target_refusals(resolved: Path):
     return True, None, 200
 
 
-def _build_archive(resolved: Path):
-    """Compress *resolved* into a temp ``.zip``; answer ``(path, file
-    count, skipped)``.
+def _archive_plan(resolved: Path) -> dict:
+    """What the archive of *resolved* will hold -- read off names and
+    sizes alone, nothing opened, compressed or written
+    (`docs/web/projects.md` § 4, *Download*).
 
-    Never in RAM -- a results directory can be gigabytes.  The walk
-    excludes the storage subtrees (`_archive_excluded_dirs`) and any
-    symlink pointing outside the picker root, which is what makes the
-    archive a pure execution directory.
+    ``entries`` are ``(source, arcname, size)`` in the order the stream
+    sends them (`zip_stream.Entry`); ``skipped`` the links whose target
+    sits outside the picker root, counted, never followed; ``left_out``
+    what the archive leaves out, each with its files and bytes: the
+    storage subtrees (`_archive_excluded_dirs`) and an engine's scratch
+    (`warmfiles.is_scratch`, the one answer the checkpoint asks).
     """
-    import zipfile
+    from molbuilder.warmfiles import is_scratch
 
     root_path, _ = _root_containing(resolved)
     base = resolved.parent
+    entries: List[Tuple[str, str, int]] = []
     skipped = 0
-    written = 0
-    tmp = tempfile.NamedTemporaryFile(
-        prefix="mb-zip-", suffix=".zip", delete=False)
-    try:
-        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
-            # PRUNED, not filtered: os.walk lets the excluded subtrees
-            # go unvisited.  A filter still stats every object in a
-            # checkpoint's .git -- tens of thousands on a long-lived
-            # calculation -- to throw them all away, which is exactly
-            # the wait this door exists to shorten.  Exclusion is
-            # matched INSIDE the target only: the answer must not
-            # change because some ancestor of the projects tree happens
-            # to be called .git.
-            for dirpath, dirnames, filenames in os.walk(resolved):
-                here = Path(dirpath)
-                keep = []
-                for d in sorted(dirnames):
-                    if d in _ARCHIVE_EXCLUDED:
-                        continue
-                    q = here / d
-                    if q.is_symlink():
-                        # os.walk never descends a link (followlinks is
-                        # off), so a linked directory contributes
-                        # nothing either way -- but one pointing OUT of
-                        # the root is content deliberately left behind,
-                        # and the header counts what was left behind.
-                        try:
-                            contain(q.resolve(), root_path)
-                        except (OSError, OutsideRoot):
-                            skipped += 1
-                        continue
-                    keep.append(d)
-                dirnames[:] = keep
-                for name in sorted(filenames):
-                    q = here / name
-                    if q.is_symlink():
-                        try:
-                            contain(q.resolve(), root_path)
-                        except (OSError, OutsideRoot):
-                            skipped += 1
-                            continue
-                    if q.is_file():
-                        zf.write(q, arcname=str(q.relative_to(base)))
-                        written += 1
-    except OSError:
-        tmp.close()
+    left = {name: [0, 0] for name in sorted(_ARCHIVE_EXCLUDED)}
+    scratch = [0, 0]
+
+    def _sized(path: Path) -> Optional[int]:
         try:
-            os.unlink(tmp.name)
+            return path.stat().st_size
         except OSError:
-            pass
-        raise
-    tmp.close()
-    return tmp.name, written, skipped
+            return None
+
+    # PRUNED, not filtered: os.walk lets the excluded subtrees go unvisited
+    # by the archive -- they are only measured, in their own walk below.
+    # Exclusion is matched INSIDE the target only: the answer must not
+    # change because some ancestor of the projects tree is called .git.
+    for dirpath, dirnames, filenames in os.walk(resolved):
+        here = Path(dirpath)
+        keep = []
+        for d in sorted(dirnames):
+            q = here / d
+            if d in _ARCHIVE_EXCLUDED:
+                for sub, _ds, fs in os.walk(q):
+                    for f in fs:
+                        got = _sized(Path(sub) / f)
+                        if got is not None:
+                            left[d][0] += 1
+                            left[d][1] += got
+                continue
+            if q.is_symlink():
+                # os.walk never descends a link (followlinks is off), so a
+                # linked directory contributes nothing either way -- but one
+                # pointing OUT of the root is content deliberately left
+                # behind, and the answer counts what was left behind.
+                try:
+                    contain(q.resolve(), root_path)
+                except (OSError, OutsideRoot):
+                    skipped += 1
+                continue
+            keep.append(d)
+        dirnames[:] = keep
+        for name in sorted(filenames):
+            q = here / name
+            if q.is_symlink():
+                try:
+                    contain(q.resolve(), root_path)
+                except (OSError, OutsideRoot):
+                    skipped += 1
+                    continue
+            if not q.is_file():
+                continue
+            size = _sized(q)
+            if size is None:
+                continue
+            if is_scratch(name):
+                scratch[0] += 1
+                scratch[1] += size
+                continue
+            entries.append((str(q), str(q.relative_to(base)), size))
+    left_out = [{"what": name, "files": n, "bytes": b}
+                for name, (n, b) in left.items() if n]
+    if scratch[0]:
+        left_out.append({"what": "an engine's scratch", "files": scratch[0],
+                         "bytes": scratch[1]})
+    return {"entries": entries, "skipped": skipped, "left_out": left_out}
 
 
-#: Prepared archives waiting to be fetched: token -> (temp path,
-#: download name, unix time).  An archive is built by the POST door and
-#: removed the moment its GET has streamed it; the sweep below covers
-#: the one that is prepared and then never fetched (the tab closed, the
-#: person changed their mind).
+def _rsync_line(resolved: Path, host: str) -> str:
+    """The line that copies *resolved* without a zip, typed on the machine
+    it goes to -- this server's account, the address the page reached it
+    by (``host``), the same exclusions as the archive
+    (`docs/web/projects.md` § 4)."""
+    import getpass
+    import shlex
+    from molbuilder.warmfiles import scratch_families
+    excludes = [*sorted(_ARCHIVE_EXCLUDED), *scratch_families()]
+    return " ".join(["rsync", "-a",
+                     *(f"--exclude={shlex.quote(e)}" for e in excludes),
+                     f"{getpass.getuser()}@{host}:"
+                     f"{shlex.quote(str(resolved))}", "."])
+
+
+#: Archives asked for and not yet fetched: token -> (plan entries, download
+#: name, unix time).  A plan holds names and sizes, never bytes; it is
+#: spent by its GET, and one nobody came back for is forgotten after
+#: :data:`_PREPARED_TTL_S`.
 _PREPARED_ZIPS: Dict[str, tuple] = {}
 _PREPARED_TTL_S = 3600.0
 
 
 def _sweep_prepared_zips() -> None:
-    """Drop archives nobody came back for.  Called on every prepare, so
-    a long-lived server does not accumulate temp files."""
+    """Forget plans nobody came back for -- called on every prepare."""
     import time
     now = time.time()
-    for token, (path, _name, made) in list(_PREPARED_ZIPS.items()):
+    for token, (_entries, _name, made) in list(_PREPARED_ZIPS.items()):
         if now - made > _PREPARED_TTL_S:
             _PREPARED_ZIPS.pop(token, None)
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
 
 
 @bp.route("/api/files/zip_prepare", methods=["POST"])
 def api_files_zip_prepare():
-    """Build the archive and answer WHAT IT IS -- name, bytes, file
-    count -- without sending a byte of it.
-
-    Why the door is split (user, 2026-08-29): compressing a results
-    directory takes minutes, and a plain navigation gives the page no
-    signal at all -- no "started", no "done", so the button could only
-    sit there looking broken.  With the build behind its own call the
-    sidebar can say *Zipping…* on the button itself, keep it
-    unclickable until the bytes are ready, and only then hand the
-    browser a URL that streams instantly.
+    """Answer WHAT THE ARCHIVE WOULD BE -- its name, file count, exact size,
+    what it leaves out and the ``rsync`` line that copies the folder instead
+    -- reading names and sizes only, so the page asks before a byte moves
+    (`docs/web/projects.md` § 4; user, 2026-10-20: "is there a way to add a
+    UI warning for this operation").  Nothing is built: the archive is
+    streamed by the GET, as it reads the files.
     """
     import time
     import uuid
+
+    from molbuilder.web.zip_stream import length
 
     body = request.get_json(silent=True) or {}
     raw_path = body.get("path", "")
@@ -735,50 +754,53 @@ def api_files_zip_prepare():
 
     _sweep_prepared_zips()
     try:
-        tmp_name, files, skipped = _build_archive(resolved)
+        plan = _archive_plan(resolved)
     except OSError as exc:
         return jsonify({
             "ok": False,
-            "error": f"could not build the archive: {exc}",
+            "error": f"could not read the folder: {exc}",
         }), 500
 
     token = uuid.uuid4().hex
     name = f"{resolved.name}.zip"
-    _PREPARED_ZIPS[token] = (tmp_name, name, time.time())
+    _PREPARED_ZIPS[token] = (plan["entries"], name, time.time())
     return jsonify({
         "ok": True,
         "token": token,
         "name": name,
-        "files": files,
-        "bytes": os.path.getsize(tmp_name),
-        "skipped": skipped,
+        "files": len(plan["entries"]),
+        "bytes": length(plan["entries"]),
+        "skipped": plan["skipped"],
         "excluded": sorted(_ARCHIVE_EXCLUDED),
+        "left_out": plan["left_out"],
+        # THE ADDRESS THE PAGE REACHED THIS SERVER BY: the name a machine
+        # outside can reach, never this host's own idea of its name.
+        "rsync": _rsync_line(resolved, request.host.rsplit(":", 1)[0]
+                             if not request.host.endswith("]")
+                             else request.host),
     })
 
 
 @bp.route("/api/files/download_zip", methods=["GET"])
 def api_files_download_zip():
-    """Stream an archive prepared by ``/api/files/zip_prepare`` -- the
-    *take this calculation to another machine without ssh* door (user,
-    2026-08-28): download the portable folder here, drop it on the
-    target through whatever web portal the cluster offers.
+    """Stream the archive ``/api/files/zip_prepare`` sized -- the *take this
+    calculation to another machine without ssh* door (user, 2026-08-28) --
+    as it reads the files: each stored, its length exact
+    (`Content-Length`), nothing written on this server; a cancel in the
+    browser ends the reading at the next write (`zip_stream`,
+    `docs/web/projects.md` § 4).
 
-    The archive is addressed by TOKEN, not by path: the bytes already
-    exist when this is called, so the browser's save starts at once and
-    the sidebar can keep its button honest (user, 2026-08-29 -- the
-    build's minutes belong to the prepare call, where they can be
-    said out loud).  A token is single-use; the temp file goes with the
-    response.
-
-    What the archive holds, and the refusals that shape it, are
-    ``_build_archive`` and ``_zip_target_refusals`` -- one copy each,
-    read by both halves.
+    The archive is addressed by TOKEN, not by path: the plan was made by the
+    prepare call, which the person saw and answered.  A token is
+    single-use.  A file shorter than it measured ends the response short of
+    its length, and the download reads as failed.
     """
-    from flask import after_this_request
-    from flask import send_file as _send_file
+    from flask import Response, stream_with_context
+
+    from molbuilder.web.zip_stream import length, stream
 
     token = request.args.get("token", "")
-    entry = _PREPARED_ZIPS.get(token)
+    entry = _PREPARED_ZIPS.pop(token, None)
     if entry is None:
         return jsonify({
             "ok": False,
@@ -786,36 +808,23 @@ def api_files_download_zip():
                      "already downloaded, or it expired.  Press "
                      "Download again.",
         }), 404
-    tmp_name, download_name, _made = entry
-    if not os.path.exists(tmp_name):
-        return jsonify({
-            "ok": False,
-            "error": "the prepared archive is gone from disk.  Press "
-                     "Download again.",
-        }), 404
-
-    resp = _send_file(
-        tmp_name,
-        as_attachment=True,
-        download_name=download_name,
-        etag=False,
-        last_modified=None,
-        max_age=0,
-    )
-    # SPENT ONLY NOW.  Dropping the token before the response exists
-    # would strand the temp file on any failure in between: no longer
-    # in the registry, so the TTL sweep would never collect it, and
-    # nobody left to delete it.  Registered after, for the same reason.
-    _PREPARED_ZIPS.pop(token, None)
-
-    @after_this_request
-    def _cleanup(response):
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        return response
-
+    entries, download_name, _made = entry
+    resp = Response(stream_with_context(stream(entries)),
+                    mimetype="application/zip")
+    resp.headers["Content-Length"] = str(length(entries))
+    # THE NAME AS `send_file` WRITES IT: plain where it is ASCII, and its
+    # UTF-8 spelling beside an ASCII one where it is not (RFC 6266).
+    try:
+        download_name.encode("ascii")
+        names = {"filename": download_name}
+    except UnicodeEncodeError:
+        import unicodedata
+        from urllib.parse import quote
+        names = {"filename": unicodedata.normalize("NFKD", download_name)
+                 .encode("ascii", "ignore").decode("ascii"),
+                 "filename*": "UTF-8''" + quote(download_name, safe="")}
+    resp.headers.set("Content-Disposition", "attachment", **names)
+    resp.headers["Cache-Control"] = "no-store"
     return resp
 
 

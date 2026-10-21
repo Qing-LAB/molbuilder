@@ -12,6 +12,10 @@
  *
  *   const go = await warningModal.confirm({title, body, confirmLabel,
  *                                          cancelLabel});
+ *
+ * ``body`` is one paragraph, or a list of them -- each its own line of the
+ * question (the folder download's size, what it leaves out, the line that
+ * copies it instead).
  *   const proceed = await warningModal.confirmDiscardUnsaved();
  *
  * Each resolves true on the costly answer -- marked `.danger`, and last --
@@ -33,18 +37,25 @@ const CANCEL  = "Cancel";
 const DISCARD = "Discard and continue";
 
 /** Ask ``{title, body, confirmLabel, cancelLabel}`` -- each defaulting to
- *  the discard-unsaved question's -- and resolve true or false. */
+ *  the discard-unsaved question's, ``body`` a paragraph or a list of them
+ *  -- and resolve true or false. */
 function confirm(opts) {
   opts = opts || {};
   const dialog = newDialog("molbuilder-warning-modal");
   dialog.setAttribute("aria-labelledby", "molbuilder-warning-title");
-  dialog.setAttribute("aria-describedby", "molbuilder-warning-body");
   const title = dialogTitle(opts.title || TITLE);
   title.id = "molbuilder-warning-title";
-  const body = dialogHint(opts.body || BODY);
-  body.id = "molbuilder-warning-body";
   dialog.appendChild(title);
-  dialog.appendChild(body);
+  // EACH PARAGRAPH ITS OWN LINE OF THE QUESTION, the dialog described by
+  // all of them, in order.
+  const paras = Array.isArray(opts.body) ? opts.body : [opts.body || BODY];
+  const ids = paras.map((text, i) => {
+    const p = dialogHint(text);
+    p.id = "molbuilder-warning-body" + (i ? "-" + (i + 1) : "");
+    dialog.appendChild(p);
+    return p.id;
+  });
+  dialog.setAttribute("aria-describedby", ids.join(" "));
   dialog.appendChild(dialogActions([
     { label: opts.cancelLabel || CANCEL, action: "cancel",
       onClick: () => settleDialog(false) },

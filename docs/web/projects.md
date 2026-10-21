@@ -243,23 +243,38 @@ touch it. The parts:
   filter sticks as you browse.
 - **The header buttons** — New project (always available), New folder, Upload and
   Download (available once you are inside a project). The first three open a
-  dialog; **Download** compresses the folder you are currently browsing — its
-  name is in the tooltip — and saves it as `<folder>.zip`. Because a results
-  directory can take minutes to compress, the button says so in its own label
-  (*Zipping…*, then *Saving…*) and refuses further clicks until the browser's
-  save begins; that is why the door is two calls, `POST /api/files/zip_prepare`
-  then `GET /api/files/download_zip?token=`. When it finishes it reports what
-  it made — file count and size, in the button's tooltip — and **says out loud
-  when anything was left out**: a symlink whose target sits outside the
-  projects tree cannot travel, so those are counted and named rather than
-  dropped in silence.
+  dialog; **Download** takes the folder you are currently browsing — its name
+  is in the tooltip — to another machine as `<folder>.zip`, and **asks
+  first, with its size** *(user, 2026-10-20, after a download of a 200 GB
+  calculation began unasked: "is there a way to add a UI warning for this
+  operation")*. The door is two calls. `POST /api/files/zip_prepare` reads
+  names and sizes only — nothing is read, compressed or written — and the
+  page puts what it found in the one confirm (`warningModal.confirm`,
+  [`ui-contract.md`](?doc=web/ui-contract.md) § 11): the archive's name, its
+  file count and its exact size; what is left out and how much (below); the
+  links that cannot travel, counted — a symlink whose target sits outside the
+  projects tree, never dropped in silence; and the line that copies the same
+  folder without a zip, `rsync -a` with the same exclusions from this
+  machine's account and address — for a large folder, the better tool.
+  Cancel sends nothing. **Download** opens `GET
+  /api/files/download_zip?token=`, which streams the archive as it reads the
+  files: each file stored, not compressed — a calculation's large files are
+  binary and barely compress, and compressing costs the server minutes per
+  gigabyte — so the archive's size is exact before a byte is sent and goes out
+  as its length (`Content-Length`): the browser shows progress and how long,
+  and a cut connection reads as a failed download, never a short zip taken for
+  whole. The server writes no file of it: a cancel in the browser ends the
+  server's reading at its next write. A file that is shorter when it is read
+  than when it was measured ends the response the same way. While the first
+  call runs the button says *Reading sizes…* and refuses further clicks.
   The archive is the folder **as it stands now — the pure execution directory**:
-  the workspace store (`.molbuilder_workspace`) and a checkpoint folder's
-  history (`.git`, `.binsnapshots`) are left out, while every run file, engine
-  restart files (`.DM`, `.TSDE`, `.XV`) included, rides along — the engine's
-  scratch a run still holds too (a device run's `tsgf/` pair, which no
-  checkpoint saves; `jobset scratch` lists it,
-  [`job-system.md`](?doc=execution/job-system.md) § 5.3). *(Not via
+  left out are the workspace store (`.molbuilder_workspace`), a checkpoint
+  folder's history (`.git`, `.binsnapshots`), and an engine's scratch a run
+  still holds — a device run's `tsgf/` pair, the files the one answer names
+  (`warmfiles.is_scratch`, which the checkpoint asks; `jobset scratch` lists
+  and empties them, [`job-system.md`](?doc=execution/job-system.md) § 5.3);
+  every other run file, engine restart files (`.DM`, `.TSDE`, `.XV`)
+  included, rides along. *(Not via
   `git archive`: a checkpoint deliberately keeps large files out of git — they
   live in `.binsnapshots` — so a git export would silently drop the heaviest
   outputs the far machine needs.)*
