@@ -196,7 +196,8 @@ transmission, states no steps, so nothing would be warned.
 below the longest step the run has taken so far (§ 2.2: a geometry move, a
 displacement, a PySCF step), the step it is in may not finish before the
 wall. The monitor writes one `[WALL]` record — *21m left; the longest of 3
-steps so far took 46m* — and, with a `notify` block, sends `wall_near`. A
+steps so far took 46m -- the step underway may not finish before the wall* —
+and, with a `notify` block, sends `wall_near`. A
 step's length runs from one step finishing to the next, the first from the
 monitor's start. A run
 that states no steps (a single point, a transmission) is counted down and

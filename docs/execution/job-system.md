@@ -2308,7 +2308,12 @@ question, and once sent — and the decision ledger records it:
 ```
 
 (The optimiser's `H2.CG` is carried only between stages that use the same
-algorithm — the shipped ladder's coarse is CG and its medium Broyden.)
+algorithm — the shipped ladder's coarse is CG and its medium Broyden.) A
+file it takes that was written as that run's job ended — a kill may have
+caught it mid-write — carries `-- WARNING: written as the job ended (…)`
+after its name in both lines and in the ledger's `continues` entry
+(`written_as_ended`); the launch goes as asked
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6).
 
 `.continued-from` in the attempt and `continued_from` in its `run.json` keep it
 beside the run, and the Results tab's Run panel shows it (*Continued from*). The

@@ -605,6 +605,21 @@ engine nothing and runs until it is done. The monitor's `[WALL]` warning
 (`run-reports.md` § 2.1b) stays for a job sent to a queue: it is the cue for a job
 whose engine could not stop itself in time, a step longer than the slack.
 
+**What a person sees of the wall**, word for word — a job sent with 4 hours,
+the default slack:
+
+| where | the line | when |
+|---|---|---|
+| the session log (`<basename>.runwrap-<stamp>.log`, § 4.1), the run script's banner | `Wall          : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` — a transmission's: `TBtrans checks no clock and runs to it (running-a-job.md 3.6)`; told no wall: `Wall          : none stated -- runs until done` | every start of SIESTA or TBtrans |
+| the session log | `wall: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` — what is left when SIESTA starts | a wall told, the program SIESTA |
+| SIESTA's output | `OUT_OF_TIME: Time is up.` | SIESTA stopped itself at its wall |
+| the session log, from the run script | `stopped at its wall (MaxWalltime): the restart state is saved; launch this stage again to continue` | that stop — in place of a warm retry |
+| the run's state (`jobset status`, the Results tab) | *failed* — `stopped before its end: OUT_OF_TIME: Time is up.` | that stop |
+| the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped with its restart state saved; a launch again continues from it` (`siesta_grammar.CAUSE_WORDS`) | that stop |
+| a PySCF relaxation's output | `WARNING: stopped before the wall (the job's wall less its slack): the geometry reached is kept; launch this stage again to continue from it` — the last clause where launching again reads the geometry back (its `restart` is `continue`); then `# relaxed: no` in its trajectory log | the first step past the deadline |
+| a PySCF vibration's output | `RuntimeError: stopped before the wall (the job's wall less its slack) before the spectrum was written: launch this stage again` | a displaced SCF due past the deadline |
+| the monitor log | `[WALL] 21m left; the longest of 3 steps so far took 46m -- the step underway may not finish before the wall` ([`run-reports.md`](?doc=execution/run-reports.md) § 2.1b) | once, in a job sent to a queue |
+
 **Why this is mandatory.** A scheduler's kill lands at a second of its own
 choosing, and SIESTA writes its density in place after every iteration
 (`m_iodm.F90`: open, write, close, no rename): a kill inside that write leaves
@@ -614,16 +629,41 @@ reporting success. Measured on Sol, 2026-10-18: the third launch of a
 residual of 694, and spent 37 SCF iterations climbing back to the energy the
 run already had.
 
-**A warm file written as the job ended is said at the next launch.** When a
-stage is launched again and continues from its last run's files, the launch
-compares each file it takes with when that run ended — the monitor log's
-closing record, its `[MONITOR] job ended` line
-(`parse/instruments/monitor.py`, `ended_at`) — and a file written in that
-second or after it is named in the continuation's line, both doors' and the
-ledger's: *copied H2.DM — WARNING: written as the job ended (13:58:12; the
-job ended 13:58:11), it may be incomplete; a start from it may need more
-iterations or fail; `--cold` starts without it.* A fact shown, never a veto:
-the launch goes as asked, and the person decides.
+**A warm file written as the job ended is said at the launch that takes
+it** (`materialize.written_as_ended`). Every launch that continues a stage
+from a run's files compares each file with the second that run ended — a
+stage launched again from its own last run, a first launch from the stage
+before it or from the relaxation it builds on, a run named with `--from`;
+on the flat layout, where nothing is copied, the warm files the run reads in
+place, against the run that wrote them (`<label>.last-run`,
+[`job-system.md`](?doc=execution/job-system.md) § 5.4). The run's end is
+its monitor log's closing record, the `[MONITOR] job ended` line
+([`run-reports.md`](?doc=execution/run-reports.md) § 2.5;
+`parse/instruments/monitor.py`, `ended_at`): the monitor writes it on the
+signal that stops it — the scheduler's, at the wall or a cancel, or the run
+script's own at its exit — within a fifth of a second, its time to the whole
+second. A file whose write time (its modification time) is in that second
+or after it is named. The inputs a transport rung gathers are not compared:
+a gather takes only runs that finished. A run whose monitor wrote no closing
+record — the node lost, the monitor killed outright — has no end to compare
+with, and nothing is said.
+
+The launch names the file in its own two lines — the preview before its
+question, and the line once sent — and the ledger's `continues` entry
+records it (`written_as_ended`: each file, with the same words); `status`
+and the browser, which say what a launch would take, do not compare. A group
+launched in a sequence of groups' job (`job-system.md` § 6.0) prints its
+lines in the job's output. Word for word, a stage launched again after its
+job was killed at the wall:
+
+```text
+  coarse: WOULD launch it again into run-1: it continues from 01_coarse/run-0 (its own latest run; …): would copy H2.XV, H2.DM -- WARNING: written as the job ended (13:58:12; the job ended 13:58:11), it may be incomplete; a start from it may need more iterations or fail; `--cold` starts without it
+```
+
+— once sent, *copied* in place of *would copy*; on the flat layout the file
+follows the run it continues from: `…; H2.XV in the folder -- WARNING:
+written as the job ended (…)`. A fact shown, never a veto: the launch goes
+as asked, and the person decides.
 
 ---
 

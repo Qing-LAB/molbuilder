@@ -767,8 +767,13 @@ SIESTA subtracts itself
 `tbtrans` launch gets none: the item names no words for it, and it checks no
 clock. The output reads `failed` with the wall as its cause, in SIESTA's own
 line (`siesta_grammar.OUT_OF_TIME_MARKER`; the `SCF_NOT_CONV` warning it
-prints on the way out is not the cause); the wrapper does not warm-retry it;
-the next launch continues from the files it saved whole.
+prints on the way out is not the cause); the wrapper does not warm-retry it,
+saying `stopped at its wall (MaxWalltime): the restart state is saved;
+launch this stage again to continue`; the next launch continues from the
+files it saved whole. Every line a person sees of the wall is
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6's
+table.
+
 ## 9. Sibling outputs
 
 Alongside `<basename>.fdf`, **`prep`** also writes (unless

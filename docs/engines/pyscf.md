@@ -504,11 +504,16 @@ any of them absent, no deadline, and the deck runs until it is done.
 - **A relaxation** (`relax_policy.relax`, `deadline=`) checks it in the
   callback it already runs after every step; the first step past it stops
   geomeTRIC, the geometry reached stays in `_optimized.xyz` as every step's
-  does, the deck prints why, writes `# relaxed: no` and ends normally — the
-  next launch continues from that geometry, `restart` permitting.
+  does, the deck prints `WARNING: stopped before the wall (the job's wall
+  less its slack): the geometry reached is kept` (and `; launch this stage
+  again to continue from it` where its `restart` is `continue`), writes
+  `# relaxed: no` in its trajectory log and ends normally — the next launch
+  continues from that geometry, `restart` permitting.
 - **A vibration deck** checks it before each displaced SCF; past it before
-  the spectrum is written, it raises `RuntimeError("stopped before the wall …")`
-  — the log's footer carries the error and the run reads `failed` with that
+  the spectrum is written, it raises `RuntimeError: stopped before the wall
+  (the job's wall less its slack) before the spectrum was written: launch
+  this stage again` — the log's footer carries the error and the run reads
+  `failed` with that
   reason, since a spectrum half computed is no result; a launch runs it
   again, its relaxation phase resuming as above.
 
