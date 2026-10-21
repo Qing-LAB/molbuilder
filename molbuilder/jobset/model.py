@@ -42,7 +42,7 @@ from ..runfiles import JOBSET_FILE as FILENAME  # noqa: E402
 
 #: The two kinds, each a name with ONE home.  `KIND_SWEEP` is exported
 #: because a reader outside this module has to ask *is this a benchmark
-#: sweep* -- `parse.sidecars.job_set` does, to decide whether the Results
+#: sweep* -- `jobset.sweep_reader` does, to decide whether the Results
 #: tab may offer the file.  A second spelling of `"sweep"` out there is a
 #: second opinion about what a sweep is.
 KIND_SWEEP = "sweep"

@@ -23,7 +23,13 @@ collect_ignore_glob = ([] if os.environ.get("MOLBUILDER_FIELD_RECORD")
                        else ["field/*"])
 
 from molbuilder import diagnostics
+from molbuilder.calculation import register_readers
 from molbuilder.structure import Structure
+
+# THE READERS OF A CALCULATION'S RECORDS, registered as each surface
+# registers them at start (`calculation.register_readers`): a test that asks
+# the registry or the folder door directly stands where a surface stands.
+register_readers()
 
 
 @pytest.fixture

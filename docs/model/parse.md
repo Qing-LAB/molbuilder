@@ -545,7 +545,7 @@ molbuilder/parse/
 │   └── _helpers.py
 │
 ├── sidecars/      # molbuilder JSON sidecars → SidecarResult (FileParsers)
-│   ├── molstruct.py · spectra.py · transport.py · job_set.py
+│   ├── molstruct.py · spectra.py · transport.py · fc_sweep.py
 │   └── _helpers.py
 │
 └── dirs/          # what a run folder's files say, read on floor 1 (§ 5)
@@ -1928,7 +1928,15 @@ Per parser kind, the specifics:
   fixed byte window. An engine's own account of its settings is an
   `EngineParamsResult` (`siesta_fdflog.py`, § 5d.3).
 - **Sidecar FileParser** (`parse/sidecars/`): `can_parse` matches the
-  `.<kind>.json` suffix; the result's `schema` is `"<kind>/v<N>"`.
+  `.<kind>.json` suffix; the result's `schema` is `"<kind>/v<N>"`. The
+  readers of a calculation's OWN records -- a transport calculation's
+  `task.json` (`transport-task`) and a benchmark's `job-set.json`
+  (`job-set-sweep`) -- read through their owners' doors, so they sit on
+  those records' floors (`molbuilder/task_reader.py`, floor 2;
+  `molbuilder/jobset/sweep_reader.py`, floor 3) and the registry, on floor
+  1, imports neither: each surface registers both as it starts
+  (`calculation.register_readers` -- the web app, the command line; the
+  test suite's conftest as a surface would).
 - **Instrument FileParser** (`parse/instruments/`): `output =
   InstrumentResult`; `can_parse` matches the wrapper's own suffix
   (`.scf-timing.log`, `.monitor.log`, `.util.csv`); the result carries

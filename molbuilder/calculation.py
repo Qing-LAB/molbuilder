@@ -82,6 +82,22 @@ class Calculation:
         return self.with_plan(JobSet.of(self.base, plan=plan))
 
 
+def register_readers() -> None:
+    """THE READERS OF A CALCULATION'S OWN RECORDS, registered into the parse
+    registry -- a transport calculation's description (`task_reader`, floor
+    2) and a benchmark's plan (`jobset.sweep_reader`, floor 3), each on its
+    record's floor and read through its owner's door, which the registry,
+    on floor 1, imports none of (`execution/architecture.md` § 2.1).  Called
+    by each surface as it starts -- the web app (`web.app.create_app`) and
+    the command line (`cli.main`) -- so the Results tab's folder door finds
+    both.  Idempotent, as the registry is."""
+    from .jobset.sweep_reader import JobSetSweepFileParser
+    from .parse import register
+    from .task_reader import TransportTaskFileParser
+    register(TransportTaskFileParser)
+    register(JobSetSweepFileParser)
+
+
 def open(base) -> Calculation:
     """THE DOOR: the described calculation in ``base``, read once.
 

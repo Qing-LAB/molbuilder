@@ -1160,7 +1160,7 @@ const WORKSPACE_TAG = "results:transport";
         isResult:    true,
         resultCategory: () => "Transport",
         /* THE HANDLE IS THE CALCULATION'S DESCRIPTION at its root -- the
-         * server's registry says so (`parse.sidecars.task`, parser
+         * server's registry says so (`task_reader`, parser
          * `transport-task`): the report is composed on read from the
          * folder (`engines/transport.md` § 2a.12), so it is there before
          * any `summarize task`; `<label>.transport.json` is that command's

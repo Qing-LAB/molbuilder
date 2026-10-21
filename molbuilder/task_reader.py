@@ -1,14 +1,18 @@
 """A transport calculation's description, read back — ``task.json`` at its
 root: the report's handle (`web/results.md` § 0.1, § 2.5).
 
+ON THE DESCRIPTION'S FLOOR (2), beside `task`, whose door it reads through
+(`execution/architecture.md` § 2.1): the parse registry imports none of it,
+and the surfaces register it at start (`calculation.register_readers`).
+
 WHY THIS EXISTS.  A transport calculation's report is composed on read
 from the calculation's folder (`engines/transport.md` § 2a.12), so a
 ladder in progress has one before any `summarize task`; and
 `/api/results/dir` asks the registry *what reads this file*, dropping
 anything the answer is ``None`` for.  The file that makes the folder a
 transport calculation -- its description -- is what the Results panel
-opens at the root, as a benchmark's root opens its ``job-set.json``
-(`job_set.py`); ``<label>.transport.json`` is `summarize task`'s copy for
+opens at the root, as a benchmark's folder opens its ``job-set.json``
+(`jobset.sweep_reader`); ``<label>.transport.json`` is `summarize task`'s copy for
 the command line.
 
 WHY IT CLAIMS ONLY A TRANSPORT CALCULATION'S.  Every calculation has a
@@ -20,11 +24,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from molbuilder.parse.base import FileParser
-from molbuilder.parse.errors import UnknownFormatError
-from molbuilder.parse.types import SidecarResult
-
-from ._helpers import build_sidecar_result
+from .parse.base import FileParser
+from .parse.errors import UnknownFormatError
+from .parse.sidecars._helpers import build_sidecar_result
+from .parse.types import SidecarResult
 
 #: The parse-side name of what came out: the description of a transport
 #: calculation, the report's handle.
@@ -38,8 +41,8 @@ class TaskReadError(ValueError):
 def _load_transport_task(path: Path) -> dict:
     """The description's JSON, or :class:`TaskReadError` saying why not --
     one reader for both halves of the parser."""
-    from molbuilder.runfiles import TASK_FILE
-    from molbuilder.task import of as task_of
+    from .runfiles import TASK_FILE
+    from .task import of as task_of
     p = Path(path)
     if p.name != TASK_FILE:
         raise TaskReadError(f"{p.name} is not {TASK_FILE}")

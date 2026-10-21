@@ -399,6 +399,11 @@ def create_app(*, config=None) -> Flask:
     from .blueprints.docs        import bp as docs_bp
     from .blueprints.bench       import bp as bench_bp
     from .blueprints.jupyter     import bp as jupyter_bp
+    # THE READERS OF A CALCULATION'S RECORDS, registered as every surface
+    # registers them at start (`calculation.register_readers`): the Results
+    # tab's folder door finds a transport report and a benchmark's sweep.
+    from ..calculation import register_readers
+    register_readers()
     app.register_blueprint(build_bp)
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)

@@ -949,11 +949,11 @@ def _container_product(folder: Path, place: Place, label: str,
     """What a CONTAINER opens (`web/results.md` § 0.1).  A transport
     calculation's root opens its description, ``task.json`` -- the report is
     composed on read from the folder (`engines/transport.md` § 2a.12), and
-    the description is the file that makes it one (`parse.sidecars.task`);
+    the description is the file that makes it one (`task_reader`);
     ``<label>.transport.json`` is `summarize task`'s copy for the command
     line.  A benchmark's folder opens its sweep's ``job-set.json``, the
     bench summary's handle -- the registry claims a job set only as a
-    sweep's (`parse.sidecars.job_set`), so a ladder's is never opened.  Any
+    sweep's (`jobset.sweep_reader`), so a ladder's is never opened.  Any
     other container: the first result role the calculation produces that is
     present (`_openable`)."""
     from molbuilder.parse.dirs.rundir import claimed

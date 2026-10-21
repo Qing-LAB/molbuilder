@@ -3548,6 +3548,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     import logging
     logging.basicConfig(level=logging.WARNING,
                         format="%(levelname)s: %(message)s")
+    # THE READERS OF A CALCULATION'S RECORDS, registered as every surface
+    # registers them at start (`calculation.register_readers`).
+    from .calculation import register_readers
+    register_readers()
     # THE MACHINE SNAPSHOT IS TAKEN ON FIRST USE (`diagnostics.
     # get_capabilities`), not here: it lists the conda envs, 0.76 s measured
     # (2026-09-29), and most commands never ask what the machine has.  The

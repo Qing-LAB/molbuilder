@@ -12,13 +12,11 @@ never guessed.  A LADDER's `/api/bench/summary` answers 400, and this
 parser declines it for that reason.  `TransportRecordFileParser` states
 the rule: **the schema, not the suffix alone.**
 
-THE IMPORTS ARE LAZY ON PURPOSE.  ``jobset`` and ``parse`` are both L2
-and ``jobset.model`` is pure stdlib, so the dependency is legal
-sideways — but ``jobset/__init__`` pulls in ``prep`` / ``submit`` /
-``runstatus``, and every jobset-to-parse import is already function-level
-to keep that from closing into a cycle.  Importing at module scope here
-would both reopen it from the other side and make ``parse`` drag in the
-whole framework, against ``jobset``'s own *"import-light by design"*.
+ON THE PLAN'S FLOOR (3), beside `jobset.model`, whose door it reads
+through (`execution/architecture.md` § 2.1): the parse registry imports
+none of it, and the surfaces register it at start
+(`calculation.register_readers`).  A module of its own, so a reader of the
+plan (`jobset.model`, import-light by design) loads no parser.
 """
 
 from __future__ import annotations
@@ -26,11 +24,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from molbuilder.parse.base import FileParser
-from molbuilder.parse.errors import UnknownFormatError
-from molbuilder.parse.types import SidecarResult
-
-from ._helpers import build_sidecar_result
+from ..parse.base import FileParser
+from ..parse.errors import UnknownFormatError
+from ..parse.sidecars._helpers import build_sidecar_result
+from ..parse.types import SidecarResult
+from .model import FILENAME, KIND_SWEEP, JobSet
 
 #: The discriminator consumers type-narrow on, in the sidecar convention
 #: (``"molstruct/v3"``, ``"spectra/v4"``, ``"transport/v1"``).  Derived
@@ -57,8 +55,6 @@ def _load_sweep(path: Path) -> dict:
     caller that asks this parser directly, and nothing else.  Carrying a
     reason through the fan-out is a registry change, not a parser one.
     """
-    from molbuilder.jobset.model import FILENAME, KIND_SWEEP, JobSet
-
     p = Path(path)
     if p.name != FILENAME:
         raise JobSetReadError(f"{p.name} is not {FILENAME}")
