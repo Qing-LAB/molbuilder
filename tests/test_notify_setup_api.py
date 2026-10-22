@@ -194,11 +194,92 @@ def test_it_writes_where_the_MONITOR_reads(client):
     ({"url": ""}, "empty url"),
     ({"url": "devbox:8888/api/x"}, "no scheme -- would not parse as a url"),
     ({"url": "ftp://x/api"}, "a scheme nothing here speaks"),
+    ({"url": "http://hooks.slack.com/services/T0/B0/AbCdEfGhIjKlMnOp"},
+     "a slack address over http -- its credential unencrypted"),
+    ({"url": "http://discord.com/api/webhooks/1/AbCdEfGhIjKlMnOp"},
+     "a discord address over http -- its credential unencrypted"),
+    ({"url": "http://relay.example/AbCdEfGhIjKlMnOp", "kind": "slack"},
+     "declared slack, over http"),
+    ({"url": "https://hooks.slack.com/services/T0/B0/AbCd EfGh"},
+     "a space in the address"),
+    ({"url": "https:///AbCdEfGhIjKlMnOp"}, "no host"),
 ])
 def test_a_url_that_could_not_work_is_refused(client, body, why):
+    """`run-reports.md` § 3: a save refuses an address the monitor would not
+    send to, by the monitor's own rule -- and **never quotes it back**: for
+    Slack and Discord the address is the credential.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the save keeping its own scheme
+    check (the http Slack and Discord rows written); the refusal quoting
+    the address."""
     c, path = client
-    assert c.put(CH + "/lab", json=body).status_code == 400, why
+    r = c.put(CH + "/lab", json=body)
+    assert r.status_code == 400, why
     assert not path.exists(), f"{why} still wrote a file"
+    url = body.get("url") or ""
+    if url:
+        assert url not in r.get_data(as_text=True), why
+        assert "AbCdEf" not in r.get_data(as_text=True), why
+
+
+def test_a_listener_may_be_http_on_a_host_you_trust(client):
+    """`run-reports.md` § 3: a molbuilder listener signs its reports and its
+    key never travels, so ``http://`` on a host you trust is an address the
+    monitor sends to -- and the save keeps it.
+
+    MUTATION THIS MUST FAIL AGAINST: the rule refusing every ``http://``."""
+    c, path = client
+    r = c.put(CH + "/lab", json={"url": "http://127.0.0.1:8888/api/seg",
+                                 "key": SECRET})
+    assert r.status_code == 200, r.get_json()
+    from molbuilder.monitor import load_channels
+    assert list(load_channels()) == ["lab"]
+
+
+def test_a_stored_address_the_monitor_skips_is_named_by_its_fault(client):
+    """A file written by hand, or before 2.27.1, can hold an address the
+    monitor skips.  THE SILENT FAILURE: the page listing it as a channel and
+    Test answering *no channel called 'lab'* -- or naming the fault by
+    quoting the address, the credential.
+
+    MUTATION THIS MUST FAIL AGAINST: Test not asking the stored channel's
+    fault (its old *not set up* answer)."""
+    c, path = client
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"channels": {"lab": {"url": WEBHOOK.replace(
+        "https://", "http://")}}}))
+    state = c.get(CH).get_json()
+    assert state["channels"][0]["usable"] is False, state
+    assert "its credential" in state["problem"], state["problem"]
+    r = c.post(CH + "/lab/test")
+    assert r.status_code == 400, r.get_json()
+    assert "its credential" in r.get_json()["error"], r.get_json()
+    assert "AbCdEf" not in r.get_data(as_text=True)
+
+
+def test_a_failed_test_says_what_failed_never_the_address(client):
+    """`run-reports.md` § 3.1, *nothing quotes an address back*: a send that
+    fails is said by what failed.  THE SILENT FAILURE: the exception's own
+    text, which quotes the address it was sent to -- for Slack and Discord
+    the credential -- shown on the page.  A real refused connection, on a
+    port of this host nothing listens on.
+
+    MUTATION THIS MUST FAIL AGAINST: the answer built from the exception's
+    text."""
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    c, _ = client
+    c.put(CH + "/lab", json={"url": f"http://127.0.0.1:{port}/api/SECRETSEG",
+                             "key": SECRET})
+    r = c.post(CH + "/lab/test")
+    got = r.get_json()
+    assert got["reached"] is False, got
+    assert got["error"] == ("could not reach it: the connection was "
+                            "refused"), got
+    assert "SECRETSEG" not in r.get_data(as_text=True)
 
 
 @pytest.mark.parametrize("name", ["has space", "a/b", "", "x" * 65, "a.b"])

@@ -384,7 +384,7 @@ gpu<i>_vram_gb` per GPU sampled.
 | `[MONITOR] start` | at start | the interval, the watched PID, and the first reading |
 | `[STATUS]` | when the run advanced (§ 2.1), and once at the end | the summary line (§ 4.1a), the time left before the job's wall among it (§ 2.1b) |
 | `[WALL]` | once, when the time left falls below the longest step so far; or once, when the wall cannot be counted (§ 2.1b) | the time left, the longest step and how many have finished; or why nothing is counted |
-| `[NOTIFY]` | on each event, and on any channel problem | `(stub) <event>: <summary>` — the record of every event; or why a channel is skipped or not set up |
+| `[NOTIFY]` | on each event, and on any channel problem | `(stub) <event>: <summary>` — the record of every event; or why a channel is skipped or not set up; or a send that failed, by the channel's name and what failed — `channel 'slack': finish not delivered -- the connection was refused` — never the address (§ 3) |
 | `[MONITOR] job ended` · `[MONITOR] stopped` | the first closing line | why it stopped: `stopped by SIGTERM` or `watched pid N gone` — the closing record `run_status` reads, then the `finish` event; or a warm retry — not an ending, and no `finish`. Its time is the run's end, `ended_at` to the monitor-log reader (`parse/instruments/monitor.py`), which the next launch compares a warm file's write time with (`running-a-job.md` § 3.6) |
 | `[UTIL-SUMMARY]` | at the end | the CPU mean (min–max) and each GPU's SM mean; for a GPU run, a verdict from the busiest GPU's mean: ≥ 85 % *GPU-bound*, ≤ 60 % *host/CPU-bound*, otherwise *mixed* |
 | `[UTIL-BASIS]` | at the end | what every percentage is a fraction of (§ 2.1a) |
@@ -537,8 +537,12 @@ either* where the force would be, with no number.
 ## 3. Where it speaks
 
 One mechanism: a `POST` with a short timeout (2 s), each channel guarded on
-its own, **silent on failure** — an unreachable server must never cost the run
-anything.
+its own. **A failure costs the run nothing** — an unreachable server must never
+cost the run anything — **and is said in the monitor log**: the channel's name,
+the event, and what failed, from the failure's own parts — the service's HTTP
+status, the host not found, the connection refused, a timeout, a TLS handshake
+— by one composer (`monitor.delivery_failure`), **never the address**, which a
+failure's own text quotes and which for Slack and Discord is the credential.
 
 `<config dir>/secrets/notify` is a JSON object of **named channels**:
 
@@ -567,6 +571,16 @@ generates one and nothing has a special meaning.
 party that can be handed nothing but a URL keeps its secret in the URL; our own
 listener can be handed a key, so it takes one that never travels.
 
+**An address is one the monitor can send to safely** — one rule,
+`monitor.address_refusal`, asked by the This machine tab's save and by the
+monitor reading this file: it reads as `scheme://host/…` with no space or
+control character; it is `https://`, or `http://` for a molbuilder listener on
+a host you trust — its reports are signed and its key never travels; and a
+Slack or Discord address, which is the credential, is `https://` only, since
+over `http://` it would travel unencrypted. A save refuses an address that
+fails; the monitor skips such a channel and says its fault in the log. **Neither
+quotes the address back.** `MB_NOTIFY_URL` is held to the same rule.
+
 **Absent is off; broken is said, in the monitor log** — the wrapper
 backgrounds the monitor with its stdout discarded and its stderr kept for a
 failure to start, so a notification problem is written where a person reads
@@ -584,7 +598,8 @@ the run's own state:
 
 **`MB_NOTIFY_URL` overrides the file**, to test a destination once without
 editing anything; set `MB_NOTIFY_KEY` with it when that URL is a molbuilder
-listener, which refuses an unsigned report with a `404` the notifier swallows.
+listener, which refuses an unsigned report with a `404` — said in the monitor
+log as a failed delivery.
 It names no channel, so § 3.0's selection does not apply: a run whose
 job request says `channels: []` still posts there — setting it is the act of
 asking for this one report.
@@ -637,11 +652,12 @@ sees a key ([`task-setup.md`](?doc=web/task-setup.md) § 9b).
 | rule | why |
 |---|---|
 | **The file is written here**, on the machine molbuilder runs on (user, 2026-09-01), by `auth_setup.write_secret_file` — mode set before the first byte — at `config_dir()`, the function the monitor reads through | the page and the monitor cannot name different directories |
-| **A save updates one channel, never the file**: keyed by name across channels, and within one the fields the page manages go over what the channel already holds | the key the page clears after each save, and a `headers` block it has no input for, survive — a lost key fails silently, as the listener's swallowed `404` |
+| **A save updates one channel, never the file**: keyed by name across channels, and within one the fields the page manages go over what the channel already holds | the key the page clears after each save, and a `headers` block it has no input for, survive — a lost key is refused by the listener with a `404`, which only a run's monitor log would say |
 | **Remove** is the only way a channel goes | removal is an act, never a side effect of a save |
 | a save clears the previous format's top-level `url`, `key` and `headers`, by name | once the file has `channels` nothing reads them, and a credential nothing reads is one nobody will rotate |
 | **nothing reads a secret back**: a stored key reports only *present* or *absent*, and every address is masked ([`this-machine.md`](?doc=web/this-machine.md) § 2) | for Slack and Discord the URL is the credential |
 | **a key is shown once**, when it is issued (§ 4.3) | issuing a secret and displaying a stored one are different acts |
+| **nothing quotes an address back**: a refused save says the address rule's fault (`monitor.address_refusal`), a failed **Test** what failed (`monitor.delivery_failure`), a skipped channel its fault — never the address | an address can be the credential, and an exception's own text quotes the address it was sent to |
 | **Test** sends one report through the monitor's own producer (§ 4.1b) and says whether it landed | the only check of the whole path — the file, the URL, the route segment, the signature, egress and TLS |
 
 **The remote case is the user's to carry.** A bundle prepared here and run on
@@ -960,14 +976,16 @@ could carry it there without showing it to you.
 `serve` **reads** the key file; it never generates a key and never rotates one.
 A notify key has a counterpart on a cluster molbuilder cannot reach: a key
 minted at startup would leave every running job signing with the old one,
-refused — and silently, because a notifier is silent on failure. The session
+refused — said only in each run's monitor log, which nobody reads while the
+reports are simply not arriving (§ 3). The session
 key is the contrast: it lives on one machine, so `serve` makes it on first run,
 and losing it only asks people to sign in again.
 
 **The one exception: restart after the first key.** `web/app.py` registers the
 listener once, when the app is built, and only if the file names a route and
 holds keys. On a server already running when the very first key is issued, the
-route does not exist yet: every report gets a `404`, swallowed by design, and
+route does not exist yet: every report gets a `404` — costing the run nothing,
+said in its monitor log — and
 the reports are simply absent. Later keys need no restart — they join the
 registered route. `notify-token` says so, and the This machine tab shows the
 difference as `configured` versus `live`.
@@ -1011,6 +1029,8 @@ asks, and what the wrapper then does is the wrapper's
 | what the summary line says | `monitor.JobStatus.as_text` (§ 4.1a) |
 | which fields a report may carry | `molbuilder/report_fields.py` (§ 4.1a) |
 | what a channel name resolves to | `monitor.load_channels` → `<config dir>/secrets/notify` (§ 3) |
+| whether an address may be a channel's | `monitor.address_refusal` — the This machine tab's save and the monitor's reading alike (§ 3) |
+| what a failed send says | `monitor.delivery_failure` — the monitor log and the tab's **Test** alike, never the address (§ 3) |
 | which channels one run uses | `monitor.channels_for`, from `--notify-channels` (§ 3.0) |
 | what identifies a report | `monitor.run_identity` — the stem, job id, host (§ 4.1a) |
 | the envelope each channel reads | `monitor.webhook_request` (§ 4.1b) |

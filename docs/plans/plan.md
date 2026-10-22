@@ -77,7 +77,7 @@ written into the documents word for word (no move), and 2.26.1 (N3d: the
 e2e batch's older failures owned, three errors of ours among them), 2.26.2
 (N4: every fact on its floor, but the two record readers L1T-D1 holds),
 2.26.3 (L1T-D1: those readers on their records' floors) and 2.26.4 (L1T-D2:
-*where am I*, one ground-floor answer with its context), and **2.27.0** (N5, § 1s: what is computed and how it runs, two records -- `task.json` and `job-request.json`; `molbuilder describe`; `jobset migrate` splits a calculation described before).
+*where am I*, one ground-floor answer with its context), and **2.27.0** (N5, § 1s: what is computed and how it runs, two records -- `task.json` and `job-request.json`; `molbuilder describe`; `jobset migrate` splits a calculation described before), and 2.27.1 (a channel's address held to one rule, a failed send said by what failed, never the address).
 
 **After 2.27.0, the user's:** every calculation under `AuBDTAu` is read once `jobset migrate` has run on it -- `lowbias_local` after its local transmission has ended (the `jobset launch` waiting on it holds older code and may end in an error once the run is over; the run's files are the run's own) -- and the dev server restarted on 2.27.0 (the Results tab's *scan failed* there was the server running two releases' code at once).
 
@@ -327,6 +327,144 @@ that streams a folder holding a scratch file and a store and reads the zip
 back through `zipfile` (the scratch and the stores absent, every other file
 whole, the length exact).
 
+## 1w. One door per setting, one answer per launched group *(2026-10-21; PROPOSED — waits for the user's yes; N5b in § 0a's queue)*
+
+*(the user, 2026-10-21, on the 2.27.0 review: "this sounds to me a problem of
+unification and template inconsistency or bad design. identify the nature of
+this problem, rather than hurrying to patch it up"; "you always break the rule
+of coding of unified api and framework level and keep creating different sets
+of handcrafted code")*
+
+**What the review found, by its nature.** Three fresh reviewers read 2.27.0
+whole (contract against code; the road describe → prep → launch → status →
+migrate; the Task setup page). The road itself holds. What does not hold
+falls into two errors of the same kind, both in the framework, not in a
+module:
+
+1. **A setting's value is handled place by place.** A setting has ONE
+   definition, its catalogue item (`template.Item`, `engines/template.md`
+   § 2.1a: every fact about a parameter has one home). But what is DONE to a
+   value — judged, spelled, defaulted, labelled, allowed a home — is written
+   separately at every place a value can be written. 2.27.0 added one such
+   place (the run card) and removed another (the template's run-setting
+   values) without giving them one door, so the edges leaked:
+   - migrate drops a run-setting value from a `task@2` template (the template
+     door refuses it BY CONTENT; migrate's move runs BY SCHEMA VERSION);
+   - a run card's value is checked for no type and no choice (`template.why_not`
+     leaves the type to a check that runs for overrides only), and is then
+     refused at prep in the BENCH's words (cards go through the bench's
+     checker, `prep_inputs._declared_execution_pins`);
+   - a card's `null` reaches `int()` (`declared_run_shape`) — a traceback;
+     a card's `"time": null` erases the allocation's wall (`fold_allocation`);
+     a card's wall is stored as typed while the allocation's is spelled at read.
+2. **"What may be done to a launched group" is decided in several places.**
+   2.27.0 changed the rule (a launched group is prepared again for its job
+   request, hierarchical) and moved SOME of the places: prep offers, ticked, a
+   launched group whose members changed and then refuses it; `status` tells a
+   failed launched run to restore where § 5 says prepare again; the page lets a
+   new row join a launched group.
+
+**The inventory, measured** (two read-only inventories, 2026-10-21; each cited
+site read before it was written here):
+
+| one fact | decided in | can disagree today |
+|---|---|---|
+| a setting's TYPE | the catalogue `Item.type` (template reader, `as_declared`); the config ANNOTATION (the override check, the form's `coerce_to_field_type`); config `validate` callables; the page's `CELL_READERS`; the form's number reader | yes — `4.0` for a count, a bool from text, a list's separators |
+| its CHOICES | `Item.choices`/`offered`; hand copies in `electronic_state`, `SOLVENTS`, JS locks; `/sweepable` serves raw `choices` where `/columns` serves `offered` | yes |
+| its DEFAULT | catalogue `value` and `default`; the config class default (what `resolve` actually applies, labelled *the catalogue's default*); `recommended`; run-time literals — `runwrap` `wall_slack` 5 s and `continue_retries` 0 where the catalogue says 600 and 1, the deck writer's `"ScaLAPACK"` where it says ELPA-1STAGE | equal today by hand and one test; the literals differ |
+| its SPELLING (wall, memory, GPUs) | one codec (`scheduler.quantities`), three doors: the allocation spelled at read, a flag at the CLI, a card's wall only inside `Resources` at prep | yes |
+| its HOME (which record may hold it) | three catalogue declarations (`category` execution, `run_card`, group `staging`) and five override-name rules (preflight, `resolve`, `/columns`, the transport door, `transport.stages`) | yes — `restart` is in `staging` but is a column; a shared or role override passes Save and is refused at prep |
+| where a value CAME FROM | ten vocabularies (template `SOURCE_WORDS`, `resolve.LAYER_WORDS`, the pipeline log's, the fold's, placement's, the page's, the bench's, the transport panel's, the electronic state's) | yes — the pipeline log labels a card's rank count *allocation* |
+| may group N be prepared / launched now | `GroupAnswer.preparable`/`prep_offer`, prep's checks, the page's `pickable`, `status`'s steps, the commands door, the CLI's question | yes — the cases above |
+| the way on for a launched stage | `commands.way_back` (layout-aware), `redo_launched`, `identity.way_back_words`, `runstatus`'s own sentence, `runwrap`'s retry text, the page's | yes |
+
+And homes with no check at all: a card's launch shape (no type, no range, no
+`why_not`); a card's wall; a bench point's number type and range; a CLI
+flag's positivity; the web's prep-plan door; the page's `0x10` and `1e3` read
+as numbers.
+
+**The design — what changes, framework first:**
+
+- **A. The setting door** (floor 1, beside the catalogue — `template.py`'s
+  item doors, gathered). One API every home asks, the catalogue item the only
+  source of truth it reads:
+  - `accepts(item, value, home, *, engine, kind, stage)` → the one refusal
+    sentence or none: the item's TYPE (the catalogue's alone — the config
+    annotation stops judging), its choices as the kind offers them, its limits,
+    a rung-fixed value, `null` by the home's rule, and whether this HOME may
+    hold it at all;
+  - `spell(item, value)` → the one canonical form (`as_declared`, and the
+    wall/memory/GPU codec for the asks), applied where a record is READ, so a
+    card is spelled as the allocation is;
+  - `default(item, kind)` → the catalogue's value (a kind's `recommended`
+    first) — the one default; `resolve` applies it for an unstated setting,
+    and the run-time literals go (a job always carries its value);
+  - `home_of(item)` → which records and surfaces may hold a value — derived
+    from the catalogue's markers, one table, one sentence for a value in the
+    wrong home;
+  - `said(layer)` → the one provenance vocabulary, used by the deck, the
+    pipeline log, prep's lines and the page.
+  The homes then ASK and decide nothing: the template reader, the
+  description's preflight (overrides), the job request's checks (cards,
+  bench), the CLI flags, `resolve`, prep's input assembly, the hand-over and
+  Save, migrate, and the page (through the folder answer and one server door,
+  never its own readers).
+- **B. Run settings leave the template.** The template is the description's
+  (what is computed); a run setting is the job request's. The template writer
+  writes no run-setting item, the template reader refuses one as not a
+  template item with the run card's sentence, and migrate moves a value it
+  finds BY CONTENT, whatever the schema. `template.md` G2 (complete for a
+  surface) is restated: the description's items in the template, the run
+  settings offered by the run card from the catalogue.
+- **C. One launched-group answer.** `ready.group_answer(calc, n)` → the
+  group's state (described / prepared / prepared, members changed / launched /
+  launched, members changed / held by a sequence), whether it may be prepared
+  and launched now and why not, and its way on — one composer, layout-aware.
+  Prep's refusals, both offers, `status`'s steps, the CLI's question and the
+  page's boxes and group cells all READ it; their own sentences and partial
+  rules go.
+- **D. The page** (the Task setup review's state findings) is rebuilt on A and
+  C: its cells and cards judged by the door, its per-folder state one object
+  rebuilt from the folder answer.
+
+**What it retires** (counted at the design's sign-off, not guessed here): the
+override type check's config-annotation reader, the bench checker's use for
+cards, `card_settings`' detour, the run-time default literals, the five
+override-name rules, nine of ten provenance vocabularies, `GroupAnswer`'s
+partial `preparable`, `runstatus`'s and `build.py`'s own launched sentences.
+Tests follow the API: one table of `(item, home, value) → accepted / refused /
+spelled`, the per-home value tests retired into it.
+
+**Contract first** — the sections the change rewrites: `engines/template.md`
+§§ 2, 2.1a, 5.3, 6.4, 10; `execution/job-request.md` §§ 2, 4, 7, 8;
+`engines/stages.md` § 6.6; `execution/job-system.md` *The task* (the states,
+the next-step table, R-P5, R-L7); `web/task-setup.md` §§ 5, 6.2b, 11;
+`execution/architecture.md` (the door on floor 1). Then the code, A → B → C →
+D, each a release closed by two fresh full-text rounds.
+
+**Decisions that are the user's:**
+1. this direction, A–D;
+2. B — run settings out of the template (rather than kept as declared,
+   valueless slots policed by a refusal);
+3. the config classes' defaults — derived from the catalogue, or kept and held
+   equal by `test_the_DEFAULT_agrees` as today;
+4. the page judging a value through a server door (one round trip per edit)
+   or from rule data the folder answer serves;
+5. Save's stale-file check that `task-setup.md` § 8 promises and nothing
+   implements — build it, or take the promise out;
+6. the order against N6 (the memory suggestion).
+
+**Also found, outside A–D** (each to be checked before it is fixed): the
+catalogue's `engine_default` for `diag_algorithm` is wrong — SIESTA 5.4.2 with
+nothing written takes Divide-and-Conquer (`diag_option.F90:213, 242`), ELPA
+only when asked, whatever the build carries; documents that contradict one
+another (the gather and versions, the leads and the seed's density, the
+run-setting ladder, `web-api.md`'s launched prep). The two gaps the same
+read found in the notification secrets — a failed Test quoting the address,
+`http://` accepted for a channel whose address is its credential — are
+closed in 2.27.1 (`run-reports.md` § 3, `monitor.address_refusal` and
+`monitor.delivery_failure`).
+
 ## 0. Rule R3, restated
 
 `docs/README.md` used to say **R3: `roadmap.md` is THE one plan.** That is now
@@ -388,6 +526,7 @@ below says.
 | **N3d** | **shipped 2.26.1** | **The e2e batch's older failures, owned one by one** — found by 2.26.0's full `e2e` batch (500 tests, 2026-10-20) and failing the same on the pushed 2.25.2, so older than the sequence work: `test_bench_summary_inspector_e2e` (4: the page's polling), `test_inspector_registry_e2e` (7: the dropdown's headings, the error card, a viewer's teardown), `test_results_file_picker_e2e` (a rescan's parsing state), `test_siesta_run_in_the_viewer_e2e` (opened again and again), `test_vibration_e2e` (the monitor's status line no longer says *SCF iteration*, it says *SCF rows*), and a notebook test that differs from run to run. Each judged against its contract -- the code wrong, or the test asserting a rule no longer stated -- never called flaky; a timing one read wait by wait against the page code. **What they were** (the changelog's 2.26.1 row): three errors of ours -- a PySCF run's status line without its SCF iteration (2.21.0), a plain `.xyz` opened as a trajectory on the Results tab (2.16.3), a benchmark's folder opening nothing -- and tests mounting viewers without the server's answer they match on since 2.13.3; the notebook's one miss did not come back on its own, and its wait now says why when it fails | 2.26.0's batch; the user, 2026-10-20: *"push when all green"* -- these are not green, said so at the push |
 | **N4** | **2.26.2**, L1T-D1 **2.26.3**, L1T-D2 **2.26.4** | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's, and their two choices of how (the user, 2026-10-21) |
 | **N5** | **shipped 2.27.0** | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
+| **N5b** | **proposed** — waits for the user's yes | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
 | **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*

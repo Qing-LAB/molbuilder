@@ -41,8 +41,11 @@ page exists:
   always dropped to a shell — which is what a person hit on 2026-08-31 and
   reported as *"it seems the code is missing"*.
 
-Task setup now writes `task.json` and nothing else. That rule is no longer
-maintained by discipline; there is no other file it can reach.
+Task setup now writes the calculation's two records — `task.json` and
+`job-request.json`, the ticks and the channel names in the second
+([`execution/job-request.md`](?doc=execution/job-request.md) § 3.5) — and no
+secret. That rule is no longer maintained by discipline; there is no other file
+it can reach.
 
 ---
 
@@ -58,6 +61,7 @@ So every response from every route here is built to be safe to look at:
 | a stored **key** | that it is *there*, never what it is |
 | **any** address | **masked to host + last few characters** — enough to tell two apart, nowhere near enough to use |
 | a **newly issued** key | once, at the moment it is issued, and never again |
+| a refused save, a failed **Test** | the fault — the address rule's, or what failed — **never the address**, which an error's own text would quote (`run-reports.md` § 3) |
 
 The masking rule is not caution for its own sake. The route this replaced
 returned every stored URL in full until 2026-08-31 on the strength of *"an
@@ -117,6 +121,14 @@ is holding one deliberately — and it would make this page's own message
 (*"save a channel below and it becomes a named one"*) false. Keyed by name, not
 by *"anything that is not `channels`"*, so the merge rule above still holds for
 a field added later.
+
+**An address is saved only if the monitor would send to it** — the monitor's
+own rule (`run-reports.md` § 3, `monitor.address_refusal`): a web address with
+no space or control character, `https://` — or `http://` for a molbuilder
+listener on a host you trust — and `https://` only for Slack and Discord, whose
+address is the credential. A refusal names the fault and never quotes the
+address. A channel already in the file that fails the rule is listed, marked as
+one the monitor skips, with its fault.
 
 **Test is the part worth the most.** A channel is only known to work when a
 report arrives, and this is the only check that exercises the file, the

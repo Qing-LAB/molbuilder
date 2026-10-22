@@ -525,6 +525,85 @@ def test_the_users_secret_is_never_echoed_into_the_log(tmp_path, monkeypatch):
     assert "hooks.slack.com" not in log.read_text()
 
 
+#: `run-reports.md` § 3, *an address is one the monitor can send to safely*:
+#: each row a channel as a hand-edited file may hold it, and the fault the
+#: monitor's log must name -- ``None`` for one it sends to.
+_ADDRESSES = [
+    ({"url": "http://hooks.slack.com/services/T/B/SECRETTAIL"},
+     "a slack address is its credential"),
+    ({"url": "http://discord.com/api/webhooks/1/SECRETTAIL"},
+     "a discord address is its credential"),
+    ({"url": "http://relay.example/SECRETTAIL", "kind": "slack"},
+     "a slack address is its credential"),
+    ({"url": "https://hooks.slack.com/services/T/B/SECRET TAIL"},
+     "a space or a control character"),
+    ({"url": "https:///SECRETTAIL"}, "must start with https://"),
+    ({"url": "http://127.0.0.1:8888/api/SECRETTAIL", "key": "k"}, None),
+]
+
+
+@pytest.mark.parametrize("spec,fault", _ADDRESSES,
+                         ids=[f or "a listener over http" for _s, f in _ADDRESSES])
+def test_an_address_the_monitor_will_not_send_to_is_skipped_by_its_fault(
+        spec, fault, tmp_path, monkeypatch):
+    """THE SILENT FAILURE: a Slack or Discord webhook written ``http://``
+    sends its credential unencrypted on every report; a malformed address
+    fails every send, and a complaint quoting it would copy the credential
+    into the run's log.  The monitor skips the channel, naming it and its
+    fault, never the address -- and a molbuilder listener over ``http://``,
+    signed, is sent to.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the reader not asking the address rule
+    (every row sent to); the rule refusing every ``http://`` (the listener
+    row skipped); the fault quoting the address."""
+    _file(tmp_path, monkeypatch, {"lab": spec})
+    log = tmp_path / "m.log"
+    log.write_text("")
+    got = M.load_channels(log=log)
+    said = log.read_text()
+    assert "SECRET" not in said, said
+    if fault is None:
+        assert list(got) == ["lab"], said
+    else:
+        assert got == {}, got
+        assert "'lab'" in said and fault in said, said
+
+
+def _closed_port() -> int:
+    """A port on this host nothing listens on: bound by the system, then
+    let go."""
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def test_a_failed_send_is_said_in_the_log_by_what_failed_never_the_address(
+        tmp_path):
+    """`run-reports.md` § 3: a failure costs the run nothing and is said in
+    the monitor log -- the channel's name, the event, what failed.
+
+    THE SILENT FAILURE: a channel that never delivers looks exactly like
+    one that does, until a run that mattered sends nothing; and the
+    exception's own text quotes the address, for Slack and Discord the
+    credential, into a log that sits in the run's folder.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the failure swallowed (no line); the
+    line built from the exception's text (the address in it)."""
+    port = _closed_port()
+    log = tmp_path / "m.log"
+    log.write_text("")
+    hook = M.make_webhook_notifier(f"http://127.0.0.1:{port}/api/SECRETTAIL",
+                                   key="k", channel="lab", log=log)
+    hook(M.JobStatus(), "finish")          # must simply return
+    said = log.read_text()
+    assert ("[NOTIFY] channel 'lab': finish not delivered -- the connection "
+            "was refused") in said, said
+    assert "SECRETTAIL" not in said and str(port) not in said, said
+
+
 # --------------------------------------------------------------------- #
 #  the destination path is a COPY of a rule, so it is pinned to it       #
 # --------------------------------------------------------------------- #

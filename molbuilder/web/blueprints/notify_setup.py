@@ -259,13 +259,28 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
     # not say WHY.  Per channel it does know, so its rules are not
     # re-implemented here.
     usable = _usable() if usable is None else usable
-    skipped = sorted(set(_stored()) - usable)
+    stored = _stored()
+    skipped = sorted(set(stored) - usable)
     if skipped:
-        return ("the monitor will skip " + ", ".join(repr(n) for n in skipped)
-                + " — each needs a 'url' string, and a 'key' if present must "
-                  "be a non-empty string.  Nothing is sent to a skipped "
-                  "channel and the monitor log says why.")
+        return ("the monitor will skip "
+                + "; ".join(f"{n!r} — {_why_skipped(stored[n])}"
+                            for n in skipped)
+                + ".  Nothing is sent to a skipped channel and the monitor "
+                  "log says why.")
     return ""
+
+
+def _why_skipped(spec) -> str:
+    """Why the monitor's reader skips one stored channel, in its words: the
+    address rule's (`monitor.address_refusal`), else the shape's."""
+    from ...monitor import address_refusal
+    if isinstance(spec, dict) and isinstance(spec.get("url"), str) \
+            and spec["url"]:
+        why = address_refusal(spec["url"], spec.get("kind"))
+        if why:
+            return why
+    return ("it needs a 'url' string, and a 'key' if present must be a "
+            "non-empty string")
 
 
 # ── channels ────────────────────────────────────────────────────────────────
@@ -332,10 +347,17 @@ def save_channel(name: str):
     kind = str(body.get("kind") or "").strip().lower()
     if not url:
         return jsonify({"ok": False, "error": "a url is required"}), 400
-    if not (url.startswith("https://") or url.startswith("http://")):
+    from ...monitor import _KINDS, address_refusal
+    if kind and kind not in _KINDS:
         return jsonify({"ok": False,
-                        "error": "the url must start with https:// "
-                                 "(or http:// for a host you trust)"}), 400
+                        "error": f"kind must be one of "
+                                 f"{', '.join(sorted(_KINDS))}"}), 400
+    # THE MONITOR'S RULE FOR AN ADDRESS (`run-reports.md` § 3), so a channel
+    # this saves is one the monitor sends to -- refused by its fault, the
+    # address never quoted back.
+    why = address_refusal(url, kind or None)
+    if why:
+        return jsonify({"ok": False, "error": why}), 400
     doc = _document()
     chans = doc.get("channels")
     if not isinstance(chans, dict):
@@ -350,12 +372,7 @@ def save_channel(name: str):
     # `text` and Discord refuses a body without `content` or `embeds`
     # (`run-reports.md` § 4.1b).  Guessing from the host is the DEFAULT, not
     # the answer, so a proxied webhook is told apart here.
-    from ...monitor import _KINDS
     if kind:
-        if kind not in _KINDS:
-            return jsonify({"ok": False,
-                            "error": f"kind must be one of "
-                                     f"{', '.join(sorted(_KINDS))}"}), 400
         spec["kind"] = kind
     else:
         # Absent means "read it off the host" -- and it must CLEAR a stored
@@ -429,10 +446,18 @@ def test_channel(name: str):
     with nothing behind it is exactly the silent failure this area keeps
     producing.
     """
-    from ...monitor import load_channels, webhook_request
+    from ...monitor import delivery_failure, load_channels, webhook_request
     from ...report_cards import LayoutError
     dest = load_channels().get(name)
     if not dest:
+        stored = _stored().get(name)
+        if stored is not None:
+            # STORED, AND SKIPPED BY THE MONITOR: said by its fault, which a
+            # save of the channel puts right.
+            return jsonify({"ok": False,
+                            "error": f"{name!r} is not sent to: "
+                                     f"{_why_skipped(stored)}",
+                            **_state()}), 400
         return jsonify({"ok": False,
                         "error": f"no channel called {name!r} is set up "
                                  f"here"}), 404
@@ -466,8 +491,11 @@ def test_channel(name: str):
         # broke.  `web-api.md` § 1 calls this the advisory bucket and asks
         # for the status to be spelled out so the intent is visible.
         _record(name, False)
+        # WHAT FAILED, NEVER THE EXCEPTION'S TEXT, which quotes the address
+        # -- for Slack and Discord the credential (`monitor.delivery_failure`).
         return jsonify({"ok": False, "reached": False,
-                        "error": f"could not reach it: {exc}",
+                        "error": f"could not reach it: "
+                                 f"{delivery_failure(exc)}",
                         **_state()}), 200
     good = bool(code and 200 <= code < 300)
     _record(name, good)

@@ -87,7 +87,11 @@ import os
 import re
 import signal
 import subprocess
+import socket
+import ssl
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1136,6 +1140,11 @@ def _fire(status: JobStatus, event: str) -> None:
 #: individually guarded, so a dead endpoint cannot break the loop either.
 NOTIFY_TIMEOUT_S = 2.0
 
+#: The override that reports to one address instead of the channels file,
+#: and the key a molbuilder listener there needs (`run-reports.md` § 3).
+NOTIFY_URL_VAR = "MB_NOTIFY_URL"
+NOTIFY_KEY_VAR = "MB_NOTIFY_KEY"
+
 #: The destination file's name inside molbuilder's config directory.  NOT in
 #: the calculation's description: `task.json` travels -- to a cluster, into a
 #: citation's composed copy, to whoever is handed the calculation -- and a token must
@@ -1413,6 +1422,66 @@ def channel_kind(dest: Dict[str, Any]) -> str:
     return "molbuilder"
 
 
+#: The schemes a channel's address may take (`run-reports.md` § 3).
+_SCHEMES = ("https", "http")
+
+
+def address_refusal(url, kind: Optional[str] = None) -> Optional[str]:
+    """Why ``url`` cannot be a channel's address, or ``None`` -- THE ONE
+    RULE, asked by the This machine tab's save and by :func:`load_channels`
+    (`run-reports.md` § 3): it reads as ``scheme://host/…`` with no space or
+    control character; its scheme is ``https``, or ``http`` for a molbuilder
+    listener on a host you trust; and a channel whose address IS its
+    credential -- Slack, Discord (:func:`channel_kind`, ``kind`` as
+    declared) -- is ``https``, since over ``http`` the credential would travel
+    unencrypted.  **The sentence never quotes the address**: for those two
+    kinds it is the secret."""
+    url = str(url or "")
+    if not url:
+        return "the address is empty"
+    if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+        return "the address holds a space or a control character"
+    try:
+        parts = urllib.parse.urlsplit(url)
+        parts.port                       # a port that is no number raises
+    except ValueError:
+        return "the address does not read as a web address (scheme://host/…)"
+    if parts.scheme.lower() not in _SCHEMES or not parts.hostname:
+        return ("the address must start with https:// -- or http:// for a "
+                "molbuilder listener on a host you trust")
+    which = channel_kind({"url": url, "kind": kind})
+    if which in ("slack", "discord") and parts.scheme.lower() != "https":
+        return (f"a {which} address is its credential, so it must start "
+                f"with https:// -- over http:// it would travel unencrypted")
+    return None
+
+
+def delivery_failure(exc: BaseException) -> str:
+    """What a failed send says -- THE ONE COMPOSER, for the monitor's log
+    and the This machine tab's Test (`run-reports.md` § 3): what failed,
+    from the exception's structured parts -- an HTTP status, the operating
+    system's own words, a TLS reason -- and **never the exception's text**,
+    which quotes the address it was sent to, for Slack and Discord the
+    credential."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"the service answered HTTP {exc.code}"
+    reason = (exc.reason if isinstance(exc, urllib.error.URLError)
+              else exc)
+    if isinstance(reason, (socket.timeout, TimeoutError)):
+        return "it timed out"
+    if isinstance(reason, ssl.SSLError):
+        return ("the TLS handshake failed"
+                + (f" ({reason.reason})" if getattr(reason, "reason", None)
+                   else ""))
+    if isinstance(reason, socket.gaierror):
+        return "the host could not be found"
+    if isinstance(reason, ConnectionRefusedError):
+        return "the connection was refused"
+    if isinstance(reason, OSError) and reason.strerror:
+        return f"the connection failed: {reason.strerror}"
+    return f"it could not be sent ({type(exc).__name__})"
+
+
 def webhook_request(dest: Dict[str, Any],
                     report: Dict[str, Any],
                     items: "Optional[Tuple[str, ...]]" = None,
@@ -1600,6 +1669,12 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
                  f"{', '.join(sorted(_KINDS))}; reading it off the URL "
                  f"instead")
             kind = None
+        why = address_refusal(spec["url"], kind)
+        if why:
+            # THE ADDRESS SAID BY ITS FAULT, NEVER QUOTED: for Slack and
+            # Discord it is the credential (`run-reports.md` § 3).
+            _say(f"{p}: channel {name!r}: {why}; skipping it")
+            continue
         out[name] = {"url": spec["url"], "key": key, "kind": kind,
                      "headers": {str(k): str(v) for k, v in headers.items()}}
     return out
@@ -1696,12 +1771,17 @@ def make_webhook_notifier(url: str, *,
                           ident: Optional[Dict[str, str]] = None,
                           kind: Optional[str] = None,
                           report: Optional[Sequence[str]] = None,
-                          layout: "Optional[_cards.Layout]" = None
+                          layout: "Optional[_cards.Layout]" = None,
+                          channel: Optional[str] = None,
+                          log: Optional[Path] = None
                           ) -> Notifier:
     """A stdlib webhook notifier: POSTs ``event`` + the status summary to
-    ``url`` as JSON.  Best-effort, short timeout, never raises out.
-    ``layout`` is the card's layout the monitor read at its start
-    (`run-reports.md` § 4.1c).
+    ``url`` as JSON.  Best-effort, short timeout, never raises out: a send
+    that fails costs the run nothing and is SAID in the monitor log ``log``
+    -- the channel's name and what failed (:func:`delivery_failure`), never
+    the address (`run-reports.md` § 3).  ``channel`` is the name it was
+    chosen by; ``None`` is ``MB_NOTIFY_URL``'s.  ``layout`` is the card's
+    layout the monitor read at its start (`run-reports.md` § 4.1c).
 
     JSON rather than form encoding because both destinations want it: Slack
     and Discord read a JSON body, and a private endpoint that appends to a
@@ -1745,8 +1825,10 @@ def make_webhook_notifier(url: str, *,
             url, data=body, method="POST", headers=head)
         try:
             urllib.request.urlopen(req, timeout=NOTIFY_TIMEOUT_S).close()
-        except Exception:                              # noqa: BLE001
-            pass
+        except Exception as exc:                       # noqa: BLE001
+            who = f"channel {channel!r}" if channel else NOTIFY_URL_VAR
+            _notify_say(f"{who}: {event} not delivered -- "
+                        f"{delivery_failure(exc)}", log)
     _hook.__name__ = "webhook_notifier"
     return _hook
 
@@ -1821,16 +1903,21 @@ def _install_env_notifiers(log: Optional[Path] = None,
     if any(getattr(fn, "__name__", "") == "webhook_notifier"
            for fn in _NOTIFIERS):
         return
-    url = os.environ.get("MB_NOTIFY_URL")
+    url = os.environ.get(NOTIFY_URL_VAR)
     if url:
+        # THE SAME RULE AS A CHANNEL'S ADDRESS (:func:`address_refusal`),
+        # said by its fault and never quoted.
+        why = address_refusal(url)
+        if why:
+            _notify_say(f"{NOTIFY_URL_VAR}: {why}; nothing is sent", log)
+            return
         # ``MB_NOTIFY_KEY`` rides with it, because without a key the
         # override could not reach OUR OWN listener at all: an unsigned
-        # report is refused there, and refused with a 404 that this
-        # notifier swallows -- so the one destination you most want to test
-        # once would fail in total silence.
+        # report is refused there with a 404 -- said in the log as a
+        # failed delivery, never the address.
         register_notifier(make_webhook_notifier(
-            url, key=os.environ.get("MB_NOTIFY_KEY") or None, ident=ident,
-            report=report, layout=layout))
+            url, key=os.environ.get(NOTIFY_KEY_VAR) or None, ident=ident,
+            report=report, layout=layout, log=log))
         return
     if channels is not None and len(channels) == 0:
         # NONE ASKED FOR (`notify.channels = []`, `run-reports.md` § 3.0):
@@ -1851,7 +1938,7 @@ def _install_env_notifiers(log: Optional[Path] = None,
         register_notifier(make_webhook_notifier(
             dest["url"], key=dest.get("key"), headers=dest["headers"],
             ident=ident, kind=dest.get("kind"), report=report,
-            layout=layout))
+            layout=layout, channel=name, log=log))
 
 
 # --------------------------------------------------------------------- #
