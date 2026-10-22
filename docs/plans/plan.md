@@ -535,6 +535,46 @@ judged, the run script's literal list of what it needs (the catalogue's
 non-optional wrapper items), a test built on a job no prep makes. Dropped:
 `--gpus 0`'s wording (refused by its reader already), the two `time` readers
 (one spelling already), the bench's GPU default (the door's already).
+Committed locally (5ea09a27).
+
+**B, as built (2026-10-21).** The template writer writes no run setting
+(`template_with_values`, every writer's one road); the template file's door
+refuses a template holding one, valueless or not, naming `jobset migrate`
+(`template_file._refuse_run_settings`); the two checks that policed a value
+in the slot (`read_template`'s *"the SCHEDULER answers it"*,
+`config_from_template`'s machine-fact story) are deleted with it. Migrate, by
+what the files hold: one helper moves a template's run-setting values onto
+the calculation's card (`_onto_the_card`) -- of the job request the split
+writes, or of the one beside a 2.27.x description, read raw for every later
+step -- and the template step takes every run-setting item out (rule
+`2.28.0`). **Found on the way, an error of 2.27.0**: migrate's group step
+wrote each stage's `group` into a `task@2` description, whose groups are the
+job request's, so `jobset migrate` refused every 2.27.x calculation
+(*"'group' says how the stage runs"*) -- now the step is a `task@1`
+description's alone. Checked once by hand on a throwaway calculation in
+scratch shaped as 2.27.x wrote it: prep refused it naming migrate; migrate
+took the ten items out, moved a chosen `use_gpu = true` onto the card and
+left a not-chosen default out; prep then wrote the catalogue's solver and
+slack and said each value's source. Tests: eleven pinned the retired slot --
+six read a catalogue fact off a template (now the catalogue's), two say
+"none in the template", three retired with the slot; no migrate test (the
+user, 2026-10-16: an older release's files are no test's subject).
+
+**B's first round** (one fresh reader, real 2.27.1 and 2.26.4 calculations
+in scratch -- refused, migrated, prepared, status, a dry-run launch: the
+road holds), fixed: a hand-over a 2.27.x tab wrote and nobody saved was told
+to migrate, which refuses a folder with no description -- it is told to send
+the hand-over again; the door and migrate asked "is it a run setting" two
+ways (the file's category, the catalogue's names) -- the catalogue's alone;
+the contract's sentences that still had `read_template` refusing `mpi_np` or
+a run setting as a template item's example; a dead clause, a docstring and a
+test the slot left. **For D**: the bench card's *value in force* reads the
+template, never the run card (`viewer.js`, since 2.27.0). **B's second
+round** (a fresh reader, a real 2.27.x PySCF calculation in scratch: the road
+holds) -- deleted: a guard for a 2.27.x description with no job request,
+which no road leaves, and the fallback it left unreachable (which gave every
+stage of a 2.27.x calculation a group of its own during the migration);
+four contract sentences and two comments that still described the slot.
 
 **Also found, outside A–D** (each to be checked before it is fixed): the
 catalogue's `engine_default` for `diag_algorithm` was wrong — SIESTA 5.4.2 with

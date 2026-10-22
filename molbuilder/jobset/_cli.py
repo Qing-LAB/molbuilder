@@ -2518,7 +2518,8 @@ def migrate_cmd(bundle: str) -> None:
     every reader names when it refuses such a file: the description and the
     plans, the copy of the machine's record, a flat calculation's run files
     and last run, a transport lead's files on its own stem, and the
-    template's older, renamed and retired items.
+    template's older, renamed and retired items and the run settings it
+    held, a value moved onto the run card.
 
     What the calculation was is KEPT: every value carried, every blank left
     blank, each change printed with the rule it follows; a change that would

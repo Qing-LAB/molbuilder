@@ -15,7 +15,11 @@ of its own (`execution/job-request.md` § 8): the template's run-setting
 values onto the calculation's run card, where it states none, but a value
 the template records *not chosen* that is the catalogue's default now; and
 `restart` and `density_fit`, which say what is computed, off the cards -- the
-calculation's into the template, a stage's into its overrides.
+calculation's into the template, a stage's into its overrides.  **And run
+settings leave the template** (2.28.0, `engines/template.md` § 2): every
+run-setting item a template holds, valueless or not, is taken out, by what the
+file holds and never by its version -- a value onto the calculation's run card
+of the job request beside it (:func:`_onto_the_card`).
 
 **The records** (:func:`_migrate_records`).  `task.json`: its `calculation`
 (W57), a notify block's four values and *never* as ``null`` (W57); a stage's
@@ -24,8 +28,9 @@ name, since whether it runs is the person's; `centre_junction` removed
 (2.6.0, the junction enters its calculation centred); a transport
 description's voltages, ``[0.0]`` where it stated none (2.16.3); the
 low-bias switch from the word it replaced (2026-10-08); every stage's
-`group` (2.7.0, :func:`_migrate_groups`) -- a prepared stage its job's, the
-rest the number above where the ladder allows it.  Each `job-set.json` --
+`group` in a description written before 2.27.0 (2.7.0,
+:func:`_migrate_groups`) -- a prepared stage its job's, the rest the number
+above where the ladder allows it.  Each `job-set.json` --
 the root's and each sweep's: a job's `point`, `finish`, `resumes`,
 `placement` and `members` (W57; `members` written as `group` before 2.7.0),
 its `written_at` and `asked` (2.7.0) and its `scratch_dir` (2.22.0), each
@@ -212,10 +217,12 @@ _JOB_ABSENT = {"point": ({}, "w57"), "finish": (None, "w57"),
 _JOB_RENAMED = {"group": ("members", "2.7.0")}
 
 #: THE RELEASE THE JOB REQUEST BECAME A RECORD OF ITS OWN
-#: (`execution/job-request.md` § 8): the rule a description holding it, a
-#: template holding a run setting's value and a plan whose resources name
-#: the program were written before.
+#: (`execution/job-request.md` § 8): the rule a description holding it and
+#: a plan whose resources name the program were written before.
 _SPLIT = "2.27.0"
+#: THE RELEASE RUN SETTINGS LEFT THE TEMPLATE (`engines/template.md` § 2):
+#: the rule a template holding one, valueless or not, was written before.
+_RUN_OUT = "2.28.0"
 #: The description's schema before the split.
 _TASK_AT_1 = "molbuilder/task@1"
 #: The keys of the job request a description held before it.
@@ -349,16 +356,9 @@ class _Records:
                 f"{JobSet.path_of(self.base)} does not read as this "
                 f"molbuilder writes it, and no rule here rewrites it; "
                 f"nothing was written: {exc}") from None
-        from ..job_request import JobRequest, StageRequest
-        jr = self.request
         return Calculation(base=self.base, task=task,
                            template=self.template_for(task.label),
-                           jobset=js,
-                           request=(jr if jr is not None else JobRequest(
-                               stages={st.name: StageRequest(group=i + 1)
-                                       for i, st in enumerate(task.stages)},
-                               engine=str(task.engine),
-                               calculation=str(task.calculation))))
+                           jobset=js, request=self.request)
 
     def template_for(self, label: str) -> Optional["TemplateFile"]:
         """The calculation's template, read once (`template_file.of`); a folder
@@ -383,10 +383,13 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
     (`group.upstream_of`) and their run cards share one allocation
     (`group.card_shares`) -- else one more.  A prepared group whose
     members are not one after another in the ladder cannot be stated by a
-    number, and is refused by name: which jobs to keep is the person's."""
+    number, and is refused by name: which jobs to keep is the person's.
+    A description written since the split (`task@2`) holds no group -- its
+    groups are its job request's (`execution/job-request.md` § 3.3)."""
     stages = obj.get("stages")
-    if not isinstance(stages, list) or all(
-            not isinstance(st, dict) or "group" in st for st in stages):
+    if (str(obj.get("schema") or "") != _TASK_AT_1
+            or not isinstance(stages, list) or all(
+                not isinstance(st, dict) or "group" in st for st in stages)):
         return []
     from ..identity import stage_key
     from ..task import Task
@@ -507,7 +510,6 @@ def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
     onto the calculation's card, where it states none -- but one the
     template records *not chosen* that is the catalogue's default now.  A
     `bench` row naming what is computed is refused by name."""
-    from .. import template as _T
     from ..job_request import SCHEMA
     said: List[str] = []
     desc = _description_view(obj)
@@ -539,29 +541,7 @@ def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
     said += [f"{k} = {v!r}: off the calculation's run card, into the "
              f"template -- it says what is computed"
              for k, v in sorted(rec.from_card.items())]
-    # THE TEMPLATE'S RUN-SETTING VALUES, onto the calculation's card -- a run
-    # setting by the catalogue's word now (`template.run_settings`), never
-    # by the older template's own category: `restart` and `density_fit`
-    # were run settings there, and stay in the template, what is computed.
-    template = rec.template_for(task.label)
-    run_settings = _T.run_settings(str(task.engine))
-    if template is not None:
-        for it in _T.read_template(template.text).items:
-            if (it.name not in run_settings
-                    or it.value is None or it.name in card):
-                continue
-            item = _T.one(_T.catalogue(), it.name, engine=str(task.engine))
-            if (it.source == "default" and item is not None
-                    and it.value == _T.default_of(item,
-                                                  str(task.calculation))):
-                said.append(f"{it.name} = {it.value!r}: the catalogue's "
-                            f"default, not chosen -- taken out of the "
-                            f"template; a run takes it there still")
-                continue
-            card[it.name] = it.value
-            said.append(f"{it.name} = {it.value!r}: out of the template, "
-                        f"onto the calculation's run card in "
-                        f"job-request.json")
+    said += _onto_the_card(rec, task, card)
     request = {"schema": SCHEMA,
                **({"allocation": obj["allocation"]}
                   if obj.get("allocation") else {}),
@@ -573,6 +553,39 @@ def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
                    "and reports -- moved into job-request.json, a record of "
                    "its own")
     return desc, request, said
+
+
+def _onto_the_card(rec: "_Records", task, card: dict) -> List[str]:
+    """THE TEMPLATE'S RUN-SETTING VALUES, onto the calculation's run card
+    ``card`` (changed in place), where it states none -- but a value the
+    template records *not chosen* that is the catalogue's default now
+    (`template.default_of`) -- a line each (`execution/job-request.md`
+    § 8).  A run setting by the catalogue's word now
+    (`template.run_settings`), never by the older template's own category:
+    `restart` and `density_fit` were run settings there, and stay in the
+    template, what is computed.  What the file holds decides, never its
+    version."""
+    from .. import template as _T
+    template = rec.template_for(task.label)
+    if template is None:
+        return []
+    engine, kind = str(task.engine), str(task.calculation)
+    run_settings = _T.run_settings(engine)
+    said: List[str] = []
+    for it in _T.read_template(template.text).items:
+        if it.name not in run_settings or it.value is None or it.name in card:
+            continue
+        if (it.source == "default"
+                and it.value == _T.default_of(
+                    _T.one(_T.catalogue(), it.name, engine=engine), kind)):
+            said.append(f"{it.name} = {_T.shown(it.value)}: the catalogue's "
+                        f"default, not chosen -- taken out of the template; "
+                        f"a run takes it there still")
+            continue
+        card[it.name] = it.value
+        said.append(f"{it.name} = {_T.shown(it.value)}: out of the template, "
+                    f"onto the calculation's run card in job-request.json")
+    return said
 
 
 def _migrate_records(rec: "_Records"):
@@ -714,6 +727,25 @@ def _migrate_records(rec: "_Records"):
         writes.add(jr_path, json_text(rec.request.to_dict()), frozenset())
         said.append(f"{jr_path.name}: written -- how the calculation runs, "
                     f"a record of its own ({_SPLIT})")
+    else:
+        # THE JOB REQUEST BESIDE IT, read raw (A16, migrate's exception) --
+        # what every later step composes the calculation with -- and the
+        # template's run-setting values onto its card, by what the template
+        # holds (`execution/job-request.md` § 8).
+        from .. import job_request as _jr
+        jr_path = _jr.path_of(base)
+        body = _read_raw(jr_path)
+        card = dict(body.get("execution") or {})
+        moved = _onto_the_card(rec, task, card)
+        changed = card != (body.get("execution") or {})
+        body["execution"] = card
+        try:
+            rec.request = _jr.from_dict(body, task)
+        except ValueError as exc:
+            raise _refused_rewrite(jr_path, exc) from None
+        if changed:
+            writes.add(jr_path, json_text(rec.request.to_dict()), {_RUN_OUT})
+        said += [f"{ln} ({_RUN_OUT})" for ln in moved]
 
     for folder, d in rec.jobsets.items():
         js_path = JobSet.path_of(folder)
@@ -1296,27 +1328,28 @@ def _decide_template(rec: "_Records", task):
                     for st, name in stage_zeros])
     zeros = list(dict.fromkeys(zeros + [name for _st, name in stage_zeros]))
     # AN ITEM NO RELEASE HELD is refused by name, as the reader refuses it
-    # (`template.config_from_template`): a misspelling, or a value written
-    # on a machine fact -- carried by no item, it would be dropped unsaid.
+    # (`template.config_from_template`): a misspelling -- carried by no
+    # item, it would be dropped unsaid.
     config_cls = engine_seam(engine).config_cls
     known = _T.template_fields(config_cls)
+    # A RUN SETTING, valueless or not, is taken out: the template holds
+    # none (`engines/template.md` § 2) -- what it holds decides, never its
+    # version -- its value moved onto the calculation's run card by the
+    # records step (:func:`_onto_the_card`); and the calculation's card's
+    # `restart` and `density_fit`, which say what is computed, come in.
+    ours = _T.run_settings(engine)
+    run_items = sorted(it.name for it in mine if it.name in ours)
+    vals = {k: v for k, v in vals.items() if k not in run_items}
     unknown = sorted(k for k in vals if k not in known
                      and k not in old_names and k not in _T.RETIRED_ITEMS)
     if unknown:
         raise MigrateError(
             f"{tmpl.name} names {', '.join(map(repr, unknown))}, which no "
-            f"item holds -- a misspelling, or a value written on a machine "
-            f"fact (engines/template.md § 7); prep refuses it too.  Correct "
+            f"item holds -- a misspelling; prep refuses it too.  Correct "
             f"it, then run the migration again; nothing was written.")
-    # A RUN SETTING'S VALUE, written before the split: the template carries
-    # none (`execution/job-request.md` § 2) -- the records step moves it
-    # onto the calculation's run card (:func:`_split`) -- and the
-    # calculation's card's `restart` and `density_fit`, which say what is
-    # computed, come into the template.
-    run_vals = sorted(k for k in vals if k in _T.run_settings(engine))
     from_card = dict(rec.from_card or {})
     if not (old_items or old_values or zeros or renamed or retired
-            or stage_retired or varies_retired or run_vals or from_card):
+            or stage_retired or varies_retired or run_items or from_card):
         raise _NothingInTheTemplate(
             f"{tmpl.name} carries no item written before the electronic "
             f"state's, no 0 written before {_T.ZERO_MEANING_CHANGED_AT} "
@@ -1347,8 +1380,9 @@ def _decide_template(rec: "_Records", task):
             if k in known and k not in old_names and k not in zeros}
     kept.update(state)
     kept.update(from_card)
-    said += [f"{k} = {vals[k]!r}: a run setting -- written valueless, its "
-             f"value the job request's" for k in run_vals]
+    said += ([f"{', '.join(run_items)} taken out -- a run setting is the job "
+              f"request's, never the template's ({_RUN_OUT})"]
+             if run_items else [])
     try:
         cfg = config_cls(**kept)
     except (TypeError, ValueError) as exc:
@@ -1402,7 +1436,8 @@ def _decide_template(rec: "_Records", task):
     # earliest (:func:`_kept_as`).
     rules = frozenset((["m6"] if state_said else [])
                       + ([_T.ZERO_MEANING_CHANGED_AT] if zeros else [])
-                      + ([_SPLIT] if run_vals or from_card else [])
+                      + ([_SPLIT] if from_card else [])
+                      + ([_RUN_OUT] if run_items else [])
                       + renamed_at + retired_at)
     task_rules = frozenset(
         ([_T.ZERO_MEANING_CHANGED_AT] if stage_zeros else [])

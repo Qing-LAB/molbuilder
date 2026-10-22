@@ -194,13 +194,11 @@ def test_every_element_carries_its_own_allocation(template):
 def test_the_description_no_longer_carries_the_rank_count(template):
     """The leak this step closes: `mpi_np` was a template item, so a folder
     that must name no machine named one — and floor 3 read it straight back
-    out.  It is an allocation now, and the template has no opinion."""
+    out.  It is an allocation now, and the template has no opinion: it does
+    not hold the item at all (`engines/template.md` § 2)."""
     import tomllib
     raw = tomllib.loads(template)
-    # @2: the item is DECLARED (a surface must be able to ask) but carries
-    # no value -- so the leak this step closed stays closed: floor 3 has
-    # nothing to read straight back out.
-    assert "value" not in raw["item"]["mpi_np"]
+    assert "mpi_np" not in raw["item"]
     ps = resolve(template, _task(), SiestaConfig, allocation=Resources(mpi_np=8), stage=STAGE)
     assert ps[0].resources.mpi_np == 8
 

@@ -104,9 +104,9 @@ def test_the_template_writer_CARRIES_the_cited_value():
         "engines/transport.md 2a.7 reversed that: the cited run DEFAULTS "
         "these and the person may change them, so the template has to show "
         "the number they would be changing")
-    assert got["ranks"] is None, (
-        "the allocation control still holds -- it is a different answerer "
-        "and nothing about it changed")
+    assert "ranks" not in got, (
+        "the allocation control still holds -- a run setting is the job "
+        "request's, and the template holds none (engines/template.md § 2)")
 
 
 def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():

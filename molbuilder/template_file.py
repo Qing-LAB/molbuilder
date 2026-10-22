@@ -52,10 +52,11 @@ def of(base, label: str, *, raw: bool = False) -> Optional[TemplateFile]:
     folder molbuilder did not leave, and it is refused by name rather than
     read (W38 M1).  *Nothing here* is ``None``, an answer.
 
-    **A run setting carries no value here** (`execution/job-request.md`
-    § 2): it is the job request's, so a template stating one -- written
-    before 2.27.0, or by hand -- is refused, naming `jobset migrate`, which
-    moves it onto the calculation's run card.  ``raw`` reads the file as it
+    **A template holds no run setting, valueless or not**
+    (`engines/template.md` § 2; `execution/job-request.md` § 2): it is the
+    job request's, so a template holding one -- written before 2.28.0, or by
+    hand -- is refused, naming `jobset migrate`, which takes it out, a value
+    it holds onto the calculation's run card.  ``raw`` reads the file as it
     lies, for that migration alone (`architecture.md` A16).
     """
     # `.template.toml` IS a role `runfiles.WRITTEN` declares -- the answers
@@ -84,27 +85,36 @@ def of(base, label: str, *, raw: bool = False) -> Optional[TemplateFile]:
 
 
 def _refuse_run_settings(path, text: str, base) -> None:
-    """A value on a run setting, refused by name, naming the command that
-    moves it (`execution/job-request.md` § 2, § 8)."""
+    """A run setting in the template, refused by name, naming the command
+    that takes it out (`engines/template.md` § 2; `execution/job-request.md`
+    § 2, § 8)."""
+    from .calcdirs import described
     from .identity import migrate_as_typed
-    from .template import read_template
+    from .template import read_template, run_settings
     try:
-        items = read_template(text).items
+        parsed = read_template(text)
     except ValueError:
         # A TEMPLATE THAT DOES NOT READ is refused by its readers, in their
         # words, where each reads it -- prep's resolve; status, in its table
-        # (`job-system.md` § 5.3).  This door asks what one that reads states.
+        # (`job-system.md` § 5.3).  This door asks what one that reads holds.
         return
-    stated = [it.name for it in items
-              if "execution" in (it.category or ()) and it.value is not None]
-    if stated:
-        raise ValueError(
-            f"{path.name} states {', '.join(stated)}: a run setting is the "
-            f"job request's, never the template's (execution/job-request.md "
-            f"§ 2).  `{migrate_as_typed(base)}` moves "
-            f"{'it' if len(stated) == 1 else 'them'} onto the calculation's "
-            f"run card in job-request.json, the old file kept beside the "
-            f"new.")
+    # A RUN SETTING BY THE CATALOGUE'S WORD NOW, the rule migrate takes
+    # them out by (`template.run_settings`).
+    ours = {n for e in parsed.engines for n in run_settings(e)}
+    held = [it.name for it in parsed.items if it.name in ours]
+    if not held:
+        return
+    # THE WAY ON: a calculation's migrate; a hand-over never saved has no
+    # description to migrate -- it is sent again.
+    way = (f"`{migrate_as_typed(base)}` takes them out, a value onto the "
+           f"calculation's run card in job-request.json, the old file kept "
+           f"beside the new." if described(base) else
+           "It is a hand-over written before 2.28.0, never saved: send the "
+           "hand-over again from its tab.")
+    raise ValueError(
+        f"{path.name} holds {', '.join(held)}: a run setting is the job "
+        f"request's, never the template's (engines/template.md § 2; "
+        f"execution/job-request.md § 2).  {way}")
 
 
 __all__ = ["TemplateFile", "of", "template_filename", "template_path"]

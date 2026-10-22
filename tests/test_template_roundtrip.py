@@ -211,8 +211,7 @@ def test_every_item_carries_what_a_surface_needs_to_render_it():
 def test_an_optional_item_says_what_unset_is_called():
     """``optional`` says *unset* is a real state; ``null_label`` is what says
     how to show it.  Without it a tri-select has no third label."""
-    text = T.template_with_values(SiestaConfig(system_label="JOB"))
-    assert T.one(T.read_template(text), "block_size").null_label
+    assert T.one(T.catalogue(), "block_size", engine="siesta").null_label
 
 
 def test_the_three_surface_keys_survive_the_round_trip():
@@ -345,34 +344,6 @@ def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
         T.read_template(mutated)
 
 
-def test_a_hand_added_machine_fact_VALUE_is_refused_with_the_story():
-    """A-9.  The ITEM is declared -- valueless, flagged as the scheduler's
-    (§ 6.4) -- so the refusal is of its VALUE, which is where § 2 puts it:
-    *the template declares the question and never asserts the answer.*
-
-    The failure guarded against: a deck once rendered for a rank count the
-    allocation never granted.
-    """
-    import molbuilder.template as T
-    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
-            '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
-            'allocation = true\ntype = "int"\nvalue = 8\n'
-            'help = "hand-added"\n')
-    with pytest.raises(ValueError, match=r"the SCHEDULER answers it"):
-        T.read_template(text)
-
-
-def test_the_item_itself_is_legitimate_only_its_value_is_not():
-    """The other half: the same file WITHOUT a value must be accepted, or a surface could never
-    ask the question."""
-    import molbuilder.template as T
-    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
-            '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
-            'allocation = true\ntype = "int"\nhelp = "ask me"\n')
-    t = T.read_template(text)
-    assert T.one(t, "mpi_np").value is None
-
-
 # ------------------------------------------------------------------ #
 #  § 6.2 -- the category guards                                       #
 #                                                                     #
@@ -426,8 +397,8 @@ def test_select_finds_an_item_by_its_SECOND_category():
 
 
 def test_select_filters_compose():
-    t = _siesta_template()
-    both = T.select(t, category="execution", kind="wrapper")
+    both = T.select(T.catalogue(), engine="siesta", category="execution",
+                    kind="wrapper")
     assert both and all("execution" in i.category and i.kind == "wrapper"
                         for i in both)
 
@@ -442,7 +413,7 @@ def test_read_by_filters_on_SEVERAL_layers_like_its_siblings():
     tuple against the item's members, matched nothing, and returned an empty
     list that reads exactly like *no item is read by either* (audit § 1.3).
     """
-    t = _siesta_template()
+    t = T.catalogue()
     one = [i.name for i in T.select(t, read_by="wrapper")]
     assert one, "no item declares read_by=wrapper -- the fixture is wrong"
     many = [i.name for i in T.select(t, read_by=("wrapper", "monitor"))]
@@ -494,44 +465,15 @@ def test_an_item_claiming_an_unlisted_engine_is_refused():
 
 
 # ------------------------------------------------------------------ #
-#  T4 -- execution items are DECLARED, valueless, and FLAGGED        #
+#  T4 -- the catalogue's machine-answered items are FLAGGED          #
 # ------------------------------------------------------------------ #
-
-def test_the_execution_panel_carries_the_machine_questions():
-    """§ 6.4: a surface must be able to ASK for ranks, threads and memory.
-
-    Until @2 these were excluded outright, so a UI reading the execution
-    panel had no way to raise the question at all -- finding F1 of the
-    2026-08-13 fresh-eyes review.
-    """
-    t = _siesta_template()
-    names = {i.name for i in T.select(t, category="execution")}
-    for q in ("mpi_np", "omp_threads", "max_memory_mb"):
-        assert q in names, f"{q} is not on the execution panel; a surface cannot ask for it"
-
-
-def test_an_allocation_item_is_emitted_VALUELESS_however_the_config_is_filled():
-    """§ 2 / G1: the template may declare the question, never assert the
-    answer.
-
-    The config may legitimately hold a rank count -- it was resolved on
-    some machine -- but writing it into a portable description is the
-    exact failure the rule exists for: a hand-edited `mpi_np` once
-    rendered a deck for ranks the allocation never granted.
-    """
-    t = T.read_template(T.template_with_values(SiestaConfig(mpi_np=64),
-                                          engine="siesta"))
-    assert T.one(t, "mpi_np").value is None, (
-        "a rank count reached the template; the description now asserts a "
-        "machine fact and is no longer portable")
-
 
 def test_the_machine_answered_items_are_flagged_and_nothing_else_is():
     """**One flag, and it is the item's own**: the scheduler answers
     exactly these, and the flag says so on the item.
     """
-    t = _siesta_template()
-    answered = {i.name for i in T.select(t, allocation=True)}
+    t = T.catalogue()
+    answered = {i.name for i in T.select(t, engine="siesta", allocation=True)}
     # ``gpu_count`` (user, 2026-08-21: "explicit is what we need") -- the
     # device count is the scheduler's grant exactly like the rank count, and
     # as a bench axis it is declared, not derived.
@@ -542,5 +484,5 @@ def test_the_machine_answered_items_are_flagged_and_nothing_else_is():
     # realigns it against the GPU target -- so its item may legitimately carry
     # a value.  It needs no name of its own to say that; being unflagged and
     # `optional` with no value already says it.
-    bs = T.one(t, "block_size")
+    bs = T.one(t, "block_size", engine="siesta")
     assert bs is not None and not bs.allocation and bs.optional

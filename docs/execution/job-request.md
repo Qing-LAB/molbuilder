@@ -501,8 +501,8 @@ destroy the plan to measure.
 >
 > `template.md` § 7 is absolute: the **template** may not
 > carry a machine value, and no template carries `mpi_np` at all —
-> `read_template` refuses one. That rule is about a different file with a
-> different job.
+> its door, `template_file.of`, refuses one. That rule is about a different
+> file with a different job.
 
 **Where the answer goes instead.** `bench` runs on the target and writes
 `bench-result.json`, whose `choice` carries the measured value alongside the

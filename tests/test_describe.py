@@ -82,30 +82,22 @@ def test_it_writes_exactly_the_template_the_description_and_its_request(
 
 def test_the_description_names_no_machine(struct, cfg, tmp_path):
     """`project-layout.md` § 2.1: *"none of them mention a machine"*, which is
-    what makes the folder mean the same thing wherever you copy it.
+    what makes the folder mean the same thing wherever you copy it -- and
+    `engines/template.md` § 2: **no run setting is declared in a template,
+    valueless or not** -- the machine's answers and a person's alike are the
+    job request's.  A surface asks the catalogue which questions a run has.
 
-    ``continue_retries`` is deliberately **not** counted: it is a retry
-    *policy*, not a machine fact, and floor 2 is the right home for it.  That
-    distinction was got wrong once and is pinned here so it is not got wrong
-    again.
-    """
+    MUTATION THIS MUST FAIL AGAINST: the writer emitting run settings
+    valueless again (2.27.x's slot, which migrate's refusal by content and
+    its move by version disagreed about)."""
+    from molbuilder.template import catalogue, is_run_setting, one
     D.write_description(_describe(struct, cfg), tmp_path / "calc")
     raw = tomllib.loads((tmp_path / "calc" / "relax.template.toml").read_text())
-    # § 6.4.  The rule is "name no machine", and what
-    # names a machine is an ANSWER, not a question.  These items ARE
-    # declared -- a surface must be able to ask for ranks, and the wrapper
-    # writer must know to look -- but they carry no `value`, so the folder
-    # still means the same thing wherever it is copied.
-    machine = ("mpi_np", "omp_threads", "max_memory_mb")
-    answered = [n for n in machine
-                if n in raw["item"] and "value" in raw["item"][n]]
-    assert answered == [], (
-        f"floor 2 is naming a machine: {answered} carry a value. The item "
-        f"declares the QUESTION; `prep` states the answer on the machine "
-        f"that will run it (engines/template.md § 2, § 6.4).")
-    # ...and the questions must be present, or no surface could ask them.
-    for n in machine:
-        assert n in raw["item"], f"{n} is not declared; a surface cannot ask for it"
+    held = [n for n in raw["item"]
+            if is_run_setting(one(catalogue(), n, engine="siesta"))]
+    assert held == [], (
+        f"the template holds run settings {held} -- they are the job "
+        f"request's (engines/template.md § 2)")
 
 
 # --------------------------------------------------------------------- #

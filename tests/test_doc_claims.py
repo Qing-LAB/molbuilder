@@ -35,10 +35,8 @@ def test_block_size_is_a_plain_int():
     rank count are both known; `pow2` survives in BENCH-MARKS, a constraint
     the benchmark puts on its own sweep.
     """
-    from molbuilder.config.siesta import SiestaConfig
 
-    item = template.one(template.read_template(
-        template.template_with_values(SiestaConfig())), "block_size")
+    item = template.one(template.catalogue(), "block_size", engine="siesta")
     assert item.type == "int", (
         "block_size must be a plain int -- `pow2` silently rewrites "
         "a measured value, which is the opposite of honouring a benchmark")

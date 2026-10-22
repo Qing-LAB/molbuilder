@@ -405,7 +405,7 @@ written on a machine fact — is refused, as the reader refuses it.
 | key | required when |
 |---|---|
 | `anchor` | `kind = "engine"` — an engine item that names no keyword cannot reach the deck |
-| `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for anything answered after the description is written (`block_size`, rank count, threads, memory) |
+| `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for an item answered after the description is written — by the structure (`spin_treatment`), a cited run, or the rung |
 | `allocation` | when the **scheduler** answers this item, not a person — § 6.4. It is what makes a `value` on the item a refusal rather than a choice |
 | `citation` | **which calculation KINDS have this item answered by a cited run** rather than by a person — § 6.4's sibling, ruled 2026-09-15. A list, like `calculations`, and absence means *never* |
 | `shared` | **which calculation KINDS this item binds every rung of** — a scope, not an answerer (`engines/transport.md` § 3.8.6, decided 2026-09-24). A list, like `calculations`; absence means *any rung may own it*. Every `citation` row is shared but the SCF settings: the cited run's mixer and criteria start every SCF stage, each of which may set its own (`engines/transport.md` § 3.1, TD6, 2026-10-09); the marker exists because the shared set is larger than the cited one |
@@ -1567,8 +1567,7 @@ count on a transport rung, which TranSIESTA cannot hold.
 
 **Presence declares the parameter; a value answers it.** An item with no `value`
 says *this calculation has such a parameter and nobody has chosen yet* — and a
-later step in the workflow fills it, or the engine's own default applies. This is
-the `BlockSize` pattern (§ 12), generalised.
+later step in the workflow fills it, or the engine's own default applies.
 
 | state | means | who acts |
 |---|---|---|
@@ -1633,8 +1632,8 @@ both the marker and a value, so a reader with no kind could not otherwise tell
 a legitimate optimization default from a transport row.
 
 A valueless item still carries `choices`, `range`, `unit` and `help`, so a
-surface can offer the *right* options before any value exists — `diag_algorithm`
-has a handful of legal eigensolvers whether or not one has been picked.
+surface can offer the *right* options before any value exists — `spin_treatment`
+has its handful of legal treatments whether or not one has been picked.
 
 #### The third answerer — `role`, and its sibling `stages` *(2026-09-16; its answer's road, 2026-09-29)*
 
@@ -1810,8 +1809,9 @@ items are `fixed_by_role(engine, kind)`, and one rung's answers
 those two doors. It never runs `sinfo`, never reads the file, never carries a
 default for "how many cores are there".
 
-**What the template contributes is step 3's QUESTION and never its answer** —
-which is what the flag below is for.
+**What the catalogue contributes is step 3's QUESTION and never its answer** —
+which is what the flag below is for; a calculation's template holds neither
+(§ 2).
 
 **`allocation` says the SCHEDULER answers this one.** One boolean on the item,
 and it is the whole mechanism:
@@ -2004,8 +2004,9 @@ Three things are **not** items, each excluded by a rule that already exists:
 | **the structure** — which atoms exist, and their labels | an input to the calculation, never edited by the generator, and it travels as its own file (§ 9.1) | the data files ([`project-layout.md`](?doc=execution/project-layout.md) § 2.1) |
 
 > **This rule is the TEMPLATE's, and it stays absolute** *(clarified
-> 2026-09-01)*. `read_template` refuses a template holding `mpi_np` and
-> always will: this file is what a calculation's parameters ARE, shared by
+> 2026-09-01)*. The template's door (`template_file.of`) refuses a template
+> holding `mpi_np`, or any run setting, and always will: this file is what a
+> calculation's parameters ARE, shared by
 > every stage and every machine, and a rank count is true of neither.
 >
 > The job request is another file of floor 2 and answers a different
@@ -2816,8 +2817,7 @@ over the same science.
 
 **The template does not change and carries no rank count.** A rank count's
 *value* is a machine fact (§ 7), so the sweep varies an input to `prep`; the
-item itself may be declared but stays valueless (§ 6.4), and a sweep never
-writes one. That is why a benchmark needs no new file: the science is already
+template holds no such item (§ 2), and a sweep never writes one. That is why a benchmark needs no new file: the science is already
 written down once, and the axis being swept was never part of it.
 
 **What a benchmark is MEANT to read from the template is

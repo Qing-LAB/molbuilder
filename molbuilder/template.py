@@ -1000,11 +1000,10 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     This is what a surface produces once a person has answered — the questions
     were already asked by the catalogue, so nothing here invents an item.
 
-    **Allocation items stay valueless whatever the config holds** (§ 2, G1, and
-    § 6.4): the scheduler answers them, and the answer belongs to the
-    machine that granted it. The config may legitimately carry a rank count — it
-    was resolved somewhere — but writing it here would make the description
-    assert a machine fact and stop being portable.
+    **No run setting is written, valueless or not** (§ 2, G1): how a run
+    runs -- the machine's answers and a person's alike -- is the job
+    request's (`execution/job-request.md` § 2), and a description holding a
+    rank count would assert a machine fact and stop being portable.
 
     **Each value says where it came from** (`source`, § 6.6 obligation 2,
     plan § 5w K7): ``sources`` is what the CALLER knows -- a cited run's
@@ -1012,8 +1011,7 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     other item is ``default``, *not chosen*.  A source of ``None`` writes
     none -- *not recorded*: what a migration says of the values it carries
     from a file that never recorded one, rather than a guess.  An item the
-    template holds no value of by rule (the scheduler's, the rung's) carries
-    no source.
+    template holds no value of by rule (the rung's) carries no source.
 
     Raises ``ValueError`` if the emitted text does not parse back to what it
     meant to write — § 4.1 asks for exactly this.
@@ -1034,10 +1032,9 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # happened, here.
             engines=(),
             calculations=(),
-            # Valueless for the answerers that are not floor 2's: the
-            # scheduler (§ 7) and the stage's ROLE (§ 6.4) -- a role item has
-            # no value a description could legitimately claim to have set,
-            # because the rung decides it.
+            # Valueless for the answerer that is not floor 2's: the stage's
+            # ROLE (§ 6.4) -- a role item has no value a description could
+            # legitimately claim to have set, because the rung decides it.
             #
             # `citation` is NOT among them: the cited run **defaults** these
             # values and the person may change them, everywhere at once
@@ -1047,16 +1044,10 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # `engines/transport.md` § 3.8.3): a citation that carries no
             # deck answers no basis, and writing the class default there
             # would claim a run said something no run said.
-            # ...AND A RUN SETTING, every one: its value is the job
-            # request's run card, else the catalogue's default
-            # (`execution/job-request.md` § 2) -- never the template's.
             value=(None
-                   if (it.allocation or calculation in it.role
-                       or "execution" in (it.category or ())
-                       or it.name in set(valueless))
+                   if calculation in it.role or it.name in set(valueless)
                    else getattr(config, it.name, it.value)),
-            source=(None if (it.allocation or calculation in it.role
-                             or "execution" in (it.category or ()))
+            source=(None if calculation in it.role
                     else told.get(it.name, "default")),
             # THE KIND'S RECOMMENDATION IS THE TEMPLATE'S DEFAULT (§ 6.3a);
             # the table itself does not travel -- a per-kind template has
@@ -1075,6 +1066,10 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             offered=(),
         )
         for it in select(parsed, engine=eng, calculation=calculation)
+        # NO RUN SETTING, valueless or not: it is the job request's
+        # (`execution/job-request.md` § 2), and a home that must stay empty
+        # is removed, never policed (§ 2).
+        if not is_run_setting(it)
     ]
     return _emit(items, engines=(eng,), title=title)
 
@@ -1248,21 +1243,6 @@ def read_template(text: str) -> Template:
                 f"{type(table).__name__}")
 
     items = tuple(_item_from(name, body) for name, body in table.items())
-    # § 2 / G1: an allocation-backed item may be DECLARED but never
-    # ANSWERED here.  Checked on read, not only on write, because a template
-    # is a file a person is invited to edit (§ 4.1) -- and a hand-edited
-    # ``mpi_np`` value is precisely the failure this rule was written
-    # against: a deck once rendered for a rank count the allocation never
-    # granted.  The item itself is legitimate at @2; its VALUE is not.
-    for _it in items:
-        if _it.allocation and _it.value is not None:
-            _refuse(
-                f"carries value {_it.value!r}, but the SCHEDULER answers "
-                f"it -- this is what was granted on the machine that runs "
-                f"it. A template "
-                f"declares the question and never asserts the answer, or it "
-                f"stops being portable (engines/template.md § 2). Remove the "
-                f"value; `prep` fills it", where=_it.name)
 
     # § 6.3: an item's `engines` narrows the FILE's list -- it cannot widen
     # it.  An item naming an engine this calculation does not run on is a
@@ -1747,14 +1727,13 @@ def help_for(name: str, *, first_paragraph: bool = False) -> str:
 
 
 def template_fields(config_cls) -> set:
-    """The field names a TEMPLATE may carry — the schema minus the machine
-    facts.
-
-    THE membership rule, spelled once (A-9, 2026-08-13).  A field tagged
-    ``allocation: True`` is § 7's forbidden machine fact: it arrives as
-    the ALLOCATION at `prep`, on the machine that will run it, and never
-    as a template item's value, a stage override, a pin, or a parameter
-    sweep axis.
+    """The field names a value may be LAID on as a parameter -- the schema
+    minus the machine facts: what `resolve` gates a pin, an override and a
+    sweep's parameter axis on, and what a template's item may name.  A
+    field tagged ``allocation: True`` is § 7's machine fact: it arrives as
+    the ALLOCATION at `prep`, on the machine that will run it, never laid
+    as a value.  (Which items a template holds is narrower still -- no run
+    setting, § 2 -- and is the template file's door's to refuse.)
     """
     items = items_of(config_cls)
     return {f.name for f in dataclasses.fields(config_cls)
@@ -2710,19 +2689,6 @@ def config_from_template(text: str, config_cls):
     zeros = zeros_written_before(parsed)
     if zeros:
         raise ValueError(why_zeros_written_before(parsed, zeros))
-    machine = sorted(k for k in vals
-                     if k not in known
-                     and any(f.name == k
-                             for f in dataclasses.fields(config_cls)))
-    if machine:
-        # The write side emits these VALUELESS (§ 6.4), so a VALUE on one is
-        # a hand edit -- refused with the § 7 story rather than the typo story.
-        raise ValueError(
-            f"template names machine fact(s) "
-            f"{', '.join(map(repr, machine))}, which floor 2 must never "
-            f"carry (engines/template.md § 7): they arrive as the "
-            f"ALLOCATION at `prep`, on the machine that runs the job.  "
-            f"Remove them from the template and state them at prep.")
     # NO CITATION REFUSAL HERE, and its absence is the ruling
     # (`engines/transport.md` § 2a.7): electrode and device cannot disagree,
     # because ONE value shared by every stage cannot disagree with itself,
