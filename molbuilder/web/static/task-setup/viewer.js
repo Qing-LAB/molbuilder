@@ -558,6 +558,10 @@ function freshFolderState() {
         fixed:        null,       // what the kind fixes -- shape, stages (§ 5.3)
         writtenOpen:  new Set(),  // the file groups opened in *What this calculation writes*
         readAs:       null,       // each record as the folder answer read it -- Save's compare (§ 8)
+        plan:         null,       // the last prep-plan answer painted -- repainted when the need comes
+        need:         null,       // the memory door's last answer: {key, stages, largest} (job-request.md § 3.1a)
+        needAsking:   null,       // the key a need ask is in flight for
+        needSeq:      0,          // the newest need ask; an older answer is dropped
     };
 }
 
@@ -1413,6 +1417,7 @@ function _resetPerFolderState(keep) {
     _fitSeq++;
     { const plan = $("ts-plan"); if (plan) plan.hidden = true; }
     hideWritten();
+    paintNeed();
     /* WHAT CAME OVER IS THIS FOLDER'S TOO: hidden until its description
      * paints it, so a folder that answers nothing shows no other's. */
     renderCameOver(null, null, null);
@@ -2542,6 +2547,67 @@ function removeColumn(name) {
 
 let _planTimer = null;
 let _planSeq = 0;
+/* THE MEMORY EACH STAGE NEEDS, the memory door's answer
+ * (`execution/job-request.md` § 3.1a), this folder's (`_fs.need`): asked in a
+ * request of its own once the plan has painted, when the folder or a card's
+ * ranks change -- the door reads every run of every stage, so it is not asked
+ * on every edit, nor twice at once. */
+function needKey(task) {
+    // WHAT THE NEED FOLLOWS: the folder, and each card's ranks as edited --
+    // compared, never read for a value.
+    const req = _request || {};
+    const own = {};
+    for (const st of (task.stages || [])) {
+        own[st.name] = (((req.stages || {})[st.name] || {}).execution || {})
+            .mpi_np ?? null;
+    }
+    return JSON.stringify([_dir || null, (req.execution || {}).mpi_np, own]);
+}
+
+function paintNeed() {
+    const note = $("ts-ask-mem-need");
+    if (!note) return;
+    const most = _fs.need && _fs.need.largest;
+    note.hidden = !most;
+    note.textContent = most ? "memory need: " + most.line : "";
+}
+
+/* A PLAN HIDDEN is a plan no need answer brings back: the one painted is
+ * dropped, and an ask in flight with it. */
+function dropPlan() {
+    _fs.plan = null;
+    _fs.needAsking = null;
+    _fs.needSeq++;
+}
+
+async function refreshNeed(task) {
+    const key = needKey(task);
+    const fs = _fs;
+    if ((fs.need && fs.need.key === key) || fs.needAsking === key) return;
+    fs.needAsking = key;
+    const seq = ++fs.needSeq;
+    let body;
+    try {
+        const r = await fetch("/api/task-setup/prep-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task: task, request: _request,
+                                   dest: _dir || null, need: true }),
+        });
+        body = await r.json();
+    } catch (e) {
+        body = null;
+    }
+    // ANOTHER FOLDER SINCE, or a newer ask: this answer is not shown.
+    if (fs !== _fs || seq !== fs.needSeq) return;
+    fs.needAsking = null;
+    if (!body || !body.ok) return;
+    const stages = {};
+    for (const row of body.stages || []) stages[row.stage] = row.need;
+    fs.need = { key: key, stages: stages, largest: body.largest_need };
+    if (fs.plan) paintPlan($("ts-plan"), $("ts-plan-list"), fs.plan);
+    paintNeed();
+}
 
 function schedulePlan(task) {
     if (_planTimer) clearTimeout(_planTimer);
@@ -2556,6 +2622,9 @@ async function refreshPlan(task) {
     if (_mode !== "description" || !task || !(task.stages || []).length) {
         box.hidden = true;
         hideWritten();
+        _fs.need = null;
+        dropPlan();
+        paintNeed();
         return;
     }
     const seq = ++_planSeq;
@@ -2579,9 +2648,17 @@ async function refreshPlan(task) {
     /* A DESCRIPTION MID-EDIT IS OFTEN UNREADABLE, and that is ordinary --
      * the list hides rather than showing a stale plan for a document that
      * no longer says what it did.  The cards above are the substance. */
-    if (!body || !body.ok) { box.hidden = true; hideWritten(); return; }
+    if (!body || !body.ok) {
+        box.hidden = true;
+        hideWritten();
+        dropPlan();
+        return;
+    }
+    _fs.plan = body;
     paintPlan(box, host, body);
     paintWritten(body);
+    paintNeed();
+    refreshNeed(task);
 }
 
 
@@ -2723,7 +2800,13 @@ function paintPlan(box, host, body) {
             el("code", { class: "ts-plan-dir" },
                row.dir === "." ? "(the bundle root)" : row.dir + "/"),
             el("span", { class: "ts-plan-ask" },
-               askLine(row.ask, row.chosen))));
+               askLine(row.ask, row.chosen)),
+            // WHAT A RUN OF IT NEEDED, the memory door's line -- or that
+            // nothing has measured it (`job-request.md` § 3.1a).
+            ...((_fs.need && _fs.need.stages[row.stage])
+                ? [el("span", { class: "ts-plan-need" },
+                      "memory need: " + _fs.need.stages[row.stage].line)]
+                : [])));
     }
     if (body.bench) {
         const axes = Object.keys(body.bench.axes || {})
@@ -3632,6 +3715,9 @@ function _showPrepAnswer(wrap, say, r, head) {
     if (r.placement && r.placement.fit) line(r.placement.fit);
     // NO HEADER: where each value it states came from, in its place.
     if (!r.placement && r.stated) line(r.stated);
+    /* THE MEMORY IT NEEDS at the ranks it is prepared with -- the terminal's
+     * line (`job-request.md` § 3.1a): a hint, refusing nothing. */
+    if (r.need) line("memory need: " + r.need.line);
     if (r.launch && r.launch.said && !r.group) {
         line(((r.points || []).length
               ? "one job walking its " + r.points.length
@@ -3651,6 +3737,7 @@ function _showPrepAnswer(wrap, say, r, head) {
              + (grp.header ? "; its header: " + grp.header : ""));
         if (grp.launch.said) line(grp.launch.said);
         if (grp.launch.fit) line(grp.launch.fit);
+        if (grp.need) line("memory need: " + grp.need.line);
     }
     if (r.resources) {
         const rs = r.resources;

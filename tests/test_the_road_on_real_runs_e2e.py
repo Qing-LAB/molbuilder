@@ -371,3 +371,49 @@ def test_a_benchmarks_per_trial_bound_is_the_walks(real_h2_bench):
             / "bench-group.run.sh").read_text()
     for words in ("per-trial-bound=300s", "timeout -k 30 300 "):
         assert words in walk, words
+
+
+@pytest.mark.parametrize("ranks", [1, 16], ids=["at the runs' ranks",
+                                                "at more ranks"])
+def test_a_stage_s_memory_need_is_what_its_finished_runs_held(
+        real_h2_layered, ranks):
+    """The memory a stage needs, in prep's answer -- the one entry both doors
+    call, previewed, so nothing is written (`execution/job-request.md`
+    § 3.1a): a finished run that held X at N ranks needs at most
+    X · max(1, M/N) at M, every such bound holds, so the stage's need is the
+    smallest of its finished runs', said in tenths of a GB rounded up --
+    *at most* from the kernel's counter, *about* from the largest sample --
+    and naming that run -- X the run's memory peak and N the ranks its wrapper
+    launched, as the contract defines them: as the run's record states them,
+    read through the door the Results tab reads (`runs.record_of`).  Sixteen
+    ranks, so an H2 run's tens of MB scaled stand above the tenth of a GB
+    the figure is said in."""
+    import math
+    from molbuilder import calculation
+    from molbuilder.jobset.model import Resources
+    from molbuilder.jobset.prep import prep_task
+    from molbuilder.paths import attempt_name, attempts_in
+    from molbuilder.runs import record_of, run_of, state_of
+    bundle = real_h2_layered.bundle
+    bounds, read_from = [], set()
+    for n in attempts_in(bundle / "01_coarse"):
+        run = run_of(bundle / "01_coarse" / attempt_name(n))
+        st = state_of(run)
+        comp = record_of(run, status=st)["computation"]
+        if st.state == "finished":
+            read_from.add(comp["memory"]["mem_peak_from"])
+            bounds.append((comp["memory"]["mem_peak_gb"]
+                           * max(1, ranks / comp["launch"]["ranks_asked"]),
+                           f"01_coarse/{attempt_name(n)}"))
+    assert len(bounds) == 3, bounds
+    gb, run_dir = min(bounds)
+    answer, = prep_task(calculation.open(bundle), "task", groups=[1],
+                        target="this", allocation=Resources(mpi_np=ranks),
+                        preview=True)
+    need = answer.need.to_wire()
+    assert (need["gb"], need["ranks"], need["run"]) == (
+        math.ceil(round(gb * 10, 6)) / 10, ranks, run_dir)
+    # AT MOST from the kernel's counter, ABOUT from the largest sample.
+    word, = {"kernel counter": "at most"}.get(*read_from, "about"),
+    assert need["line"].startswith(f"{word} {need['gb']}G at {ranks} rank")
+    assert f"{run_dir} on " in need["line"] and "finished" in need["line"]

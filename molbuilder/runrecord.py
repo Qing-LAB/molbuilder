@@ -238,7 +238,7 @@ def launch_record_path(where: Path, names: "_rf.RunNames",
     return Path(where) / names.name(".run.json", run)
 
 
-def _launched_runs(where: Path, names: "_rf.RunNames") -> List[int]:
+def launched_runs(where: Path, names: "_rf.RunNames") -> List[int]:
     """The numbers of a shared folder's launched runs of this stage -- one
     per launch record, read back through the grammar (`runfiles.parse`,
     with the stage's stem), lowest first."""
@@ -260,7 +260,7 @@ def newest_run(where, names: "_rf.RunNames") -> Optional[int]:
     it reached (`runfiles.latest_run`) -- the folder's one launch record
     answers for every try in it."""
     if names.shared:
-        runs = _launched_runs(Path(where), names)
+        runs = launched_runs(Path(where), names)
         return runs[-1] if runs else None
     return _rf.latest_run(Path(where), names.label, stage=names.stage)
 
@@ -642,4 +642,5 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "sent_wall_s", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run",
+           "launched_runs", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "sent_wall_s", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

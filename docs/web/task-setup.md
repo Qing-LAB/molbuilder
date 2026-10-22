@@ -546,8 +546,7 @@ each other.
 > and under each field that queue's range for it, never marking what is typed
 > invalid — under the memory, after it, the largest need of the stages, at
 > the ranks their cards state, and which stage
-> ([`job-request.md`](?doc=execution/job-request.md) § 3.1a; *designed, not
-> built*), filling nothing; the fit of the whole request is the Preview's, the prep entry's own
+> ([`job-request.md`](?doc=execution/job-request.md) § 3.1a), filling nothing; the fit of the whole request is the Preview's, the prep entry's own
 > (`scheduler.md` R6). **The queue the job request names is the job
 > request's**: choosing a machine — or one whose record lists no queues —
 > changes what the card offers, never what the job request says; a stated
@@ -909,12 +908,11 @@ directory's wrapper will carry.
 for the stage: at most so much at the ranks its card states now, and the run
 that held it, or that nothing has measured it — the measurement alone, while
 the card states no ranks
-([`job-request.md`](?doc=execution/job-request.md) § 3.1a; *designed, not
-built*):
+([`job-request.md`](?doc=execution/job-request.md) § 3.1a):
 
 ```
   05_transmission   run-1/   64 × 1 · public · 0-12:00:00 · 48G
-                    at most 49.2G at 64 ranks -- held 12.3G at 16 ranks × 1 thread, 05_transmission/run-0 on sg013 (finished)
+                    memory need: at most 49.3G at 64 ranks -- held 12.31G at 16 ranks × 1 thread, 05_transmission/run-0 on sg013 (the kernel's counter, the job's; finished)
 ```
 
 **It is a confirmation, not a second answer.** The names and the numbers come
@@ -1571,10 +1569,10 @@ from the same answer:
   it runs** — its manifest, before Prep is pressed: each group copied in, its
   runs and their size, or prepared here and the differences of the new
   request that decided it ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16, *The manifest*; *designed, not built*);
-* **what each stage needs of memory** — at most so much at the ranks it is
-  prepared with, and the run that held it, or that nothing has measured it;
-  a group's and a sequence's beside their fit
-  ([`job-request.md`](?doc=execution/job-request.md) § 3.1a; *designed, not built*);
+* **what each stage needs of memory** — at most, or about, so much at the
+  ranks it is prepared with, and the run that held it, or that nothing has
+  measured it; a group's beside its fit
+  ([`job-request.md`](?doc=execution/job-request.md) § 3.1a);
 * **the resources** the stage will launch with;
 * **what comes next** — after a Prep, the line that launches what it
   prepared, as the terminal's prep ends with it: the launch with nothing

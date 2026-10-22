@@ -561,7 +561,7 @@ benchmark is this*, `materialize.bench_owner`, `bench_stage_of`):
 |---|---|
 | `root` | the calculation's folder — the one `task.json` is in, or the one the folder's record names; `None` for a folder no calculation claims |
 | `what` | what the folder is, below — `None` for a folder no calculation claims |
-| `role` | its record's: `container`, `run` or `scratch` — `None` at the root, whose description's `shape` says it (`runs.place_of`: flat a run, hierarchical a container) |
+| `role` | its record's: `container`, `run` or `scratch` — and *designed, not built*, `shared` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — `None` at the root, whose description's `shape` says it (`runs.place_of`: flat a run, hierarchical a container) |
 | `stage` | the stage it sits in, by its token — `01_coarse` |
 | `run` | the attempt's index — `0` of `run-0` |
 | `trial` | the benchmark trial's point — `G1K4C6` of `bench-G1K4C6` |

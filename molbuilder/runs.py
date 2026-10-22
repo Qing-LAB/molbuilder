@@ -757,6 +757,21 @@ def state_of(run: "Run"):
                      launched_in=run.launched_in)
 
 
+def record_of(run: "Run", *, status=None, fields=None):
+    """THE RUN'S RECORD (`model/parse.md` § 5d) -- the one place a run handle
+    (:func:`run_of`) is read with its state (:func:`state_of`, or the one a
+    caller already holds) and its calculation's engine, kind and stage deck:
+    the Results tab's folder answer and the memory a stage needs
+    (`jobset.memory`) ask it alike.  ``fields`` -- the record's paths a
+    caller asks for, the rest left unread (`parse.dirs.record.run_record`)."""
+    from molbuilder.parse.dirs.record import run_record
+    task = run.place.task
+    return run_record(run.folder, names=run.names, run=run.run,
+                      status=status if status is not None else state_of(run),
+                      engine=task.engine, calculation=task.calculation,
+                      stage_deck=run.stage_deck, fields=fields)
+
+
 def standing_of(launch, base) -> Optional[Dict[str, Any]]:
     """A QUEUED RUN'S STANDING, as its scheduler states it here
     (`running-a-job.md` § 4.2; `scheduler.queue.standing`): ``{asked_on,
@@ -1015,7 +1030,6 @@ def folder_answer(directory) -> Dict[str, Any]:
     claimed -- no label read off a deck, no state asked.
     """
     from molbuilder.parse.contract import engine_of
-    from molbuilder.parse.dirs.record import run_record
     from molbuilder.parse.dirs.rundir import openable_in
 
     d = Path(directory)
@@ -1061,10 +1075,7 @@ def folder_answer(directory) -> Dict[str, Any]:
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
                           "active_source": st.active_source}
-                record = run_record(run.folder, names=run.names, run=run.run,
-                                    status=st,
-                                    engine=engine, calculation=calc,
-                                    stage_deck=run.stage_deck)
+                record = record_of(run, status=st)
             elif run is not None:
                 attempts.append("no run here yet: nothing has been launched "
                                 "in this folder")
@@ -1119,4 +1130,5 @@ __all__ = ["Place", "place_of", "speaking", "Run", "run_of", "Declared",
            "declared", "OrderUnstated", "RunView",
            "view_of",
            "RunSteps", "RunStepsError", "steps_of", "about", "run_answer",
-           "transmission_point", "openable", "folder_answer"]
+           "transmission_point", "openable", "folder_answer", "state_of",
+           "record_of"]

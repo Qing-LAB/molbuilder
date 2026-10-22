@@ -2107,7 +2107,9 @@ def api_task_setup_prep_plan():
     AS THEY ARE BEING EDITED, not what is saved, for the reason the grid
     door gives: the cards' edits live in the browser's model until the
     person saves -- and the folder, whose files hold the stages' numbers (a
-    stage that has files keeps its own, W38 F4).  Nothing here writes.
+    stage that has files keeps its own, W38 F4).  Nothing here writes --
+    but what the status door records of a run's ending as it reads it, as
+    for every reader of a run (the memory need, ``need``).
     """
     body = request.get_json(silent=True) or {}
     raw = body.get("task")
@@ -2160,11 +2162,31 @@ def api_task_setup_prep_plan():
         except _PickerError as exc:
             return jsonify({"ok": False, "error": exc.message}), exc.status
 
+    # THE MEMORY EACH STAGE NEEDS, measured on its runs, at the ranks its
+    # card states as edited (`job-request.md` § 3.1a) -- asked by the page
+    # when the folder or a rank count changes (``need``), read in the
+    # calculation the folder holds: a folder that holds none has nothing
+    # measured.
+    needs = {}
+    if body.get("need"):
+        from molbuilder.jobset.memory import need as _need
+        measured_in = None
+        if folder is not None:
+            from molbuilder import calculation as _calculation
+            try:
+                measured_in = _calculation.open(folder)
+            except (_calculation.NotACalculation, OSError, ValueError):
+                measured_in = None
+        for st in task.stages:
+            needs[st.name] = _need(
+                measured_in, st.name,
+                job_req.run_condition(st.name).get("mpi_np"))
     rows = []
     for st in task.stages:
         home = stage_home(folder, task, st.name)
         token = home.token
         rows.append({"stage": st.name, "token": token,
+                     **({"need": needs[st.name].to_wire()} if needs else {}),
                      "dir": shape.stage_dir(token),
                      "ask": _ask_of(st.name),
                      # PER STAGE, because the condition is (§ 3.2): the
@@ -2238,9 +2260,13 @@ def api_task_setup_prep_plan():
     once = manifest(task.label, None, shape=shape.name, engine=task.engine,
                     when=("prep", "run", "summarize"),
                     calculation=task.calculation)
-    return jsonify({"ok": True, "shape": shape.name, "stages": rows,
-                    "bench": bench, "bundle": bundle, "once": once,
-                    "warm": _warm_in_effect(task, folder)})
+    out = {"ok": True, "shape": shape.name, "stages": rows,
+           "bench": bench, "bundle": bundle, "once": once,
+           "warm": _warm_in_effect(task, folder)}
+    if needs:
+        from molbuilder.jobset.memory import largest
+        out["largest_need"] = largest(list(needs.values())).to_wire()
+    return jsonify(out)
 
 
 def _warm_in_effect(task, folder) -> "dict | None":

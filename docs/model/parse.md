@@ -1564,7 +1564,13 @@ what the file IS). The composer walks the table, asks each row whose file the
 run has, and merges what comes back; a row whose file cannot be read costs its
 own fields, never the record. **Engines differ only in which files exist**, so
 a run of any kind gets every fact its files state, and an engine added tomorrow
-is rows, not a code path.
+is rows, not a code path. **A reader that asks only some of the record names
+them** (`run_record`'s `fields`, through the run door's `runs.record_of`):
+only the rows that answer one of those paths are read, and only those paths
+kept — the memory a stage needs reads a run's peak, the ranks and threads its
+wrapper launched and its node, never its output
+([`execution/job-request.md`](?doc=execution/job-request.md) § 3.1a); with no
+`fields`, every row, as the Results tab asks.
 
 | row | the file | its reader, beside its format (§ 1a) | engines | answers |
 |---|---|---|---|---|
@@ -1873,6 +1879,10 @@ verdict are plan § 5t.3's P4, not yet built.*
   against the charge tolerance (§ 5d.5's criteria lines).
 * **The transport record** composes the rungs' records
   (`engines/transport.md` § 2a.12).
+* **The memory a stage needs** reads, of each run of the stage, its memory
+  peak and where it was read, the ranks and threads its wrapper launched and
+  its node (`jobset.memory`, [`execution/job-request.md`](?doc=execution/job-request.md)
+  § 3.1a) — those fields alone (§ 5d.1b).
 * **The electronic-state read-back** — to be built (plan § 5s, P5) — will
   compare the state asked with the one used (`science/chemistry-correctness.md`
   ES10); nothing reads it yet.

@@ -40,6 +40,7 @@ only its own stage ever wrote.
 """
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -226,8 +227,11 @@ def _fields_in(role: str) -> "tuple[str, ...]":
     return tuple(_FIELD_RE.findall(role))
 
 
+@functools.lru_cache(maxsize=None)
 def _role_pattern(role: str) -> "re.Pattern":
-    """A templated role, compiled -- each field replaced by its declared shape."""
+    """A templated role, compiled -- each field replaced by its declared shape;
+    once a role, since the roles are the catalogue's fixed set and every
+    reader of a folder classifies each of its files by them."""
     out, last = [], 0
     for m in _FIELD_RE.finditer(role):
         out.append(re.escape(role[last:m.start()]))
@@ -584,6 +588,14 @@ def _tail(name: str, role: str) -> str:
 
 
 def role_of(name) -> Optional[str]:
+    """The DECLARED role this filename carries (:func:`_role_of`), read once
+    a name: a pure function of the name, and every reader of a folder asks
+    it of each of its files."""
+    return _role_of(str(name).rsplit("/", 1)[-1])
+
+
+@functools.lru_cache(maxsize=65536)
+def _role_of(name: str) -> Optional[str]:
     """The DECLARED role this filename carries, or None — WITHOUT a label.
 
     :func:`parse` needs the label because a role may contain ``_`` and so may

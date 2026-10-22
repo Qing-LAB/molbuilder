@@ -223,7 +223,7 @@ root and resolved below it, as `root_of` always answered; every reader compares
 resolved paths, and one spelling would change the paths printed under a
 symlinked projects folder -- no visible change today.
 
-## 1u. The memory a run needs — a suggestion beside the request *(2026-10-20; the user's yes: "yes, put it in the plan, but prioritize among all remaining issues" — N6 in § 0a's queue)*
+## 1u. The memory a run needs — a suggestion beside the request *(2026-10-20; the user's yes: "yes, put it in the plan, but prioritize among all remaining issues" — N6 in § 0a's queue; (a) shipped 2.29.0)*
 
 *(the user, 2026-10-20: "can we have some UI feature to give estimate based
 on the system/task? … estimate the memory need … as a suggested value, and
@@ -276,19 +276,20 @@ then (b); (c) only where (a) and (b) leave a gap the user meets.
 user: "go ahead with N6, contract first")*: `job-request.md` § 3.1a, with its
 lines in `running-a-job.md` § 5.3.1, `run-reports.md` § 2.1 and § 2.1a,
 `model/parse.md` § 5c.1, `task-setup.md` § 6.1, § 7.1 and § 11.1, `web-api.md`
-(the prep-plan route) and `job-system.md` § 5.3 (the answer's `memory`). In
+(the prep-plan route) and `job-system.md` § 5.3 (the answer's `need`). In
 short: one door, `jobset.memory.need(calc, stage, ranks)`, the ranks the
 asker resolved (prep's `--np` over the card; Task setup's card as edited); a
 finished run held X — its run record's memory peak, as measured today — at
-N ranks (the engine's own count), so it needs
+the N ranks its wrapper launched (`ranks_asked`), so it needs
 **at most X · max(1, M/N)** at M: a bound for an engine that gives each rank
 its own copy (TBtrans, TranSIESTA's solver) and for one that divides its
 matrices, scaled up and never down; a point's need the smallest bound of its
 finished runs, a stage's the largest of its points', naming the run, where it
-ran and how it ended; a run that did not finish said as what it held before it
-ended, never a bound; a job's the largest of its members'; shown under Task
+ran and how it ended — *at most* from the kernel's counter, *about* from the
+largest sample; a run that did not finish said as what it held, never a bound;
+a job's the largest of its members', naming its stage; shown under Task
 setup's memory field, in its per-stage list and Preview, and in prep's answer
-after the fit — never filled in, never compared in words, never a refusal.
+(`need`) after the fit — never filled in, never compared in words, never a refusal.
 
 **Reviewed — two rounds, three fresh reviewers** (2026-10-22; each
 load-bearing claim checked in the code). Round 2, on the rewrite: the launch
@@ -865,14 +866,17 @@ detecting which points can be exactly shared and which ones must be
 recalculated?", and "i agree with your recommendation": automatic, strict)*.
 The window stays the person's, whole; an energy the finished point computed
 to floating-point precision (10⁻⁹ eV, from its `.TBT.nc`) is shared, the rest
-computed here through a contour file (`part user`), the shared ones copied
-into the point's `shared/` (a fourth folder role, `shared`); one door joins
-them for every reader; a joined point's current is the record's, by
-tbtrans's rule; every transmission deck writes its window's ends at full
-precision; the manifest says each point's sharing, the time at the finished
-point's pace, and — sharing none — the window at the same spacing that would
-share all. `engines/transport.md` § 2a.16, *A transmission point's energies*
-— drafted 2026-10-22, its review rounds next.
+computed here as line contours written in the point's deck, the shared ones
+copied into the point's `shared/` (a fourth folder role, `shared`) at every
+launch that walks it; a point whose grid is the finished point's own is that
+point, taken over or copied in; one door joins a point's energies for every
+reader; a joined point's current is the record's, by tbtrans's rule; every
+transmission deck writes its window's ends at full precision; the manifest
+says each point's sharing and — sharing none — the window at the same spacing
+that would share all. `engines/transport.md` § 2a.16, *A transmission point's
+energies* — drafted 2026-10-22, two review rounds folded in (the second
+replaced a contour file named by a hash of its energies with contours in the
+deck, which § 6.1's door reads as it is).
 
 **The decisions, as they were put** (REUSE-COPY taken; WINDOW-SPLIT superseded by the energies' rule above):
 
@@ -887,8 +891,16 @@ tab's door (`--reuses`, the junction record and `pseudos/` copied), the copy-in
 decided before a group is planned, the gather's three gates made one door the
 copy-in and the take-over ask, the take-over's source widened, `.copied-from`
 and its catalogue row (`runfiles.WRITTEN`, which also names describe among the
-junction files' writers), the way back's copied branch, the page's lines —
-each step bounded by the transport e2e on a real H₂-scale junction.
+junction files' writers), the way back's copied branch, the page's lines; and
+the energies — the window's ends at full precision, the new energies as
+line contours in the deck with its comment naming the finished point, the
+per-point decision read back from the deck for a launched point, the
+`shared/` copy at every launch that walks a sharing point and its role
+(`calcdirs`), the take-over carrying `shared/`, the point equal to the
+finished one's grid rendering its contours, the done rule, the one door that joins a point's energies for every reader (some four
+sites today), the record's joined current and `current_from`, the data file's
+schema moved — each step bounded by the transport e2e on a real H₂-scale
+junction. The energies add some 300–400 lines by their review's estimate.
 
 ## 1y. Export the transport results — CSV and NetCDF *(2026-10-22; asked, the contract next — N8 in § 0a's queue)*
 
@@ -983,7 +995,7 @@ below says.
 | **N4** | **2.26.2**, L1T-D1 **2.26.3**, L1T-D2 **2.26.4** | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's, and their two choices of how (the user, 2026-10-21) |
 | **N5** | **shipped 2.27.0** | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
 | **N5b** | **Built — 2.28.0** (2026-10-22) — the contract taken as written (the user: *"continue"*); A–D, one release | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
-| **N6** | a middle number | **The memory a run needs** (§ 1u), contract first — drafted 2026-10-22 (`job-request.md` § 3.1a), for the user's yes — then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
+| **N6** | **(a) shipped 2.29.0** | **The memory a run needs** (§ 1u) — (a), measured on a stage's runs, built 2026-10-22 (`job-request.md` § 3.1a); (b), the engine's own analysis for a stage's first run, next; (c) only where (a) and (b) leave a gap | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 | **N7** | a middle number | **A transport calculation that reuses a finished one** (§ 1x) — the contract drafted (`engines/transport.md` § 2a.16), for the user's yes and two decisions (REUSE-COPY, WINDOW-SPLIT); its place in the order the user's | the user, 2026-10-22: *"use existing information and previous result to continue a calculation by a certain design"* |
 | **N8** | a middle number | **Export the transport results — CSV and NetCDF** (§ 1y), contract first; its place in the order the user's | the user, 2026-10-22: *"export data for all the results in the transport data including convergence data, in format of csv and netcdf"* |
 

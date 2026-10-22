@@ -1978,6 +1978,12 @@ class PrepAnswer:
     #: shelves say theirs, and for a member of a group of several, whose
     #: group's one job says its own (``group``).
     fit: str = ""
+    #: THE MEMORY THE STAGE NEEDS at the ranks it is prepared with -- at most
+    #: so much, and the run that held it, or that nothing has measured it
+    #: (`jobset.memory.Need`; `execution/job-request.md` § 3.1a): a hint
+    #: said after its placement and fit, refusing nothing.  ``None`` for a
+    #: benchmark.
+    need: Optional[object] = None
     #: A13 -- what the job will be launched with, as its header and its run
     #: script carry it (:func:`_launch_as_written`).
     launch: Optional[dict] = None
@@ -2066,6 +2072,8 @@ class PrepAnswer:
             # terminal prints in place of a placement.
             "stated": ("" if self.placement else
                        stated_line(self.sources)),
+            "need": (self.need.to_wire() if self.need is not None
+                     else None),
             "launch": self.launch,
             "group": self.group,
             "preview": self.preview,
@@ -3234,7 +3242,21 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             j.members = list(members[g]) if len(members[g]) > 1 else None
     js.write(base, plan=the_plan)
     answers = [a for n in numbers for a in previews[n]]
+    #      THE MEMORY EACH STAGE NEEDS at the ranks it is prepared with, its
+    #      job's the largest of its members' -- said beside the fit, refusing
+    #      nothing (`execution/job-request.md` § 3.1a).
+    from .memory import largest, need
+    for a in answers:
+        a.need = need(description.calc, a.stage,
+                      (a.resources or {}).get("mpi_np"))
+    for n, g in said.items():
+        g["need"] = largest([a.need for a in previews[n]]).to_wire()
     if sequence:
+        sequence_said["need"] = (largest(
+            [a.need for n in sequence for a in previews.get(n, ())]
+            + [need(description.calc, j.name, j.resources.mpi_np)
+               for n in sequence if n not in previews for j in jobs_of[n]])
+            .to_wire())
         answers[-1].sequence = sequence_said
     #      THE REVIEWABLE PLAN, ONCE: the job set as this prep leaves it,
     #      and what every member's first launch takes.

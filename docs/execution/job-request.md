@@ -263,7 +263,7 @@ numbers had no home that travelled with the calculation.
 
 **Absent-is-a-state**, like `bench`: nothing asked writes no key.
 
-### 3.1a The memory a run needs — measured, shown beside the ask *(the user, 2026-10-20; designed, not built — plan § 1u)*
+### 3.1a The memory a run needs — measured, shown beside the ask *(the user, 2026-10-20 and 2026-10-22; built 2.29.0 — plan § 1u)*
 
 *(The user, 2026-10-20: "can we have some UI feature to give estimate based
 on the system/task? … estimate the memory need … as a suggested value, and
@@ -283,19 +283,23 @@ could not hold a ladder whose rungs each need their own.
 
 **One door, the memory a stage needs** —
 `jobset.memory.need(calc, stage, ranks)` → the stage's need at `ranks`, the
-run it was measured on, and the words, `line`; asked of a job's members, it
-answers the job's — their largest. `ranks` is what the asker resolved: prep,
-the job's own, its `--np` over the card; Task setup, the card as edited — a
-card stating none gets the measurement alone. Prep and Task setup print the
-door's words, so the two say one sentence, under one name, `need`.
+run it was measured on, and the words, `line`; `jobset.memory.largest` of a
+job's stages' answers the job's (below). `ranks` is what the asker resolved:
+prep, the job's own, its `--np` over the card; Task setup, the card as
+edited — a card stating none, or a value the setting door refuses, gets the
+measurement alone. A stage the calculation does not hold, or a folder that
+holds no calculation, has nothing measured. Prep and Task setup print the
+door's words, so the two say one sentence, under one name, *memory need*
+(`need` on the wire).
 
 **What a run held is the memory peak its run record states** — the one peak
 the instruments' door chooses, `mem_peak_gb`, as it is measured today
-([`model/parse.md`](?doc=model/parse.md) § 5c.1) — at the ranks its engine
-says it ran at (the record's `computation.launch.ranks`, else the ranks its
-wrapper launched, `ranks_asked`); its threads are named beside them. A PySCF
-run is one process. **What the figure is, and where it errs** — on the high
-side, the side that asks for no less than a run needs:
+([`model/parse.md`](?doc=model/parse.md) § 5c.1) — at the ranks its wrapper
+launched (the record's `ranks_asked`), its threads named beside them. The
+engine's own count lies in its output, which this door does not parse; a
+build that ran fewer processes than it was launched with only errs the bound
+high. A PySCF run is one process, and so is read a run whose wrapper states no
+ranks. **What the figure is, where it errs, and how it is said:**
 
 - **Under a scheduler it is the job's**: the kernel's peak for the job's
   cgroup since the job began. A job that runs several stages or points one
@@ -309,7 +313,9 @@ side, the side that asks for no less than a run needs:
   spike shorter than a sample, or by up to that tenth.
 
 The figure is said with where it was read (`mem_peak_from`: the kernel's
-counter, or the largest sample), so a reader sees which of the two it is.
+counter, or the largest sample), and its bound in a word that says which:
+**at most** from the kernel's counter, which errs high; **about** from the
+largest sample, which may be under a run's true peak.
 
 **The bound — a finished run that held X at N ranks needs at most X ·
 max(1, M/N) at M ranks.** An engine that gives every rank its own copy of the
@@ -317,24 +323,32 @@ matrices — TBtrans, and TranSIESTA's solver, which deals the energy points out
 among the ranks — holds about M/N times as much at M; one that divides its
 matrices among the ranks holds less a rank as ranks grow; and with fewer ranks
 than measured neither holds more than it did. So one rule bounds both,
-scaling up and never down, and the figure is said as *at most*. Threads are
+scaling up and never down — said *at most* or *about* by where the peak was
+read (above). Threads are
 not modelled. A PySCF run's figure is what it held, never scaled; its own cap
 (`max_memory_mb`) is what it was let hold.
 
-**Which runs, and which figure**: the stage's runs, each point of a run of
-points, a flat stage's numbered runs — as the run lister lists them for the
-Results tab (`runstatus.every_run`, given its flat branch). Every bound of a
+**Which runs, and which figure**: the stage's runs and each point of a run
+of points, by the lister the Results tab's every run asks
+(`runstatus.run_folders`), and a flat stage's numbered runs, by their launch
+records (`runrecord.launched_runs`). Every bound of a
 point's finished runs holds, so **a point's need is the smallest of them**;
 **a stage's need is the largest of its points'**, naming the run that gave
-it. **A run that did not finish** gives no bound — what it held before it
-ended is less than the stage needs — and is said beside the figure as what it
-held before it ended, in the status door's words for its ending.
+it, as every record of the calculation names a run (`runrecord.RunRef`: its
+folder, or a flat stage's run by its name). **A run that did not finish**
+gives no bound — what it held is less than the stage needs — and the one that
+held the most is said beside the figure, with how many give none: one still
+going as what it *holds so far*, one that ended as what it *held before it
+ended*, in the status door's words.
 
 ```text
-transmission  at most 49.2G at 64 ranks -- held 12.3G at 16 ranks × 1 thread, 05_transmission/run-0 on qlabsrv (the largest sample; finished)
-device        at most 9.6G at 32 ranks -- held 9.6G at 32 ranks × 1 thread, 04_device/run-1 at 0.2 V on sg013 (the kernel's counter, the job's; finished)
+transmission  about 49.3G at 64 ranks -- held 12.31G at 16 ranks × 1 thread, 05_transmission/run-0 on qlabsrv (the largest sample; finished)
+device        at most 9.6G at 32 ranks -- held 9.58G at 32 ranks × 1 thread, 04_device/run-1/v0.2 on sg013 (the kernel's counter, the job's; finished)
 seed          nothing measured -- no finished run of seed has stated its memory
 ```
+
+**The figure is said in tenths of a GB, rounded up**, what a run held in
+hundredths as its record states it.
 
 - **The figures are the scheduler's units and spelling**, 1024-based, as
   `--mem` asks (`48G`) and as the monitor divides.
@@ -346,14 +360,20 @@ seed          nothing measured -- no finished run of seed has stated its memory
 
 **A job's need is the largest of what it runs**: a group of several stages,
 run one after another in one allocation (§ 3.3), the largest of its members';
-a sequence of groups in one job, the largest of its groups'. Every job asks the
+a sequence of groups in one job, the largest of its groups' — said with the
+stage it is, and the stages nothing has measured named after it. Every job asks the
 calculation's `allocation.mem`, so the figure beside the ask is the largest
 need of the stages, naming the stage; `prep --mem` asks for one prep's jobs
 alone.
 
 **What it reads, and when** — for each run, its peak and where it was read,
-its machine and its ranks; never a run's whole record. The page asks it when
-the folder or a rank count changes, not on every edit.
+its machine and the ranks and threads its wrapper launched: the record's rows
+that answer those alone, through the run door (`runs.record_of`, its
+`fields`), never a run's whole record, and never parsing its engine's
+output. The page asks
+it in a request of its own once the plan has painted, when the folder or a
+rank count changes — never on every edit; an older answer, overtaken, is
+dropped.
 
 **Where it is shown, and nowhere else** — never in a header, a deck, the job
 request or a refusal:

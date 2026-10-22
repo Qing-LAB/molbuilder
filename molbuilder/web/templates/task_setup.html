@@ -189,8 +189,12 @@
             <input class="ts-ask-input" id="ts-ask-mem" type="text"
                    inputmode="latin" autocomplete="off"
                    placeholder="e.g. 128G, 0.5T"
-                   aria-describedby="ts-ask-mem-note">
+                   aria-describedby="ts-ask-mem-note ts-ask-mem-need">
             <span class="ts-ask-note" id="ts-ask-mem-note"></span>
+            {#- THE MEMORY A RUN OF A STAGE NEEDED, measured -- the largest, and
+               its stage -- under the queue's own note; it fills nothing
+               (execution/job-request.md § 3.1a). #}
+            <span class="ts-ask-note ts-ask-need" id="ts-ask-mem-need" hidden></span>
           </div>
           {#- THE CALCULATION'S GPU BINDING (execution/gpu.md G9): ticked is
              the rule -- every GPU ask carries --gres-flags=enforce-binding --

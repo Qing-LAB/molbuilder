@@ -1100,7 +1100,7 @@ never asked is the wrong shape regardless of its coefficients. What a run of
 a stage measured is shown beside the ask — each stage's need, the run it was
 measured on and how — and fills nothing
 ([`job-request.md`](?doc=execution/job-request.md) § 3.1a; the user,
-2026-10-20; *designed, not built*).
+2026-10-20).
 
 **And no default exists either** *(user, 2026-10-02)*. A job's memory is, from
 strongest: `--mem` at prep, the job request's `allocation.mem`. Its wall is,

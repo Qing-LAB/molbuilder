@@ -593,6 +593,12 @@
    which it is, so the meaning survives a monochrome screen. */
 .ts-ask-note[data-state="bad"]   { color: var(--ts-refuse-fg); }
 .ts-ask-note[data-state="unset"] { font-style: italic; }
+/* THE MEASURED NEED sits in the note's column, on the line below the queue's
+   own note (`job-request.md` § 3.1a); stacked, under it like every note. */
+.ts-ask-need { grid-column: 3; }
+@container (max-width: 34rem) {
+    .ts-ask-need { grid-column: auto; }
+}
 
 /* ===================================================================== *
  *  "Prep this here" -- the button and what it says  (user, 2026-08-24)  *
@@ -746,6 +752,14 @@
 .ts-plan-stage { font-weight: var(--weight-semibold); }
 .ts-plan-dir { color: var(--text-secondary); }
 .ts-plan-ask {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+/* What a run of the stage held, and at most what it needs at the ranks its
+   card states -- under its row, from the directory's column on. */
+.ts-plan-need {
+    grid-column: 2 / -1;
     min-width: 0;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;

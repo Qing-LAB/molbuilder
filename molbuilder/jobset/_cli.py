@@ -1464,6 +1464,10 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
     elif stated_line(ans.sources):
         # NO HEADER -- where each value it states came from, all the same.
         click.echo("  " + stated_line(ans.sources))
+    if ans.need is not None:
+        # THE MEMORY IT NEEDS at the ranks it is prepared with, beside the
+        # ask -- a hint, refusing nothing (`job-request.md` § 3.1a).
+        click.echo("  memory need: " + ans.need.line)
     if ans.launch and ans.launch.get("header") and ans.group is None:
         # EVERY VALUE IT IS SENT WITH, as the header its launch sends carries
         # it -- a run of points', its walk's -- the line above saying where
@@ -1504,6 +1508,7 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         if g["launch"]["header"]:
             click.echo("  " + g["launch"]["said"])
             click.echo("  " + g["launch"]["fit"])
+        click.echo("  memory need: " + g["need"]["line"])
     seq = ans.sequence
     if seq is not None:
         # THE SEQUENCE'S ONE JOB, once, after the last answer: its header,
@@ -1518,6 +1523,7 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         if seq["launch"]["header"]:
             click.echo("  " + seq["launch"]["said"])
             click.echo("  " + seq["launch"]["fit"])
+        click.echo("  memory need: " + seq["need"]["line"])
         for line in seq["less"]:
             click.echo("  " + line)
     if not last:

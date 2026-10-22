@@ -693,25 +693,46 @@ def _merge(into: Dict[str, Any], part: Dict[str, Any]) -> None:
 def run_record(directory, *, names, run: Optional[int] = None, status=None,
                engine: Optional[str] = None,
                calculation: Optional[str] = None,
-               stage_deck: Optional[Path] = None
+               stage_deck: Optional[Path] = None,
+               fields: Optional[Tuple[str, ...]] = None
                ) -> Optional[Dict[str, Any]]:
     """The record of the run of the stage ``names`` names in ``directory``
     -- the one its caller names, through the run door -- or ``None`` when
     no deck of it is here (§ 5d).  The rest as :func:`run_files` takes
-    them."""
+    them.
+
+    ``fields`` -- the record's paths a caller asks for (a path names
+    everything under it): only the rows of :data:`CONTRIBUTORS` that answer
+    one of them are read, and only those paths kept -- the memory a stage
+    needs reads a run's peak and ranks, never its whole record
+    (`execution/job-request.md` § 3.1a)."""
     f = run_files(directory, names=names, run=run, status=status,
                   engine=engine, calculation=calculation,
                   stage_deck=stage_deck)
     if f is None:
         return None
+
+    def kept_of(declared: Tuple[str, ...]) -> Tuple[str, ...]:
+        # WHAT A ROW ANSWERS OF THE ASK: its fields under an asked path, and
+        # an asked path under one of its fields.
+        if fields is None:
+            return declared
+        return tuple(dict.fromkeys(
+            [fd for fd in declared
+             if any(fd == a or fd.startswith(a + ".") for a in fields)]
+            + [a for a in fields
+               if any(a.startswith(fd + ".") for fd in declared)]))
     record: Dict[str, Any] = {}
     if f.run is not None:
         record["run"] = f.run
     for row in CONTRIBUTORS:
         if row.engines and f.engine not in row.engines:
             continue
+        kept = kept_of(row.fields)
+        if not kept:
+            continue
         try:
-            part = _declared(row.read(f), row.fields)
+            part = _declared(row.read(f), kept)
         except (OSError, ValueError, ParseError):
             # A reporter degrades: one unreadable file costs its own fields,
             # never the record.  A defect in a reader is not caught.

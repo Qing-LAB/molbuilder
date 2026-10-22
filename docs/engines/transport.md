@@ -1008,7 +1008,7 @@ Read each row left to right: what stands, and what runs again.
 
 | the change | the leads | the seed | the device | the transmission | the current |
 |---|---|---|---|---|---|
-| **the energy window widened** — −2…2 → −3…3 eV | stand | stand | **stand**: no NEGF cycle | **runs again** on the same device Hamiltonians. Every energy is independent, so T at the old energies comes out the same | the same at every listed voltage whose window ±(\|V\|/2 + 5 kT) the old window already reached; a voltage it did not reach gets its current |
+| **the energy window widened** — −2…2 → −3…3 eV | stand | stand | **stand**: no NEGF cycle | **runs again** on the same device Hamiltonians. Every energy is independent, so T at the old energies comes out the same — and a new calculation reusing the finished one shares the energies it computed exactly (§ 2a.16) | the same at every listed voltage whose window ±(\|V\|/2 + 5 kT) the old window already reached; a voltage it did not reach gets its current |
 | the energy points refined, the transmission k-point grid, a broadening, the eigenchannels or DOS asked for | stand | stand | stand | **runs again** | follows the new T |
 | **a bias point added — low-bias approximation** | stand | stand | stand: one run, at 0 V | **stands** while the window reaches ±(\|V\|/2 + 5 kT) of the new voltage; else its window is widened and it runs again | **computed** for the new voltage from the one T(E, 0) (`record.linear_response_iv`) — no engine runs |
 | **a bias point added — self-consistent** | stand: bias-independent | stands | the converged points **stand**; the new point runs **one NEGF cycle**, started from the closest converged point's `.TSDE` — the manual's *"copy the TSDE from the closest, previously, calculated bias"*, which the sweep already does (§ 2a.11) — and computes its own leads' Green's functions, which belong to its bias | the existing points stand; the new point runs | each existing point's current stands; the new point has its own |
@@ -2345,7 +2345,9 @@ finished, its SCF converged by the engine's own output (the device's), and it
 holds what the rungs downstream take from it (the DAG, `stage_inputs`: the
 device's `.TS.HSX` and `.TSDE`; the transmission's `.TBT.nc` — or, on a
 polarized junction, its `.TBT_UP.nc` and `.TBT_DN.nc` both, the two files
-TBtrans writes in its place *(found 2026-10-18: the door asked for `.TBT.nc`
+TBtrans writes in its place — and, for a transmission point that shares
+energies with a finished calculation, its `shared/` holding its
+`.copied-from` (§ 2a.16) *(found 2026-10-18: the door asked for `.TBT.nc`
 alone, so a polarized sweep read 0 of N done and was walked again)*). Its
 record is
 what its wrapper already writes as it ends — the conclusion marker and the
@@ -2403,7 +2405,9 @@ and the walk runs the points not done. **Cold** (`--cold`), nothing is taken ove
 runs. Launch shows which points it takes over and which it runs, and asks once.
 A warm launch with every point done is **refused**, naming the `--cold` line —
 no run is opened with nothing to run in it. Every run is kept, and an I–V is
-always one run whole.
+always one run whole — a transmission point that shares energies with a
+finished calculation it reuses holds them in its own `shared/`, inside that
+run (§ 2a.16).
 
 **The transmission takes one device run whole**: its first launch gathers each point's
 `.TS.HSX` from the device's **newest** run, every point of it done — the rule
@@ -2953,13 +2957,14 @@ part — their rows, masses and average — is laid out by their post-process
 | `transmission_by_spin` | frame, bias_v, spin, energy_ev | raw | T(E) as each point's `.TBT.AVTRANS` file states it, channel by channel |
 | `transmission` | frame, bias_v, energy_ev | derived | per spin channel — the one, or `(T↑ + T↓)/2` — what G is computed from |
 | `conductance_g0` | frame, bias_v | derived | `G / G₀ = T` at E − E_F = 0, linearly interpolated |
-| `current_a_printed` | frame, bias_v | raw | the current TBtrans printed — one spin channel's |
+| `current_a_printed` | frame, bias_v | raw | the current TBtrans printed — one spin channel's; the fill value for a point whose energies two runs computed, each printing its own part (§ 2a.16) |
+| `current_from` | frame, bias_v | state | which current `current_a` is: `tbtrans`, the junction's total from the printed figures (above), or `joined`, the record's integral by TBtrans's rule over a point whose energies two runs computed (§ 2a.16) |
 | `current_a` | frame, bias_v | derived | the junction's total: twice the printed figure unpolarized, the channels' sum polarized |
 | `iv_current_a` | frame, iv_bias_v | derived | the I–V — each point's own total (`iv_computed` `tbtrans`), or the record's linear response from that frame's 0 V slice (`linear-response`, the low-bias approximation): `I(V) = G₀ ∫ T(E, 0) [f(E − eV/2) − f(E + eV/2)] dE` at `iv_kt_ev`, the fill value where the window does not reach (§ 2a.10) |
 | `device_ef_ev` · `device_vha_ev` | frame, bias_v | raw | the device point's NEGF Fermi level and boundary Hartree potential, as TranSIESTA printed them — wherever the device point ran, its transmission done or not |
 | `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` · `eigenchannel_transmission` | frame, bias_v, (region · lead · eigenchannel), energy_ev | raw | from each point's `.TBT.nc`, k-averaged (`transport/tbtnc.py`); a polarized point's two files (`.TBT_UP.nc`, `.TBT_DN.nc`) summed over spin (`tbtnc.spin_dos`, 2026-10-11), its eigenchannels — one set per spin — not here (a run of polarized points has an `eigenchannel` dimension of 0) but each spin's in the record (`dos.by_spin`, `web/results.md` § 2.5) |
 | `done` | frame, bias_v | state | 1 when the point has its transmission; 0 otherwise, its transmission's values the fill value — a gap, never filled in |
-| `point_folder` | frame, bias_v | state | the transmission point's folder, relative to the calculation's — where its raw values were read; for a point not done, where its attempt is |
+| `point_folder` | frame, bias_v | state | the transmission point's folder, relative to the calculation's — where its raw values were read, and its `shared/` beside them for a point that shares energies (§ 2a.16); for a point not done, where its attempt is |
 | `average_transmission` · `average_delta_transmission` | bias_v, energy_ev | derived | the mode's average at the stated weights, and its change from frame 0's |
 | `average_conductance_g0` · `average_conductance_change_percent` | bias_v | derived | at E_F, and in per cent of frame 0's |
 | `point_state` | frame, bias_v | state | the transmission point's run state, the run door's word (`finished`, `failed`, `pending` …) — beside `done` |
@@ -3025,6 +3030,8 @@ from molbuilder.workingcopy_structure import StructureCodec
 junction = StructureCodec().load("junction.xyz")
 tbt = sisl.get_sile(f"{pt.point_folder.item()}/J.TBT.nc")
 tbt.DOS(atoms=junction.indices_of_yours([10, 11]))
+# a point whose current_from is "joined" holds the energies it shares in its
+# shared/ folder too (§ 2a.16): read both, or ask the record's own door
 ```
 
 `point_folder` is relative to the calculation's folder, and every index — an
@@ -3610,7 +3617,8 @@ is left behind — or prepared here, with what decided it: each difference of
 the new request as it reaches that rung, in the words of § 6.1's comparison,
 or the finished run's state. For a rung of points prepared here, the points
 its first launch will take over, from which run, and the points it will walk.
-Then the totals: what is copied now, and what the next save stores again.
+Then the totals: what is copied now, what the transmission's first launch
+will copy into its points' `shared/`, and what the next save stores again.
 
 ```text
 reuses AuBDTAu/transport/lowbias_local -- what this calculation copies, and what it runs
@@ -3656,74 +3664,122 @@ what is the same**: the seed's density, the leads' Hamiltonians, the device's
 converged density and energy-density matrices and its Hamiltonian, copied in
 with their runs — and, within a transmission point, **every energy the
 finished point computed exactly**. A transmission point costs its energies
-times its k-points, each energy independent of every other (§ 1.2), and can
-take days; an energy computed once is never computed again.
+times its k-points, each energy independent of every other (§ 1.2); an energy
+computed once is not computed again where a point adds energies to it.
 
-**When a point shares energies**: a transmission point the finished
-calculation's newest run holds done, at the same frame and voltage, that is the
-same calculation as this rung's deck at that point **but for its energies** —
-this rung's deck rendered with the finished point's contour in place of its
-own is the same engine input (§ 6.1's door, asked unchanged) — and whose inputs
-are this run's (its device point copied in with the device's runs, or taken
-over from the point the finished point gathered; its leads copied in). Each
-energy of the new grid the finished point computed is then **shared**, the rest
-are computed here.
+**When a point shares energies** — all of these, at prep:
+
+- the finished calculation's newest transmission run holds the point — the
+  same frame and voltage — done;
+- this rung's deck at that point is the same calculation as the finished
+  point's **but for its energies**: rendered with the finished point's
+  contour in place of its own, it is the same engine input (§ 6.1's door,
+  asked unchanged);
+- its inputs are the finished point's: its device point copied in with the
+  device's runs, or taken over by this calculation's device run from the
+  point the finished point gathered; its leads copied in;
+- **the two grids hold energies in common, and the new one adds at least
+  one** — an energy in common is the same energy to floating-point precision,
+  within 10⁻⁹ eV, the finished point's read through the one door that reads a
+  point's energies (below), from its `.TBT.nc` files, which keep them at full
+  precision, never the five decimals its `.TBT.AVTRANS` prints; never a nearby
+  one. Every energy in common is shared and the rest are computed here — a
+  window widened, shifted or cut finer. A grid whose every energy the finished
+  point holds, and that holds fewer, asks a narrower question: it runs whole,
+  and the manifest says how many energies it computes again — no run is made
+  with nothing to compute.
+
+**A point whose grid is the finished point's own** — every energy the
+finished point holds, its own and those it shared, and no other — **is that
+point**: it renders the finished point's contours, so it is the same
+calculation, and it is copied in with its run or taken over, its `shared/`
+with it.
 
 **Exactly the same, and nothing else**: an energy is shared when the finished
-point computed that energy to floating-point precision — within 10⁻⁹ eV,
-against the energies its `.TBT.nc` keeps at full precision — never a nearby
-one: the transmission's narrowest features are as wide as its broadening, 10⁻⁴
-eV by default (the electrodes' 10⁻³ eV over ten, § 2a.13), so an energy a few
-10⁻⁶ eV away is another energy. A mid-rule grid holds another's energies
-exactly when it is that grid moved out by whole spacings at the same spacing —
-−2…2 eV at 401 points, extended by 100 spacings a side, is
-−2.99750623441397…2.99750623441397 eV at 601 — or that grid with each interval
-cut into an odd number (401 points → 1203). **Every transmission deck writes
-its window's ends at full precision** — tbtrans computes its energies from
-them, and an end rounded to five decimals is another energy; § 6.1 reads a
-value as a number, so `-2.00000` and `-2.0` are the same input.
+point computed that energy — never one a few 10⁻⁶ eV away: the transmission's
+narrowest features are as wide as its broadening, 10⁻⁴ eV at the catalogue's
+defaults (`tbt_elecs_eta_ev` 10⁻³ eV, the device's contour η a tenth of the
+smallest electrode's, § 2a.13). Two mid-rule grids hold energies in
+common when, for instance, one's spacing is the other's, or the other's over an
+odd number, and its ends lie a whole number of its spacings from the other's —
+the energies themselves are compared, so any grid that holds some is found — −2…2 eV at
+401 points, extended by 100 spacings a side, is −2.997506234413965…
+2.997506234413965 eV at 601; cut three to an interval, 1203. **Every
+transmission deck writes its window's ends at full precision** — tbtrans
+computes its energies from them, and an end rounded to five decimals is
+another energy; § 6.1 reads a value as a number, so `-2.00000` and `-2.0` are
+the same input. The energies of two runs agree to rounding (10⁻¹⁵ eV), and
+the 10⁻⁹ eV holds while SIESTA and sisl convert Ry and eV by the same
+CODATA factors; a build that does not shares nothing, which is safe.
 
-**What the point's run computes**: the energies not shared, listed with their
-weights on the new grid — mid-rule, the grid's spacing each — in a file beside
-the point's deck, which its contour names (`part user`, `file …`: tbtrans
-reads a contour's energies and weights from a file, `m_tbt_contour.F90`
-`contour_file`, `m_ts_io_ctype.f90`); prep writes both, as it writes every
-deck. A point that shares nothing runs its window as any point does; a point
-whose every energy is shared runs nothing.
+**What the point's run computes**: the energies its grid holds that the
+finished point does not — **written in its deck as line contours**, each a
+run of those energies at one spacing (`part line`, `from … to …` at full
+precision, `points`, `method mid-rule`), every one named in the deck's
+`TBT.Contours` list: tbtrans computes them all, saying *Contours are not
+connected* when they do not join (`m_tbt_contour.F90`). A window widened or
+shifted adds at most two, one each side; a grid cut n to an interval (n odd),
+n − 1 between the old energies. So § 6.1's door, which reads deck text, sees
+every energy the point computes. A comment of the deck's — molbuilder's,
+which the engine does not read — names the finished point the contours
+complement and how many energies it holds. Prep writes it with the deck; a
+launched point prepared again for its job request keeps its contours, read
+back from the deck prep wrote for it, never decided again.
 
-**Where the shared energies lie**: the finished point's files — the engine's
-and its run's account, never its records of runs — copied into a folder of
-the point's own, **`shared/`**, its name the layout's (`paths`) and its stamp
-the role `shared` ([`project-layout.md`](?doc=execution/project-layout.md)
-§ 1.4a), its `.copied-from` naming the point that computed them; a finished
-point that itself shared energies is copied with its own `shared/` inside.
+**One moment, one record**: prep decides — the manifest says it — and the
+point's deck records it. The transmission's first launch checks that the
+prepared files are still what prep would write now (R-L15), the decision
+among them, and then copies the finished point's energies into the run's
+point folder, from the point the deck names. **Every launch that walks a
+sharing point gives it its energies**: a launch again, warm or cold, copies
+them from the rung's newest run that holds them whole — its `shared/`, with
+its `.copied-from` — or, with none, from the point the deck names; a point
+taken over carries its `shared/` with it.
 
-**The point's result is the new grid, joined** — by one door, which every
-reader of a transmission point asks: the record (T(E), the DOS and its
-regions, the leads' DOS, the eigenchannels), a selection's PDOS, the data
-file and the Results report. Each energy is read from the run that computed
-it, in the grid's order, and the grid is the one described — so every point of
-the calculation lies on one grid. **A joined point's current is the
-record's**, by tbtrans's own rule — each energy's transmission, times its
-weight on the grid, times the two leads' Fermi functions' difference
-(`m_tbt_save.F90`) — since tbtrans's printed current covers its own run's
-energies alone; the record says, point by point, which current it gives
-(`current_from`: `tbtrans` for a point one run computed whole, `joined`).
+**Where the shared energies lie**: a folder of the point's own, **`shared/`**,
+its name the layout's (`paths`) and its stamp the role `shared`
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) — a folder
+because tbtrans refuses to start where its own `<label>.TBT.nc` lies
+(`m_tbt_save.F90`) and overwrites its text outputs. It holds what the readers
+read of the finished point — its `.TBT.nc` and `.TBT.AVTRANS_<pair>` files
+(`.TBT_UP.` and `.TBT_DN.` on a polarized point), and its own `shared/`
+when it shared energies itself — and **`.copied-from`, written last**, naming
+the point it is a copy of: a folder without it is a copy cut short. A
+point that shares energies is done when its own run is, and its `shared/`
+holds that record (`continuation.done`).
 
-**The manifest says it, point by point**, with the time the finished point's
-own pace gives — its measured loop over its energies, on its machine and
-ranks:
+**The point's result is its grid, joined** — by one door that reads a
+point's energies and every value on them, from its own run and its `shared/`,
+recursively, in the grid's order: T(E) and each spin's, the DOS and its
+regions, the leads' DOS, the eigenchannels, a selection's PDOS — asked by the
+record, the data file, `/api/transport/pdos` and the Results report alike, and
+by the sharing test itself. Every point of the calculation therefore lies on
+the grid described. **A joined point's current is the record's**, by tbtrans's
+own rule — each energy's transmission, times its weight on the grid, times the
+two leads' Fermi functions' difference (`m_tbt_save.F90`) — since tbtrans's
+printed current covers its own run's energies alone; the record and the data
+file say, point by point, which current each is (`current_from`: `tbtrans`, or
+`joined`), and a joined point's printed current is not one (the data file's
+fill value). Under the low-bias approximation the record integrates T(E, 0)
+as it does for any point (§ 2a.10), over the joined curve. **What a run
+computed is its own**: the account of a point's loop says *200 of its 601
+energies (401 shared)* — TBtrans's count of its own, with molbuilder's of the
+grid and of the shared beside it, from the deck's comment — and the loop
+measured beside it is that run's.
+
+**The manifest says it, point by point**:
 
 ```text
   group 3  transmission                    prepared here -- its energies:
-           v0.2   shares 401 of 601 energies with lowbias_local/05_transmission/run-0/v0.2 -- computes 200 here (about 3.0 days at the finished point's pace, 16 ranks on qlabsrv)
+           0 V    shares 401 of 601 energies with lowbias_local/05_transmission/run-0 -- computes 200 here
 ```
 
-and a grid that shares nothing is said so, with the window at the same spacing
-that would share every energy — the person's to take or leave:
+and a grid that shares nothing is said so, with the window at the same
+spacing that would hold every energy of the finished point's — the person's
+to take or leave:
 
 ```text
-           v0.2   shares none of 601 energies -- -3…3 eV at 601 points does not hold the finished point's 401; -2.99750623441397…2.99750623441397 eV at 601 would hold all 401
+           0 V    shares none -- -3…3 eV at 601 points holds none of the finished point's 401; -2.997506234413965…2.997506234413965 eV at 601 would hold all 401
 ```
 
 #### What is never copied
@@ -3739,7 +3795,7 @@ that would share every energy — the person's to take or leave:
 
 | the new question | copied in at prep | taken over at a first launch | runs here |
 |---|---|---|---|
-| the window changed — its range, its size, its point density | the seed, both leads, the device | — | at every transmission point, the energies the finished point did not compute; shared, those it did, exactly |
+| the window changed — its range, its size, its point density | the seed, both leads, the device | — | at every transmission point, the energies the finished point did not compute; shared, those it did, exactly — when the two grids hold energies in common; a grid that holds none, or lies wholly inside the finished one, runs whole |
 | another transmission k-point grid, broadening or output | the seed, both leads, the device | — | the transmission, every point, every energy |
 | more voltages, self-consistent | the seed, both leads | the device's and the transmission's points already converged | each new voltage's device and transmission points |
 | more voltages, the low-bias approximation — while the window reaches ±(\|V\|/2 + 5 kT) of each (§ 1.2) | every rung: the bias list reaches no deck (§ 2a.10) | — | nothing: `summarize task` computes the new voltages' currents from T(E, 0) |

@@ -2047,10 +2047,10 @@ route — is this, for the whole verb.
 | `flat` | a flat run: its wrappers are rendered and there is no attempt to open |
 | `attempt` | the first run it opened and what it brought in — the stage's own files |
 | `takes` | what the stage's first launch will take, and from which stage — the line both doors print (§ 5.4); nothing is copied at prep but a group a transport calculation copies in from a finished one it reuses, said in `copied` |
-| `copied` | a transport calculation that reuses a finished one: its manifest — each group copied in, its runs, where each comes from, how it ended and its size, or prepared here and the differences that decided it; for a rung of points prepared here, the points its first launch takes over and walks; the totals — shown before anything is written, with the groups the terminal offers and in Task setup's Preview, and kept in `STAGE-PLAN.md` and the ledger ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*) |
+| `copied` | a transport calculation that reuses a finished one: its manifest — each group copied in, its runs, where each comes from, how it ended and its size, or prepared here and the differences that decided it; for a rung of points prepared here, the points its first launch takes over and walks, and for a transmission point the energies it shares with the finished point and those it computes; the totals — shown before anything is written, with the groups the terminal offers and in Task setup's Preview, and kept in `STAGE-PLAN.md` and the ledger ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*) |
 | `continuation` | a force-constant stage only: the `relax` run its deck is written at — by default or named — what it was (its conclusion, state and convergence); a benchmark of a force-constant stage, the relax run its trials are written at |
 | `points` | a transport bias scan's point folders instead — one per point |
-| `need` | the stage's memory need at the ranks it is prepared with — at most so much, and the run that held it — or that nothing has measured it (`jobset.memory.need`, [`job-request.md`](?doc=execution/job-request.md) § 3.1a; *designed, not built*): printed after its placement and fit, or its `stated` line; a group's and a sequence's, their job's largest, beside their fit — a hint that refuses nothing; none for a benchmark |
+| `need` | the stage's memory need at the ranks it is prepared with — at most so much, and the run that held it — or that nothing has measured it (`jobset.memory.need`, [`job-request.md`](?doc=execution/job-request.md) § 3.1a): printed after its placement and fit, or its `stated` line; a group's and a sequence's, their job's largest, beside their fit — a hint that refuses nothing; none for a benchmark |
 | `placement` | a stage prepared for a queue: the queue it was placed on and where each value came from, as its job records it (§ 6.0); `fit`, the fit of what it sends — a run's own, a run of points' walk's; none for a benchmark or a member of a group of several, whose shelves and group say theirs — said and recorded nowhere; and the lines both doors print |
 | `stated` | a stage prepared with no header (a machine with no scheduler, `--no-sbatch`): where each value it states came from, the line both doors print in place of a placement |
 | `shelves` | a benchmark's: each shelf's name, its header's lines and them in one line, and its fit on the benchmark's queue |
@@ -2297,7 +2297,9 @@ comes from; and its record — `.continued-from`, the one run it continues
 from, or `.gathered-from`, each input with its run. One function carries
 every hand-over out, `materialize.hand_over` — it copies the files and
 writes the record. A point a transport calculation takes over from a finished
-one it reuses is one more, its record `.copied-from`; the runs its prep copies
+one it reuses is one more, its record `.copied-from`, and so are the energies a
+transmission point shares with a finished point, copied into its `shared/` at
+its first launch; the runs its prep copies
 in are no hand-over — no run takes them, they are brought whole
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*):
 

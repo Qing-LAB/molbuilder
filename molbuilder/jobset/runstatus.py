@@ -265,6 +265,28 @@ MISSING = ("missing", "the job set names this run's folder; it is not on "
                       "disk", None)
 
 
+def run_folders(base, task, stage_dir, stage: str):
+    """EVERY RUN OF A STAGE ON THE HIERARCHICAL LAYOUT, as folders --
+    ``(n, folder, point)``: each attempt ``run-<n>`` in order and, for a
+    rung of points, each of its points' folders there
+    (`transport.stages.points_in`), ``point`` ``None`` for a run with no
+    point level.  The one lister the Results tab's every run
+    (:func:`every_run`) and the memory a stage needs (`jobset.memory`) ask;
+    a stage's runs that share the calculation's folder (the flat layout)
+    are its caller's, by their launch records (`runrecord.launched_runs`)."""
+    root = Path(base)
+    for n in attempts_in(Path(stage_dir)):
+        run_dir = Path(stage_dir) / attempt_name(n)
+        folders: List[tuple] = []
+        if getattr(task, "calculation", None) == "transport":
+            from ..transport.stages import points_in
+            folders = [(p, pt) for p, pt in points_in(run_dir, task, stage,
+                                                      base=root)
+                       if p.is_dir()]
+        for folder, pt in folders or [(run_dir, None)]:
+            yield n, folder, pt
+
+
 def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     """EVERY RUN OF A STAGE, each with its own state -- the root's bird's-eye
     (`web/results.md` § 2.4): each attempt in order and, for a swept rung,
@@ -277,59 +299,48 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     if not st.dir:
         return []
     root = Path(base)
-    stage_dir = root / st.dir
     rows: List[Dict[str, Any]] = []
-    for n in attempts_in(stage_dir):
-        run_dir = stage_dir / attempt_name(n)
-        folders: List[tuple] = []
-        if getattr(task, "calculation", None) == "transport":
-            from ..transport.stages import points_in
-            folders = [(p, pt) for p, pt in points_in(run_dir, task,
-                                                      st.ref.name, base=root)
-                       if p.is_dir()]
-        if not folders:
-            folders = [(run_dir, None)]
-        for folder, pt in folders:
-            run = run_of(folder)
-            if run is None or run.stage is None:
-                continue
-            got = state_of(run)
-            # A TRANSMISSION RUN'S POINT IS THE DOOR'S, the one it opens the
-            # report at -- its one point too, when the rung runs once.
-            pt = transmission_point(folder) or pt
-            # THE FILE THE RUN'S FOLDER OPENS, the run door's answer -- a
-            # transmission run's is its calculation's report, at the root
-            # (`runs.transmission_point`, results.md § 0.1).
-            opens, _trail = openable(folder)
-            opens_rel: Optional[str] = (
-                str(Path(opens).resolve().relative_to(root.resolve()))
-                if opens else None)
-            # WHAT THE RUN READ AND WHAT WAS CHECKED BEFORE IT WAS WRITTEN,
-            # root-relative (`web/results.md` § 2.4): the deck in the run's
-            # folder, and the `.validation.txt` prep wrote beside the deck
-            # it copied -- through the run door, never by a name.
-            deck, report = run.deck, run.report
+    for n, folder, pt in run_folders(root, task, root / st.dir, st.ref.name):
+        run = run_of(folder)
+        if run is None or run.stage is None:
+            continue
+        got = state_of(run)
+        # A TRANSMISSION RUN'S POINT IS THE DOOR'S, the one it opens the
+        # report at -- its one point too, when the rung runs once.
+        pt = transmission_point(folder) or pt
+        # THE FILE THE RUN'S FOLDER OPENS, the run door's answer -- a
+        # transmission run's is its calculation's report, at the root
+        # (`runs.transmission_point`, results.md § 0.1).
+        opens, _trail = openable(folder)
+        opens_rel: Optional[str] = (
+            str(Path(opens).resolve().relative_to(root.resolve()))
+            if opens else None)
+        # WHAT THE RUN READ AND WHAT WAS CHECKED BEFORE IT WAS WRITTEN,
+        # root-relative (`web/results.md` § 2.4): the deck in the run's
+        # folder, and the `.validation.txt` prep wrote beside the deck
+        # it copied -- through the run door, never by a name.
+        deck, report = run.deck, run.report
 
-            def _rel(p: Optional[Path]) -> Optional[str]:
-                return (str(p.resolve().relative_to(root.resolve()))
-                        if p is not None else None)
-            rows.append({
-                "run": attempt_name(n),
-                # THE POINT, in its one wire form (`stages.Point.to_wire`):
-                # its frame, how many frames the set holds, its voltage --
-                # what a row is named by on a page (`web/results.md` § 2.5).
-                **(pt.to_wire() if pt is not None
-                   else dict.fromkeys(("frame", "of", "bias_v"))),
-                "dir": str(folder.relative_to(root)),
-                "state": got.state,
-                "detail": got.detail,
-                "converged": got.converged_words,
-                # ROOT-RELATIVE: the file the row opens -- the run's own, or
-                # the root's task.json for a transmission point.
-                "opens": opens_rel,
-                "deck": _rel(deck),
-                "validation": _rel(report),
-            })
+        def _rel(p: Optional[Path]) -> Optional[str]:
+            return (str(p.resolve().relative_to(root.resolve()))
+                    if p is not None else None)
+        rows.append({
+            "run": attempt_name(n),
+            # THE POINT, in its one wire form (`stages.Point.to_wire`):
+            # its frame, how many frames the set holds, its voltage --
+            # what a row is named by on a page (`web/results.md` § 2.5).
+            **(pt.to_wire() if pt is not None
+               else dict.fromkeys(("frame", "of", "bias_v"))),
+            "dir": str(folder.relative_to(root)),
+            "state": got.state,
+            "detail": got.detail,
+            "converged": got.converged_words,
+            # ROOT-RELATIVE: the file the row opens -- the run's own, or
+            # the root's task.json for a transmission point.
+            "opens": opens_rel,
+            "deck": _rel(deck),
+            "validation": _rel(report),
+        })
     return rows
 
 
@@ -1020,5 +1031,6 @@ def scratch_answer(calc) -> ScratchAnswer:
 
 
 __all__ = ["StageStatus", "JobSetStatus", "jobset_status", "job_members",
+           "run_folders", "every_run",
            "render_status", "render_stage_status", "ScratchAnswer",
            "scratch_answer"]
