@@ -286,6 +286,11 @@ def test_an_unparseable_document_loses_nothing():
         // The save bar is not this file's subject: its writer is called.
         function _setDirty() {{}}
         function edited() {{ return true; }}
+        // ...nor the cards a refused write puts back from the model.
+        let _task = null;
+        function readAsksFromRequest() {{}}
+        function readNotifyFromRequest() {{}}
+        function renderQueues() {{}}
         {fns}
         applyNotifyToDoc();
         console.log(JSON.stringify({{doc: _doc, said: _said}}));

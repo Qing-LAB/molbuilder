@@ -60,6 +60,7 @@ HARNESS = f"""
     const _docs = {{ task: {_doc()}, request: {_doc()} }};
     let _disk = {{ task: "", request: "" }};
     let _parses = {{ task: true, request: true }};
+    let _parsedText = {{ task: "", request: "" }};
 """
 
 
