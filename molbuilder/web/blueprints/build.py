@@ -1588,6 +1588,26 @@ def api_task_setup_save():
             return jsonify({"ok": False, "error": str(exc)}), 409
         if fixed is not None:
             return jsonify({"ok": False, "error": fixed["why"]}), 409
+    # A LAUNCHED GROUP'S MEMBERS ARE FIXED (`web/task-setup.md` § 5): a
+    # stage put into one, or a member launched with it given another group,
+    # is refused in the one rule's words (`ready.launched_without`,
+    # `ready.joined_launched`).  A member taken out of the description is
+    # not Save's to refuse -- the group is then *launched, its members
+    # changed*, which every verb declines (`job-system.md`, *The task*).
+    if prior_calc is not None and prior_calc.jobset is not None:
+        import dataclasses as _dc
+        from molbuilder.jobset.ready import joined_launched, launched_without
+        from molbuilder.runrecord import LaunchRecordError
+        after = _dc.replace(prior_calc, task=task, request=job_req)
+        for n in job_req.numbers:
+            try:
+                hit = launched_without(after, n)
+            except LaunchRecordError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 409
+            if hit and (hit[1] or any(job_req.group_of(x) is not None
+                                      for x in hit[2])):
+                return jsonify({"ok": False, "error": joined_launched(
+                    after, n, *hit)}), 409
 
     # THE FOLDER'S STATE, SAVED FIRST -- always, by the one function prep
     # calls (`checkpointing.md` § 9; user, 2026-10-03, B10: "make this
@@ -2515,7 +2535,7 @@ def _folder_ladder(calc) -> dict:
     folder's other parts."""
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.group import linked, upstream_of, why_not_join
-    from molbuilder.jobset.ready import task_state
+    from molbuilder.jobset.ready import task_state, why_group_fixed
     try:
         state = task_state(calc)
         task, text = state.task, state.template_text
@@ -2534,17 +2554,21 @@ def _folder_ladder(calc) -> dict:
                      if i and number[j] == number[i - 1]]
             why_same = (why_not_join(task, job_req, st.name, above, text)
                         if above else None)
-            if why_same is None and above and any(
-                    b.launched for s, b in zip(task.stages, answers)
-                    if s.name in above):
-                why_same = (f"group {number[i - 1]} was launched "
-                            f"-- its members are fixed")
+            # ...A LAUNCHED GROUP ABOVE, this row not of it: its group is
+            # fixed, said by the ready door (`ready.why_group_fixed`).
+            ran = next((s.name for s, b in zip(task.stages, answers)
+                        if s.name in above and b.launched), None)
+            if (why_same is None and ran is not None
+                    and number[i] != number[i - 1]):
+                why_same = why_group_fixed(calc, ran)
             rows.append({"stage": st.name, "group": number[i],
                          "builds_on": sorted(upstream_of(task, st.name,
                                                          text)),
                          "linked": linked(task, st.name, text),
                          "launched": a.launched,
-                         "why_same": why_same})
+                         "why_same": why_same,
+                         "why_fixed": (why_group_fixed(calc, st.name)
+                                       if a.launched else None)})
         return {
             "ladder": {"stages": [{"stage": a.stage, "group": a.group,
                                    "state": a.state, "detail": a.detail,
@@ -2560,7 +2584,7 @@ def _folder_ladder(calc) -> dict:
                            else "not prepared"),
                  # A PREPARED JOB HOLDING OTHER MEMBERS: prepared again,
                  # formed anew (`job-system.md`, *The task*, step 3).
-                 "matches": not g.changed,
+                 "matches": not (g.changed or g.members_changed),
                  "preparable": g.preparable, "why": g.why} for g in gs]}}
     except (OSError, ValueError, PrepError) as exc:
         # WHAT ITS READERS REFUSE, said on the card; a defect in this code

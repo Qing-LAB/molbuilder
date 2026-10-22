@@ -107,6 +107,11 @@ class GroupAnswer:
     #: one): a launched group may then be prepared again for its job
     #: request (`execution/job-request.md` § 5).
     keeps_runs: bool = True
+    #: A LAUNCHED GROUP WHOSE MEMBERS CHANGED -- a stage put into it, or one
+    #: launched with it taken out (:func:`launched_without`) -- in the rule's
+    #: own words and way on (:func:`joined_launched`); ``None`` otherwise.
+    #: Such a group is offered by no verb (`job-system.md`, *The task*).
+    members_changed: Optional[str] = None
 
     @property
     def launched(self) -> bool:
@@ -138,6 +143,7 @@ class GroupAnswer:
         computes kept: prepared again for its job request
         (`execution/job-request.md` § 5)."""
         return ((not self.launched or self.keeps_runs)
+                and self.members_changed is None
                 and all(a.prepared or a.ready for a in self.answers))
 
     @property
@@ -156,8 +162,10 @@ class GroupAnswer:
 
     @property
     def why(self) -> Optional[str]:
-        """What it waits for: the first member's refusal."""
-        return next((a.why for a in self.answers if a.why), None)
+        """What it waits for: a launched group's changed members, else the
+        first member's refusal."""
+        return self.members_changed or next(
+            (a.why for a in self.answers if a.why), None)
 
 
 def held_by_sequence(calc, number: int, *, asked=None
@@ -309,11 +317,13 @@ def launched_without(calc, number: int
 
 def joined_launched(calc, number: int, launched: str,
                     joined: List[str], left: List[str]) -> str:
-    """The way on for a launched group whose members changed: a stage put
-    into it, a group of its own; a stage taken out of it, put back beside
-    the one launched with it; or the group formed anew from the state saved
+    """The way on for a launched group whose members changed -- the one
+    composer every verb and surface says it in (`job-system.md`, *The
+    task*): a stage put into it, a group of its own; a stage taken out of
+    it, put back beside the one launched with it; the one launched,
+    launched again alone; or the group formed anew from the state saved
     before its first launch."""
-    from .commands import redo_launched
+    from .commands import block, launch_lines, redo_launched
 
     def said(names):
         return ", ".join(f"`{h}`" for h in names)
@@ -333,9 +343,19 @@ def joined_launched(calc, number: int, launched: str,
         ways.append(f"put {said(left)} back beside `{launched}` in one "
                     f"group")
     return ("; ".join(what) + " -- a launched group's members are fixed: "
-            + " and ".join(ways) + " (Task setup, or job-request.json), "
-            "or, to form the group anew, "
+            + " and ".join(ways) + " (Task setup, or job-request.json); or "
+            f"launch `{launched}` again alone:\n"
+            + block(launch_lines("task", launched, base=calc.base))
+            + "\n  or, to form the group anew, "
             + redo_launched(launched, calc=calc))
+
+
+def why_group_fixed(calc, stage: str) -> str:
+    """Why a launched stage's group is not changed where the groups are
+    edited (`web/task-setup.md` § 5), and the restore that changes it."""
+    from .commands import redo_launched
+    return (f"`{stage}` was launched -- its group is fixed; to change it, "
+            + redo_launched(stage, calc=calc))
 
 
 def regrouped(calc, stage: str) -> Optional[str]:
@@ -754,9 +774,23 @@ def task_state(calc, *, verdict: bool = False) -> TaskState:
     reads a relaxation's convergence where a stage takes one (a prep's
     question); `status` and the folder answer leave it unread."""
     answers = ladder(calc, verdict=verdict)
-    return TaskState(calc.task, calc.template_text, calc.jobset, answers,
-                     groups(calc.request, answers,
-                            keeps_runs=calc.shape.keeps_attempts_as_directories))
+    gs = groups(calc.request, answers,
+                keeps_runs=calc.shape.keeps_attempts_as_directories)
+    # A LAUNCHED GROUP'S MEMBERS ARE FIXED: one whose members changed says
+    # so, the one rule asked once here for every reader (`job-system.md`,
+    # *The task*).
+    from ..runrecord import LaunchRecordError
+    for g in gs:
+        if not g.launched:
+            continue
+        try:
+            hit = launched_without(calc, g.number)
+        except LaunchRecordError as exc:
+            g.members_changed = str(exc)
+            continue
+        if hit:
+            g.members_changed = joined_launched(calc, g.number, *hit)
+    return TaskState(calc.task, calc.template_text, calc.jobset, answers, gs)
 
 
 def groups(request, answers: List[Readiness], *,
@@ -794,7 +828,9 @@ def groups_text(gs: List[GroupAnswer]) -> str:
     out = []
     for g in gs:
         out.append(f"  group {g.number}"
-                   + ("  (launched)" if g.launched else
+                   + ("  (launched, its members changed)"
+                      if g.members_changed else
+                      "  (launched)" if g.launched else
                       "  (prepared, not launched)" if g.prepared else
                       "  (prepared, its members changed)" if g.changed
                       else ""))
@@ -805,7 +841,8 @@ def groups_text(gs: List[GroupAnswer]) -> str:
 
 __all__ = ["Readiness", "GroupAnswer", "TaskState", "task_state",
            "readiness", "launched_already", "launched_without",
-           "joined_launched", "regrouped", "launched_stage",
+           "joined_launched", "why_group_fixed", "regrouped",
+           "launched_stage",
            "first_launch_takes",
            "at_launch", "written_at_takes", "takes_sentence", "ladder", "groups", "prep_offer", "launch_offer",
            "groups_text"]

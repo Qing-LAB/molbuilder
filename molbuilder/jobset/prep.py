@@ -2952,12 +2952,22 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             return [_record_the_order(description.calc, refuse=_refuse,
                                       asked=_asked, preview=preview,
                                       plan_id=plan_id)]
+        # THE GROUPS IT MAY PREPARE NOW, the one answer's
+        # (`ready.task_state`), and why each other may not.
         from .commands import block, prep_group_lines
+        from .ready import task_state
+        gs = task_state(description.calc).groups
+        offer = [g.number for g in gs if g.preparable]
+        held = "".join(f"\n  group {g.number} is not offered: {g.why}"
+                       for g in gs if not g.preparable and g.why)
         raise _refuse(
             "`prep task` names the groups it prepares -- a group prepared "
             "and never launched is prepared again by naming it -- and the "
-            f"job request's groups are {', '.join(map(str, described))}:\n"
-            + block(prep_group_lines(described, base=base)))
+            + (f"groups it may prepare now are "
+               f"{', '.join(map(str, offer))}:\n"
+               + block(prep_group_lines(offer, base=base))
+               if offer else "job request holds no group it may prepare now")
+            + held)
     unknown = [n for n in numbers if n not in described]
     if unknown:
         raise _refuse(
@@ -2989,15 +2999,15 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                           for j in jobs_n)
             except LaunchRecordError as exc:
                 raise _refuse(str(exc)) from None
-            from .group import members_of, same_members
-            if ran and (any(j is None for j in jobs_n) or not all(
-                    same_members(members_of(j), request.members(n))
-                    for j in jobs_n)):
-                raise _refuse(
-                    f"group {n} was launched, and its members are not the "
-                    f"ones it was prepared with -- a launched group's "
-                    f"members are fixed (job-system.md § 5.0), so it is not "
-                    f"read as prepared for one job.")
+            # A LAUNCHED GROUP'S MEMBERS ARE FIXED: the one rule, in its
+            # words (`ready.launched_without`, `ready.joined_launched`).
+            from .ready import joined_launched, launched_without
+            try:
+                hit = launched_without(description.calc, n)
+            except LaunchRecordError as exc:
+                raise _refuse(str(exc)) from None
+            if hit:
+                raise _refuse(joined_launched(description.calc, n, *hit))
             if ran:
                 launched_groups.append(n)
         numbers = [n for n in sequence if n not in launched_groups]

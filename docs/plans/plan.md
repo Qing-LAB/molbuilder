@@ -575,6 +575,45 @@ holds) -- deleted: a guard for a 2.27.x description with no job request,
 which no road leaves, and the fallback it left unreachable (which gave every
 stage of a 2.27.x calculation a group of its own during the migration);
 four contract sentences and two comments that still described the slot.
+Committed locally (419dc072).
+
+**C, as built (2026-10-21) -- no new API.** `ready.GroupAnswer`, which every
+verb and surface already reads, is the one answer: `task_state` asks the one
+rule (`ready.launched_without`) of each launched group, and one whose
+members changed carries the rule's own words (`members_changed`,
+`ready.joined_launched`) -- not preparable, that its why -- so prep's offer,
+the command line's question, the folder answer, the page's boxes and
+`status` (*launched, its members changed*) all decline it; the review's
+error, prep offering such a group ticked and then refusing it, is gone.
+Save refuses a stage put into a launched group or a launched member given
+another group, in the same words; a member taken out of the description is
+not Save's to refuse -- the group is then *launched, its members changed*.
+`status`'s next step for a failed run names its way on through
+`commands.way_back` (layout-aware) where it named a fixed restore. The
+contract's `ready.group_answer` / `commands.way_on` are the existing
+`ready.GroupAnswer` / `commands.way_back`. Rows: the prep table's regroup row
+now meets Save's refusal (`regroup_refused`), and a row for a launched
+member taken out of the description (status and prep); three mutations
+each failed their row; the stopped-run e2e passes.
+
+**C's review** (a fresh reader, the road driven in scratch), fixed: `prep
+task` naming no group listed every group and named one its prep refuses --
+it names the groups the answer offers and why each other is not offered;
+`status` cut the way on to its first line, losing the restore's commands --
+a composed way on is a step's lines, whole; a regrouped group's next step
+named one group where prep forms several (`group.formed_again`, older than
+C); and three more deciders of the rule went -- launch's group check
+(`submit._the_group`), prep's `--one-job` branch and the group cells' own
+sentences now ask `ready.launched_without` and say `ready.joined_launched`
+(which names the launch of a member alone, as the contract lists) or
+`ready.why_group_fixed`. **For D**: the page shows no why beside a box the
+answer disables (`task-setup.md` § 11). **C's second round** fixed an error
+of the first's: the group cell said a member launched WITH its group "was
+launched without it" -- the note is a row below a launched group's alone,
+why that group is fixed (`ready.why_group_fixed`); and `status` now says a
+stage put into a launched group by hand as *launched, its members changed*,
+its way on whole, before *not prepared* (the next-step table's order with it);
+the folder answer's `matches` is false for such a group.
 
 **Also found, outside A–D** (each to be checked before it is fixed): the
 catalogue's `engine_default` for `diag_algorithm` was wrong — SIESTA 5.4.2 with

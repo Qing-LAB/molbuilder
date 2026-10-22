@@ -397,11 +397,31 @@ changed = { execution = { mpi_np = 4, omp_threads = 1 } }
 refused = ["stage 'coarse' was launched, and on the flat layout a launched stage is not prepared again"]
 
 [[case]]
-name = "...and a stage taken out of a launched group is refused, naming it and the way back -- the group's members are fixed"
+name = "...and a launched member given another group is refused at Save, naming it and the way back -- the group's members are fixed (task-setup.md 5)"
 groups = [1, 1]
 stage_run = { medium = { restart = "clean" } }
 before = [["prep", "task", "--group", "1"]]
 launched = ["coarse", "medium"]
 regrouped = [1, 2]
+regroup_refused = ["`coarse` was launched in one job with `medium`, and group 1 now holds `coarse` without it", "put `medium` back beside `coarse` in one group"]
+
+[[case]]
+name = "...and a launched group whose member was taken out of the description is offered by no verb: status says its members changed, and its prep is refused in the rule's words (job-system.md, The task)"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+before = [["prep", "task", "--group", "1"]]
+launched = ["coarse", "medium"]
+removed = ["medium"]
 stage = "coarse"
-refused = ["`coarse` was launched in one job with `medium`, and group 1 now holds `coarse` without it", "put `medium` back beside `coarse` in one group"]
+refused = ["`coarse` was launched in one job with `medium`, and group 1 now holds `coarse` without it"]
+status_says = ["launched, its members changed"]
+
+[[case]]
+name = "...and `prep task` naming no group names none its prep would refuse: it says why that group is not offered"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+before = [["prep", "task", "--group", "1"]]
+launched = ["coarse", "medium"]
+removed = ["medium"]
+stage = ""
+refused = ["holds no group it may prepare now", "group 1 is not offered: `coarse` was launched in one job with `medium`"]

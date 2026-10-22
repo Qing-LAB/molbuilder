@@ -676,11 +676,11 @@ where its last run reached.
 **What stays fixed of a launched group is its members** — a stage put into it
 or taken out takes the way back it took before
 ([`job-system.md`](?doc=execution/job-system.md) R-P5, R-L7). **What may be
-done to a group now is one answer**, `ready.group_answer`
+done to a group now is one answer**, `ready.GroupAnswer`
 ([`job-system.md`](?doc=execution/job-system.md), *The task*): prep's offer and
 its refusals, the launch's, `status`'s next step and Task setup's boxes all
 read it, so a launched group whose members changed is offered by none of them,
-and every way on is the one composer's (`commands.way_on`). And **a change to
+and every way on is the one composer's (`commands.way_back`). And **a change to
 what a launched stage computes** still goes back to the state saved before its
 group's first launch. In a sequence (`--one-job`), a launched group is read as
 its last prep wrote it ([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 2a).

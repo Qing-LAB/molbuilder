@@ -75,8 +75,7 @@ from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
 from .naming import open_container
 from ..runrecord import LaunchRecordError, RunRef
 from ..scheduler.kinds import LAUNCH_CLAIM, LAUNCH_CLAIM_VAR
-from .commands import (block, command as _cmd, launch_lines, redo_launched,
-                       rollback)
+from .commands import block, command as _cmd, launch_lines, rollback
 
 
 class SubmitError(Exception):
@@ -1774,7 +1773,6 @@ def _the_group(calc, *, group, only,
     holds others -- a group goes whole the first time (R-L6)."""
     from ..identity import stage_key
     from .commands import launch_lines, prep_group_lines
-    from .group import members_of, same_members
     from .ready import regrouped
     jobset, base, request = calc.jobset, Path(calc.base), calc.request
     if group is None:
@@ -1802,23 +1800,18 @@ def _the_group(calc, *, group, only,
             f"group {group}: the job request holds groups "
             f"{', '.join(map(str, request.numbers))}"
             f" (execution/job-request.md § 3.3).")
-    ran = [j for j in map(jobset.job, members)
-           if j is not None and ever_launched(calc, j)]
-    changed = next((j for j in ran if not same_members(members_of(j),
-                                                       members)), None)
-    if changed is not None:
-        # A LAUNCHED GROUP'S MEMBERS ARE FIXED (§ 5.0, 2a): no stage joins
-        # it, and none leaves it but by the restore.
-        raise SubmitError(
-            f"group {group} was launched as "
-            f"{', '.join(f'`{m}`' for m in members_of(changed))}, and the "
-            f"job request gives it {', '.join(f'`{m}`' for m in members)} "
-            f"now -- a launched group's members are fixed, so it is not "
-            f"launched whole.  Launch a member again alone:\n"
-            + block(launch_lines("task", ran[0].name, base=base))
-            + "\n  or put the members back as they were launched (Task "
-              "setup, or job-request.json); or, to form the group anew, "
-            + redo_launched(changed.name, calc=calc))
+    # A LAUNCHED GROUP'S MEMBERS ARE FIXED (`job-system.md`, *The task*),
+    # asked of the one rule and said in its words.
+    from ..runrecord import LaunchRecordError
+    from .ready import joined_launched, launched_without
+    try:
+        hit = launched_without(calc, group)
+    except LaunchRecordError as exc:
+        raise SubmitError(str(exc)) from None
+    if hit:
+        raise SubmitError(joined_launched(calc, group, *hit))
+    ran = any(j is not None and ever_launched(calc, j)
+              for j in map(jobset.job, members))
     missing = [m for m in members if jobset.job(m) is None]
     if missing:
         raise SubmitError(

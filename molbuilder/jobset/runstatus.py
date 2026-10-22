@@ -581,6 +581,12 @@ _ENDED_BADLY = ("failed", "stopped", "unreadable")
 _ON_ITS_WAY = ("queued", "running")
 
 
+def _said_lines(text: str) -> List[str]:
+    """A composed way on (`commands`), as a step's lines: each of its
+    lines, the commands among them, in order."""
+    return [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+
 def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     """THE NEXT STEP (`job-system.md`, *The task*, *The next step*): every
     group of ``task``, in its order, its state read off its members' rows
@@ -590,8 +596,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     finished is the next step; with every group finished, the last names
     `summarize task` where the task's result gathers its stages
     (`summarize.task_summary`)."""
-    from ..identity import LAUNCHED_WAY_BACK
-    from .commands import reason_of
+    from .commands import reason_of, way_back
     from .summarize import task_summary
     from ..joblist import Asked
     from .ready import held_by_sequence
@@ -607,14 +612,25 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
         # groups*): that job's to launch.
         held = (held_by_sequence(calc, n, asked=asked)
                 if all(r.prepared for r in members) else None)
-        if not all(r.prepared for r in members):
+        if g.members_changed:
+            # A LAUNCHED GROUP WHOSE MEMBERS CHANGED -- a member taken out, or
+            # a stage put in, prepared or not: offered by no verb, its way on
+            # the rule's own, whole (`job-system.md`, *The task*).
+            step = ("changed", "launched, its members changed",
+                    _said_lines(g.members_changed))
+        elif not all(r.prepared for r in members):
             step = (("not prepared", "not prepared",
                      prep_group_lines([n], base=base)) if g.preparable else
                     ("waits", "waits before it can be prepared: "
                      + reason_of(g.why or ""), []))
         elif g.changed:
+            # ITS PREP FORMS IT AGAIN with every group it needs, the groups
+            # prep names (`group.formed_again`, as the ready door says it).
+            from .group import formed_again
             step = ("changed", "prepared, its members changed",
-                    prep_group_lines([n], base=base))
+                    prep_group_lines(formed_again(calc.request,
+                                                  calc.jobset.jobs, [n]),
+                                     base=base))
         elif held is not None:
             job, after, said = held
             step = ("in a job",
@@ -654,11 +670,14 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                          "starts it over" if bad.relaunch_continues else
                          "it starts over, nothing handed on from a run of "
                          "its own")
+                # ...OR CHANGED FIRST, its way on the one composer's, whole
+                # (`commands.way_back`, layout-aware).
                 step = (bad.state,
                         f"{bad.state}: {bad.name} -- launch it again -- "
-                        f"{again}; to change it first, go back to "
-                        f"{LAUNCHED_WAY_BACK}",
-                        launch_lines("task", bad.name, base=base))
+                        f"{again}; or, to change it first, as below",
+                        launch_lines("task", bad.name, base=base)
+                        + _said_lines(way_back(bad.name, calc=calc,
+                                               launched=True)))
             elif opened is not None:
                 step = ("pending", f"{opened.name}: {opened.detail}",
                         launch_pending(opened.name, n, opened.attempt,

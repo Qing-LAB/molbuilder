@@ -330,7 +330,7 @@ group offers only *new group*, saying why, a row added or renamed there
 included. **Save refuses a stage put into a launched group, or a launched
 member given another group**, in the group answer's words — a group of its own
 for the stage, the member put back, or the restore
-([`job-system.md`](?doc=execution/job-system.md), *The task*, `ready.group_answer`);
+([`job-system.md`](?doc=execution/job-system.md), *The task*, `ready.GroupAnswer`);
 the cells say it before the click, and the door holds it whatever the page
 sent.
 
@@ -1357,7 +1357,7 @@ is saved (§ 7a). The Prep comes after the values it reads.
 answer `prep task` shows before it asks) — *not prepared*; *prepared, its
 members changed*; *prepared, never launched*; *launched* — and for a
 force-constant stage not preparable yet, what it waits for. **Every group has
-a box, and the box is the group answer's** (`ready.group_answer`,
+a box, and the box is the group answer's** (`ready.GroupAnswer`,
 [`job-system.md`](?doc=execution/job-system.md), *The task*): enabled when the
 answer says the group may be prepared now, and when it may not, the answer's
 why beside it — a launched group whose members changed among them, never

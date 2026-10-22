@@ -418,9 +418,7 @@ function groupCell(stages, i) {
     }
     if (said && said.launched) {
         sel.disabled = true;
-        sel.title = "launched -- its group is fixed; to change it, restore "
-            + "the state saved before its group's first launch "
-            + "(job-system.md \u00a7 5.0)";
+        sel.title = said.why_fixed || "";
     }
     sel.addEventListener("change", () => setGroup(i, sel.value));
     return el("td", { class: "ts-group" }, sel, note);
