@@ -278,7 +278,15 @@ B8)*.
    relaxation run of molbuilder's own** — its folder, read as the Results tab
    reads a run — or **a structure pair** — its `.xyz`, a frame set's included,
    whose frames the card's frame-set table states (§ 3.8.1 there), and whose
-   pseudopotential directory the shared panel then asks. Anything else
+   pseudopotential directory the shared panel then asks — and **a
+   transport calculation's folder**, to reuse it: its meta line says what it
+   computed (its junction's citation, its treatment, its voltages, its
+   window, where each group stands), and every card fills from it — the
+   shared panel and each rung's tab from its template and its rungs'
+   overrides, the bias list and the treatment from its description, each
+   value marked *from* that calculation, its electrode rename its own and not
+   offered; Describe then writes what `molbuilder describe --reuses` writes
+   ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*). Anything else
    answers *not citable* with the condition named, and the citation held
    stays held. The describe door answers one
    summary line (how the run ended, what its record states) and **findings** through the one renderer

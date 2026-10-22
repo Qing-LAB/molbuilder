@@ -190,8 +190,10 @@ list it walks, how it treats that list (`single-bias`,
 `low-bias-approximation` or `self-consistent` — the folder answer's
 `treatment`, the one rule the record names it by) and whether it trades the
 two electrode labels in its own copy of the junction (`swap_electrodes`,
-[`engines/transport.md`](?doc=engines/transport.md) § 4) — and the label every
-emitted file is stemmed on. **A cited frame set says what its frames are**,
+[`engines/transport.md`](?doc=engines/transport.md) § 4), and the finished
+calculation it reuses (`reuses`), whose groups its prep copies in — what is
+copied, and its size, prep's Preview says (§ 11.1) ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*) — and the
+label every emitted file is stemmed on. **A cited frame set says what its frames are**,
 under them: its count and, for a mode's set, its mode line and a row per
 frame — the frame-set card the Transport tab's junction card draws, from the
 describe door's own door (`frame_average.answer`,
@@ -542,7 +544,10 @@ each other.
 > choosing a queue names it and fills neither the wall nor the memory: each
 > queue is shown with the range of its machines — cores, memory, devices —
 > and under each field that queue's range for it, never marking what is typed
-> invalid; the fit of the whole request is the Preview's, the prep entry's own
+> invalid — under the memory, after it, the largest need of the stages, at
+> the ranks their cards state, and which stage
+> ([`job-request.md`](?doc=execution/job-request.md) § 3.1a; *designed, not
+> built*), filling nothing; the fit of the whole request is the Preview's, the prep entry's own
 > (`scheduler.md` R6). **The queue the job request names is the job
 > request's**: choosing a machine — or one whose record lists no queues —
 > changes what the card offers, never what the job request says; a stated
@@ -898,6 +903,18 @@ directory's wrapper will carry.
   01_coarse   run-0/           8 × 6 · htc · 1-00:00:00 · 128G
   02_tight    run-0/          16 × 6 · htc · 2-00:00:00 · 128G
   bench       bench_<token>/   4,8,16 × 1,2 · general · 0-00:30:00
+```
+
+**Each stage's memory need stands under its ask** — the memory door's line
+for the stage: at most so much at the ranks its card states now, and the run
+that held it, or that nothing has measured it — the measurement alone, while
+the card states no ranks
+([`job-request.md`](?doc=execution/job-request.md) § 3.1a; *designed, not
+built*):
+
+```
+  05_transmission   run-1/   64 × 1 · public · 0-12:00:00 · 48G
+                    at most 49.2G at 64 ranks -- held 12.3G at 16 ranks × 1 thread, 05_transmission/run-0 on sg013 (finished)
 ```
 
 **It is a confirmation, not a second answer.** The names and the numbers come
@@ -1550,6 +1567,14 @@ from the same answer:
   walk, each benchmark shelf, a group's one job once after its last member
   ([`scheduler.md`](?doc=execution/scheduler.md) R4, R6) — the lines the
   terminal prints;
+* **what a transport calculation that reuses a finished one copies, and what
+  it runs** — its manifest, before Prep is pressed: each group copied in, its
+  runs and their size, or prepared here and the differences of the new
+  request that decided it ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16, *The manifest*; *designed, not built*);
+* **what each stage needs of memory** — at most so much at the ranks it is
+  prepared with, and the run that held it, or that nothing has measured it;
+  a group's and a sequence's beside their fit
+  ([`job-request.md`](?doc=execution/job-request.md) § 3.1a; *designed, not built*);
 * **the resources** the stage will launch with;
 * **what comes next** — after a Prep, the line that launches what it
   prepared, as the terminal's prep ends with it: the launch with nothing

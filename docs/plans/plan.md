@@ -242,11 +242,10 @@ the AuBDTAu transmission needs on Sol.
    stage) — a stored copy is a second source, stale when either changes; and
    one key cannot hold it, since each rung of a ladder needs its own.
 2. **Where the number comes from, the most trusted first:**
-   - **(a) measured** — a finished run of the same stage, this calculation's
-     or its benchmark trials': the monitor's `util.csv` records the job's
-     memory, sampled every 10 s (a row kept when a value moves by 10 % or every
-     300 s, the peak always); its peak ÷ the run's ranks × the ranks asked. Every
-     kind of calculation has it today.
+   - **(a) measured** — a finished run of the same stage: what its own
+     processes held, bounded at the ranks asked — as `job-request.md` § 3.1a
+     now states it (the first form of this line — the job's memory, its trials
+     too, a peak ÷ ranks × ranks asked — did not survive its review, below).
    - **(b) the engine's own analysis** — TBtrans and TranSIESTA stop after
      setting up their matrices when asked (`TBT.Analyze`, `TS.Analyze`, both
      in 5.4.2's binaries); TBtrans prints its `[memory]` lines in a full run
@@ -272,6 +271,61 @@ first, it would be built against a record about to move.
 **Order**: the contract first (where the door lives, the line Task setup and
 prep show, what a run with no measurement says), the user's yes, then (a);
 then (b); (c) only where (a) and (b) leave a gap the user meets.
+
+**The contract draft** *(2026-10-22, uncommitted, for the user's yes — the
+user: "go ahead with N6, contract first")*: `job-request.md` § 3.1a, with its
+lines in `running-a-job.md` § 5.3.1, `run-reports.md` § 2.1 and § 2.1a,
+`model/parse.md` § 5c.1, `task-setup.md` § 6.1, § 7.1 and § 11.1, `web-api.md`
+(the prep-plan route) and `job-system.md` § 5.3 (the answer's `memory`). In
+short: one door, `jobset.memory.need(calc, stage, ranks)`, the ranks the
+asker resolved (prep's `--np` over the card; Task setup's card as edited); a
+finished run held X — its run record's memory peak, as measured today — at
+N ranks (the engine's own count), so it needs
+**at most X · max(1, M/N)** at M: a bound for an engine that gives each rank
+its own copy (TBtrans, TranSIESTA's solver) and for one that divides its
+matrices, scaled up and never down; a point's need the smallest bound of its
+finished runs, a stage's the largest of its points', naming the run, where it
+ran and how it ended; a run that did not finish said as what it held before it
+ended, never a bound; a job's the largest of its members'; shown under Task
+setup's memory field, in its per-stage list and Preview, and in prep's answer
+after the fit — never filled in, never compared in words, never a refusal.
+
+**Reviewed — two rounds, three fresh reviewers** (2026-10-22; each
+load-bearing claim checked in the code). Round 2, on the rewrite: the launch
+record states no ranks (the engine's own count is the run record's); a run
+that did not finish gives a floor, not a ceiling, so the bound is taken from
+finished runs, a point's the smallest of them; the page asks when the folder
+or a rank count changes, reading four facts a run. (A change of what the
+monitor measures, which both rounds argued for, was declined — MEM-BASIS,
+below: the figure stays the job's, on the high side, its limits stated.)
+Round 1: The first draft read the run record's one peak,
+and that peak is **the job's** — the cgroup's high-water mark since the job
+began, read at the monitor's end and never reset (`monitor._read_mem_peak_gb`)
+— so in a walk (a group, a run of points, a sequence) a later member's figure
+was an earlier one's; and a cgroup is charged the file cache a run's writes
+leave, which for a device writing its leads' Green's-function files would make
+the need read as the ask. Scaling by ranks also erred low for an engine that
+divides its matrices. Cut as more than the case needs: a benchmark trial as a
+source, a note of each differing run setting, the deck-is-current filter (every
+run of a launched stage is its calculation now, § 5).
+
+**MEM-BASIS decided — the figure as measured today** *(the user, 2026-10-22:
+"no need to refine memory calculation . this is neither scientifically
+important or constraining us from resource request. we don't want to
+misalign and allocate less memory than actually needed and one job at a
+node/task is good enough to know, document the limitation, and that's it. we
+don't waste cpu time for this trivial problem unless it will lead to failures
+we don't want to see")*: the need reads the run record's one peak as the
+monitor measures it now — under a scheduler the job's, file cache in it, so on
+the high side; a run here its processes' largest sample, which can be under a
+spike or up to a tenth — the limitations stated in § 3.1a, the monitor and its
+contracts unchanged.
+
+**What (a) leaves to (b)**: a calculation's first run of a stage has no figure
+— the AuBDTAu transmission's first run on Sol is such a run, the run measured
+on qlabsrv being another calculation's. The engine's own analysis (b,
+`TBT.Analyze`, `TS.Analyze`) is what answers before a run; the order stands:
+(a), then (b).
 
 ## 1v. The folder download — sized, asked, streamed *(2026-10-20; the user's yes: "yes, go with your recommendation, add it to the plan" — built as 2.25.0, the contract in `web/projects.md` § 4 and `web-api.md`)*
 
@@ -736,6 +790,137 @@ read found in the notification secrets — a failed Test quoting the address,
 closed in 2.27.1 (`run-reports.md` § 3, `monitor.address_refusal` and
 `monitor.delivery_failure`).
 
+## 1x. A transport calculation that reuses a finished one *(2026-10-22; the contract drafted and reviewed — the user's yes, and two decisions, next)*
+
+*(The user, 2026-10-22: "a mechanism where we can cite a finished task … and
+then say, hey, I want to expand this a bit, or I want to tune certain
+parameters that would be able to use the existing, some of the heavy cost
+calculation result"; "this is more likely another run or with a different
+tag that I would like to create a separate directory that cites the
+original one or copy things over if I need to, and then continue that
+transport calculation"; "don't overcomplicate it"; "Yes".)*
+
+**The science it rests on** is `engines/transport.md` § 1.2 (what each result
+depends on, what a change re-runs) and § 1.3 (the junction by hand): the
+leads' Hamiltonians do not depend on the bias; a converged device point does
+not depend on the energies the transmission samples; every energy of a
+transmission is independent; a new bias point starts from the closest
+converged one; the leads' Green's-function files hold one bias and are never
+reused.
+
+**The contract draft** *(2026-10-22, uncommitted, for the user's yes)*:
+`engines/transport.md` § 2a.16 — with its lines in `job-system.md` (*What a
+stage takes*, the five acts, the three diagrams, checkpoints 4a and 6, the
+answer's `takes` and `copied`, the hand-over, the way back, the save promise),
+`job-contracts.md` § 6.1 and its gather note, `project-layout.md` § 1.5b,
+§ 1.6.2, § 1.6.5, `checkpointing.md` § 9's note, `web/results.md` § 2.4,
+`web/tabs.md` § 4 and `web/task-setup.md` § 3. In short: `molbuilder
+describe --reuses <finished>` (or the Transport tab's picker, given a transport
+calculation's folder) starts the new calculation as the finished one's
+description, composed junction and `pseudos/`; its prep **copies in** each
+group whose members' newest runs there ran the same calculation, with every
+stage they take inputs from copied in too — **every run of each member, under
+its own name**, so every record inside names a run that is here, `.copied-from`
+beside; and a rung of points it prepares **takes over** the finished
+calculation's converged points at its first launch — their engine's files and
+account, never their records of runs. Every record either act leaves names a
+run of this calculation; `.copied-from` alone names the finished one.
+
+**Reviewed before it was brought — two rounds, five fresh reviewers**
+(2026-10-22; every load-bearing claim checked against the code). Round 1, on a
+first draft that read the finished runs in place: no one door answers a
+stage's newest run (seven finders); a run reference outside the calculation
+raises (`RunRef.at`); a reused rung needed new stage and group states, and a
+`job-set.json` key every row must hold, so every calculation — the finished
+one too — would need `jobset migrate`; the new calculation would not have been
+whole; and comparing decks alone reused a device computed on leads that run
+again (`electrode_kz` reaches only the leads' deck) — the rule now follows the
+ladder. Rewritten to copy. Round 2, on the copy: a copied run's records name
+runs by the finished calculation's numbers, and a launch again follows them
+(`_carried_gather`), so a point taken over carried a record naming another run
+of this calculation — now every run of a reused stage is copied under its own
+name, and a point taken over brings no record of runs; the decision is made
+before a group is planned (a plan takes no write back); a copied group's way
+back is the prep's save, its note naming the copy; copied groups leave a
+sequence of groups; `pseudos/` is copied at describe, so no second sameness
+rule; the next save stores the copies again, so a reused GB costs two.
+
+**REUSE-COPY decided — copied, with a manifest** *(the user, 2026-10-22:
+"it's best that when gettings this REUSE-COPY done the user get a manifest of
+what will be copied over to continue as a new task with the new parameter
+request")*: § 2a.16, *The manifest* — each group copied in (its runs, where
+each comes from, how it ended, its size) or prepared here (each difference of
+the new request that decided it), a rung of points' take-over, the totals;
+shown with the groups the terminal's `prep task` offers and in Task setup's
+Preview, before anything is written; kept in `STAGE-PLAN.md` and the ledger.
+
+**A transmission point's energies — each computed once, shared only when
+exactly the same** *(the user, 2026-10-22: first "we should not do tricks
+about saving points, rather, it is an honest parameter reset … the only thing
+that is shared is the energy/density of states/device matrics (or anything
+else that could be shared)"; then, shown `lowbias_local`'s measured times —
+the transmission 527,441 s ≈ 6.1 days, some 22 min an energy at 16 ranks on
+qlabsrv, against 13.2 h for its device — "can we offer the option of
+detecting which points can be exactly shared and which ones must be
+recalculated?", and "i agree with your recommendation": automatic, strict)*.
+The window stays the person's, whole; an energy the finished point computed
+to floating-point precision (10⁻⁹ eV, from its `.TBT.nc`) is shared, the rest
+computed here through a contour file (`part user`), the shared ones copied
+into the point's `shared/` (a fourth folder role, `shared`); one door joins
+them for every reader; a joined point's current is the record's, by
+tbtrans's rule; every transmission deck writes its window's ends at full
+precision; the manifest says each point's sharing, the time at the finished
+point's pace, and — sharing none — the window at the same spacing that would
+share all. `engines/transport.md` § 2a.16, *A transmission point's energies*
+— drafted 2026-10-22, its review rounds next.
+
+**The decisions, as they were put** (REUSE-COPY taken; WINDOW-SPLIT superseded by the energies' rule above):
+
+| | the question | the draft | the other way |
+|---|---|---|---|
+| **REUSE-COPY** | reused results copied into the new calculation, or read where they lie | **copied** (recommended): every reader unchanged, the new calculation whole, the finished one removable once each rung of points has had its first launch; the price is disk — an estimate, 0.2–0.3 GB a device point and 0.6–0.9 GB a transmission point on a 3000-orbital junction, so some 10 GB for a ten-voltage sweep, twice that once the next save stores the copies, and prep copies it (minutes, on the Task setup tab's Prep too) | read in place: no copies, but the door, the cross-calculation run reference, the new states, the `job-set.json` key and its migration, and the finished calculation kept for as long as the new one is read |
+| **WINDOW-SPLIT** | a widened window computing only its new energies (the user's 2026-10-22 *"I don't mind to occupy a bit more space if it saves time"*) | **left out** (recommended for now): a widened window runs the transmission whole on the copied device, which is the expensive part reused | kept: a deck that is not the one the description renders (so no later calculation can reuse that point), the curve joined from two runs in every reader of a point (the record, a selection's PDOS, the data file — whose one energy grid then needs the old energies held exactly, the window widened by whole spacings), the current summed from two runs' printed figures (exact: tbtrans's is a sum over its own energies, `m_tbt_save.F90`) and a new record; it saves two thirds of each widened transmission point — worth measuring on the Au–BDT–Au transmissions first |
+
+**Next**: the user's yes on the draft and on the two decisions; then the
+build — about 450 lines by the round-2 estimate: describe and the Transport
+tab's door (`--reuses`, the junction record and `pseudos/` copied), the copy-in
+decided before a group is planned, the gather's three gates made one door the
+copy-in and the take-over ask, the take-over's source widened, `.copied-from`
+and its catalogue row (`runfiles.WRITTEN`, which also names describe among the
+junction files' writers), the way back's copied branch, the page's lines —
+each step bounded by the transport e2e on a real H₂-scale junction.
+
+## 1y. Export the transport results — CSV and NetCDF *(2026-10-22; asked, the contract next — N8 in § 0a's queue)*
+
+*(The user, 2026-10-22: "we also need to add "export data" for all the
+results in the transport data including convergence data, in format of csv
+and netcdf (whcih allows meta data and calclation specifics)".)*
+
+**What is there today** (read 2026-10-22): `summarize task` writes
+`<label>.transport.nc` beside `<label>.transport.json` — NetCDF-4, every
+variable with its units, definition and source, the calculation's specifics
+as attributes (the citation, the treatment, the I–V's computation, the SCF
+criteria, the Fermi levels each in its run's frame), and the convergence: each
+device point's SCF history (`device_scf_*` over `scf_cycle`) and each
+once-run rung's (`rung_scf_*`) (`engines/transport.md` § 2a.12, *the data
+file*). **Nothing exports it from the page** — no route serves the data file;
+the folder download (§ 1v) takes the folder whole — **and nothing writes
+CSV.**
+
+**What is asked**: an export of every result of a transport calculation —
+the transmission, the DOS, the eigenchannels, the I–V, the rungs' facts and
+every SCF history — as NetCDF, which keeps the metadata and the calculation's
+specifics, and as CSV, for a spreadsheet or a script.
+
+**To settle in the contract** (`engines/transport.md` § 2a.12 and
+`web/results.md` § 2.5): CSV holds no metadata, so a CSV export is a set of
+tables — long form, one row an observation, each column's unit in its name —
+with the specifics in a file beside them, all composed from the one
+composition the record and the data file read (`record.collect_record`), never
+a second reader; whether the export is the Results report's action, the
+command line's (`summarize task` writes the data file already), or both; and
+whether it is composed on request or written into the calculation's folder.
+
 ## 0. Rule R3, restated
 
 `docs/README.md` used to say **R3: `roadmap.md` is THE one plan.** That is now
@@ -798,7 +983,9 @@ below says.
 | **N4** | **2.26.2**, L1T-D1 **2.26.3**, L1T-D2 **2.26.4** | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's, and their two choices of how (the user, 2026-10-21) |
 | **N5** | **shipped 2.27.0** | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
 | **N5b** | **Built — 2.28.0** (2026-10-22) — the contract taken as written (the user: *"continue"*); A–D, one release | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
-| **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
+| **N6** | a middle number | **The memory a run needs** (§ 1u), contract first — drafted 2026-10-22 (`job-request.md` § 3.1a), for the user's yes — then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
+| **N7** | a middle number | **A transport calculation that reuses a finished one** (§ 1x) — the contract drafted (`engines/transport.md` § 2a.16), for the user's yes and two decisions (REUSE-COPY, WINDOW-SPLIT); its place in the order the user's | the user, 2026-10-22: *"use existing information and previous result to continue a calculation by a certain design"* |
+| **N8** | a middle number | **Export the transport results — CSV and NetCDF** (§ 1y), contract first; its place in the order the user's | the user, 2026-10-22: *"export data for all the results in the transport data including convergence data, in format of csv and netcdf"* |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 

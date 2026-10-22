@@ -1093,10 +1093,14 @@ record names a scheduler with no queue
 
 #### 5.3.1 Memory and wall — the user states them, nothing else does
 
-**No estimation exists** *(user decision, 2026-08-24)*: five Sol jobs
+**No value is filled in** *(user decision, 2026-08-24)*: five Sol jobs
 (62039301–05) OOM'd against scheduler defaults while a memory model sat
 unconfigured and silent, and a model that answers a question the user was
-never asked is the wrong shape regardless of its coefficients.
+never asked is the wrong shape regardless of its coefficients. What a run of
+a stage measured is shown beside the ask — each stage's need, the run it was
+measured on and how — and fills nothing
+([`job-request.md`](?doc=execution/job-request.md) § 3.1a; the user,
+2026-10-20; *designed, not built*).
 
 **And no default exists either** *(user, 2026-10-02)*. A job's memory is, from
 strongest: `--mem` at prep, the job request's `allocation.mem`. Its wall is,

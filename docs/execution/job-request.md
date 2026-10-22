@@ -263,6 +263,117 @@ numbers had no home that travelled with the calculation.
 
 **Absent-is-a-state**, like `bench`: nothing asked writes no key.
 
+### 3.1a The memory a run needs — measured, shown beside the ask *(the user, 2026-10-20; designed, not built — plan § 1u)*
+
+*(The user, 2026-10-20: "can we have some UI feature to give estimate based
+on the system/task? … estimate the memory need … as a suggested value, and
+task setup … would put it next to the request"; 2026-10-22: "no need to
+refine memory calculation … we don't want to misalign and allocate less
+memory than actually needed and one job at a node/task is good enough to
+know, document the limitation, and that's it".)*
+
+**The ask stays the person's.** Nothing fills `allocation.mem`; no prep
+refuses an ask for being under the need; the ask and the need are shown side
+by side and nothing compares them in words
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.3.1). **Beside the
+ask, each stage's need is shown, measured on the runs of that stage** —
+computed when asked and stored nowhere: it follows the runs and the ranks, so
+a stored copy would be a second source, stale when either changes, and one key
+could not hold a ladder whose rungs each need their own.
+
+**One door, the memory a stage needs** —
+`jobset.memory.need(calc, stage, ranks)` → the stage's need at `ranks`, the
+run it was measured on, and the words, `line`; asked of a job's members, it
+answers the job's — their largest. `ranks` is what the asker resolved: prep,
+the job's own, its `--np` over the card; Task setup, the card as edited — a
+card stating none gets the measurement alone. Prep and Task setup print the
+door's words, so the two say one sentence, under one name, `need`.
+
+**What a run held is the memory peak its run record states** — the one peak
+the instruments' door chooses, `mem_peak_gb`, as it is measured today
+([`model/parse.md`](?doc=model/parse.md) § 5c.1) — at the ranks its engine
+says it ran at (the record's `computation.launch.ranks`, else the ranks its
+wrapper launched, `ranks_asked`); its threads are named beside them. A PySCF
+run is one process. **What the figure is, and where it errs** — on the high
+side, the side that asks for no less than a run needs:
+
+- **Under a scheduler it is the job's**: the kernel's peak for the job's
+  cgroup since the job began. A job that runs several stages or points one
+  after another — a group, a run of points, a sequence of groups — gives a
+  later one's figure the largest of those before it too; and the cgroup is
+  charged the file cache a run's writes leave (a device's leads'
+  Green's-function files are tens of GB). So a figure may be more than its run
+  held, never less.
+- **A run here is its own processes'**, sampled every 10 s, a row written when
+  the memory moves by 10 % or more: its figure can be under its true peak by a
+  spike shorter than a sample, or by up to that tenth.
+
+The figure is said with where it was read (`mem_peak_from`: the kernel's
+counter, or the largest sample), so a reader sees which of the two it is.
+
+**The bound — a finished run that held X at N ranks needs at most X ·
+max(1, M/N) at M ranks.** An engine that gives every rank its own copy of the
+matrices — TBtrans, and TranSIESTA's solver, which deals the energy points out
+among the ranks — holds about M/N times as much at M; one that divides its
+matrices among the ranks holds less a rank as ranks grow; and with fewer ranks
+than measured neither holds more than it did. So one rule bounds both,
+scaling up and never down, and the figure is said as *at most*. Threads are
+not modelled. A PySCF run's figure is what it held, never scaled; its own cap
+(`max_memory_mb`) is what it was let hold.
+
+**Which runs, and which figure**: the stage's runs, each point of a run of
+points, a flat stage's numbered runs — as the run lister lists them for the
+Results tab (`runstatus.every_run`, given its flat branch). Every bound of a
+point's finished runs holds, so **a point's need is the smallest of them**;
+**a stage's need is the largest of its points'**, naming the run that gave
+it. **A run that did not finish** gives no bound — what it held before it
+ended is less than the stage needs — and is said beside the figure as what it
+held before it ended, in the status door's words for its ending.
+
+```text
+transmission  at most 49.2G at 64 ranks -- held 12.3G at 16 ranks × 1 thread, 05_transmission/run-0 on qlabsrv (the largest sample; finished)
+device        at most 9.6G at 32 ranks -- held 9.6G at 32 ranks × 1 thread, 04_device/run-1 at 0.2 V on sg013 (the kernel's counter, the job's; finished)
+seed          nothing measured -- no finished run of seed has stated its memory
+```
+
+- **The figures are the scheduler's units and spelling**, 1024-based, as
+  `--mem` asks (`48G`) and as the monitor divides.
+- **It is the host's memory**: a GPU's own is not in it.
+- **Nothing measured says so**, and nothing is invented in its place: a
+  stage's first finished run is what measures it. A calculation's first run
+  of a stage has no figure until the engine's own analysis answers — plan
+  § 1u (b), not built.
+
+**A job's need is the largest of what it runs**: a group of several stages,
+run one after another in one allocation (§ 3.3), the largest of its members';
+a sequence of groups in one job, the largest of its groups'. Every job asks the
+calculation's `allocation.mem`, so the figure beside the ask is the largest
+need of the stages, naming the stage; `prep --mem` asks for one prep's jobs
+alone.
+
+**What it reads, and when** — for each run, its peak and where it was read,
+its machine and its ranks; never a run's whole record. The page asks it when
+the folder or a rank count changes, not on every edit.
+
+**Where it is shown, and nowhere else** — never in a header, a deck, the job
+request or a refusal:
+
+- **Task setup** — under the memory field of the queue card, after what the
+  queue's machines hold, the largest need and its stage
+  ([`task-setup.md`](?doc=web/task-setup.md) § 6.1); each stage's line in
+  *What a prep will write, per stage* (§ 7.1 there); and prep's answer in the
+  Preview (§ 11.1 there). The page asks the prep-plan route, which opens the
+  calculation from its folder — a folder that is no calculation yet has
+  nothing measured ([`web-api.md`](?doc=web/web-api.md)). It reads what has
+  run as the page reads it elsewhere
+  ([`task-setup.md`](?doc=web/task-setup.md) § 10).
+- **prep** — each stage's answer carries its line (`need`), printed after its
+  placement and fit, or after the line stating where its values came from on a
+  machine with no queue; a group's beside the group's fit, a sequence's
+  beside its own ([`job-system.md`](?doc=execution/job-system.md) § 5.3, *One
+  prep, two doors*). A benchmark's prep shows none: what its trials held is
+  `summarize bench`'s to report.
+
 ### 3.2 `execution` — the ONE condition the run uses
 
 *(User, 2026-09-02: "run parameter is independent from bench grid or bench

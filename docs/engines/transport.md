@@ -960,6 +960,547 @@ read (`/api/transport/record`); `summarize task` writes the same composition to
 the file. **Asserted, not checked**: the E_F reference is TBtrans's convention and the record says so (`energies_relative_to_ef: true`); nothing measures it against the output, and nothing is asked to. The `.TBT.nc` reader was checked on a real run's file — the
 carbon-chain walk, 2026-10-07 (`web/results.md` § 2.5).
 
+### 1.2 What each result depends on — what a change re-runs, and what it reuses *(user, 2026-10-22)*
+
+*(The user, 2026-10-22, reviewing the Au–BDT–Au transmissions: "sometimes we
+need to look at the result and decide to expand, for example, the energy
+range … from −2 to 2 electron volts … to between −3 and +3 … add a few more
+bias sweeps … I believe then a lot of the intermediate result is shared";
+"what are the intermediate result that will be used, reused, and how new
+results when certain parameter changes … Which part are changed? Which part
+are invariable?" Every engine fact below is SIESTA 5.4.2's source — `Src/`
+for TranSIESTA, `Util/TS/TBtrans/` for tbtrans — read 2026-10-22, or the
+manual [`SiestaManual542`]; the method is [`Brandbyge2002`] and
+[`Papior2017`].)*
+
+**The answer, in one paragraph.** The expensive results — the leads'
+Hamiltonians and each bias point's converged device — depend on the
+electronic method, the geometry, the k-points of the SCF runs and the bias;
+they do **not** depend on the energies the transmission is sampled at. So
+widening the energy window, refining it, or changing anything else of the
+transmission's own re-runs **the transmission alone**, on the same device
+Hamiltonians. A **new bias point** under the self-consistent treatment needs
+**one new device SCF** — started from the closest converged point's density,
+the leads' Hamiltonians reused — and one transmission point; every point
+already converged stands. Under the **low-bias approximation** a new bias
+point needs **no run at all** while the energy window reaches it: its current
+is the zero-bias T(E) integrated over its bias window. Only a change to a
+value every stage shares (the basis, the functional, the mesh, the electronic
+temperature, the shared k-point grid) re-runs everything.
+
+#### The quantities, and what each one depends on
+
+| quantity | what it is | made by — kept in | depends on | does **not** depend on |
+|---|---|---|---|---|
+| **a lead's H and S, and its E_F** | the bulk metal's Hamiltonian and overlap in real space (one cell and its coupling to the next along z), and its Fermi level | each lead's SIESTA run — `<label>_L-electrode.TSHS`, `…_R-electrode.TSHS` | the lead's atoms; every shared value (basis, energy shift, functional, mesh, electronic temperature, spin); the shared k-point grid; `electrode_kz` (§ 0.2) | **the bias**: TranSIESTA shifts the lead's blocks to its chemical potential when it uses them, `H − (E_F − μ)·S` (`m_ts_electrode.F90:1461–1462`), so one pair of lead runs serves every voltage; the energies; anything of the transmission |
+| **the seed's density ρ₀** | a periodic density of the whole junction | the seed — `<label>.DM` | the junction and the shared values | — it is only where the 0 V device point starts; another start converges to the same device (§ 2a.6) |
+| **a lead's self-energy Σ(E, k∥)** and its broadening Γ = i(Σ − Σ†) | what the endless lead does to the device, at one energy and one k-point in the electrode plane (§ 1.1, steps 2–3) | rebuilt by each program that needs it: TranSIESTA keeps the device's in its run's `tsgf/` (`<label>.v0.2.TSGFL`, § 2a.11); tbtrans keeps its own in memory | the lead's H, S and E_F; the lead's chemical potential **μ = ±V/2** — so the bias; the energies asked for; the k-points; the broadening η | — a device's `tsgf/` file holds **one bias, one contour, one k-point grid** (`m_ts_gf.F90` `check_Green`: μ at `:982`, every energy at `:1033–1070`) and is never reused at another voltage or by another calculation. The check does **not** compare the lead's Hamiltonian, so a stale file would be read without a word — which is why molbuilder never carries one (§ 2a.11) |
+| **a device point's density ρ(V) and energy-density matrix** | the junction's converged electrons with both leads attached, at one bias | the device's NEGF cycle at that point — `.TSDE` | everything above, and the bias, the contour (§ 6.1c), the device's broadenings, the Poisson boundary | the energies the transmission samples; the transmission k-point grid |
+| **a device point's H(V)** | the converged Hamiltonian at that bias, in real space | the same point — `.TS.HSX` | as its density | as its density |
+| **T(E, V)** | the transmission at energy E — the probability an electron crosses | tbtrans, at one bias point — `.TBT.nc`, `.TBT.AVTRANS_L-R` | that point's H(V); both leads' H, S, E_F at μ = ±V/2; the transmission k-point grid (`tbt_k_grid`); the broadenings (`tbt_elecs_eta_ev`, `tbt_contours_eta_ev`) | **any other energy**: tbtrans builds H(k) and S(k) once per k-point, then each energy from its own self-energies alone (`m_tbt_trik.F90`, the energy loop inside the k-point loop) — so T at an energy is the same whatever window it is sampled in; **the electronic temperature**, which enters only the current's Fermi functions (`m_tbt_save.F90:2015–2035`) |
+| the device DOS, the leads' spectral DOS, the eigenchannels | what tbtrans was asked for beside T (§ 6.1c) | the same `.TBT.nc` | as T(E, V) | as T(E, V) |
+| **I(V)** | the current at one bias: T integrated over the bias window with both leads' Fermi functions (§ 1.1, step 5) | tbtrans's own integral at a self-consistent point; the record's from T(E, 0) under the low-bias approximation (§ 2a.10) | T(E, V) inside the bias window and its Fermi tails, ±(\|V\|/2 + 5 kT); the electronic temperature | energies beyond those tails: they add nothing (§ 2a.10, P2) |
+| **G = G₀·T(E_F)** | the zero-bias conductance | the record, from T at E − E_F = 0 | T(E, 0) | — |
+
+#### What a change re-runs
+
+Read each row left to right: what stands, and what runs again.
+
+| the change | the leads | the seed | the device | the transmission | the current |
+|---|---|---|---|---|---|
+| **the energy window widened** — −2…2 → −3…3 eV | stand | stand | **stand**: no NEGF cycle | **runs again** on the same device Hamiltonians. Every energy is independent, so T at the old energies comes out the same | the same at every listed voltage whose window ±(\|V\|/2 + 5 kT) the old window already reached; a voltage it did not reach gets its current |
+| the energy points refined, the transmission k-point grid, a broadening, the eigenchannels or DOS asked for | stand | stand | stand | **runs again** | follows the new T |
+| **a bias point added — low-bias approximation** | stand | stand | stand: one run, at 0 V | **stands** while the window reaches ±(\|V\|/2 + 5 kT) of the new voltage; else its window is widened and it runs again | **computed** for the new voltage from the one T(E, 0) (`record.linear_response_iv`) — no engine runs |
+| **a bias point added — self-consistent** | stand: bias-independent | stands | the converged points **stand**; the new point runs **one NEGF cycle**, started from the closest converged point's `.TSDE` — the manual's *"copy the TSDE from the closest, previously, calculated bias"*, which the sweep already does (§ 2a.11) — and computes its own leads' Green's functions, which belong to its bias | the existing points stand; the new point runs | each existing point's current stands; the new point has its own |
+| the device's own convergence settings (mixing, tolerances, its iteration budget) | stand | stand | **runs again**, every point | runs again on the new device | follows |
+| `electrode_kz` | **run again** | stands | runs again — the leads' Fermi level moved | runs again | follows |
+| a value every stage shares — basis, energy shift, functional, mesh cutoff, electronic temperature, spin, the shared k-point grid | **run again** | runs again | runs again | runs again | follows |
+
+Two of those rows deserve their reason. **The electronic temperature** is a
+shared value because the leads' and the device's densities are made with it,
+even though T(E) itself does not depend on it: changing it changes every
+density, so everything runs again. **A new bias point's leads' Green's
+functions** are its own: the file holds the self-energies at that bias's
+chemical potentials and on its contour — the equilibrium poles moved with
+μ = ±V/2, and a line through the bias window that grows with |V| (§ 2a.11) —
+so a file is never shared between voltages, while the leads' Hamiltonians,
+from which every one of them is built, are.
+
+#### What each change costs — measured on the Au–BDT–Au junction
+
+`AuBDTAu/transport/lowbias_local`, every rung run on one workstation
+(qlabsrv) at 16 ranks × 1 thread, October 2026 — each run's engine wall time
+and seconds per SCF iteration as its record states them (`model/parse.md`
+§ 5c.1):
+
+| rung | what it computes | engine wall time |
+|---|---|---|
+| seed | the periodic junction's SCF, the 5 × 5 shared k-point grid | 38,388 s ≈ 10.7 h — 833 s an iteration |
+| electrode_L · electrode_R | each lead's bulk SCF, 5 × 5 × 100 k-points (`electrode_kz`, § 0.2) | 55,068 s and 55,589 s ≈ 15.3 h each — about 3,900 s an iteration |
+| device, 0 V | 4 periodic iterations, then 32 NEGF iterations, its contour's 125 energies × 13 k-points each (§ 2a.11) | 47,549 s ≈ 13.2 h — 1,214 s an NEGF iteration |
+| transmission, 0 V | −2…2 eV at 401 points × the 15 × 15 grid (113 k-points), once, no iteration | 527,441 s ≈ 6.1 days — 1,315 s ≈ 22 min an energy |
+
+So on this junction **the transmission is the long step** — eleven times the
+device's SCF at its one bias point — and each lead takes longer than the
+device. What a change costs follows from the table: a window changed — wider,
+or finer — is the transmission again at every point, about 22 minutes an
+energy here; an extra self-consistent bias point is one device SCF — more
+energies on its contour than at 0 V, started from the closest converged point
+— and one transmission point; `electrode_kz` or a value every stage shares is
+every rung, some nine days here at one bias point. One junction and one
+machine: on a cluster at more ranks the times differ, and so may the ratios.
+
+#### Within one calculation, and across two
+
+Within a calculation, these are the rules of § 2a.11: a stage never launched
+is changed and prepared again; a launched stage's decks are the calculation
+its runs ran — a point added or taken away, or a transmission window changed,
+is refused, its way back the state saved before its group's first launch. A
+finished calculation is the record of what it computed, and stays so.
+**Asking a finished calculation a wider question** — the same junction, the
+same leads and device, a wider window or more voltages — is a new
+calculation in a folder of its own, and what it may take from the finished
+one is what the tables above say stands — copied in by the rule of § 2a.16
+*(designed 2026-10-22, not built; until it is, a new calculation computes
+every rung)*.
+
+### 1.3 A junction by hand — every matrix, every file *(user, 2026-10-22)*
+
+*(The user, 2026-10-22: "a small size sample where you can actually lay out
+step by step how the matrix goes from one to another … which matrix saved in
+what file … I would like to see an actual concrete matrix or data, and then
+see the workflow … then I can correlate that to the theory.")*
+
+**What this is, and what it is not.** A junction small enough to write every
+matrix out, computed by the 94-line script at the end of this section — the
+**same steps and the same equations** the five rungs run (§ 1.1), on a
+**model Hamiltonian**. It is **not SIESTA**: it runs no SIESTA and reads no
+SIESTA file. Where the two differ:
+
+| | this example | SIESTA, TranSIESTA, tbtrans |
+|---|---|---|
+| the Hamiltonian | a tight-binding model: one orbital per site, its numbers chosen | Kohn–Sham DFT: kinetic energy, pseudopotentials, Hartree and exchange–correlation, on a real-space grid (`MeshCutoff`), in atomic orbitals (`PAO.BasisSize`) |
+| how H follows the density | one term, U: a molecule site's level rises 1 eV per electron it gains — standing in for Hartree and exchange–correlation | H[ρ] rebuilt from ρ on the grid, every iteration |
+| the overlap S | 1 (orthogonal orbitals) | atomic orbitals overlap: S is a matrix, and stands beside E in every inverse, `z·S − H` — nothing else changes |
+| the equilibrium density integral | on the real axis, 24,000 energies | on a contour in the complex plane with the Fermi function's poles — 123 at 300 K (§ 6.1c): the same integral, far fewer points |
+| the mixing | linear, half old and half new | Pulay (`SCF.Mixer.*`) |
+| the lead's coupling | to the next cell along z only (one site a cell) | the same rule — a principal layer (I11) — on blocks hundreds of orbitals wide |
+
+What carries over unchanged is **what each step computes, from what, and
+which file hands it on** — the thing this section is for.
+
+#### The model
+
+```
+ … lead ─ lead ─ [ site 0 ]─[ site 1 ]═[ site 2 ]─[ site 3 ] ─ lead ─ lead …
+   endless L      L-electrode   the molecule      R-electrode    endless R
+                   block                            block
+```
+
+| | value | the transport word |
+|---|---|---|
+| the lead (gold) | on-site 0 eV, hopping −2 eV between neighbours | its band runs from −4 to +4 eV |
+| the molecule | two sites, bare level +1.0 eV each, −1.5 eV between them | two orbitals: bonding near −0.5 eV, antibonding near +2.5 eV |
+| molecule ↔ electrode block | −1.0 eV | the contact |
+| U | 1.0 eV per electron, on the molecule's sites | how its levels follow its charge |
+| temperature, broadening | 300 K (kT = 0.0259 eV); η = 1 meV | `ElectronicTemperature`; `TS.Elecs.Eta` / `TBT.Elecs.Eta` |
+
+#### Steps 2–3 · a lead's run → its `.TSHS`
+
+The lead is a periodic crystal along z: one site a cell, so its Hamiltonian
+is two numbers — the cell's own, **H₀₀**, and its coupling to the next cell,
+**H₀₁** — with the overlap beside each. Its band is E(k) = 0 + 2·(−2)·cos k, filled with one
+electron a site, both spins: its Fermi level is the band's middle, **E_F =
+0.0 eV**. A lead's run finds it by sampling its `electrode_kz` k-points along
+z (§ 0.2); this chain's is exact by symmetry, so the script states it.
+
+```
+the lead's .TSHS holds:   H00 = [ 0.0 ]   H01 = [ -2.0 ]   S00 = [ 1.0 ]   S01 = [ 0.0 ]   E_F = 0.0 eV
+```
+
+That is all a lead hands on. Its density stays in its own run; no self-energy
+is in the file.
+
+#### The self-energy, built from the `.TSHS` — Lopez Sancho
+
+The device needs, at every energy E, what the endless lead behind its
+electrode block does to it. The surface Green's function g_s of the
+half-infinite lead is summed by Lopez Sancho's doubling [`LopezSancho1985`]
+— each iteration folds twice as many cells in, until the coupling still to
+fold is zero (`m_ts_electrode.F90`). At E = 0:
+
+| iteration | 1 | 2 | 4 | 8 | 12 | 14 | 15 | 16 | 17 |
+|---|---|---|---|---|---|---|---|---|---|
+| coupling still to fold (eV) | 4.0 × 10³ | 2.0 × 10³ | 5.0 × 10² | 3.1 × 10¹ | 1.65 | 6.7 × 10⁻² | 1.1 × 10⁻³ | 3.1 × 10⁻⁷ | 2.4 × 10⁻¹⁴ — done |
+
+g_s(0) = **−0.500 i** eV⁻¹ — the closed form for this chain, −i/(2|t|), to 10⁻⁸.
+The self-energy on the electrode block is Σ(E) = H₁₀ · g_s(E) · H₀₁, and its
+broadening Γ = i(Σ − Σ†):
+
+| E (eV) | −3.0 | −0.5 | 0.0 | +1.0 | +2.5 |
+|---|---|---|---|---|---|
+| Σ (eV) | −1.499 − 1.322 i | −0.250 − 1.984 i | 0.000 − 2.000 i | +0.500 − 1.936 i | +1.250 − 1.561 i |
+| Γ (eV) | 2.645 | 3.968 | 3.999 | 3.872 | 3.122 |
+
+**Under a bias** the lead's E_F is placed at its chemical potential
+μ = ±V/2 before the doubling (`H₀₀ − (E_F − μ)·S₀₀`,
+`m_ts_electrode.F90:1461–1462`): the same `.TSHS` gives the self-energy at
+every voltage, shifted — Σ(E; μ) = Σ(E − μ; 0). TranSIESTA computes Σ at
+every energy of its contour, once a bias, and keeps them in
+**`tsgf/<label>.v0.TSGFL`** and **`.TSGFR`** (§ 2a.11), read back at every
+iteration — here, the 24,000 energies of the integral, computed once and
+reused by every iteration below.
+
+#### Step 1 · the seed → `.DM`
+
+The seed treats the whole four-site cell as a periodic crystal along z
+(site 3 couples to site 0 of the next cell) — an ordinary SCF, sampled at 200
+k-points and filled to E_F. Its density matrix, ρ₀ — row and column the
+sites 0 to 3, the diagonal each site's electrons (both spins), off the
+diagonal the bond orders:
+
+```
+the seed's .DM:   [[ 1.0341  0.3374  0.0843 -0.0437]
+                   [ 0.3374  0.9146  0.852   0.0843]
+                   [ 0.0843  0.852   0.9146  0.3374]
+                   [-0.0437  0.0843  0.3374  1.0341]]
+```
+
+It is only where the device starts: 0.9146 electrons on each molecule site.
+
+#### Step 4 · the device at 0 V → `.TSDE` and `.TS.HSX`
+
+The device is the same four sites, now **open**: the two leads attach to
+sites 0 and 3 through their self-energies. One iteration of the
+self-consistent cycle is four lines:
+
+1. **H[ρ]** from the density: each molecule site's level is 1.0 + U·(n − 1);
+   the electrode blocks keep the lead's own (`TS.Elecs.Bulk true`).
+2. **G(E)** = [(E + iη)·S − H − Σ_L(E) − Σ_R(E)]⁻¹ at every energy — Σ_L
+   added at the corner (0, 0), Σ_R at (3, 3).
+3. **ρ** = (2 / 2π) ∫ [G Γ_L G† f(E − μ_L) + G Γ_R G† f(E − μ_R)] dE — the
+   electrons each lead fills in, up to its own μ; the 2 is the two spins.
+4. **mix** the new density with the old, and stop when it no longer changes.
+
+From the seed's 0.9146:
+
+| iteration | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| molecule site, in | 0.9146 | 0.8753 | 0.8615 | 0.8566 | 0.8549 | 0.8542 | 0.8540 | 0.8539 |
+| molecule site, out | 0.8360 | 0.8478 | 0.8517 | 0.8531 | 0.8536 | 0.8538 | 0.8538 | 0.8538 — converged |
+
+The two matrices a converged point leaves:
+
+```
+H(0 V) -> .TS.HSX:  [[ 0.     -1.      0.      0.    ]      rho(0 V) -> .TSDE:  [[ 0.9951  0.4176  0.1347 -0.0887]
+                     [-1.      0.8538 -1.5     0.    ]                          [ 0.4176  0.8538  0.7746  0.1347]
+                     [ 0.     -1.5     0.8538 -1.    ]                          [ 0.1347  0.7746  0.8538  0.4176]
+                     [ 0.      0.     -1.      0.    ]]                         [-0.0887  0.1347  0.4176  0.9951]]
+```
+
+The molecule gave up 0.29 electrons to the leads, so its levels sank by
+U × 0.146 = 0.146 eV each: the bonding orbital from −0.50 to −0.65 eV, the
+antibonding from +2.50 to +2.35 eV (the eigenvalues of H's molecule block).
+That shift is what self-consistency is for.
+
+#### Step 4 · a bias point, 0.4 V → its own `.TSDE` and `.TS.HSX`
+
+At 0.4 V the left lead is filled to μ_L = +0.2 eV and the right to
+μ_R = −0.2 eV, and the potential falls across the device as a ramp, +0.2 eV
+on site 0 to −0.2 eV on site 3. The leads' self-energies are computed again
+at the shifted μ — the 0.4 V pair, `tsgf/<label>.v0.4.TSGFL` — and the cycle
+starts **from the 0 V density**, the manual's *"copy the TSDE from the
+closest, previously, calculated bias"*:
+
+| iteration | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| site 1 · site 2, in | 0.8538 · 0.8538 | 0.8257 · 0.8733 | 0.8186 · 0.8780 | 0.8168 · 0.8790 | 0.8163 · 0.8793 | 0.8162 · 0.8793 |
+| site 1 · site 2, out | 0.7976 · 0.8928 | 0.8115 · 0.8826 | 0.8150 · 0.8801 | 0.8158 · 0.8795 | 0.8161 · 0.8794 | 0.8161 · 0.8793 — converged |
+
+**6 iterations; started from the seed instead, 8.** Here the saving is two
+iterations; on a 400-atom junction each iteration is the expensive unit of
+§ 1.2's table, and the start near the answer is also what keeps a bias sweep
+on the solution continuous with equilibrium (§ 1.1). The point's two files:
+
+```
+H(0.4 V) -> v0.4/.TS.HSX:  [[ 0.2    -1.      0.      0.    ]   rho(0.4 V) -> v0.4/.TSDE:  [[ 0.9756  0.3978  0.1129 -0.0842]
+                            [-1.      0.8828 -1.5     0.    ]                                [ 0.3978  0.8161  0.7673  0.1539]
+                            [ 0.     -1.5     0.8127 -1.    ]                                [ 0.1129  0.7673  0.8793  0.4361]
+                            [ 0.      0.     -1.     -0.2   ]]                               [-0.0842  0.1539  0.4361  1.0173]]
+```
+
+The field pushed electrons towards the low-potential side: site 1 now holds
+0.816, site 2 0.879.
+
+#### Step 5 · the transmission → `.TBT.nc`
+
+tbtrans runs no cycle. It reads a point's H (`.TS.HSX`) and both leads'
+`.TSHS`, builds the self-energies again at its own energies, and at each
+energy computes **T(E) = Tr[Γ_L G Γ_R G†]** — here one number, since each Γ
+sits on one site: Γ_L Γ_R |G₀₃|².
+
+| E (eV) | −3.0 | −2.0 | −1.0 | −0.5 | 0.0 | +0.5 | +1.0 | +2.0 | +2.5 | +3.0 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| T(E, 0 V) | 0.0098 | 0.0703 | 0.6869 | 0.9470 | **0.5804** | 0.3970 | 0.3411 | 0.5139 | 0.9256 | 0.4949 |
+| T(E, 0.4 V) | 0.0097 | 0.0708 | 0.6956 | 0.9422 | 0.5755 | 0.3949 | 0.3403 | 0.5162 | 0.9284 | 0.4774 |
+
+Two resonances: **−0.643 eV** (T = 0.995, the bonding orbital) and
+**+2.635 eV** (T = 0.993, the antibonding one, above its isolated level
+because the leads push it) — found on a 0.1 meV grid; the 0.01 eV mid-rule
+grid below samples them at −0.645 and +2.635. **A window of −2…2 eV never sees the second**; widened to −3…3 eV
+it does — the case § 1.2 starts from. On the mid-rule grids at 0.01 eV
+(`m_integrate.f90`) the −2…2 window is 400 energies and −3…3 is 600, the 400
+among them; computed in both runs, those 400 agree to 2 × 10⁻¹³ — the same
+device H, the same leads, the same energy: **the same number, computed
+again**.
+
+#### The conductance and the current — the record
+
+- **G = G₀ · T(E_F) = 0.5804 G₀ = 45.0 µS** (G₀ = 2e²/h = 77.48 µS).
+- **I(0.4 V)**, the Landauer integral of T over the bias window with both
+  leads' Fermi functions (§ 1.1, step 5):
+  - **low-bias approximation** — T(E, 0) integrated, the record's own sum
+    (`record.linear_response_iv`): **1.822 × 10⁻⁵ A**;
+  - **self-consistent** — T(E, 0.4 V), tbtrans's own sum at that point:
+    **1.807 × 10⁻⁵ A**.
+
+  0.8 % apart at 0.4 V, because the nearest resonance is 0.64 eV from E_F
+  and the window's half-width only 0.2 eV — the comparison § 2a.10 asks a
+  person to make before trusting the approximation.
+
+#### Every file, what it holds here, and who reads it
+
+| file | made by | holds — here | read by |
+|---|---|---|---|
+| `<label>_L-electrode.TSHS`, `…_R-electrode.TSHS` | each lead's run | H₀₀ = [0], H₀₁ = [−2], S₀₀ = [1], S₀₁ = [0], E_F = 0 | the device, at every bias; the transmission, at every point |
+| `<label>.DM` | the seed | ρ₀ above | the device's 0 V point, once, as its start |
+| `tsgf/<label>.v0.TSGFL`, `.TSGFR` | the device's 0 V point, before its first iteration | Σ_L, Σ_R at every energy of the 0 V contour | that point's every iteration — and nothing else |
+| `tsgf/<label>.v0.4.TSGFL`, `.TSGFR` | the 0.4 V point | Σ at μ = ±0.2 eV, on the 0.4 V contour | that point's every iteration |
+| `<label>.TSDE` (0 V) | the device's 0 V point | ρ(0 V) above | the 0.4 V point, as its start |
+| `<label>.TS.HSX` (0 V) | the same | H(0 V) above | the transmission's 0 V point |
+| `v0.4/<label>.TSDE`, `.TS.HSX` | the 0.4 V point | ρ(0.4 V), H(0.4 V) above | a later voltage's start; the transmission's 0.4 V point |
+| `<label>.TBT.nc`, `.TBT.AVTRANS_L-R` | the transmission, per point | T(E) above, and the DOS and eigenchannels asked for | the record |
+| `<label>.transport.json`, `.transport.nc` | `summarize task` | G = 0.5804 G₀; I(V) | you |
+
+Read against § 1.2's table: widening the window re-runs only the last two
+rows' maker; a new voltage starts from the closest `.TSDE`, computes its own
+`tsgf/` pair and its own transmission; and nothing above the leads' `.TSHS`
+changes unless a value every stage shares does.
+
+#### The same steps, run by SIESTA — a hydrogen chain *(run 2026-10-22)*
+
+The model above is a picture; this is the program. The smallest junction the
+real-engine test runs (`tests/test_transport_on_a_real_junction_e2e.py`): a
+chain of 22 hydrogen atoms 1 Å apart — 9 the left electrode block, 4 the
+bridge, 9 the right — in a minimal basis, **one s orbital per atom**, so
+every matrix is one row per atom. A perfect chain is one open channel, so
+the answer is known before it runs: **T = 1, G = G₀**. It was run here
+through the ordinary road, on this machine, at one rank — an optimization
+relaxing the middle two atoms, then the transport calculation citing it at
+0 V and 0.2 V, self-consistent — and lives in the projects tree at
+`claude-transport-by-hand/`: `opt/J` the relaxation, `transport/T` the
+transport calculation (17 MB in all), open on the Results tab. Every number
+below is read from its files with `sisl`, as the notebook's last cells do.
+
+```
+molbuilder describe --calculation optimization … --name J --psml-lib pseudopotential   # basis SZ, 150 Ry
+molbuilder jobset prep task --group 1 --target this;  launch task --stage coarse      # 6 s, geometry converged
+molbuilder describe --calculation transport --slot junction=claude-transport-by-hand/opt/J/01_coarse/run-0 \
+                    --bias 0,0.2 --no-low-bias-approximation --bundle claude-transport-by-hand/transport/T
+molbuilder jobset prep task --group 1; launch task --group 1      # seed, both leads: one job
+molbuilder jobset prep task --group 2; launch task --stage device # the 0 V and 0.2 V points: one walk
+molbuilder jobset prep task --group 3; launch task --stage transmission
+molbuilder jobset summarize task                                   # -> T.transport.json, T.transport.nc
+```
+
+**Steps 2–3 · each lead → `02_electrode_L/run-0/T_L-electrode.TSHS`** (3 SCF
+iterations). A lead cell is the 9-atom block, so H₀₀ and H₀₁ are 9 × 9 — and
+the overlap is a real matrix, not the model's 1: SIESTA's orbitals are
+atomic, and a hydrogen's reaches past four neighbours. The first rows:
+
+| | to the atom 1 Å away | 2 Å | 3 Å | 4 Å | 5 Å |
+|---|---|---|---|---|---|
+| H₀₀, on the diagonal −4.999 eV | −5.726 | −2.595 | −0.722 | −0.096 | −0.003 |
+| S₀₀, on the diagonal 1 | 0.623 | 0.203 | 0.033 | 0.002 | 0 |
+
+H₀₁ couples the cell's last five atoms to the next cell's first five, the
+same numbers down a corner of the matrix (its row 9 is −5.726, −2.595,
+−0.722, −0.096, −0.003); S₀₁ likewise. **E_F = −6.017 eV**, in the lead's
+periodic frame. *(In the model: H₀₀ = 0, H₀₁ = −2, S = 1 — one number each.)*
+
+**Step 1 · the seed → `01_seed/run-0/T.DM`** (5 SCF iterations): a 22 × 22
+density matrix, 0.684 on every diagonal element.
+
+**Step 4 · the 0 V point → `04_device/run-0/v0/`.** What it took, its
+`.gathered-from`: `T.DM <- 01_seed/run-0`, `T_L-electrode.TSHS <-
+02_electrode_L/run-0`, `T_R-electrode.TSHS <- 03_electrode_R/run-0`. Before
+its first iteration TranSIESTA built each lead's surface Green's function at
+the 125 energies of the 0 V contour (123 poles and two more), *"Estimated
+file size: 160.523 kB"* a lead — 16 B × 9² orbitals × 125 energies, § 2a.11's
+formula — and then cycled: **1 periodic iteration, then 8 NEGF iterations**.
+What it left, `T.TS.HSX` and `T.TSDE`, 22 × 22 each; the bridge's rows
+(atoms 10–13), columns 8–15:
+
+```
+H(0 V), eV                                                  the density matrix D(0 V)
+ -2.591 -5.717 -4.985 -5.715 -2.591 -0.721 -0.095 -0.003     -0.224  0.334  0.690  0.335 -0.222 -0.258  0.090  0.186
+ -0.721 -2.592 -5.715 -4.979 -5.713 -2.591 -0.721 -0.096     -0.257 -0.223  0.335  0.689  0.334 -0.222 -0.257  0.090
+ -0.096 -0.721 -2.591 -5.713 -4.979 -5.715 -2.592 -0.721      0.090 -0.257 -0.222  0.334  0.689  0.335 -0.223 -0.257
+ -0.003 -0.095 -0.721 -2.591 -5.715 -4.985 -5.717 -2.591      0.186  0.090 -0.258 -0.222  0.335  0.690  0.334 -0.224
+```
+
+Electrons on each atom — Mulliken's, Σⱼ Dᵢⱼ Sⱼᵢ: 1.000 in the electrode
+blocks, 0.996 to 0.999 on the bridge; 21.987 in all, the 0.013 short of 22
+being the device's `dQ` (§ 1.1).
+
+**Step 4 · the 0.2 V point → `04_device/run-0/v0.2/`.** Its
+`.continued-from`: **`04_device/run-0/v0`** — it started from the 0 V
+point's `.TSDE`, so it skipped the periodic start and went straight to the
+NEGF cycle: **8 iterations**. Its own Green's functions were computed at its
+contour's 294 energies — two sets of 123 poles, one per lead's μ = ±0.1 eV,
+and a line of 46 points through the bias window, −0.229 to +0.229 eV —
+*"Estimated file size: 377.055 kB"* a lead. The bias in its Hamiltonian:
+H(0.2 V) − H(0 V) on the diagonal is +0.07 to +0.09 eV on the left block,
+−0.06 to −0.09 eV on the right, and falls through zero across the bridge
+(+0.038, +0.008, −0.009, −0.039 eV) — the potential drop, solved
+self-consistently rather than imposed. The walk emptied `tsgf/` as it ended,
+as § 2a.11 says.
+
+**Step 5 · the transmission → `05_transmission/run-0/v0/T.TBT.nc`**, and
+`v0.2/`: what it took, `T.TS.HSX <- 04_device/run-0/v0` (and `v0.2`'s from
+`v0.2`) and the two leads' `.TSHS`. 401 energies from −1.995 to +1.995 eV —
+the catalogue's window, −2…2 eV, 401 points, mid-rule — at one k-point (an
+isolated chain has nothing to sample in the electrode plane): **T(E)
+between 0.99990 and 0.99991 at every energy at 0 V**, and between 0.99986
+and 0.99991 at 0.2 V.
+
+**The record → `T.transport.json`, `T.transport.nc`**: G = 0.9999 G₀ at both
+voltages; **I(0.2 V) = 1.549 × 10⁻⁵ A**, which is G₀ × 0.2 V — one perfect
+channel — twice the 7.747 × 10⁻⁶ A TBtrans printed, its one spin channel's
+(§ 2a.12).
+
+**Model and program, side by side:**
+
+| step | the model | SIESTA on the hydrogen chain |
+|---|---|---|
+| a lead's `.TSHS` | H₀₀ = [0], H₀₁ = [−2], S = 1 | 9 × 9 blocks, nearest neighbour −5.73 eV, overlap 0.62; E_F = −6.017 eV |
+| the self-energy | Lopez Sancho, 17 iterations at E = 0 | the same doubling, at each of 125 (0 V) or 294 (0.2 V) contour energies, kept in `tsgf/` |
+| the seed's `.DM` | 4 × 4 | 22 × 22, 5 iterations |
+| the 0 V point | 8 iterations from the seed | 1 periodic + 8 NEGF iterations from the seed |
+| the bias point | 6 from the 0 V density, 8 from the seed | 8, from the 0 V `.TSDE` (`.continued-from: v0`), no periodic start |
+| T(E) | two resonances, −0.643 and +2.635 eV | one flat channel, T = 0.9999 |
+| G, I(V) | 0.58 G₀; 1.82 × 10⁻⁵ A at 0.4 V | 0.9999 G₀; 1.549 × 10⁻⁵ A at 0.2 V |
+
+#### The script, and the notebook
+
+The same steps, one cell each with the words above between them, are the
+notebook **`docs/engines/transport-junction-by-hand.ipynb`**, saved with its
+outputs — the plot of the three T(E) curves among them. The Jupyter tab
+opens files of the projects tree (its root, `web/jupyter.md` § 4.3), so a
+copy sits at `notebooks/transport-junction-by-hand.ipynb` there; change any
+number of the model's cell and run it again. Its last four cells read the
+hydrogen chain's files above with `sisl` (in `molbuilder-jupyternb`), step
+by step — point their `B` at any transport calculation of your own. The script below is the same
+code in one piece — it runs as it is in `molbuilder-jupyternb` (numpy only),
+in about a minute, and prints every number above:
+
+```python
+import numpy as np
+np.set_printoptions(precision=4, suppress=True)
+
+# THE MODEL -- energies in eV; one orbital per site; an orthogonal basis (S = 1)
+eps_lead, t_lead = 0.0, -2.0         # the gold: on-site, hopping -> band -4 ... +4
+eps_mol, t_mol, t_c = 1.0, -1.5, -1.0 # the molecule: on-site, internal, to each lead
+U, n_ref = 1.0, 1.0                  # a site's level rises U per electron it gains
+kT, eta = 0.025852, 1e-3             # 300 K; the broadening (TS/TBT.Elecs.Eta, 1 meV)
+f = lambda E, mu: 1.0 / (1.0 + np.exp((E - mu) / kT))
+
+# STEPS 2-3 -- the lead run: what its .TSHS holds (H00, H01, S00, S01, E_F)
+H00, H01, S00, S01, E_F = eps_lead, t_lead, 1.0, 0.0, 0.0
+
+def surface_g(E, mu):
+    """Lopez Sancho: the endless lead summed by doubling (m_ts_electrode)."""
+    z, h00 = E + 1j * eta, H00 - (E_F - mu) * S00   # the lead's E_F placed at mu
+    a, b = H01 - z * S01, H01 - z * S01
+    es = e = z * S00 - h00
+    while abs(a) > 1e-12:
+        g = 1.0 / e
+        es, e = es - a * g * b, e - a * g * b - b * g * a
+        a, b = a * g * a, b * g * b
+    return 1.0 / es
+
+def sigma(E, mu):            # the self-energy on the electrode site: H10 g H01
+    return H01 * surface_g(E, mu) * H01
+
+# STEP 4 -- the device: [L-electrode site][molecule, 2 sites][R-electrode site]
+def H_of(n, V):
+    ramp = np.array([V / 2, V / 6, -V / 6, -V / 2])        # the bias, as a ramp
+    H = np.diag([eps_lead, eps_mol + U * (n[0] - n_ref),
+                 eps_mol + U * (n[1] - n_ref), eps_lead] + ramp)
+    for i, j, t in [(0, 1, t_c), (1, 2, t_mol), (2, 3, t_c)]:
+        H[i, j] = H[j, i] = t
+    return H
+
+E = np.arange(-6.0, 6.0, 0.0005)
+
+def lead_files(V):           # what tsgf/<label>.v<V>.TSGFL / .TSGFR hold
+    return (np.array([sigma(e, +V / 2) for e in E]),
+            np.array([sigma(e, -V / 2) for e in E]))
+
+def G_of(H, SL, SR, z):
+    A = np.zeros((len(z), 4, 4), complex); A[:] = -H
+    A[:, range(4), range(4)] += z[:, None]
+    A[:, 0, 0] -= SL; A[:, 3, 3] -= SR
+    return np.linalg.inv(A)
+
+def density(H, V, SL, SR):   # rho = (2/2pi) Int [G GL G+ f_L + G GR G+ f_R] dE
+    G = G_of(H, SL, SR, E + 1j * eta)
+    gL, gR = (1j * (SL - SL.conj())).real, (1j * (SR - SR.conj())).real
+    cL, cR = G[:, :, 0], G[:, :, 3]
+    rho = (np.einsum('ei,ej,e->ij', cL, cL.conj(), gL * f(E, V / 2))
+           + np.einsum('ei,ej,e->ij', cR, cR.conj(), gR * f(E, -V / 2)))
+    return (2 * rho * (E[1] - E[0]) / (2 * np.pi)).real
+
+def scf(V, n, leads, mix=0.5, tol=1e-4):
+    for it in range(1, 100):
+        rho = density(H_of(n, V), V, *leads)
+        n_out = np.diag(rho)[1:3]
+        print(f"  iteration {it}: molecule in {n}  out {n_out}")
+        if abs(n_out - n).max() < tol:
+            return n_out, H_of(n_out, V), rho
+        n = (1 - mix) * n + mix * n_out
+
+def T(Es, H, V):             # T(E) = Tr[GL G GR G+], tbtrans's sum at each energy
+    SL = np.array([sigma(e, +V / 2) for e in Es]); SR = np.array([sigma(e, -V / 2) for e in Es])
+    G = G_of(H, SL, SR, Es + 1j * eta)
+    gL, gR = (1j * (SL - SL.conj())).real, (1j * (SR - SR.conj())).real
+    return gL * gR * np.abs(G[:, 0, 3]) ** 2
+
+# STEP 1 -- the seed: the 4-site cell repeated along z, filled to E_F -> .DM
+rho_seed = np.zeros((4, 4), complex)
+for k in np.linspace(-np.pi, np.pi, 200, endpoint=False):
+    Hk = H_of([n_ref, n_ref], 0.0).astype(complex)
+    Hk[3, 0] += t_lead * np.exp(1j * k); Hk[0, 3] += t_lead * np.exp(-1j * k)
+    w, v = np.linalg.eigh(Hk)
+    rho_seed += (v * 2 * f(w, E_F)) @ v.conj().T / 200
+print("seed .DM =\n", rho_seed.real)
+
+print("device at 0 V, from the seed:")
+n0, H0, rho0 = scf(0.0, np.diag(rho_seed.real)[1:3], lead_files(0.0))
+print("H(0 V) -> .TS.HSX =\n", H0, "\nrho(0 V) -> .TSDE =\n", rho0)
+print("device at 0.4 V, from the 0 V .TSDE:")
+n4, H4, rho4 = scf(0.4, n0, lead_files(0.4))
+
+mid = lambda lo, hi, d=0.01: lo + d * (np.arange(round((hi - lo) / d)) + 0.5)
+A, B = mid(-2, 2), mid(-3, 3)                       # the two windows, mid-rule
+TA, TB = T(A, H0, 0.0), T(B, H0, 0.0)
+print("shared energies agree to", abs(TB[100:500] - TA).max())
+G0 = 7.748091729e-5                                  # 2e^2/h, in siemens
+I = lambda Es, Ts, V: G0 * np.sum(Ts * (f(Es, V / 2) - f(Es, -V / 2))) * (Es[1] - Es[0])
+print("G =", T(np.array([0.0]), H0, 0.0)[0], "G0")
+print("I(0.4 V): low-bias", I(A, TA, 0.4), "A; self-consistent", I(A, T(A, H4, 0.4), 0.4), "A")
+```
+
 ---
 
 ## 2. The physics in one page
@@ -1205,8 +1746,9 @@ k-point grid re-runs the seed too — with both leads, in group 1 — then the
 device and the transmission (§ 0.3).
 
 That asymmetry is also the argument for the transmission being its own stage:
-its parameters bind nothing, so re-running it against an unchanged device is
-cheap, and tuning an energy window should never re-run an NEGF cycle.
+its parameters bind nothing, so it is run again against an unchanged device
+with no NEGF cycle, and tuning an energy window should never re-run one — on a
+large junction the transmission is itself the long step (§ 1.2).
 
 **The interface follows the map, not the subject matter.** One panel for Class
 A, edited once, carrying the all-stages warning. One panel per stage for its own
@@ -1232,7 +1774,7 @@ default grouping is built (the row below).*
 | **The relaxation DEFAULTS the Class A values; it does not seal them** | A transport calculation arrives pre-filled with the basis, functional and mesh cutoff of the relaxation it starts from, and the person **may change them** — a change applying to every stage at once. The worked case: relax with DZP because it is cheap and adequate for geometry, then move to TZP for transport because the longer orbital tails carry the metal–molecule coupling |
 | **The T(E) window belongs to the transmission** | Exposed and tunable **there only**. Consequence: the device deck has no reason to carry the `TBT.*` settings at all, so the two decks legitimately differ and each carries what its own binary reads. What keeps them consistent was never byte-identity; it is the shared Class A values |
 | **Class C starts from the citation, stage by stage** *(TD6, the user 2026-10-09)* | Each SCF stage — the seed, both leads, the device — carries its own mixer and convergence criteria, never one shared set, since a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike; each starts from the one value the cited run converged with (`citation_defaults`, § 3.1) and is changed on its own tab (§ 2a.13). The leads' dense k-points along z are the catalogue's default, 100 (§ 0.2), not something a person should have to discover |
-| **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
+| **Always two lead stages** | Even when the leads are provably identical. Two runs keep the record auditable — at a lead run's cost, about 15 h each on the Au–BDT–Au junction (§ 1.2) |
 | **Default grouping** | The job request's groups, 1 1 1 2 3: the preparatory block — seed and both leads — group 1, one submission, since none builds on another; the device group 2; the transmission group 3, each scan one job walking its points ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.3; [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6). `jobset prep task` prepares every group at once (`--group 1 --group 2 --group 3` without a terminal); `jobset launch task` sends group 1, and group 2 once the seed and leads have finished — its first launch gathering their files — then group 3 ([`execution/job-system.md`](?doc=execution/job-system.md), *The task*). The device and the transmission never share a job: the transmission builds on the device, which you look at first |
 | **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). Both axes are built (§ 2a.11): a frame set is cited (§ 3.1, Q17-c), its points run (Q17-d) and its record carries each frame's point and the mode's average (§ 2a.12, Q17-e); its Results are built (`web/results.md` § 2.5, Q17-f, 2026-10-10) |
 | **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
@@ -1301,7 +1843,7 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 | basis TZP → DZP | **all five stages.** It is Class A; the leads and the device must be rebuilt together or the self-energy attaches to a Hamiltonian built differently |
 | lead k-points along z 100 → 150 | **the seed and the two lead stages** — group 1, one job, run again whole — then the device and the transmission that consume the leads, because the lead's Fermi level moved |
 | device mixing 0.02 → 0.01 | **the device only.** The leads still stand; their Hamiltonians did not change |
-| transmission window ±3 → ±5 eV | **the transmission only**, and it takes seconds. The NEGF cycle is untouched — which is the entire argument for the transmission being its own stage |
+| transmission window ±3 → ±5 eV | **the transmission only** — seconds on a test junction, about 22 minutes an energy on Au–BDT–Au (§ 1.2). The NEGF cycle is untouched — which is the entire argument for the transmission being its own stage |
 | cores 64 → 128 | re-runs, same answer. The old and new results remain comparable |
 
 ---
@@ -1790,8 +2332,10 @@ voltages a rung runs at: `transport.stages.sweep_points(task, stage)`.
 
 A point folder holds everything its engine reads, as every run folder does
 (`project-layout.md` § 1.0) — its own copies of the run's inputs; the run keeps
-them once, clean, as their source — but for the leads' surface Green's
-functions, which the engine reads from the run's `tsgf/` above the point and
+them once, clean, as their source — and, for a transmission point of a
+calculation that reuses a finished one, the energies it shares with the
+finished point, in its `shared/` (§ 2a.16; *designed, not built*) — but for the
+leads' surface Green's functions, which the engine reads from the run's `tsgf/` above the point and
 which are the run's on purpose (*What a run's points share*, below). The stage folder
 holds no deck at the stage level: every deck is a point's.
 
@@ -2507,7 +3051,10 @@ its Landauer integral is I = (e/h)∫T, with no factor 2 for spin
 (`m_tbt_save.F90`) — while the conductance beside it is in G₀ = 2e²/h, both
 channels. So the record's `current_a` is the total: **twice the printed figure
 for a non-polarized calculation**, and the sum of the two channels for a
-polarized one, each as TBtrans printed it (empty when it printed only one).
+polarized one, each as TBtrans printed it (empty when it printed only one) —
+but for a transmission point whose energies two runs computed, whose current
+the record integrates by TBtrans's own rule over the joined grid, saying so
+(`current_from`, § 2a.16; *designed, not built*).
 The figure TBtrans printed stays beside it
 (`current_a_printed`), the spin each point ran with is the one its own deck
 states (`spin`), and the record says in words what each number is
@@ -2530,6 +3077,8 @@ started from, read from each point's `.continued-from` (§ 2a.11). The device
 facts shown beside a transmission are the device run its first point gathered
 (`record.gathered_device_run`); a point taken over by a warm `--gather` launch
 keeps the device run it was computed on, which its own `.gathered-from` names.
+A run copied in from a finished calculation is read as any run, its
+`.copied-from` naming the run that computed it (§ 2a.16).
 
 ### 2a.13 The full map
 
@@ -2598,8 +3147,9 @@ naming one there is refused where it is written (§ 3.8.9).
 | `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening of the device. **Inert at zero bias** — there is no non-equilibrium window to integrate. **Blank is not set** — the line is not written and TranSIESTA takes a tenth of the smallest lead broadening; **0 is written as 0** — no broadening on the device, a value of its own (below) | 3 |
 | `negf_neq_fermi_cutoff_kt` | `TS.Contours.nEq.Fermi.Cutoff` | How far past each lead's Fermi level the bias window reaches, in kT. 5, TranSIESTA's own default, written; **refused below 2.5**, where TranSIESTA stops the run (`at_least`, `m_ts_contour_neq.f90:141-144`) *(2.1.0)* | 3 |
 
-**The transmission owns** — and this is the cheap, iterative panel: none of it
-binds anything, so re-running against an unchanged device costs seconds.
+**The transmission owns** — the panel tuned by running again: none of it
+binds anything, so it runs again against an unchanged device with no NEGF
+cycle — seconds on a test junction, days on Au–BDT–Au (§ 1.2).
 
 | parameter | keyword | the decision it is | tier |
 |---|---|---|---|
@@ -2816,8 +3366,8 @@ means nothing at all.
 
 | rung | does it iterate? | the state a restart would pick up | is "continue vs clean" worth asking? |
 |---|---|---|---|
-| `seed` | an ordinary SCF | its own last `<label>.DM` | barely — its whole output *is* a `.DM`, and it is cheap; one not converged continues from its own (§ 2a.11) |
-| `electrode_L` / `electrode_R` | an ordinary SCF on a bulk lead | its own `.DM` | barely — a few metal layers; cheap; the same rule |
+| `seed` | an ordinary SCF | its own last `<label>.DM` | barely — its whole output *is* a `.DM`; one not converged continues from its own (§ 2a.11) |
+| `electrode_L` / `electrode_R` | an ordinary SCF on a bulk lead | its own `.DM` | barely — the same rule |
 | `device` | **the NEGF SCF — the expensive one** | its own previous `<label>.TSDE`, **and** the seed's `.DM` as a starting density | **answered by the sweep** (§ 2a.11): a point starts from the seed's `.DM` (0 V) or the closest converged point's `.TSDE`, and one not done continues from its own last density |
 | `transmission` | **no SCF at all** — `tbtrans` reads a converged Hamiltonian and integrates | nothing | **no. There is no state to continue** |
 
@@ -2831,8 +3381,8 @@ done it is taken over whole into every later run and never run again, because
 a converged point is a fixed point and running it again only repeats it. (A
 device with no point level has no points to take over: launched again, it is
 a stage like any, § 2a.11 above — the row above says so.) The
-seed and the leads follow the same rule and rarely need it — they are cheap —
-and the transmission has no iteration to resume. *(Until 2026-10-05 this read
+seed and the leads follow the same rule, and the transmission has no
+iteration to resume. *(Until 2026-10-05 this read
 "the device has one": its own previous `.TSDE`, continued by a launch after a
 stop into a next attempt; until 2026-10-08 it said a point continued in place
 across launches.)*
@@ -2902,6 +3452,358 @@ device is enforced bulk (the manual; true by default) — and once settled by
 one junction's run, which is evidence about one configuration rather than a
 rule.)*
 
+### 2a.16 A calculation that reuses a finished one *(the user, 2026-10-22; designed, not built — plan § 1x)*
+
+*(The user, 2026-10-22: "a mechanism where we can cite a finished task … and
+then say, hey, I want to expand this a bit, or I want to tune certain
+parameters that would be able to use the existing, some of the heavy cost
+calculation result"; "a separate directory that cites the original one or
+copy things over if I need to, and then continue that transport calculation
+… don't overcomplicate it"; "I don't mind to occupy a bit more space if it
+saves time … As long as it's logically separated from the old run, we don't
+intend to overwrite the old run"; "did you consider how to add UI support for
+this additional feature?")*
+
+A finished transport calculation answered one question: one window, one list
+of voltages. **A wider question is a new calculation, in a folder of its own,
+that reuses the finished one.** It starts as the finished calculation's
+description; you change what the new question asks; its prep **copies in**
+every group the finished calculation already computed, and the rest runs here
+— a rung of points **taking over**, at its first launch, the points already
+computed. What is reused is copied, and every record in the new calculation
+names a run of its own, so it reads, launches and restores as any calculation
+does. The finished calculation is never written by it. § 1.2 says what each
+change re-runs; this section says how the new calculation reuses the rest.
+
+> **The rule.** A group is **copied in** when, for each of its members, the
+> finished calculation's newest run of it finished — a rung of points: holds
+> exactly the points this calculation describes, every one done — ran **the
+> same calculation** as the deck this calculation renders for it now, and
+> every stage it takes inputs from is copied in too. A point of a rung
+> prepared here is **taken over** from the finished calculation on the same
+> terms, one point at a time. The question is the gather's own (§ 6.1: the
+> newest run, finished or done; the same engine input as the deck rendered
+> now, `deck_record.same_calculation`), and one door asks it of a run of
+> either calculation — for the gather, for a group copied in, and for a point
+> taken over.
+
+**Every stage it takes inputs from** closes the rule over the ladder: the
+device is copied in only with the seed and leads it was computed from, the
+transmission only with its device and leads — so a change that re-runs a lead
+(`electrode_kz`, § 1.2) re-runs everything computed from it, though the
+device's and the transmission's decks do not change. Within the finished
+calculation every run of a launched stage ran the same calculation
+(`job-system.md` R-P5), so a stage that is the same calculation is the same in
+every run of it.
+
+#### Describing it
+
+```bash
+molbuilder describe --calculation transport \
+    --reuses AuBDTAu/transport/lowbias_local \
+    --bundle AuBDTAu/transport/lowbias_wide
+```
+
+writes the new calculation from the finished one's records as they read now:
+its `task.json` — the junction citation, `swap_electrodes`, the bias list, the
+stages, the run and so its **label** — its template, and its job request with
+its run cards and groups; `reuses`, the finished calculation's folder,
+tree-relative (`job-contracts.md` § 6.1); its **composed junction** —
+`junction.xyz`, its sidecar, the cited deck and `slot-provenance.json`, read
+by the composition's one reader and written by its one writer
+(`compose.load_compose_record`, `compose.write_compose_record`) — so the
+junction is the finished one's, atom for atom, and is not composed again; and
+its **pseudopotentials**, `pseudos/`, which prep takes before any other
+source, so every deck reads the files the finished runs read. A flag beside
+`--reuses` sets what it sets on any describe. You then change what the new
+question asks, on the Transport tab before Describe or on Task setup after,
+as for any calculation. The describe copies no run.
+
+- **The label is the finished calculation's**: SIESTA's `SystemLabel` names
+  every file a deck reads and writes, and is engine input — decks under two
+  labels are never the same calculation (§ 6.1).
+- **A USER-CUSTOM zone is not carried**: the zone § 6.1's comparison merges is
+  the one in the deck this calculation's prep wrote, so a keyword typed into
+  the finished calculation's deck makes its rung run here, the keyword named
+  as the difference.
+- **The junction's citation is read as for any calculation** (§ 1.1, *The
+  first prep*): the record travels, and a cited pair edited since is refused
+  by name.
+
+Refused, before anything is written: a folder `--reuses` names that is not a
+transport calculation's — said in its description's own words; a new folder
+inside the finished calculation (§ 3.1, *A calculation's folder is its own*;
+`compose.refuse_inside_citation`); a new folder that holds a description, as
+every describe refuses.
+
+#### At prep — a group copied in, or prepared here
+
+Prep asks of each group it is to prepare, before it plans it, in the ladder's
+order — so a group's upstream is answered first, in this prep or an earlier
+one:
+
+| each member's newest run in the finished calculation | the group |
+|---|---|
+| finished — a rung of points: exactly the points this calculation describes, every one done; the same calculation as the deck rendered now; every stage it takes inputs from copied in | **copied in**, when every member's is |
+| another calculation, other points, an input from a stage this calculation does not copy in — each difference named; not finished, a point not done, not there — its state named | **prepared here**, as in any calculation |
+
+The run asked is the **newest**, as every hand-over asks (`job-system.md`,
+*The task*, D5). A folder `reuses` names that is not there answers every
+group *prepared here*, saying so.
+
+**A group copied in** has its stages' files prepared as any stage's — the
+decks rendered now, which are the decks the finished runs ran — and **every
+run of each member copied, under its own name**: `run-0` and `run-1` as they
+were, so every record inside them — what each run continued from, what each
+gathered, its launch record's — names a run that is here, the stages it
+gathered from being copied in too. The runs are copied as they are, their
+stamps among them, **but the engine's scratch** (`warmfiles.is_scratch`: the
+leads' surface Green's functions) and with each launch record copied last, so
+a copy cut short reads as a run never launched; beside each, **`.copied-from`**
+names the run it is a copy of, tree-relative as `reuses` is — a run the
+finished calculation copied in itself names the run its own `.copied-from`
+names, one hop. A run of the stage prepared here and never launched is
+removed first. The launch folder that sent the finished runs — its walk
+scripts and their logs — stays in the finished calculation.
+
+**A run copied in is a launched run of this calculation**, its launch record
+the one it was launched with: `status`, the gather, the ladder, the record and
+the Results tab read it as any finished run, saying *copied from* the run its
+`.copied-from` names. Its group is launched, and the next step is the first
+group not finished (`job-system.md`, *The next step*) — with every group copied
+in, `summarize task`. A group copied in is in no sequence of groups
+(`--one-job`): no job launches it. Changing what a member computes is then
+what it is for any launched stage (`job-system.md`, *How the checkpoint
+supports you*); its way back is the state saved before the prep that copied it
+in, whose note says so — `… · before prep task group 1 (seed, electrode_L,
+electrode_R), copied in from lowbias_local`.
+
+**A group prepared here** is prepared as in any calculation, and **a rung of
+points in it takes points over from the finished calculation at its first
+launch**, as a warm launch takes over its own done points (§ 2a.11): each
+point the finished calculation's newest run of the rung holds done, that ran
+the same calculation as this rung's deck at that point, and whose inputs this
+calculation copied in or took over from the same finished point — a
+transmission point's device point, taken over by this calculation's device
+run from the point that point gathered — is copied into the point's folder:
+the engine's files and the run's own account (its output, its ending, its
+monitor's records), but never its records of runs (`.continued-from`,
+`.gathered-from`), its folder's stamp or a launch record. Its records are this
+run's — what the gather gave the point, as for a point walked — and
+`.copied-from` names the point it is a copy of. The rest are walked, a new
+voltage starting from the closest converged voltage before it in its frame, a
+point taken over among them (§ 1.1, step 4). A point is a frame and a voltage,
+matched as such; a rung the finished calculation ran once is its 0 V point on
+each frame — so a calculation that leaves the low-bias approximation takes over
+the 0 V device and transmission points the finished one computed.
+
+**A narrower list** — every point the finished run holds and fewer, so
+nothing is left to walk — is refused at the launch as a warm launch with every
+point done is (R-L18), naming the cold launch: reuse answers a wider question.
+
+#### The manifest — what is copied, and what runs with the new request, before anything is written *(the user, 2026-10-22: "the user get a manifest of what will be copied over to continue as a new task with the new parameter request")*
+
+**One answer, composed once by prep's question and shown wherever a prep is
+asked about, before it writes**: for each group in the ladder's order, copied
+in — each run, where it comes from, how it ended and its size, and what of it
+is left behind — or prepared here, with what decided it: each difference of
+the new request as it reaches that rung, in the words of § 6.1's comparison,
+or the finished run's state. For a rung of points prepared here, the points
+its first launch will take over, from which run, and the points it will walk.
+Then the totals: what is copied now, and what the next save stores again.
+
+```text
+reuses AuBDTAu/transport/lowbias_local -- what this calculation copies, and what it runs
+  group 1  seed, electrode_L, electrode_R  copied in
+           01_seed/run-0          <- lowbias_local/01_seed/run-0          finished  0.4G
+           02_electrode_L/run-0   <- lowbias_local/02_electrode_L/run-0   finished  0.1G
+           03_electrode_R/run-0   <- lowbias_local/03_electrode_R/run-0   finished  0.1G
+  group 2  device                          copied in
+           04_device/run-0        <- lowbias_local/04_device/run-0        finished  2.6G  (tsgf/ left behind)
+  group 3  transmission                    prepared here -- its energies:
+           0 V    shares 401 of 601 energies with lowbias_local/05_transmission/run-0 -- computes 200 here
+  copied now: 3.2G -- the next save stores it again: 3.2G
+```
+
+- **On the terminal**, bare `prep task` lists it with the groups it offers, so
+  picking a group is agreeing to its copy; a prep that names its groups
+  (`--group N`) prints it with its answer.
+- **On Task setup**, the Preview shows it before Prep is pressed, and Prep
+  writes the plan the Preview showed (R-P14).
+- **Kept**: in the plan the folder holds in reading order (`STAGE-PLAN.md`,
+  under its table, where what each stage's first launch takes is said), and
+  in the ledger (`jobset-decisions.log`), a line for each copy and for each
+  point taken over.
+
+The take-over is the first launch's, and its launch shows its points and
+asks once, as every launch does (`job-system.md` § 6.0) — taken from the
+newest run it finds, which it says.
+
+#### A transmission point's energies — each computed once, shared only when exactly the same *(the user, 2026-10-22)*
+
+*(The user, 2026-10-22: "we should not do tricks about saving points, rather,
+it is an honest parameter reset - user could change window size, range, and
+point density, the only thing that is shared is the energy/density of
+states/device matrics (or anything else that could be shared)"; then, shown
+what a transmission point costs: "can we offer the option of detecting which
+points can be exactly shared and which ones must be recalculated?"; and "i
+agree with your recommendation" — strict sameness, nothing approximated.)*
+
+**The window is the person's, whole**: its range, its size and its point
+density are the transmission's own parameters, set as for any calculation,
+and a point's result is that grid — every energy of it. **What is shared is
+what is the same**: the seed's density, the leads' Hamiltonians, the device's
+converged density and energy-density matrices and its Hamiltonian, copied in
+with their runs — and, within a transmission point, **every energy the
+finished point computed exactly**. A transmission point costs its energies
+times its k-points, each energy independent of every other (§ 1.2), and can
+take days; an energy computed once is never computed again.
+
+**When a point shares energies**: a transmission point the finished
+calculation's newest run holds done, at the same frame and voltage, that is the
+same calculation as this rung's deck at that point **but for its energies** —
+this rung's deck rendered with the finished point's contour in place of its
+own is the same engine input (§ 6.1's door, asked unchanged) — and whose inputs
+are this run's (its device point copied in with the device's runs, or taken
+over from the point the finished point gathered; its leads copied in). Each
+energy of the new grid the finished point computed is then **shared**, the rest
+are computed here.
+
+**Exactly the same, and nothing else**: an energy is shared when the finished
+point computed that energy to floating-point precision — within 10⁻⁹ eV,
+against the energies its `.TBT.nc` keeps at full precision — never a nearby
+one: the transmission's narrowest features are as wide as its broadening, 10⁻⁴
+eV by default (the electrodes' 10⁻³ eV over ten, § 2a.13), so an energy a few
+10⁻⁶ eV away is another energy. A mid-rule grid holds another's energies
+exactly when it is that grid moved out by whole spacings at the same spacing —
+−2…2 eV at 401 points, extended by 100 spacings a side, is
+−2.99750623441397…2.99750623441397 eV at 601 — or that grid with each interval
+cut into an odd number (401 points → 1203). **Every transmission deck writes
+its window's ends at full precision** — tbtrans computes its energies from
+them, and an end rounded to five decimals is another energy; § 6.1 reads a
+value as a number, so `-2.00000` and `-2.0` are the same input.
+
+**What the point's run computes**: the energies not shared, listed with their
+weights on the new grid — mid-rule, the grid's spacing each — in a file beside
+the point's deck, which its contour names (`part user`, `file …`: tbtrans
+reads a contour's energies and weights from a file, `m_tbt_contour.F90`
+`contour_file`, `m_ts_io_ctype.f90`); prep writes both, as it writes every
+deck. A point that shares nothing runs its window as any point does; a point
+whose every energy is shared runs nothing.
+
+**Where the shared energies lie**: the finished point's files — the engine's
+and its run's account, never its records of runs — copied into a folder of
+the point's own, **`shared/`**, its name the layout's (`paths`) and its stamp
+the role `shared` ([`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.4a), its `.copied-from` naming the point that computed them; a finished
+point that itself shared energies is copied with its own `shared/` inside.
+
+**The point's result is the new grid, joined** — by one door, which every
+reader of a transmission point asks: the record (T(E), the DOS and its
+regions, the leads' DOS, the eigenchannels), a selection's PDOS, the data
+file and the Results report. Each energy is read from the run that computed
+it, in the grid's order, and the grid is the one described — so every point of
+the calculation lies on one grid. **A joined point's current is the
+record's**, by tbtrans's own rule — each energy's transmission, times its
+weight on the grid, times the two leads' Fermi functions' difference
+(`m_tbt_save.F90`) — since tbtrans's printed current covers its own run's
+energies alone; the record says, point by point, which current it gives
+(`current_from`: `tbtrans` for a point one run computed whole, `joined`).
+
+**The manifest says it, point by point**, with the time the finished point's
+own pace gives — its measured loop over its energies, on its machine and
+ranks:
+
+```text
+  group 3  transmission                    prepared here -- its energies:
+           v0.2   shares 401 of 601 energies with lowbias_local/05_transmission/run-0/v0.2 -- computes 200 here (about 3.0 days at the finished point's pace, 16 ranks on qlabsrv)
+```
+
+and a grid that shares nothing is said so, with the window at the same spacing
+that would share every energy — the person's to take or leave:
+
+```text
+           v0.2   shares none of 601 energies -- -3…3 eV at 601 points does not hold the finished point's 401; -2.99750623441397…2.99750623441397 eV at 601 would hold all 401
+```
+
+#### What is never copied
+
+- **The leads' surface Green's functions** (`tsgf/`): one bias, one run
+  (§ 2a.11) — a device point that runs here computes its own.
+- **A run not finished, or a point not done**: it runs here — to reuse it,
+  let it finish and prepare again.
+- **The launch folder** that sent the finished runs: their walk scripts and
+  logs stay where they ran.
+
+#### What it gives, and what it costs
+
+| the new question | copied in at prep | taken over at a first launch | runs here |
+|---|---|---|---|
+| the window changed — its range, its size, its point density | the seed, both leads, the device | — | at every transmission point, the energies the finished point did not compute; shared, those it did, exactly |
+| another transmission k-point grid, broadening or output | the seed, both leads, the device | — | the transmission, every point, every energy |
+| more voltages, self-consistent | the seed, both leads | the device's and the transmission's points already converged | each new voltage's device and transmission points |
+| more voltages, the low-bias approximation — while the window reaches ±(\|V\|/2 + 5 kT) of each (§ 1.2) | every rung: the bias list reaches no deck (§ 2a.10) | — | nothing: `summarize task` computes the new voltages' currents from T(E, 0) |
+| the low-bias approximation left for the self-consistent treatment | the seed, both leads | the 0 V device and transmission points | every other voltage's device and transmission points |
+| `electrode_kz`, or a value every stage shares | — | — | every rung |
+
+**The new calculation is whole**: its saved states, its download and its
+record hold everything it computed and copied, and the finished calculation
+can be moved or removed once every rung of points prepared here has had its
+first launch. **The copies are the price, and twice**: a device point's folder
+holds its `.TSDE`, its `.TS.HSX` and its own copies of the leads' `.TSHS` and
+the seed's density, a transmission point's its `.TBT.nc`, whose densities of
+states are kept for each k-point — about 0.2–0.3 GB and 0.6–0.9 GB a point on
+a junction of some 3000 orbitals, an estimate, not a measurement — and the next
+save of the folder's state stores what was copied again, by content
+(`checkpointing.md` § 9), so a reused GB is two in the new folder. Prep says
+the size of what it copies.
+
+#### On the page
+
+- **The Transport tab** — the junction card's picker takes, beside a finished
+  relaxation run and a structure pair, **a transport calculation's folder**.
+  The describe door answers its meta line — *TRANSPORT CALCULATION ·
+  lowbias_local · its junction, cited from …/run-2 · low-bias · 0.0, 0.2 V ·
+  −2…2 eV at 401 points · every group finished* — and the cards fill from it:
+  the shared panel and each rung's tab from its template and its rungs'
+  overrides, the bias list and the treatment from its description, each value
+  marked *from lowbias_local*; the rename is its own and is not offered.
+  **Describe** writes what `molbuilder describe --reuses` writes, through the
+  same writer ([`web/tabs.md`](?doc=web/tabs.md) § 4).
+- **Task setup** echoes `reuses` with the junction it shows, not editable here
+  ([`web/task-setup.md`](?doc=web/task-setup.md) § 3). Its **Preview** is
+  prep's answer, whole: each group *copied in* with its runs and size, or
+  *prepared here* and why, and for a rung of points the points its first
+  launch takes over — so what is copied, and what it costs, is seen before
+  anything is written ([`web/task-setup.md`](?doc=web/task-setup.md) § 11.1).
+- **The Results tab** reads a run copied in as any run of the calculation,
+  *copied from* beside its state on the ladder, and the report's provenance
+  naming the run that computed each rung and point
+  ([`web/results.md`](?doc=web/results.md) § 2.4).
+
+#### What stays yours
+
+- **Whether a finished result is worth reusing** — as for any run you build on
+  (`job-system.md`, *What stays yours*).
+- **The finished calculation, while it is read** — at the prep that copies,
+  and at the first launch of a rung of points that takes points over. Launched
+  again or restored between the two, that launch takes from the newest run it
+  finds, and says which. No verb of the new calculation writes in it; the one
+  write any reader of a run may make — the run door's record of a run that
+  ended unseen ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) —
+  is the finished calculation's own.
+
+#### Within one calculation, and what this adds
+
+A calculation that reuses nothing is unchanged. Reusing a finished one adds
+**two acts** — a group copied in at prep, every run of its members; and a
+transmission point's shared energies copied into its `shared/`, the rest
+computed and the two joined by one door — and **widens one**: a rung of
+points' first launch takes points over from the finished calculation's newest
+run, as a warm launch takes them over from its own. Each copies, and every
+record they leave names a run of this calculation; `.copied-from` alone names
+the finished one.
+
 ## 3. How to run it (the CLI)
 
 The road is the composite, through the ordinary `jobset` verbs:
@@ -2942,6 +3844,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 | Command | Does | Code |
 |---|---|---|
 | `molbuilder describe --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
+| `molbuilder describe --calculation transport --reuses <finished>` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole (§ 2a.16) — *designed, not built* | — |
 | `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points; several `--group` as one job launching each in turn, each rung gathering from the runs the groups before it just finished (`job-system.md` § 6.0, *A sequence of groups*) | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
@@ -4777,7 +5680,7 @@ file.** The keyword prefix says which program a line is for:
 | prefix | the program | the rung | what it does |
 |---|---|---|---|
 | `TS.*` | **TranSIESTA** — `siesta` itself, switched into NEGF mode by `SolutionMethod transiesta` | the **device** | solves the junction self-consistently with the two leads attached as semi-infinite reservoirs, at one bias; writes the converged Hamiltonian, `<label>.TS.HSX` |
-| `TBT.*` | **TBtrans** — the separate `tbtrans` program | the **transmission** | no self-consistency: reads the device's converged Hamiltonian and the leads' `.TSHS`, and computes T(E) on an energy grid — plus, when asked, densities of states and eigenchannels. Cheap, so it is re-run freely against an unchanged device |
+| `TBT.*` | **TBtrans** — the separate `tbtrans` program | the **transmission** | no self-consistency: reads the device's converged Hamiltonian and the leads' `.TSHS`, and computes T(E) on an energy grid — plus, when asked, densities of states and eigenchannels. No SCF, so it is run again against an unchanged device with no NEGF cycle |
 
 The electrode rungs also carry one `TS.*` keyword, `TS.HS.Save`, which makes a
 lead's ordinary SIESTA run write the `.TSHS` the device attaches.

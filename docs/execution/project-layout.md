@@ -512,7 +512,7 @@ would be a second home for one fact.
   "of":     "../.." }
 ```
 
-* **`role` is `container`, `run` or `scratch`** — § 1.4's two words, and the one folder that is neither: a device run's `tsgf/`, the engine's scratch of the run above it (invariant 6b; [`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
+* **`role` is `container`, `run` or `scratch`** — § 1.4's two words, and the one folder that is neither: a device run's `tsgf/`, the engine's scratch of the run above it (invariant 6b; [`engines/transport.md`](?doc=engines/transport.md) § 2a.11). *Designed, not built:* **`shared`** — a transmission point's `shared/`, the energies it shares with the finished calculation it reuses, copied from the point that computed them ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*).
 * **`of` is relative, always** — to the calculation root. That is what survives
   renaming or moving a whole calculation, and it is the convention
   `.gathered-from` already uses for the same reason. Copy an attempt out on its
@@ -793,7 +793,7 @@ are exactly two.**
 | a new… | exists because | so it holds |
 |---|---|---|
 | **stage directory** — `02_tight/` | **the science changed** — a threshold, a tolerance, a method | its own rendered deck and wrapper |
-| **run directory** — `run-1/` | **you launched the stage again** — warm, continuing the previous run, or `--cold`, from nothing | only what that invocation produced |
+| **run directory** — `run-1/` | **you launched the stage again** — warm, continuing the previous run, or `--cold`, from nothing; or a transport calculation copied it in, whole, from a finished one it reuses ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*) | only what that invocation produced |
 
 **That is the whole rule, and it is deliberately the whole rule.** The contract
 stays small; the **directory structure** carries the flexibility. You can read a
@@ -963,7 +963,10 @@ script is told the run's own label — a trial's is the trial's. `prep` seeds a
 stage's first run's progress channel, the preview a viewer finds before the
 run starts; a later run's progress is its engine's own.
 
-**`prep` opens only a first run.** A stage prepared and **never launched** is
+**`prep` opens only a first run** — and, for a transport calculation that
+reuses a finished one, copies in whole the runs of each group it reuses, each
+under its own name, opening none ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.16; *designed, not built*). A stage prepared and **never launched** is
 prepared again, its group whole: its `run-0` emptied and filled anew
 (§ 1.6.3), its files rendered anew. A launched one is prepared again only for
 its job request, on the hierarchical layout, and opens no run
@@ -1118,6 +1121,15 @@ folder names make the choice visible afterwards.
 
 This is the same shape one level down: a stage launched again — `run-1` after
 `run-0` — copies from its own latest run, warm, for the same reason.
+
+And one calculation across: a transport calculation that reuses a finished one
+copies in, at its prep, every run of each group it reuses — each under its own
+name, so every record inside names a run that is here, the engine's scratch
+left behind, `.copied-from` naming the run it is a copy of — and a rung of
+points it prepares takes the finished calculation's converged points over at
+its first launch, their engine's files and account, never their records of
+runs; every record they leave names a run of this calculation ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.16; *designed, not built*).
 
 > **Launching again, on disk** — the rule (warm by default, `--cold`, a stage
 > whose kind takes nothing from a run of its own) is

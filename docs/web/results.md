@@ -46,6 +46,7 @@ flowchart LR
 | **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize task` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
 | **a folder not marked as part of a calculation** | whatever result it holds, read alone | as above | as above |
 | **a device run's `tsgf/`** (role `scratch`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | nothing: the sidebar says *the engine's scratch of the run above* and lists what it holds; no file in it opens | — | — |
+| **a transmission point's `shared/`** (role `shared`; *designed, not built* — [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | the point's report, as the point above it opens: the sidebar says *the energies this point shares with* the point its `.copied-from` names | — | — |
 
 **A single run and a higher-level report are different by nature.** A run is
 reported from its own files. A ladder, a benchmark and a transport calculation
@@ -435,7 +436,11 @@ its own job's run by its points instead, [`execution/job-system.md`](?doc=execut
 has started; *finished* once every point's run finished, converged or not —
 its converged column says *SCF NO* when one did not — else *failed*; its
 detail counts the points done and names the first not done
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). A run a
+transport calculation copied in from a finished one it reuses is shown as any
+run, *copied from* the run its `.copied-from` names beside its state
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not
+built*).
 
 The page's empty-state card draws it: one row per rung in ladder order, the
 state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
