@@ -878,6 +878,21 @@ energies* — drafted 2026-10-22, two review rounds folded in (the second
 replaced a contour file named by a hash of its energies with contours in the
 deck, which § 6.1's door reads as it is).
 
+**The window fitted to the finished grid, and the default** *(the user,
+2026-10-22: "can't we use "old point gap" and target window to automatically
+generate that list? i would agree to your recommendation of default numbers
+for starting, but we are working on the "expanding" design")*: in a
+calculation that reuses a finished one, the person states the range (and,
+finer, an odd factor) and one door fits the grid to the finished point's
+spacing and alignment, outward by whole spacings until the range is covered —
+`transport.window.fitted`, asked by `describe --reuses … --window a,b
+[--finer n]` and by the page's *use these* beside the window; written as
+fitted, never applied to a typed window (§ 2a.16, *A wider window, fitted to
+the finished grid*). **The catalogue's default window becomes −2.005…2.005 eV
+at 401 points** — the energies on the 0.01 eV lattice, E_F among them, a
+fitted −3…3 then −3.005…3.005 at 601 — for new calculations; a template keeps
+what it records.
+
 **The decisions, as they were put** (REUSE-COPY taken; WINDOW-SPLIT superseded by the energies' rule above):
 
 | | the question | the draft | the other way |
@@ -892,7 +907,11 @@ decided before a group is planned, the gather's three gates made one door the
 copy-in and the take-over ask, the take-over's source widened, `.copied-from`
 and its catalogue row (`runfiles.WRITTEN`, which also names describe among the
 junction files' writers), the way back's copied branch, the page's lines; and
-the energies — the window's ends at full precision, the new energies as
+the window fitted to the finished grid (`transport.window.fitted`, describe's
+`--window` and `--finer`, the page's *use these*); the catalogue's default
+window −2.005…2.005 eV at 401 points (its second home in `config/siesta.py`,
+and the tests that hold 401); the energies — the window's ends at full
+precision, the new energies as
 line contours in the deck with its comment naming the finished point, the
 per-point decision read back from the deck for a launched point, the
 `shared/` copy at every launch that walks a sharing point and its role

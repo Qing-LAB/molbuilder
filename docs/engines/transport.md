@@ -3712,6 +3712,39 @@ the same input. The energies of two runs agree to rounding (10⁻¹⁵ eV), and
 the 10⁻⁹ eV holds while SIESTA and sisl convert Ry and eV by the same
 CODATA factors; a build that does not shares nothing, which is safe.
 
+**A wider window, fitted to the finished grid** *(the user, 2026-10-22:
+"can't we use "old point gap" and target window to automatically generate
+that list? … we are working on the "expanding" design")*. In a calculation
+that reuses a finished one, **you state the window you want — its range, and,
+to go finer, how many times finer, an odd number so every finished energy
+stays a point — and molbuilder fits the grid to the finished point's**: its
+spacing, over that factor, and its alignment, extended outward by whole
+spacings until the range you asked is covered. Every finished energy is then
+a point of the new grid and every new energy lies at the same spacing, so the
+transmission computes the new energies alone. One door fits it
+(`transport.window.fitted`: the finished grid, the range asked, the factor →
+the window's ends and its point count), and what it answers is what the
+template holds, recorded as fitted with the range asked beside it (its
+provenance, `template.SAID`) and said where it is fitted:
+
+```text
+transmission window: -3…3 eV asked, fitted to the finished grid -- -3.00748…3.00748 eV at 603 points, 0.009975 eV apart, every one of its 401 energies kept
+```
+
+- **Where it is asked**: `molbuilder describe --reuses <finished> --window
+  -3,3 [--finer 3]`; and on the Transport tab and Task setup, the
+  transmission window of a calculation that reuses one offers the fit beside
+  its fields — the range asked, the fitted ends and count, and *use these*,
+  which writes them. A window typed value by value stays as typed and shares
+  what it shares; nothing is fitted unasked.
+- **With the catalogue's default** — −2.005…2.005 eV at 401 points, the
+  energies on the 0.01 eV lattice, E_F among them (the user, 2026-10-22: *"i
+  would agree to your recommendation of default numbers for starting"*) — a
+  window fitted to −3…3 eV is −3.005…3.005 eV at 601 points.
+- **The finished grid is read from its point's `.TBT.nc`**, at full precision,
+  through the door that reads a point's energies (below) — its spacing and
+  where its energies lie, never its deck's rounded ends.
+
 **What the point's run computes**: the energies its grid holds that the
 finished point does not — **written in its deck as line contours**, each a
 run of those energies at one spacing (`part line`, `from … to …` at full
@@ -3774,12 +3807,11 @@ measured beside it is that run's.
            0 V    shares 401 of 601 energies with lowbias_local/05_transmission/run-0 -- computes 200 here
 ```
 
-and a grid that shares nothing is said so, with the window at the same
-spacing that would hold every energy of the finished point's — the person's
-to take or leave:
+and a grid typed value by value that shares nothing is said so, with the
+window fitted to the range it asks — the person's to take or leave:
 
 ```text
-           0 V    shares none -- -3…3 eV at 601 points holds none of the finished point's 401; -2.997506234413965…2.997506234413965 eV at 601 would hold all 401
+           0 V    shares none -- -3…3 eV at 601 points holds none of the finished point's 401; fitted to the finished grid: -3.00748…3.00748 eV at 603 points, holding all 401
 ```
 
 #### What is never copied
