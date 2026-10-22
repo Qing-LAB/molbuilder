@@ -1899,16 +1899,19 @@ def test_a_frame_sets_record_has_a_point_per_frame_and_voltage(junction):
 
 def _frame_curves(run, label, volts):
     """Each frame's T(E) at ``volts``, read from the transmission TBtrans
-    wrote at that frame's point, through its parser."""
+    wrote at that frame's point, through its parser -- its energies at the
+    full precision of the point's `.TBT.nc`, which the `.TBT.AVTRANS` prints
+    to five decimals (§ 2a.12, *the data file*)."""
     from molbuilder.parse.engines.tbtrans import transmission_files
     from molbuilder.transport.record import parse_avtrans
+    from molbuilder.transport.tbtnc import energies_of
     from molbuilder.transport.transiesta import LEAD_PAIR
     curves = []
     for f in range(_N_FRAMES):
-        files = transmission_files(
-            _frame_point(run, "05_transmission", f, volts), label,
-            LEAD_PAIR)
-        energies, t = parse_avtrans(files["unpolarized"][0].read_text())
+        point = _frame_point(run, "05_transmission", f, volts)
+        files = transmission_files(point, label, LEAD_PAIR)
+        _printed, t = parse_avtrans(files["unpolarized"][0].read_text())
+        energies = energies_of(point, label)
         curves.append(np.asarray(t, dtype=float))
     return np.asarray(energies, dtype=float), curves
 
@@ -2818,3 +2821,353 @@ def test_the_results_tab_opens_a_transmission_folder_at_its_point(
         page.wait_for_function("() => window.__announced >= 1",
                                timeout=30000)
         assert page.evaluate(mine), "the rescan undid the point you picked"
+
+
+# --------------------------------------------------------------------- #
+#  A calculation that reuses this one (`engines/transport.md` § 2a.16)   #
+# --------------------------------------------------------------------- #
+
+#: The fitted window's range asked -- wider than the catalogue's, so the
+#: transmission computes only what lies outside the finished grid.
+_WIDER = (-3.0, 3.0)
+
+
+@pytest.fixture(scope="module")
+def reused(junction, tmp_path_factory):
+    """Calculations that reuse the finished one, `P/transport/T`, each made
+    on the road as a person makes it (`engines/transport.md` § 2a.16): the
+    same question, every group copied in; the voltage list widened, the
+    device's and the transmission's done points taken over and the new one
+    walked -- the transmission prepared while the device, prepared before
+    it, has not launched; then that list narrowed, refused; the window
+    fitted wider, each transmission point computing the energies the
+    finished one did not; the low-bias approximation, and its window fitted
+    wider, the transmission that runs once sharing as its one point; and
+    the Transport tab's describe of a calculation reused.  And what a folder
+    that cannot be reused is refused with."""
+    from molbuilder.web.app import create_app
+    from support.real_runs import RealRun, Said, _road_at, _taken, _typed
+    from support.road import molbuilder
+
+    finished = "P/transport/T"
+    out = {}
+
+    def described(name, *flags, reuses=finished):
+        r = molbuilder("describe", "--calculation", "transport",
+                       "--reuses", reuses, "--bundle",
+                       f"P/transport/{name}", *flags)
+        made = RealRun(tree=junction.tree,
+                       bundle=junction.tree / "P" / "transport" / name)
+        made.said["describe"] = Said(r.exit_code, r.output)
+        assert r.exit_code == 0, r.output
+        return made
+
+    # EVERY GROUP OF THE DEFAULTS (1 1 1 2 3), named at one prep.
+    every_group = ("--group", "1", "--group", "2", "--group", "3")
+
+    with _road_at(junction.tree.parent, tmp_path_factory):
+        # REFUSED BEFORE ANYTHING IS WRITTEN.
+        out["refused"] = {}
+        for step, flags, folder in (
+                ("not transport", ("--reuses", "P/opt/J"), "P/transport/R1"),
+                ("inside", ("--reuses", finished), f"{finished}/inner"),
+                ("its label", ("--reuses", finished, "--name", "R"),
+                 "P/transport/R3")):
+            r = molbuilder("describe", "--calculation", "transport",
+                           *flags, "--bundle", folder)
+            out["refused"][step] = (Said(r.exit_code, r.output),
+                                    (junction.tree / folder).exists())
+
+        # THE SAME QUESTION: every group copied in.
+        same = described("same")
+        _typed(same, "prep bare", "prep", "task")
+        _taken(same, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        _taken(same, "status", "status")
+        _taken(same, "summarize", "summarize", "task")
+        out["same"] = same
+
+        # MORE VOLTAGES, SELF-CONSISTENT: the done points taken over.
+        wider = described("wider", "--bias", "0.0,0.2,0.4",
+                          "--no-low-bias-approximation")
+        _typed(wider, "prep bare", "prep", "task")
+        _taken(wider, "prep", "prep", "task", "--group", "1", "--group", "2",
+               "--target", "this")
+        _taken(wider, "prep transmission", "prep", "task", "--group", "3",
+               "--target", "this")
+        for g, stage in ((2, "device"), (3, "transmission")):
+            _taken(wider, f"launch {stage}", "launch", "task", "--group",
+                   str(g), "--mode", "direct", "--foreground", "--yes")
+        _taken(wider, "status transmission", "status", "transmission")
+        _taken(wider, "summarize", "summarize", "task")
+        out["wider"] = wider
+
+        # ...THAT LIST NARROWED AGAIN, reusing the wider one: nothing left
+        # to walk.
+        r = molbuilder("describe", "--calculation", "transport", "--reuses",
+                       "P/transport/wider", "--bundle", "P/transport/narrow",
+                       "--bias", "0.0,0.2", "--no-low-bias-approximation")
+        assert r.exit_code == 0, r.output
+        narrow = RealRun(tree=junction.tree,
+                         bundle=junction.tree / "P" / "transport" / "narrow")
+        _taken(narrow, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        _typed(narrow, "launch device", "launch", "task", "--group", "2",
+               "--mode", "direct", "--foreground", "--yes")
+        out["narrow"] = narrow
+
+        # THE WINDOW FITTED WIDER: each point computes what the finished
+        # one did not.
+        fitted = described("fitted", "--window",
+                           f"{_WIDER[0]:g},{_WIDER[1]:g}")
+        _typed(fitted, "prep bare", "prep", "task")
+        _taken(fitted, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        _taken(fitted, "launch transmission", "launch", "task", "--group",
+               "3", "--mode", "direct", "--foreground", "--yes")
+        _taken(fitted, "summarize", "summarize", "task")
+        out["fitted"] = fitted
+
+        # THE LOW-BIAS APPROXIMATION -- the device and the transmission run
+        # once -- then its window fitted wider: the transmission that runs
+        # once shares as its one point.
+        lowbias = described("lowbias", "--low-bias-approximation")
+        _typed(lowbias, "prep bare", "prep", "task")
+        _taken(lowbias, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        for g in ("2", "3"):
+            _taken(lowbias, f"launch group {g}", "launch", "task", "--group",
+                   g, "--mode", "direct", "--foreground", "--yes")
+        lowfit = described("lowfit", "--window",
+                           f"{_WIDER[0]:g},{_WIDER[1]:g}",
+                           reuses="P/transport/lowbias")
+        _typed(lowfit, "prep bare", "prep", "task")
+        _taken(lowfit, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        _taken(lowfit, "launch transmission", "launch", "task", "--group",
+               "3", "--mode", "direct", "--foreground", "--yes")
+        _taken(lowfit, "summarize", "summarize", "task")
+        out["lowbias"], out["lowfit"] = lowbias, lowfit
+
+        # THE TRANSPORT TAB'S DESCRIBE of the finished calculation's folder.
+        client = create_app(config={}).test_client()
+        page = junction.tree / "P" / "transport" / "page"
+        page.mkdir()
+        a = client.get(f"/api/transport/describe_attempt?path={finished}")
+        # THE SHARED PANEL AS THE PAGE SENDS IT, nothing changed: each field
+        # as it is drawn, a blank one null (`formSchema.collectForm`).
+        sch = client.get(f"/api/transport/schema?engine=siesta&surface=shared"
+                         f"&reuses={finished}").get_json()["schema"]
+        shared = {f["name"]: f.get("value") for sec in sch["sections"]
+                  for f in sec["fields"]}
+        d = client.post("/api/transport/describe", json=dict(
+            engine="siesta", name="page", junction=a.get_json()["citation"],
+            reuses=finished, bias=[0.0, 0.2], low_bias_approximation=False,
+            dest=str(page), stages={}, shared=shared))
+        out["page"] = (a.get_json(), d.status_code, d.get_json(), page)
+    out["finished"] = junction
+    return out
+
+
+def _runs_of(made, stage):
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.paths import attempt_dir, attempts_in
+    from molbuilder.task import of as task_of
+    home = stage_home(made.bundle, task_of(made.bundle), stage)
+    return [attempt_dir(home.dir, n) for n in attempts_in(home.dir)]
+
+
+def test_a_folder_that_cannot_be_reused_is_refused_before_anything_is_written(
+        reused):
+    """`engines/transport.md` § 2a.16, *Describing it*: refused before
+    anything is written -- a folder that is not a transport calculation's, a
+    new folder inside the finished calculation -- and a flag naming what the
+    finished calculation fixes, its label."""
+    for step, words in (("not transport", "is not a transport calculation"),
+                        ("inside", "is inside the finished calculation"),
+                        ("its label", "the label is the finished "
+                                      "calculation's")):
+        said, written = reused["refused"][step]
+        assert said.exit_code != 0 and words in said.output, (step, said)
+        assert not written, step
+
+
+def test_the_same_question_copies_every_group_in(reused):
+    """§ 2a.16, *At prep*: every member's newest run finished and the same
+    calculation as the deck rendered now -- every group copied in, each run
+    under its own name with its `.copied-from` naming the finished run and
+    its launch record; the manifest said with the groups bare `prep task`
+    offers; the runs read as finished runs of this calculation, *copied
+    from*; and the record is the finished one's."""
+    import json
+    from molbuilder.runrecord import read_copied_from
+    from molbuilder.transport.stages import TRANSPORT_STAGES
+    same, finished = reused["same"], reused["finished"]
+    bare = same.said["prep bare"].output
+    for stage in TRANSPORT_STAGES:
+        assert f"{stage}" in bare
+    assert bare.count("copied in") == 3, bare
+    for stage in TRANSPORT_STAGES:
+        mine, theirs = _runs_of(same, stage), _runs_of(finished, stage)
+        assert [r.name for r in mine] == [r.name for r in theirs], stage
+        for r in mine:
+            assert read_copied_from(r) == (
+                f"P/transport/T/{r.parent.name}/{r.name}"), r
+            assert (r / "run.json").is_file(), r
+    status = same.said["status"].output
+    assert status.count("copied from P/transport/T/") == 5, status
+    a = json.loads((finished.bundle / "T.transport.json").read_text())
+    b = json.loads((same.bundle / "T.transport.json").read_text())
+    for pa, pb in zip(a["points"], b["points"]):
+        assert pb["transmission"] == pa["transmission"]
+        assert pb["current_a"] == pa["current_a"]
+        assert pb["current_from"] == "tbtrans"
+
+
+def test_more_voltages_take_the_finished_points_over(reused):
+    """§ 2a.16, *At prep* and *What it gives*: more voltages, self-
+    consistent -- the seed and both leads copied in; at its first launch
+    each rung of points takes over the finished calculation's done points,
+    the same calculation given the same inputs, and walks the new voltage
+    from the closest converged one before it; each point taken over names
+    the finished point; the ledger keeps a line for each."""
+    import json
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.runrecord import read_copied_from
+    wider, finished = reused["wider"], reused["finished"]
+    # THE FINISHED CALCULATION'S NEWEST RUN of each rung -- its device was
+    # launched again cold, so its newest is not its first.
+    newest = {stage: _runs_of(finished, stage)[-1]
+              for stage in ("device", "transmission")}
+    shown = {stage: f"T/{r.parent.name}/{r.name}"
+             for stage, r in newest.items()}
+    bare = wider.said["prep bare"].output
+    for stage in ("device", "transmission"):
+        assert (f"{stage}: takes over 0 V, 0.2 V from {shown[stage]}; walks "
+                f"0.4 V") in bare, bare
+    # ...AND SO WHEN THE TRANSMISSION IS PREPARED while the device, prepared
+    # by the prep before, has not launched: its points as they will be.
+    later = wider.said["prep transmission"].output
+    assert (f"transmission: takes over 0 V, 0.2 V from "
+            f"{shown['transmission']}; walks 0.4 V") in later, later
+    device = wider.said["launch device"].output
+    assert f"takes over 0 V, 0.2 V from {shown['device']}" in device
+    assert "runs 0.4 V (from 0.2 V's T.TSDE)" in device
+    for stage in ("device", "transmission"):
+        run = _runs_of(wider, stage)[0]
+        assert read_copied_from(run / "v0") == f"P/transport/{shown[stage]}/v0"
+        assert read_copied_from(run / "v0.4") is None
+    taken = [json.loads(x) for x in (wider.bundle / LEDGER_FILE)
+             .read_text().splitlines() if '"taken over"' in x]
+    assert sorted((t["stage"], t["point"]) for t in taken) == [
+        ("device", "0 V"), ("device", "0.2 V"),
+        ("transmission", "0 V"), ("transmission", "0.2 V")]
+    rec = json.loads((wider.bundle / "T.transport.json").read_text())
+    assert [p["bias_v"] for p in rec["points"]] == [0.0, 0.2, 0.4]
+    assert [bool(p.get("copied_from")) for p in rec["points"]] == [
+        True, True, False]
+
+
+def test_a_narrower_list_is_refused_naming_the_cold_launch(reused):
+    """§ 2a.16: every point the finished run holds and fewer, so nothing is
+    left to walk -- refused at the launch, naming the cold launch."""
+    said = reused["narrow"].said["launch device"]
+    assert said.exit_code != 0
+    assert "nothing to run" in said.output and "--cold" in said.output
+
+
+def test_a_fitted_window_computes_only_the_energies_the_finished_point_did_not(
+        reused):
+    """§ 2a.16, *A transmission point's energies* and *A wider window,
+    fitted*: the window asked fitted to the finished grid -- every finished
+    energy a point of it, recorded as fitted; each transmission point
+    shares the energies the finished point computed and computes the rest,
+    as line contours in its deck; its `shared/` holds the finished point's
+    files and their record; and the point's result is its grid, joined --
+    every energy of it, T(E) at the shared energies the finished point's,
+    its current the record's, said so."""
+    import json
+    import numpy as np
+    from molbuilder.runrecord import read_copied_from
+    from molbuilder.transport.energies import grid
+    fitted, finished = reused["fitted"], reused["finished"]
+    said = fitted.said["describe"].output
+    # THE CATALOGUE'S DEFAULT WINDOW, -2.005…2.005 eV at 401 points,
+    # fitted to -3…3 eV (the contract's own example) -- the transmission's
+    # own values, where the page's *use these* writes them.
+    assert ("-3…3 eV asked, fitted to the finished grid -- "
+            "-3.00500…3.00500 eV at 601 points") in said, said
+    own = next(st["overrides"] for st in json.loads(
+        (fitted.bundle / "task.json").read_text())["stages"]
+               if st["name"] == "transmission")
+    bare = fitted.said["prep bare"].output
+    assert bare.count("shares 401 of 601 energies") == 2, bare
+    assert bare.count("computes 200 here") == 2, bare
+    run = _runs_of(fitted, "transmission")[0]
+    for pt in ("v0", "v0.2"):
+        assert read_copied_from(run / pt / "shared") == (
+            f"P/transport/T/05_transmission/run-0/{pt}")
+    window = grid(own["transmission_emin_ev"], own["transmission_emax_ev"],
+                  own["transmission_n_points"])
+    a = json.loads((finished.bundle / "T.transport.json").read_text())
+    b = json.loads((fitted.bundle / "T.transport.json").read_text())
+    for pa, pb in zip(a["points"], b["points"]):
+        e = np.asarray(pb["energy_ev"])
+        assert e.size == 601 and np.max(np.abs(e - window)) < 1e-9
+        at = [int(np.argmin(np.abs(e - x))) for x in pa["energy_ev"]]
+        assert np.array_equal(np.asarray(pb["transmission"])[at],
+                              pa["transmission"])
+        assert pb["current_from"] == "joined"
+        assert pb["current_a_printed"] is None
+        assert pb["shared"]["held"] == 401 and pb["shared"]["computed"] == 200
+        if pa["current_a"]:
+            assert abs(pb["current_a"] / pa["current_a"] - 1) < 1e-4
+
+
+def test_a_transmission_that_runs_once_shares_as_its_one_point(reused):
+    """§ 2a.16, *A transmission point's energies*: under the low-bias
+    approximation the transmission runs once -- its one point, the run
+    itself -- and shares the energies the finished run computed, its
+    `shared/` in its run's folder, its result its grid joined; and a rung
+    the finished calculation ran at points, run once here, is prepared here,
+    said so."""
+    import json
+    from molbuilder.runrecord import read_copied_from
+    lowbias, lowfit = reused["lowbias"], reused["lowfit"]
+    bare = lowbias.said["prep bare"].output
+    assert ("holds the points 0 V, 0.2 V; this calculation runs it once, "
+            "at 0 V") in bare, bare
+    bare = lowfit.said["prep bare"].output
+    assert ("0 V    shares 401 of 601 energies with "
+            "lowbias/05_transmission/run-0 -- computes 200 here") in bare, bare
+    run = _runs_of(lowfit, "transmission")[0]
+    assert read_copied_from(run / "shared") == (
+        "P/transport/lowbias/05_transmission/run-0")
+    (point,) = json.loads((lowfit.bundle / "T.transport.json").read_text()
+                          )["points"]
+    assert point["n_energies"] == 601 and point["current_from"] == "joined"
+    assert point["shared"] == {
+        "from": "P/transport/lowbias/05_transmission/run-0", "held": 401,
+        "computed": 200}
+
+
+def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):
+    """§ 2a.16, *On the page*: the junction card's picker takes a transport
+    calculation's folder -- the describe door answers its meta line, its
+    junction's citation and `reuses` -- and Describe writes what `molbuilder
+    describe --reuses` writes: its description with `reuses`, its template
+    as the panel left it, its composed junction and its
+    pseudopotentials."""
+    import json
+    attempt, code, answer, page = reused["page"]
+    assert attempt["reuses"] == "P/transport/T"
+    assert attempt["summary"].startswith("TRANSPORT CALCULATION · T · ")
+    assert code == 200 and answer["ok"], answer
+    task = json.loads((page / "task.json").read_text())
+    assert task["reuses"] == "P/transport/T"
+    # NOTHING CHANGED ON THE PANEL, nothing changed in the template: each
+    # value and whose it is, as the finished calculation's.
+    assert ((page / "T.template.toml").read_text()
+            == (reused["finished"].bundle / "T.template.toml").read_text())
+    for f in ("junction.xyz", "slot-provenance.json", "H.psml"):
+        assert (page / f).is_file(), f

@@ -203,7 +203,10 @@ def done(folder, names, *, launch=None, products=(),
     from the folder's own files: it **finished** (the one status door,
     :func:`usable`); its run **converged** where it has an SCF or a
     relaxation (the same scan, `RunStatus.verdict`); and it **holds**
-    ``products`` -- what the rungs downstream take from it.  ``launch`` is
+    ``products`` -- what the rungs downstream take from it -- and, a
+    transmission point that shares energies with a finished calculation's
+    point, its ``shared/`` with its ``.copied-from`` (`engines/transport.md`
+    § 2a.16).  ``launch`` is
     the launch record the folder's run was sent with (a point's is its
     run's), and ``launched_in`` the folder it lies in when not ``folder``
     (a point's run's folder; `run_status`)."""
@@ -224,6 +227,12 @@ def done(folder, names, *, launch=None, products=(),
     missing = [_said(p) for p in products if not _held(folder, p)]
     if missing:
         return False, f"finished without {', '.join(missing)}"
+    from ..runfiles import COPIED_FROM_FILE
+    from ..transport.energies import SHARED_DIR, sharing_of
+    if (not (folder / SHARED_DIR / COPIED_FROM_FILE).is_file()
+            and sharing_of(folder) is not None):
+        return False, (f"finished without the energies it shares "
+                       f"({SHARED_DIR}/ holds no {COPIED_FROM_FILE})")
     return True, "done"
 
 
@@ -760,15 +769,18 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
 def point_rows(run, names, task, stage: str, *, launch, products, base):
     """A SWEPT RUN'S POINTS AS `status` READS THEM -- `StageStatus.points`'
     rows for ``run``: the folder each ran in, whether it is done, what it
-    started from (its `.continued-from`) and what it alone took (its
-    `.gathered-from`, beyond the run's own gather).  The one per-point
+    started from (its `.continued-from`), what it is a copy of -- a point
+    taken over from the finished calculation this one reuses, or of a run
+    copied in whole (`runrecord.copied_of`, `engines/transport.md`
+    § 2a.16) -- and what it alone took (its `.gathered-from`, beyond the
+    run's own gather).  The one per-point
     reader (`engines/transport.md` § 2a.11): the status door asks it for a
     stage's latest run, the record for the run a transmission gathered
     (§ 2a.12), so the two never read a point two ways.  Returns ``(rows,
     running)``, the second whether any point not done is running."""
     from ..parse.dirs import run_status
     from ..transport.stages import points_in
-    from ..runrecord import read_continued_from
+    from ..runrecord import copied_of, read_continued_from
     gathered = gathered_lines(run)
     pts, running = [], False
     for pdir, pt in points_in(run, task, stage, base=base):
@@ -794,13 +806,17 @@ def point_rows(run, names, task, stage: str, *, launch, products, base):
             # its reader's words -- never read as a start, and never the
             # whole status.
             src, unread = None, str(exc)
+        try:
+            copied = copied_of(base, pdir) if opened else None
+        except LaunchRecordError as exc:
+            copied, unread = None, str(exc)
         took = [g for g in gathered_lines(pdir) if g not in gathered]
         pts.append({**pt.to_wire(),
                     "point": pt.words(), "folder": f"{run.name}/{pt.rel}",
                     "state": state, "done": ok, "why": why,
                     "opened": opened, "converged": converged,
                     "started_from": src, "start_unread": unread,
-                    "took": took})
+                    "copied_from": copied, "took": took})
     return pts, running
 
 
@@ -841,10 +857,13 @@ def taken_over(p, here) -> bool:
 
 def _walked_here(pts, run: Path, base: Path) -> list:
     """The points ``run`` walks itself -- every point but those it took
-    over from an earlier run (:func:`taken_over`)."""
+    over from an earlier run (:func:`taken_over`) and those copies of the
+    finished calculation's points (`engines/transport.md` § 2a.16): taken
+    over from it, or a run copied in whole, which walks none."""
     from ..runrecord import RunRef
     here = RunRef.at(base, run)
-    return [p for p in pts if not (p["done"] and taken_over(p, here))]
+    return [p for p in pts if not (p["done"] and (taken_over(p, here)
+                                                  or p.get("copied_from")))]
 
 
 def gathered_lines(folder) -> List[str]:
@@ -866,7 +885,8 @@ def points_state(run, names, task, stage: str, *, launch, products, base
     § 2a.11): ``running`` while a point runs, or between two points while a
     job launched from this machine that holds the run is going
     (`joblist.is_going`); ``queued`` while nothing the run walks itself has
-    started; else the points' verdict (:func:`points_verdict`) --
+    started (a run that walks none -- a run copied in whole -- is read by
+    its points); else the points' verdict (:func:`points_verdict`) --
     ``finished``, or ``failed`` naming the first point not done, a chain
     that stopped among them: a point never reached is no point queued.
     A run the job the reader runs inside sent (:func:`_own_job_s`) is read
@@ -877,8 +897,9 @@ def points_state(run, names, task, stage: str, *, launch, products, base
     summary = points_summary(pts)
     if running:
         return "running", summary, pts
-    if all(p["opened"] and p["state"] in ("pending", "queued")
-           for p in _walked_here(pts, run, base)):
+    walked = _walked_here(pts, run, base)
+    if walked and all(p["opened"] and p["state"] in ("pending", "queued")
+                      for p in walked):
         # NOTHING THIS RUN WALKS HAS RUN YET -- the points it took over
         # from an earlier run are that run's, done before it was sent --
         # unless its job is over: cancelled in the queue, or a process

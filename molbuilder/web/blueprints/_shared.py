@@ -663,11 +663,14 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         # THE TEMPLATE'S VALUE, AND WHOSE IT IS (form-schema.md § 1.1): a
         # value somebody gave -- a cited run, the structure's record, the
         # person -- or one written before sources were recorded.  A value
-        # nobody chose stays off: the field is blank, *not chosen*.
+        # nobody chose stays off: the field is blank, *not chosen*, its hint
+        # the value the template holds -- what runs.
         h = held.get(it.name)
         if h is not None and h.is_set and h.source != "default":
             field["value"] = _jsonable(h.value)
             field["source"] = h.source
+        elif h is not None and h.is_set:
+            field["default"] = _jsonable(h.value)
         if it.name in echoed:
             field["locked"] = {"value": (None if it.name in _T.PER_POINT
                                          else _jsonable(echoed[it.name])),

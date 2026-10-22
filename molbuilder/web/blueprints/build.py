@@ -1436,10 +1436,14 @@ def api_task_setup_prep():
         if d.get("machine") == LOCAL_TARGET:
             d["machine"] = "(this machine)"
     # WHAT COMES NEXT, as the terminal's prep ends: the launch with nothing
-    # named, which sends the group that can go.  Launching stays at the
-    # terminal (`task-setup.md` § 1).
+    # named, which sends the group that can go -- or, every group it
+    # prepared copied in, the ladder's own next step.  Launching stays at
+    # the terminal (`task-setup.md` § 1).
     from molbuilder.jobset.commands import launch_lines
+    from molbuilder.jobset.runstatus import jobset_status, render_steps
     nxt = ([] if preview or not said else
+           render_steps(jobset_status(open_calc(dest))).splitlines()
+           if answers[-1].copied_whole else
            launch_lines("task", base=dest)
            if kind == "task" else
            launch_lines("bench", stages[0].strip(), base=dest))

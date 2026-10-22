@@ -420,9 +420,12 @@ class SiestaConfig:
     #  this kind the cited run answers them (template.md 6.4).            #
     # ================================================================== #
 
-    transmission_emin_ev: float = -2.0
+    # THE DEFAULT WINDOW PUTS ITS ENERGIES ON THE 0.01 eV LATTICE, E_F among
+    # them -- -2.005…2.005 eV at 401 points (`engines/transport.md` § 2a.16;
+    # the user, 2026-10-22).
+    transmission_emin_ev: float = -2.005
 
-    transmission_emax_ev: float = 2.0
+    transmission_emax_ev: float = 2.005
 
     transmission_n_points: int = 401
 

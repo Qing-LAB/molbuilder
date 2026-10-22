@@ -560,8 +560,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                relaxed_by: Optional[dict] = None,
                state=None,
                trial: Optional[str] = None,
-               point=None, scratch_dir: Optional[str] = None
-               ) -> "_sc.DeckSpec":
+               point=None, scratch_dir: Optional[str] = None,
+               contours=None) -> "_sc.DeckSpec":
     """Describe a Structure's SIESTA .fdf deck -- the spec
     `script_emit.render_deck` renders into its text.
 
@@ -596,7 +596,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     (`transport.stages.Point`), from which the device deck names its run's
     shared files; ``scratch_dir`` the folder of the run's own they live in
     (the vocabulary's, `warm-files.toml` [transport]; `engines/transport.md`
-    § 2a.11).  Only a transport deck reads them.
+    § 2a.11); ``contours`` a transmission point's sharing with a finished
+    calculation's point (`transport.energies.Contours`, § 2a.16).  Only a
+    transport deck reads them.
 
     The box is ``cell`` when a caller passes one (Angstrom, row vectors), else the
     structure's resolved cell -- the one it states, or ``struct.resolve_cell()``'s
@@ -636,8 +638,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         from ..transport.deck import transport_spec
         return transport_spec(struct, config or SiestaConfig(),
                               stage_token=stage_token, state=state,
-                              point=point, scratch_dir=scratch_dir)
-    if point is not None or scratch_dir is not None:
+                              point=point, scratch_dir=scratch_dir,
+                              contours=contours)
+    if point is not None or scratch_dir is not None or contours is not None:
         raise ValueError(
             f"a {calculation} deck has no point and no scratch folder: a "
             f"frame, a voltage and the leads' files are a transport rung's "

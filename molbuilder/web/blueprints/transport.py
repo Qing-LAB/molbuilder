@@ -25,6 +25,10 @@ hand-over — nothing is awaiting, so the tab selects and decides):
     GET  /api/transport/pdos              the PDOS of selected atoms at
                                           one point -- a frame and a
                                           voltage -- by orbital type
+    GET  /api/transport/fit               the transmission window of a
+                                          calculation that reuses a
+                                          finished one, fitted to the
+                                          finished grid
     POST /api/transport/describe          writes the FINISHED description
                                           into the chosen folder -- the
                                           web spelling of `molbuilder describe
@@ -37,6 +41,7 @@ catalogue (`catalogue_to_form_schema`), and every deck renders through
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from typing import Any, Dict
 
@@ -129,6 +134,20 @@ def api_transport_describe_attempt() -> Any:
     citation, cited_path, root, refusal = _fence(raw)
     if refusal is not None:
         return refusal
+    # A TRANSPORT CALCULATION'S FOLDER, to reuse it (`engines/transport.md`
+    # § 2a.16): its junction, its description and its template fill the
+    # cards, and Describe writes what `molbuilder describe --reuses` writes.
+    # A description that does not read is said by that door; another
+    # kind's folder is no citation, as any path that is not one.
+    from molbuilder import task as _task
+    from molbuilder.calcdirs import described
+    if described(cited_path):
+        try:
+            kind = _task.of(cited_path).calculation
+        except ValueError:
+            kind = "transport"
+        if kind == "transport":
+            return _describe_reused(citation, root)
     try:
         cited = classify_citation(cited_path)
     except ComposeError as exc:
@@ -269,6 +288,91 @@ def api_transport_describe_attempt() -> Any:
     })
 
 
+def _describe_reused(folder: str, root) -> Any:
+    """The describe door's answer for a transport calculation's folder,
+    picked to reuse it (`engines/transport.md` § 2a.16, *On the page*): its
+    meta line -- what it computed: its junction's citation, its treatment,
+    its voltages, its window, where each group stands -- the junction its
+    record holds, for the viewer, in your order; the citation the cards are
+    drawn for; ``reuses``, the folder; and its bias list and treatment.  A
+    folder that is not a transport calculation's answers ``citation: null``
+    with the refusal as its summary, as any path that is not citable."""
+    from molbuilder.frame_average import answer as frames_answer
+    from molbuilder.jobset.runstatus import jobset_status
+    from molbuilder.transport.compose import ComposeError, recorded_junction
+    from molbuilder.transport.reuse import ReuseError, reused
+    try:
+        calc, rel = reused(folder, tree_root=root)
+    except ReuseError as exc:
+        return jsonify({"ok": True, "citation": None, "summary": str(exc),
+                        "findings": []}), 200
+    from molbuilder.jobset.ladder import stage_config
+    from molbuilder.jobset.reuse import SHARING_RUNG
+    task = calc.task
+    unread = None
+    try:
+        recorded = recorded_junction(calc.base)
+    except ComposeError as exc:
+        recorded, unread = None, str(exc)
+    junction = recorded.structure if recorded is not None else None
+    # THE WINDOW ITS TRANSMISSION COMPUTED: the template's, or the rung's
+    # own values over it (`ladder.stage_config`).
+    cfg = stage_config(task, SHARING_RUNG, calc.template_text)
+    steps = jobset_status(calc).steps
+    stands = ("every group finished"
+              if steps and all(s.state == "finished" for s in steps) else
+              "; ".join(f"group {s.group} {s.words.rstrip('.')}"
+                        for s in steps))
+    summary = " · ".join([
+        "TRANSPORT CALCULATION", rel.rsplit("/", 1)[-1],
+        f"its junction, cited from {task.slots['junction']}",
+        str(task.treatment),
+        ", ".join(str(float(v)) for v in task.bias) + " V",
+        f"{cfg.transmission_emin_ev:g}…{cfg.transmission_emax_ev:g} eV at "
+        f"{cfg.transmission_n_points} points",
+        stands] + ([f"its junction's record does not read: {unread}"]
+                   if unread else []))
+    return jsonify({
+        "ok": True, "citation": task.slots["junction"], "reuses": rel,
+        "concluded": True, "summary": summary, "findings": [],
+        "structure": (junction.restored().to_dict()
+                      if junction is not None else None),
+        "fix": None, "swap_electrodes": task.swap_electrodes,
+        "frame_set": frames_answer(junction if junction is not None
+                                   and junction.n_frames > 1 else None),
+        "bias": [float(v) for v in task.bias],
+        "low_bias_approximation": task.low_bias_approximation,
+    })
+
+
+@bp.route("/api/transport/fit", methods=["GET"])
+def api_transport_fit() -> Any:
+    """THE TRANSMISSION WINDOW FITTED TO A FINISHED GRID
+    (`engines/transport.md` § 2a.16): ``?reuses=<folder>&lo=&hi=[&finer=]``
+    -- the range asked, fitted to the grid the finished calculation's
+    transmission computed (`transport.window.fitted`): its ends, its count
+    and the words said of it, which the page's *use these* writes into the
+    transmission's fields.  A range or a factor that cannot be fitted, or a
+    finished calculation holding no transmission point done, is refused in
+    its words."""
+    from pathlib import Path
+    from molbuilder.jobset.reuse import finished_window
+    from molbuilder.projects import projects_root
+    from molbuilder.transport.reuse import ReuseError, reused
+    from molbuilder.transport.window import fitted
+    try:
+        finished, _rel = reused(str(request.args.get("reuses") or ""),
+                                tree_root=Path(projects_root()).resolve())
+        lo = float(request.args.get("lo", ""))
+        hi = float(request.args.get("hi", ""))
+        fit = fitted(finished_window(finished), lo, hi,
+                     int(request.args.get("finer") or 1))
+    except (ReuseError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "words": fit.words(), "emin": fit.emin,
+                    "emax": fit.emax, "points": fit.points})
+
+
 @bp.route("/api/transport/record", methods=["GET"])
 def api_transport_record() -> Any:
     """The transport record of the calculation ``?path=`` names -- its
@@ -390,6 +494,14 @@ def api_transport_describe() -> Any:
     and the Task-setup save run -- its errors refuse, its warnings ride
     ``notices``.  The citation resolves through the same door prep
     composes through.
+
+    With ``reuses`` -- a transport calculation's folder, picked to reuse it
+    (`engines/transport.md` § 2a.16) -- it writes what `molbuilder describe
+    --reuses` writes, through the same writer (`transport.reuse.
+    write_reusing`): that calculation's description, its label and its
+    junction, as the cards change its voltages, its rungs' values and its
+    shared ones; its template, each value the panel changed said to be the
+    person's; its job request.
     """
     from molbuilder.projects import projects_root
     from molbuilder.task import Task, derive_run, fixed_by_kind
@@ -472,10 +584,21 @@ def api_transport_describe() -> Any:
     except OutsideRoot as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    try:
-        _, cited = resolve_citation(citation, projects_root())
-    except ComposeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    # THE CALCULATION IT REUSES, or THE CITATION -- what the description
+    # starts from (`engines/transport.md` § 2a.16, § 3.1).
+    finished = cited = None
+    reuses_raw = str(body.get("reuses") or "")
+    if reuses_raw:
+        from molbuilder.transport.reuse import ReuseError, reused
+        try:
+            finished, reuses_rel = reused(reuses_raw, tree_root=root)
+        except ReuseError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+    else:
+        try:
+            _, cited = resolve_citation(citation, projects_root())
+        except ComposeError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
     # THE BIAS, STATED: `[0.0]` for a single bias -- the one spelling both
     # roads write (`engines/transport.md` § 2a.10); nothing defaults it.
@@ -505,7 +628,11 @@ def api_transport_describe() -> Any:
     shown = str(dest.relative_to(root))
     try:
         refuse_described(dest, shown=shown)
-        refuse_inside_citation(dest, cited, shown=shown)
+        refuse_inside_citation(dest, finished.base if finished is not None
+                               else cited.path, shown=shown,
+                               what=("the finished calculation"
+                                     if finished is not None
+                                     else "the cited junction"))
     except (DescribeError, ComposeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
 
@@ -536,7 +663,14 @@ def api_transport_describe() -> Any:
                                      f"carries the items the catalogue "
                                      f"marks `shared` for transport"}), 400
     try:
-        task = Task(
+        # THE CALCULATION IT REUSES, as the cards change it -- its label,
+        # its junction and its rename its own (§ 2a.16); or a new one.
+        task = (dataclasses.replace(
+            finished.task, reuses=reuses_rel, bias=bias,
+            low_bias_approximation=approx,
+            varies=tuple(sorted({n for b in bags.values() for n in b})),
+            stages=tuple(stages_for_transport(bags)))
+            if finished is not None else Task(
             engine=engine, shape=fixed_by_kind("transport")["shape"],
             run=derive_run(typed, citation,
                            stage_names=TRANSPORT_STAGES),
@@ -547,7 +681,7 @@ def api_transport_describe() -> Any:
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted({n for b in bags.values() for n in b})),
-            stages=tuple(stages_for_transport(bags)))
+            stages=tuple(stages_for_transport(bags))))
     except ValueError as exc:
         # THE CODEC'S REFUSAL, as a finding BESIDE THE CONTROL that wrote
         # it when the codec names where (`task.DescriptionError`: the
@@ -567,9 +701,12 @@ def api_transport_describe() -> Any:
     # said here by name rather than failing the whole response.
     from molbuilder.transport.citation_defaults import check_pseudopotentials
     try:
-        check_pseudopotentials(cited, shared_chosen.get("psml_lib"))
-        _tmpl_text = _panel_template(cited.path, shared_chosen,
-                                     label=task.label)
+        if finished is not None:
+            _tmpl_text = _reused_template(finished, shared_chosen)
+        else:
+            check_pseudopotentials(cited, shared_chosen.get("psml_lib"))
+            _tmpl_text = _panel_template(cited.path, shared_chosen,
+                                         label=task.label)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -580,7 +717,9 @@ def api_transport_describe() -> Any:
                                             config_class_for as _cfg_cls_for)
     # THE CALCULATION'S START, described with its job request: each rung's
     # group by the one numbering rule (`describe.Description`).
-    _desc = Description(task=task, template=_tmpl_text)
+    _desc = Description(task=task, template=_tmpl_text,
+                        request=(finished.request if finished is not None
+                                 else None))
     _pf = _task_preflight(task, template_text=_tmpl_text,
                           request=_desc.request)
     # ...AND THE K-POINT MESHES EACH RUNG WILL WRITE, judged by the one
@@ -588,11 +727,13 @@ def api_transport_describe() -> Any:
     # on the junction's own axis kinds -- so one point along a direction
     # the electrodes repeat in is said here, beside its control, and not
     # first at prep.
-    from molbuilder.transport.compose import junction_axis_kind
+    from molbuilder.transport.compose import (junction_axis_kind,
+                                              recorded_junction)
     from molbuilder.transport.deck import ladder_mesh_findings
     try:
-        _kinds = junction_axis_kind(cited)
-    except ComposeError:
+        _kinds = (junction_axis_kind(cited) if cited is not None else
+                  recorded_junction(finished.base).structure.axis_kind)
+    except (ComposeError, AttributeError):
         _kinds = None              # compose refuses it, by name, at prep
     if _kinds is not None:
         _pf = list(_pf) + ladder_mesh_findings(_tmpl_text, task, _kinds)
@@ -615,8 +756,18 @@ def api_transport_describe() -> Any:
     # CITED RUN (§ 2a.7, ruling 1) and are the person's to change
     # afterwards; a `citation` row nobody answered stays VALUELESS
     # (§ 3.8.3).
+    from molbuilder.issues import Issue
+    notes: list = []
     try:
-        written = write_description(_desc, dest)
+        if finished is not None:
+            from molbuilder.transport.reuse import ReuseError, write_reusing
+            try:
+                written, notes = write_reusing(_desc, dest, finished,
+                                               tree_root=root)
+            except ReuseError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
+        else:
+            written = write_description(_desc, dest)
     except (DescribeError, OSError) as exc:
         return jsonify({"ok": False,
                         "error": f"nothing was written: {exc}"}), 500
@@ -624,7 +775,12 @@ def api_transport_describe() -> Any:
         "ok": True,
         "label": task.label,
         "written": [p.name for p in written],
-        "notices": _issues_to_json(_pf, cfg=_cfg_cls_for(task)),
+        # WHAT THE REUSE SAYS OF ITSELF -- a finished calculation carrying
+        # no composed junction -- beside the description's own notes
+        # (`issues.Issue`, the one finding).
+        "notices": _issues_to_json(
+            list(_pf) + [Issue("warn", note) for note in notes],
+            cfg=_cfg_cls_for(task)),
     })
 
 
@@ -695,26 +851,42 @@ def api_transport_schema() -> Any:
                                  f"{', '.join(TRANSPORT_STAGES)} on the "
                                  f"rung surface, not {rung!r}"}), 400
     citation = str(request.args.get("junction") or "")
+    reuses = str(request.args.get("reuses") or "")
     source: Dict[str, Any] = {"kind": "none", "name": ""}
     template = None
+    held = None
     # WHAT THE CITATION ASKS OF THE PERSON joins the shared panel -- a pair's
     # pseudopotential directory (§ 3.8.1) -- by the rule the describe door's
     # check asks too.
     asks: tuple = ()
-    if citation:
+    try:
+        shared = json.loads(request.args.get("shared") or "{}")
+    except ValueError:
+        shared = None
+    if not isinstance(shared, dict) or surface != "rung" and shared:
+        return jsonify({"ok": False,
+                        "error": "shared must be a JSON object of what "
+                                 "the shared panel holds, asked by a "
+                                 "rung's tab"}), 400
+    if reuses:
+        # A CALCULATION THAT REUSES A FINISHED ONE (`engines/transport.md`
+        # § 2a.16): both surfaces drawn from that calculation's template as
+        # the panel changes it, and a rung's tab holding its own overrides.
+        from molbuilder.transport.reuse import ReuseError, reused
+        try:
+            finished, rel = reused(reuses, tree_root=projects_root())
+            template = _T.read_template(_reused_template(finished, shared))
+        except (ReuseError, ValueError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        source = {"kind": "reuses", "name": rel.rsplit("/", 1)[-1]}
+        if rung is not None:
+            held = next((dict(st.overrides) for st in finished.task.stages
+                         if st.name == rung), {})
+    elif citation:
         try:
             _, cited = resolve_citation(citation, projects_root())
         except ComposeError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-        try:
-            shared = json.loads(request.args.get("shared") or "{}")
-        except ValueError:
-            shared = None
-        if not isinstance(shared, dict) or surface != "rung" and shared:
-            return jsonify({"ok": False,
-                            "error": "shared must be a JSON object of what "
-                                     "the shared panel holds, asked by a "
-                                     "rung's tab"}), 400
         try:
             template = _T.read_template(
                 _panel_template(cited.path, shared, label="transport"))
@@ -743,11 +915,47 @@ def api_transport_schema() -> Any:
         response["rung"] = rung
         response["rungs"] = [{"name": n, "index": i, "note": RUNG_NOTES[n]}
                              for i, n in enumerate(TRANSPORT_STAGES, start=1)]
+        if held is not None:
+            # WHAT THE RUNG'S TAB HOLDS of the calculation it reuses -- its
+            # own overrides, which the tab starts from.
+            response["held"] = held
         # NO SECOND FILTER HERE: which fields a rung's tab offers is the
         # schema builder's, by the catalogue's markers (`transport.md`
         # § 3.8.2; the run settings dropped by `surface="rung"`, 2026-10-18).
     response["schema"] = schema
     return jsonify(response)
+
+
+def _reused_template(finished, shared: Dict[str, Any]) -> str:
+    """The template a calculation that reuses ``finished`` writes, from what
+    the shared panel holds (`engines/transport.md` § 2a.16): the finished
+    calculation's, each value the panel changed said to be the person's,
+    through the one door (`template.with_values_set`) -- the one text the
+    describe door writes and the schema route draws from, as
+    :func:`_panel_template` is for a citation.  A BLANK IS NOT CHOSEN
+    (`form-schema.md` § 1.1): a field the panel drew holding a value
+    somebody gave, sent blank, was emptied -- written valueless, not
+    chosen; one it drew blank, a value nobody chose, is as it was."""
+    from ._shared import siesta_config_from_params
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.template import (config_from_template, read_template,
+                                     with_values_set)
+    text = finished.template_text
+    was = config_from_template(text, SiestaConfig)
+    drawn = {it.name for it in read_template(text).items
+             if it.is_set and it.source != "default"}
+    typed = {k: v for k, v in shared.items() if v not in (None, "")}
+    cfg = siesta_config_from_params(typed, "transport")
+    changed = {k: getattr(cfg, k) for k in typed
+               if getattr(cfg, k) != getattr(was, k, None)}
+    emptied = {k: None for k, v in shared.items()
+               if v in (None, "") and k in drawn}
+    for values, source in ((changed, "person"), (emptied, "default")):
+        if values:
+            text = with_values_set(text, SiestaConfig,
+                                   calculation="transport", values=values,
+                                   source=source)
+    return text
 
 
 def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str) -> str:

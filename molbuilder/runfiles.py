@@ -963,6 +963,7 @@ CALCDIR_FILE = "calcdir.json"
 LAUNCH_RECORD_FILE = "run.json"
 CONTINUED_FROM_FILE = ".continued-from"
 GATHERED_FROM_FILE = ".gathered-from"
+COPIED_FROM_FILE = ".copied-from"
 MONITOR_BUNDLE = "mb_monitor.pyz"
 VIBRATION_BUNDLE = "mb_vibration.pyz"
 PYSCF_BUNDLE = "mb_pyscf.pyz"
@@ -1493,6 +1494,19 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`jobset.gather.transport_inputs`), or a launch again "
                     "keeping what its last run was given",
              door="runrecord.read_gathered_from"),
+    Artifact(name=COPIED_FROM_FILE,
+             what="the finished calculation's run, or point, this one is a "
+                  "copy of, tree-relative",
+             calculation="transport", when="prep", level="run",
+             kind="record",
+             writer="prep, copying a group in from the finished calculation "
+                    "it reuses (`jobset.reuse.copy_in`), before the run's "
+                    "launch record; a rung of points' first launch, in each "
+                    "point it takes over (`jobset.reuse.take_into`) and each "
+                    "point's `shared/`, written last (`jobset.reuse."
+                    "shared_into`) -- through `runrecord.write_copied_from`",
+             door="runrecord.read_copied_from",
+             only="a transport calculation that reuses a finished one"),
     Artifact(name=SCHEDULER_STDOUT,
              what="the scheduler's own stdout for the job",
              level="run", kind="record",

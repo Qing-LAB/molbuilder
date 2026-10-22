@@ -600,7 +600,7 @@ class Rung:
 
 
 def _described_rung(calc, pset, *, seam, sweep, log, plan,
-                    continuation) -> Rung:
+                    continuation, contours=None) -> Rung:
     """A calculation of its described structure, one deck per element --
     every kind with no steps of its own."""
     return Rung(struct=_structure_for(calc.task, calc.base, pset),
@@ -608,7 +608,7 @@ def _described_rung(calc, pset, *, seam, sweep, log, plan,
 
 
 def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
-                           continuation) -> Rung:
+                           continuation, contours=None) -> Rung:
     """A SIESTA vibration's rung (`engines/vibration.md` § 5.2a, § 5.9).
 
     The atoms in the order the force-constant run needs -- the held ones
@@ -685,7 +685,7 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
 
 
 def _transport_rung_of(calc, pset, *, seam, sweep, log, plan,
-                       continuation) -> Rung:
+                       continuation, contours=None) -> Rung:
     """A transport rung (`engines/transport.md`): its four steps of its own.
 
     **compose** -- the junction and its leads, composed from the cited
@@ -699,6 +699,7 @@ def _transport_rung_of(calc, pset, *, seam, sweep, log, plan,
     for the transmission, TBtrans's program.  The fifth, **gather** -- each
     rung's inputs from the runs upstream -- is its first launch's
     (:func:`gather_sources`, `job-system.md` § 6.0)."""
+    from .reuse import point_key
     base, task, stage = calc.base, calc.task, pset.stage
     if sweep is not None:
         raise PrepError(
@@ -753,7 +754,11 @@ def _transport_rung_of(calc, pset, *, seam, sweep, log, plan,
                     "state": state, "point": point,
                     # WHERE THE DEVICE KEEPS THE LEADS' FILES: the
                     # vocabulary's folder (`engines/transport.md` § 2a.11).
-                    "scratch_dir": scratch_dir_of(base)},
+                    "scratch_dir": scratch_dir_of(base),
+                    # WHAT A TRANSMISSION POINT COMPUTES where it is not its
+                    # window whole -- the prep's decision (§ 2a.16); a rung
+                    # that runs once, its one point.
+                    "contours": (contours or {}).get(point_key(point))},
                 points=points, at_point=at_point,
                 struct_at=lambda pt: at_frame(struct, pt),
                 provide_data=provide_data, job_facts=job_facts)
@@ -896,7 +901,9 @@ def prep_calculation(calc, stage: Optional[str], *,
                      findings: Optional[list] = None,
                      continuation=None, quiet: bool = False,
                      walks: Optional[dict] = None,
-                     notes: Optional[list] = None) -> List[Path]:
+                     notes: Optional[list] = None,
+                     copied: bool = False,
+                     contours: Optional[dict] = None) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.  ``notes`` is the
     planner's list, handed down to step 4 for what a rendering says.
@@ -935,6 +942,13 @@ def prep_calculation(calc, stage: Optional[str], *,
     that walks several members -- a run of points, a benchmark's shelf --
     keyed by its header (:func:`walk_header_of`).
 
+    ``copied`` -- a member of a group copied in from the finished
+    calculation a transport calculation reuses (`jobset.reuse`): its files
+    planned as any stage's, no run opened -- its runs are the copies, which
+    the entry plans after it (`engines/transport.md` § 2a.16).  ``contours``
+    is what each transmission point computes where it is not its window
+    whole, by the point's key (`reuse.point_key`, § 2a.16).
+
     ``findings``, when given, receives what each deck's checks said
     (`script_emit.prepare_deck`) -- the terminal also reads them on stderr as
     each deck renders; the Task setup tab reads them from here, through the
@@ -957,7 +971,7 @@ def prep_calculation(calc, stage: Optional[str], *,
             calc, stage, resolved, env=env, emit_sbatch=emit_sbatch,
             opened=opened, findings=findings,
             continuation=continuation, plan=plan, quiet=quiet, walks=walks,
-            notes=notes)
+            notes=notes, copied=copied, contours=contours)
     finally:
         PLANNED.reset(scope)
 
@@ -970,7 +984,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                       continuation=None,
                       plan, quiet: bool = False,
                       walks: Optional[dict] = None,
-                      notes: Optional[list] = None) -> List[Path]:
+                      notes: Optional[list] = None,
+                      copied: bool = False,
+                      contours: Optional[dict] = None) -> List[Path]:
     """The steps of :func:`prep_calculation`, planned into ``plan``: nothing
     is written here.  Steps 1 and 2 arrive answered (``resolved``): this
     snapshots the machine's record it was handed and plans the rest -- it
@@ -1052,7 +1068,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     rung = RUNGS.get((str(task.engine), str(task.calculation)),
                      _described_rung)(calc, pset, seam=seam,
                                       sweep=sweep, log=log, plan=plan,
-                                      continuation=continuation)
+                                      continuation=continuation,
+                                      contours=contours)
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
@@ -1391,15 +1408,16 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             keep=(LAUNCH_DIR, Path(bench_container(
                 resolved.shape, home.token)).name))
         planned = calc.with_plan(js)
-        if ever_launched(planned, planned.job(stage)):
+        if copied or ever_launched(planned, planned.job(stage)):
             # A LAUNCHED RUNG OF POINTS, prepared again for its job request
             # (`execution/job-request.md` § 5): no run opened -- its next
             # launch opens its next one -- and its points the ones its runs
             # ran, as its last prep left them below the stage: a point added
-            # or taken away is another calculation.
+            # or taken away is another calculation.  A rung COPIED IN opens
+            # none either: its runs are the copies, of exactly its points.
             added = [str(pt.rel) for d, pt in rung.points
                      if not Path(d).is_dir()]
-            if gone or added:
+            if not copied and (gone or added):
                 from .commands import redo_launched
                 raise PrepError(
                     f"stage {stage!r} was launched, and its points now are "
@@ -1452,8 +1470,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             if _left.is_file():
                 plan.remove(_left)
     elif kind == KIND_LADDER and stage:
-        reports = _open_attempts(calc.with_plan(js), stage, plan=plan,
-                                 shape=resolved.shape)
+        reports = ([] if copied else
+                   _open_attempts(calc.with_plan(js), stage, plan=plan,
+                                  shape=resolved.shape))
         if opened is not None:
             opened.extend(reports)
     elif kind == KIND_SWEEP:
@@ -2001,6 +2020,11 @@ class PrepAnswer:
     #: ``less`` (each group asking less than the allocation, in words).
     #: ``None`` otherwise.
     sequence: Optional[dict] = None
+    #: A CALCULATION THAT REUSES A FINISHED ONE: the manifest -- each group
+    #: of the prep copied in, its runs, or prepared here and why
+    #: (`jobset.reuse.Reuse`; `engines/transport.md` § 2a.16) -- the same
+    #: on every answer of the prep.  ``None`` otherwise.
+    copied: Optional[object] = None
     #: A PREVIEW: the plan, stopped before the save, named by its identity
     #: for the Prep that follows (`job-system.md` § 5.0), with what it would
     #: write.
@@ -2024,6 +2048,15 @@ class PrepAnswer:
     #: "header", "said", "fit"}]``, the header's directive lines, them in
     #: one line (`Directives.said`) and the shelf's fit on the queue.
     shelves: List[dict] = dataclasses.field(default_factory=list)
+
+    @property
+    def copied_whole(self) -> bool:
+        """Every group the prep was asked for copied in, its runs launched
+        already -- the next step the ladder's own (`job-system.md`, *The
+        next step*; `engines/transport.md` § 2a.16): what both doors that
+        say what comes next ask."""
+        return (self.copied is not None and not self.preview
+                and all(d.copied for d in self.copied.groups))
 
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
@@ -2076,6 +2109,8 @@ class PrepAnswer:
                      else None),
             "launch": self.launch,
             "group": self.group,
+            "copied": (self.copied.to_wire(base) if self.copied is not None
+                       else None),
             "preview": self.preview,
             "plan_id": self.plan_id,
             "writes": list(self.writes),
@@ -2274,7 +2309,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                from_attempt: Optional[str] = None, env: Optional[str] = None,
                emit_sbatch: bool = True, plan, notes: Optional[list] = None,
                continuation=DECIDE, quiet: bool = False,
-               on_inputs=None) -> PrepAnswer:
+               on_inputs=None, copied: bool = False,
+               contours=DECIDE) -> PrepAnswer:
     """**THE MEMBER PLANNER** -- one stage, planned into ``plan``, nothing
     written, saved or recorded (`job-system.md` § 5.0, checkpoints 4–4b):
     its inputs, assembled (`prep_inputs`, A12) -- a benchmark's grid
@@ -2296,7 +2332,12 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     ``described`` is the calculation as the door opened and checked it
     (`calculation.open`, :func:`checked`); ``on_inputs`` is called
     once the inputs and their checks stand, before anything is rendered --
-    so a terminal says a benchmark's grid ahead of what its decks say."""
+    so a terminal says a benchmark's grid ahead of what its decks say.
+    ``copied`` plans a member of a group copied in (:func:`prep_calculation`):
+    its answer is a launched stage's.  ``contours`` -- what each transmission
+    point computes where it is not its window whole -- is the prep's
+    decision; :data:`DECIDE`, decided on the calculation as it is
+    (:func:`_contours_now`)."""
     from .prep_inputs import bench_inputs, prep_run_inputs
     from .placement import launch_refusal, one_process, placed
     from ..runtime_config import routing_of
@@ -2430,6 +2471,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                 raise PrepError(refused)
     if on_inputs is not None:
         on_inputs()
+    if contours is DECIDE:
+        contours = _contours_now(pcalc, stage) if kind == "task" else None
 
     # 4b · THE STEPS, PLANNED -- every deck, wrapper and data file, the
     #      plan's row, the run and what it receives, decided with nothing
@@ -2441,7 +2484,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                             opened=opened, findings=deck_findings,
                             continuation=continuation, plan=plan,
                             resolved=resolved, quiet=quiet, walks=walks,
-                            notes=notes)
+                            notes=notes, copied=copied, contours=contours)
     flat = not resolved.shape.keeps_attempts_as_directories
 
     # THE ANSWER, from the plan -- what a preview shows and a prep records
@@ -2565,6 +2608,37 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         if walked:
             out.fit = walks.get(sends, "")
     return out
+
+
+def _contours_now(calc, stage: str) -> Optional[dict]:
+    """What each point of a transmission of a calculation that reuses a
+    finished one computes, where it is not its window whole
+    (`engines/transport.md` § 2a.16): for a stage launched, as the decks its
+    prep wrote record it -- never decided again; else decided on the
+    calculation as it is (`reuse.decide`) -- what a launch's check plans
+    with.  ``None`` for any other stage."""
+    from .materialize import ever_launched
+    from .reuse import SHARING_RUNG, decide, point_key
+    if stage != SHARING_RUNG or not calc.task.reuses:
+        return None
+    job = calc.job(stage)
+    if job is not None and ever_launched(calc, job):
+        from ..transport.energies import Contours
+        from ..transport.stages import point_folders
+        out = {}
+        # A RUNG THAT RUNS ONCE: its one point, the stage's own folder.
+        for d, pt in (point_folders(calc.base, calc.task, stage)
+                      or [(stage_home(calc.base, calc.task, stage).dir,
+                           None)]):
+            deck = d / job.script
+            c = (Contours.of_deck(deck.read_text(encoding="utf-8",
+                                                 errors="replace"))
+                 if deck.is_file() else None)
+            if c is not None:
+                out[point_key(pt)] = c
+        return out
+    reuse = decide(calc, [calc.request.group_of(stage)])
+    return reuse.contours_for(stage) if reuse is not None else None
 
 
 def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
@@ -3103,6 +3177,31 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             "other stage takes from a run is its first launch's to take, "
             "named there with --from for a stage that is a group of its "
             "own (job-system.md § 5.4).")
+    # 1b · A CALCULATION THAT REUSES A FINISHED ONE (`engines/transport.md`
+    #      § 2a.16): each group none of whose members is launched here,
+    #      COPIED IN or prepared here -- decided before anything is planned,
+    #      in the ladder's order -- the manifest.  A group copied in is in no
+    #      sequence of groups: no job launches it.
+    from .reuse import decide
+    try:
+        reuse = decide(description.calc, [
+            n for n in numbers
+            if not any(st in launched_members for st in members[n])])
+    except PrepError as exc:
+        raise _refuse(str(exc)) from None
+    if reuse is not None and sequence:
+        sequence = [n for n in sequence if not reuse.copied(n)]
+        if len(sequence) < 2:
+            copied_ = [d.number for d in reuse.groups if d.copied]
+            raise _refuse(
+                f"--one-job sends several groups as one job, and group"
+                f"{'s' if len(copied_) > 1 else ''} "
+                f"{', '.join(map(str, copied_))} "
+                f"{'are' if len(copied_) > 1 else 'is'} copied in from "
+                f"{reuse.name} -- launched by no job -- leaving "
+                f"{', '.join(map(str, sequence)) or 'none'} to send: prepare "
+                f"without --one-job (engines/transport.md § 2a.16; "
+                f"job-system.md R-P22).")
     # 2 · THE DESCRIPTION CHECKED AND THE MACHINE READ, once (3, 4); then
     #     EVERY MEMBER, PLANNED INTO ONE PLAN by the one member planner,
     #     nothing written -- each member seeing what those before it planned
@@ -3126,7 +3225,11 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                         and force_constant_stage(task, at)
                         else from_attempt if force_constant_stage(task, at)
                         else None),
-                    env=env, emit_sbatch=emit_sbatch, plan=the_plan)
+                    env=env, emit_sbatch=emit_sbatch, plan=the_plan,
+                    copied=reuse is not None and reuse.copied(n),
+                    contours=(reuse.contours_for(at)
+                              if reuse is not None
+                              and at not in launched_members else DECIDE))
                     for at in members[n]]
         except step_errors() as exc:
             raise as_prep_error(exc) from exc
@@ -3233,6 +3336,14 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                     the_plan.remove(old)
     except PrepError as exc:
         raise _refuse(str(exc)) from None
+    # 2c · EVERY RUN OF EACH GROUP COPIED IN, into the same plan
+    #      (`engines/transport.md` § 2a.16): a run of a member prepared here
+    #      and never launched removed first, each run's launch record last.
+    if reuse is not None:
+        from .reuse import copy_in
+        for d in reuse.groups:
+            if d.copied:
+                copy_in(description.calc, d, the_plan)
     #      EACH GROUP ON ITS MEMBERS' ROWS -- the members in order, ``None``
     #      for a group of one.
     js = JobSet.of(base, plan=the_plan)
@@ -3261,8 +3372,11 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     #      THE REVIEWABLE PLAN, ONCE: the job set as this prep leaves it,
     #      and what every member's first launch takes.
     the_plan.text(base / _PLAN_FILE, stage_plan_text(
-        js, [ln for a in answers for ln in this_prep_lines(a.stage, a.takes)],
+        js, [ln for a in answers for ln in this_prep_lines(a.stage, a.takes)]
+        + (reuse.lines(base) if reuse is not None else []),
         base=base, provenance=answers[0].provenance, plan=the_plan))
+    for a in answers:
+        a.copied = reuse
     for n in numbers:
         for a in previews[n]:
             a.group = said.get(n)
@@ -3285,8 +3399,11 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         with user_error_as_prep():
             from .group import named
             kept = save_before(
-                base, "prep task " + ", ".join(named(request, n)
-                                               for n in numbers),
+                base, "prep task " + ", ".join(
+                    named(request, n)
+                    + (f", copied in from {reuse.name}"
+                       if reuse is not None and reuse.copied(n) else "")
+                    for n in numbers),
                 engine=str(task.engine))
     except (CheckpointError, PrepError) as exc:
         # EITHER WAY WRITTEN DOWN (R-P15): the save's own refusal, or the
@@ -3313,6 +3430,12 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     if sequence:
         ledger(base, "prep", "sequenced", groups=sequence,
                header=sequence_said["header"])
+    for d in (reuse.groups if reuse is not None else ()):
+        for c in d.copies:
+            ledger(base, "prep", "copied in", group=d.number, stage=c.stage,
+                   run=str(c.run.relative_to(base)), source=c.shown,
+                   copied_from=c.copied_from, ended=c.ended, size=c.size,
+                   left=list(c.left))
     return answers
 
 

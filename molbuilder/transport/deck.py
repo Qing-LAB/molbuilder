@@ -207,7 +207,8 @@ def _device_layout(derived, frame, state_block, point, scratch_dir):
     )
 
 
-def _transmission_layout(derived, frame, state_block, point, scratch_dir):
+def _transmission_layout(derived, frame, state_block, point, scratch_dir,
+                         contours=None):
     """The transmission rung -- `tbtrans` on the device's converged
     Hamiltonian.
 
@@ -242,7 +243,8 @@ def _transmission_layout(derived, frame, state_block, point, scratch_dir):
         _sc.Block("the junction: its electrodes and reservoirs",
                   _electrode_block(None)),
         TS_READ_BY_TBTRANS_SECTION,
-        _sc.Block("the energy window T(E) is computed on", _emit_tbt_window),
+        _sc.Block("the energy window T(E) is computed on",
+                  _tbt_energies(contours)),
         _sc.Block("the transmission k-point grid",
                   _k_mesh_block(derived["tbt_k_mesh"])),
         TBT_SECTION,
@@ -419,13 +421,60 @@ def _emit_tbt_window(struct, cfg) -> str:
         "",
         "%block TBT.Contour.window",
         "  part line",
-        f"   from {float(lo.value):.5f} {_sl.unit_word('transmission_emin_ev')}"
-        f" to {float(hi.value):.5f} {_sl.unit_word('transmission_emax_ev')}",
+        # ITS ENDS AT FULL PRECISION: tbtrans computes its energies from
+        # them, and an end rounded is another energy (`engines/transport.md`
+        # § 2a.16).
+        f"   from {float(lo.value)!r} {_sl.unit_word('transmission_emin_ev')}"
+        f" to {float(hi.value)!r} {_sl.unit_word('transmission_emax_ev')}",
         f"    points {int(n.value)}",
         "     method mid-rule",
         "%endblock TBT.Contour.window",
         "",
     ])
+
+
+def _tbt_energies(contours):
+    """The transmission's energies: its window whole, or -- for a point
+    that shares energies with a finished calculation's point
+    (`energies.Contours`, `engines/transport.md` § 2a.16) -- the energies
+    it computes, as line contours, every one named in ``TBT.Contours``, and
+    the record of its sharing, molbuilder's, which the engine does not
+    read."""
+    if contours is None:
+        return _emit_tbt_window
+
+    def emit(struct, cfg) -> str:
+        import json
+        from ..deck_record import begin_marker, end_marker
+        from .energies import BLOCK_SHARED
+        names = [f"computed{i + 1}" for i in range(len(contours.lines))]
+        out = [
+            "",
+            f"# THE ENERGIES THIS POINT COMPUTES: {contours.computed} of the "
+            f"{contours.window[2]} on its",
+            f"# grid.  The other {contours.held} are the finished point's, "
+            f"which this point shares",
+            "# (its shared/):",
+            f"#   {contours.source}",
+            "# Line contours, each a run of these energies at one spacing --",
+            "# tbtrans says they are not connected (`engines/transport.md`",
+            "# § 2a.16).",
+            begin_marker(BLOCK_SHARED),
+            *(f"# {ln}" for ln in json.dumps(contours.to_record(),
+                                            indent=2).splitlines()),
+            end_marker(BLOCK_SHARED),
+            "%block TBT.Contours",
+            *(f"  {name}" for name in names),
+            "%endblock TBT.Contours",
+        ]
+        unit = _sl.unit_word("transmission_emin_ev")
+        for name, (a, b, n) in zip(names, contours.lines):
+            out += ["", f"%block TBT.Contour.{name}", "  part line",
+                    f"   from {a!r} {unit} to {b!r} {unit}",
+                    f"    points {n}", "     method mid-rule",
+                    f"%endblock TBT.Contour.{name}"]
+        return "\n".join(out + [""])
+    return emit
 
 
 def _electrode_layout(derived, frame, state_block, point, scratch_dir):
@@ -680,7 +729,8 @@ def _k_mesh_block(mesh, *, advice=()):
 def transport_spec(struct: Structure, cfg, *,
                    stage_token: Optional[str] = None,
                    state=None, point=None,
-                   scratch_dir: Optional[str] = None) -> "_sc.DeckSpec":
+                   scratch_dir: Optional[str] = None,
+                   contours=None) -> "_sc.DeckSpec":
     """The ``DeckSpec`` for one transport rung.
 
     ``point`` is the deck's point of a rung that runs per point
@@ -691,7 +741,10 @@ def transport_spec(struct: Structure, cfg, *,
     ``scratch_dir`` is the folder of the run's own the leads' files live in
     -- the vocabulary's (`warm-files.toml` [transport] ``scratch_dir``,
     `engines/transport.md` § 2a.11), which prep hands down; a caller that
-    hands none gets the engine's own file's.
+    hands none gets the engine's own file's.  ``contours`` is a transmission
+    point's sharing with a finished calculation's point
+    (`energies.Contours`; `engines/transport.md` § 2a.16), ``None`` for a
+    point that computes its window whole.
 
     *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
     calculation's own template ⊕ this rung's overrides, as
@@ -728,12 +781,15 @@ def transport_spec(struct: Structure, cfg, *,
     derived = _derived_for(state, cfg, k_mesh, tbt_mesh)
     from .transiesta import engine_frame_for
     frame = engine_frame_for(struct)
-    layout = {"seed": _seed_layout,
-              "electrode": _electrode_layout,
-              "device": _device_layout,
-              "transmission": _transmission_layout}[shape](
+    layout = ({"seed": _seed_layout,
+               "electrode": _electrode_layout,
+               "device": _device_layout}[shape](
+                   derived, frame, _state_block(state, on_junction=handed),
+                   point, scratch_dir or _enginescratch_dir_of())
+              if shape != "transmission" else _transmission_layout(
                   derived, frame, _state_block(state, on_junction=handed),
-                  point, scratch_dir or _enginescratch_dir_of())
+                  point, scratch_dir or _enginescratch_dir_of(),
+                  contours=contours))
     return _sc.DeckSpec(
         engine="siesta",
         engine_frame=frame,

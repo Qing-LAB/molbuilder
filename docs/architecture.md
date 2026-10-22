@@ -249,7 +249,7 @@ current → target status matrix.
 | `envs/` | L2 | the **environments toolkit** (presence + verify-cmd + GPU / CUDA / ELPA readiness) | `molbuilder envs {bootstrap,clean,doctor,init-config,install,list,repair,validate}` | [`ops/installation.md`](?doc=ops/installation.md); NEVER build a new doctor |
 | `siesta/`, `pyscf/` | L2 | per-engine input emitters + stage rendering | `siesta.input.spec_for` · `pyscf.input.spec_for` → a `script_emit.DeckSpec`, which `jobset prep` renders, writes and checks (`script_emit.prepare_deck`); `molbuilder.siesta` exports `SiestaConfig`, `copy_pseudopotentials`, `find_psml`, and `molbuilder.pyscf` exports `PySCFConfig` | [`engines/siesta.md`](?doc=engines/siesta.md), [`engines/pyscf.md`](?doc=engines/pyscf.md) |
 | `builders/`, `peptide/`, `nucleic`, `smiles`, `pubchem` | L2 | structure synthesis | `build_peptide` / `build_dna` / `build_rna` / `build_from_smiles` / `build_from_name` | [`engines/builders.md`](?doc=engines/builders.md) |
-| `transport/` | L2 | TranSIESTA multi-run workflow — the composite: one citation → five rungs | `molbuilder jobset …` (`--calculation transport`; there is no calculation-kind verb) | [`engines/transport.md`](?doc=engines/transport.md) |
+| `transport/` | L2 | TranSIESTA multi-run workflow — the composite: one citation → five rungs; a calculation that reuses a finished one (`reuse.py`, its describe), a point's energies and their one join (`energies.py`), a window fitted to a finished grid (`window.py`) | `molbuilder jobset …` (`--calculation transport`; there is no calculation-kind verb); `molbuilder describe --reuses` | [`engines/transport.md`](?doc=engines/transport.md) |
 
 ### Core types (L1) & surfaces (L3)
 

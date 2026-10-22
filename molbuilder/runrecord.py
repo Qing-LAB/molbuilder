@@ -642,5 +642,79 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
     return out
 
 
+#: The finished calculation's run a run is a copy of, tree-relative -- one
+#: line, written by the prep that copies a group in from the finished
+#: calculation a transport calculation reuses (`jobset.reuse.copy_in`,
+#: :func:`write_copied_from`) and read by the readers that say *copied from*
+#: and by the way back (:func:`read_copied_from`; `engines/transport.md`
+#: § 2a.16).
+COPIED_FROM_FILE = _rf.COPIED_FROM_FILE   # the catalogue's name
+
+
+def write_copied_from(run_dir, source: str, *, plan) -> None:
+    """THE ONE WRITER of what a run is a copy of: ``source``, the finished
+    calculation's run, tree-relative, as the run's ``.copied-from``, into
+    ``plan`` (`jobset.planned.Plan`)."""
+    plan.bytes(Path(run_dir) / COPIED_FROM_FILE,
+               (source + "\n").encode("utf-8"))
+
+
+def read_copied_from(run_dir) -> Optional[str]:
+    """The finished calculation's run ``run_dir`` is a copy of, tree-relative,
+    as :func:`write_copied_from` wrote it -- ``None`` for a run made here.
+    A record that is there and does not read is a :class:`LaunchRecordError`
+    naming it."""
+    p = Path(run_dir) / COPIED_FROM_FILE
+    try:
+        said = p.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise LaunchRecordError(
+            f"{p} does not read ({exc}) -- which run this one is a copy of "
+            f"cannot be told.") from None
+    if not said:
+        raise LaunchRecordError(
+            f"{p} names no run -- which run this one is a copy of cannot be "
+            f"told.")
+    return said
+
+
+def copied_of(base, folder) -> Optional[str]:
+    """WHAT ``folder`` IS A COPY OF -- a run, or a point of a run of points,
+    of the calculation in ``base`` -- tree-relative: its own
+    ``.copied-from`` (a point taken over from the finished calculation its
+    calculation reuses), or its run's with the point's place in it (a run
+    copied in whole), one hop; ``None`` for one computed in this
+    calculation (`engines/transport.md` § 2a.16).  The one answer every
+    reader that says *copied from* asks: `status`, the Results tab's ladder
+    and the transport record."""
+    from .paths import run_folder_of
+    base, folder = Path(base).resolve(), Path(folder).resolve()
+    said = read_copied_from(folder)
+    if said:
+        return said
+    rel = folder.relative_to(base)
+    run = run_folder_of(rel)
+    if run is not None and run != rel:
+        said = read_copied_from(base / run)
+        if said:
+            return f"{said}/{rel.relative_to(run).as_posix()}"
+    return None
+
+
+def copied_in(stage_dir) -> Optional[str]:
+    """What a stage's FIRST run is a copy of, tree-relative -- its
+    ``.copied-from`` (:func:`read_copied_from`) -- or ``None`` for a stage
+    whose runs were made here: a stage its calculation's prep COPIED IN from
+    the finished calculation it reuses (`engines/transport.md` § 2a.16),
+    asked by the way back -- the state saved before that prep."""
+    from .paths import attempt_dir, attempts_in
+    if stage_dir is None:
+        return None
+    runs = attempts_in(stage_dir)
+    return read_copied_from(attempt_dir(stage_dir, runs[0])) if runs else None
+
+
 __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run",
-           "launched_runs", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "sent_wall_s", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+           "launched_runs", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "sent_wall_s", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from", "COPIED_FROM_FILE", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]

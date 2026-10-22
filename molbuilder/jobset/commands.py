@@ -325,17 +325,30 @@ def _saved_states(base) -> str:
 def redo_launched(stage: Optional[str], *, calc) -> str:
     """How a LAUNCHED stage is changed (`job-system.md` § 5.0): the state
     saved before its group's first launch restored -- every run it builds on
-    is in it, and there it is prepared, never launched -- and a prep anew.
+    is in it, and there it is prepared, never launched -- and a prep anew;
+    for a group copied in from a finished calculation, the state saved
+    before the prep that copied it in.
     The group is named by the members it was launched with, as the state's
     note named them (`group.named`, at the launch): the job request may
     hold other members now, and a number shifts when a stage above it is
     removed.  A stage launched before 2.7.0, whose launch saved no state,
     goes back to the state saved before its prep.  ``calc`` is the
     calculation as the verb read it (A16): its job request and its plan."""
+    from ..runrecord import copied_in
     from .group import members_of, named, same_members
+    from .naming import stage_home
     base, request = calc.base, calc.request
     g = (request.group_of(stage)
          if request is not None and stage is not None else None)
+    # A GROUP COPIED IN from the finished calculation a transport
+    # calculation reuses was launched by no launch of this one: its way back
+    # is the state saved before the prep that copied it in
+    # (`engines/transport.md` § 2a.16).
+    if (stage is not None and g is not None
+            and copied_in(stage_home(base, calc.task, stage).dir)):
+        return (f"go back to the state saved before the prep that copied "
+                f"{named(request, g)} in from {Path(calc.task.reuses).name} "
+                f"-- and prep anew -- " + _saved_states(base))
     job = calc.job(stage) if stage is not None else None
     ran = members_of(job) if job is not None else None
     what = ("the first launch of its group" if g is None else

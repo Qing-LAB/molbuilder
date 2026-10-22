@@ -544,9 +544,15 @@ def first_launch_takes(calc, stage: str, job, *,
             n for n in names if (where / n).is_file())), None, None)
     if task.calculation == "transport":
         # ITS INPUTS ARE ITS KIND'S, never named: `--from` / `--cold`
-        # refused by the one door, as a swept rung's are.
+        # refused by the one door, as a swept rung's are -- but a rung of
+        # points of a calculation that reuses a finished one, whose first
+        # launch takes that calculation's points over: `--cold` takes none
+        # (`engines/transport.md` § 2a.16).
+        from ..transport.stages import frames_of, rung_points
         from .continuation import cannot_be_named
-        why = cannot_be_named(base, task, stage, from_attempt, cold)
+        why = (None if cold and not from_attempt and task.reuses
+               and rung_points(task, stage, frames=frames_of(base))
+               else cannot_be_named(base, task, stage, from_attempt, cold))
         if why:
             return None, None, why
         try:

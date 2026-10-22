@@ -588,6 +588,15 @@ request = { json = { engine = "siesta", junction = "{link_out_from_root}", dest 
 where = "json"
 name = "dest"
 request = { json = { engine = "siesta", junction = "{inside_file}", dest = "{outside_dir}" } }
+[[route.path]]
+where = "json"
+name = "reuses"
+request = { json = { engine = "siesta", junction = "{inside_file}", reuses = "{outside_dir}", dest = "{inside_dir}" } }
+[[route.path]]
+where = "json"
+name = "reuses"
+request = { json = { engine = "siesta", junction = "{inside_file}", reuses = "{outside_by_climbing}", dest = "{inside_dir}" } }
+refusal = ["may not contain '..'"]
 
 [[route]]
 rule = "/api/transport/describe_attempt"
@@ -605,6 +614,23 @@ refusal = ["may not contain '..'"]
 where = "query"
 name = "path"
 request = { query = { path = "{link_out_from_root}" } }
+
+[[route]]
+rule = "/api/transport/fit"
+method = "GET"
+[[route.path]]
+where = "query"
+name = "reuses"
+request = { query = { reuses = "{outside_dir}", lo = "-3", hi = "3" } }
+[[route.path]]
+where = "query"
+name = "reuses"
+request = { query = { reuses = "{outside_by_climbing}", lo = "-3", hi = "3" } }
+refusal = ["may not contain '..'"]
+[[route.path]]
+where = "query"
+name = "reuses"
+request = { query = { reuses = "{link_out_from_root}", lo = "-3", hi = "3" } }
 
 [[route]]
 rule = "/api/transport/pdos"
@@ -638,6 +664,15 @@ refusal = ["may not contain '..'"]
 where = "query"
 name = "junction"
 request = { query = { engine = "siesta", junction = "{link_out_from_root}" } }
+[[route.path]]
+where = "query"
+name = "reuses"
+request = { query = { engine = "siesta", reuses = "{outside_dir}" } }
+[[route.path]]
+where = "query"
+name = "reuses"
+request = { query = { engine = "siesta", reuses = "{outside_by_climbing}" } }
+refusal = ["may not contain '..'"]
 
 [[route]]
 rule = "/api/watch/data"

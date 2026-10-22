@@ -376,6 +376,20 @@ const WORKSPACE_TAG = "results:transport";
             panel.appendChild(_el("p", "transport-note",
                                   spin + ": " + rec.current_means[spin]));
         });
+        /* WHAT A POINT IS A COPY OF, AND WHAT IT SHARES -- a calculation
+         * that reuses a finished one (engines/transport.md § 2a.16): the
+         * run that computed it, or the energies a finished point computed
+         * and those its own run did, in the manifest's words. */
+        state.points.forEach((p) => {
+            const bits = [];
+            if (p.copied_from) bits.push("copied from " + p.copied_from);
+            if (p.shared) bits.push("shares " + p.shared.held + " of "
+                + p.n_energies + " energies with " + p.shared.from
+                + " — computes " + p.shared.computed + " here");
+            if (bits.length) panel.appendChild(_el("p", "transport-note",
+                pointWords(_pf(p), n, p.bias_v) + ": "
+                + bits.join(" · ")));
+        });
     }
 
     /* EVERY RUNG'S SCF, one tab each, through the one SCF plot: a device's
@@ -447,6 +461,9 @@ const WORKSPACE_TAG = "results:transport";
             if (src.bias_v !== undefined && src.bias_v !== null)
                 bits.push(pointWords(_pf(src), n, src.bias_v));
             if (src.detail) bits.push(src.detail);
+            // THE RUN IT IS A COPY OF -- copied in from the finished
+            // calculation this one reuses (engines/transport.md § 2a.16).
+            if (st.copied_from) bits.push("copied from " + st.copied_from);
             if (src.negf) {
                 bits.push("NEGF: " + src.negf.cycles + " cycles");
                 if (src.negf.ef !== undefined)
@@ -502,6 +519,8 @@ const WORKSPACE_TAG = "results:transport";
              * (§ 2a.12): said beside its attempt, with the contour its
              * density was integrated on. */
             const where = (st.attempt || "—")
+                // THE RUN IT IS A COPY OF (engines/transport.md § 2a.16).
+                + (st.copied_from ? " · copied from " + st.copied_from : "")
                 + (st.gathered_by ? " · gathered by the " + st.gathered_by : "")
                 + (st.negf && st.negf.contour && st.negf.contour.poles
                     ? " · " + st.negf.contour.poles + " poles" : "")
@@ -553,6 +572,7 @@ const WORKSPACE_TAG = "results:transport";
                     const pts = _el("ul", "transport-chain-points");
                     c.points.forEach((p) => {
                         const bits = [];
+                        if (p.copied_from) bits.push("copied from " + p.copied_from);
                         if (p.started_from) bits.push("from " + p.started_from);
                         if (p.start_unread) bits.push(String(p.start_unread));
                         /* `took` is the status door's own sentence per

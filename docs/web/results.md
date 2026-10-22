@@ -46,7 +46,7 @@ flowchart LR
 | **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize task` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
 | **a folder not marked as part of a calculation** | whatever result it holds, read alone | as above | as above |
 | **a device run's `tsgf/`** (role `scratch`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | nothing: the sidebar says *the engine's scratch of the run above* and lists what it holds; no file in it opens | — | — |
-| **a transmission point's `shared/`** (role `shared`; *designed, not built* — [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | the point's report, as the point above it opens: the sidebar says *the energies this point shares with* the point its `.copied-from` names | — | — |
+| **a transmission point's `shared/`** (role `shared`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | the point's report, as the point above it opens: the sidebar says *the energies this point shares with* the point its `.copied-from` names | — | — |
 
 **A single run and a higher-level report are different by nature.** A run is
 reported from its own files. A ladder, a benchmark and a transport calculation
@@ -439,8 +439,7 @@ detail counts the points done and names the first not done
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). A run a
 transport calculation copied in from a finished one it reuses is shown as any
 run, *copied from* the run its `.copied-from` names beside its state
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not
-built*).
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 
 The page's empty-state card draws it: one row per rung in ladder order, the
 state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
@@ -479,7 +478,7 @@ result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
 attempts, a benchmark's trials, a bias sweep's points — each with its state, its
 folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
-`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, deck, validation}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it, where another run-once rung carries all three `null` —, `opens` relative
+`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, deck, validation, copied_from}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it, where another run-once rung carries all three `null` —, `opens` relative
 to the root — the run door's answer for that folder (`runs.openable`), so
 **a transmission run's is the root's `task.json`, with its
 `point`** (§ 2): its result is the report at that bias (§ 0.1), and its row's *open*
@@ -660,7 +659,8 @@ exists or is named here; nothing worked out in the browser:
 | I–V | `iv` in the record | built (table); the curve is new, drawn from the same arrays |
 | convergence | each rung's SCF history, phase-tagged: `cycle, energy, delta_E, dDmax, dHmax, ef, phase` (`periodic` / `negf`), and on a NEGF row the charges, `dq` and `vha_ev` (the SIESTA reader, `siesta_reader.py`) | **new** in the record: per rung `scf: [...]`, read by the same parse the record already makes of each rung's output. `/api/watch/*` cannot serve it: it holds one file for the whole server, the trajectory viewer's |
 | device NEGF figures | the NEGF phase's E_F, iterations, and charge | **new** in the record's device stage, read from the same parse (the periodic start's never shown as the device's, § 2a.12) |
-| provenance chain | each rung's `.gathered-from` (`runrecord.read_gathered_from`) | **new** in the record: `provenance.chain` |
+| provenance chain | each rung's `.gathered-from` (`runrecord.read_gathered_from`) — and, a calculation that reuses a finished one, what each point is a copy of (`copied_from`, `runrecord.copied_of`) beside what it started from ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | **new** in the record: `provenance.chain` |
+| what a point is a copy of, and what it shares | a calculation that reuses a finished one: each point's `copied_from` and `shared` — the finished point, the energies it holds and those its own run computed — said under the points table in the manifest's words ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `points[].copied_from`, `points[].shared` in the record (since 2.30.0) |
 
 **PDOS of the atoms you choose** *(user, 2026-10-07: "what if we want to be
 able to show PDOS of selected atoms/labels? such as S atom, or carbon atoms or

@@ -71,6 +71,18 @@ def tbt_files(run_dir: Path, label: str) -> Dict[str, Path]:
     return out
 
 
+def energies_of(run_dir: Path, label: str) -> List[float]:
+    """The energies a point's run computed, in the order TBtrans wrote them,
+    at full precision -- its ``.TBT.nc``'s (the first channel's; a
+    polarized run's two are one grid, :func:`spin_dos`), never the five
+    decimals its ``.TBT.AVTRANS`` prints (`engines/transport.md` § 2a.16).
+    :class:`TbtError` when the run holds none."""
+    files = tbt_files(run_dir, label)
+    if not files:
+        raise TbtError(f"{Path(run_dir).name} holds no .TBT.nc of {label}")
+    return _floats(_open(next(iter(files.values()))).E)
+
+
 def _sum(a: List[float], b: List[float]) -> List[float]:
     return [x + y for x, y in zip(a, b)]
 

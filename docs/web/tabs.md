@@ -283,10 +283,12 @@ B8)*.
    computed (its junction's citation, its treatment, its voltages, its
    window, where each group stands), and every card fills from it — the
    shared panel and each rung's tab from its template and its rungs'
-   overrides, the bias list and the treatment from its description, each
-   value marked *from* that calculation, its electrode rename its own and not
-   offered; Describe then writes what `molbuilder describe --reuses` writes
-   ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*). Anything else
+   overrides, the bias list and the treatment from its description, the line
+   over the shared panel naming that calculation and each value keeping the
+   source its template records — a blank its value nobody chose, the hint
+   what runs, left as it was by Describe — its electrode rename its own and
+   not offered; Describe then writes what `molbuilder describe --reuses` writes
+   ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16). Anything else
    answers *not citable* with the condition named, and the citation held
    stays held. The describe door answers one
    summary line (how the run ended, what its record states) and **findings** through the one renderer
@@ -317,7 +319,13 @@ B8)*.
    PySCF-NEGF disabled); in it, one **tab per rung**, each holding that rung's own
    settings as its override bag (§ 3.8.2a), its cards folded where the rung
    does not own the group, the rung-fixed items echoed read-only. The
-   transmission's tab offers no SCF setting (tbtrans runs none, § 6.1b).
+   transmission's tab offers no SCF setting (tbtrans runs none, § 6.1b). For a
+   calculation that reuses a finished one, the transmission's tab offers, above
+   its fields, its window **fitted to the finished grid** — the range asked
+   and how many times finer, the fitted ends and count the server answers
+   (`/api/transport/fit`), and *use these*, which writes them into the tab's
+   window fields (`lib/transport/fit.js`, the one builder Task setup draws
+   too; [`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 5. **Describe** — one button, enabled once a junction is cited and the
    shared panel and the rungs' tabs are drawn for it (until then they hold
    the last citation's values). `POST /api/transport/describe` writes the
@@ -339,8 +347,9 @@ workspace's one door, each under the tab's own tag
 ([`workspace.md`](?doc=web/workspace.md) § 4): the citation
 (`transport:panel`), and what the shared panel and each rung's tab hold
 (`transport:form` — one note, saved on every edit while a junction is cited
-and put back after each surface draws, for the junction it was typed for: the
-last one edited) *(2026-10-11; the rung tabs kept theirs in a browser slot of
+and put back after each surface draws, for the junction it was typed for --
+or the finished calculation reused, its folder: the last one edited)
+*(2026-10-11; the rung tabs kept theirs in a browser slot of
 their own, and the shared panel kept nothing, until then)*. The bias list, its
 treatment and the electrode rename are not kept: a reload starts them over.
 
@@ -356,9 +365,9 @@ The deliverable is read on the Results tab: a transport root opens its
 `task.json`, which the transport report presents composed on read
 ([`web/results.md`](?doc=web/results.md) § 0.1, § 2.5).
 
-The tab's three live routes are `/describe`, `/describe_attempt` (which also
-describes a citation with the electrode rename, `&swap_electrodes=1`) and
-`/schema` ([`web/web-api.md`](?doc=web/web-api.md)).
+The tab's four live routes are `/describe`, `/describe_attempt` (which also
+describes a citation with the electrode rename, `&swap_electrodes=1`),
+`/schema` and `/fit` ([`web/web-api.md`](?doc=web/web-api.md)).
 
 ## 5. Documents — the in-app reader (this page)
 

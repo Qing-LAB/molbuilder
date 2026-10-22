@@ -1060,9 +1060,7 @@ finished calculation is the record of what it computed, and stays so.
 **Asking a finished calculation a wider question** — the same junction, the
 same leads and device, a wider window or more voltages — is a new
 calculation in a folder of its own, and what it may take from the finished
-one is what the tables above say stands — copied in by the rule of § 2a.16
-*(designed 2026-10-22, not built; until it is, a new calculation computes
-every rung)*.
+one is what the tables above say stands — copied in by the rule of § 2a.16.
 
 ### 1.3 A junction by hand — every matrix, every file *(user, 2026-10-22)*
 
@@ -1369,7 +1367,7 @@ as § 2a.11 says.
 **Step 5 · the transmission → `05_transmission/run-0/v0/T.TBT.nc`**, and
 `v0.2/`: what it took, `T.TS.HSX <- 04_device/run-0/v0` (and `v0.2`'s from
 `v0.2`) and the two leads' `.TSHS`. 401 energies from −1.995 to +1.995 eV —
-the catalogue's window, −2…2 eV, 401 points, mid-rule — at one k-point (an
+the catalogue's window then, −2…2 eV, 401 points, mid-rule — at one k-point (an
 isolated chain has nothing to sample in the electrode plane): **T(E)
 between 0.99990 and 0.99991 at every energy at 0 V**, and between 0.99986
 and 0.99991 at 0.2 V.
@@ -2334,7 +2332,7 @@ A point folder holds everything its engine reads, as every run folder does
 (`project-layout.md` § 1.0) — its own copies of the run's inputs; the run keeps
 them once, clean, as their source — and, for a transmission point of a
 calculation that reuses a finished one, the energies it shares with the
-finished point, in its `shared/` (§ 2a.16; *designed, not built*) — but for the
+finished point, in its `shared/` (§ 2a.16) — but for the
 leads' surface Green's functions, which the engine reads from the run's `tsgf/` above the point and
 which are the run's on purpose (*What a run's points share*, below). The stage folder
 holds no deck at the stage level: every deck is a point's.
@@ -2444,7 +2442,9 @@ run's state, by one rule the gather asks too (`continuation.points_state`) —
 from this machine that holds the run is going (`joblist.is_going`, the answer
 `molbuilder jobs` gives) — never the job a reader runs inside, a sequence's,
 which reads its own runs of points by their points (`job-system.md` § 6.0); *queued* while no point the run walks itself has
-started (a point taken over is the earlier run's) and its job is not over —
+started (a point taken over is the earlier run's, or the finished calculation's
+a reuse took it from — § 2a.16 — and a run copied in whole walks none) and its
+job is not over —
 one cancelled in the queue, or a process that died before its first point, is
 a run that ended, its points' verdict *— its job ended before any point
 started*, asked once of that job or else of the run door, which asks the
@@ -2928,7 +2928,7 @@ structure at one voltage is a 1 × 1 grid, never a different layout.
 |---|---|
 | `frame` | the cited structure's frames — 1 for one structure |
 | `bias_v` | the voltages the device and the transmission ran at — the description's list, in its order, or 0 V |
-| `energy_ev` | the transmission's energy grid, E − E_F, as `.TBT.AVTRANS` prints it — five decimals of an eV (`f10.5`, `m_tbt_save.F90`); each DOS, from `.TBT.nc` at full precision, sits on the same points within half that decimal |
+| `energy_ev` | the transmission's energy grid, E − E_F, at the full precision of each point's `.TBT.nc` — the `.TBT.AVTRANS` beside it prints the same points to five decimals of an eV (`f10.5`, `m_tbt_save.F90`), and a file that is not within half that decimal of it is refused as not one run's; a point that shares energies with a finished calculation's point, its joined grid (§ 2a.16) |
 | `spin` | the spin channels TBtrans wrote, by the record's names — the one channel of a `non-polarized` run, or `up` and `down` |
 | `iv_bias_v` | the I–V's voltages — the description's list, in its order (under the low-bias approximation, more than ran), or 0 V |
 | `atom` · `xyz` | the junction's atoms **in your order** — the composed junction, the engine's record in TranSIESTA's order, restored through its own order record (`Structure.restored`; [`model/overview.md`](?doc=model/overview.md) § 2.2a, I1) — and the three Cartesian components; every per-atom variable (`element`, `mass_amu`, `positions_ang`) along it |
@@ -2959,7 +2959,7 @@ part — their rows, masses and average — is laid out by their post-process
 | `conductance_g0` | frame, bias_v | derived | `G / G₀ = T` at E − E_F = 0, linearly interpolated |
 | `current_a_printed` | frame, bias_v | raw | the current TBtrans printed — one spin channel's; the fill value for a point whose energies two runs computed, each printing its own part (§ 2a.16) |
 | `current_from` | frame, bias_v | state | which current `current_a` is: `tbtrans`, the junction's total from the printed figures (above), or `joined`, the record's integral by TBtrans's rule over a point whose energies two runs computed (§ 2a.16) |
-| `current_a` | frame, bias_v | derived | the junction's total: twice the printed figure unpolarized, the channels' sum polarized |
+| `current_a` | frame, bias_v | derived | the junction's total, as `current_from` says: `tbtrans` — twice the printed figure unpolarized, the channels' sum polarized; `joined` — the record's over the point's joined grid, its printed figure the fill value (§ 2a.16) |
 | `iv_current_a` | frame, iv_bias_v | derived | the I–V — each point's own total (`iv_computed` `tbtrans`), or the record's linear response from that frame's 0 V slice (`linear-response`, the low-bias approximation): `I(V) = G₀ ∫ T(E, 0) [f(E − eV/2) − f(E + eV/2)] dE` at `iv_kt_ev`, the fill value where the window does not reach (§ 2a.10) |
 | `device_ef_ev` · `device_vha_ev` | frame, bias_v | raw | the device point's NEGF Fermi level and boundary Hartree potential, as TranSIESTA printed them — wherever the device point ran, its transmission done or not |
 | `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` · `eigenchannel_transmission` | frame, bias_v, (region · lead · eigenchannel), energy_ev | raw | from each point's `.TBT.nc`, k-averaged (`transport/tbtnc.py`); a polarized point's two files (`.TBT_UP.nc`, `.TBT_DN.nc`) summed over spin (`tbtnc.spin_dos`, 2026-10-11), its eigenchannels — one set per spin — not here (a run of polarized points has an `eigenchannel` dimension of 0) but each spin's in the record (`dos.by_spin`, `web/results.md` § 2.5) |
@@ -2981,7 +2981,7 @@ part — their rows, masses and average — is laid out by their post-process
 ångström `angstrom` and the ampere `A` — `long_name`, `definition` — how it is
 obtained, the formula for a derived one — and, for a raw one, `source`, the
 file it was read from. The file says what it is: `schema`
-(`molbuilder/transport-data@2`), the label, the treatment, the citation and its
+(`molbuilder/transport-data@3`), the label, the treatment, the citation and its
 kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
 (`iv_computed`; under the low-bias approximation its `iv_kt_ev`, `iv_window_ev`
 and `iv_notes`, JSON, each note with the `frame` and the `bias_v` it is
@@ -3061,7 +3061,7 @@ for a non-polarized calculation**, and the sum of the two channels for a
 polarized one, each as TBtrans printed it (empty when it printed only one) —
 but for a transmission point whose energies two runs computed, whose current
 the record integrates by TBtrans's own rule over the joined grid, saying so
-(`current_from`, § 2a.16; *designed, not built*).
+(`current_from`, § 2a.16).
 The figure TBtrans printed stays beside it
 (`current_a_printed`), the spin each point ran with is the one its own deck
 states (`spin`), and the record says in words what each number is
@@ -3459,7 +3459,7 @@ device is enforced bulk (the manual; true by default) — and once settled by
 one junction's run, which is evidence about one configuration rather than a
 rule.)*
 
-### 2a.16 A calculation that reuses a finished one *(the user, 2026-10-22; designed, not built — plan § 1x)*
+### 2a.16 A calculation that reuses a finished one *(the user, 2026-10-22; built 2.30.0 — plan § 1x)*
 
 *(The user, 2026-10-22: "a mechanism where we can cite a finished task … and
 then say, hey, I want to expand this a bit, or I want to tune certain
@@ -3623,14 +3623,15 @@ will copy into its points' `shared/`, and what the next save stores again.
 ```text
 reuses AuBDTAu/transport/lowbias_local -- what this calculation copies, and what it runs
   group 1  seed, electrode_L, electrode_R  copied in
-           01_seed/run-0          <- lowbias_local/01_seed/run-0          finished  0.4G
-           02_electrode_L/run-0   <- lowbias_local/02_electrode_L/run-0   finished  0.1G
-           03_electrode_R/run-0   <- lowbias_local/03_electrode_R/run-0   finished  0.1G
+           01_seed/run-0         <-  lowbias_local/01_seed/run-0         finished  0.4 GiB
+           02_electrode_L/run-0  <-  lowbias_local/02_electrode_L/run-0  finished  0.1 GiB
+           03_electrode_R/run-0  <-  lowbias_local/03_electrode_R/run-0  finished  0.1 GiB
   group 2  device                          copied in
-           04_device/run-0        <- lowbias_local/04_device/run-0        finished  2.6G  (tsgf/ left behind)
-  group 3  transmission                    prepared here -- its energies:
-           0 V    shares 401 of 601 energies with lowbias_local/05_transmission/run-0 -- computes 200 here
-  copied now: 3.2G -- the next save stores it again: 3.2G
+           04_device/run-0       <-  lowbias_local/04_device/run-0       finished  2.6 GiB  (tsgf/ left behind)
+  group 3  transmission                    prepared here -- transmission: lowbias_local/05_transmission/run-0 ran another calculation -- block TBT.Contour.window, row 2: the run had from -2.0 eV to 2.0 eV, it renders from -2.997506234413965 eV to 2.997506234413965 eV now; block TBT.Contour.window, row 3: the run had points 401, it renders points 601 now
+           its energies:
+             0 V    shares 401 of 601 energies with lowbias_local/05_transmission/run-0 -- computes 200 here
+  copied now: 3.2 GiB -- the transmission's first launch copies 0.8 GiB into its points' shared/ -- the next save stores it again: 4.0 GiB
 ```
 
 - **On the terminal**, bare `prep task` lists it with the groups it offers, so
@@ -3666,6 +3667,9 @@ with their runs — and, within a transmission point, **every energy the
 finished point computed exactly**. A transmission point costs its energies
 times its k-points, each energy independent of every other (§ 1.2); an energy
 computed once is not computed again where a point adds energies to it.
+**A transmission that runs once** — under the low-bias approximation, or at a
+single bias — is its one point, the run itself (§ 2a.11), and shares as any
+point does, its `shared/` in its run's folder (the manifest's example above).
 
 **When a point shares energies** — all of these, at prep:
 
@@ -3723,27 +3727,33 @@ spacings until the range you asked is covered. Every finished energy is then
 a point of the new grid and every new energy lies at the same spacing, so the
 transmission computes the new energies alone. One door fits it
 (`transport.window.fitted`: the finished grid, the range asked, the factor →
-the window's ends and its point count), and what it answers is what the
-template holds, recorded as fitted with the range asked beside it (its
-provenance, `template.SAID`) and said where it is fitted:
+the window's ends and its point count), and what it answers is **the
+transmission's own values** — where the page's *use these* writes them too,
+so the window has one home on both roads — said where it is fitted, with the
+range asked:
 
 ```text
-transmission window: -3…3 eV asked, fitted to the finished grid -- -3.00748…3.00748 eV at 603 points, 0.009975 eV apart, every one of its 401 energies kept
+transmission window: -3…3 eV asked, fitted to the finished grid -- -3.00748…3.00748 eV at 603 points, 0.00997506 eV apart, every one of its 401 energies kept
 ```
 
 - **Where it is asked**: `molbuilder describe --reuses <finished> --window
   -3,3 [--finer 3]`; and on the Transport tab and Task setup, the
   transmission window of a calculation that reuses one offers the fit beside
   its fields — the range asked, the fitted ends and count, and *use these*,
-  which writes them. A window typed value by value stays as typed and shares
-  what it shares; nothing is fitted unasked.
+  which writes them as the transmission's own values: into its tab on the
+  Transport tab, on its row on Task setup. A window typed value by value
+  stays as typed and shares what it shares; nothing is fitted unasked.
 - **With the catalogue's default** — −2.005…2.005 eV at 401 points, the
   energies on the 0.01 eV lattice, E_F among them (the user, 2026-10-22: *"i
   would agree to your recommendation of default numbers for starting"*) — a
   window fitted to −3…3 eV is −3.005…3.005 eV at 601 points.
-- **The finished grid is read from its point's `.TBT.nc`**, at full precision,
-  through the door that reads a point's energies (below) — its spacing and
-  where its energies lie, never its deck's rounded ends.
+- **The finished grid is its point's window as its deck states it** — its
+  ends and its count, the numbers tbtrans computed its energies from; a point
+  that shared energies, the grid its record describes — at the finished
+  calculation's newest transmission run's first point done
+  (`jobset.reuse.finished_window`). A range whose ends the finished energies
+  already reach — the first at or below it, the last at or above — fits that
+  window end for end: the same deck, copied in.
 
 **What the point's run computes**: the energies its grid holds that the
 finished point does not — **written in its deck as line contours**, each a
@@ -3795,23 +3805,35 @@ file say, point by point, which current each is (`current_from`: `tbtrans`, or
 `joined`), and a joined point's printed current is not one (the data file's
 fill value). Under the low-bias approximation the record integrates T(E, 0)
 as it does for any point (§ 2a.10), over the joined curve. **What a run
-computed is its own**: the account of a point's loop says *200 of its 601
-energies (401 shared)* — TBtrans's count of its own, with molbuilder's of the
-grid and of the shared beside it, from the deck's comment — and the loop
-measured beside it is that run's.
+computed is its own**: TBtrans's account of a point's loop counts the
+energies its run computed — *200* — and the record says beside it what the
+point shares, from its deck's record (`shared`: the finished point, the
+energies it holds, those computed here — *401* and *200*), so the loop
+measured is that run's.
 
 **The manifest says it, point by point**:
 
 ```text
-  group 3  transmission                    prepared here -- its energies:
-           0 V    shares 401 of 601 energies with lowbias_local/05_transmission/run-0 -- computes 200 here
+           its energies:
+             0 V    shares 401 of 601 energies with lowbias_local/05_transmission/run-0 -- computes 200 here
 ```
 
-and a grid typed value by value that shares nothing is said so, with the
-window fitted to the range it asks — the person's to take or leave:
+and a grid typed value by value that keeps fewer than every finished energy
+— none, or a few — is said so, with the window fitted to the range it asks
+beside it, the person's to take or leave *(the user, 2026-10-22: the fit
+offered beside any partial share)*:
 
 ```text
-           0 V    shares none -- -3…3 eV at 601 points holds none of the finished point's 401; fitted to the finished grid: -3.00748…3.00748 eV at 603 points, holding all 401
+             0 V    shares none -- -3…3 eV at 600 points holds none of lowbias_local/05_transmission/run-0's 401; fitted to the finished grid: -3.00748…3.00748 eV at 603 points, holding all 401
+```
+
+A grid typed value by value that holds one energy in common — −3…3 eV at
+601 points against −2…2 eV at 401, both holding E = 0 — shares that one, and
+the manifest says it, the fit beside it and the size its first launch copies
+in the totals:
+
+```text
+             0 V    shares 1 of 601 energies with lowbias_local/05_transmission/run-0 -- computes 600 here; fitted to the finished grid: -3.00748…3.00748 eV at 603 points, holding all 401
 ```
 
 #### What is never copied
@@ -3832,12 +3854,14 @@ window fitted to the range it asks — the person's to take or leave:
 | more voltages, self-consistent | the seed, both leads | the device's and the transmission's points already converged | each new voltage's device and transmission points |
 | more voltages, the low-bias approximation — while the window reaches ±(\|V\|/2 + 5 kT) of each (§ 1.2) | every rung: the bias list reaches no deck (§ 2a.10) | — | nothing: `summarize task` computes the new voltages' currents from T(E, 0) |
 | the low-bias approximation left for the self-consistent treatment | the seed, both leads | the 0 V device and transmission points | every other voltage's device and transmission points |
+| the self-consistent treatment left for the low-bias approximation | the seed, both leads | — | the device and the transmission, once, at 0 V: a run that runs once is not a run of points, so neither is copied in, and no rung that runs once takes a point over |
 | `electrode_kz`, or a value every stage shares | — | — | every rung |
 
 **The new calculation is whole**: its saved states, its download and its
 record hold everything it computed and copied, and the finished calculation
-can be moved or removed once every rung of points prepared here has had its
-first launch. **The copies are the price, and twice**: a device point's folder
+can be moved or removed once every rung prepared here that reads it has had
+its first launch — a rung of points that takes points over, and a
+transmission whose points share energies. **The copies are the price, and twice**: a device point's folder
 holds its `.TSDE`, its `.TS.HSX` and its own copies of the leads' `.TSHS` and
 the seed's density, a transmission point's its `.TBT.nc`, whose densities of
 states are kept for each k-point — about 0.2–0.3 GB and 0.6–0.9 GB a point on
@@ -3851,11 +3875,14 @@ the size of what it copies.
 - **The Transport tab** — the junction card's picker takes, beside a finished
   relaxation run and a structure pair, **a transport calculation's folder**.
   The describe door answers its meta line — *TRANSPORT CALCULATION ·
-  lowbias_local · its junction, cited from …/run-2 · low-bias · 0.0, 0.2 V ·
-  −2…2 eV at 401 points · every group finished* — and the cards fill from it:
+  lowbias_local · its junction, cited from …/run-2 · low-bias-approximation ·
+  0.0, 0.2 V · −2…2 eV at 401 points · every group finished* — its window
+  the one its transmission computed, the rung's own values over the
+  template's — and the cards fill from it:
   the shared panel and each rung's tab from its template and its rungs'
-  overrides, the bias list and the treatment from its description, each value
-  marked *from lowbias_local*; the rename is its own and is not offered.
+  overrides, the bias list and the treatment from its description, the line
+  over the shared panel naming the calculation, each value keeping the
+  source its template records; the rename is its own and is not offered.
   **Describe** writes what `molbuilder describe --reuses` writes, through the
   same writer ([`web/tabs.md`](?doc=web/tabs.md) § 4).
 - **Task setup** echoes `reuses` with the junction it shows, not editable here
@@ -3866,15 +3893,16 @@ the size of what it copies.
   anything is written ([`web/task-setup.md`](?doc=web/task-setup.md) § 11.1).
 - **The Results tab** reads a run copied in as any run of the calculation,
   *copied from* beside its state on the ladder, and the report's provenance
-  naming the run that computed each rung and point
-  ([`web/results.md`](?doc=web/results.md) § 2.4).
+  naming the run that computed each rung and point, and what each point
+  shares ([`web/results.md`](?doc=web/results.md) § 2.4, § 2.5).
 
 #### What stays yours
 
 - **Whether a finished result is worth reusing** — as for any run you build on
   (`job-system.md`, *What stays yours*).
 - **The finished calculation, while it is read** — at the prep that copies,
-  and at the first launch of a rung of points that takes points over. Launched
+  and at the first launch of a rung of points that takes points over or of a
+  transmission whose points share energies. Launched
   again or restored between the two, that launch takes from the newest run it
   finds, and says which. No verb of the new calculation writes in it; the one
   write any reader of a run may make — the run door's record of a run that
@@ -3932,7 +3960,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 | Command | Does | Code |
 |---|---|---|
 | `molbuilder describe --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
-| `molbuilder describe --calculation transport --reuses <finished>` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole (§ 2a.16) — *designed, not built* | — |
+| `molbuilder describe --calculation transport --reuses <finished> [--window LO,HI [--finer N]]` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole — `--bias` and `--low-bias-approximation` set what they set; `--window` fits the transmission window to the finished grid, written as the transmission's own values (§ 2a.16) | `jobset/_cli.py::_init_reusing`, `transport/reuse.py`, `transport/window.py` |
 | `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points; several `--group` as one job launching each in turn, each rung gathering from the runs the groups before it just finished (`job-system.md` § 6.0, *A sequence of groups*) | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |

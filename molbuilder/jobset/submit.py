@@ -538,6 +538,10 @@ class _Member:
     #: points it takes over from the newest launched run and which it runs,
     #: each from what start -- ``None`` for a run of one.
     walk: Optional[str] = None
+    #: A RUN OF POINTS' FIRST LAUNCH in a calculation that reuses a finished
+    #: one: the points it takes over from that calculation
+    #: (`jobset.reuse.Take`; `engines/transport.md` § 2a.16).
+    copied: tuple = ()
     #: The calculation's folder, so what the plan says names it.
     base: Optional[Path] = None
 
@@ -1248,6 +1252,7 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
     run = next_run(opened.dir, names)
     gathered = gather_into(base, opened.dir, inputs, writes, names=names,
                            run=run)
+    _shares(calc, job, container, opened.dir, None, None, writes)
     # READ FROM THE STAGE'S OWN FILES, prep's -- what its run is emptied and
     # filled from at the send -- as a launch again reads them.
     return member(job, container, opened.dir, True, container, run=run,
@@ -1385,6 +1390,8 @@ def _launch_again(calc, job, *, member, names: RunNames, container: Path,
         gathered = _carry_the_gather(ran, opened.dir, writes, base=base,
                                      stage=stage, names=names, run=run,
                                      keep=own)
+    from ..transport.energies import SHARED_DIR
+    _shares(calc, job, container, opened.dir, None, ran / SHARED_DIR, writes)
     # READ FROM THE STAGE'S OWN FILES, prep's -- what the new run is filled
     # from (`materialize.prepare_attempt`), so the deck checked, the header
     # shown and the line sent are one.
@@ -1955,6 +1962,12 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
                     if h.record == GATHERED for src, n in h.files])
             elif m.first and m.continuation is None:
                 plan.record("starts-cold", stage=m.name, asked=m.cold)
+            for take in m.copied:
+                # A POINT TAKEN OVER from the finished calculation this one
+                # reuses (`engines/transport.md` § 2a.16).
+                plan.record("taken over", stage=m.name,
+                            point=take.point.words(), source=take.shown,
+                            copied_from=take.copied_from)
 
     results: List[JobResult] = list(plan.skipped)
     refused: List[str] = []
@@ -2685,6 +2698,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     `prep.prep_calculation`) -- the points done before walk on past.  Run
     here, each point is told its card's wall (`running-a-job.md` § 3.6)."""
     from ..runrecord import launch_record, next_run, read_continued_from
+    from ..transport.energies import SHARED_DIR
     from ..transport.stages import hands_on, products_of
     from ..warmfiles import is_scratch
     from .continuation import done
@@ -2702,6 +2716,14 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     hand = hands_on(stage, task.label, base)
     taken, walked = [], []
     prev_launch = launch_record(prev, names) if prev is not None else None
+    # A FIRST LAUNCH IN A CALCULATION THAT REUSES A FINISHED ONE takes that
+    # calculation's points over -- each done there, the same calculation,
+    # given what it was given (`engines/transport.md` § 2a.16); --cold takes
+    # none.
+    across = (_across(calc, stage, m)
+              if m.first and not m.cold and task.reuses else None)
+    over = ({(t.point.frame, t.point.volts) for t in across.taken}
+            if across is not None else set())
     for pdir, pt in m.points:
         if prev is not None and not m.cold:
             src = prev / pt.rel
@@ -2710,7 +2732,17 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
             if ok:
                 taken.append((pdir, pt, src))
                 continue
+        if (pt.frame, pt.volts) in over:
+            continue
         walked.append((pdir, pt))
+    if not walked and across is not None:
+        raise SubmitError(
+            f"{stage}: every point is one {across.run} computed the same, "
+            f"so its first launch has nothing to run -- a calculation that "
+            f"reuses a finished one answers a wider question "
+            f"(engines/transport.md § 2a.16).  To run them all here, launch "
+            f"it cold:\n"
+            + block(launch_lines("task", stage, base=base, flags=("--cold",))))
     if not walked:
         raise SubmitError(
             f"{stage}: every point of {prev.relative_to(base)} is done, so a "
@@ -2737,6 +2769,16 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
             files=tuple((at, f.name) for f in sorted(src.iterdir())
                         if f.is_file() and not is_scratch(f.name))),
             plan.writes)
+        # ITS SHARED ENERGIES, with it (`engines/transport.md` § 2a.16).
+        from .reuse import carry_shared
+        carry_shared(src / SHARED_DIR, pdir / SHARED_DIR, plan.writes,
+                     root=base)
+    # THE POINTS TAKEN OVER FROM THE FINISHED CALCULATION, into their folders
+    # beside what the gather gave them (`reuse.take_into`).
+    if across is not None and across.taken:
+        from .reuse import take_into
+        take_into(calc, across.taken, m.points, plan.writes,
+                  given=[t["file"] for t in m.took])
     # THE WALK: round by round -- every frame's point at a voltage, then the
     # next voltage (`engines/transport.md` § 2a.11) -- a point's start the
     # closest voltage before it in ITS frame (§ 2a.9), which ran a round
@@ -2757,6 +2799,11 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
                    key=lambda q: abs(float(q.volts) - float(pt.volts)))
     walked.sort(key=lambda pp: (rounds.index(pp[1].volts),
                                 order.index(pp[1])))
+    # EVERY WALKED POINT THAT SHARES ENERGIES is given them (`_shares`).
+    for pdir, pt in walked:
+        _shares(calc, job, stage_dir / pt.rel, pdir, pt,
+                prev / pt.rel / SHARED_DIR if prev is not None else None,
+                plan.writes)
     # THE RUN'S SCRATCH FOLDER, emptied as each round begins -- before the
     # round's first point this walk runs -- and when the walk ends.
     scratch_at = (f"{run.name}/{job.scratch_dir}" if job.scratch_dir
@@ -2793,9 +2840,14 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     walk = ((f"gathers {_gathered_from(m.took)}; " if m.took else "")
             + (f"takes over {', '.join(pt.words() for _p, pt, _s in taken)} "
                f"done in {prev.name}; " if taken else "")
+            + (f"takes over "
+               f"{', '.join(t.point.words() for t in across.taken)} from "
+               f"{across.run}; " if across is not None and across.taken
+               else "")
             + f"runs {', '.join(said)}")
     member = dataclasses.replace(m, read_from=stage_dir / walked[0][1].rel,
-                                 walk=walk)
+                                 walk=walk,
+                                 copied=across.taken if across else ())
     gn = GroupNames.of_points(names.stem)
     launch_dir = stage_dir / LAUNCH_DIR
     log = f"{LAUNCH_DIR}/{gn.name('.log')}"
@@ -2838,6 +2890,43 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         gn.stem, cmd, stage_dir, False, [member], placement=placement,
         sent=sent, rides="rides the sweep", header=header, machine=machine,
         outputs_in=outputs_in))
+
+
+def _shares(calc, job, prepared: Path, folder: Path, pt, held,
+            writes) -> None:
+    """WHAT A TRANSMISSION POINT SHARES, given it at a launch that walks it
+    -- a rung that runs once, its one point (``None``), the run itself
+    (`engines/transport.md` § 2a.16): from ``held``, the newest run here's
+    ``shared/`` at the point, when it holds them whole, else from the point
+    the deck its prep wrote in ``prepared`` names (`reuse.shared_into`) --
+    refused, in the launch's words, when neither is there."""
+    from .reuse import SHARING_RUNG, shared_into
+    if job.name != SHARING_RUNG:
+        return
+    try:
+        shared_into(calc, folder, pt, prepared / job.script, held, writes)
+    except ValueError as exc:
+        raise SubmitError(f"{job.name}: {exc}") from None
+
+
+def _across(calc, stage: str, m: "_Member"):
+    """The points ``m``'s first launch takes over from the finished
+    calculation this one reuses (`reuse.takes_over`), each matched by what
+    this launch's gather gives it -- or ``None`` when that calculation is
+    not there to read."""
+    from .gather import ReadOnce
+    from .reuse import finished_of, origin, takes_over
+    finished, _gone = finished_of(calc)
+    if finished is None:
+        return None
+    base = Path(calc.base)
+
+    def given(pt):
+        return {t["file"]: origin(base, t["from"].path(base))
+                for t in m.took
+                if (t["frame"], t["volts"]) == (pt.frame, pt.volts)}
+    return takes_over(calc, finished, stage, [pt for _p, pt in m.points],
+                      once=ReadOnce(calc), inputs=given)
 
 
 def _gathered_now(calc, stage: str):

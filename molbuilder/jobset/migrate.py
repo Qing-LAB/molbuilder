@@ -1408,7 +1408,7 @@ def _decide_template(rec: "_Records", task):
     # run card.
     sources.update({k: "person" for k in from_card})
     new_text = _T.template_with_values(cfg, engine=engine, calculation=kind,
-                                       title=_leading_comment(text),
+                                       title=_T.title_of(text),
                                        valueless=valueless,
                                        sources=sources)
     # The new file must be one prep accepts -- checked before anything is
@@ -1460,14 +1460,3 @@ def _inner_comments(text: str) -> int:
     head = next((i for i, ln in enumerate(lines) if not ln.startswith("#")),
                 len(lines))
     return sum(1 for ln in lines[head:] if ln.lstrip().startswith("#"))
-
-
-def _leading_comment(text: str) -> str:
-    """The file's header comment, without its ``#`` -- what ``molbuilder describe`` wrote as
-    the title, carried over unchanged."""
-    lines = []
-    for ln in text.splitlines():
-        if not ln.startswith("#"):
-            break
-        lines.append(ln[2:] if ln.startswith("# ") else ln[1:])
-    return "\n".join(lines)

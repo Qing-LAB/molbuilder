@@ -425,21 +425,14 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                                     must_exist=False)))
     from ..transport.compose import refuse_inside_citation
     try:
-        refuse_inside_citation(dest, cited)
+        refuse_inside_citation(dest, cited.path)
     except ComposeError as exc:
         raise click.ClickException(str(exc))
 
     # THE SINGLE BIAS IS STATED, `[0.0]` -- the one spelling both roads
     # write (`engines/transport.md` § 2a.10; the tab writes the same), never
     # an empty list a reader has to fill in (2026-10-18).
-    bias = (0.0,)
-    if bias_opt:
-        try:
-            bias = tuple(float(v) for v in bias_opt.split(","))
-        except ValueError:
-            raise click.ClickException(
-                f"--bias {bias_opt!r}: a comma-separated list of volts, "
-                f"e.g. --bias 0.0,0.2,0.4.")
+    bias = _bias_of(bias_opt) if bias_opt else (0.0,)
 
     stages = tuple(Stage(name=n, overrides={})
                    for n in TRANSPORT_STAGES)
@@ -522,6 +515,123 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                                        base=dest)[0])
 
 
+def _bias_of(bias_opt: str) -> tuple:
+    """``--bias``'s volts, as a description holds them."""
+    try:
+        return tuple(float(v) for v in bias_opt.split(","))
+    except ValueError:
+        raise click.ClickException(
+            f"--bias {bias_opt!r}: a comma-separated list of volts, "
+            f"e.g. --bias 0.0,0.2,0.4.")
+
+
+def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
+                  low_bias_approximation, window_opt, finer,
+                  refused) -> None:
+    """`describe --calculation transport --reuses <finished>` -- the new
+    calculation written from the finished one's records as they read now
+    (`engines/transport.md` § 2a.16, *Describing it*): its description,
+    with ``reuses`` naming it, its template and its job request, its
+    composed junction and its pseudopotentials.  ``--bias`` and
+    ``--low-bias-approximation`` set what they set on any describe; a flag
+    naming what the finished calculation fixes -- its junction, its label,
+    its pseudopotentials -- is refused, naming why.  ``--window a,b``
+    (``--finer n``) fits the transmission's window to the finished grid
+    (`transport.window.fitted`), written as the transmission's own values
+    and said where it is fitted."""
+    import dataclasses
+
+    from ..describe import DescribeError, Description
+    from ..issues import ValidationError
+    from ..projects import projects_root
+    from ..transport.reuse import ReuseError, reused, write_reusing
+    from ..transport.stages import why_no_transport
+    from ..validation.task import preflight, refuse_on_error
+    if refused:
+        flag, why = next(iter(refused.items()))
+        raise click.ClickException(
+            f"{flag} does not apply beside --reuses -- {why} "
+            f"(engines/transport.md § 2a.16).")
+    root = Path(projects_root()).expanduser().resolve()
+    try:
+        finished, citation = reused(reuses, tree_root=root)
+    except ReuseError as exc:
+        raise click.ClickException(str(exc))
+    # WHAT A FLAG SETS, as on any describe: the voltages with their
+    # treatment, or the treatment alone.
+    said = {}
+    if bias_opt:
+        said = {"bias": _bias_of(bias_opt),
+                "low_bias_approximation": low_bias_approximation}
+    elif low_bias_approximation is not None:
+        said = {"low_bias_approximation": low_bias_approximation}
+    engine = engine or finished.task.engine
+    no = why_no_transport(engine)
+    if no:
+        raise click.ClickException(f"engine {engine!r}: {no}.")
+    try:
+        task = dataclasses.replace(
+            finished.task, reuses=citation, engine=engine,
+            shape=shape or finished.task.shape, **said)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+    if finer != 1 and not window_opt:
+        raise click.ClickException(
+            "--finer cuts the window fitted by --window finer -- name the "
+            "window too (engines/transport.md § 2a.16).")
+    if window_opt:
+        # THE WINDOW FITTED TO THE FINISHED GRID, the transmission's own
+        # values -- where the page's *use these* writes it
+        # (`engines/transport.md` § 2a.16).
+        from ..task import Stage
+        from ..transport.window import fitted
+        from .reuse import SHARING_RUNG, finished_window
+        try:
+            lo, hi = (float(v) for v in window_opt.split(","))
+            fit = fitted(finished_window(finished), lo, hi, finer)
+        except ValueError as exc:
+            raise click.ClickException(f"--window {window_opt}: {exc}")
+        window = {"transmission_emin_ev": fit.emin,
+                  "transmission_emax_ev": fit.emax,
+                  "transmission_n_points": fit.points}
+        task = dataclasses.replace(
+            task, varies=tuple(dict.fromkeys((*task.varies, *window))),
+            stages=tuple(Stage(s.name, {**s.overrides, **window})
+                         if s.name == SHARING_RUNG else s
+                         for s in task.stages))
+        click.echo(f"transmission window: {fit.words()}")
+    desc = Description(task=task, template=finished.template_text,
+                       request=finished.request)
+    try:
+        for issue in refuse_on_error(preflight(task,
+                                               template_text=desc.template,
+                                               request=desc.request)):
+            click.echo(f"note: {issue.message}", err=True)
+    except ValidationError as exc:
+        raise click.ClickException(str(exc))
+    dest = (out_dir if out_dir.is_absolute()
+            else Path(_resolve_bundle(None, None, str(out_dir),
+                                      must_exist=False)))
+    try:
+        written, notes = write_reusing(desc, dest, finished, tree_root=root)
+    except (ReuseError, DescribeError, OSError) as exc:
+        raise click.ClickException(str(exc))
+    for note in notes:
+        click.echo(f"note: {note}", err=True)
+    click.echo(f"Described transport '{task.run.name}' in {dest} -- reuses "
+               f"{citation}.")
+    for path in written:
+        click.echo(f"  {path.name}")
+    from .commands import prep_group_lines
+    from .ready import task_state
+    click.echo("")
+    click.echo("Change what the new question asks -- on Task setup, or in "
+               "its task.json and template -- then, on the machine that "
+               "will run it:")
+    click.echo("  " + prep_group_lines(task_state(_calc_of(dest)).prep_offer,
+                                       base=dest)[0])
+
+
 @click.command("describe",
                short_help="describe a calculation: its description and "
                           "its job request (floor 2 only)")
@@ -534,11 +644,12 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "cites (job-contracts.md 2.5b).  Required for every "
                    "calculation EXCEPT transport, whose structure IS its "
                    "junction citation (--slot).")
-@click.option("--shape", required=True,
+@click.option("--shape", default=None,
               type=click.Choice(("flat", "hierarchical")),
               help="how the stages sit on disk. REQUIRED and never inferred -- "
                    "inferring it would hand you a directory tree you did not "
-                   "ask for (engines/stages.md 6.7).")
+                   "ask for (engines/stages.md 6.7) -- but beside --reuses, "
+                   "which describes the finished calculation's.")
 @click.option("--stage-strategy", default=None,
               help="which shipped ladder to describe (e.g. publishable). Omit "
                    "for a calculation with a SINGLE parameter set, which is "
@@ -547,9 +658,11 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
 @click.option("--name", default=None, metavar="NAME",
               help="what you call this calculation; the label and the run id "
                    "derive from it. Default: the destination folder's name.")
-@click.option("--engine", required=True,
+@click.option("--engine", default=None,
               type=click.Choice(_rf_engines()),
-              help="whose parameters these are. REQUIRED -- never assumed.")
+              help="whose parameters these are. REQUIRED -- never assumed "
+                   "-- but beside --reuses, which describes the finished "
+                   "calculation's.")
 @click.option("--psml-lib", default=None, metavar="DIR",
               # NO click-level exists check: the anchor rule lives in
               # pseudos.resolve_psml_lib (job-contracts § 2.5a) and
@@ -587,10 +700,25 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "(linear response); without it, every voltage gets its own "
                    "device SCF and transmission (engines/transport.md 2a.10).  "
                    "Required with several points, never inferred.")
+@click.option("--window", "window_opt", default=None, metavar="LO,HI",
+              help="with --reuses: the transmission window wanted, in eV "
+                   "-- fitted to the finished calculation's grid, its "
+                   "spacing and alignment, extended outward by whole "
+                   "spacings until the range is covered, so every finished "
+                   "energy stays a point (engines/transport.md 2a.16).")
+@click.option("--finer", default=1, type=int, metavar="N",
+              help="with --window: the grid N times finer, an odd number, "
+                   "so every finished energy stays a point.")
+@click.option("--reuses", default=None, metavar="FOLDER",
+              help="transport only: a finished transport calculation's "
+                   "folder, from the projects root.  The new calculation "
+                   "starts as its description and its composed junction, "
+                   "whole; its prep copies in every group the finished one "
+                   "already computed (engines/transport.md 2a.16).")
 def describe_cmd(structure, bundle: str, shape: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
                  calculation: str, slots_opt, bias_opt,
-                 low_bias_approximation) -> None:
+                 low_bias_approximation, window_opt, finer, reuses) -> None:
     """Write the portable description and its job request: the template,
     ``task.json``, ``job-request.json`` (each stage's group, nothing else
     asked yet), and the data files.  Describing is not a job verb, so it is
@@ -628,6 +756,38 @@ def describe_cmd(structure, bundle: str, shape: str,
     except DescribeError as exc:
         raise click.ClickException(str(exc))
 
+    if reuses is not None:
+        if calculation != "transport":
+            raise click.ClickException(
+                "--reuses belongs to --calculation transport alone "
+                "(engines/transport.md § 2a.16).")
+        _init_reusing(
+            out_dir=out_dir, reuses=reuses, engine=engine, shape=shape,
+            bias_opt=bias_opt, low_bias_approximation=low_bias_approximation,
+            window_opt=window_opt, finer=finer,
+            refused={flag: why for flag, given, why in (
+                ("--slot", slots_opt, "the junction is the finished "
+                 "calculation's, carried with its record"),
+                ("--name", name, "the label is the finished calculation's: "
+                 "SystemLabel names every file a deck reads and writes, and "
+                 "decks under two labels are never the same calculation"),
+                ("--psml-lib", psml_lib, "the pseudopotentials are the "
+                 "finished calculation's, copied with it"),
+                ("--structure", structure, "its structure IS the junction "
+                 "citation"),
+                ("--vacuum", vacuum, "the cell comes with the junction"),
+                ("--stage-strategy", stage_strategy, "the composite's five "
+                 "stages are fixed by design")) if given not in (None, ())})
+        return
+    if window_opt is not None or finer != 1:
+        raise click.ClickException(
+            "--window and --finer fit a transmission window to a finished "
+            "calculation's grid -- they go with --reuses "
+            "(engines/transport.md § 2a.16).")
+    for flag, given in (("--engine", engine), ("--shape", shape)):
+        if given is None:
+            raise click.ClickException(
+                f"{flag} is required -- never assumed or inferred.")
     if calculation == "transport":
         _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,
                         engine=engine, slots_opt=slots_opt,
@@ -1323,6 +1483,16 @@ def _ask_which_groups(calc, named) -> tuple:
         # `engines/transport.md` § 1.1, *No group left to prepare*).
         click.echo(text)
         return [], None
+    # WHAT EACH GROUP OFFERED COPIES, AND WHAT IT RUNS, for a calculation
+    # that reuses a finished one -- so picking a group is agreeing to its
+    # copy (`engines/transport.md` § 2a.16, *The manifest*).
+    from .reuse import decide
+    try:
+        reuse = decide(calc, pre)
+    except PrepError as exc:
+        raise _refuse(str(exc)) from None
+    if reuse is not None:
+        text += "\n" + "\n".join(reuse.lines(base))
     picked = choose(text, [str(n) for n in pre],
                     question="which group(s) to prepare?")
     if not picked.asked:
@@ -1382,6 +1552,11 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         # secrets excluded by design) -- also in the bundle's ledger, since
         # the terminal is gone when a job misbehaves hours later.
         click.echo(format_provenance(ans.provenance))
+    if ans.copied is not None and first:
+        # THE MANIFEST, once: what this calculation copied in from the
+        # finished one it reuses, and what it runs (`engines/transport.md`
+        # § 2a.16).
+        click.echo("\n".join(ans.copied.lines(base)))
     stage = ans.stage
     from .commands import block, command, launch_lines
     if ans.kind == "bench":
@@ -1430,6 +1605,14 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         for att, pt in ans.points:
             click.echo(f"prepared {stage} @ {pt.rel}: "
                        f"{Path(att).relative_to(base)}")
+    elif ans.copied is not None and ans.copied.copies_of(stage):
+        # COPIED IN: its runs are the finished calculation's, launched runs
+        # of this one (`engines/transport.md` § 2a.16).
+        click.echo(f"prepared {stage}: copied in -- "
+                   + ", ".join(str(c.run.relative_to(base))
+                               for c in ans.copied.copies_of(stage))
+                   + f" from {ans.copied.name}; its next launch opens its "
+                     f"next run with these files")
     elif ans.launched:
         # PREPARED AGAIN FOR ITS JOB REQUEST (`execution/job-request.md`
         # § 5): its runs kept, its next launch opening its next run.
@@ -1532,6 +1715,12 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         say_next("next -- send them as one job:\n"
                  + block(launch_lines("task", base=base,
                                       groups=seq["numbers"])))
+        return
+    if ans.copied_whole:
+        # EVERY GROUP IT PREPARED COPIED IN, launched runs already: the
+        # ladder's own next step (`job-system.md`, *The next step*).
+        from .runstatus import jobset_status, render_steps
+        say_next(render_steps(jobset_status(_calc_of(base))))
         return
     say_next("next -- launch the group that can go, each group one job:\n"
              + block(launch_lines("task", base=base)))

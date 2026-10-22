@@ -4,11 +4,13 @@ build step P6.
 TBtrans's own outputs are the truth this module reads: the k-averaged
 transmission file (``<label>.TBT.AVTRANS_<L>-<R>``, two columns E vs T)
 and the current line its ``.out`` prints (the binary's own Landauer
-integral — parsed, never recomputed).  Both formats were pinned against
+integral — parsed, never recomputed; a point that shares energies with a
+finished calculation's has its current the record's, over its joined grid,
+by the binary's own rule, :func:`joined_currents`).  Both formats were pinned against
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@8``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@9``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -42,6 +44,10 @@ from ..persist import json_safe
 if TYPE_CHECKING:
     from .stages import Point
 
+#: ``@9``: ``current_from`` on every point -- ``tbtrans`` (the junction's
+#: total from the printed figures) or ``joined`` (a point that shares energies
+#: with a finished calculation's, its current the record's over the joined
+#: grid, its printed figure none; `engines/transport.md` § 2a.16).
 #: ``@7``: ``order_unstated`` -- the sentence a junction whose sidecar states
 #: no order record is said with, and its way on (I9), or ``None``.
 #: ``@6``: the provenance names no ``atom_permutation`` file -- the junction
@@ -59,7 +65,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@8"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@9"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -78,6 +84,16 @@ CURRENT_MEANS = {
         "current_a is the junction's total current, the sum of its two spin "
         "channels' currents as TBtrans printed each (empty when it printed "
         "only one); current_a_printed is the channel it printed first."),
+    # A POINT THAT SHARES ENERGIES with a finished calculation's point
+    # (`engines/transport.md` § 2a.16): TBtrans printed its own run's
+    # energies' current alone.
+    "joined": (
+        "a point whose current_from is joined shares energies with a "
+        "finished calculation's point: its current_a is the record's, over "
+        "its joined grid -- each energy's transmission, times the grid's "
+        "spacing, times the two leads' Fermi functions' difference, G0 times "
+        "the sum (TBtrans's own rule) -- and current_a_printed is none, "
+        "TBtrans having printed its own run's energies' current alone."),
 }
 
 #: THE CAVEAT that goes with any DFT-NEGF conductance (`engines/transport.md`
@@ -93,6 +109,13 @@ CAVEAT = (
 #: SIESTA reader's own names; a NEGF row carries its charge too.
 _SCF_FIELDS = ("cycle", "energy", "delta_E", "dDmax", "dHmax", "ef",
                "phase", "dq", "vha_ev", "charges")
+
+#: How far a point's energies, read from its ``.TBT.nc`` at full precision,
+#: may be from those its transmission file prints, to five decimals of an eV
+#: (``f10.5``, ``m_tbt_save.F90`` ``save_DAT``): the same points, within
+#: half that last decimal -- asked of the energies (:func:`_full`) and of a
+#: point's DOS against its transmission (`datafile`).
+AVTRANS_ENERGY_HALF_DECIMAL_EV = 0.5e-5
 
 #: HOW FAR PAST THE BIAS WINDOW the transmission must reach for a current
 #: computed from T(E, 0) to be whole: the Fermi functions' tails, in kT
@@ -199,7 +222,7 @@ def point_transmission(where, label: str, spin: str) -> Dict:
         e_dn, t_dn = parse_avtrans(files["down"][0].read_text())
         if e_up != e_dn:
             raise RecordError("the two spin channels' energy grids differ")
-        return {"energy_ev": e_up,
+        return {"energy_ev": _full(where, label, e_up),
                 "transmission": [(a + b) / 2.0 for a, b in zip(t_up, t_dn)],
                 "channels": {"up": t_up, "down": t_dn},
                 # THE TOTAL, T↑ + T↓, what the report draws beside the two
@@ -210,8 +233,30 @@ def point_transmission(where, label: str, spin: str) -> Dict:
     if not files.get("unpolarized"):
         raise RecordError("the run wrote no transmission file")
     energies, trans = parse_avtrans(files["unpolarized"][0].read_text())
-    return {"energy_ev": energies, "transmission": trans,
+    return {"energy_ev": _full(where, label, energies),
+            "transmission": trans,
             "transmission_file": files["unpolarized"][0].name}
+
+
+def _full(where, label: str, printed: List[float]) -> List[float]:
+    """The energies of a point's ``.TBT.AVTRANS``, at the full precision of
+    its ``.TBT.nc`` -- TBtrans writes both from one variable, in one order
+    (`tbtnc`), and prints five decimals -- so a point's energies are the
+    ones it computed (`engines/transport.md` § 2a.16); the printed ones
+    where the run holds no ``.TBT.nc``.  Two that are not one grid are not
+    one run's files, and refused."""
+    from .tbtnc import TbtError, energies_of
+    try:
+        full = energies_of(where, label)
+    except TbtError:
+        return printed
+    if len(full) != len(printed) or any(
+            abs(a - b) > AVTRANS_ENERGY_HALF_DECIMAL_EV
+            for a, b in zip(full, printed)):
+        raise RecordError(f"{Path(where).name}: its .TBT.nc and its "
+                          f".TBT.AVTRANS are not one grid -- not one run's "
+                          f"files")
+    return full
 
 
 def point_currents(where, token: str, spin: str, *,
@@ -349,6 +394,35 @@ def linear_response_iv(energies: List[float], trans: List[float],
             "window_ev": [lo, hi], "notes": notes}
 
 
+def joined_currents(read: Dict, volts: float, kt_ev: float,
+                    spacing_ev: float) -> Dict:
+    """A POINT THAT SHARES ENERGIES -- its current the record's, over its
+    joined grid (`engines/transport.md` § 2a.16), TBtrans's printed one
+    covering its own run's energies alone: by TBtrans's own rule, each
+    energy's transmission times its weight on the grid -- the mid-rule's,
+    the spacing -- times the two leads' Fermi functions' difference
+    (`m_tbt_save.F90`), G0 times the sum in eV, ``read`` per spin channel
+    as :func:`point_transmission` gives it; a polarized point's each
+    channel beside its total.  Its printed figure is none."""
+    import numpy as np
+    e = np.asarray(read["energy_ev"], dtype=float)
+    half = float(volts) / 2.0
+    with np.errstate(over="ignore"):
+        f_l = 1.0 / (1.0 + np.exp((e - half) / kt_ev))
+        f_r = 1.0 / (1.0 + np.exp((e + half) / kt_ev))
+
+    def total(trans) -> float:
+        return float(CONDUCTANCE_QUANTUM_S * spacing_ev
+                     * np.sum(np.asarray(trans, dtype=float) * (f_l - f_r)))
+    out: Dict = {"current_a": total(read["transmission"]),
+                 "current_a_printed": None, "current_from": "joined"}
+    chans = read.get("channels") or {}
+    if "up" in chans and "down" in chans:
+        out["current_by_spin_a"] = {k: total(chans[k]) / 2.0
+                                    for k in ("up", "down")}
+    return out
+
+
 def iv_notes_placed(iv: Dict) -> List[Dict]:
     """The I-V's notes, each with the frame and the voltage it is about --
     a voltage's (keyed by its row of the table, :func:`linear_response_iv`)
@@ -459,7 +533,12 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             continue
         token = tokens.get(name)
         fact: Dict = {"stage": name, "token": token, "state": s.state,
-                      "detail": s.detail}
+                      "detail": s.detail,
+                      # THE RUN IT IS A COPY OF, a run copied in from the
+                      # finished calculation this one reuses
+                      # (`engines/transport.md` § 2a.16).
+                      **({"copied_from": s.copied_from}
+                         if s.copied_from else {})}
         run = None
         if name == "device" and device_run is not None:
             run = device_run
@@ -502,6 +581,10 @@ def _stage_facts(calc, label: str) -> List[Dict]:
                  "attempt": (f"{s.dir}/{p['folder']}" if s.dir and p.get("folder")
                              else None),
                  "started_from": p.get("started_from"),
+                 # THE POINT IT IS A COPY OF, the finished calculation's
+                 # (`engines/transport.md` § 2a.16).
+                 **({"copied_from": p["copied_from"]}
+                    if p.get("copied_from") else {}),
                  "took": p.get("took") or []}
                 for p in points]
         if rung_points(task, name, frames=frames_of(base)) \
@@ -788,6 +871,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..frameset import read as read_frame_set
     from .compose import read_provenance, recorded_junction
     from .stages import frames_of, rung_points, same_volts
+    from .energies import joined, sharing_of
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
                         spin_dos, tbt_files, tbt_name)
 
@@ -858,13 +942,21 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             failed.append({**at, "attempt": rel,
                            "state": "unreadable", "why": st.detail})
             continue
+        # WHAT ITS RUN COMPUTES, beside what it shares -- the energies of
+        # its grid its own run computes, and those the finished point holds
+        # (`engines/transport.md` § 2a.16): its deck's record, said beside
+        # its loop, which counts its own run's energies.
+        sharing = sharing_of(where)
+        shares = ({"shared": {"from": sharing.source, "held": sharing.held,
+                              "computed": sharing.computed}}
+                  if sharing is not None else {})
         if st.state != "finished":
             unreached = (st.state in ("pending", "queued")
                          and _run_ended(run))
             entry = {**at, "attempt": rel,
                      "state": "failed" if unreached else st.state,
                      "why": ("the walk ended before it reached this point"
-                             if unreached else st.detail)}
+                             if unreached else st.detail), **shares}
             # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
             # one sentence the point's run record states it in
             # (`tbtrans_loop`, `model/parse.md` § 5d.1b, § 5d.5).
@@ -884,7 +976,11 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # other points still read.
         try:
             spin = deck_spin(where)
-            read = point_transmission(where, task.label, spin)
+            # ITS GRID, JOINED -- its own run's energies and those it shares
+            # with a finished calculation's point (`energies.joined`,
+            # `engines/transport.md` § 2a.16).
+            read = joined(where, lambda f: point_transmission(
+                f, task.label, spin))
         except (OSError, ValueError, RecordError) as exc:
             failed.append({**at, "attempt": rel, "state": "finished",
                            "why": f"the run finished without its "
@@ -894,24 +990,40 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # `.TBT.nc` -- a polarized point's two, summed over spin with each
         # spin's own beside (`tbtnc.point_dos` / `spin_dos`;
         # `web/results.md` § 2.5).
-        ncs = tbt_files(where, task.label)
-        dos = None
-        dos_why = None
-        try:
+        def _dos(folder, spin=spin):
+            ncs = tbt_files(folder, task.label)
             if spin == "polarized":
                 missing = [tbt_name(task.label, k)
                            for k in ("up", "down") if k not in ncs]
                 if missing:
-                    dos_why = f"{' and '.join(missing)} not in {rel}"
-                else:
-                    dos = spin_dos(ncs["up"], ncs["down"], regions)
-            elif "unpolarized" in ncs:
-                dos = point_dos(ncs["unpolarized"], regions)
-            else:
-                dos_why = (f"{tbt_name(task.label, 'unpolarized')} is not "
-                           f"in {rel}")
+                    raise TbtError(f"{' and '.join(missing)} not in "
+                                   f"{folder.relative_to(base)}")
+                return spin_dos(ncs["up"], ncs["down"], regions)
+            if "unpolarized" not in ncs:
+                raise TbtError(f"{tbt_name(task.label, 'unpolarized')} is "
+                               f"not in {folder.relative_to(base)}")
+            return point_dos(ncs["unpolarized"], regions)
+        dos = None
+        dos_why = None
+        try:
+            dos = joined(where, _dos)
         except TbtError as exc:
             dos_why = str(exc)
+        # THE POINT IT IS A COPY OF -- taken over from, or copied in with
+        # its run from, the finished calculation this one reuses (§ 2a.16):
+        # the run that computed it (`runrecord.copied_of`).
+        from ..runrecord import copied_of
+        copied = copied_of(base, where)
+        # ITS CURRENT, and which it is (`engines/transport.md` § 2a.16): the
+        # printed figures' total, or -- for a point that shares energies --
+        # the record's over its joined grid.
+        currents = point_currents(where, token, spin, now=now)
+        currents.update(
+            joined_currents(read, pt.volts or 0.0,
+                            BOLTZMANN_EV_K * deck_temperature_k(where),
+                            (sharing.window[1] - sharing.window[0])
+                            / sharing.window[2])
+            if sharing is not None else {"current_from": "tbtrans"})
         energies = read["energy_ev"]
         points_out.append({
             **at,
@@ -928,11 +1040,13 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             "conductance_g0": conductance_g0(energies, read["transmission"]),
             # THE TOTAL, and the figure it came from (`CURRENT_MEANS`), with
             # the run's k-sampling.
-            **point_currents(where, token, spin, now=now),
+            **currents,
             # THE WINDOW AND ITS POINTS, as written (`engines/transport.md`
             # § 2a.12).
             "window_ev": [min(energies), max(energies)],
             "n_energies": len(energies),
+            **shares,
+            **({"copied_from": copied} if copied else {}),
             "spin": spin,
             **({"dos": dos} if dos is not None else {"dos_why": dos_why}),
         })
@@ -1012,7 +1126,11 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # WHAT THE CURRENT IS, in the record's own words -- for each spin the
         # points were run with (one, for a junction decided once).
         "current_means": {s: CURRENT_MEANS[s]
-                          for s in sorted({p["spin"] for p in points_out})},
+                          for s in sorted({p["spin"] for p in points_out}
+                                          | {p["current_from"]
+                                             for p in points_out
+                                             if p.get("current_from")
+                                             == "joined"})},
         "provenance": {
             "slot": provenance,
             # WHAT EACH RUNG WAS GATHERED FROM -- its attempt's
@@ -1143,7 +1261,10 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     try:
         # THE POINT IT WAS READ AT, stated beside the answer: under the
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
-        got = _pdos(ncs, orb, junction.indices_of_yours(atoms), orbitals)
+        from .energies import joined
+        mine = junction.indices_of_yours(atoms)
+        got = joined(where, lambda f: _pdos(tbt_files(f, task.label), orb,
+                                            mine, orbitals))
         return {**got,
                 "atoms": sorted(junction.your_indices(got["atoms"])),
                 "outside_device": sorted(

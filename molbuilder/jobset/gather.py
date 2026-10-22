@@ -23,15 +23,16 @@ from ..runrecord import RunRef
 from .errors import PrepError, user_error_as_prep
 from .materialize import GATHERED, HandOver, hand_over
 from .naming import stage_home
-from .transport_rung import (at_frame, transport_rung, transport_sources,
-                             transport_spec)
+from .transport_rung import (at_frame, at_point, transport_rung,
+                             transport_sources, transport_spec)
 
 
-class _ReadOnce:
+class ReadOnce:
     """What one gather reads for all its points: the junction, and each
     upstream rung's deck as it renders now, by the point it is rendered at
     -- one render for a rung that runs once, whichever point asks
-    (`engines/transport.md` § 6.1)."""
+    (`engines/transport.md` § 6.1); and what a calculation that reuses a
+    finished one reads for all its groups (`jobset.reuse`, § 2a.16)."""
 
     def __init__(self, calc):
         self.calc = calc
@@ -52,7 +53,7 @@ class _ReadOnce:
 
 
 def transport_inputs(calc, stage: str, *, point=None,
-                     once: Optional[_ReadOnce] = None
+                     once: Optional[ReadOnce] = None
                      ) -> List[Tuple[RunRef, str]]:
     """What one attempt of ``stage`` takes from the runs upstream -- the
     § 4.2 DAG's inputs: ``[(the run it comes from, filename)]``, decided at the
@@ -78,14 +79,14 @@ def transport_inputs(calc, stage: str, *, point=None,
     A run that fails a gate is refused by name, with what to do.  What was
     taken from where lands in ``.gathered-from`` beside the copies, so a
     result can always say which electrode run fed it.  ``once`` is what the
-    gather this belongs to reads for all its points (:class:`_ReadOnce`).
+    gather this belongs to reads for all its points (:class:`ReadOnce`).
     """
     from ..transport.stages import (frames_of, inputs_of, points_in,
                                      products_of, rung_points)
     from .continuation import done, usable
 
     base, task, jobset = Path(calc.base), calc.task, calc.jobset
-    once = once if once is not None else _ReadOnce(calc)
+    once = once if once is not None else ReadOnce(calc)
     inputs = inputs_of(task, stage)
     gathered: List[tuple] = []
     for upstream, filename in inputs:
@@ -201,17 +202,8 @@ def transport_inputs(calc, stage: str, *, point=None,
         # which molbuilder wrote it (`siesta.engine_input`).
         # THE UPSTREAM'S OWN POINTS (`rung_points`): a rung that runs once
         # ran at 0 V, on frame 0 -- one render for every point asking.
-        now = once.deck_now(upstream, point if up_points else None)
-        # THE DECK THAT RAN, asked of its run's folder through the run door
-        # (`runs.run_of`): a reader of a run takes the folder.
-        from ..runs import run_of
-        _run = run_of(where, stage=token)
-        ran = _run.deck if _run is not None else None
-        ran_text = ran.read_text() if ran is not None else None
-        # THE ONE DOOR of the same calculation (`job-request.md` § 6): the
-        # engine's reading, the run settings aside.
-        differs = (same_calculation(task.engine, ran_text, now)
-                   if ran_text is not None else ["it holds no deck"])
+        differs = ran_otherwise(once, upstream, where, token=token,
+                                point=point if up_points else None)
         if differs:
             raise PrepError(
                 f"{upstream}'s newest run, {where.relative_to(base)}, did "
@@ -227,6 +219,29 @@ def transport_inputs(calc, stage: str, *, point=None,
                 f"the {stage} stage consumes.  To run it again, {redo}")
         gathered.append((RunRef.at(base, where), filename))
     return gathered
+
+
+def ran_otherwise(once: ReadOnce, stage: str, where: Path, *, token: str,
+                  point=None) -> List[str]:
+    """§ 6.1'S QUESTION, OF A RUN OF EITHER CALCULATION (`engines/
+    transport.md` § 6.1, § 2a.16): every difference between what the run in
+    ``where`` ran -- a run, or a point of a run of points -- and the deck
+    ``stage`` renders now in ``once``'s calculation at ``point``, through the
+    one door of the same calculation (`deck_record.same_calculation`: the
+    engine's reading, comments, molbuilder's records and the run settings
+    aside); ``[]`` when it is the same calculation.  ``token`` is the
+    stage's folder token, by which the run door reads the run.  Asked by the
+    gather of the runs upstream, and by a calculation that reuses a finished
+    one of that calculation's runs (`jobset.reuse`)."""
+    from ..runs import run_of
+    now = once.deck_now(stage, point)
+    # THE DECK THAT RAN, asked of its run's folder through the run door
+    # (`runs.run_of`): a reader of a run takes the folder.
+    run = run_of(where, stage=token)
+    ran = run.deck if run is not None else None
+    if ran is None:
+        return ["it holds no deck"]
+    return same_calculation(once.calc.task.engine, ran.read_text(), now)
 
 
 def gather_sources(calc, stage: str
@@ -248,7 +263,7 @@ def gather_sources(calc, stage: str
     run."""
     from ..transport.stages import frames_of, rung_points
     base = Path(calc.base)
-    once = _ReadOnce(calc)
+    once = ReadOnce(calc)
     return [(pt, transport_inputs(calc, stage, point=pt, once=once))
             for pt in (rung_points(calc.task, stage, frames=frames_of(base))
                        or (None,))]
@@ -385,8 +400,13 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
         task, stage, composed, Resources(), template_text=calc.template_text,
         run_settings=settings or None)
     struct = at_frame(struct, point)
+    # A TRANSMISSION POINT WHOSE GRID IS A FINISHED POINT'S OWN renders that
+    # point's contours (`reuse.that_point`; `engines/transport.md` § 2a.16).
+    from .reuse import SHARING_RUNG, that_point
+    contours = (that_point(calc, point, at_point(config, point))
+                if stage == SHARING_RUNG else None)
     spec, cfg = transport_spec(task, stage, struct, config, state, point,
-                                base=base)
+                                base=base, contours=contours)
     with user_error_as_prep():
         text = _sc.render_deck(spec, struct, cfg, verbose=True,
                                dest_dir=base,
@@ -402,6 +422,7 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     return text
 
 
-__all__ = ["gather_sources", "transport_inputs", "gather_into",
+__all__ = ["ReadOnce", "ran_otherwise", "gather_sources",
+           "transport_inputs", "gather_into",
            "composed_junction", "composed_for_prep", "no_usable_record",
            "rung_deck_now"]

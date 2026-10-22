@@ -65,7 +65,12 @@ RUN = "run"
 #: (`engines/transport.md` § 2a.11): read alone, no run asked of it
 #: (project-layout.md § 1.4a, invariant 6b).
 SCRATCH = "scratch"
-ROLES = (CONTAINER, RUN, SCRATCH)
+#: A transmission point's ``shared/``: the energies it shares with the
+#: finished calculation its calculation reuses, copied from the point that
+#: computed them (`engines/transport.md` § 2a.16) -- read with the point, by
+#: its one join (`transport.energies.joined`), never as a run.
+SHARED = "shared"
+ROLES = (CONTAINER, RUN, SCRATCH, SHARED)
 
 #: WHAT A FOLDER IS in its calculation (§ 1.4a, *Where am I*), read off its
 #: place in the layout's names: the calculation's root -- its description is
@@ -258,7 +263,7 @@ def where(directory) -> Where:
         elif at in (ATTEMPT, POINT):
             at = POINT
             below.append(name)
-    what = SCRATCH if role == SCRATCH else at
+    what = role if role in (SCRATCH, SHARED) else at
     return Where(root=root, what=what, role=role, stage=stage, run=run,
                  trial=trial,
                  point="/".join(below) if what == POINT else None,

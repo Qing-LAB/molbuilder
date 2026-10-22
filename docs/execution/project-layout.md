@@ -512,7 +512,7 @@ would be a second home for one fact.
   "of":     "../.." }
 ```
 
-* **`role` is `container`, `run` or `scratch`** — § 1.4's two words, and the one folder that is neither: a device run's `tsgf/`, the engine's scratch of the run above it (invariant 6b; [`engines/transport.md`](?doc=engines/transport.md) § 2a.11). *Designed, not built:* **`shared`** — a transmission point's `shared/`, the energies it shares with the finished calculation it reuses, copied from the point that computed them ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*).
+* **`role` is `container`, `run`, `scratch` or `shared`** — § 1.4's two words, and the two folders that are neither: a device run's `tsgf/`, the engine's scratch of the run above it (invariant 6b; [`engines/transport.md`](?doc=engines/transport.md) § 2a.11); and a transmission point's `shared/`, the energies it shares with the finished calculation its calculation reuses, copied from the point that computed them, read with the point above it (since 2.30.0, [`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 * **`of` is relative, always** — to the calculation root. That is what survives
   renaming or moving a whole calculation, and it is the convention
   `.gathered-from` already uses for the same reason. Copy an attempt out on its
@@ -561,7 +561,7 @@ benchmark is this*, `materialize.bench_owner`, `bench_stage_of`):
 |---|---|
 | `root` | the calculation's folder — the one `task.json` is in, or the one the folder's record names; `None` for a folder no calculation claims |
 | `what` | what the folder is, below — `None` for a folder no calculation claims |
-| `role` | its record's: `container`, `run` or `scratch` — and *designed, not built*, `shared` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — `None` at the root, whose description's `shape` says it (`runs.place_of`: flat a run, hierarchical a container) |
+| `role` | its record's: `container`, `run`, `scratch` or `shared` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — `None` at the root, whose description's `shape` says it (`runs.place_of`: flat a run, hierarchical a container) |
 | `stage` | the stage it sits in, by its token — `01_coarse` |
 | `run` | the attempt's index — `0` of `run-0` |
 | `trial` | the benchmark trial's point — `G1K4C6` of `bench-G1K4C6` |
@@ -793,7 +793,7 @@ are exactly two.**
 | a new… | exists because | so it holds |
 |---|---|---|
 | **stage directory** — `02_tight/` | **the science changed** — a threshold, a tolerance, a method | its own rendered deck and wrapper |
-| **run directory** — `run-1/` | **you launched the stage again** — warm, continuing the previous run, or `--cold`, from nothing; or a transport calculation copied it in, whole, from a finished one it reuses ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*) | only what that invocation produced |
+| **run directory** — `run-1/` | **you launched the stage again** — warm, continuing the previous run, or `--cold`, from nothing; or a transport calculation copied it in, whole, from a finished one it reuses ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | only what that invocation produced |
 
 **That is the whole rule, and it is deliberately the whole rule.** The contract
 stays small; the **directory structure** carries the flexibility. You can read a
@@ -966,7 +966,7 @@ run starts; a later run's progress is its engine's own.
 **`prep` opens only a first run** — and, for a transport calculation that
 reuses a finished one, copies in whole the runs of each group it reuses, each
 under its own name, opening none ([`engines/transport.md`](?doc=engines/transport.md)
-§ 2a.16; *designed, not built*). A stage prepared and **never launched** is
+§ 2a.16). A stage prepared and **never launched** is
 prepared again, its group whole: its `run-0` emptied and filled anew
 (§ 1.6.3), its files rendered anew. A launched one is prepared again only for
 its job request, on the hierarchical layout, and opens no run
@@ -1129,7 +1129,7 @@ left behind, `.copied-from` naming the run it is a copy of — and a rung of
 points it prepares takes the finished calculation's converged points over at
 its first launch, their engine's files and account, never their records of
 runs; every record they leave names a run of this calculation ([`engines/transport.md`](?doc=engines/transport.md)
-§ 2a.16; *designed, not built*).
+§ 2a.16).
 
 > **Launching again, on disk** — the rule (warm by default, `--cold`, a stage
 > whose kind takes nothing from a run of its own) is
@@ -2840,6 +2840,7 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `.continued-from` *(hierarchical)* · `<base>-run<N>.continued-from` *(flat)* — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a walked point's start, a taken-over point's computing run (one hop) | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) -- with the files it takes; on the flat layout with the run's launch record | `runrecord.read_continued_from` | record |
 | `<base>-run<N>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
 | `.gathered-from` *(transport)* | what a rung took, from which upstream run | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_gathered_from`) -- a rung's first launch or a `--gather` (`jobset.gather.transport_inputs`), or a launch again keeping what its last run was given | `runrecord.read_gathered_from` | record |
+| `.copied-from` *(transport)* — only: a transport calculation that reuses a finished one | the finished calculation's run, or point, this one is a copy of, tree-relative | prep, copying a group in from the finished calculation it reuses (`jobset.reuse.copy_in`), before the run's launch record; a rung of points' first launch, in each point it takes over (`jobset.reuse.take_into`) and each point's `shared/`, written last (`jobset.reuse.shared_into`) -- through `runrecord.write_copied_from` | `runrecord.read_copied_from` | record |
 | `<scheduler>.<jobid>.out` — only: launched to a queue | the scheduler's own stdout for the job | the scheduler, as the run's header asks (its kind's `stdout`, `scheduler/kinds.toml`) | none | record |
 | `<scheduler>.<jobid>.err` — only: launched to a queue | the scheduler's own stderr for the job | the scheduler, as the run's header asks (its kind's `stderr`, `scheduler/kinds.toml`) | none | record |
 | `.mb-rank-launch-<pid>.sh` — only: a GPU run | the per-rank GPU launcher | the run script, removed when it exits | none | transient |

@@ -72,6 +72,16 @@
       optimization → Task setup), then cite the run.
     </p>
     <p class="hint">
+      <strong>Or a transport calculation of molbuilder's own — its folder
+      — to reuse it.</strong>  A wider question is a new calculation that
+      reuses a finished one: the cards fill from it — its junction, its
+      voltages and their treatment, its values — and you change what the
+      new question asks.  Describe writes it into the folder you chose; its
+      prep copies in every group the finished calculation computed as this
+      one would now, and the rest runs here.  Its label, its junction and its
+      electrode rename are the finished calculation's.
+    </p>
+    <p class="hint">
       <strong>Once you cite a pair, leave it alone.</strong>  A new or
       changed frame set goes in a new file, cited by a new calculation —
       prep refuses a cited pair that was edited afterwards.
@@ -101,7 +111,7 @@
     </p>
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
-              title="Walk the projects tree and pick the junction: a finished relaxation run of molbuilder's own (its folder), or a structure pair saved from one, or a frame set written onto such a pair (its .xyz).">
+              title="Walk the projects tree and pick the junction: a finished relaxation run of molbuilder's own (its folder), or a structure pair saved from one, or a frame set written onto such a pair (its .xyz) -- or a transport calculation's folder, to reuse it.">
         Choose junction…
       </button>
       <span id="transport-junction-readout" class="muted">

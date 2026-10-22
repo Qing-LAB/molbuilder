@@ -791,7 +791,7 @@ read found in the notification secrets — a failed Test quoting the address,
 closed in 2.27.1 (`run-reports.md` § 3, `monitor.address_refusal` and
 `monitor.delivery_failure`).
 
-## 1x. A transport calculation that reuses a finished one *(2026-10-22; the contract drafted and reviewed — the user's yes, and two decisions, next)*
+## 1x. A transport calculation that reuses a finished one *(2026-10-22; the user's yes; built for 2.30.0 — the e2e rows and two review rounds next)*
 
 *(The user, 2026-10-22: "a mechanism where we can cite a finished task … and
 then say, hey, I want to expand this a bit, or I want to tune certain
@@ -921,6 +921,26 @@ sites today), the record's joined current and `current_from`, the data file's
 schema moved — each step bounded by the transport e2e on a real H₂-scale
 junction. The energies add some 300–400 lines by their review's estimate.
 
+**Built (2026-10-22, for 2.30.0)** — all six steps, each run on real SIESTA,
+TranSIESTA and TBtrans on the H chain in a scratch tree: `describe --reuses`
+(`transport/reuse.py`); the copy-in, the take-over, the energies and the
+manifest (`jobset/reuse.py`, floor 4); the one join of a point's energies
+(`transport/energies.py`); the fitted window (`transport/window.py`) and the
+catalogue's new default window; the record at `@9` and the data file at `@3`;
+the page — the Transport tab's picker and describe door, the window's fit on
+it and on Task setup (`lib/transport/fit.js`), Task setup's echo and Preview,
+the Results tab's *copied from*. **About 2,500 lines against the estimate's
+750–800 for the whole** — the energies and the page took most. As built, two
+details differ from the draft and the contract now says them so: a fitted
+window is the transmission's own values on both roads (the range asked said
+where it is fitted, not stored), and a point's loop stays TBtrans's count,
+the record saying what it shares beside it (`shared`). The e2e rows
+(`test_transport_on_a_real_junction_e2e.py`, the `reused` fixture) and their
+mutation checks are in, and two review rounds revised it — among them a
+transmission that runs once now shares as its one point, and every point of
+a record lies on one grid within the 10⁻⁹ eV rule. **Next**: the commit, at
+the user's word.
+
 ## 1y. Export the transport results — CSV and NetCDF *(2026-10-22; asked, the contract next — N8 in § 0a's queue)*
 
 *(The user, 2026-10-22: "we also need to add "export data" for all the
@@ -1015,7 +1035,7 @@ below says.
 | **N5** | **shipped 2.27.0** | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
 | **N5b** | **Built — 2.28.0** (2026-10-22) — the contract taken as written (the user: *"continue"*); A–D, one release | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
 | **N6** | **(a) shipped 2.29.0** | **The memory a run needs** (§ 1u) — (a), measured on a stage's runs, built 2026-10-22 (`job-request.md` § 3.1a); (b), the engine's own analysis for a stage's first run, next; (c) only where (a) and (b) leave a gap | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
-| **N7** | a middle number | **A transport calculation that reuses a finished one** (§ 1x) — the contract drafted (`engines/transport.md` § 2a.16), for the user's yes and two decisions (REUSE-COPY, WINDOW-SPLIT); its place in the order the user's | the user, 2026-10-22: *"use existing information and previous result to continue a calculation by a certain design"* |
+| **N7** | a middle number | **A transport calculation that reuses a finished one** (§ 1x) — built for 2.30.0 (`engines/transport.md` § 2a.16); the e2e rows, the release and two review rounds next | the user, 2026-10-22: *"use existing information and previous result to continue a calculation by a certain design"* |
 | **N8** | a middle number | **Export the transport results — CSV and NetCDF** (§ 1y), contract first; its place in the order the user's | the user, 2026-10-22: *"export data for all the results in the transport data including convergence data, in format of csv and netcdf"* |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*

@@ -192,7 +192,7 @@ list it walks, how it treats that list (`single-bias`,
 two electrode labels in its own copy of the junction (`swap_electrodes`,
 [`engines/transport.md`](?doc=engines/transport.md) § 4), and the finished
 calculation it reuses (`reuses`), whose groups its prep copies in — what is
-copied, and its size, prep's Preview says (§ 11.1) ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16; *designed, not built*) — and the
+copied, and its size, prep's Preview says (§ 11.1) ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — and the
 label every emitted file is stemmed on. **A cited frame set says what its frames are**,
 under them: its count and, for a mode's set, its mode line and a row per
 frame — the frame-set card the Transport tab's junction card draws, from the
@@ -455,6 +455,7 @@ the Stages card has:
 | **rows** | the rungs, numbered as the Transport tab numbers them (*1 · seed* … *5 · transmission*); none is renamed, moved, removed or added, and no preset is offered; each with its group — the defaults 1 1 1 2 3, the device and the transmission never sharing the group above, since each builds on it |
 | **columns** | the items a rung may own (the column rule above); the picker names, beside each item, the rung or rungs that read it (*read by transmission*), and a column's cells on the other rungs are disabled, as on every kind |
 | **words** | *each rung's own values over the template — set first on the Transport tab, changed here after Describe*, in place of the refinement sentence of § 9's *add a stage* |
+| **the window, fitted** | a calculation that reuses a finished one: under the table, the transmission's window **fitted to the finished grid** — the range asked and how many times finer, the fitted ends and count, and *use these*, which writes them on the transmission's row, adding their columns first as a preset does (`setRowValues`; `lib/transport/fit.js`, the one builder the Transport tab draws too; [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 
 What a kind fixes — its shape and its stages — is one answer,
 `task.fixed_by_kind`, which the reader's check asks and the folder answer
@@ -1568,7 +1569,7 @@ from the same answer:
 * **what a transport calculation that reuses a finished one copies, and what
   it runs** — its manifest, before Prep is pressed: each group copied in, its
   runs and their size, or prepared here and the differences of the new
-  request that decided it ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16, *The manifest*; *designed, not built*);
+  request that decided it ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16, *The manifest*);
 * **what each stage needs of memory** — at most, or about, so much at the
   ranks it is prepared with, and the run that held it, or that nothing has
   measured it; a group's beside its fit
@@ -1577,7 +1578,9 @@ from the same answer:
 * **what comes next** — after a Prep, the line that launches what it
   prepared, as the terminal's prep ends with it: the launch with nothing
   named (`launch task`), which sends the group that can go, typed at the
-  terminal.
+  terminal — or, every group it prepared copied in from a finished
+  calculation, the ladder's own next step, as `status` says it
+  ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 
 **A refusal shows what it had found** — the preflight's notes and what the
 inputs said — beside its own sentence: a bench refused because *no cell is

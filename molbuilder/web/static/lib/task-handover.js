@@ -153,6 +153,9 @@
             // THE ELECTRODE RENAME ON THE CALCULATION'S OWN COPY OF THE
             // JUNCTION (transport.md § 4), as the tab holds it.
             req.swap_electrodes = !!o.swap_electrodes;
+            // THE CALCULATION IT REUSES, when a transport calculation's
+            // folder was picked (`engines/transport.md` § 2a.16).
+            if (o.reuses) req.reuses = o.reuses;
             req.stages    = o.stages || {};      // {rung: {item: value}}
             req.shared    = o.shared || {};
             // THE FOLDER THE DOOR WRITES INTO (transport.md § 3.8.2a).

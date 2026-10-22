@@ -353,7 +353,10 @@
             // words, beside the detail.
             tr.appendChild(td((s.detail || "")
                 + (s.standing && s.standing.say ? " \u00b7 " + s.standing.say : "")
-                + (s.tsgf ? " \u00b7 " + s.tsgf : "")));
+                + (s.tsgf ? " \u00b7 " + s.tsgf : "")
+                // A RUN COPIED IN from a finished calculation this one
+                // reuses (engines/transport.md \u00a7 2a.16).
+                + (s.copied_from ? " \u00b7 copied from " + s.copied_from : "")));
             tr.appendChild(td(""));
             tr.appendChild(td(""));
             table.appendChild(tr);
@@ -372,7 +375,9 @@
                 row.appendChild(td(name));
                 row.appendChild(td(chip(r.state)));
                 row.appendChild(td(r.converged || "\u2014"));
-                row.appendChild(td(r.detail || ""));
+                row.appendChild(td((r.detail || "")
+                    + (r.copied_from ? " \u00b7 copied from " + r.copied_from
+                       : "")));
                 const result = td("");
                 if (r.opens && rootDir) {
                     const path = rootDir + "/" + r.opens;

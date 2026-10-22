@@ -303,12 +303,14 @@ def written_and_read_back(base, composed, plan, *, root, task):
 
 
 def transport_spec(task, stage: str, struct, config, state, point=None, *,
-                   base=None):
+                   base=None, contours=None):
     """One transport deck's ``(spec, cfg)`` -- its point's when ``point``
     is given: the config at its voltage (the point is the rung's answer,
     `engines/template.md` § 6.4; a single-bias rung keeps the 0 V `resolve`
     laid on) and the deck naming its run's shared files the way the point
-    reaches them (`engines/transport.md` § 2a.11)."""
+    reaches them (`engines/transport.md` § 2a.11); ``contours`` a
+    transmission point's sharing with a finished calculation's point
+    (`transport.energies.Contours`, § 2a.16)."""
     from ..siesta.input import spec_for as _siesta_spec_for
     cfg = at_point(config, point)
     # THE RUNG'S NAMES -- the one composer (`StageHome.names`): a lead's
@@ -318,7 +320,9 @@ def transport_spec(task, stage: str, struct, config, state, point=None, *,
         try:
             spec = _siesta_spec_for(struct, cfg, names=names,
                                     calculation="transport", state=state,
-                                    point=point, scratch_dir=scratch_dir_of(base))
+                                    point=point,
+                                    scratch_dir=scratch_dir_of(base),
+                                    contours=contours)
         except ValueError as exc:
             # `transport_spec` refuses an unknown rung with a message
             # written FOR a person, and `user_error_as_prep` translates

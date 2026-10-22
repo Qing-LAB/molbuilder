@@ -137,6 +137,12 @@ class StageStatus:
     #: its commands.
     takes: List[str] = field(default_factory=list)
     why: Optional[str] = None
+    #: THE RUN IT IS A COPY OF -- the newest run's ``.copied-from``, a run of
+    #: the finished calculation a transport calculation reuses, tree-relative
+    #: (`runrecord.read_copied_from`; `engines/transport.md` § 2a.16), or
+    #: the reader's words when it does not read; ``None`` for a run made
+    #: here.
+    copied_from: Optional[str] = None
     #: What the stage IS, the plan's columns: its deck, the restart files it declares
     #: -- what it would take from a run it continues from -- and the
     #: resources it asks for.
@@ -340,8 +346,24 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
             "opens": opens_rel,
             "deck": _rel(deck),
             "validation": _rel(report),
+            # A RUN COPIED IN from the finished calculation this one reuses,
+            # named by what it is a copy of (`engines/transport.md` § 2a.16).
+            "copied_from": _copied(root, folder),
         })
     return rows
+
+
+def _copied(base, run: Optional[Path]) -> Optional[str]:
+    """What ``run`` -- a run, or a point of a run of points -- is a copy of
+    (`runrecord.copied_of`), or the reader's words when its record does not
+    read -- said on its row."""
+    from ..runrecord import copied_of
+    if run is None:
+        return None
+    try:
+        return copied_of(base, run)
+    except LaunchRecordError as exc:
+        return str(exc)
 
 
 def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
@@ -394,7 +416,7 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
         relaunch_continues=job.relaunch_continues,
         script=str(job.script), carries=[w.name for w in job.warm],
         resources=resources_text(job.resources), points=pts,
-        gathered=gathered_lines(run),
+        gathered=gathered_lines(run), copied_from=_copied(base, run),
         tsgf=_tsgf_line(base, task, job, d, run if launch else None,
                         attempts_in(d), going=state in ("queued", "running")))
 
@@ -457,6 +479,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         resources=resources_text(job.resources),
         # WHAT THE RUN GATHERED (a transport rung), beside what it declares.
         gathered=gathered_lines(observed) if attempt is not None else [],
+        copied_from=_copied(base, attempt),
         tsgf=_tsgf_line(base, task, job, home,
                         attempt if launch else None, attempts_in(home),
                         going=state in ("queued", "running")),
@@ -731,7 +754,9 @@ def render_status(status: JobSetStatus) -> str:
              str(s.group) if s.group is not None else "-",
              s.attempt or "-", s.state,
              s.converged or "-", ", ".join(s.warm_files) or "-",
-             s.detail + (f" \u00b7 {s.tsgf}" if s.tsgf else ""))
+             s.detail + (f" \u00b7 {s.tsgf}" if s.tsgf else "")
+             + (f" \u00b7 copied from {s.copied_from}" if s.copied_from
+                else ""))
             for s in status.stages]
     # Widths and the rule are both driven off `hdr`, never off a literal count.
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]
@@ -756,15 +781,26 @@ def _sweep_took_over(s: StageStatus) -> str:
     over walked every point (the first launch, or ``--cold``)."""
     from ..runrecord import RunRef
     here = RunRef.read(f"{s.dir}/{s.attempt}", shared=False)
+    # A POINT COPIED from the finished calculation this one reuses -- taken
+    # over from it, or in a run copied in whole (`engines/transport.md`
+    # § 2a.16).
+    copied = [p["point"] for p in s.points if p.get("copied_from")]
     taken = [(p["point"], p["started_from"]) for p in s.points
-             if taken_over(p, here)]
-    if not taken:
+             if taken_over(p, here) and not p.get("copied_from")]
+    if not taken and not copied:
         return "nothing taken over -- every point walked"
     # THE RUN a point was taken over from, the run its point lies in.
     runs = sorted({str(RunRef.read(src, shared=False).run_folder())
                    for _w, src in taken})
-    return (", ".join(w for w, _s in taken) + " taken over from "
-            + ", ".join(runs) + "; the rest walked")
+    said = []
+    if taken:
+        said.append(", ".join(w for w, _s in taken) + " taken over from "
+                    + ", ".join(runs))
+    if copied:
+        said.append(", ".join(copied) + " copied from the finished "
+                    "calculation")
+    walked = len(s.points) - len(taken) - len(copied)
+    return "; ".join(said) + ("; the rest walked" if walked else "")
 
 
 def _sweep_next(status: JobSetStatus) -> str:
@@ -860,6 +896,10 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
                      "nothing -- it started from the structure"))
     else:
         rows.append(("launched", "no  (no launch record -- prepared, not started)"))
+    if s.copied_from:
+        # A RUN COPIED IN from the finished calculation this one reuses
+        # (`engines/transport.md` § 2a.16): a launched run of this one.
+        rows.append(("copied from", s.copied_from))
     rows.append(("converged", s.converged or "-"))
     rows.append(("warm files", ", ".join(s.warm_files) or "-"))
     rows.append(("detail", s.detail or "-"))
@@ -870,6 +910,8 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
                      ("done" if p["done"] else f"not done -- {p['why']}")
                      + (f"; from {p['started_from']}" if p.get("started_from")
                         else f"; {p['start_unread']}" if p.get("start_unread")
+                        else f"; copied from {p['copied_from']}"
+                        if p.get("copied_from")
                         else "; from what it gathered"
                         if p["opened"] else "")
                      + (f"; took {', '.join(p['took'])}" if p.get("took")

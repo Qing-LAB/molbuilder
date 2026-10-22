@@ -233,9 +233,13 @@ def _at_voltage(v: float, n: int, weights: List[float],
                         f"transmission at {v:g} V yet: the average waits for "
                         f"every frame")
         return entry
+    from .transport.energies import same_grid
     grid = here[0]["energy_ev"]
     for f in range(1, n):
-        if here[f]["energy_ev"] != grid:
+        # ONE GRID, energy for energy (`energies.same_grid`): a point that
+        # shares energies holds the finished point's
+        # (`engines/transport.md` § 2a.16).
+        if not same_grid(here[f]["energy_ev"], grid):
             raise AverageError(
                 f"at {v:g} V the transmission of {frame_words(f, n)} is on "
                 f"another energy grid than {frame_words(0, n)}'s -- every "

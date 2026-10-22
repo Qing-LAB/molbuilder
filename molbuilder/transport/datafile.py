@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 import numpy as np
 
 from ..ncdata import Var
+from .record import AVTRANS_ENERGY_HALF_DECIMAL_EV
 from .sort import REGION_BRIDGE, REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
 from .stages import same_volts
 
@@ -40,7 +41,7 @@ from .stages import same_volts
 #: (`model/overview.md` § 2.2a, I1) -- the composed junction restored through
 #: its order record.  An older file is refused by its version, and `summarize
 #: task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@2"
+DATA_SCHEMA = "molbuilder/transport-data@3"
 
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
@@ -58,13 +59,6 @@ _EIG_SOURCE = ("<label>.TBT.nc of a non-polarized point -- each spin's, "
 
 #: The regions molbuilder owns in the device, in order along z.
 _REGIONS = (REGION_LEFT_ELECTRODE, REGION_BRIDGE, REGION_RIGHT_ELECTRODE)
-
-#: How far a point's DOS energies, read from its ``.TBT.nc`` at full
-#: precision, may be from its transmission's, which TBtrans prints to five
-#: decimals of an eV (``f10.5``, ``m_tbt_save.F90`` ``save_DAT``): the same
-#: points, within half that last decimal.
-AVTRANS_ENERGY_HALF_DECIMAL_EV = 0.5e-5
-
 
 class DataFileError(ValueError):
     """The record does not lay out on one grid -- the message names what
@@ -177,8 +171,13 @@ def _variables() -> Tuple[Var, ...]:
             source="the transmission point's TBtrans output"),
         Var("current_a", ("frame", "bias_v"), "derived", "A",
             "the junction's total current",
-            "twice the printed figure unpolarized, the channels' sum "
-            "polarized"),
+            "as current_from says: tbtrans -- twice the printed figure "
+            "unpolarized, the channels' sum polarized; joined -- a point that "
+            "shares energies with a finished calculation's, the record's "
+            "over its joined grid, its printed figure the fill value"),
+        Var("current_from", ("frame", "bias_v"), "derived", "",
+            "which current current_a is", "tbtrans or joined "
+            "(engines/transport.md 2a.16)", dtype=S),
         Var("iv_current_a", ("frame", "iv_bias_v"), "derived", "A",
             "the I-V's current",
             "as the file's iv_computed says: tbtrans -- each point's own "
@@ -352,10 +351,13 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     n_frames = frames_of(base)
     biases = _voltages(pt.bias_v for pt in rung_points(
         task, "transmission", frames=n_frames)) or [0.0]
+    from .energies import same_grid
     done_points = list(record.get("points") or ())
     grid = done_points[0]["energy_ev"] if done_points else []
     for p in done_points:
-        if p["energy_ev"] != grid:
+        # ONE GRID, energy for energy (`energies.same_grid`): a point that
+        # shares energies holds the finished point's (§ 2a.16).
+        if not same_grid(p["energy_ev"], grid):
             raise DataFileError(
                 f"{p['point']}'s transmission is on another "
                 f"energy grid than the first point's -- every point's "
@@ -426,7 +428,8 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         for s, name in enumerate(spins):
             values["transmission_by_spin"][f, b, s] = (
                 chans[name] if polarized else p["transmission"])
-        for name in ("conductance_g0", "current_a", "current_a_printed"):
+        for name in ("conductance_g0", "current_a", "current_a_printed",
+                     "current_from"):
             if p.get(name) is not None:
                 values[name][f, b] = p[name]
         dos = p.get("dos") or {}

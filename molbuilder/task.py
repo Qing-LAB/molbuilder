@@ -95,7 +95,7 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation",
-             "slots", "bias", "swap_electrodes")
+             "slots", "bias", "swap_electrodes", "reuses")
 #: The job request's keys (`execution/job-request.md` § 3) -- refused here
 #: by name, saying where each belongs: nothing in one record is read as the
 #: other (A17).
@@ -277,6 +277,13 @@ class Task:
     #: voltage gets its own device SCF and transmission, a sweep.
     low_bias_approximation: Optional[bool] = None
 
+    #: THE FINISHED CALCULATION THIS ONE REUSES (`engines/transport.md`
+    #: § 2a.16) -- its folder, tree-relative as a slot's citation is: prep
+    #: copies in the groups it already computed, and a rung of points takes
+    #: its converged points over at its first launch.  Only a transport
+    #: description carries it; none writes no key.
+    reuses: str = ""
+
     @property
     def treatment(self) -> Optional[str]:
         """How this description treats its bias list, by the three names
@@ -347,11 +354,11 @@ class Task:
                 raise ValueError(
                     f"task: 'slots' belongs to calculation='transport' "
                     f"alone (this is {self.calculation!r})")
-            if self.swap_electrodes:
-                raise ValueError(
-                    f"task: 'swap_electrodes' belongs to "
-                    f"calculation='transport' alone (this is "
-                    f"{self.calculation!r})")
+            for key in ("swap_electrodes", "reuses"):
+                if getattr(self, key):
+                    raise ValueError(
+                        f"task: {key!r} belongs to calculation='transport' "
+                        f"alone (this is {self.calculation!r})")
             if self.bias:
                 raise ValueError(
                     f"task: 'bias' belongs to calculation='transport' "
@@ -368,6 +375,12 @@ class Task:
                     f"whitespace); got {cite!r}: a finished relaxation "
                     f"run's folder, or a structure pair's .xyz "
                     f"(engines/transport.md § 3.1)")
+        if self.reuses and not _CITATION_RE.fullmatch(self.reuses):
+            raise DescriptionError(
+                f"task: reuses names the finished transport calculation by "
+                f"its folder's tree-relative path (no leading '/', no '..', "
+                f"no whitespace); got {self.reuses!r} "
+                f"(engines/transport.md § 2a.16)", where="reuses")
         if self.calculation == "transport" and not self.bias:
             raise DescriptionError(
                 "task: a transport description states its voltages -- [0.0] "
@@ -693,6 +706,10 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     if not isinstance(swap_electrodes, bool):
         _refuse(f"swap_electrodes is true or false, got "
                 f"{type(swap_electrodes).__name__}", where="swap_electrodes")
+    reuses = obj.get("reuses", "")
+    if not isinstance(reuses, str):
+        _refuse(f"reuses is a folder's tree-relative path, got "
+                f"{type(reuses).__name__}", where="reuses")
 
     has_stages = "stages" in obj
 
@@ -743,7 +760,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 varies=varies, stages=stages, calculation=calc,
                 slots=slots, bias=bias,
                 low_bias_approximation=low_bias_approximation,
-                swap_electrodes=swap_electrodes)
+                swap_electrodes=swap_electrodes, reuses=reuses)
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -972,6 +989,8 @@ def _task_to_dict(task: Task) -> dict:
                            task.low_bias_approximation}
                           if task.low_bias_approximation is not None
                           else {})}
+    if task.reuses:
+        out["reuses"] = task.reuses
     if task.structure is not None:
         out["structure"] = {"source": task.structure.source,
                             "formula": task.structure.formula,

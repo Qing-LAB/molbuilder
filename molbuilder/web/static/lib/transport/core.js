@@ -22,6 +22,7 @@
  * start over (`web/tabs.md`).
  */
 import { mount } from "/static/lib/molview/index.js";
+import { fitRow } from "/static/lib/transport/fit.js";
 
 /* WHO THIS TAB'S SAVED WORK BELONGS TO (workspace.md § 4) — the one string used
  * both as the viewer's `owner` and as the tag on any workspace call, so the two
@@ -73,6 +74,7 @@ const WORKSPACE_TAG = "transport";
         var url = SCHEMA_URL + "?surface=" + surface
             + "&engine=" + encodeURIComponent(_engine())
             + (_junction ? "&junction=" + encodeURIComponent(_junction) : "")
+            + (_reuses ? "&reuses=" + encodeURIComponent(_reuses) : "")
             + (rung ? "&rung=" + encodeURIComponent(rung) : "")
             + (rung && _junction
                ? "&shared=" + encodeURIComponent(JSON.stringify(_sharedHeld()))
@@ -206,6 +208,13 @@ const WORKSPACE_TAG = "transport";
                         _el("p", { "class": "hint" },
                             _el("strong", null, _rungLabel(r) + " \u2014 "),
                             r.note),
+                        // THE WINDOW FITTED TO THE FINISHED GRID, beside its
+                        // fields, for a calculation that reuses one
+                        // (engines/transport.md \u00a7 2a.16).
+                        r.name === "transmission" && _reuses
+                            ? fitRow({ reuses: _reuses,
+                                       use: function (v) { _useWindow(v); } })
+                            : null,
                         host);
                     panels.push({ rung: r.name, panel: panel, host: host });
                 });
@@ -232,7 +241,7 @@ const WORKSPACE_TAG = "transport";
                             _restoreFormValues(p.host, b.schema, formSchema,
                                                p.rung, function () {
                                                    return seq === _rungsSeq;
-                                               });
+                                               }, b.held);
                             _wirePersistence(p.host, b.schema, formSchema, p.rung);
                             return true;
                         });
@@ -304,16 +313,20 @@ const WORKSPACE_TAG = "transport";
     /* ``isCurrent``, given, is asked when the note is in hand: a surface
      * drawn again since (another citation, a change on the shared panel)
      * gets nothing -- its newer draw restores for itself. */
+    /* ``held``, given, is what the surface starts from when the note
+     * holds nothing of it -- a rung's own values in the calculation this
+     * one reuses (engines/transport.md § 2a.16). */
     function _restoreFormValues(container, schema, formSchema, surface,
-                                isCurrent) {
+                                isCurrent, held) {
         return _readFormNote().then(function () {
             // THE NOTE AS IT IS NOW, not as it was read at load: the saves
             // since (`_saveSurface`) write `_formNote`, and a redraw after an
             // edit must put the edit back.
             var note = _formNote;
             if (isCurrent && !isCurrent()) return;
-            if (!note || note.junction !== (_junction || "")) return;
-            var saved = _heldIn(note, surface);
+            var mine = note && note.junction === _noteKey();
+            var saved = mine ? _heldIn(note, surface) : null;
+            if (!saved || typeof saved !== "object") saved = held || null;
             if (!saved || typeof saved !== "object") return;
             // WRITING BACK IS NOT AN EDIT: the fields' input and change
             // events would each save the note it came from (`_saveSurface`).
@@ -342,7 +355,7 @@ const WORKSPACE_TAG = "transport";
         // note the citation is about to bring back.
         if (_restoring || !_junction) return;
         _readFormNote().then(function () {
-            var junction = _junction || "";
+            var junction = _noteKey();
             var note = (_formNote && _formNote.junction === junction)
                 ? _formNote : { v: 1, junction: junction, shared: {}, rungs: {} };
             var values;
@@ -377,6 +390,15 @@ const WORKSPACE_TAG = "transport";
      * derives neither. */
     var _junction = "";           // the citation path, "" until cited
     var _junctionStructure = null;    // the composed structure envelope
+    /* THE TRANSPORT CALCULATION THIS ONE REUSES -- its folder, "" for none
+     * (engines/transport.md \u00a7 2a.16): picked in the junction's place,
+     * its junction is the citation and its description fills the cards. */
+    var _reuses = "";
+
+    /* WHAT THE FORMS' NOTE AND THE PANEL'S NOTE ARE KEPT FOR -- the
+     * calculation reused, or the junction cited: what a reload describes
+     * again. */
+    function _noteKey() { return _reuses || _junction || ""; }
 
     /* The composite's send gate: a citation is the ONE thing the
      * describe cannot go without (transport.md § 3.1) -- and its panels
@@ -411,7 +433,7 @@ const WORKSPACE_TAG = "transport";
          * re-describes it through the same seam a pick uses, so the
          * structure, the meta line and both surfaces always come back
          * fresh from the server, never from a stale copy. */
-        ws.persist(PANEL_TAG, { v: 3, junction: _junction || "" },
+        ws.persist(PANEL_TAG, { v: 3, junction: _noteKey() },
                    _panelIdentity(ws));
     }
 
@@ -613,7 +635,10 @@ const WORKSPACE_TAG = "transport";
          * while this calculation holds the rename (so it can be withdrawn
          * and so it is never a silent state); hidden otherwise. */
         var holds = !!(described && described.swap_electrodes);
-        if (!described || (described.fix !== "swap_electrodes" && !holds)) {
+        // A CALCULATION REUSED keeps its rename: its own, and not offered
+        // (engines/transport.md \u00a7 2a.16).
+        if (!described || described.reuses
+                || (described.fix !== "swap_electrodes" && !holds)) {
             host.hidden = true;
             host.textContent = "";
             return;
@@ -687,6 +712,23 @@ const WORKSPACE_TAG = "transport";
         _junction = described.citation;
         _junctionStructure = described.structure || null;
         _swapElectrodesChoice = !!described.swap_electrodes;
+        _reuses = described.reuses || "";
+        if (_reuses) {
+            // ITS VOLTAGES AND THEIR TREATMENT, from its description
+            // (engines/transport.md \u00a7 2a.16) -- the person's to change.
+            var list = _$("transport-bias");
+            if (list) {
+                list.value = (described.bias || [0]).map(function (v) {
+                    return v === 0 ? "0.0" : String(v);
+                }).join(", ");
+            }
+            root.document.querySelectorAll(
+                'input[name="transport-bias-treatment"]').forEach(function (b) {
+                    b.checked = String(described.low_bias_approximation)
+                        === b.value;
+                });
+            _syncTreatment();
+        }
         // BOTH SURFACES FOLLOW THE CITATION: the shared panel holds what the
         // citation answers (3.8.1), and each rung's tab shows what
         // that rung runs -- drawn from the template the panel describes, so
@@ -773,7 +815,8 @@ const WORKSPACE_TAG = "transport";
                     hint: "Pick the finished relaxation RUN of the "
                         + "junction (<calculation>/<NN>_<stage>/run-<n>, "
                         + "launched through jobset), or a structure pair's "
-                        + ".xyz -- a frame set's included.  \u25b8 expands.",
+                        + ".xyz -- a frame set's included -- or a transport "
+                        + "calculation's folder, to reuse it.  \u25b8 expands.",
                     mode: "any",
                     describe: function (path) {
                         return _describeAttempt(toRel(path), false)
@@ -889,6 +932,9 @@ const WORKSPACE_TAG = "transport";
                 engine: _engine(),
                 calculation: "transport",
                 junction: _junction,
+                // THE CALCULATION IT REUSES, written as `reuses`
+                // (engines/transport.md \u00a7 2a.16).
+                reuses: _reuses,
                 swap_electrodes: _swapElectrodesChoice,
                 bias: bias,
                 low_bias_approximation: approx,
@@ -1022,6 +1068,10 @@ const WORKSPACE_TAG = "transport";
         line.textContent = !_junction
             ? "No junction cited yet: nothing is chosen, and each blank "
               + "field shows the value that would apply."
+            : src.kind === "reuses"
+            ? "Values from the calculation this one reuses (" + src.name
+              + ").  Change any of them; a change applies to every rung "
+              + "that reads it, and what it changes runs here."
             : src.kind === "deck"
             ? "Values from the run you cited (" + src.name + ").  Change "
               + "any of them; a change applies to every rung that reads it."
@@ -1065,6 +1115,21 @@ const WORKSPACE_TAG = "transport";
         var fc = _$("transport-form-container");
         var fs = root.molbuilder && root.molbuilder.formSchema;
         return (fc && fs) ? _fetchAndRender(fc, fs) : Promise.resolve(false);
+    }
+
+    /* THE FITTED WINDOW, USED: written into the transmission's own fields,
+     * as a value typed there is, and kept with them (`_saveSurface`). */
+    function _useWindow(values) {
+        var fs = root.molbuilder && root.molbuilder.formSchema;
+        var host = _rungHosts.transmission;
+        var schema = _rungSchemas.transmission;
+        if (!fs || !host || !schema) return;
+        fs.setValues(host, schema, values);
+        _saveSurface(host, schema, fs, "transmission");
+        _setStatus("The transmission window is the fitted one -- "
+                   + values.transmission_emin_ev.toFixed(5) + "\u2026"
+                   + values.transmission_emax_ev.toFixed(5) + " eV at "
+                   + values.transmission_n_points + " points.");
     }
 
     /** The bias list as typed: volts, in order. */

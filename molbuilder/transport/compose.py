@@ -621,20 +621,21 @@ def _refuse_outside(struct: Structure) -> None:
         f"and cite it again (engines/transport.md 4).")
 
 
-def refuse_inside_citation(dest, cited: "CitedRun | CitedPair", *,
+def refuse_inside_citation(dest, cited, *, what: str = "the cited junction",
                            shown: Optional[str] = None) -> None:
     """THE CALCULATION NEVER LIVES IN ITS CITATION (`engines/transport.md`
     § 3.1): describing into the cited run's folder, or below it, would put
     ``task.json`` -- and later every prep attempt -- inside the finished
-    relaxation it cites.  Asked by both doors that describe; ``shown`` is
-    the folder as the door's reader names it, as `describe.refuse_described`
-    takes it."""
-    home = Path(cited.path).resolve()
+    relaxation it cites; or inside the finished transport calculation it
+    reuses (§ 2a.16), ``what`` naming it.  ``cited`` is the cited folder.
+    Asked by both doors that describe; ``shown`` is the folder as the door's
+    reader names it, as `describe.refuse_described` takes it."""
+    home = Path(cited).resolve()
     there = Path(dest).resolve()
     if there == home or home in there.parents:
         raise ComposeError(
-            f"{shown or there} {'is' if there == home else 'is inside'} the cited "
-            f"junction {home.name} -- the calculation never lives inside its "
+            f"{shown or there} {'is' if there == home else 'is inside'} "
+            f"{what} {home.name} -- the calculation never lives inside its "
             f"citation.  Make a folder for this transport calculation (under "
             f"the project's transport topic) and describe it there "
             f"(engines/transport.md 3.1).")

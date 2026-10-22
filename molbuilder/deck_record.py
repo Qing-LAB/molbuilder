@@ -40,6 +40,10 @@ BLOCK_ENGINE_OFFSET = "engine-offset"
 #: person's statement, the ladder's relaxation record.
 BLOCK_VIBRATION     = "vibration"
 BLOCK_USER_CUSTOM   = "user-custom"
+#: What a transmission point that shares energies with a finished
+#: calculation's point computes, and with which point
+#: (`transport.energies.Contours`; `engines/transport.md` § 2a.16).
+BLOCK_SHARED        = "shared"
 #: A PySCF script's run settings, live lines at its head, which every other
 #: line reads by name (`execution/job-contracts.md` § 3.1): what the
 #: same-calculation door sets aside for a PySCF script.

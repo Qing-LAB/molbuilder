@@ -1035,6 +1035,36 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     return _emit(items, engines=(eng,), title=title)
 
 
+def title_of(text: str) -> str:
+    """A template's header comment, without its ``#`` -- the title
+    ``molbuilder describe`` wrote, carried over unchanged by every writer
+    that writes the file again."""
+    lines = []
+    for ln in text.splitlines():
+        if not ln.startswith("#"):
+            break
+        lines.append(ln[2:] if ln.startswith("# ") else ln[1:])
+    return "\n".join(lines)
+
+
+def with_values_set(text: str, config_cls, *, calculation: str,
+                    values: Mapping[str, Any], source: str) -> str:
+    """A calculation's template with ``values`` set, each said to come from
+    ``source`` (§ 6.6 obligation 2) -- every other item's value, blank and
+    source as ``text`` holds them, and its title, carried over -- through
+    the one writer (:func:`template_with_values`)."""
+    items = read_template(text).items
+    cfg = dataclasses.replace(config_from_template(text, config_cls),
+                              **values)
+    sources = {it.name: it.source for it in items}
+    sources.update({k: source for k in values})
+    return template_with_values(
+        cfg, engine=engine_name(config_cls), calculation=calculation,
+        title=title_of(text), sources=sources,
+        valueless=[it.name for it in items
+                   if it.value is None and it.name not in values])
+
+
 def _emit(items, *, engines, title: str = "") -> str:
     """Serialise items as a template file, and read the result back (§ 4.1).
 

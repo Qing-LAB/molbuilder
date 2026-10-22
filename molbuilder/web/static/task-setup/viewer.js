@@ -28,6 +28,7 @@ import { clear as clearFindings,
          render as renderFindings } from "../lib/validation-findings.js";
 import { renderFrameSet } from "../lib/frameset/card.js";
 import { pointWords } from "../lib/results/point-words.js";
+import { fitRow } from "../lib/transport/fit.js";
 // THE PAGE'S FENCE (`ui-contract.md` § 10): every card edit, Save, Preview
 // and Prep takes it.
 import { pageBusy } from "../lib/page-busy.js";
@@ -278,7 +279,7 @@ function renderStages(task) {
             preset.addEventListener("change", () => {
                 const ps = _presets.find((x) => String(x.tier) === preset.value);
                 preset.value = "";
-                if (ps) applyPreset(i, ps.values);
+                if (ps) setRowValues(i, ps.values, "the preset");
             });
         }
 
@@ -291,6 +292,21 @@ function renderStages(task) {
 
     const actions = $("ts-stage-actions");
     if (actions) actions.hidden = false;
+    /* THE TRANSMISSION WINDOW, FITTED TO THE FINISHED GRID, offered beside
+     * the stages of a calculation that reuses one (engines/transport.md
+     * § 2a.16): *use these* writes it on the transmission's row. */
+    const fitHost = $("ts-window-fit");
+    if (fitHost) {
+        fitHost.textContent = "";
+        const row = stages.findIndex((st) => st && st.name === "transmission");
+        fitHost.hidden = !(task.calculation === "transport" && task.reuses
+                           && row !== -1);
+        if (!fitHost.hidden) {
+            fitHost.appendChild(fitRow({
+                reuses: task.reuses,
+                use: (v) => setRowValues(row, v, "the fitted window") }));
+        }
+    }
     paintStageWords();
     card.hidden = false;
 
@@ -2003,7 +2019,14 @@ function renderCameOver(obj, treatment, frameSet, shared) {
             ["Electrodes", obj.swap_electrodes
                 ? "L-electrode and R-electrode traded in this calculation's "
                   + "copy (swap_electrodes: true)"
-                : "as labelled on the cited junction"]);
+                : "as labelled on the cited junction"],
+            // THE FINISHED CALCULATION IT REUSES, whose groups its prep
+            // copies in -- what, and its size, the Preview says
+            // (engines/transport.md \u00a7 2a.16).
+            ...(obj.reuses ? [["Reuses", obj.reuses
+                + " \u2014 its prep copies in what that calculation "
+                + "computed as this one would now; the Preview says what"]]
+                : []));
     } else {
         rows.push(
             ["Structure", st.source ? String(st.source).split("/").pop() : "\u2014"],
@@ -2435,19 +2458,21 @@ async function loadPresets(engine) {
 }
 
 /**
- * Fill a stage's row from a tier.
+ * Fill a stage's row with ``values`` -- a tier's (a preset), or the
+ * transmission window fitted to a finished grid (`engines/transport.md`
+ * § 2a.16) -- ``what`` saying which.
  *
  * `task-setup.md` § 9: *"a preset knows several fields.  If some are not
  * columns yet it **adds them first** -- a preset that half-applied would be
- * worse than one that refused."*  So every field the preset carries is
+ * worse than one that refused."*  So every field the values carry is
  * promoted before any value is written, and the whole thing lands or nothing
  * does.
  *
- * The values come from the SAME table `default_siesta_stages` builds the
- * shipped ladder from, so a stage filled here and stage N of that ladder
+ * A preset's values come from the SAME table `default_siesta_stages` builds
+ * the shipped ladder from, so a stage filled here and stage N of that ladder
  * cannot drift (`tuning.md` § 4 is the authority for the numbers).
  */
-function applyPreset(i, values) {
+function setRowValues(i, values, what) {
     if (!_task || !_task.stages || !_task.stages[i]) return;
     const v = variesOf(); if (!v) return;
     // ONLY WHAT THIS RUNG READS (plan § 5w K4): a vibration's `freq` row
@@ -2465,12 +2490,12 @@ function applyPreset(i, values) {
     Object.assign(ov, read);
     if (added.length) {
         setState(_mode === "handover" ? "handover" : "loaded",
-                 "Preset applied",
+                 "Applied " + what,
                  "Added " + added.join(", ") + " as column"
-                 + (added.length === 1 ? "" : "s") + ", because the preset "
-                 + "sets them.");
+                 + (added.length === 1 ? "" : "s") + ", because " + what
+                 + " sets them.");
     }
-    return commitEdit("Applying the preset\u2026");
+    return commitEdit("Applying " + what + "\u2026");
 }
 
 /* ---------- the columns: which parameters vary ---------- */
@@ -3598,6 +3623,19 @@ function _showPrepAnswers(wrap, say, r) {
         _showPrepAnswer(wrap, say, Object.assign({ ok: true }, a),
                         all.length > 1 ? a.stage : null);
     }
+    /* WHAT A CALCULATION THAT REUSES A FINISHED ONE COPIES, AND WHAT IT
+     * RUNS -- the manifest, once, above the stages' answers: the terminal's
+     * lines, from the same answer (task-setup.md § 11.1;
+     * engines/transport.md § 2a.16). */
+    const copied = all.length && all[0].copied;
+    if (copied && (copied.lines || []).length) {
+        wrap.insertBefore(el("div", { class: "ts-prep-answer" },
+            el("div", { class: "ts-prep-answer-head" },
+               all[0].preview ? "What it would copy, and what it runs"
+                              : "What it copied, and what it runs"),
+            el("pre", { class: "ts-cmd" }, copied.lines.join("\n"))),
+            wrap.querySelector(".ts-prep-answer"));
+    }
     if (all.length > 1 && say.getAttribute("data-state") === "ok") {
         /* EACH GROUP ONE JOB, as the saved description groups them. */
         const named = all.map((a) => a.stage);
@@ -3673,7 +3711,15 @@ function _showPrepAnswer(wrap, say, r, head) {
           + ": " + dirs.slice(0, 3).join(", ")
           + (dirs.length > 3 ? ", …" : "");
     say.setAttribute("data-state", "ok");
-    if (r.launched) {
+    /* A STAGE COPIED IN from the finished calculation this one reuses:
+     * its runs are the copies (engines/transport.md \u00a7 2a.16). */
+    const copies = ((r.copied || {}).groups || [])
+        .flatMap((g) => g.runs || []).filter((x) => x.stage === r.stage);
+    if (copies.length) {
+        line((would ? "would copy " : "copied ") + r.stage + " in \u2014 "
+             + copies.map((x) => x.run + " \u2190 " + x.from).join(", ")
+             + "; its next launch opens its next run with these files");
+    } else if (r.launched) {
         /* A LAUNCHED STAGE PREPARED AGAIN for its job request: no run
          * opened, its runs kept (`execution/job-request.md` § 5) -- the
          * terminal's line. */

@@ -1088,6 +1088,27 @@ def folder_answer(directory) -> Dict[str, Any]:
                 "the engine's scratch of the run above (its leads' surface "
                 "Green's function files, one voltage's pair at a time): "
                 "nothing in it opens (engines/transport.md § 2a.11)")
+        elif place.role == calcdirs.SHARED:
+            # THE ENERGIES A TRANSMISSION POINT SHARES with a finished
+            # calculation's point (`engines/transport.md` § 2a.16): read with
+            # the point they lie in -- past every `shared/` it holds, one in
+            # another -- its calculation's report at that point, which it
+            # opens -- and named by what it is a copy of.
+            from molbuilder.runrecord import LaunchRecordError, read_copied_from
+            at = d.parent
+            while calcdirs.where(at).role == calcdirs.SHARED:
+                at = at.parent
+            chosen, _trail = openable(at)
+            point = transmission_point(at)
+            try:
+                said = read_copied_from(d)
+            except LaunchRecordError as exc:
+                said = str(exc)
+            attempts.append(
+                "the energies the point above shares with "
+                + (said or "a point it names nowhere")
+                + ", copied from it: read with that point, whose report "
+                  "opens (engines/transport.md § 2a.16)")
         else:
             # A CONTAINER: a folder of a calculation of ours is a run, a run's
             # scratch or a container -- its own record says, at the root its
