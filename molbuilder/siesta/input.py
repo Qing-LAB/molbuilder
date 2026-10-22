@@ -924,22 +924,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # section_title: the framework's default.  It stays a slot because
         # the comment character is genuinely an engine's syntax; it is
         # simply not one these two differ on.
-        provenance_defaults=lambda c: {
-            "use_gpu": str(bool(c.use_gpu)).lower(),
-            # TWO states, matching the emitter above: unset omits the
-            # keyword, a value is written verbatim.  0 is refused on every
-            # door -- the item's hard limit (`above`, engines/template.md
-            # 5.3) -- so it has no arm here.
-            #
-            # Unset says `auto`, the spelling `mpi_np` and `omp_threads` use
-            # two lines down for the same meaning: molbuilder chose nothing
-            # and the engine decides.
-            "BlockSize": ("auto" if c.block_size is None
-                          else f"user-set -> {_derived.get('block_size')}"),
-            "mpi_np": ("auto" if c.mpi_np is None else str(c.mpi_np)),
-            "omp_threads": ("auto" if c.omp_threads is None
-                            else str(c.omp_threads)),
-        },
         # THE WINDOW, for a deck that carries a BlockSize: one that does
         # not drops the row (`_bench_marks_for`), so none is derived.
         bench_marks=lambda st, c: _bench_marks_for(

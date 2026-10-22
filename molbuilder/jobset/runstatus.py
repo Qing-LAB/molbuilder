@@ -581,12 +581,6 @@ _ENDED_BADLY = ("failed", "stopped", "unreadable")
 _ON_ITS_WAY = ("queued", "running")
 
 
-def _said_lines(text: str) -> List[str]:
-    """A composed way on (`commands`), as a step's lines: each of its
-    lines, the commands among them, in order."""
-    return [ln.strip() for ln in text.splitlines() if ln.strip()]
-
-
 def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     """THE NEXT STEP (`job-system.md`, *The task*, *The next step*): every
     group of ``task``, in its order, its state read off its members' rows
@@ -596,47 +590,39 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     finished is the next step; with every group finished, the last names
     `summarize task` where the task's result gathers its stages
     (`summarize.task_summary`)."""
-    from .commands import reason_of, way_back
+    from .commands import reason_of, said_lines, way_back
     from .summarize import task_summary
-    from ..joblist import Asked
-    from .ready import held_by_sequence
     base, task = Path(calc.base), calc.task
     by = {s.name: s for s in rows}
     out: List[GroupStep] = []
-    asked = Asked()
     for g in groups:
         members = [by[m] for m in g.members]
         n = g.number
-        # A GROUP A SEQUENCE STILL GOING HOLDS, not launched by it yet --
-        # launched before or not (`job-system.md` § 6.0, *A sequence of
-        # groups*): that job's to launch.
-        held = (held_by_sequence(calc, n, asked=asked)
-                if all(r.prepared for r in members) else None)
         if g.members_changed:
             # A LAUNCHED GROUP WHOSE MEMBERS CHANGED -- a member taken out, or
-            # a stage put in, prepared or not: offered by no verb, its way on
-            # the rule's own, whole (`job-system.md`, *The task*).
-            step = ("changed", g.said, _said_lines(g.members_changed))
-        elif not all(r.prepared for r in members):
-            step = (("not prepared", "not prepared",
-                     prep_group_lines([n], base=base)) if g.preparable else
-                    ("waits", "waits before it can be prepared: "
-                     + reason_of(g.why or ""), []))
+            # a stage put in, prepared or not: offered by no verb, which stage
+            # said, its way on the rule's own, whole (`job-system.md`, *The
+            # task*).
+            step = ("changed", f"{g.said}: {reason_of(g.members_changed)}",
+                    said_lines(g.members_changed)[1:])
         elif g.changed:
             # ITS PREP FORMS IT AGAIN with every group it needs, the groups
-            # prep names (`group.formed_again`, as the ready door says it).
-            from .group import formed_again
+            # prep names (`GroupAnswer.prep_with`) -- a member not prepared
+            # beside it too.
             step = ("changed", g.said,
-                    prep_group_lines(formed_again(calc.request,
-                                                  calc.jobset.jobs, [n]),
-                                     base=base))
-        elif held is not None:
-            job, after, said = held
-            step = ("in a job",
-                    f"goes in job {job.id} -- "
-                    + (f"after group {after}" if after is not None
-                       else "its first group")
-                    + f" ({said})", ["molbuilder jobs status"])
+                    prep_group_lines(g.prep_with, base=base))
+        elif not all(r.prepared for r in members):
+            step = (("not prepared", g.said,
+                     prep_group_lines(g.prep_with, base=base))
+                    if g.preparable else
+                    ("waits", "waits before it can be prepared: "
+                     + reason_of(g.why or ""), []))
+        elif g.held is not None:
+            # A GROUP A SEQUENCE STILL GOING HOLDS, not launched by it yet --
+            # launched before or not (`job-system.md` § 6.0, *A sequence of
+            # groups*): that job's to launch.
+            step = ("in a job", f"{g.said} ({g.held[2]})",
+                    ["molbuilder jobs status"])
         elif not g.launched:
             # PREPARED BY ANOTHER MOLBUILDER: its launch compares it with
             # what prep writes now, and a difference is refused (R-L15) --
@@ -675,7 +661,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                         f"{bad.state}: {bad.name} -- launch it again -- "
                         f"{again}; or, to change it first, as below",
                         launch_lines("task", bad.name, base=base)
-                        + _said_lines(way_back(bad.name, calc=calc,
+                        + said_lines(way_back(bad.name, calc=calc,
                                                launched=True)))
             elif opened is not None:
                 step = ("pending", f"{opened.name}: {opened.detail}",

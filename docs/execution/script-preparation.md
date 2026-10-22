@@ -354,7 +354,7 @@ a gap visible:
 | **3.5** structure | the structure block | `spec.layout` — a `Block` | no |
 | **3.6** parameters | which items, in what order, and how each is spelled | `spec.layout` + `spec.line` | no |
 | **3.7** engine body | what no parameter models | `spec.layout` — a `Block` | **yes** |
-| **3.9** record | the values only this engine can supply for three blocks — the third a SIESTA force-constant deck's VIBRATION block, whose values `prep` builds and the engine places (`engines/vibration.md` § 5.3) | `spec.provenance_defaults` · `spec.bench_marks` · `spec.vibration` | **yes** |
+| **3.9** record | the values only this engine can supply for two blocks — the second a SIESTA force-constant deck's VIBRATION block, whose values `prep` builds and the engine places (`engines/vibration.md` § 5.3) | `spec.bench_marks` · `spec.vibration` | **yes** |
 | **3.9** record | the bundle that finishes this deck's run, when the engine alone leaves no result — `prep` copies it onto the job (`Job.finish`) and the wrapper runs it after the engine (`engines/vibration.md` § 5.5) | `spec.finish` | **yes** |
 | **3.11** check | what a finished deck of this engine must satisfy | `spec.check_rules` | **yes** |
 | **3.12** promises | files its own text instructs | `sibling_artifacts` | **yes** |
@@ -548,7 +548,7 @@ shipped writers, not asserted:
 | | |
 |---|---|
 | **Fixed — the framework does it, identically, for every engine** | the ORDER (`prepare_deck`: validate → render → write → check); the walk down `spec.layout`; turning each `Section` item into a `Parameter` through the one door and writing `param.note()` above whatever the engine returns; the reader's `USER-CUSTOM` block; the do-not-edit banner; the three record blocks; and `write_script`, which is the only thing that touches the disk |
-| **Yours — declared, not branched** | what is in the layout and in what order; whether a part is a `Section` or a `Block`; how one setting is spelled (`line`); what heads a note (`note_lead`) and how a heading is written (`section_title`); the values your record rows carry (`provenance_defaults`, `bench_marks`); what a finished deck of yours must satisfy (`check_rules`); and everything inside a `Block` |
+| **Yours — declared, not branched** | what is in the layout and in what order; whether a part is a `Section` or a `Block`; how one setting is spelled (`line`); what heads a note (`note_lead`) and how a heading is written (`section_title`); the values your benchmark anchors carry (`bench_marks`); what a finished deck of yours must satisfy (`check_rules`); and everything inside a `Block` |
 
 What you declare is also **all the pipeline log can say about you** — it reads the spec, and an engine never writes to it. § 4.5.2 is that table.
 
@@ -621,7 +621,7 @@ two doors:
 | 3.6 **parameters** | **shared walk**, engine syntax | `Section`s in `spec.layout` + `spec.line` — doors 1 and 2 |
 | 3.7 **engine body** | engine | a `Block` in `spec.layout` — door 1 |
 | 3.8 **reader section** | **shared** | `emit_user_custom_placeholder` |
-| 3.9 **record** | **shared**; the engine supplies only the VALUES | `spec.provenance_defaults` · `spec.bench_marks` |
+| 3.9 **record** | **shared**; the engine supplies only the VALUES | `spec.bench_marks` |
 | 3.10 **write** | **shared** | `write_script` — merges the reader's block |
 | 3.11 **check** | **shared** rules + `spec.check_rules` | `check_deck` — reads the file back |
 
@@ -648,7 +648,7 @@ spec is a small form the engine fills in, and it has twelve slots:
 | `line` | **how this engine spells one setting** |
 | `calculation` | **which KIND this deck is** — the settings gate composes the kind's science from it, and prep names artifacts by it |
 | `note_lead` · `section_title` | how a note and a heading are written in this syntax |
-| `provenance_defaults` · `bench_marks` | the values only this engine can supply for two record blocks |
+| `bench_marks` | the values only this engine can supply for the benchmark anchors |
 | `derived` | facts computed once at spec time that later slots read (never re-derived downstream) |
 | `check_rules` | what a finished deck of this engine must satisfy |
 | `validate_subject` | what the settings gate judges, when it is not the structure as it arrived — the placed copy, its `design` (the file's own coordinates), and `prior`, what an earlier stage left that this stage's checks judge (the `relax` stage's record at a SIESTA force-constant stage, `engines/vibration.md` § 5.2a) |
@@ -791,7 +791,7 @@ flowchart TB
       direction TB
       H2["<code>spec.layout</code> · <code>spec.line</code><br/><code>note_lead</code> · <code>section_title</code>"]
       H3["<code>validation.validate</code><br/><i>shared</i>"]
-      H5["<code>provenance_defaults</code> · <code>bench_marks</code>"]
+      H5["<code>bench_marks</code>"]
       H6["<code>spec.check_rules</code>"]
     end
     S2 -.-> H2

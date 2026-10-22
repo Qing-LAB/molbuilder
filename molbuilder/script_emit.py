@@ -1043,8 +1043,8 @@ class DeckSpec:
 
     **Nine slots and two doors is not a contradiction.**  ``layout`` is door 1
     and ``line`` is door 2; ``note_lead`` and ``section_title`` are how this
-    engine writes a note and a heading in its own syntax; ``provenance_defaults``
-    and ``bench_marks`` are VALUES for blocks the framework assembles;
+    engine writes a note and a heading in its own syntax; ``bench_marks`` is
+    the VALUES for a block the framework assembles;
     ``check_rules`` is what a finished deck of this engine must satisfy; and
     ``engine`` / ``created_by`` are names.  Only the first two are asked at
     every item.
@@ -1071,9 +1071,6 @@ class DeckSpec:
     #: for this configuration*, and that is the whole conditionality
     #: mechanism: ``MD.Steps`` under ``relax_type="none"`` simply returns None.
     line: Callable
-    #: ``(cfg) -> {field: description}`` for the PROVENANCE block's
-    #: resolved-defaults rows.  The block itself is the framework's.
-    provenance_defaults: Optional[Callable] = None
     #: ``(struct, cfg) -> dict`` of :func:`emit_bench_marks` keyword
     #: arguments, or ``None`` for an engine that declares no anchors.
     bench_marks: Optional[Callable] = None
@@ -1087,7 +1084,7 @@ class DeckSpec:
     #: channel, so the context is exposed rather than re-computed.
     #:
     #: The framework never WRITES it and never branches on it — it is a value
-    #: the form carries, like ``provenance_defaults``, not a door.
+    #: the form carries, like ``bench_marks``, not a door.
     derived: Mapping[str, Any] = _dataclasses.field(default_factory=dict)
     #: The described calculation KIND this deck renders — a FACT the
     #: settings gate reads (validate(..., calculation=…) composes the
@@ -1384,16 +1381,12 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         for _k in sorted(spec.derived):
             log.chose(_k, spec.derived[_k], "derived from (struct, cfg)")
 
-    with _calling("provenance_defaults", engine=spec.engine):
-        _defaults = (spec.provenance_defaults(cfg)
-                     if spec.provenance_defaults else None)
     # WHO SET EACH VALUE -- `resolve`'s rows, handed over by every road that
     # renders (`sources`; `job-contracts.md` § 3.2).  None handed is said,
     # never left blank.
     record: List[str] = [emit_provenance(
         generator_version=generator_version(),
         generated_at=generated_at_now(),
-        resolved_defaults=_defaults,
         engine=spec.engine,
         parameters=sources,
         parameters_unrecorded=sources is None)]
@@ -1719,8 +1712,7 @@ def _log_spec(spec: "DeckSpec", log) -> None:
                      f"{', '.join(member.items)}")
     # W5: a slot answering None is answering NOTHING, and that is a real
     # answer -- so it is written down rather than left as a blank.
-    for slot in ("provenance_defaults", "bench_marks", "check_rules",
-                 "validate_subject"):
+    for slot in ("bench_marks", "check_rules", "validate_subject"):
         log.produced(slot, "answered" if getattr(spec, slot) is not None
                      else "nothing (W5)")
 

@@ -540,7 +540,6 @@ let _fitSeq   = 0;
 function freshFolderState() {
     return {
         runs:         {},         // stage name -> attempts on disk (T5)
-        tokens:       {},         // stage name -> its <NN>_<name>, from the server
         extraRunRows: new Map(),  // rows added to a run card, per stage
         fitBench:     {},         // the bench card's last posted axes
         pendingDrop:  "",         // the armed column drop
@@ -1181,7 +1180,7 @@ function renderMachine(task) {
                    : (pts.length + " points sweep as a value axis \u2014 "
                       + "the machine grid multiplies per value; the "
                       + "winning combination is REPORTED, for you to "
-                      + "write here."))
+                      + "write into the run card, in the group's tab."))
             : null;
         host.appendChild(el("div", { class: "ts-row", "data-kind": kind,
                                      "data-bench-row": name,
@@ -1320,7 +1319,7 @@ function _bufferChanged(which, change) {
          * under the control being typed in. */
         if (byHand && _task && _mode !== "empty") {
             setShape(String(_task.shape || ""));
-            if (_mode === "description") {
+            if (_request) {
                 readAsksFromRequest(_request);
                 readNotifyFromRequest(_request, _task);
                 renderQueues();
@@ -1723,6 +1722,15 @@ async function readFolder(projects, dir, opts) {
                            + "refuses it", request.error);
         return;
     }
+    /* ...AND A CALCULATION ITS READERS REFUSE -- a template holding a run
+     * setting, a plan written before a rule, each naming `jobset migrate`
+     * -- in their words: never shown as one not yet prepared, and Save
+     * refuses it with the same words (§ 4). */
+    if (said.refused) {
+        await refuseFolder("This calculation's files are refused by their "
+                           + "readers", said.refused);
+        return;
+    }
 
     sayLoaded(task);
 
@@ -1736,7 +1744,6 @@ async function readFolder(projects, dir, opts) {
     for (const [name, st] of Object.entries(
             (said.attempts && said.attempts.stages) || {})) {
         _fs.runs[name] = st.attempts;
-        _fs.tokens[name] = st.token;
     }
     _fs.benchRefusal = said.bench_refusal || null;
     /* WHAT EACH STAGE CAN CONTINUE FROM, the folder's answer (plan W37):
@@ -2347,7 +2354,7 @@ async function loadFolderAnswer(dir) {
                             said: t.said || {} };
         return j;
     } catch (_) {
-        // The cells fall back to the catalogue, as before.
+        // NO ANSWER: the caller says the folder could not be read.
         return null;
     }
 }
@@ -2482,12 +2489,6 @@ function variesOf() {
  */
 function addColumn(name) {
     const v = variesOf(); if (!v) return;
-    if (!String(name || "").trim()) {
-        setState("refuse", "A column needs a parameter's name",
-                 "Type the parameter's own name, as the catalogue spells "
-                 + "it; the save door refuses one it does not know.");
-        return;
-    }
     if (v.indexOf(name) !== -1) return;
     v.push(name);
     return commitEdit("Adding the column " + name + "\u2026");
@@ -2501,24 +2502,23 @@ function addColumn(name) {
 function removeColumn(name) {
     const v = variesOf(); if (!v) return;
     const stages = (_task && _task.stages) || [];
-    const last = stages[stages.length - 1];
-    const survivor = last && last.overrides
-        ? last.overrides[name] : undefined;
+    // EVERY STAGE THAT STATES IT, each with its value -- what the second
+    // click drops.
+    const held = stages.filter((st) => st && st.overrides
+                                       && name in st.overrides)
+        .map((st) => st.name + " " + JSON.stringify(st.overrides[name]));
 
     if (_fs.pendingDrop !== name) {
         _fs.pendingDrop = name;
         // EVERY STAGE'S VALUE GOES: this page edits task.json, not the
-        // template, so it names the last stage's value -- the production
-        // stage's -- for the person to set there, and says so before the
-        // click rather than implying the value survives somewhere.
+        // template, so it names each value for the person to set there, and
+        // says so before the click rather than implying one survives.
         setState("refuse", "Remove the column " + name + "?",
-                 (survivor === undefined
+                 (!held.length
                     ? "No stage overrides it, so nothing is lost. "
-                    : "The last stage (" + ((last && last.name) || "?")
-                      + ") has " + JSON.stringify(survivor) + ", and every "
-                      + "stage's value for it is dropped — this page edits "
-                      + "task.json, not the template, so set it there if you "
-                      + "want it kept. ")
+                    : "Every stage's value for it is dropped (" + held.join(", ")
+                      + ") — this page edits task.json, not the template, so "
+                      + "set it there if you want one kept. ")
                  + "Click × again to remove it.");
         renderStages(_task);
         return;
@@ -2999,10 +2999,8 @@ function taskPrepCard(task) {
         const members = el("ul", { class: "ts-planlist" });
         for (const st of g.members) {
             const r = said[st] || {};
-            // A device rung's line about the leads' files rides its detail
-            // (`engines/transport.md` § 2a.11).
             const detail = el("span", { class: "ts-plan-detail" },
-                              (r.detail || "") + (r.tsgf ? " \u00b7 " + r.tsgf : ""));
+                              r.detail || "");
             if (r.why) detail.title = r.why;
             members.appendChild(el("li", {},
                 el("span", { class: "ts-planrow" },
@@ -3952,10 +3950,10 @@ function renderQueues() {
     const needs = $("ts-queue-needs");
     if (!card || !host) return;
     const qs = _queuesOf(_machine);
-    /* SHOWN ONCE THERE IS A DESCRIPTION, as the notify card is: the card
-     * writes the job request's `allocation` (`task-setup.md`), which a
-     * hand-over's proposal states nothing of until Save writes it. */
-    card.hidden = _mode !== "description";
+    /* SHOWN ONCE THERE IS A JOB REQUEST, as the notify card is: the card
+     * writes its `allocation` -- on a hand-over, once the shape's proposal
+     * has made one (§ 6.2b). */
+    card.hidden = !_request;
     if (card.hidden) return;
     host.innerHTML = "";
     if (!_machine) {
@@ -3966,19 +3964,16 @@ function renderQueues() {
     }
     /* A STATED QUEUE THIS MACHINE DOES NOT LIST is shown as stated, and
      * stays until the person changes it: the request may be written for
-     * another machine, and prep judges it on the target (§ 6.2b). */
+     * another machine, and prep judges it on the target (§ 6.2b).  The
+     * card says what the record shows, and no more. */
+    const unlisted = (_fs.queue && !qs.some((d) => d.name === _fs.queue))
+        ? "The job request names the queue " + _fs.queue + ", which "
+          + _machine + " does not list; it stays as stated until you "
+          + "change it." : "";
     if (!qs.length) {
-        /* A workstation, or a cluster nobody has probed: there is no menu
-         * to choose from, and saying so is better than an empty row. */
         needs.hidden = false;
-        needs.textContent = _machine + " states no queues \u2014 it runs "
-            + "directly, so there is nothing to choose. No queue means no "
-            + "wall, so a blank time is unlimited; memory still has a real "
-            + "ceiling \u2014 this machine's own RAM."
-            + (_fs.queue ? " The job request names the queue " + _fs.queue
-               + ", which prep refuses here: remove allocation.domain in "
-               + "job-request.json below to run it on " + _machine + "."
-               : "");
+        needs.textContent = _machine + "'s record lists no queues, so there "
+            + "is nothing to choose here." + (unlisted ? " " + unlisted : "");
         $("ts-queue-asks").hidden = false;
         // A MACHINE WITH NO QUEUES STILL HAS A MEMORY CEILING: its RAM,
         // shown beside the field (`paintAskNotes`) and written into none --
@@ -3986,11 +3981,8 @@ function renderQueues() {
         paintAskNotes();
         return;
     }
-    const unlisted = _fs.queue && !qs.some((d) => d.name === _fs.queue);
     needs.hidden = !unlisted;
-    needs.textContent = unlisted ? "The job request names the queue "
-        + _fs.queue + ", which " + _machine + " does not list; it stays as "
-        + "stated until you pick another." : "";
+    needs.textContent = unlisted;
     for (const d of qs) {
         const b = document.createElement("button");
         b.type = "button";
@@ -4590,6 +4582,12 @@ function setShape(shape) {
                     else _request = JSON.parse(texts.request);
                     return setBuffers(texts).then(() => {
                         renderStages(_task);
+                        // THE CARDS THAT WRITE THE JOB REQUEST, drawn now
+                        // that there is one (§ 6.2b).
+                        readAsksFromRequest(_request);
+                        readNotifyFromRequest(_request, _task);
+                        { const c = $("ts-notify-card"); if (c) c.hidden = false; }
+                        renderQueues();
                         if (!vocabulary) return;
                         renderNext(_task);
                         renderMachine(_task);

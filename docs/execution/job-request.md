@@ -623,7 +623,8 @@ any value is.
 
 **Where each value came from is recorded in one vocabulary** —
 `template.SAID` ([`template.md`](?doc=engines/template.md) § 5.4): *the stage's
-run card*, *the calculation's run card*, *a prep flag*, *the job request's
+run card*, *the calculation's run card*, *a prep flag*, *the run card* (the
+launch shape as prep's fold records it, either card), *the job request's
 allocation*, *the catalogue's default · not chosen* — beside the description's
 (*this stage's override*, *the template · …*) and a benchmark's (*a pin*, *a
 sweep point*): in the deck's PROVENANCE
@@ -821,9 +822,10 @@ each change where it is found:
 **A calculation described by 2.27.x is migrated once more**: its template's
 declared run-setting items go, and nothing it computes changes.
 
-**A prepared stage is prepared again before its first launch**: its deck's
-record of who set each value has changed (§ 4), so its first launch refuses the
-files prep wrote before, naming the prep (R-L15). A launched one keeps its
+**A prepared stage is prepared again before its first launch**: the files prep
+writes now differ from those it wrote before — the run script takes its wall
+slack and retries from the job, with no fallback of its own (§ 4) — so its
+first launch refuses the files prep wrote before, naming the prep (R-L15). A launched one keeps its
 runs; a SIESTA one's group may be prepared again as § 5 says. A PySCF script
 written before holds no run-settings block, so none rendered now is the same
 calculation (§ 6): a launched PySCF stage takes the way back for any change.

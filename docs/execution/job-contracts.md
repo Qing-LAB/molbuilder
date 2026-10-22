@@ -1232,11 +1232,6 @@ generation time:
 #     mesh_cutoff      the template · from the junction you cited
 #     spin_treatment   the template · not chosen · the electronic state decides it
 #     system_label     the rung -- spelt from the calculation's label
-#   resolved-defaults:
-#     target_env        molbuilder-siesta
-#     omp_threads       1
-#     max_memory_mb     n/a
-#     mpi_np            4
 # === molbuilder provenance END ===
 ```
 
@@ -1276,8 +1271,8 @@ generation time:
 - `parameters` is **who set each value the deck is rendered from**
   ([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 5,
   *2026-10-11*): a row per item of the rung's — the kind's `engine` and `deck`
-  items the rung reads, the scheduler's excepted, which `resolved-defaults`
-  reports — by the template's own name for it, and where its value came from:
+  items the rung reads, the scheduler's excepted, which the run script's
+  `resolved-defaults` reports — by the template's own name for it, and where its value came from:
   `resolve`'s layer (*a pin · a sweep point · this stage's override · the
   rung*), a run setting's (*the stage's run card · the calculation's run card
   · the catalogue's default · not chosen*, [`job-request.md`](?doc=execution/job-request.md) § 4) and, for the template's, the template's own record of it (*the
@@ -1298,9 +1293,11 @@ generation time:
   engines share carries both engines' keywords (`engines/template.md` § 6.3),
   so a PySCF deck would name SIESTA's.)*
 - `generated-at` is ISO-8601 with timezone.
-- `resolved-defaults` lists four keys, always: `target_env` (the job
-  environment), `omp_threads`, `max_memory_mb` (`n/a` when none is stated)
-  and `mpi_np` (`n/a (PySCF is OMP-only)` for a PySCF run). Each is the
+- `resolved-defaults` is the **run script's**, and lists four keys, always:
+  `target_env` (the job environment), `omp_threads`, `max_memory_mb` (`n/a`
+  when none is stated) and `mpi_np` (`n/a (PySCF is OMP-only)` for a PySCF
+  run). A deck carries none: who set each of its values is its `parameters`
+  rows', and the value is its body's. Each is the
   **stated** value — both engines refuse an unstated count at prep
   (`architecture.md` § 5.2, 2026-10-02), so there is no "auto" to record and
   no policy's choice to annotate (`runwrap.py`, `_resolved_defaults`; this

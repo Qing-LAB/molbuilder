@@ -317,7 +317,7 @@ group was launched — says why beside it and offers only *new group*: the
 sentence is the server's (`groups.stages[i].why_same`, from
 `group.why_not_join`, the one home of the rule `group.may_join` asks; the
 page composes none, 2026-10-18), beside the facts the folder answer gives
-(each stage's number, `builds_on`, `linked`, `launched`), and Save's check
+(each stage's number, `launched`), and Save's check
 (`group.check_groups`) refuses what the rule forbids after edits. Both name
 the ways out: a new group — or, for an independent ladder's stage, its
 `restart` set to `clean` in the stage table, so it builds on nothing.
@@ -329,7 +329,8 @@ the restore that changes it — and no row joins it: the row below a launched
 group offers only *new group*, saying why, a row added or renamed there
 included. **Save refuses a stage put into a launched group, or a launched
 member given another group**, in the group answer's words — a group of its own
-for the stage, the member put back, or the restore
+for the stage, the member put back, the launched one launched again alone, or
+the restore
 ([`job-system.md`](?doc=execution/job-system.md), *The task*, `ready.GroupAnswer`);
 the cells say it before the click, and the door holds it whatever the page
 sent.
@@ -1145,7 +1146,7 @@ do on every kind.
 | Operation | What it does | The rule that keeps it safe |
 |---|---|---|
 | **add a parameter column** | adds it to `varies` | **seeds every stage with the template's current value**, so adding a column changes nothing on screen. It is a statement about *structure*, never about values |
-| **remove a column** | drops it from `varies` | **every stage's value for it goes** — the page edits `task.json`, not the template — and the page says so *before* the click, a second click removing it: it names the last stage's value, the production stage's and the one a single run would use, to set in the template if it is to stay |
+| **remove a column** | drops it from `varies` | **every stage's value for it goes** — the page edits `task.json`, not the template — and the page says so *before* the click, a second click removing it: it names each stage's value that goes, to set in the template if one is to stay, and says *nothing is lost* only where no stage states one |
 | **add a stage** | appends a row | **copies the previous stage's overrides.** A refinement starts from what came before; a stage that inherits nothing is a different calculation, not a next step |
 | **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files** — prepared, as a run or a benchmark — is removed by the Save that writes the description: its files stay untouched and its number stays taken ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) *(W38 F5)* |
 | **no reorder** | — | a stage's number is assigned once and stages append ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2): its folder, its files and its runs carry it, so moving a stage would rename what it already wrote |

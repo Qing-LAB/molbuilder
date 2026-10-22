@@ -20,6 +20,9 @@ PRECEDENCE, AND IT IS TOTAL (§ 5)::
 
     the template's values
       ⊕ this stage's overrides
+      ⊕ the run settings         (the catalogue's default, else a run card:
+                                  the stage's over the calculation's,
+                                  `execution/job-request.md` § 4)
       ⊕ this sweep point's values
       ⊕ any pin
       ⊕ the rung's own answers   (`role` -- no door above may set one,
@@ -59,9 +62,9 @@ class ResolveError(Exception):
 #:
 #: Named for the allocation and **not** "machine axes", because the two are not
 #: the same set: ``continue_retries`` rides on ``Resources`` as the exchange
-#: struct to the wrapper, but it is a retry *policy* and names no machine, so it
-#: is legitimately also a template item. The split this list drives is *"where
-#: does this value go"*, which is exactly the allocation's shape.
+#: struct to the wrapper, but it is a retry *policy* and names no machine -- a
+#: run setting the cards state. The split this list drives is *"where does
+#: this value go"*, which is exactly the allocation's shape.
 #: The riders: fields that travel ON ``Resources`` without being machine
 #: axes (`execution/gpu.md` G7: ``use_gpu`` is also the bench's grid-family
 #: axis, so it must reach the config that renders the deck).
@@ -119,8 +122,10 @@ class ResolvedConfig:
     #: The ``SystemLabel`` in force. A trial's is **relabelled**, which is what
     #: structurally stops a benchmark reading the real run's warm files.
     label: str = ""
-    #: ``{field: source}`` — ``template`` · ``stage`` · ``sweep`` · ``pin``
-    #: · ``role`` (the rung's own answer, laid on last).
+    #: ``{field: source}`` — ``template`` · ``stage`` · ``stage_card`` ·
+    #: ``calc_card`` · ``default`` · ``sweep`` · ``pin`` · ``role`` (the
+    #: rung's own answer, laid on last); a launch-shape field, the fold's
+    #: (``flag`` · ``run card`` · ``allocation``).
     provenance: Mapping[str, str] = field(default_factory=dict)
     #: WHO SET EACH VALUE THE RUNG'S DECK IS RENDERED FROM, as ``((item,
     #: words), ...)`` -- the deck's PROVENANCE table (`job-contracts.md`
@@ -368,7 +373,7 @@ def _deck_items(engine: str, kind: str, stage: str) -> Mapping[str, bool]:
     """The items a rung's deck is rendered from, each with whether it is
     optional -- the kind's engine and deck items the rung reads
     (`template.reads`), the scheduler's excepted: their values are the
-    run's, which the deck's ``resolved-defaults`` reports."""
+    run's, which the run script's ``resolved-defaults`` reports."""
     from .template import catalogue, reads, select
     return {it.name: it.optional
             for it in select(catalogue(), engine=engine,
@@ -523,9 +528,15 @@ def resolve(template_text: str, task, config_cls, *,
     _parsed = read_template(template_text)
     origins = {it.name: it.source for it in _parsed.items}
     deck_items = _deck_items(_engine, _kind, stage_obj.name)
+    # WHO SET EACH VALUE is said of what this kind carries: an item of
+    # another kind (a transport rung's electrode on an optimization) is no
+    # value of this calculation's.
     every_item = {f.name: bool(_items.get(f.name) is not None
                                and _items[f.name].optional)
-                  for f in dataclasses.fields(config_cls)}
+                  for f in dataclasses.fields(config_cls)
+                  if _items.get(f.name) is None
+                  or not _items[f.name].calculations
+                  or _kind in _items[f.name].calculations}
 
     if stage_obj.overrides:
         # EVERY OVERRIDE MAY STAND ON ITS RUNG -- the setting door, asked in
@@ -699,8 +710,8 @@ def resolve(template_text: str, task, config_cls, *,
                 else "default")
         # § 6.2's translation boundary (job-contracts.md): floor 3 maps
         # config → exchange HERE, and ``continue_retries`` is the one
-        # rider that is legitimately also a template item (a retry
-        # POLICY, not a machine fact — ALLOCATION_FIELDS' own note).  An
+        # rider a run card states (a retry POLICY, not a machine fact —
+        # ALLOCATION_FIELDS' own note).  An
         # explicitly stated allocation wins; otherwise the resolved
         # config's answer rides the element, exactly as the § 6.2 row
         # ("translated at resolve.py") describes.

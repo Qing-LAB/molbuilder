@@ -113,6 +113,16 @@ class GroupAnswer:
     #: own words and way on (:func:`joined_launched`); ``None`` otherwise.
     #: Such a group is offered by no verb (`job-system.md`, *The task*).
     members_changed: Optional[str] = None
+    #: A SEQUENCE STILL GOING HOLDS IT -- ``(its job, the group before it in
+    #: the job or None, the job's state in words)``, :func:`held_by_sequence`'s
+    #: answer, asked of a group every member of which is prepared -- or
+    #: ``None``.  That job's to launch: no verb prepares or launches it
+    #: meanwhile (`job-system.md` § 6.0, R-P23, R-L45).
+    held: Optional[tuple] = None
+    #: THE GROUPS ITS PREP NAMES -- it, and every group a member of its
+    #: prepared job is in now, wherever that job's members are no longer one
+    #: group (`group.formed_again`; R-P6).
+    prep_with: List[int] = field(default_factory=list)
 
     @property
     def launched(self) -> bool:
@@ -139,12 +149,13 @@ class GroupAnswer:
     @property
     def preparable(self) -> bool:
         """It may be prepared now: every member preparable -- a
-        force-constant stage once its `relax` has finished -- and no member
-        launched, or, on the hierarchical layout, launched with what it
-        computes kept: prepared again for its job request
-        (`execution/job-request.md` § 5)."""
+        force-constant stage once its `relax` has finished -- no sequence
+        still going holding it, and no member launched, or, on the
+        hierarchical layout, a launched one prepared again for its job
+        request (`execution/job-request.md` § 5)."""
         return (self.not_again is None
                 and self.members_changed is None
+                and self.held is None
                 and all(a.prepared or a.ready for a in self.answers))
 
     @property
@@ -158,15 +169,17 @@ class GroupAnswer:
     def launchable(self) -> bool:
         """Its first launch may go now: prepared as described, never
         launched, and what each member takes is there."""
-        return (self.prepared and not self.launched
+        return (self.prepared and not self.launched and self.held is None
                 and all(a.ready for a in self.answers))
 
     @property
     def why(self) -> Optional[str]:
         """What it waits for: a launched group's changed members, or why it
-        is not prepared again, else the first member's refusal."""
-        return self.members_changed or self.not_again or next(
-            (a.why for a in self.answers if a.why), None)
+        is not prepared again, or the sequence holding it, else the first
+        member's refusal."""
+        return (self.members_changed or self.not_again
+                or (held_why(self.number, self.held) if self.held else None)
+                or next((a.why for a in self.answers if a.why), None))
 
     @property
     def said(self) -> str:
@@ -174,10 +187,25 @@ class GroupAnswer:
         (`job-system.md`, *The task*) -- the words every verb and surface
         shows it in."""
         return ("launched, its members changed" if self.members_changed else
-                "launched, its members fixed" if self.launched else
                 "prepared, its members changed" if self.changed else
+                f"goes in job {self.held[0].id} -- "
+                + (f"after group {self.held[1]}" if self.held[1] is not None
+                   else "its first group") if self.held else
+                "launched, its members fixed" if self.launched else
                 "prepared, never launched" if self.prepared else
                 "not prepared")
+
+
+def held_why(number: int, held: tuple) -> str:
+    """Why group ``number`` is not prepared while the sequence ``held``
+    (:func:`held_by_sequence`'s answer) is going, and the way on -- the one
+    sentence prep refuses with and the group answer says (R-P23)."""
+    job, _after, state = held
+    return (f"group {number} goes in job {job.id} -- a sequence of groups "
+            f"still going ({state}) launches it with the files it was "
+            f"prepared with, and preparing it again would rewrite them under "
+            f"the job.  Prepare it once that job has ended, or stop the job "
+            f"first: molbuilder jobs stop {job.id}  (job-system.md R-P23)")
 
 
 def held_by_sequence(calc, number: int, *, asked=None
@@ -346,17 +374,20 @@ def joined_launched(calc, number: int, launched: str,
                     f"`{launched}`, which was launched without "
                     f"{'it' if one else 'them'}")
         ways.append(f"give {said(joined)} a group of "
-                    f"{'its' if one else 'their'} own")
+                    f"{'its' if one else 'their'} own (Task setup, or "
+                    f"job-request.json)")
     if left:
         one = len(left) == 1
         what.append(f"`{launched}` was launched in one job with "
                     f"{said(left)}, and group {number} now holds "
                     f"`{launched}` without {'it' if one else 'them'}")
+        # A STAGE TAKEN OUT OF THE DESCRIPTION goes back through it: the
+        # job request holds no stage the description does not.
         ways.append(f"put {said(left)} back beside `{launched}` in one "
-                    f"group")
+                    f"group (Task setup)")
     return ("; ".join(what) + " -- a launched group's members are fixed: "
-            + " and ".join(ways) + " (Task setup, or job-request.json); or "
-            f"launch `{launched}` again alone:\n"
+            + " and ".join(ways) + "; or launch "
+            f"`{launched}` again alone --\n"
             + block(launch_lines("task", launched, base=calc.base))
             + "\n  or, to form the group anew, "
             + redo_launched(launched, calc=calc))
@@ -406,7 +437,7 @@ def regrouped(calc, stage: str) -> Optional[str]:
         if hit:
             return said + "; " + joined_launched(calc, n, *hit)
     return (said + ", so its prep forms the job again "
-            "(engines/stages.md § 2):\n"
+            "(engines/stages.md § 2) --\n"
             + block(prep_group_lines(numbers, base=base)))
 
 
@@ -787,6 +818,14 @@ def task_state(calc, *, verdict: bool = False) -> TaskState:
     question); `status` and the folder answer leave it unread."""
     answers = ladder(calc, verdict=verdict)
     gs = groups(calc.request, answers)
+    from ..joblist import Asked
+    from .group import formed_again
+    jobs = calc.jobset.jobs if calc.jobset is not None else []
+    asked = Asked()
+    for g in gs:
+        g.prep_with = formed_again(calc.request, jobs, [g.number])
+        if all(a.prepared for a in g.answers):
+            g.held = held_by_sequence(calc, g.number, asked=asked)
     # A LAUNCHED GROUP'S MEMBERS ARE FIXED: one whose members changed says
     # so, and one its layout does not prepare again says why -- each rule
     # asked once here for every reader (`job-system.md`, *The task*).
@@ -838,7 +877,10 @@ def groups_text(gs: List[GroupAnswer]) -> str:
     width = max([len(a.stage) for g in gs for a in g.answers] + [5])
     out = []
     for g in gs:
-        out.append(f"  group {g.number}  ({g.said})")
+        # A GROUP A SEQUENCE HOLDS names where to follow it, as `status`'s
+        # step does (`job-system.md`, *The next step*).
+        out.append(f"  group {g.number}  ({g.said}"
+                   + ("; molbuilder jobs status" if g.held else "") + ")")
         for a in g.answers:
             out.append(f"    {a.stage:<{width}}  {a.state:<9}  {a.detail}")
     return "\n".join(out)

@@ -26,7 +26,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.template import (accepts, catalogue, default_of, one,
-                                 read_text, recommended_for)
+                                 read_text, recommended_for, why_not)
 
 
 def _item(name, engine="siesta"):
@@ -86,10 +86,6 @@ ACCEPTS = [
     # fixes.
     ("relax_type", "override", "vibration", "relax", "Verlet",
      ", which a vibration does not offer"),
-    ("kgrid", "template", "transport", None, [4, 4, 2],
-     ", whose z component a transport calculation fixes at 1"),
-    # THE TEMPLATE: an item left valueless is its default (§ 6.4).
-    ("relax_steps", "template", "optimization", None, None, None),
     # A PREP FLAG: the launch shape alone; no cap is the row left blank.
     ("max_memory_mb", "flag", "optimization", None, 0,
      ": it must be greater than 0"),
@@ -115,6 +111,17 @@ def test_a_value_stands_or_is_refused_once_in_its_home(name, home, kind,
         assert said is None, said
     else:
         assert said is not None and said.startswith(refused), said
+
+
+def test_a_template_value_meets_the_rules_of_its_kind():
+    """The template names no kind, so the kind's rules are asked of its
+    values where it meets its kind (§ 5.3, `template.why_not`, asked by
+    `resolve`): a transport calculation's third k component is fixed at 1,
+    and a template stating 2 is refused rather than run."""
+    said = why_not(_item("kgrid"), [4, 4, 2], engine="siesta",
+                   kind="transport")
+    assert said is not None and said.startswith(
+        ", whose z component a transport calculation fixes at 1"), said
 
 
 #: ``(item, engine, what was sent, read as -- or None, refused with)``.

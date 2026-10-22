@@ -59,12 +59,22 @@ SHARED = {"domain": "queue", "mpi_np": "ranks",
 
 def card_shares(request, stage: str) -> dict:
     """``stage``'s run card (`JobRequest.run_condition`) on what a job's
-    members share (:data:`SHARED`), by field -- ``None`` where it states
-    nothing, and everywhere for a ladder with no request yet."""
+    members share (:data:`SHARED`), by field, as the run takes it: a setting
+    no card states at the catalogue's one default (`template.default_of`),
+    a queue none states at the allocation's (`job-request.md` § 3.2a) --
+    ``None`` where nothing answers, and everywhere for a ladder with no
+    request yet."""
+    if request is None:
+        return {f: None for f in SHARED}
+    from .. import template as _T
     from .model import AS_RESOURCE
-    card = ({AS_RESOURCE.get(k, k): v
-             for k, v in request.run_condition(stage).items()}
-            if request is not None else {})
+    kind = str(request.calculation)
+    taken = {it.name: _T.default_of(it, kind)
+             for it in _T.select(_T.catalogue(), engine=str(request.engine))
+             if _T.is_run_setting(it)}
+    taken["domain"] = request.allocation.domain or None
+    taken.update(request.run_condition(stage))
+    card = {AS_RESOURCE.get(k, k): v for k, v in taken.items()}
     return {f: card.get(f) for f in SHARED}
 
 

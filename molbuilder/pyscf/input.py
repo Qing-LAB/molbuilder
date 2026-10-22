@@ -808,14 +808,6 @@ def spec_for(struct: Structure,
         # section_title: the framework's default.  It stays a slot because
         # the comment character is genuinely an engine's syntax; it is
         # simply not one these two differ on.
-        provenance_defaults=lambda c: {
-            "use_gpu":       str(bool(getattr(c, "use_gpu", False))).lower(),
-            "density_fit":   str(bool(getattr(c, "density_fit", True))).lower(),
-            "threads": ("auto" if getattr(c, "threads", None) is None
-                        else str(c.threads)),
-            "max_memory_mb": ("no cap" if not c.max_memory_mb
-                              else str(int(c.max_memory_mb))),
-        },
         created_by="molbuilder jobset prep",
         check_rules=_layout.check_rules,
     )

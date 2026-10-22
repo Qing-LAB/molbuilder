@@ -758,10 +758,6 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         # grids lines.
         line=_layout.line(cfg,
                           is_dft=cfg.is_dft),
-        provenance_defaults=lambda c: {
-            "use_gpu":     str(bool(getattr(c, "use_gpu", False))).lower(),
-            "density_fit": str(bool(getattr(c, "density_fit", True))).lower(),
-        },
         created_by="molbuilder vibration deck",
         # The engine's own deck gate, shared with the optimization deck:
         # it parses (a non-compiling deck dies on the queue after the

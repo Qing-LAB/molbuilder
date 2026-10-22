@@ -254,6 +254,44 @@ def test_save_never_writes_over_a_file_changed_since_it_was_read(
     assert r.status_code == 400 and "read_as" in r.get_json()["error"]
 
 
+def test_a_stage_stating_a_default_may_share_the_group_above(
+        web_client, isolated_projects_root):
+    """`job-request.md` § 3.3, § 4: a group's members share one job's
+    launch, compared as the run takes it -- a setting no card states runs
+    at the catalogue's default, so a stage stating that default (`use_gpu:
+    false`) states what the stage above does, and its row may repeat the
+    group number.  The 2.28.0 review: the cell said "states other values"
+    and the numbering split two stages prep takes as one job.
+
+    MUTATION THIS MUST FAIL AGAINST: the cards compared as stated, an
+    unstated setting not its default."""
+    d = _fresh_calc_dir(isolated_projects_root)
+    rendered = web_client.post("/api/task-setup/handover", json=dict(
+        _envelope(), engine="siesta", calculation="optimization",
+        name="probe", params={"system_label": "probe"})).get_json()
+    # WHAT THE HAND-OVER SENDS, written as the page's road writes it.
+    for f in rendered["structure_files"]:
+        (d / f["name"]).write_text(f["text"])
+    (d / rendered["template_name"]).write_text(rendered["template_text"])
+    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
+    over = _json.loads(rendered["handover_text"])
+    task = {"schema": over["task_schema"], "engine": over["engine"],
+            "calculation": over["calculation"], "shape": "hierarchical",
+            "run": over["run"], "structure": over["structure"],
+            "varies": ["restart"],
+            "stages": [{"name": "coarse", "overrides": {}},
+                       {"name": "medium",
+                        "overrides": {"restart": "clean"}}]}
+    request = {"schema": over["job_request_schema"],
+               "stages": {"coarse": {"group": 1},
+                          "medium": {"group": 2,
+                                     "execution": {"use_gpu": False}}}}
+    assert save_both(d, task, request, web_client).status_code == 200
+    rows = web_client.get("/api/task-setup/folder?dir=" + str(d)
+                          ).get_json()["groups"]["stages"]
+    assert [r["why_same"] for r in rows] == [None, None], rows
+
+
 def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
     """The text goes through `task.from_text` — the same door `prep` uses — so
     a browser cannot become a second, drifting writer of descriptions."""

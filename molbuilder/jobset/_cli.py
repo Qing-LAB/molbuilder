@@ -1230,19 +1230,13 @@ def _launch_unit(calc, *, told: dict, dry_run: bool = False):
         raise click.ClickException(str(exc)) from None
     gs = state.groups
     # A GROUP A SEQUENCE STILL GOING HOLDS is that job's (R-L45): not
-    # offered, nor any stage of it, and said where it goes
-    # (`ready.held_by_sequence`).
-    from .ready import held_by_sequence
-    held = {g.number: held_by_sequence(calc, g.number) for g in gs}
-    held = {n: h for n, h in held.items() if h is not None}
-    in_held = {st for n in held for st in calc.request.members(n)}
-    ready = [n for n in state.launch_offer if n not in held]
+    # offered, nor any stage of it -- the group answer's (`held`), its
+    # line saying where it goes.
+    in_held = {st for g in gs if g.held for st in g.members}
+    ready = state.launch_offer
     if len(ready) == 1:
         return ready[0], None
-    text = "the task's groups:\n" + state.text() + "".join(
-        f"\n  group {n} goes in job {h[0].id} -- "
-        + (f"after group {h[1]}" if h[1] is not None else "its first group")
-        + " (molbuilder jobs status)" for n, h in sorted(held.items()))
+    text = "the task's groups:\n" + state.text()
     if ready:
         offered = [str(n) for n in ready]
         question = "which group to launch?"

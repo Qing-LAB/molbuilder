@@ -334,6 +334,18 @@ said = ["prepared coarse: 01_coarse/run-0  (reused -- not launched yet)", "prepa
 made_lacks = ["launch/H2_group-01_coarse-02_medium.sbatch"]
 
 [[case]]
+name = "...and a prepared job's member put in one group with a stage not prepared is formed again the same way: prep naming its group alone is refused, and status names the one prep that takes, every group it forms"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+before = [["prep", "task", "--group", "1"]]
+added = [{ name = "fine", overrides = { restart = "clean" } }]
+regrouped = [1, 2, 2]
+stage = "medium"
+refused = ["group 1 holds stages prepared in one job with the groups picked", "molbuilder jobset prep task --group 1 --group 2"]
+status_says = ["prepared, its members changed", "molbuilder jobset prep task --group 1 --group 2"]
+status_lacks = ["molbuilder jobset prep task --group 2 --bundle"]
+
+[[case]]
 name = "...and a member the description no longer holds is among them: the old header, named by its members' own files, is removed"
 groups = [1, 1]
 stage_run = { medium = { restart = "clean" } }

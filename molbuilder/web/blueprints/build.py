@@ -1580,12 +1580,13 @@ def api_task_setup_save():
         prior_calc = open_calc(dest)
         prior = prior_calc.task
     except NotACalculation:
-        try:
-            prior = task_of(dest)             # described, no template yet
-        except Exception:
-            prior = None                      # unreadable: let the write fix it
-    except Exception:
-        prior = None                          # unreadable: let the write fix it
+        # DESCRIBED, NO JOB REQUEST YET -- or nothing described, a hand-over
+        # (`None`): the door has read it already, so it reads.
+        prior = task_of(dest)
+    except (OSError, ValueError) as exc:
+        # A CALCULATION ITS READERS REFUSE is not written over: their words,
+        # as the folder answer gave them (`web/task-setup.md` § 4).
+        return jsonify({"ok": False, "error": str(exc)}), 409
     if prior is not None and prior.run.id != task.run.id:
         return jsonify({
             "ok": False,
@@ -1745,9 +1746,9 @@ def api_task_setup_sweepable():
     Sweeping anything outside it means each point silently measures a
     DIFFERENT calculation, and the comparison is meaningless.
 
-    Each item says whether the machine answers it: an ``allocation`` resolver
-    means a description may never carry a value for it (`template.md` § 6.4),
-    so the picker can show it as measurable-only rather than as a choice.
+    Each item says whether it is the launch shape (``allocation``, which a
+    prep flag may state too), and its homes (`template.home_of`) -- the
+    Measure card offers what a benchmark row may hold.
     """
     engine = str(request.args.get("engine") or "").lower()
     if not engine:
@@ -1785,7 +1786,8 @@ def api_task_setup_sweepable():
             # a bool's two values from a dropdown -- it can only do either
             # by asking the catalogue.
             "type":            it.type or "",
-            "choices":         list(it.choices) if it.choices else None,
+            "choices":         (list(_T.offered(it, engine, kind))
+                                if it.choices else None),
             # THE ONE DEFAULT (`template.default_of`): the kind's own, never
             # the general one -- what the hover calls *Recommended*.
             "default":         _T.default_of(it, kind),
@@ -1860,7 +1862,7 @@ def api_task_setup_columns():
             "help":    it.help or "",
             "unit":    it.unit or "",
             # THE KIND'S OWN DEFAULT (`template.recommended_for`).
-            "default": _T.with_recommended(it, _calc_kind).default,
+            "default": _T.default_of(it, _calc_kind),
             "group":   it.group or "",
             # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
             # editor renders a dropdown for an enum or a bool, and it can
@@ -2074,6 +2076,7 @@ def api_task_setup_bench_grid():
         if rows:
             return jsonify({"ok": True, "cells": rows,
                             "kept": sum(1 for r in rows if not r["why"]),
+                            "rows": _row_kinds(calc.request, bench),
                             "note": str(exc)})
         return jsonify({"ok": False, "error": str(exc)}), 400
     # EACH ROW'S CLASS, by the one rule prep splits the lane with
@@ -2378,13 +2381,17 @@ def api_task_setup_folder():
     # (A16); a folder that is no calculation yet -- a hand-over, or
     # empty -- has none, and the description alone is asked for.
     from molbuilder.calculation import NotACalculation, open as open_calc
-    # A folder whose description or template does not read answers as
-    # the parts say it: the description part in its reader's words, the
-    # template part naming the templates (`template_file.of`).
+    # A CALCULATION ITS READERS REFUSE -- a template holding a run setting,
+    # a plan written before a rule, each naming `jobset migrate` -- is
+    # answered with their words (`refused`), which the page shows and Save
+    # refuses with; it is never read as a calculation not yet prepared.
+    _calc = refused = None
     try:
         _calc = open_calc(folder)
-    except (NotACalculation, Exception):          # noqa: BLE001
-        _calc = None
+    except NotACalculation:
+        pass
+    except (OSError, ValueError) as exc:
+        refused = str(exc)
 
     # `task.json` and the hand-over are mutually exclusive by design: a save
     # writes the first and deletes the second (`task-setup.md` § 3), so the
@@ -2483,6 +2490,8 @@ def api_task_setup_folder():
         # WHAT EACH RECORD WAS WHEN THIS ANSWER READ IT, for Save to compare
         # (`web/task-setup.md` § 8).
         "read_as": _read_as(folder),
+        # WHAT ITS READERS REFUSE OF THE CALCULATION, or null.
+        "refused": refused,
         # WHAT THE KIND FIXES of the stage table -- a transport description's
         # five rungs, in order -- by the reader's own answer
         # (`task.fixed_by_kind`), so the page offers no stage-table control
@@ -2556,22 +2565,20 @@ def _folder_ladder(calc) -> dict:
     """``{"ladder": {stages, offer}, "groups": {stages, groups}}`` -- the
     ready door's answer for every stage (`ready.ladder`) and the groups
     `prep task` offers (`ready.prep_offer`), the one `prep task` and
-    `status` read; and the groups: each stage's number, the stages it
-    builds on (`group.upstream_of`), whether that is its kind's
-    (`group.linked`: no run card changes it) and whether it was launched
-    (its group is then fixed); each group's members, where it stands, and
-    whether its prepared jobs hold its members (`web-api.md`).  Fail-soft, like the
-    folder's other parts."""
+    `status` read; and the groups: each stage's number, why it may not join
+    the group above, and whether it was launched (its group is then fixed);
+    each group's members, where it stands, and whether its prepared jobs
+    hold its members (`web-api.md`).  Fail-soft, like the folder's other
+    parts."""
     from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.group import linked, upstream_of, why_not_join
+    from molbuilder.jobset.group import why_not_join
     from molbuilder.jobset.ready import task_state, why_group_fixed
     try:
         state = task_state(calc)
         task, text = state.task, state.template_text
         answers, gs = state.stages, state.groups
-        # EACH STAGE'S LINKS, not a verdict: the page applies the rule to
-        # the groups as edited (`task-setup.md` § 5), and the reader's
-        # check (`group.check_groups`) refuses at Save.
+        # EACH STAGE'S ROW; the reader's check (`group.check_groups`)
+        # refuses at Save what the rule forbids after edits.
         rows = []
         job_req = calc.request
         number = [job_req.group_of(s.name) for s in task.stages]
@@ -2585,9 +2592,6 @@ def _folder_ladder(calc) -> dict:
             why_same = (why_not_join(task, job_req, st.name, above, text)
                         if above else None)
             rows.append({"stage": st.name, "group": number[i],
-                         "builds_on": sorted(upstream_of(task, st.name,
-                                                         text)),
-                         "linked": linked(task, st.name, text),
                          "launched": a.launched,
                          "why_same": why_same,
                          "why_fixed": (why_group_fixed(calc, st.name)
@@ -2742,10 +2746,20 @@ def api_task_setup_commands():
         # PREPARED AS DESCRIBED, the ready door's answer (`GroupAnswer`):
         # its prepared jobs hold its members.
         gs = [g for g in state.groups if g.number in groups]
+        # A GROUP NO VERB TAKES -- its launched members changed, or a
+        # sequence still going holds it -- has its way on for lines, the
+        # answer's own words, as `status` prints them.
+        stuck = next((g for g in gs if g.members_changed or g.held), None)
+        if stuck is not None:
+            from molbuilder.jobset.commands import said_lines
+            return jsonify({"ok": True, "lines": said_lines(stuck.why)})
         # A PREPARED GROUP'S LINES are its launch alone -- unless the lines
         # asked for are a Prep's (`prep`), which prepares it again.
         prepared = (len(groups) == 1 and len(gs) == 1 and gs[0].prepared
                     and not body.get("prep"))
+        # ...AND A PREP NAMES EVERY GROUP IT FORMS (`GroupAnswer.prep_with`).
+        if not prepared:
+            groups = sorted({n for g in gs for n in g.prep_with})
         from_at_prep = any(force_constant_stage(task, m)
                            for g in gs for m in g.members)
     elif one_stage and kind == "bench":

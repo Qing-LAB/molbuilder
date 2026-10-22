@@ -405,9 +405,9 @@ class Item:
     allocation: bool = False
 
     #: **A row on every run card from the start**, blank until stated
-    #: (`web/task-setup.md` § 6.2b; user, 2026-10-11): the run's launch --
-    #: ranks, threads, the GPU switch and count.  It states no value and
-    #: decides nothing prep does; the run card reads it.
+    #: (`web/task-setup.md` § 6.2b; user, 2026-10-11) -- marked on every run
+    #: setting of the catalogue.  It states no value and decides nothing
+    #: prep does; Task setup's run card reads it.
     run_card: bool = False
 
     #: **The CITATION answers this one** — `allocation`'s sibling on the same
@@ -661,17 +661,6 @@ class Template:
 #  From the schema — the edge that makes this data-driven               #
 # --------------------------------------------------------------------- #
 
-#: How a Python annotation becomes a declaration ``type``.  ``bool`` is checked
-#: BEFORE ``int`` -- a bool IS an int in Python, and getting that order wrong
-#: types every checkbox as a number.
-_ANNOTATION_TYPES = {bool: "bool", int: "int", float: "float", str: "str"}
-
-#: Which ``kind`` a field takes when its metadata does not say.  Almost every
-#: exposed field is one of the engine's own keywords; the exceptions declare
-#: themselves with an ``item_kind`` in their metadata.
-_DEFAULT_KIND = "engine"
-
-
 #: The two spellings of a union.  ``Optional[X]`` and ``X | None`` mean the same
 #: thing and report DIFFERENT origins -- ``typing.Union`` and ``types.UnionType``
 #: -- so a check for one silently misses the other.  Nothing in the configs uses
@@ -716,34 +705,6 @@ def _bare_anchor(engine_key: str) -> str:
     """
     m = _BARE_ANCHOR.match(engine_key or "")
     return m.group(1) if m else ""
-
-
-def _decl_type(ann, choices) -> Optional[str]:
-    """The declaration ``type`` for one annotation, or None if unnameable."""
-    if choices:
-        return "enum"
-    if ann in _ANNOTATION_TYPES:
-        return _ANNOTATION_TYPES[ann]
-    origin, args = typing.get_origin(ann), typing.get_args(ann)
-    # Tuple[int, int, int] -- the k-grid.  Named rather than flattened to three
-    # fields: it is ONE decision ("how finely is reciprocal space sampled"), and
-    # a stage overriding it overrides all three together.  The same argument
-    # makes ``Tuple[float, float, float]`` one item: the k-grid DISPLACEMENT is
-    # one decision about where the mesh sits, per axis (audit § 54).
-    # The length is checked because the type NAME asserts it -- a two-tuple
-    # named ``int3`` would pass here and be refused later by a message naming
-    # the value rather than the field.
-    if origin is tuple and len(args) == 3:
-        if all(a is int for a in args):
-            return "int3"
-        if all(a is float for a in args):
-            return "float3"
-    if origin is list and args:
-        if args[0] is str:
-            return "strlist"
-        if args[0] is int:
-            return "intlist"
-    return None
 
 
 # --------------------------------------------------------------------- #
@@ -2178,7 +2139,7 @@ def why_role(name: str) -> str:
 #: THE PLACES A VALUE OF A SETTING CAN LIVE (§ 5.4): the template, a stage's
 #: overrides (task.json), a run card and a benchmark row (job-request.json),
 #: a prep flag.  Each asks :func:`accepts` with its own name.
-HOMES = ("template", "override", "run_card", "bench", "flag")
+HOMES = ("override", "run_card", "bench", "flag")
 
 #: WHO SET A VALUE, in the words every reader says it (§ 5.4) -- the deck's
 #: PROVENANCE rows, the pipeline log, prep's printed lines and its
@@ -2243,9 +2204,9 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
     """Why ``home`` may not hold a value of ``item`` -- the clause after
     *"<who> sets <name> = <value>"* or *"<who> names <name>"* -- or
     ``None`` (§ 5.4): THE ONE RULE OF WHERE A VALUE LIVES, read off the
-    item's own markers.  The template and a stage's overrides hold what is
-    computed -- never a run setting, never what the rung fixes (`role`), an
-    override never what every stage shares (`shared`); a run card holds a
+    item's own markers.  A stage's overrides hold what is computed -- never
+    a run setting, never what the rung fixes (`role`), never what every
+    stage shares (`shared`); a run card holds a
     run setting; a benchmark row one a trial may vary -- never what every
     trial fixes (:data:`TRIAL_PINS`), and of the launch shape only the
     grid's axes (:data:`GRID_AXES`); a prep flag the launch shape
@@ -2283,11 +2244,11 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
         return (f", which a benchmark's grid does not sweep -- its machine "
                 f"axes are {', '.join(GRID_AXES)} (execution/generator.md "
                 f"4.3a)")
-    if home in ("template", "override") and run:
+    if home == "override" and run:
         return ", " + why_run_setting(name)
-    if home in ("template", "override") and kind in item.role:
-        return (f", which the rung fixes: {why_role(name)}.  Remove "
-                f"{'the override' if home == 'override' else 'the value'}")
+    if home == "override" and kind in item.role:
+        return (f", which the rung fixes: {why_role(name)}.  Remove the "
+                f"override")
     if home == "override" and kind in item.shared:
         return (f", which is shared by {shared_by(name)}: "
                 f"{why_shared(name)}.  Change it in the template, where one "
@@ -2350,9 +2311,11 @@ def accepts(item: "Item", value: Any, home: str, *, engine: str, kind: str,
        it does not offer, a limit.
 
     Every place a value lives asks this with its own home, and keeps no
-    check of its own.  A template's item left without a value is its
-    default (§ 6.4), so the template home takes ``None`` for any item; a
-    benchmark row's point is a value to try, never ``None``."""
+    check of its own; a benchmark row's point is a value to try, never
+    ``None``.  The template is read by its own two refusals -- a run setting
+    (`template_file`), a rung's answer stated otherwise (`resolve`) -- and
+    the kind's rules asked of its values where it meets its kind
+    (:func:`why_not`)."""
     clause = why_not_in(item, home, engine=engine, kind=kind, stage=stage)
     if clause:
         return clause
@@ -2361,7 +2324,7 @@ def accepts(item: "Item", value: Any, home: str, *, engine: str, kind: str,
             return (", but a benchmark row's points are values to try -- "
                     "leave the setting off the row to run at its own "
                     "(engines/template.md 5.4)")
-        return None if item.optional or home == "template" else (
+        return None if item.optional else (
             ", but this setting has no unset -- null is taken only by a "
             "setting whose unset is an answer; state a value, or leave it "
             "out (engines/template.md 5.4)")

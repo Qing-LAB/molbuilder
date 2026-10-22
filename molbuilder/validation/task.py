@@ -181,12 +181,14 @@ def _items_of(request) -> Dict[str, Any]:
             for it in select(catalogue(), engine=str(request.engine))}
 
 
-def _run_settings_said(request) -> str:
-    """The run settings ``request``'s engine declares, as a refusal lists
-    what may be stated instead."""
-    from ..template import is_run_setting
+def _run_settings_said(request, home: str) -> str:
+    """The settings ``home`` may hold on ``request``'s calculation, by the
+    door's homes (`template.home_of`), as a refusal lists what may be
+    stated instead."""
+    from ..template import home_of
+    kind = str(request.calculation)
     return ", ".join(sorted(n for n, it in _items_of(request).items()
-                            if is_run_setting(it))) or "(none)"
+                            if home in home_of(it, kind))) or "(none)"
 
 
 def _run_cards_may_stand(request) -> List[Issue]:
@@ -223,7 +225,7 @@ def _run_cards_may_stand(request) -> List[Issue]:
                     f"setting of {engine}.  This block says what the RUN "
                     f"uses -- "
                     f"ranks, threads, the device, the solver.  Execution "
-                    f"settings here: {_run_settings_said(request)}, "
+                    f"settings here: {_run_settings_said(request, 'run_card')}, "
                     f"{', '.join(LANE_ASKS)}",
                     where=f"job_request.{where}.{name}"))
                 continue
@@ -261,7 +263,7 @@ def bench_points_fit_their_items(request) -> List[Issue]:
                 "error",
                 f"bench names {name!r}, which is not a setting of {engine} "
                 f"-- a benchmark row sweeps a run setting.  Sweepable here: "
-                f"{_run_settings_said(request)}", where=where))
+                f"{_run_settings_said(request, 'bench')}", where=where))
             continue
         home = why_not_in(it, "bench", engine=engine, kind=kind)
         if home:

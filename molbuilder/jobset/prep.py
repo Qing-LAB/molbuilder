@@ -796,7 +796,7 @@ class Resolved:
     #: `STAGE-PLAN.md`, the pipeline log and the ledger's *prepared* line say
     provenance: Optional[dict] = None
     #: where each value of ``allocation`` came from -- ``flag``, ``run
-    #: card`` or ``description`` (`prep_inputs.fold_allocation`)
+    #: card`` or ``allocation`` (`prep_inputs.fold_allocation`)
     sources: Optional[dict] = None
     #: the placement at checkpoint 4 on the queue it names -- what its jobs
     #: record, a benchmark's every trial, and its header renders
@@ -1030,7 +1030,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # composed for the deck's table (`ResolvedConfig.said`, `engines/
     # template.md` § 5.4).
     for _el in pset:
-        _rows = config_rows(_el.render_config(), _el.provenance)
+        # THE KIND'S VALUES, the ones `resolve` says who set.
+        _rows = [r for r in config_rows(_el.render_config(), _el.provenance)
+                 if r[0] in _el.said]
         _decided = [r for r in _rows if r[2] not in ("template", "default")]
         log.step(f"{_el.label} — what this rung decided")
         for _n, _v, _s in _decided:
@@ -3047,26 +3049,22 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         # A GROUP A SEQUENCE STILL GOING HOLDS: its job is about to launch
         # the files it was prepared with, and a prep now would rewrite them
         # under it (R-P23; `project-layout.md` § 1.6.3).
-        from .ready import held_by_sequence
+        from .ready import held_by_sequence, held_why
         held = held_by_sequence(description.calc, n)
         if held is not None:
-            raise _refuse(
-                f"group {n} goes in job {held[0].id} -- a sequence of groups "
-                f"still going ({held[2]}) launches it with the files it was "
-                f"prepared with, and preparing it again would rewrite them "
-                f"under the job.  Prepare it once that job has ended, or stop "
-                f"the job first: molbuilder jobs stop {held[0].id}  "
-                f"(job-system.md R-P23)")
+            raise _refuse(held_why(n, held))
     missing = [n for n in whole if n not in numbers]
     if missing:
-        from .commands import block, prep_group_lines
+        from .commands import block, prep_group_lines, prep_sequence_lines
+        # THE SAME PREP, ONE JOB STILL when it was asked for one.
+        again = (prep_sequence_lines if one_job else prep_group_lines)
         raise _refuse(
             f"group {', '.join(map(str, missing))} holds stages prepared in "
             f"one job with the groups picked, and that job's members are no "
             f"longer one group -- every such job is formed again in one "
             f"prep, so pick "
             + ("it" if len(missing) == 1 else "them") + " too:\n"
-            + block(prep_group_lines(whole, base=base)))
+            + block(again(whole, base=base)))
     from .ladder import force_constant_stage
     # A LAUNCHED MEMBER, prepared again for its job request on the
     # hierarchical layout (`execution/job-request.md` § 5): its deck must

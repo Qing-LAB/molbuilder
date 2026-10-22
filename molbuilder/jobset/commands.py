@@ -280,6 +280,12 @@ def block(text_lines, pad: str = "    ") -> str:
     return "\n".join(pad + ln for ln in text_lines)
 
 
+def said_lines(text: str) -> List[str]:
+    """A composed way on, as a step's lines: each of its lines, the
+    commands among them, in order."""
+    return [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+
 def reason_of(refusal: str) -> str:
     """A refusal's reason in one line, for a row beside others: its first
     line, less the sentence that ends ``--`` introducing the commands of
@@ -452,6 +458,6 @@ __all__ = ["PROG", "TASK", "BENCH", "words_for", "bundle_flag", "command",
            "configured_mode", "stage_group", "prep_group_lines",
            "prep_sequence_lines",
            "launch_lines", "lines", "run_first", "name_a_stage",
-           "block", "reason_of", "rollback", "redo_launched", "way_back",
+           "block", "said_lines", "reason_of", "rollback", "redo_launched", "way_back",
            "order_recorded", "launch_pending",
            "stage_lines", "takes_a_queue", "target_flags"]

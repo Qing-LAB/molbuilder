@@ -327,7 +327,7 @@ that streams a folder holding a scratch file and a store and reads the zip
 back through `zipfile` (the scratch and the stores absent, every other file
 whole, the length exact).
 
-## 1w. One door per setting, one answer per launched group *(2026-10-21; the user's yes, with the recommendations below; the contract written and taken; A–D built, released as 2.28.0)*
+## 1w. One door per setting, one answer per launched group *(2026-10-21; the user's yes, with the recommendations below; the contract written and taken; A–D built, released as 2.28.0; its review after release, 2.28.1)*
 
 *(the user, 2026-10-21, on the 2.27.0 review: "this sounds to me a problem of
 unification and template inconsistency or bad design. identify the nature of
@@ -677,6 +677,53 @@ the person to pick another queue. Dropped: a server-down title left on the
 state box, the *Loaded* line on a proposed hand-over (`removeColumn`'s
 already), and `_fs.queue` -- the queue control's own value, as § 9a has the
 queue and notify cards hold theirs.
+
+**2.28.0's review, after release -- 2.28.1** (three fresh readers, the release whole:
+the setting door and the template, the groups and the task's verbs, the
+Task setup page; triaged by the road), fixed:
+- *a calculation its readers refuse* -- a template holding a run setting, a
+  plan written before a rule, each naming `jobset migrate` -- opened on the
+  page as one never prepared, and Save wrote over it: the folder answer
+  carries the readers' words (`refused`), the page refuses the folder with
+  them, and Save refuses in the same words (no fallback);
+- *the group answer, read whole*: `GroupAnswer` carries the groups its prep
+  must name (`prep_with`, `group.formed_again`) and the sequence still going
+  that holds it (`held`, `held_by_sequence`, its why `ready.held_why` --
+  prep's refusal, one sentence); `status`, the bare prep and launch, the
+  folder answer and the commands route read them -- no line naming a prep
+  that prep refuses, no offer of a group a sequence holds, and a group no
+  verb takes answers with its way on; `status` names the stage taken out of
+  a launched group; the way on for a removed stage says Task setup; two
+  sentences end ` --` so their reason trims; `--one-job`'s way on keeps
+  `--one-job`;
+- *a group cell refused what prep takes*: a stage stating the default
+  (`use_gpu: false`) beside one stating nothing -- `group.card_shares`
+  compares the cards as the run takes them (`default_of`, the
+  allocation's queue);
+- *one fact, one source*: the decks' own `resolved-defaults` rows (a second
+  answer beside `parameters:`) and their `DeckSpec` slot are gone -- the
+  four keys are the run script's; who set a value is said only for the
+  items the kind carries; the preflight lists what a home may hold by
+  `home_of`; the door's `template` home, asked by nobody and contradicting
+  § 6.4, is gone (the template's two refusals named in § 5.4); the
+  annotation-type readers no caller used; `/columns` and `/sweepable` ask
+  the door for a default and for what a kind offers; the folder answer's
+  unread `builds_on`/`linked`, the page's unread token map, `tsgf` and an
+  unreachable refusal;
+- *the page*: the column-removal warning names every stage's value it
+  drops; a machine whose record lists no queues is said as the record says
+  it (no refusal prep does not make); the queue and notify cards are drawn
+  on a hand-over once its proposal makes a job request (§ 6.2b); a grid that
+  keeps no cell still classes each Measure row; the Measure card's note
+  sends the winner to the run card;
+- contract sentences the code did not do, and stale comments.
+Rows: a stage stating a default shares the group above (fast); a prepared
+job's member regrouped beside a stage not prepared -- status names the one
+prep that takes (the prep table); each fails its mutation.  Dropped: the
+fold's *the run card* for the launch shape (the contract now lists the
+word), the `run_card` marker equal to the run settings (parked -- migrate
+reads 2.27.x templates holding the key), and every odd input the readers
+dropped.
 
 **Also found, outside A–D** (each to be checked before it is fixed): the
 catalogue's `engine_default` for `diag_algorithm` was wrong — SIESTA 5.4.2 with

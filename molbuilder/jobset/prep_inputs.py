@@ -238,8 +238,8 @@ def declared_run_shape(request, stage=None):
     fields.  ``{}`` when the condition states none.
 
     **A DIRECT MAP, because there is nothing to work out.** The template
-    carries the physics and the deck knobs (`template.md` § 5); a launch
-    value this block does not name is stated as a flag, or prep refuses the
+    carries the physics (`template.md` § 5), the cards how the run runs; a
+    launch value no card names is stated as a flag, or prep refuses the
     run (`architecture.md` § 5.2) -- nothing fills one in.  Not the grid
     enumerator: `bench_inputs` is a sweep's own machinery and must invent the
     axes a condition does not mention.
@@ -318,10 +318,10 @@ def run_inputs(request, stage=None):
 
     One block, two destinations, split by the catalogue's own answer: a
     machine-answered item is the launch SHAPE (`declared_run_shape`), anything
-    else is a run setting over the catalogue's default — through
-    `_declared_execution_pins`, the same door the bench's one-point
-    declarations go through, so the two lanes cannot disagree about what a
-    name means.
+    else is a run setting over the catalogue's default (`card_settings`) --
+    each value read through the setting door in the run card's home
+    (`_card_values`), so the two halves cannot disagree about what a name
+    means.
     """
     # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a card whose `use_gpu` is on
     # with no count is a device run asking for none, refused, unstated, by
@@ -952,8 +952,8 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # the cap CLEAN (`choose_winner` ranks only completed points).
     #
     # What is pinned here is what makes a trial a MEASUREMENT rather than a
-    # run.  What the calculation IS -- the GPU, the eigensolver, the block
-    # size -- is the description's, and pinning it here would measure a
+    # run.  What the run IS -- the GPU, the eigensolver, the block size --
+    # is the calculation's run card's, and pinning it here would measure a
     # configuration nobody asked to run.
     #
     # ``continue_retries: 0`` is what makes the trial run ONCE.  Without it

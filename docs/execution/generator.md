@@ -905,7 +905,6 @@ thought about — which is the state PySCF reached a full review in.
 | the shared package (`shared_package`) | the `.psml` files | **nothing** |
 | benchmark anchors (`spec.bench_marks`) | block size, ranks | **nothing** |
 | files its deck's text promises (`sibling_artifacts`) | the Makov-Payne script | **nothing** |
-| the record's resolved defaults (`spec.provenance_defaults`) | GPU, block size, ranks | threads, memory, fitting |
 | what a finished deck must satisfy (`spec.check_rules`) | ✓ | ✓ |
 
 ### 7.2 Where the two engines stand — the catalogue half

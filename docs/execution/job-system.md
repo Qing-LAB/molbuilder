@@ -313,7 +313,8 @@ not prepared as described (`prep task`, 2); `launch task` offers every group
 **prepared as described, never launched**, each member's upstream finished.
 **A launched group's members are fixed**: Task setup's Save refuses a stage put
 into it, or a member moved to another group, in the answer's words — a group
-of its own for the stage, the member put back, or the restore — and a group
+of its own for the stage, the member put back, the launched one launched again
+alone, or the restore (`ready.joined_launched`) — and a group
 whose members changed anyway, a member removed from the description or
 `job-request.json` edited by hand, is **launched, its members changed**:
 offered by no verb, its prep refused ([R-P5](#every-refusal-and-its-way-on))
