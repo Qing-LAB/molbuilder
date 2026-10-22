@@ -206,16 +206,26 @@ def write_request(bundle: Path, request: dict) -> None:
     (bundle / "job-request.json").write_text(json.dumps(request, indent=2))
 
 
+def read_as(bundle: Path, client) -> dict:
+    """What each record was when the page read the folder -- the folder
+    answer's ``read_as``, which Save compares (`web/task-setup.md` § 8)."""
+    r = client.get("/api/task-setup/folder", query_string={"dir": str(bundle)})
+    assert r.status_code == 200, r.get_json()
+    return r.get_json()["read_as"]
+
+
 def save_both(bundle: Path, task: dict, request: dict, client=None):
     """``task`` and ``request`` through Task setup's Save -- the page's
-    door, which writes both (`execution/job-request.md` § 7)."""
+    door, which writes both (`execution/job-request.md` § 7), naming what
+    each record was when the page read the folder."""
     import json
     if client is None:
         from molbuilder.web.app import create_app
         client = create_app(config={}).test_client()
     return client.post("/api/task-setup/save",
                        json={"dest": str(bundle), "text": json.dumps(task),
-                             "request_text": json.dumps(request)})
+                             "request_text": json.dumps(request),
+                             "read_as": read_as(bundle, client)})
 
 
 def a_machine_with_queues(tmp_path, monkeypatch, domains,

@@ -190,10 +190,17 @@ def test_text_that_is_not_a_k_grid_is_kept_as_typed(page, flask_server,
     """A half-parsed value would be the quiet version of the same bug, so a
     cell that cannot be read keeps what was typed — and the save door refuses
     it BY NAME (§ 6.6's declared-type row, pinned in
-    ``test_task_preflight.py``).  Two counts is not a k-grid."""
+    ``test_task_preflight.py``).  Two counts is not a k-grid.  The setting
+    door says so as it is typed, in the item's words (§ 5.2).
+
+    MUTATION THIS MUST FAIL AGAINST: the door's refusal not said."""
     _open(page, flask_server, calc_dir)
     _type(page, "tight kgrid", "4,4")
     assert _described(page)["stages"][0]["overrides"]["kgrid"] == "4,4"
+    said = page.evaluate(
+        "() => document.getElementById('ts-state').getAttribute('data-state')"
+        " + ' | ' + document.getElementById('ts-state-body').textContent")
+    assert said.startswith("refuse | kgrid = '4,4'"), said
 
 
 # --------------------------------------------------------------------- #

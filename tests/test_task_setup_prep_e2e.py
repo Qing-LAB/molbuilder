@@ -571,6 +571,35 @@ def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
         "ticked is the rule, so ticking again writes nothing: " + repr(alloc))
 
 
+def test_the_queue_the_request_names_stays_through_a_machine_and_an_ask(
+        page, flask_server, isolated_projects_root_module):
+    """`task-setup.md` § 6.2b: the queue the job request names is the job
+    request's -- a machine chosen changes what the queue card offers, never
+    what the request says, and a queue that machine does not list is shown
+    as stated, with that said.
+
+    THE SILENT FAILURE (the 2.27.0 review): the machine choice cleared the
+    stated queue, and the next ask edit wrote `allocation` without it --
+    saved, and refused at prep on the cluster as a queue stated nowhere.
+
+    MUTATION THIS MUST FAIL AGAINST: the queue cleared where the chosen
+    machine lists none (`renderQueues`)."""
+    d = _a_described_probe(isolated_projects_root_module / "prep_queue")
+    _open(page, flask_server, d)
+    mem = "#ts-ask-mem"
+    page.wait_for_selector("#ts-target-choice .opt", timeout=20000)
+    if not page.is_visible(mem):
+        page.click("#ts-target-choice .opt")     # the machine, as a person picks it
+    page.wait_for_selector(mem, state="visible", timeout=20000)
+    page.fill(mem, "16G")
+    page.dispatch_event(mem, "change")
+    _page_free(page)
+    page.click("#ts-save")
+    alloc = _saved_allocation(d, lambda a: a.get("mem") == "16G")
+    assert alloc == {"domain": "public", "time": "0-04:00:00",
+                     "mem": "16G"}, alloc
+
+
 def _rows(page):
     """Every row of the run card on show, as {name: {kind, value,
     placeholder}} -- the open tab's, a group's or *every stage*."""

@@ -213,14 +213,57 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
         pass    # tmp_path removes the tree
 
 
+def test_save_never_writes_over_a_file_changed_since_it_was_read(
+        web_client, isolated_projects_root):
+    """`web/task-setup.md` § 8: Save compares what each record was when the
+    page read it (the folder answer's `read_as`) with the file on disk --
+    one changed since, by another tab's Save, a migrate or a hand edit, is
+    refused, 409, nothing saved or written; a body with no `read_as` is
+    refused, 400.  The 2.27.0 review: the later Save silently overwrote
+    the other writer's change.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the comparison dropped (the second
+    Save writes over the hand edit); `read_as` not required (a body naming
+    none saves)."""
+    import json
+    from support.road import read_as
+    d = _fresh_calc_dir(isolated_projects_root)
+    rendered = web_client.post("/api/task-setup/handover", json=dict(
+        _envelope(), engine="siesta", calculation="optimization",
+        name="probe", params={"system_label": "probe"})).get_json()
+    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
+    over = _json.loads(rendered["handover_text"])
+    task = {"schema": over["task_schema"], "engine": over["engine"],
+            "calculation": over["calculation"], "shape": "flat",
+            "run": over["run"], "structure": over["structure"],
+            "varies": [], "stages": [{"name": "coarse", "overrides": {}}]}
+    request = {"schema": over["job_request_schema"],
+               "stages": {"coarse": {"group": 1}}}
+    assert save_both(d, task, request, web_client).status_code == 200
+    seen = read_as(d, web_client)
+    # ANOTHER WRITER, after the page read the folder:
+    edited = dict(request, execution={"mpi_np": 4})
+    (d / "job-request.json").write_text(json.dumps(edited))
+    body = {"dest": str(d), "text": json.dumps(task),
+            "request_text": json.dumps(request)}
+    r = web_client.post("/api/task-setup/save", json=dict(body, read_as=seen))
+    assert r.status_code == 409, r.get_json()
+    assert "job-request.json changed on disk" in r.get_json()["error"]
+    assert json.loads((d / "job-request.json").read_text()) == edited
+    r = web_client.post("/api/task-setup/save", json=body)
+    assert r.status_code == 400 and "read_as" in r.get_json()["error"]
+
+
 def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
     """The text goes through `task.from_text` — the same door `prep` uses — so
     a browser cannot become a second, drifting writer of descriptions."""
     d = _fresh_calc_dir(isolated_projects_root)
     try:
+        from support.road import read_as
         r = web_client.post("/api/task-setup/save",
                             json={"dest": str(d), "text": "{ not json",
-                                  "request_text": "{}"})
+                                  "request_text": "{}",
+                                  "read_as": read_as(d, web_client)})
         assert r.status_code == 400
         assert not (d / "task.json").exists(), "a bad description was written"
 
@@ -237,7 +280,8 @@ def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
         r2 = web_client.post("/api/task-setup/save", json={
             "dest": str(d), "text": _json.dumps(no_stages),
             "request_text": _json.dumps({"schema": "molbuilder/job-request@1",
-                                         "stages": {}})})
+                                         "stages": {}}),
+            "read_as": read_as(d, web_client)})
         assert r2.status_code == 400
         assert "stage" in r2.get_json()["error"].lower(), (
             "the refusal should be the reader's own words")

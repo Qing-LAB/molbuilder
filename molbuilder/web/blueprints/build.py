@@ -975,6 +975,7 @@ TASK_HANDOVER_SCHEMA = "molbuilder/task-handover@1"
 #: before it is one (`checkpointing.md` L1).
 from molbuilder.runfiles import TASK_HANDOVER_FILE as TASK_HANDOVER_NAME  # noqa: E402 -- the catalogue's name
 from molbuilder.job_request import FILENAME as _JOB_REQUEST_FILENAME  # noqa: E402
+from molbuilder.task import FILENAME as _TASK_FILENAME  # noqa: E402
 from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA_NOW  # noqa: E402
 
 
@@ -1491,6 +1492,28 @@ def api_task_setup_save():
         return jsonify({"ok": False, "error": exc.message}), exc.status
     if not dest.is_dir():
         return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
+    # A FILE CHANGED ON DISK SINCE THE PAGE READ IT IS NEVER WRITTEN OVER
+    # (`web/task-setup.md` § 8): the page sends what each record was when
+    # the folder answer served it, compared before anything else.
+    read_as = body.get("read_as")
+    if not (isinstance(read_as, dict) and {"task", "request"} <= set(read_as)):
+        return jsonify({"ok": False, "error":
+                        "the save names no read_as -- what each record was "
+                        "when the page read it; a write that cannot say "
+                        "what it writes over is refused (task-setup.md § 8)"
+                        }), 400
+    on_disk = _read_as(dest)
+    stale = [name for which, name in _RECORD_NAMES
+             if read_as.get(which) != on_disk[which]]
+    if stale:
+        return jsonify({"ok": False, "error":
+                        f"{' and '.join(stale)} changed on disk since this "
+                        f"page read it -- another tab's Save, a `jobset "
+                        f"migrate`, a hand edit.  Nothing was saved or "
+                        f"written.  Reload the page to read it as it is now; "
+                        f"the edits here are not kept, so copy any you want "
+                        f"from the editor first."
+                        }), 409
 
     # The description's NAME is `task.py`'s to spell, like its bytes
     # (`task-description.md` § 6.4 -- one reader, so the two surfaces cannot
@@ -1754,6 +1777,9 @@ def api_task_setup_sweepable():
             # the catalogue's `run_card` and `stages`.
             "run_card":        it.run_card,
             "stages":          list(it.stages),
+            # WHERE A VALUE OF IT MAY LIVE (`template.home_of`): the
+            # Measure card offers what a benchmark row may hold.
+            "homes":           sorted(_T.home_of(it, kind)),
             # THE VALUE SHAPE (user, 2026-08-20): the machine card births
             # a row at its value in force and offers an enum's choices or
             # a bool's two values from a dropdown -- it can only do either
@@ -2453,7 +2479,10 @@ def api_task_setup_folder():
         # WHY THIS DESCRIPTION HAS NO BENCH, or null -- the prep entry's own
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.
-        "bench_refusal": _folder_bench_refusal(_task),
+        "bench_refusal": _folder_bench_refusal(_task, handover),
+        # WHAT EACH RECORD WAS WHEN THIS ANSWER READ IT, for Save to compare
+        # (`web/task-setup.md` § 8).
+        "read_as": _read_as(folder),
         # WHAT THE KIND FIXES of the stage table -- a transport description's
         # five rungs, in order -- by the reader's own answer
         # (`task.fixed_by_kind`), so the page offers no stage-table control
@@ -2494,7 +2523,7 @@ def api_task_setup_folder():
         # (`engines/stages.md` § 2; `web/task-setup.md` § 5.3, § 11).
         **(_folder_ladder(_calc) if _calc is not None
            else {"ladder": {"stages": [], "offer": []},
-                 "groups": {"stages": [], "groups": [], "shared": []}}),
+                 "groups": {"stages": [], "groups": []}}),
     })
 
 
@@ -2548,19 +2577,13 @@ def _folder_ladder(calc) -> dict:
         number = [job_req.group_of(s.name) for s in task.stages]
         for i, (st, a) in enumerate(zip(task.stages, answers)):
             # WHY THIS ROW MAY NOT JOIN THE GROUP ABOVE, as the records
-            # stand: the rule's own sentence (`group.why_not_join`), or
-            # the launched group's -- the page shows it and composes none.
+            # stand: the rule's own sentence (`group.why_not_join`); a
+            # launched group above is the page's to apply, from `launched`
+            # and `why_fixed`, to every row as edited (`task-setup.md` § 5).
             above = [s.name for j, s in enumerate(task.stages[:i])
                      if i and number[j] == number[i - 1]]
             why_same = (why_not_join(task, job_req, st.name, above, text)
                         if above else None)
-            # ...A LAUNCHED GROUP ABOVE, this row not of it: its group is
-            # fixed, said by the ready door (`ready.why_group_fixed`).
-            ran = next((s.name for s, b in zip(task.stages, answers)
-                        if s.name in above and b.launched), None)
-            if (why_same is None and ran is not None
-                    and number[i] != number[i - 1]):
-                why_same = why_group_fixed(calc, ran)
             rows.append({"stage": st.name, "group": number[i],
                          "builds_on": sorted(upstream_of(task, st.name,
                                                          text)),
@@ -2574,14 +2597,13 @@ def _folder_ladder(calc) -> dict:
                                    "state": a.state, "detail": a.detail,
                                    "why": a.why} for a in answers],
                        "offer": state.prep_offer},
-            # A GROUP'S CARD WRITES EVERY ROW INTO EVERY MEMBER THAT READS IT
-            # (`task-setup.md` § 6.2b); it carried a `shared` list no reader
-            # used until 2026-10-19.
             "groups": {"stages": rows, "groups": [
                 {"number": g.number, "members": g.members,
                  "state": ("launched" if g.launched else
                            "prepared" if g.prepared or g.changed
                            else "not prepared"),
+                 # ...IN THE WORDS EVERY SURFACE SHOWS (`GroupAnswer.said`).
+                 "said": g.said,
                  # A PREPARED JOB HOLDING OTHER MEMBERS: prepared again,
                  # formed anew (`job-system.md`, *The task*, step 3).
                  "matches": not (g.changed or g.members_changed),
@@ -2590,8 +2612,7 @@ def _folder_ladder(calc) -> dict:
         # WHAT ITS READERS REFUSE, said on the card; a defect in this code
         # is not one of them.
         return {"ladder": {"error": str(exc), "stages": [], "offer": []},
-                "groups": {"error": str(exc), "stages": [], "groups": [],
-                           "shared": []}}
+                "groups": {"error": str(exc), "stages": [], "groups": []}}
 
 
 def _folder_frame_set(task, folder):
@@ -2738,15 +2759,35 @@ def api_task_setup_commands():
         target=target, prepared=prepared, from_at_prep=from_at_prep)})
 
 
-def _folder_bench_refusal(task):
+#: Each record Save writes, by the key `read_as` names it with.
+_RECORD_NAMES = (("task", _TASK_FILENAME), ("request", _JOB_REQUEST_FILENAME))
+
+
+def _read_as(folder) -> dict:
+    """What each record is on disk -- ``{task, request}``, each the SHA-256
+    of the file's bytes, or ``None`` when it is not there: what the folder
+    answer serves and Save compares (`web/task-setup.md` § 8)."""
+    import hashlib
+    out = {}
+    for which, name in _RECORD_NAMES:
+        path = pathlib.Path(folder) / name
+        out[which] = (hashlib.sha256(path.read_bytes()).hexdigest()
+                      if path.is_file() else None)
+    return out
+
+
+def _folder_bench_refusal(task, handover):
     """The folder answer's ``bench_refusal``: the entry's reason this
-    description takes no bench, or ``None`` -- also when there is no
-    readable description to ask (``task`` ``None`` or the reader's error),
-    since then there is no Measure step."""
-    if task is None or not hasattr(task, "stages"):
-        return None
+    calculation takes no bench -- a description's, or a hand-over's from
+    the engine and kind it carries (`web/task-setup.md` § 11.1) -- or
+    ``None`` when there is neither to ask."""
     from molbuilder.jobset.prep_inputs import bench_refusal
-    return bench_refusal(task)
+    if hasattr(task, "stages"):
+        return bench_refusal(str(task.engine), str(task.calculation))
+    if isinstance(handover, dict) and "error" not in handover:
+        return bench_refusal((handover.get("engine") or {}).get("name", ""),
+                             handover.get("calculation", ""))
+    return None
 
 
 @bp.route("/api/task-setup/machines", methods=["GET"])

@@ -265,7 +265,7 @@ stateDiagram-v2
     state "not prepared" as np
     state "prepared, never launched" as pr
     state "prepared, its members changed" as ch
-    state "launched — its members fixed" as la
+    state "launched, its members fixed" as la
     state "launched, its members changed" as lc
     state "goes in job N — a sequence still going holds it" as sq
     [*] --> np
@@ -293,10 +293,12 @@ stateDiagram-v2
 § 1w: 2.27.0 changed what may be done to a launched group, and of the six
 places that each decided it, three followed)*. Each group's
 `ready.GroupAnswer` (`ready.task_state(calc).groups`) → the group's state —
-one of the diagram's — whether it **may be prepared now** (`preparable`) and,
+one of the diagram's, by its name there (`said`), the words every verb and
+surface shows — whether it **may be prepared now** (`preparable`) and,
 when not, why (`why`: a launched group whose members changed says so in the
 one rule's words, `members_changed` — `ready.launched_without`,
-`ready.joined_launched`); whether it **may be launched now** (`launchable`);
+`ready.joined_launched` — and one the flat layout does not prepare again in
+prep's own, `not_again` — `ready.launched_already`); whether it **may be launched now** (`launchable`);
 and a stage's **way on**, composed once (`commands.way_back`, layout-aware: a
 stage never launched, its group's prep; a launched one on the hierarchical
 layout, its group's prep for how it runs, the state saved before its group's

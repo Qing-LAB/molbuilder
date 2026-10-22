@@ -327,7 +327,7 @@ that streams a folder holding a scratch file and a store and reads the zip
 back through `zipfile` (the scratch and the stores absent, every other file
 whole, the length exact).
 
-## 1w. One door per setting, one answer per launched group *(2026-10-21; the user's yes, with the recommendations below; the contract written and taken; A built; N5b in § 0a's queue)*
+## 1w. One door per setting, one answer per launched group *(2026-10-21; the user's yes, with the recommendations below; the contract written and taken; A–D built and committed locally; the 2.28.0 release next; N5b in § 0a's queue)*
 
 *(the user, 2026-10-21, on the 2.27.0 review: "this sounds to me a problem of
 unification and template inconsistency or bad design. identify the nature of
@@ -615,6 +615,69 @@ stage put into a launched group by hand as *launched, its members changed*,
 its way on whole, before *not prepared* (the next-step table's order with it);
 the folder answer's `matches` is false for such a group.
 
+**D, as built (2026-10-21).** The page asks the doors. Save takes
+`read_as` -- each record's SHA-256 as the folder answer read it -- and
+refuses, `409`, nothing saved or written, a record changed on disk since;
+the page sends it. Every value typed -- a stage cell, a run-card row, a
+benchmark point -- is read and judged by `POST /api/task-setup/value` in its
+home, under the edit's fence; refused text is kept as typed and the door's
+sentence said; `cell-readers.js` is deleted. The Measure card offers what a
+benchmark row may hold (`/sweepable`'s `homes`, `template.home_of`). From
+the 2.27.0 page review: the machine and queue cards are drawn for every
+folder, a hand-over too (no other folder's *Set to*); the queue the job
+request names stays through a machine choice and is shown, with that said,
+where the machine does not list it; the report period box returns to its
+default; the Measure card waits for a job request, and a hand-over's bench
+answer is its engine's and kind's; a blank run row's wall or queue shows the
+queue card's; the first point offered is the calculation's run card; a
+refused card edit puts each model back to its last text that parsed, the
+shape's buttons too; a hand-over's shape builds from its text as it stands,
+never over text that does not parse, a job request typed before it kept; an
+edit and its undo leave the bar clean (the loaded texts end in the newline
+the cards write); the Prep card says why a box is not offered, and
+*nothing to prepare yet* before a Save; the words name what Save writes. The
+lock on a row below a launched group has one home, the page, from the
+answer's `launched` and `why_fixed` -- a row added or renamed since included
+-- and `why_same` is `why_not_join`'s alone. Rows: Save's stale-file
+refusal; the queue kept through a machine and an ask; nothing of a folder's
+queue card on a hand-over opened next; the door's refusal said -- each
+failed its mutation. Dropped as polish of what the road does not produce:
+the group lock from the edited `builds_on` (Save refuses it), a plan whose
+reader refuses (C19). Parked, outside the tab: the parameter forms' own
+field reader (`form-schema.js` `collectField`, read again at the server by
+`config_from_params`) and the stage table's *Recommended* hover word.
+
+**D's first round** (a fresh reader, the page whole), fixed: a hand-over
+read again with the same text left the page no model, so its shape pick
+failed (an error of D: the proposal now builds from the model, set from the
+hand-over); a folder set to a machine handed that machine to the next folder
+as if picked (the person's pick is kept apart from `set_to`); the door's
+refusal stayed after the value was corrected; a door that gave no answer
+left the typed value on the card; the shape card did not follow a refused
+edit on a proposed hand-over or a hand edit, nor the queue and notify cards
+a refused block write; a flat layout's launched group showed a disabled box
+with no why -- the rule was decided twice (`launched_already` and the group
+answer's own layout flag), now `launched_already`'s alone, its words the
+answer's `not_again`; the 409's way on did nothing (it says reload); a
+hand-over's group tabs asked for command lines of a description not yet
+saved; the run rows lost their unit; § 6.2b said the card offers an unset,
+which is the editor's. Dropped: the commands route's bench branch on a
+folder with no description (the page no longer asks it).
+
+**D's second round** (a fresh reader), fixed: an error of the first
+revision -- a hand-over opened from another folder refused its shape pick,
+the empty job-request text it loads taken for a hand edit that does not
+parse (only a hand edit now says whether its text parses; a row drives the
+hand-over road from another folder, and fails without the fix); where a group
+stands was worded in four places, against *The task*'s "none … words its way
+on itself" -- now `GroupAnswer.said`, the state diagram's name, read by
+`groups_text`, `status` and the page; the Continue-from rule decided twice on
+the page; a dead `shared` field, a dead guard; a machine with no queues told
+the person to pick another queue. Dropped: a server-down title left on the
+state box, the *Loaded* line on a proposed hand-over (`removeColumn`'s
+already), and `_fs.queue` -- the queue control's own value, as § 9a has the
+queue and notify cards hold theirs.
+
 **Also found, outside A–D** (each to be checked before it is fixed): the
 catalogue's `engine_default` for `diag_algorithm` was wrong — SIESTA 5.4.2 with
 nothing written takes Divide-and-Conquer (`diag_option.F90:213, 242`), ELPA
@@ -687,7 +750,7 @@ below says.
 | **N3d** | **shipped 2.26.1** | **The e2e batch's older failures, owned one by one** — found by 2.26.0's full `e2e` batch (500 tests, 2026-10-20) and failing the same on the pushed 2.25.2, so older than the sequence work: `test_bench_summary_inspector_e2e` (4: the page's polling), `test_inspector_registry_e2e` (7: the dropdown's headings, the error card, a viewer's teardown), `test_results_file_picker_e2e` (a rescan's parsing state), `test_siesta_run_in_the_viewer_e2e` (opened again and again), `test_vibration_e2e` (the monitor's status line no longer says *SCF iteration*, it says *SCF rows*), and a notebook test that differs from run to run. Each judged against its contract -- the code wrong, or the test asserting a rule no longer stated -- never called flaky; a timing one read wait by wait against the page code. **What they were** (the changelog's 2.26.1 row): three errors of ours -- a PySCF run's status line without its SCF iteration (2.21.0), a plain `.xyz` opened as a trajectory on the Results tab (2.16.3), a benchmark's folder opening nothing -- and tests mounting viewers without the server's answer they match on since 2.13.3; the notebook's one miss did not come back on its own, and its wait now says why when it fails | 2.26.0's batch; the user, 2026-10-20: *"push when all green"* -- these are not green, said so at the push |
 | **N4** | **2.26.2**, L1T-D1 **2.26.3**, L1T-D2 **2.26.4** | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's, and their two choices of how (the user, 2026-10-21) |
 | **N5** | **shipped 2.27.0** | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
-| **N5b** | **A built, in review** (2026-10-21) — the contract taken as written (the user: *"continue"*); B, C, D next | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
+| **N5b** | **A–D committed locally** (2026-10-22) — the contract taken as written (the user: *"continue"*); one release, 2.28.0, next | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
 | **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*

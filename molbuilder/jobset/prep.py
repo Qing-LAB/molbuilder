@@ -2607,7 +2607,7 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
                 "run (job-system.md § 7).")
         # A CALCULATION THAT HAS NO BENCHMARK says so before it is asked
         # which stage's -- or the stage offered is refused next (W52).
-        why = bench_refusal(task)
+        why = bench_refusal(str(task.engine), str(task.calculation))
         if why:
             raise PrepError(why)
         if stage is None:

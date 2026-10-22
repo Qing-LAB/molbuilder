@@ -25,6 +25,7 @@ import json
 
 import pytest
 
+from support.road import read_request, write_request
 from support.task_setup_page import (every_card_text, file_text, unfold,
                                      wait_for_file)
 
@@ -143,8 +144,17 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
     the new calculation.
 
     So: open the described one, then move to a folder that can say less.
+    The described one names a queue, which its queue card says -- a card a
+    hand-over does not show (the 2.27.0 review: it stayed, that queue on
+    it, and a click on it wrote into no description).
+
+    MUTATION THIS MUST FAIL AGAINST: the hand-over branch drawing no
+    machine card (`applySetMachine`), so the queue card is never hidden.
     """
     a, _b = two_calcs
+    req = read_request(a)
+    req["allocation"] = {"domain": "alphaqueue"}
+    write_request(a, req)
     bare = isolated_projects_root / "umbrella" / "optimization" / "bare-run"
     bare.mkdir(parents=True)
     (bare / "task.1st.json").write_text(json.dumps({
@@ -159,6 +169,10 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
     _open(page, flask_server, a)
     page.wait_for_function(
         "() => document.body.innerText.includes('alphalabel')", timeout=20000)
+    if not page.is_visible("#ts-ask-mem"):
+        page.click("#ts-target-choice .opt")     # the machine, as a person picks it
+    page.wait_for_function(
+        "() => document.body.innerText.includes('alphaqueue')", timeout=20000)
 
     page.evaluate("(d) => window.molbuilder.projects.publishCommit(d, '')",
                   str(bare))
@@ -180,6 +194,8 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
         "description -- a card with nothing new to paint kept what it had")
     assert "alphastage" not in text, (
         "the described folder's stage survived a move to one that has none")
+    assert "alphaqueue" not in text, (
+        "the described folder's queue card survived a move to a hand-over")
 
 
 
@@ -190,7 +206,8 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
     card filled, the shape changed once more, Save -- and the folder then
     holds the description and its job request, the run card's value in the
     job request, the save said beside the button after the folder is read
-    again.
+    again.  The page arrives from another folder, as a hand-over sent while
+    Task setup is open does.
 
     THE SILENT FAILURES: a shape picked on a hand-over that proposes
     nothing -- the page editing the hand-over's own text as a description;
@@ -201,7 +218,10 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
 
     MUTATIONS THIS MUST FAIL AGAINST: the hand-over's text taken for a
     description (the shape written into it, no stages proposed); a shape
-    change proposing the records again."""
+    change proposing the records again; the empty job-request text a
+    hand-over loads, written into a document not on show, taken for a hand
+    edit that does not parse -- the shape refused, the hand-over never
+    finished."""
     from molbuilder.web.app import create_app
     from support.envelope import envelope
     d = (isolated_projects_root / "handover" / "optimization"
@@ -217,8 +237,22 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
         (d / f["name"]).write_text(f["text"])
     (d / out["template_name"]).write_text(out["template_text"])
     (d / out["handover_name"]).write_text(out["handover_text"])
+    came_from = _describe(isolated_projects_root / "handover", "came-from",
+                          "camefromlabel", "camefromstage")
 
-    _open(page, flask_server, d)
+    _open(page, flask_server, came_from)
+    page.wait_for_function(
+        "() => document.body.innerText.includes('camefromlabel')",
+        timeout=20000)
+    page.evaluate("(d) => window.molbuilder.projects.publishCommit(d, '')",
+                  str(d))
+    page.wait_for_function(
+        "() => { const n = document.querySelector('.CodeMirror');"
+        "  return !!(n && n.CodeMirror"
+        "            && n.CodeMirror.getValue().includes('awaiting')); }",
+        timeout=20000)
+    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
+                           timeout=20000)
     page.click("#ts-shape-card .opt[data-shape='hierarchical']")
     # THE GROUPS CARD APPEARS WITH THE PROPOSAL, folded as every card is:
     # opened as a person opens it.

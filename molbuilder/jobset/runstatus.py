@@ -616,8 +616,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
             # A LAUNCHED GROUP WHOSE MEMBERS CHANGED -- a member taken out, or
             # a stage put in, prepared or not: offered by no verb, its way on
             # the rule's own, whole (`job-system.md`, *The task*).
-            step = ("changed", "launched, its members changed",
-                    _said_lines(g.members_changed))
+            step = ("changed", g.said, _said_lines(g.members_changed))
         elif not all(r.prepared for r in members):
             step = (("not prepared", "not prepared",
                      prep_group_lines([n], base=base)) if g.preparable else
@@ -627,7 +626,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
             # ITS PREP FORMS IT AGAIN with every group it needs, the groups
             # prep names (`group.formed_again`, as the ready door says it).
             from .group import formed_again
-            step = ("changed", "prepared, its members changed",
+            step = ("changed", g.said,
                     prep_group_lines(formed_again(calc.request,
                                                   calc.jobset.jobs, [n]),
                                      base=base))

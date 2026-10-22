@@ -385,26 +385,26 @@ type is a sequence (`kgrid`, `kgrid_displacement`, `species_order`,
 later, inside a range check that could only call it *"a programmer bug"*
 (reported live 2026-08-25).
 
-So: **every type in the vocabulary has a reader, and a type the catalogue can
-declare but the tab cannot read is a test failure**, not a silent fallback —
-that is the only thing that makes the next addition noisy.
+So: **every type in the vocabulary has a reader** — the setting door's, one
+per member of `template.TYPES` (`template.read_text`), the one every home
+reads with — and a type the catalogue can declare but the door cannot read is
+a test failure, not a silent fallback.
 
 **Three types have a reader and no catalogue item**: `pow2`, `text` and
 `intlist`. A column's type comes from the shipped catalogue, so no cell can
-carry one today — they are handled in advance because the failure without a
-reader is *silent* (the lookup misses, the raw text is stored), and a newly
-added item is exactly when nobody thinks to check. So **when such an item
-does land, the stage table already reads it** — `pow2` as a whole number
-(snapping is `template._shape`'s, not the cell's), `text` verbatim, and
-`intlist` as comma- or space-separated whole numbers (not the range syntax
-`0-35, 100` the Build form's own control takes — that is a different
-control's contract). Do not add a second path for them.
+carry one today — they are read in advance because the failure without a
+reader is *silent*, and a newly added item is exactly when nobody thinks to
+check. So **when such an item does land, the door already reads it** — `pow2`
+as a whole number (snapping is `template._shape`'s, not the reader's), `text`
+verbatim, and `intlist` as comma- or space-separated whole numbers (not the
+range syntax `0-35, 100` the Build form's own control takes — that is a
+different control's contract). Do not add a second path for them.
 
 A k-grid takes three spellings — `4,4,1`, `4x4x1`, `4 4 1` — and the list
 `[4, 4, 1]` as the description holds it, because one product should not
 accept a value in a file and refuse it in the browser. Text that is **not** the declared
-type is refused by the door as it is typed — said beside the cell, in the
-item's words — and kept exactly as typed, so the save door refuses it too
+type is refused by the door as it is typed — said at the top of the page, in
+the item's words — and kept exactly as typed, so the save door refuses it too
 ([`stages.md § 6.6`](?doc=engines/stages.md)'s declared-type row); storing a
 half-parsed value would be the quiet version of the same bug. **A run card's
 and a benchmark row's values are read by the same door**, in their home
@@ -815,9 +815,10 @@ measure, and a decision, side by side.
 **What is typed on a card is read by the setting door** (§ 5.2,
 [`engines/template.md`](?doc=engines/template.md) § 5.4) in the card's home —
 a run card's or a benchmark row's: refused as it is typed, in the item's words,
-or written in its spelling (a wall as `0-04:00:00`); a blank clears; a
+or written in its spelling (a wall as `0-04:00:00`); a blank clears. A
 rung's *unset* (`null`, [`job-request.md`](?doc=execution/job-request.md)
-§ 3.2) is offered only for an item whose unset is an answer. **A card that
+§ 3.2) is written in the editor, and taken only for an item whose unset is an
+answer. **A card that
 writes the job request is drawn only once there is one** — on a hand-over, from
 the shape's proposal (§ 4) — so no edit is made into nothing.
 
@@ -1124,9 +1125,9 @@ promised a handshake no code made)*. The page sends, with each record, what it
 read — `read_as: {task, request}`, each the SHA-256 of the file's bytes as the
 folder answer served them, `null` for a file that was not there — and Save
 compares each with the file on disk before anything else: one that differs is
-refused, `409`, **no state saved and nothing written**, naming the file and
-saying to open the folder again to see what changed — another tab's Save, a
-`jobset migrate`, a hand edit. A Save that names no `read_as` is refused too:
+refused, `409`, **no state saved and nothing written**, naming the file —
+another tab's Save, a `jobset migrate`, a hand edit — and saying to reload the
+page to read it as it is now, the edits here copied first if they are wanted. A Save that names no `read_as` is refused too:
 the door takes no write that cannot say what it is writing over. The page's
 own edits are what it sends; another writer's stay in the file until the page
 has read them.
@@ -1354,8 +1355,10 @@ is saved (§ 7a). The Prep comes after the values it reads.
 **The task's one Prep, its own card after the tabs**
 ([`job-system.md`](?doc=execution/job-system.md), *The task*). It lists every
 **group** with its stages, as the folder's answer gives them (`ladder`, the
-answer `prep task` shows before it asks) — *not prepared*; *prepared, its
-members changed*; *prepared, never launched*; *launched* — and for a
+answer `prep task` shows before it asks), each in the group answer's words
+(`GroupAnswer.said`, the state diagram's names) — *not prepared*; *prepared,
+never launched*; *prepared, its members changed*; *launched, its members
+fixed*; *launched, its members changed* — and for a
 force-constant stage not preparable yet, what it waits for. **Every group has
 a box, and the box is the group answer's** (`ready.GroupAnswer`,
 [`job-system.md`](?doc=execution/job-system.md), *The task*): enabled when the

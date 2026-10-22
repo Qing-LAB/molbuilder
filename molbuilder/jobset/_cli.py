@@ -943,7 +943,7 @@ def _stage_bench_dir(calc, stage, verb: str = "launch"):
     # answer (`bench_refusal`) -- or the command offered next is refused in
     # turn.
     from .prep_inputs import bench_refusal
-    why = bench_refusal(task)
+    why = bench_refusal(str(task.engine), str(task.calculation))
     if why:
         raise click.ClickException(why)
     if stage is None:

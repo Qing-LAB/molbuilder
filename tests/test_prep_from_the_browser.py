@@ -453,9 +453,11 @@ def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
         assert ('"decision": "saved"'
                 in (d / "jobset-decisions.log").read_text()), d
 
+    from support.road import read_as
     r = web_client.post("/api/task-setup/save", json={
         "dest": str(kept), "text": (kept / "task.json").read_text(),
-        "request_text": (kept / "job-request.json").read_text()})
+        "request_text": (kept / "job-request.json").read_text(),
+        "read_as": read_as(kept, web_client)})
     body = r.get_json()
     assert r.status_code == 200, body
     assert body["saved"].startswith("the folder's state was saved first:")

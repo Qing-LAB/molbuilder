@@ -103,10 +103,11 @@ class GroupAnswer:
     number: int
     members: List[str]
     answers: List[Readiness]
-    #: The layout keeps each run in a folder of its own (the hierarchical
-    #: one): a launched group may then be prepared again for its job
+    #: WHY A LAUNCHED GROUP IS NOT PREPARED AGAIN on its layout -- the flat
+    #: one, whose runs share their folder's files -- in the rule's own words
+    #: (:func:`launched_already`); ``None`` where it may be, for its job
     #: request (`execution/job-request.md` § 5).
-    keeps_runs: bool = True
+    not_again: Optional[str] = None
     #: A LAUNCHED GROUP WHOSE MEMBERS CHANGED -- a stage put into it, or one
     #: launched with it taken out (:func:`launched_without`) -- in the rule's
     #: own words and way on (:func:`joined_launched`); ``None`` otherwise.
@@ -142,7 +143,7 @@ class GroupAnswer:
         launched, or, on the hierarchical layout, launched with what it
         computes kept: prepared again for its job request
         (`execution/job-request.md` § 5)."""
-        return ((not self.launched or self.keeps_runs)
+        return (self.not_again is None
                 and self.members_changed is None
                 and all(a.prepared or a.ready for a in self.answers))
 
@@ -162,10 +163,21 @@ class GroupAnswer:
 
     @property
     def why(self) -> Optional[str]:
-        """What it waits for: a launched group's changed members, else the
-        first member's refusal."""
-        return self.members_changed or next(
+        """What it waits for: a launched group's changed members, or why it
+        is not prepared again, else the first member's refusal."""
+        return self.members_changed or self.not_again or next(
             (a.why for a in self.answers if a.why), None)
+
+    @property
+    def said(self) -> str:
+        """Where it stands, by its state's name in the diagram
+        (`job-system.md`, *The task*) -- the words every verb and surface
+        shows it in."""
+        return ("launched, its members changed" if self.members_changed else
+                "launched, its members fixed" if self.launched else
+                "prepared, its members changed" if self.changed else
+                "prepared, never launched" if self.prepared else
+                "not prepared")
 
 
 def held_by_sequence(calc, number: int, *, asked=None
@@ -774,15 +786,16 @@ def task_state(calc, *, verdict: bool = False) -> TaskState:
     reads a relaxation's convergence where a stage takes one (a prep's
     question); `status` and the folder answer leave it unread."""
     answers = ladder(calc, verdict=verdict)
-    gs = groups(calc.request, answers,
-                keeps_runs=calc.shape.keeps_attempts_as_directories)
+    gs = groups(calc.request, answers)
     # A LAUNCHED GROUP'S MEMBERS ARE FIXED: one whose members changed says
-    # so, the one rule asked once here for every reader (`job-system.md`,
-    # *The task*).
+    # so, and one its layout does not prepare again says why -- each rule
+    # asked once here for every reader (`job-system.md`, *The task*).
     from ..runrecord import LaunchRecordError
     for g in gs:
         if not g.launched:
             continue
+        g.not_again = next((w for w in (launched_already(calc, m)
+                                        for m in g.members) if w), None)
         try:
             hit = launched_without(calc, g.number)
         except LaunchRecordError as exc:
@@ -793,16 +806,14 @@ def task_state(calc, *, verdict: bool = False) -> TaskState:
     return TaskState(calc.task, calc.template_text, calc.jobset, answers, gs)
 
 
-def groups(request, answers: List[Readiness], *,
-           keeps_runs: bool = True) -> List[GroupAnswer]:
+def groups(request, answers: List[Readiness]) -> List[GroupAnswer]:
     """The job request's groups, in order, each with its members' answers
-    (``answers``, :func:`ladder`'s); ``keeps_runs``, the layout's."""
+    (``answers``, :func:`ladder`'s)."""
     by = {a.stage: a for a in answers}
     out: List[GroupAnswer] = []
     for name, entry in request.stages.items():
         if not out or out[-1].number != entry.group:
-            out.append(GroupAnswer(entry.group, [], [],
-                                   keeps_runs=keeps_runs))
+            out.append(GroupAnswer(entry.group, [], []))
         out[-1].members.append(name)
         out[-1].answers.append(by[name])
     return out
@@ -827,13 +838,7 @@ def groups_text(gs: List[GroupAnswer]) -> str:
     width = max([len(a.stage) for g in gs for a in g.answers] + [5])
     out = []
     for g in gs:
-        out.append(f"  group {g.number}"
-                   + ("  (launched, its members changed)"
-                      if g.members_changed else
-                      "  (launched)" if g.launched else
-                      "  (prepared, not launched)" if g.prepared else
-                      "  (prepared, its members changed)" if g.changed
-                      else ""))
+        out.append(f"  group {g.number}  ({g.said})")
         for a in g.answers:
             out.append(f"    {a.stage:<{width}}  {a.state:<9}  {a.detail}")
     return "\n".join(out)

@@ -398,13 +398,14 @@ def prep_run_inputs(request, stage, allocation=None):
     return allocation, settings, chosen
 
 
-def bench_refusal(task):
-    """Why this description has no benchmark sweep -- ``None`` when it has
-    one.  One answer for every door that asks: the prep entry's gate, the
-    bench's own assembly (:func:`bench_inputs`, asked first, before any
-    machine is read), and the Task setup tab, which offers the Measure step
-    only where `prep bench` would take it (`job-system.md` § 5.3)."""
-    if task.calculation == "transport":
+def bench_refusal(engine: str, calculation: str):
+    """Why a ``calculation`` on ``engine`` has no benchmark sweep -- ``None``
+    when it has one.  One answer for every door that asks: the prep entry's
+    gate, the bench's own assembly (:func:`bench_inputs`, asked first,
+    before any machine is read), and the Task setup tab -- a description's
+    and a hand-over's -- which offers the Measure step only where `prep
+    bench` would take it (`job-system.md` § 5.3)."""
+    if calculation == "transport":
         return ("a transport calculation has no benchmark sweep: its "
                 "parameters come from its own template and each rung's run "
                 "card, and its one axis is the bias list in task.json "
@@ -414,11 +415,11 @@ def bench_refusal(task):
     # (`max_scf_iter`, `restart`, ...), and the GPU question is read under
     # SIESTA's `use_gpu`, so another engine's sweep could silently
     # enumerate a CPU grid (`engines/stages.md` § 6.8's recorded hazard).
-    if str(task.engine) != "siesta":
-        return (f"this description's engine is {task.engine!r}, and the "
+    if str(engine) != "siesta":
+        return (f"this description's engine is {engine!r}, and the "
                 f"benchmark lane only speaks SIESTA today: its measurement "
                 f"pins (a capped-SCF probe run) name SIESTA settings, so a "
-                f"{task.engine} bench would measure nothing meaningful.  "
+                f"{engine} bench would measure nothing meaningful.  "
                 f"Benchmark support for other engines is a recorded design "
                 f"(execution/job-request.md § 3.4); for now, size the run from "
                 f"the engine's own scaling guidance in docs/engines/tuning.md.")
@@ -548,7 +549,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # A DESCRIPTION WITH NO BENCH is refused before any machine is read: a
     # refusal about the target would otherwise answer a question the
     # description never asks.
-    why = bench_refusal(task)
+    why = bench_refusal(str(task.engine), str(task.calculation))
     if why:
         raise PrepError(why)
     # THE ASK: the prep's flags over the job request's allocation, by the
