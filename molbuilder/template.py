@@ -980,6 +980,12 @@ def catalogue() -> "Template":
                     "-- the engine's value and the line of its source, or "
                     "what that value follows (engines/template.md § 5)",
                     where=it.name)
+        # A RUN SETTING STATES NO `value` (§ 5.4): no template starts from
+        # one -- its default is `default`, asked through `default_of`.
+        if is_run_setting(it) and it.value is not None:
+            _refuse("a run setting states no value -- its default is "
+                    "`default`, the one every reader asks "
+                    "(engines/template.md § 5.4)", where=it.name)
     return parsed
 
 
@@ -1532,23 +1538,20 @@ def apply_recommended(config, calculation: str, *, engine: str = ""):
 def _check_raw_value(name: str, key: str, raw, type_: str,
                      choices) -> None:
     """Refuse a SET value (or default) that is not what its own
-    declaration says it is -- on the RAW parsed TOML, before ``_shape``
-    touches it.  ``range`` stays advisory (§ 3.3 calls it *"advisory
-    bounds"* -- a value outside it is a choice, not a type error); the
-    TYPE and an enum's membership are not advice."""
+    declaration says it is -- on the parsed TOML, read as the setting door
+    reads every value (§ 5.4, :func:`as_declared`: a whole float for a
+    count is the count), before ``_shape`` touches it.  ``range`` stays
+    advisory (§ 3.3 calls it *"advisory bounds"* -- a value outside it is a
+    choice, not a type error); the TYPE and an enum's membership are not
+    advice."""
     if raw is None:
         return
-    check = _TYPE_CHECKS.get(type_)
-    if check is not None and not check(raw):
+    why = _type_refusal(type_, choices, as_declared(type_, raw))
+    if why:
         raise ValueError(
-            f"template: item {name!r} declares type {type_!r} but its "
-            f"{key} is {raw!r}.  This file is hand-editable and the "
-            f"declaration is the contract for the edit "
+            f"template: item {name!r}: its {key} is {raw!r}{why} -- the "
+            f"item's declared type, the contract for an edit "
             f"(engines/template.md § 5).")
-    if type_ == "enum" and choices and not is_member(raw, choices):
-        raise ValueError(
-            f"template: item {name!r} is an enum of "
-            f"{', '.join(map(repr, choices))} but its {key} is {raw!r}.")
 
 
 def is_member(value, choices) -> bool:
@@ -1806,7 +1809,7 @@ def run_settings(engine: str) -> frozenset:
     (:func:`why_run_setting`), which the description's own check and
     ``resolve`` refuse and the Task setup table does not offer."""
     return frozenset(it.name for it in select(catalogue(), engine=engine)
-                     if "execution" in (it.category or ()))
+                     if is_run_setting(it))
 
 
 def why_run_setting(name: str) -> str:
@@ -1815,7 +1818,7 @@ def why_run_setting(name: str) -> str:
     return (f"a run setting: the rung states it on its run card in "
             f"job-request.json -- \"execution\": {{\"{name}\": ...}} on the "
             f"stage's entry, or on the calculation for every rung "
-            f"(execution/job-request.md 2) -- never as a stage column")
+            f"(execution/job-request.md 2) -- never in the description")
 
 
 #: The calculation's identity -- `shared` for every SIESTA kind (2026-09-29,
@@ -1948,10 +1951,12 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
                 f"it, so the value would change nothing (engines/template.md "
                 f"6.3)")
     role = stage_role(engine, kind, stage)
-    who = " / ".join(it.stages)
+    # ...THE RUNGS OF THIS KIND that read it, never another kind's roles.
+    mine = [r for r in it.stages if r in KIND_ROLES.get(kind, it.stages)]
+    who = " / ".join(mine)
     rung = repr(stage) if role == stage else f"{stage!r} (its {role} rung)"
-    return (f"which only the {who} rung{'s' if len(it.stages) > 1 else ''} "
-            f"of {a_kind(kind)} read{'' if len(it.stages) > 1 else 's'}, not "
+    return (f"which only the {who} rung{'s' if len(mine) > 1 else ''} "
+            f"of {a_kind(kind)} read{'' if len(mine) > 1 else 's'}, not "
             f"{rung} -- {then} (engines/template.md 6.4, the `stages` "
             f"declaration)")
 
@@ -2185,6 +2190,309 @@ def why_role(name: str) -> str:
                 "(engines/template.md § 6.4)")
     return ("it is what makes the rung that rung -- a choice with one "
             "correct answer (engines/template.md § 6.4)")
+
+
+# --------------------------------------------------------------------- #
+#  § 5.4 -- THE SETTING DOOR: every place a value lives asks it          #
+# --------------------------------------------------------------------- #
+
+#: THE PLACES A VALUE OF A SETTING CAN LIVE (§ 5.4): the template, a stage's
+#: overrides (task.json), a run card and a benchmark row (job-request.json),
+#: a prep flag.  Each asks :func:`accepts` with its own name.
+HOMES = ("template", "override", "run_card", "bench", "flag")
+
+#: WHO SET A VALUE, in the words every reader says it (§ 5.4) -- the deck's
+#: PROVENANCE rows, the pipeline log, prep's printed lines and its
+#: placement, the page.  Keyed by the layer a value came from: `resolve`'s
+#: provenance (``template`` ... ``role``) and the launch fold's
+#: (``flag``, ``run card``, ``allocation``, `prep_inputs.fold_allocation`).
+#: A template value says, after *the template*, its own record
+#: (:data:`SOURCE_WORDS`).
+SAID = {
+    "template":   "the template",
+    "stage":      "this stage's override",
+    "stage_card": "the stage's run card",
+    "calc_card":  "the calculation's run card",
+    "run card":   "the run card",
+    "flag":       "a prep flag",
+    "allocation": "the job request's allocation",
+    "default":    "the catalogue's default · not chosen",
+    "sweep":      "a sweep point",
+    "pin":        "a pin",
+    "role":       "the rung",
+}
+
+
+#: WHAT EVERY BENCHMARK TRIAL FIXES -- what makes a trial a MEASUREMENT
+#: rather than a run (`execution/job-request.md` § 3.4): its SCF capped,
+#: no relaxation step, a cold start, no retry, and ``scf_must_converge:
+#: False`` so the cap ends CLEAN.  Laid over every point by the bench's
+#: assembly (`jobset/prep_inputs.py`), and no benchmark row may name one
+#: (:func:`home_of`): its points would be one measurement under many labels.
+#: ``max_scf_iter: 3`` (user, 2026-08-21, from measured experience:
+#: iterations 3-5 agree within seconds on a 444-atom junction, and the
+#: bench reads SCALING and DEPENDENCY -- the knee -- not tight rankings):
+#: iteration 1 never forms a timing delta, the iter-2 delta is dropped as
+#: warm-up-adjacent, iteration 3 is the one clean sample (tuning.md § 2.12).
+TRIAL_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
+              "continue_retries": 0, "scf_must_converge": False}
+
+#: THE LAUNCH SHAPE A BENCHMARK'S GRID SWEEPS -- ranks, cores per rank,
+#: devices (`execution/generator.md` § 4.3a): the machine-answered items a
+#: benchmark row may name.  Another (a memory cap) is no axis the grid
+#: resolves (:func:`home_of`).
+GRID_AXES = ("mpi_np", "omp_threads", "gpu_count")
+
+
+def is_run_setting(item: "Item") -> bool:
+    """Whether ``item`` is a RUN SETTING -- the catalogue's `execution`
+    category (§ 6.2): how a run runs, which the job request states
+    (`execution/job-request.md` § 2), never the description."""
+    return "execution" in (item.category or ())
+
+
+def home_of(item: "Item", kind: str) -> frozenset:
+    """Where a value of ``item`` may live on a ``kind`` calculation (§ 5.4)
+    -- the homes :func:`why_not_in` has no refusal for, so the rule is
+    written once."""
+    return frozenset(h for h in HOMES
+                     if why_not_in(item, h, engine="", kind=kind) is None)
+
+
+def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
+               stage: Optional[str] = None) -> Optional[str]:
+    """Why ``home`` may not hold a value of ``item`` -- the clause after
+    *"<who> sets <name> = <value>"* or *"<who> names <name>"* -- or
+    ``None`` (§ 5.4): THE ONE RULE OF WHERE A VALUE LIVES, read off the
+    item's own markers.  The template and a stage's overrides hold what is
+    computed -- never a run setting, never what the rung fixes (`role`), an
+    override never what every stage shares (`shared`); a run card holds a
+    run setting; a benchmark row one a trial may vary -- never what every
+    trial fixes (:data:`TRIAL_PINS`), and of the launch shape only the
+    grid's axes (:data:`GRID_AXES`); a prep flag the launch shape
+    (`allocation`).  An item the kind does not carry has no home on it, and
+    a stage's override or run card holds only what that rung reads (§ 6.4's
+    ``stages``, :func:`reads`)."""
+    if home not in HOMES:
+        raise ValueError(f"no home {home!r} -- a setting's homes are "
+                         f"{', '.join(HOMES)} (engines/template.md 5.4)")
+    name, run = item.name, is_run_setting(item)
+    if item.calculations and kind not in item.calculations:
+        return (f", which {a_kind(kind)} does not carry -- no rung of it "
+                f"reads it, so the value would change nothing "
+                f"(engines/template.md 6.3)")
+    if home == "flag" and not item.allocation:
+        return (", which no prep flag states -- a flag states the launch "
+                "shape alone: ranks, threads, GPUs, the memory cap "
+                "(execution/architecture.md 5.2)")
+    if home == "run_card" and not run:
+        return (f", which is not an execution setting of {engine}.  A run "
+                f"card says what the RUN uses -- ranks, threads, the device, "
+                f"the solver.  A physics value belongs in the template, and "
+                f"a per-stage one in that stage's `overrides` in task.json "
+                f"(engines/stages.md 6.2)")
+    if home == "bench" and not run:
+        return (f", which {engine} does not declare as an `execution` "
+                f"parameter -- so sweeping it would measure a different "
+                f"calculation at each point and the comparison would mean "
+                f"nothing (execution/job-request.md 3.4)")
+    if home == "bench" and name in TRIAL_PINS:
+        return (f", which every benchmark trial fixes at "
+                f"{shown(TRIAL_PINS[name])}: a trial is one measurement "
+                f"(execution/job-request.md 3.4)")
+    if home == "bench" and item.allocation and name not in GRID_AXES:
+        return (f", which a benchmark's grid does not sweep -- its machine "
+                f"axes are {', '.join(GRID_AXES)} (execution/generator.md "
+                f"4.3a)")
+    if home in ("template", "override") and run:
+        return ", " + why_run_setting(name)
+    if home in ("template", "override") and kind in item.role:
+        return (f", which the rung fixes: {why_role(name)}.  Remove "
+                f"{'the override' if home == 'override' else 'the value'}")
+    if home == "override" and kind in item.shared:
+        return (f", which is shared by {shared_by(name)}: "
+                f"{why_shared(name)}.  Change it in the template, where one "
+                f"value applies to every stage that reads it")
+    if (stage is not None and home in ("override", "run_card")
+            and not reads(item, engine, kind, stage)):
+        then = ("remove it from that run card -- on Task setup, the × "
+                "beside it" if home == "run_card" else "set it there")
+        return ", " + why_unread(name, engine, kind, stage, then=then)
+    return None
+
+
+#: A declared type in the words a refusal names it by (§ 5.4).
+_TYPE_WORDS = {
+    "int": "a whole number", "pow2": "a whole number", "float": "a number",
+    "str": "text", "text": "text", "bool": "true or false",
+    "int3": "three whole numbers, written as a list",
+    "float3": "three numbers, written as a list",
+    "strlist": "a list of text values",
+    "intlist": "a list of whole numbers",
+}
+
+
+def _type_refusal(type_: str, choices, value: Any) -> Optional[str]:
+    """Why ``value`` -- already spelled (:func:`as_declared`) -- is not of
+    the declared ``type_``, an enum's ``choices`` among it (§ 5), or
+    ``None``: the ONE type check, which the setting door and the template
+    reader ask alike.  An enum's member is part of its type: ``"2"`` is not
+    the count 2."""
+    holds = _TYPE_CHECKS.get(type_)
+    if holds is not None and not holds(value):
+        if type_ == "enum":
+            return (f", which is not one of "
+                    f"{', '.join(map(repr, choices or ()))}")
+        if (type_ in ("int", "pow2") and isinstance(value, float)
+                and not isinstance(value, bool)):
+            return (f", which is not a whole number -- this setting counts "
+                    f"things, so {value!r} would have to be rounded and the "
+                    f"run would not be the one described")
+        return f", which is not {_TYPE_WORDS[type_]}"
+    if type_ == "enum" and choices and not is_member(value, choices):
+        return f", which is not one of {', '.join(map(repr, choices))}"
+    return None
+
+
+def accepts(item: "Item", value: Any, home: str, *, engine: str, kind: str,
+            stage: Optional[str] = None) -> Optional[str]:
+    """THE SETTING DOOR (§ 5.4): may ``value`` stand for ``item`` in
+    ``home`` on a ``kind`` calculation on ``engine`` (``stage``, for a
+    stage's override or run card)?  ``None`` when it may, else the ONE
+    clause refusing it, read after *"<who> sets <name> = <value>"* -- the
+    first that holds of:
+
+    1. the home may not hold this item at all (:func:`why_not_in`);
+    2. ``None`` -- *unset* -- for an item whose unset is no answer (not
+       ``optional``);
+    3. the item's declared type, the catalogue's -- the value judged as
+       :func:`spell` reads it -- and an enum's membership;
+    4. § 5.3's door (:func:`why_not`): a component the kind fixes, a choice
+       it does not offer, a limit.
+
+    Every place a value lives asks this with its own home, and keeps no
+    check of its own.  A template's item left without a value is its
+    default (§ 6.4), so the template home takes ``None`` for any item; a
+    benchmark row's point is a value to try, never ``None``."""
+    clause = why_not_in(item, home, engine=engine, kind=kind, stage=stage)
+    if clause:
+        return clause
+    if value is None:
+        if home == "bench":
+            return (", but a benchmark row's points are values to try -- "
+                    "leave the setting off the row to run at its own "
+                    "(engines/template.md 5.4)")
+        return None if item.optional or home == "template" else (
+            ", but this setting has no unset -- null is taken only by a "
+            "setting whose unset is an answer; state a value, or leave it "
+            "out (engines/template.md 5.4)")
+    spelled = spell(item, value)
+    return (_type_refusal(item.type, item.choices, spelled)
+            or why_not(item, spelled, engine=engine, kind=kind))
+
+
+def shown(value: Any) -> str:
+    """A value as a refusal quotes it (§ 5.4), in the files' own words:
+    ``null`` for unset, ``true`` / ``false``, a triple as the list it is
+    written as."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(shown(v) for v in value) + "]"
+    return repr(value)
+
+
+def spell(item: "Item", value: Any) -> Any:
+    """``value`` in ``item``'s declared type, LOSSLESSLY (§ 5.4,
+    :func:`as_declared`): a whole float for a count is the count, a list of
+    three a triple.  A value the type cannot hold stays as it was, for
+    :func:`accepts` to refuse by name."""
+    return as_declared(item.type, value)
+
+
+#: A NUMBER AS A PERSON TYPES ONE: decimal, an optional exponent -- never
+#: ``0x10``, ``1_000``, ``inf`` or ``nan``, which Python's readers take.
+_TYPED_NUMBER = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
+
+
+def _typed_number(text: str):
+    t = text.strip()
+    if not _TYPED_NUMBER.fullmatch(t):
+        return None
+    return int(t) if re.fullmatch(r"[+-]?\d+", t) else float(t)
+
+
+def read_text(item: "Item", text: Any) -> Tuple[Any, Optional[str]]:
+    """WHAT A PAGE SENT FOR ``item`` -- a cell's or a card row's text, or a
+    form's value -- read as its declared type (§ 5.4): ``(value, None)``,
+    the value :func:`spell`'d, or ``(text, clause)`` when it is not that
+    type, the clause read after *"<name> = <text>"*.  A blank is ``(None,
+    None)``, which the caller takes as *nothing typed*; whether the value
+    may stand in a home is :func:`accepts`'s, asked after.  Every page
+    reads with this, and keeps no reader of its own.
+
+    Text is read as a person types it, and as a file holds it: a number in
+    decimal with an exponent if any, as JSON writes one (``1e3`` is 1000),
+    never ``0x10`` or ``1_000``; ``true`` / ``false``; an
+    enum's member by its spelling, ``"2"`` the count 2; a grid in its three
+    spellings -- ``4,4,1``, ``4x4x1``, ``4 4 1`` -- or as the list
+    ``[4, 4, 1]``; a list separated by commas or spaces.  A value that
+    arrives typed (a JSON number, a list) is spelled as it is."""
+    if text is None or (isinstance(text, str) and not text.strip()):
+        return None, None
+    if isinstance(text, str):
+        value, why = _read_typed(item, text)
+        if why:
+            return text, why
+    else:
+        value = spell(item, text)
+    why = _type_refusal(item.type, item.choices, value)
+    return (text, why) if why else (value, None)
+
+
+def _read_typed(item: "Item", text: str) -> Tuple[Any, Optional[str]]:
+    """Typed ``text`` read as ``item``'s type, its shape alone -- the
+    number, the switch, the member, the list -- for :func:`read_text`."""
+    kind = item.type
+    if kind == "text":
+        return text, None
+    t = text.strip()
+    if kind == "str":
+        return t, None
+    if kind == "bool":
+        if t in ("true", "false"):
+            return t == "true", None
+        return t, ", which is not true or false"
+    if kind == "enum":
+        member = next((c for c in item.choices or () if str(c) == t), None)
+        return (member if member is not None else t), None
+    if kind in ("int", "pow2", "float"):
+        n = _typed_number(t)
+        if n is None:
+            return t, f", which is not {_TYPE_WORDS[kind]}"
+        return spell(item, n), None
+    inner = t.strip("[]() ")
+    pieces = [p for p in re.split(r"[,\sx]+" if kind in ("int3", "float3")
+                                  else r"[,\s]+", inner) if p]
+    if kind == "strlist":
+        return [p.strip("'\"") for p in pieces], None
+    numbers = [_typed_number(p) for p in pieces]
+    if (not pieces or any(n is None for n in numbers)
+            or (kind in ("int3", "float3") and len(numbers) != 3)):
+        return t, f", which is not {_TYPE_WORDS[kind]}"
+    return spell(item, numbers if kind == "intlist" else tuple(numbers)), None
+
+
+def default_of(item: "Item", kind: str) -> Any:
+    """THE ONE DEFAULT (§ 5.4): ``kind``'s `recommended` value for ``item``,
+    else the item's `default` -- ``None`` for an item with neither, whose
+    not-set line says what applies (§ 6.6, obligation 4).  What `resolve`
+    lays for a run setting no card states, what Task setup shows in a blank
+    row and what migrate asks whether a value was the default."""
+    rec = recommended_for(item, kind)
+    return rec if rec is not None else item.default
 
 
 def select(t: "Template", *, category=None, engine=None,
@@ -2582,4 +2890,7 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_answers", "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
-           "a_kind", "as_declared", "why_not", "why_not_an_item"]
+           "a_kind", "as_declared", "why_not", "why_not_an_item",
+           "HOMES", "SAID", "TRIAL_PINS", "GRID_AXES", "is_run_setting",
+           "home_of", "why_not_in",
+           "accepts", "spell", "shown", "read_text", "default_of"]

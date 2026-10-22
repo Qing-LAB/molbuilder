@@ -177,8 +177,10 @@ def test_a_legal_enum_value_is_accepted():
 
 def test_a_field_with_no_declared_bound_is_not_checked():
     """The schema is the authority on what a bound is.  Inventing one here
-    would refuse a description for breaking a rule nobody wrote."""
-    assert preflight(_staged({"system_label": "anything_at_all"})) == []
+    would refuse a description for breaking a rule nobody wrote.  (An item
+    a stage may override: PySCF's functional is a free name.)"""
+    assert preflight(_staged({"functional": "anything_at_all"},
+                             engine="pyscf")) == []
 
 
 def test_a_bad_value_is_not_reported_twice_for_a_bad_name():
@@ -292,31 +294,10 @@ def test_a_legal_boolean_is_accepted():
 #  live against Au-BDT-Au, 2026-08-25.
 
 
-def test_the_comma_text_a_person_types_is_refused_for_a_triple():
-    """THE LIVE DEFECT.  ``4,4,1`` is the right thing to TYPE -- it is one of
-    the three spellings ``--kgrid`` itself takes -- and the wrong thing to
-    STORE, because JSON has no tuple and a description spells a triple as a
-    list.  So the refusal must name the list to write, or it sends someone
-    who typed the correct value away with nothing to change."""
-    [issue] = preflight(_staged({"kgrid": "4,4,1"}))
-    assert issue.severity == "error" and issue.where == "config.kgrid"
-    assert issue.stage == "tight"
-    assert "'4,4,1'" in issue.message
-    assert "three whole numbers" in issue.message
-    assert "[4, 4, 1]" in issue.message
-
-
 def test_a_list_is_accepted_for_a_triple():
     """JSON's only spelling of a triple.  Refusing it would refuse every
     description the browser and the CLI can write."""
     assert preflight(_staged({"kgrid": [4, 4, 1]})) == []
-
-
-def test_a_triple_of_the_wrong_length_is_refused_by_its_length():
-    """Two counts is not a k-grid, and saying *"it has 2, not 3"* is the
-    difference between a fixable message and a puzzle."""
-    [issue] = preflight(_staged({"kgrid": [4, 4]}))
-    assert "2, not 3" in issue.message
 
 
 def test_a_fractional_component_is_refused_for_an_int_triple():
@@ -332,14 +313,6 @@ def test_a_float_triple_takes_ints_per_component():
     displacement to SIESTA -- the same argument the int -> float widening
     makes for a scalar."""
     assert preflight(_staged({"kgrid_displacement": [0, 0, 0]})) == []
-
-
-def test_comma_text_is_refused_for_a_list_field():
-    """``species_order`` had the same hole for the same reason: a str IS a
-    sequence, so every check that asked only *"is it a sequence"* said yes."""
-    [issue] = preflight(_staged({"species_order": "Au,C,H,S"}))
-    assert issue.where == "config.species_order"
-    assert "['Au', 'C', 'H', 'S']" in issue.message
 
 
 def test_an_optional_field_still_checks_the_type_inside_it():
@@ -368,9 +341,9 @@ def test_a_run_setting_as_a_column_is_refused_naming_the_run_card(name,
     reached its deck and not the scheduler's device ask).  ``varies`` and
     the stages travel together (§ 6.5), so both rows are refused, each
     naming the card -- the person typing it is mid-mistake about where it
-    goes."""
+    goes: the column, and the stage's value on the setting's own cell
+    (``config.<name>``, where every value refusal lands)."""
     issues = _errors(preflight(_staged({name: value})))
-    for where in ("task.varies", "task.stages.overrides"):
+    for where in ("task.varies", f"config.{name}"):
         assert any(i.where == where and "run card" in i.message
-                   and repr(name) in i.message for i in issues), (where,
-                                                                  issues)
+                   and name in i.message for i in issues), (where, issues)

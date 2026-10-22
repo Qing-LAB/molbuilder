@@ -125,8 +125,9 @@ def resolve_transport(task, stage: str, allocation, *, template_text,
     element = ps.elements[0]
     if log is not None:
         log.produced("elements", f"{len(ps)} (a run, not a sweep)")
-        for _name, _src in sorted(element.provenance.items()):
-            log.chose(_name, getattr(element.values, _name, None), _src)
+        for _name in sorted(element.provenance):
+            log.chose(_name, getattr(element.values, _name, None),
+                      element.said[_name])
     return element
 
 

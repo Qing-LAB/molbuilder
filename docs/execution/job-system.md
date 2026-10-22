@@ -174,7 +174,7 @@ that file's own door:
 | | **ready to launch** / **waits for** | what it builds on has finished — the newest run of that stage, by that run's state below | the files of that run | § 5.3 | `ready.first_launch_takes` |
 | | **its job's members changed** | its row's `members` are not its group's now | `job-set.json` against `job-request.json` | § 5.1 | `ready.regrouped` |
 | | **launched** | a run of it has a launch record | `run.json` — flat, `<base>-run<N>.run.json` | § 5.3 | `materialize.ever_launched` (`runrecord.launch_record`) |
-| a group | **prepared** / **launched** | every member's row names these members / a member is launched | its members' rows and records | § 5.1, § 5.3 | `ready.GroupAnswer` |
+| a group | **prepared** / **launched** / **its members changed** | every member's row names these members / a member is launched / a row names other members than the group holds | its members' rows and records | § 5.1, § 5.3 | `ready.group_answer` — the one answer every verb and surface reads (below) |
 | | **goes in job N** | prepared, and a sequence still going holds it and has not launched it yet — launched before or not (§ 6.0, *A sequence of groups*) | the job's address (§ 6.0a), asked whether it is going | — | `ready.held_by_sequence` (`joblist.is_going`) |
 | a run | **opened, not launched** | its `run-<n>` folder is there, stamped a run, and has no launch record | the folder (`calcdir.json`, `role: run`), no `run.json` | § 5.2 | `paths.attempts_in`, `runrecord.launch_record` (`materialize.resolve_attempt`) |
 | | **queued** | launched, nothing written yet | `run.json`, no output | § 5.3 | `rundir.run_state_of` (`parse.dirs.run_status`) |
@@ -277,7 +277,7 @@ stateDiagram-v2
     la --> la : a member launched again alone, or the group again whole · send_launch
     la --> la : prep task --group N, its job request changed — what it computes the same · prep_task
     la --> pr : restore the state saved before its first launch · checkpoint
-    la --> lc : the job request moves a stage in or out · Save
+    la --> lc : a member removed from the description, or job-request.json edited by hand · Save, by hand
     lc --> la : the members put back as launched · Save
     lc --> pr : restore the state saved before its first launch · checkpoint
     pr --> sq : launch task --group A --group … naming it · send_launch
@@ -289,16 +289,32 @@ stateDiagram-v2
     ch --> np : restore the state saved before its prep · checkpoint
 ```
 
-`prep task` offers every group **not prepared as described** and preparable
-(`prep task`, 2); `launch task` offers every group **prepared as described, never launched**, each member's
-upstream finished (`TaskState.launch_offer`). **A launched group's members are
-fixed**: a stage put into it is told to take a group of its own — its prep
-and the group's are refused ([R-P5](#every-refusal-and-its-way-on)) — and a
-stage that leaves it, removed from the description or moved to another group,
-leaves the group no longer launched whole
-([R-L7](#every-refusal-and-its-way-on)): each member is launched again alone,
-the members are put back, or the state saved before the group's first launch
-is restored.
+**One answer for a group, which every verb and surface reads** *(2.28.0, plan
+§ 1w: 2.27.0 changed what may be done to a launched group, and of the six
+places that each decided it, three followed)*. `ready.group_answer(calc, n)`
+→ the group's state — one of the diagram's — whether it **may be prepared now**
+and, when not, why; whether it **may be launched now** and, when not, why; and
+its **way on**, composed once (`commands.way_on`, layout-aware: a stage never
+launched, its group's prep; a launched one on the hierarchical layout, its job
+request and its group's prep for how it runs, the state saved before its
+group's first launch for what it computes; on the flat layout, that state).
+`prep task`'s offer and its refusals (R-P5, R-P22, R-P23), `launch task`'s
+offer and its refusals (R-L6–R-L10), the command line's question, `status`'s
+next step and Task setup's boxes and group cells all read it — **none decides a
+group's state, or words its way on, itself**.
+
+`prep task` offers every group the answer says **may be prepared now** and is
+not prepared as described (`prep task`, 2); `launch task` offers every group
+**prepared as described, never launched**, each member's upstream finished.
+**A launched group's members are fixed**: Task setup's Save refuses a stage put
+into it, or a member moved to another group, in the answer's words — a group
+of its own for the stage, the member put back, or the restore — and a group
+whose members changed anyway, a member removed from the description or
+`job-request.json` edited by hand, is **launched, its members changed**:
+offered by no verb, its prep refused ([R-P5](#every-refusal-and-its-way-on))
+and its launch whole refused ([R-L7](#every-refusal-and-its-way-on)) — each
+member launched again alone, the members put back, or the state saved before
+the group's first launch restored.
 
 *A run* — one launch of a stage. On the hierarchical layout each is a folder,
 `run-0`, `run-1`, …; on the flat layout each is its own numbered files in the
@@ -382,14 +398,15 @@ read top to bottom:
 
 | the group's members | the group | the line |
 |---|---|---|
-| one not prepared, and the group preparable (`ready.prep_offer`) | **not prepared** | `prep task --group N` |
+| one not prepared, and the group preparable (`ready.group_answer`) | **not prepared** | `prep task --group N` |
 | one not prepared, and the group not preparable | **waits before it can be prepared**, and what for — a force-constant stage's `relax` | — |
 | prepared in a job whose members changed | **prepared, its members changed** | `prep task --group N` |
+| launched in a job whose members changed — a member removed, or the job request edited by hand | **launched, its members changed** — which stage was put in or taken out | — its way on, the answer's: each member launched again alone, the members put back, or the restore |
 | prepared, and held by a sequence still going that has not launched it yet — launched before or not (§ 6.0, *A sequence of groups*) | **goes in job N** — after group K, the one before it in the job | `molbuilder jobs status` |
 | prepared, never launched, what each takes there | **ready to launch** — and, for a member another molbuilder prepared (its deck's own record), who did: its launch compares it with what prep writes now and refuses a difference (R-L15) | `launch task --group N`, a line for each mode the machine takes; after them, for a member another molbuilder prepared, its group's prep, *if the launch refuses it* |
 | prepared, never launched, a member waiting | **waits for** the run it takes — that run's stage and group, and where it stands | — |
 | a run queued or running | **running** (or *queued*) | `status` |
-| a run failed or stopped, or a launch record that does not read | **failed** (*stopped*, *unreadable*), naming the stage | its launch again — `launch task --stage S`, which continues from its own latest run or starts over as its job says (`relaunch_continues`), `--cold` starting it over — or its way back (§ 5.4, *A stage launched again*); for a record that does not read, its reader's words |
+| a run failed or stopped, or a launch record that does not read | **failed** (*stopped*, *unreadable*), naming the stage | its launch again — `launch task --stage S`, which continues from its own latest run or starts over as its job says (`relaunch_continues`), `--cold` starting it over; and its way on, the group answer's (`commands.way_on`) — on the hierarchical layout a run out of memory or wall goes on with its job request changed and its group prepared again ([`job-request.md`](?doc=execution/job-request.md) § 5), what it computes changed by the restore; for a record that does not read, its reader's words |
 | a run opened and not launched — a send refused | the stage, and *opened by a launch whose send was refused* | the launch that fills it (`commands.launch_pending`): `launch task --stage S` |
 | every member's newest run finished | **finished** | — |
 
@@ -448,8 +465,9 @@ checkpoint in full.
 1. **It reads the description and shows the groups** — each with its stages,
    prepared or not, and for a stage not preparable yet, what it waits for.
 2. **It asks which groups to prepare**, offering, ticked, every group not
-   prepared as described and preparable — a changed one among them
-   (`TaskState.prep_offer`). `--group N` answers without a terminal (repeat
+   prepared as described that the group answer says may be prepared now — a
+   changed one among them, never a launched group whose members changed
+   (`ready.group_answer`). `--group N` answers without a terminal (repeat
    it for several), and prepares a group already prepared again — a launched
    one too, for a change of its job request ([`job-request.md`](?doc=execution/job-request.md) § 5); with no terminal and none named, the prep is refused, naming the
    line that picks them — nothing is prepared unseen.
@@ -631,7 +649,7 @@ they are typed, and written down too.
 | **R-P2** | `task.json`, its template or `job-request.json` does not read — written by an older molbuilder, or a stage with no group | its reader's words; an older one names `jobset migrate` | `task.of`, `job_request.of` |
 | **R-P3** | no group named, and nobody to ask (not a terminal) — or none to offer, and no junction order to record (a transport calculation whose junction's sidecar states none records it instead, nothing else written: [`engines/transport.md`](?doc=engines/transport.md) § 1.1, *No group left to prepare*) | the line that picks them; each group says where it stands | `_cli._ask_which_groups`, `prep._prep_groups` |
 | **R-P4** | a group the job request does not hold | the groups it holds | `prep._prep_groups` |
-| **R-P5** | a member of a group picked — or of a group a changed job's members are in — was launched, and the layout is flat, or its deck rendered now is not the same calculation as the deck its runs ran, or its points (a rung that runs per point) are not the ones its runs ran ([`job-request.md`](?doc=execution/job-request.md) § 6), each difference named; or the group holds a stage put beside one launched without it, or no longer holds one it was launched with | the state saved before its group's first launch; for a stage put in, a group of its own; for one taken out, put back | `prep._prep_groups` (`ready.launched_without`, `deck_record.same_calculation`) |
+| **R-P5** | a member of a group picked — or of a group a changed job's members are in — was launched, and the layout is flat, or its deck rendered now is not the same calculation as the deck its runs ran, or its points (a rung that runs per point) are not the ones its runs ran ([`job-request.md`](?doc=execution/job-request.md) § 6), each difference named; or the group holds a stage put beside one launched without it, or no longer holds one it was launched with | the state saved before its group's first launch; for a stage put in, a group of its own; for one taken out, put back — the group answer's way on | `prep._prep_groups` (`ready.group_answer`, `deck_record.same_calculation`) |
 | **R-P6** | a job whose members changed has members in groups not picked | every group to pick, in one line | `group.formed_again` |
 | **R-P7** | `--from` at prep with no force-constant stage among the groups picked | its first launch's `--from`, for a stage in a group of its own | `prep._prep_groups` |
 | **R-P8** | the description fails its own checks — a stage sharing a group with one it builds on among them | the check's words: give it a new group — or, for an independent ladder's stage, set its `restart` override to `clean`, and it builds on nothing | `prep.checked` (`validation.task.preflight`) |
@@ -656,7 +674,7 @@ they are typed, and written down too.
 | **R-L4** | no `--mode` and no `launch.mode`, or a `launch` block that does not read; a flag the mode or the launch does not take (`--foreground` with a queue, `--time` here; `--cold`, `--from`, `--gather` on a benchmark, whose trial starts cold from its deck; `--only` and `--trial-timeout` on a task or with a named trial, `--only` here, `--trial-timeout` asked) — one table, `commands.LAUNCH_FLAGS` | the launch with each mode | `_cli._launch` (`_refuse_flags_without_effect`) |
 | **R-L5** | the stage named is described and not prepared | its group's prep, then its launch | `_cli._refuse_unprepared` |
 | **R-L6** | a stage never launched named alone while its group holds others | the group's launch | `submit._the_group` |
-| **R-L7** | a launched group whose members the job request changed | a member launched again alone; the members put back; or the restore | `submit._the_group` |
+| **R-L7** | a launched group whose members the job request changed | a member launched again alone; the members put back; or the restore — the group answer's way on | `submit._the_group` (`ready.group_answer`) |
 | **R-L8** | a group whose prepared jobs hold other members than it does now | its prep, every group named | `ready.regrouped` |
 | **R-L9** | `--from`, `--cold` or `--gather` on a group of several | `--stage`, for a member launched again | `submit._the_group` |
 | **R-L10** | a member of the group named is not prepared | the group's prep | `submit._the_group` |

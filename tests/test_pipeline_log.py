@@ -115,8 +115,11 @@ def test_the_name_says_engine_and_shape(tmp_path):
 def test_every_resolved_value_carries_its_source(tmp_path):
     """The ⊕ chain, which is the difference between provenance and a dump.
 
-    A stage override and the allocation are the two sources a reader cannot
-    work out from the template alone, so both are named.
+    A stage override and the launch shape are the two sources a reader
+    cannot work out from the template alone, so both are named -- the launch
+    shape by where it was stated, in the one vocabulary
+    (`template.SAID`, `engines/template.md` § 5.4): a flag here, never
+    *allocation* for a value no allocation holds (the 2.27.0 review).
     """
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     _prep(dest, stages[0])
@@ -128,8 +131,9 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     # the stage's own overrides are attributed to the stage, not the template
     assert re.search(r"⊕\s+relax_type\s+CG\s+<- this stage's override", text), \
         text
-    # the allocation is folded in, and says so -- no config file names it
-    assert re.search(r"⊕\s+mpi_np\s+8\s+<- allocation", text), text
+    # the launch shape is folded in, and says where it was stated -- no
+    # config file names it
+    assert re.search(r"⊕\s+mpi_np\s+8\s+<- a prep flag", text), text
     # and the template's baseline is still there, so the file is complete
     assert re.search(r"⊕\s+mesh_cutoff\s+300\.0\s+<- the template", text), text
 
@@ -147,6 +151,11 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     assert who["write_forces"] == "the rung", who
     assert who["mesh_cutoff"] in {f"the template · {w}"
                                   for w in SOURCE_WORDS.values()}, who
+    # ONE VOCABULARY, TWO READERS (`engines/template.md` § 5.4): a run
+    # setting nobody stated and the catalogue gives no default is said in
+    # the log as in the deck -- never *the catalogue's default*.
+    assert re.search(rf"⊕\s+block_size\s+None\s+<- "
+                     rf"{re.escape(who['block_size'])}\n", text), text
     # an optional item nobody set says who answers it: the electronic state
     # for a blank spin, the k-point mesh for the ranks' split
     from molbuilder.resolve import BLANK_ANSWERED_BY

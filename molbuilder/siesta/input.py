@@ -441,7 +441,14 @@ def _parallel_facts(cfg, mesh) -> dict:
     #     ``Diag.ELPA.GPU .true./.false.`` -- written either way, so the
     #     deck states its answer (a CPU-ELPA run with the flag omitted
     #     crashed on Sol, job 57852378).
-    _algo = (cfg.diag_algorithm or "ScaLAPACK").strip()
+    # THE JOB'S SOLVER, never one of the writer's own: `resolve` lays the
+    # run card's or the catalogue's default (`engines/template.md` § 5.4).
+    if cfg.diag_algorithm is None:
+        raise ValueError(
+            "diag_algorithm is not set -- every job carries it, its run "
+            "card's or the catalogue's default, laid at prep "
+            "(engines/template.md 5.4)")
+    _algo = cfg.diag_algorithm.strip()
     _is_elpa = _algo.upper().startswith("ELPA")
 
     # THE K-POINT SPLIT, automatic: on when the mesh holds more than one

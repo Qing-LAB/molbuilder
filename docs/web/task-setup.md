@@ -124,6 +124,16 @@ Naming the tiers is what keeps the rule precise: "no state of its own" forbids
 remembering a *folder's* facts, not caching the engine's vocabulary, and the
 pair is the case a single reset would get wrong.
 
+**Every folder fact the page shows is drawn from one per-folder state, built
+from the folder's answer and replaced whole** *(2.28.0, plan § 1w — the
+2.27.0 review found the previous folder's machine line, queue card and report
+period still on the page after another folder opened)*: the records as
+edited, the machine the calculation is set to, the queue and asks the job
+request names, the notify card's values, every card's rows. A card reads that
+state and nothing it drew before; a folder opened anew — a description, a
+hand-over, an empty folder, a refused one — draws every card from it, and a
+card with nothing to show for that folder is hidden.
+
 **And every folder-scoped answer names the folder it is about.** A consumer
 that has moved on discards it rather than rendering it. This is
 [`project-layout.md`](?doc=execution/project-layout.md) § 1.4a's rule applied
@@ -316,7 +326,13 @@ writes the numbers into `job-request.json`. **Changing a group of stages that ar
 prepared and never launched** marks those groups for preparing again (§ 11);
 a launched stage's group is fixed and its row's choices are disabled, naming
 the restore that changes it — and no row joins it: the row below a launched
-group offers only *new group*, saying why.
+group offers only *new group*, saying why, a row added or renamed there
+included. **Save refuses a stage put into a launched group, or a launched
+member given another group**, in the group answer's words — a group of its own
+for the stage, the member put back, or the restore
+([`job-system.md`](?doc=execution/job-system.md), *The task*, `ready.group_answer`);
+the cells say it before the click, and the door holds it whatever the page
+sent.
 
 ### 5.1 An empty cell shows the number, and it comes from the folder
 
@@ -356,7 +372,7 @@ neither may be answered by looking at the value instead:
 | | asked by | answered by |
 |---|---|---|
 | which control edits this cell | `legalValues` | `bool` / `enum` → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers); everything else a text box |
-| what the typed text **means** | `CELL_READERS` (`task-setup/cell-readers.js`) | one reader per member of `template.TYPES` |
+| what the typed text **means** | the setting door, on the server — `POST /api/task-setup/value` (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) | one reader per member of `template.TYPES`, the one every home reads with; the page keeps none *(2.28.0, plan § 1w: the page's own readers took `"0x10"` for a number and any text but `"true"` for `false`)* |
 
 Guessing either from the value's look is a bug this tab has had twice. A
 sweep row born as the number `1` made `use_gpu` a number box (fixed
@@ -384,12 +400,15 @@ does land, the stage table already reads it** — `pow2` as a whole number
 `0-35, 100` the Build form's own control takes — that is a different
 control's contract). Do not add a second path for them.
 
-A k-grid takes the three spellings `--kgrid` itself takes — `4,4,1`,
-`4x4x1`, `4 4 1` — because one product should not accept a value at the
-terminal and refuse it in the browser. Text that is **not** the declared
-type is kept exactly as typed and refused by name at the save door
+A k-grid takes three spellings — `4,4,1`, `4x4x1`, `4 4 1` — and the list
+`[4, 4, 1]` as the description holds it, because one product should not
+accept a value in a file and refuse it in the browser. Text that is **not** the declared
+type is refused by the door as it is typed — said beside the cell, in the
+item's words — and kept exactly as typed, so the save door refuses it too
 ([`stages.md § 6.6`](?doc=engines/stages.md)'s declared-type row); storing a
-half-parsed value would be the quiet version of the same bug.
+half-parsed value would be the quiet version of the same bug. **A run card's
+and a benchmark row's values are read by the same door**, in their home
+(§ 6.2b).
 
 **A job always has at least one stage.** You start with `coarse`; adding another
 is one more row. There is no stage-less shape to fall into, so a job's artifacts
@@ -480,8 +499,8 @@ filters it). Inside it, the catalogue draws a line:
 | **the machine answers it** | the ones marked as the machine's | refused at prep, naming this card and the flag — but the memory cap, which blank is no cap ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 
 **Neither is in the template**: a run setting lives on the run card alone,
-in the job request, and a template with a value on one is **refused**
-([`template.md § 6.4`](?doc=engines/template.md)).
+in the job request; no template carries one, and a template holding one is
+**refused**, naming `jobset migrate` ([`template.md § 2`](?doc=engines/template.md)).
 
 **Neither row is a list, and neither should be written as one.** Each setting in
 the catalogue already says whether the machine answers it, so asking that
@@ -523,7 +542,13 @@ each other.
 > queue is shown with the range of its machines — cores, memory, devices —
 > and under each field that queue's range for it, never marking what is typed
 > invalid; the fit of the whole request is the Preview's, the prep entry's own
-> (`scheduler.md` R6). A field stays empty until it is stated
+> (`scheduler.md` R6). **The queue the job request names is the job
+> request's**: choosing a machine — or one whose record lists no queues —
+> changes what the card offers, never what the job request says; a stated
+> queue that machine does not list is shown as stated, with that said, and
+> stays until the person changes it *(the 2.27.0 review: a machine chosen after
+> the folder opened cleared the stated queue, and the next edit wrote the
+> allocation without it)*. A field stays empty until it is stated
 > (`submission.md` S5) — and those are **not**
 > points to try. The distinction is the one § 3.1 of
 > [`job-request.md`](?doc=execution/job-request.md) draws: `max_memory_mb` above is a
@@ -752,7 +777,7 @@ styling: the row carries the state and the CSS reads it.
 | the row is | the field holds | it looks | because |
 |---|---|---|---|
 | **chosen** | this rung's own value, from the job request's `stages.<name>.execution` | ordinary | you decided it here |
-| **inherited** | *empty*, with what a blank uses as the placeholder: the calculation-wide value, marked *(every stage)*, else the item's default, marked *(default)* ([`job-request.md`](?doc=execution/job-request.md) § 4) | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank unreachable |
+| **inherited** | *empty*, with what a blank uses as the placeholder: the calculation-wide value, marked *(every stage)*, else the item's default, marked *(default)* ([`job-request.md`](?doc=execution/job-request.md) § 4); for `time` and `domain`, the allocation's, marked *(the queue card)* (§ 3.2a there) | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank unreachable |
 | **unstated** | *empty*, placeholder *— not stated* (or a format example for `time` / `domain`) | quieter | **not an error in the card** — a launch value, which no template holds: stated nowhere, it is refused at prep, and the card says so |
 
 That the field is left EMPTY for an inherited row is the load-bearing half: an
@@ -786,6 +811,15 @@ measure, and a decision, side by side.
 > express the ordinary case: `{mpi_np: [4, 8, 16]}` and *"run at 8"* at the
 > same time. Narrowing the row to say what the run uses **destroyed the plan
 > to measure** — you could have a bench or a run decision, never both.
+
+**What is typed on a card is read by the setting door** (§ 5.2,
+[`engines/template.md`](?doc=engines/template.md) § 5.4) in the card's home —
+a run card's or a benchmark row's: refused as it is typed, in the item's words,
+or written in its spelling (a wall as `0-04:00:00`); a blank clears; a
+rung's *unset* (`null`, [`job-request.md`](?doc=execution/job-request.md)
+§ 3.2) is offered only for an item whose unset is an answer. **A card that
+writes the job request is drawn only once there is one** — on a hand-over, from
+the shape's proposal (§ 4) — so no edit is made into nothing.
 
 **A rung that differs says so on itself.** `execution` is both
 calculation-wide and per stage (`job-request.md` § 3.2), and the two compose field
@@ -1084,9 +1118,18 @@ any folder opened, with the reason in a hint beside the greyed button. Nothing
 the page wrote ever reached disk, which is exactly how it was reported. The
 doc was wrong about the backend; the markup was wrong about the default.)*
 
-**Two tabs write these files**, so a stale-file handshake applies rather than
-last-write-wins: the folder may have changed between loads because a `prep` ran
-or somebody edited by hand ([`tabs.md § 6`](?doc=web/tabs.md)).
+**A file changed on disk since the page read it is never written over**
+*(2.28.0, plan § 1w — the user's choice of 2026-10-21; until then this section
+promised a handshake no code made)*. The page sends, with each record, what it
+read — `read_as: {task, request}`, each the SHA-256 of the file's bytes as the
+folder answer served them, `null` for a file that was not there — and Save
+compares each with the file on disk before anything else: one that differs is
+refused, `409`, **no state saved and nothing written**, naming the file and
+saying to open the folder again to see what changed — another tab's Save, a
+`jobset migrate`, a hand edit. A Save that names no `read_as` is refused too:
+the door takes no write that cannot say what it is writing over. The page's
+own edits are what it sends; another writer's stay in the file until the page
+has read them.
 
 ---
 
@@ -1139,7 +1182,13 @@ description before it is written; § 8 is what writes it. An edited buffer that
 has not been saved is said by the save bar (§ 7a). **A card never writes over text that does not
 parse**: while the editor holds something that is not valid JSON — an edit in
 progress — a card's change is refused, said at the top of the page, and the
-text is left as typed.
+text is left as typed — **and the card shows what the text says**, never the
+refused value: a control a refused edit changed is put back, the shape's
+buttons and the cards' fields alike. **A hand-over's proposal is built once,
+from the hand-over as the page holds it**: picking a shape proposes the
+records, and a shape changed after edits one field (§ 4); a buffer edited by
+hand is never written over by a proposal — one that does not parse holds it,
+said, until it does.
 
 ### 9a.1 Every card folds — the page opens as a checklist
 
@@ -1308,10 +1357,13 @@ is saved (§ 7a). The Prep comes after the values it reads.
 answer `prep task` shows before it asks) — *not prepared*; *prepared, its
 members changed*; *prepared, never launched*; *launched* — and for a
 force-constant stage not preparable yet, what it waits for. **Every group has
-a box.** A group `prep task` offers — not prepared as described, and
-preparable (`ready.prep_offer`;
-[`job-system.md`](?doc=execution/job-system.md), *The task*, `prep task`, 2)
-— is **ticked when the folder opens**. A group **prepared and never launched**
+a box, and the box is the group answer's** (`ready.group_answer`,
+[`job-system.md`](?doc=execution/job-system.md), *The task*): enabled when the
+answer says the group may be prepared now, and when it may not, the answer's
+why beside it — a launched group whose members changed among them, never
+offered. A group `prep task` offers — not prepared as described, and
+preparable ([`job-system.md`](?doc=execution/job-system.md), *The task*,
+`prep task`, 2) — is **ticked when the folder opens**. A group **prepared and never launched**
 has a box you can tick: Prep prepares it again, whole — the way a change made
 after looking reaches a group not yet launched. A **launched** group on the
 hierarchical layout has a box too, for a change of its job request: Prep
@@ -1511,5 +1563,6 @@ line does ([`generator.md`](?doc=execution/generator.md) § 4.3a); a one-point
 declaration is that one cell. A description `prep bench` refuses outright — a
 transport calculation, an engine the bench lane does not speak — has no
 Measure step: the folder answer carries the entry's own reason
-(`bench_refusal`, [`job-system.md`](?doc=execution/job-system.md) § 5.3), and
-the page asks it rather than keeping a list of its own.
+(`bench_refusal`, [`job-system.md`](?doc=execution/job-system.md) § 5.3) — a
+hand-over's too, from the engine and kind it carries — and the page asks it
+rather than keeping a list of its own.

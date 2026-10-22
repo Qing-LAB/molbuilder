@@ -69,12 +69,6 @@ if TYPE_CHECKING:                       # floor 5 reading floor 3's object
 # grammar.
 _SAFE_WRAPPER_NAME_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
 
-#: SIESTA'S OWN SLACK (MaxWalltime.Slack's default, `siesta_init.F`, 5.4.2),
-#: in seconds: what a run script falls back to where no `wall_slack` was
-#: baked (`running-a-job.md` § 3.6; a wrapper rendered from a `Resources`
-#: that states none).
-_ENGINE_OWN_SLACK_S = 5
-
 
 
 def _phys_cores_probe_block() -> str:
@@ -1864,11 +1858,8 @@ def render_run_wrapper(script_path: Path, *,
     max_memory_mb, continue_retries = (r.max_memory_mb,
                                        r.continue_retries)
     # THE WALL SLACK (`running-a-job.md` § 3.6), baked as the retry budget
-    # is; a job without one baked leaves the engine its own
-    # (`_ENGINE_OWN_SLACK_S`).
+    # is: the job's own (checked below, once the engine is known).
     wall_slack = r.wall_slack
-    _slack_export = (f"export MB_WALL_SLACK_S={int(wall_slack)}\n"
-                     if wall_slack is not None else "")
     # WHEN this calculation should speak up -- carried on the allocation
     # like `continue_retries`, and rendered as monitor flags rather than
     # scheduler ones.  Absent means the flags are not emitted at all, so a
@@ -1916,6 +1907,19 @@ def render_run_wrapper(script_path: Path, *,
             f"`{suffix}`.  Supported: "
             f"{', '.join(sorted(deck_roles()))}."
         )
+    # THE JOB CARRIES EVERY RUN SETTING THIS SCRIPT READS -- the
+    # engine's wrapper items with no unset (the wall's slack, SIESTA's
+    # retry budget): the run card's, or the catalogue's default `resolve`
+    # lays (`engines/template.md` § 5.4).  The script falls back to no
+    # number of its own, so a job without one is refused.
+    from .template import catalogue as _catalogue, select as _select
+    for _it in _select(_catalogue(), engine=category, kind="wrapper"):
+        if not _it.optional and getattr(r, _it.name) is None:
+            raise WrapperError(
+                f"the job states no {_it.name} -- every job carries it, its "
+                f"run card's or the catalogue's default, laid at prep "
+                f"(engines/template.md 5.4); prepare it again.")
+    _slack_export = f"export MB_WALL_SLACK_S={int(wall_slack)}\n"
     # A FINISH THE LAUNCHER CANNOT HONOUR IS REFUSED, never dropped: a job
     # told to finish that ran without finishing would conclude rc=0 with no
     # result (`engines/vibration.md` § 5.5).  Only a SIESTA job has one today
@@ -2547,7 +2551,7 @@ def render_run_wrapper(script_path: Path, *,
         # (`running-a-job.md` § 3.5), and TBtrans ends in neither: its run
         # script carries no retry whatever the budget, and its banner says
         # why.
-        _retries = 0 if _prog == "tbtrans" else (continue_retries or 0)
+        _retries = 0 if _prog == "tbtrans" else continue_retries
         # THE WALL'S WORDS FOR THIS PROGRAM -- the catalogue's `launch` for
         # `wall_slack` (template.md § 5), rendered with what the script
         # counts: never a flag spelled here.  A program the item does not
@@ -2559,7 +2563,7 @@ def render_run_wrapper(script_path: Path, *,
         _wall_array = " ".join(
             '"' + w.replace("{left}", "${_mb_wall_left}")
                    .replace("{slack}",
-                            f"${{MB_WALL_SLACK_S:-{_ENGINE_OWN_SLACK_S}}}")
+                            "${MB_WALL_SLACK_S}")
             + '"'
             for w in _wall_words)
         env_prefix += (
@@ -2798,7 +2802,7 @@ def render_run_wrapper(script_path: Path, *,
             # (tbtrans) -- checks no clock and runs to it.
             + 'if [ -n "${MB_WALL_S:-}" ]; then '
               'echo "  Wall          : ${MB_WALL_S}s from the job\'s start; '
-            + (f'{_prog_label} stops ${{MB_WALL_SLACK_S:-{_ENGINE_OWN_SLACK_S}}}s '
+            + (f'{_prog_label} stops ${{MB_WALL_SLACK_S}}s '
                f'before it ' if _wall_words
                else f'{_prog_label} checks no clock and runs to it ')
             + '(running-a-job.md 3.6)"; '
@@ -3312,7 +3316,7 @@ def render_run_wrapper(script_path: Path, *,
                f'    [ "$_mb_wall_left" -lt 1 ] && _mb_wall_left=1\n'
                f"    _mb_wall_args=({_wall_array})\n"
                f'    _log INFO "wall: ${{_mb_wall_left}}s left of ${{MB_WALL_S}}s; '
-               f'{_prog_label} stops ${{MB_WALL_SLACK_S:-{_ENGINE_OWN_SLACK_S}}}s '
+               f'{_prog_label} stops ${{MB_WALL_SLACK_S}}s '
                f'before it (running-a-job.md 3.6)"\n'
                f"fi\n" if _wall_words else "")
             + f"_t_start=$(date +%s.%N)\n"

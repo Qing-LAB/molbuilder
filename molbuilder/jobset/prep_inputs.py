@@ -41,22 +41,16 @@ def _declared_execution_pins(request, bench_override=None):
     machine grid so every trial's deck carries its coordinates
     (§ 4.3a's built rule).
 
-    Refused BY NAME, never repaired -- through the ONE shape checker
-    (`validation/task.py::bench_points_fit_their_items`): an enum value
-    outside the item's choices, a non-bool on a bool item, a repeated
-    point.  The dispatch runs the
-    full preflight BEFORE this helper, so on either door of the one prep
-    entry the refusal normally lands there with every finding listed; the
-    call here is the backstop for direct callers, first-refusal shaped as
-    the entry's errors are.
-
-    MEMBERSHIP is not this function's question (one door): every bench key
-    must be an ``execution`` item, and `validation/task.py`'s
-    ``_bench_names_a_speed_knob`` owns that rule -- a non-execution name
-    was refused upstream and an unknown name here is simply skipped.
-    Point SHAPES are the request's reader's (`job_request.bench_from_obj`):
-    every value arrives as a non-empty tuple of scalars, so no scalar/empty
-    arms exist here.
+    Refused BY NAME, never repaired -- through the ONE checker
+    (`validation/task.py::bench_points_fit_their_items`, which asks the
+    setting door, `engines/template.md` § 5.4): a row naming no run
+    setting, a point its item does not take, a repeated point.  The
+    dispatch runs the full preflight BEFORE this helper, so on either door
+    of the one prep entry the refusal normally lands there with every
+    finding listed; the call here is the backstop for direct callers,
+    first-refusal shaped as the entry's errors are.  Point SHAPES are the
+    request's reader's (`job_request.bench_from_obj`): every value arrives
+    as a non-empty tuple of scalars, so no scalar/empty arms exist here.
 
     ``request`` is the job request its caller holds -- read once by the
     prep that asks (W55 B1).
@@ -90,12 +84,11 @@ def _declared_execution_pins(request, bench_override=None):
     # so this door and the shape checker it calls are keyed on one source.
     items = {i.name: i
              for i in _T.select(_T.catalogue(), engine=str(request.engine))
-             if "execution" in (i.category or ())}
+             if _T.is_run_setting(i)}
     pins, axes, value_axes = {}, {}, {}
     for name, pts in declared.items():
-        it = items.get(name)
-        if it is None:
-            continue     # membership is the preflight's refusal, upstream
+        it = items[name]                     # every name: the checker's
+        pts = [_T.spell(it, v) for v in pts]
         if it.allocation:
             axes[name] = pts                 # machine-answered: the grid's
             continue                         # business, never a value
@@ -104,35 +97,6 @@ def _declared_execution_pins(request, bench_override=None):
             continue                         # grid multiplies per point
         pins[name] = pts[0]
     return pins, axes, value_axes
-
-
-def _catalogue_default(name: str, engine: str):
-    """The catalogue's default for run setting ``name`` on ``engine`` --
-    what a run takes where no card states it (`job-request.md` § 4);
-    ``None`` for an item with none."""
-    from ..template import catalogue, one
-    try:
-        item = one(catalogue(), name, engine=engine)
-    except KeyError:
-        return None
-    return None if item is None else item.value
-
-
-#: What makes a trial a MEASUREMENT rather than a run -- schema values
-#: resolved like any other (`template.md` § 8.1: rebuild and render, never
-#: splice): capped SCF, single point, forced cold, run-once, and
-#: ``scf_must_converge: False`` so the cap ends CLEAN.  Applied OVER every
-#: declared value (one-point pins and value-axis coordinates alike), and a
-#: value AXIS naming one of these is refused -- its trials would be one
-#: measurement under many labels.  One spelling for both uses (the pins
-#: and that refusal); the per-key whys sit at the application site.
-#: ``max_scf_iter: 3`` (user, 2026-08-21, from measured experience:
-#: iterations 3-5 agree within seconds on a 444-atom junction, and the
-#: bench reads SCALING and DEPENDENCY -- the knee -- not tight rankings):
-#: iteration 1 never forms a timing delta, the iter-2 delta is dropped as
-#: warm-up-adjacent, iteration 3 is the one clean sample (tuning.md § 2.12).
-_MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
-                     "continue_retries": 0, "scf_must_converge": False}
 
 
 def _gpus_per_node(routing) -> "int | None":
@@ -266,8 +230,6 @@ def _cell_shape(g, k, c) -> str:
 # the one name map, `model.AS_RESOURCE`; an item whose name maps to no field
 # is DROPPED by `declared_run_shape`.  The run's own wall and queue
 # (`job-request.md` § 3.2a) are `Resources` fields under their own names.
-from ..job_request import LANE_ASKS as _LANE_ASKS
-
 from .model import AS_RESOURCE
 
 
@@ -289,33 +251,51 @@ def declared_run_shape(request, stage=None):
     by the prep entry, of the job it resolves (`prep.plan_stage`,
     `execution/gpu.md` G5).
     """
-    cond = request.run_condition(stage)
-    from ..template import catalogue, select
     from .model import Resources
-    items = {i.name: i for i in select(catalogue(),
-                                       engine=str(request.engine))}
     known = {f.name for f in __import__("dataclasses").fields(Resources)}
     out = {}
-    for name, val in sorted(cond.items()):
-        if name in _LANE_ASKS:
-            # THE RUN'S OWN SCHEDULER ASK (`job-request.md` § 3.2a).  Not a
-            # catalogue item, so `items` does not have it -- and falling
-            # through the skip below would DROP a value a person typed,
-            # which is the defect class this lane keeps producing.
+    for name, (it, val) in sorted(_card_values(request, stage).items()):
+        if it is None:
+            # THE RUN'S OWN SCHEDULER ASK (`job-request.md` § 3.2a), spelled
+            # by the job request's reader: not a catalogue item, and dropping
+            # it would DROP a value a person typed.
             out[name] = val
             continue
-        it = items.get(name)
-        if it is None:
-            continue                    # membership is validation's refusal
-        if not it.allocation:
-            continue                    # a parameter -- pins, never the launch
+        if not it.allocation or val is None:
+            continue                    # a parameter, or unset on this rung
         field = AS_RESOURCE.get(name, name)
         if field == "gres":
-            out["gres"] = int(val)      # spelled below, as the count it is
+            out["gres"] = f"gpu:{val}"  # the count, as the scheduler spells it
         elif field in known:
             out[field] = val
-    if "gres" in out:
-        out["gres"] = f"gpu:{out['gres']}"
+    return out
+
+
+def _card_values(request, stage=None):
+    """``{name: (item, value)}`` -- the run card a rung runs at (the
+    calculation's with the rung's over it, `JobRequest.run_condition`),
+    each value asked of the setting door in the run card's home and
+    spelled by it (`engines/template.md` § 5.4); a scheduler ask (`time`,
+    `domain`) with no item, as its reader spelled it.  Refused BY NAME, the
+    first refusal as a `PrepError`: the preflight has listed them all
+    before prep asks, so this is the backstop for a direct caller."""
+    from .. import template as _T
+    from ..job_request import LANE_ASKS
+    engine, kind = str(request.engine), str(request.calculation)
+    items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)}
+    out = {}
+    for name, val in request.run_condition(stage).items():
+        if name in LANE_ASKS:
+            out[name] = (None, val)
+            continue
+        it = items.get(name)
+        why = (f", which is not a setting of {engine}" if it is None else
+               _T.accepts(it, val, "run_card", engine=engine, kind=kind,
+                          stage=stage))
+        if why:
+            raise PrepError(f"the run card sets {name} = "
+                            f"{_T.shown(val)}{why}.")
+        out[name] = (it, _T.spell(it, val))
     return out
 
 
@@ -323,17 +303,14 @@ def card_settings(request, stage=None):
     """The run settings a run takes from the job request's cards --
     ``{name: (value, "stage_card" | "calc_card")}``: the condition's
     NON-machine items (`declared_run_shape` takes the machine's), each with
-    the card it came from (`job-request.md` § 4).  With no ``stage``, the
+    the card it came from (`job-request.md` § 4) -- ``None`` where a card
+    leaves an optional one unset (§ 3.2).  With no ``stage``, the
     calculation's card alone -- what a benchmark's trials take (§ 3.4)."""
-    cond = request.run_condition(stage)
-    if not cond:
-        return {}
-    settings, _axes, _value_axes = _declared_execution_pins(
-        request, {k: [v] for k, v in cond.items()})
     entry = request.entry(stage) if stage is not None else None
     own = dict(entry.execution or {}) if entry is not None else {}
     return {k: (v, "stage_card" if k in own else "calc_card")
-            for k, v in (settings or {}).items()}
+            for k, (it, v) in _card_values(request, stage).items()
+            if it is not None and not it.allocation}
 
 
 def run_inputs(request, stage=None):
@@ -640,9 +617,12 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # bench's points for `use_gpu`, else the calculation's card, else the
     # catalogue's default -- what the calculation runs at, never a rung's
     # own card.  One name for both engines (`execution/gpu.md` G1).
+    from .. import template as _T
     card = request.run_condition(None)
     on_gpu = (bool(card["use_gpu"]) if "use_gpu" in card
-              else bool(_catalogue_default("use_gpu", str(task.engine))))
+              else bool(_T.default_of(
+                  _T.one(_T.catalogue(), "use_gpu", engine=str(task.engine)),
+                  str(task.calculation))))
     if "use_gpu" in declared_pins:
         on_gpu = bool(declared_pins["use_gpu"])
 
@@ -657,19 +637,6 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
         gpu_flags = [bool(v) for v in value_axes.pop("use_gpu")]
     families = gpu_flags if gpu_flags is not None else [bool(on_gpu)]
     mixed = gpu_flags is not None
-
-    # What makes a trial a MEASUREMENT (the pins below) must win over what
-    # it measures -- so an axis NAMING a measurement pin would render its
-    # trials identical under different labels: one measurement, twice.
-    _measured = sorted(set(value_axes) & set(_MEASUREMENT_PINS))
-    if _measured:
-        raise PrepError(
-            f"job-request.json declares {', '.join(_measured)} as a value axis, "
-            f"and the benchmark pins "
-            f"{'it' if len(_measured) == 1 else 'them'} on every trial (a "
-            f"trial is a measurement -- generator.md § 4.3a).  Its points "
-            f"would render identical decks under different labels.  Drop "
-            f"the entry.")
 
     # GPUs PER NODE, a count: the probed node's own, else the most a node of
     # the target's GPU queues holds -- a login node probes none, and the
@@ -702,20 +669,10 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
 
     # The axes come from the split above -- the value entries already left
     # as pins or value axes, so what remains is machine-answered by
-    # construction.
+    # construction, and one of the grid's own (`template.GRID_AXES`: the
+    # checker the split asks refuses a row naming any other, as it refuses
+    # a row naming what every trial fixes, `template.TRIAL_PINS`).
     declared = {k: list(v) for k, v in declared_axes.items()}
-    _KNOWN_AXES = ("mpi_np", "omp_threads", "gpu_count")
-    _unresolvable = sorted(k for k in declared if k not in _KNOWN_AXES)
-    if _unresolvable:
-        # `max_memory_mb` (and PySCF's `threads`) are machine-answered
-        # execution items TOO -- the helper hands every allocation item
-        # through as an axis, and the grid resolves exactly these; without
-        # this refusal a declared memory axis would be silently ignored.
-        raise PrepError(
-            f"job-request.json declares bench axes this machine translation does "
-            f"not know: {', '.join(_unresolvable)}.  The axes a sweep can "
-            f"resolve today are {', '.join(_KNOWN_AXES)} "
-            f"(generator.md § 4.3a).")
     sockets = getattr(topo, "sockets", None)
     #: What the target's probed node holds -- what a cell is fit on where
     #: no queue answers for it (`_cells_on_the_queue`: no queues, or
@@ -1009,5 +966,5 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # over any declaration -- one-point declarations and value-axis
     # coordinates alike (the resolver applies pins over a point's
     # parameters, and the overlap refusal above bars an AXIS on a pin).
-    pins = {**declared_pins, **_MEASUREMENT_PINS}
+    pins = {**declared_pins, **_T.TRIAL_PINS}
     return points, pins, translation

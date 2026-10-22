@@ -200,31 +200,25 @@ def _flat(v: Any) -> str:
     return str(v)
 
 
-def config_rows(values: Any, provenance: Mapping[str, str],
-                folded: Any = None) -> "list[tuple[str, Any, str]]":
+def config_rows(values: Any, provenance: Mapping[str, str]
+                ) -> "list[tuple[str, Any, str]]":
     """``[(field, value, source)]`` for one resolved element, decisions first.
 
     ``provenance`` is ``ResolvedConfig.provenance`` -- built by ``resolve`` on
-    every element.  ``folded`` is ``render_config()``: the fields it
-    changes are the ALLOCATION's, which no config file names and which are
-    therefore the ones a reader is most likely to be surprised by.
+    every element, the launch shape by where it was stated; ``values`` the
+    config the deck is handed (``render_config()``), the launch shape folded
+    in.
 
     Sorted so the fields this rung DECIDED come first and the template's
     baseline follows: the first block is normally three to ten lines and is
     the answer to *"why is it 300 here and 350 there"*.
     """
     rank = {"pin": 0, "sweep": 1, "stage": 2, "stage_card": 3,
-            "calc_card": 4, "role": 5, "allocation": 6, "template": 7,
-            "default": 8}
-    rows = []
-    for f in dataclasses.fields(values):
-        src = provenance.get(f.name, "template")
-        value = getattr(values, f.name, None)
-        if folded is not None:
-            after = getattr(folded, f.name, value)
-            if after != value:
-                value, src = after, "allocation"
-        rows.append((f.name, value, src))
+            "calc_card": 4, "flag": 5, "run card": 5, "role": 6,
+            "allocation": 7, "template": 8, "default": 9}
+    rows = [(f.name, getattr(values, f.name, None),
+             provenance.get(f.name, "template"))
+            for f in dataclasses.fields(values)]
     return sorted(rows, key=lambda r: (rank.get(r[2], 9), r[0]))
 
 

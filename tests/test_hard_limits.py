@@ -125,7 +125,8 @@ def test_what_the_save_refuses_it_refuses_once(web_client,
     values and bench points (both save); `template.why_not` without its type
     guard (the quoted component crashes the save: a text compared with a
     number); the door asked about the raw value (``0.0`` for a count
-    saves)."""
+    saves); a run card judged without the setting door (it saves -- the
+    2.27.0 review)."""
     from molbuilder.identity import run_id
     from test_task_setup_tab import _fresh_calc_dir
     d = _fresh_calc_dir(isolated_projects_root)
@@ -161,7 +162,11 @@ def test_what_the_save_refuses_it_refuses_once(web_client,
             ({"overrides": {"kgrid": [4, 4, "0"]}},
              "which is not three whole numbers"),
             ({"overrides": {"kgrid": [0.0, 4, 4]}},
-             "each component must be greater than 0")):
+             "each component must be greater than 0"),
+            # A RUN CARD'S VALUE IS ITS ITEM'S, judged by the setting door
+            # (`engines/template.md` § 5.4) -- never first at prep.
+            ({"execution": {"mpi_np": "8"}},
+             "execution sets mpi_np = '8', which is not a whole number")):
         body = save(**change)
         assert said in body["error"], body["error"]
         errors = [f for f in body["findings"] if f["severity"] == "error"]

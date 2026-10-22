@@ -327,7 +327,7 @@ that streams a folder holding a scratch file and a store and reads the zip
 back through `zipfile` (the scratch and the stores absent, every other file
 whole, the length exact).
 
-## 1w. One door per setting, one answer per launched group *(2026-10-21; PROPOSED — waits for the user's yes; N5b in § 0a's queue)*
+## 1w. One door per setting, one answer per launched group *(2026-10-21; the user's yes, with the recommendations below; the contract written and taken; A built; N5b in § 0a's queue)*
 
 *(the user, 2026-10-21, on the 2.27.0 review: "this sounds to me a problem of
 unification and template inconsistency or bad design. identify the nature of
@@ -380,7 +380,7 @@ site read before it was written here):
 
 And homes with no check at all: a card's launch shape (no type, no range, no
 `why_not`); a card's wall; a bench point's number type and range; a CLI
-flag's positivity; the web's prep-plan door; the page's `0x10` and `1e3` read
+flag's positivity; the web's prep-plan door; the page's `0x10` read
 as numbers.
 
 **The design — what changes, framework first:**
@@ -440,24 +440,106 @@ spelled`, the per-home value tests retired into it.
 `engines/stages.md` § 6.6; `execution/job-system.md` *The task* (the states,
 the next-step table, R-P5, R-L7); `web/task-setup.md` §§ 5, 6.2b, 11;
 `execution/architecture.md` (the door on floor 1). Then the code, A → B → C →
-D, each a release closed by two fresh full-text rounds.
+D, each milestone closed by two fresh full-text rounds and committed, and the
+four pushed together as **one release, 2.28.0** (the user, 2026-10-21: *"fine
+with your recommendation"* -- the contract's text is 2.28.0 throughout).
 
-**Decisions that are the user's:**
-1. this direction, A–D;
-2. B — run settings out of the template (rather than kept as declared,
-   valueless slots policed by a refusal);
-3. the config classes' defaults — derived from the catalogue, or kept and held
-   equal by `test_the_DEFAULT_agrees` as today;
-4. the page judging a value through a server door (one round trip per edit)
-   or from rule data the folder answer serves;
-5. Save's stale-file check that `task-setup.md` § 8 promises and nothing
-   implements — build it, or take the promise out;
-6. the order against N6 (the memory suggestion).
+**Decided by the user, 2026-10-21** (*"go with your recommendation on 1w,
+write the contract first"*):
+1. A–D, as above;
+2. B — run settings leave the template: no slot, so nothing to police;
+3. the config classes keep their defaults, held equal by
+   `test_the_DEFAULT_agrees`; every reader asks the catalogue's
+   (`template.default_of`), and `resolve` lays it for a run setting no card
+   states, so the class copy decides nothing;
+4. the page asks a server door to read and judge what was typed
+   (`POST /api/task-setup/value`) — no second implementation in the browser;
+5. Save's stale-file check is built (`read_as`, `task-setup.md` § 8);
+6. N5b before N6, so the memory suggestion is built on the door.
+
+**The contract, as written** (uncommitted until the user's yes on the text):
+`engines/template.md` § 2 (no run setting declared in a template; *a home that
+must stay empty is removed, never policed*), § 2.1a (one default), § 4.2,
+§ 4.3, § 5.3 (counts and the memory cap above 0), **§ 5.4 (the setting door:
+`accepts`, `spell`/`read_text`, `default_of`, `home_of`, `SAID`, and the homes
+that ask it)**, § 6.4, § 7, § 10, § 10a.2, § 12; `execution/job-request.md`
+§ 2, § 3.2 (values judged by the door; `null` is *unset*, for an `optional`
+item only), § 3.2a (a card's wall spelled at read), § 4, § 5, § 7, § 8
+(migrate by content; a 2.27.x calculation migrated once more);
+`execution/job-system.md` *The task* (`ready.group_answer`, read by every verb
+and surface; Save refuses a launched group's members changed; the next-step
+rows, R-P5, R-L7); `web/task-setup.md` § 2.1 (one per-folder state), § 5,
+§ 5.2, § 6.1 (the stated queue kept), § 6.2b, § 8 (`read_as`), § 9a, § 11,
+§ 11.1; `engines/stages.md` § 6.6; `execution/job-contracts.md`'s `task.json`
+row; `execution/project-layout.md`'s ladder; `architecture.md`'s floor 1;
+`web/web-api.md` (Save, the value door, prep's launched words);
+`execution/architecture.md`, `generator.md`, `engines/transport.md` and the
+README where they still said *declared, valueless*.
+
+**A, as built (2026-10-21).** The door is `template.py`'s § 5.4 section —
+`accepts`, `why_not_in`, `home_of`, `spell`, `shown`, `read_text`,
+`default_of`, `SAID`. Asked by: the description's preflight (an override's
+value, a `varies` column, a run card's value, a benchmark row —
+`validation/task.py`, whose annotation-type check, bench-shape checker and
+per-home value checks are deleted), prep's card read
+(`prep_inputs._card_values`: a card's `null` no longer reaches `int()`),
+`resolve` (an override's home, a card's value, and the one default laid for
+every run setting no card states), the job request's reader (a card's wall
+spelled, a `null` wall or queue refused), `jobset prep`'s flags, the
+parameter forms (`_shared.config_from_params`; `coerce_to_field_type`
+deleted) and the page's `POST /api/task-setup/value`. The run script's own
+slack and retry fallbacks and the deck writer's `"ScaLAPACK"` are gone — a
+job without them is refused. One vocabulary for who set a value: the deck,
+the pipeline log (a flag's rank count no longer said *allocation*), the
+placement line, the transport rung's log. The catalogue: no `value` on a run
+setting (checked when it is read); `above` 0 on the counts and the memory
+cap; `diag_algorithm`'s `engine_default` corrected to Divide-and-Conquer,
+read in `diag_option.F90:213, 224, 242`. Tests: `test_the_setting_door.py`
+(the door's tables), rows in `test_hard_limits.py`'s save table and
+`data/launch_values.toml`; twelve mutations each failed their rows. The
+fast batch: seven failures, each judged — four rendered a run script from a
+job with no slack (the input now states it), one pinned our sentence naming
+a vibration's rungs on a transport calculation, one the log's *allocation*,
+one the route table missing the new door.
+
+**A's first review round** (two fresh readers, 2026-10-21), triaged by the
+road: fixed — a `null` benchmark point crashed prep (`int(None)`), and a
+benchmark row naming what every trial fixes (`continue_retries`) or a launch
+item the grid does not sweep (`max_memory_mb`) was saved and then refused or
+silently overruled at prep (the bench's two facts now the door's,
+`template.TRIAL_PINS` and `GRID_AXES`, `home_of` derived from `why_not_in`'s
+one rule); the deck and the pipeline log composed "who set it" apart and
+disagreed for a setting with no default (`ResolvedConfig.said`, composed
+once); a stated 0 read as unstated (`placement`); the stage table's columns,
+the Transport tab's override refusals and a template's type check each
+decided for themselves (now the door's). Dropped as polish of inputs
+molbuilder's road does not produce (the user, 2026-10-21: *"overengineering
+need to be justified"*): `1e400`, `4x4x1x`, an endpoint body naming an
+unknown engine, Python type names in the job request reader's older
+messages. **For D**: the page's own readers (`cell-readers.js`,
+`collectForm`) and its *Recommended* words still to go; `/api/task-setup/
+sweepable` still offers every run setting to the bench card (it should
+offer `home_of`'s); the page reads no `SAID`. **Outside § 1w**: GPU on a
+non-ELPA solver is refused only when the deck is written, never at Save.
+
+**A's second round** (one fresh reader, told the triage up front), fixed:
+the pipeline log said the launch shape came from *the template* -- `resolve`
+now says it by where it was stated (`launch_from`, the fold's sources), and
+prep's own patch-up of the log is deleted; and deletions --
+`effective_config`'s own type map and annotation fallback (it spells through
+the door), the template reader's own type wording (one `_type_refusal`), the
+"write [...]" hints for hand-typed files and the three tests pinning them,
+the Transport tab's pre-check that the preflight repeats, `_cli`'s second
+flag table, `resolve`'s second ask of card values prep's read already
+judged, the run script's literal list of what it needs (the catalogue's
+non-optional wrapper items), a test built on a job no prep makes. Dropped:
+`--gpus 0`'s wording (refused by its reader already), the two `time` readers
+(one spelling already), the bench's GPU default (the door's already).
 
 **Also found, outside A–D** (each to be checked before it is fixed): the
-catalogue's `engine_default` for `diag_algorithm` is wrong — SIESTA 5.4.2 with
+catalogue's `engine_default` for `diag_algorithm` was wrong — SIESTA 5.4.2 with
 nothing written takes Divide-and-Conquer (`diag_option.F90:213, 242`), ELPA
-only when asked, whatever the build carries; documents that contradict one
+only when asked, whatever the build carries (fixed in A); documents that contradict one
 another (the gather and versions, the leads and the seed's density, the
 run-setting ladder, `web-api.md`'s launched prep). The two gaps the same
 read found in the notification secrets — a failed Test quoting the address,
@@ -526,7 +608,7 @@ below says.
 | **N3d** | **shipped 2.26.1** | **The e2e batch's older failures, owned one by one** — found by 2.26.0's full `e2e` batch (500 tests, 2026-10-20) and failing the same on the pushed 2.25.2, so older than the sequence work: `test_bench_summary_inspector_e2e` (4: the page's polling), `test_inspector_registry_e2e` (7: the dropdown's headings, the error card, a viewer's teardown), `test_results_file_picker_e2e` (a rescan's parsing state), `test_siesta_run_in_the_viewer_e2e` (opened again and again), `test_vibration_e2e` (the monitor's status line no longer says *SCF iteration*, it says *SCF rows*), and a notebook test that differs from run to run. Each judged against its contract -- the code wrong, or the test asserting a rule no longer stated -- never called flaky; a timing one read wait by wait against the page code. **What they were** (the changelog's 2.26.1 row): three errors of ours -- a PySCF run's status line without its SCF iteration (2.21.0), a plain `.xyz` opened as a trajectory on the Results tab (2.16.3), a benchmark's folder opening nothing -- and tests mounting viewers without the server's answer they match on since 2.13.3; the notebook's one miss did not come back on its own, and its wait now says why when it fails | 2.26.0's batch; the user, 2026-10-20: *"push when all green"* -- these are not green, said so at the push |
 | **N4** | **2.26.2**, L1T-D1 **2.26.3**, L1T-D2 **2.26.4** | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's, and their two choices of how (the user, 2026-10-21) |
 | **N5** | **shipped 2.27.0** | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
-| **N5b** | **proposed** — waits for the user's yes | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
+| **N5b** | **A built, in review** (2026-10-21) — the contract taken as written (the user: *"continue"*); B, C, D next | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
 | **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*

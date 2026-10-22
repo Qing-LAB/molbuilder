@@ -221,7 +221,7 @@ families, and they differ in *who is allowed to bound them*:
 | family | example | candidate values declared by | bounded by | why that source |
 |---|---|---|---|---|
 | **parameter** | `block_size` · `mesh_cutoff` · `pao_energy_shift` | the template item's own `range` · `choices` · `type` | **the catalogue** | it is a parameter, and § 7 of `template.md` makes every parameter of the calculation an item |
-| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, and marked as one the machine answers (`template.md` § 6.4) | **the allocation** — see § 4.1 | the **template** must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1). The **job request** may, in its own block — `execution` (`job-request.md` § 3.2), never `bench`, whose points are always things to try |
+| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **a catalogue item no template carries**, marked as one the machine answers (`template.md` § 2, § 6.4) | **the allocation** — see § 4.1 | the **template** must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1). The **job request** may, in its own block — `execution` (`job-request.md` § 3.2), never `bench`, whose points are always things to try |
 
 **Both bounds already exist as data.** The template carries `range` and `choices`
 for every parameter; the allocation is stated for this run and is itself bounded
@@ -422,8 +422,7 @@ from having been typed. It is a report `jobset summarize` prints, read by a
 person, by no code.
 
 **Where `execution`'s machine values land.** Not in the template —
-`template.md` § 7 refuses a hand-written `mpi_np`, and
-the item stays valueless. They become **the allocation for this prep**, by a
+no template carries `mpi_np`, and `template.md` § 7 refuses one that does. They become **the allocation for this prep**, by a
 direct map from the catalogue's name to the `Resources` field: `omp_threads`
 → `cpus_per_task`, `gpu_count` → `--gres=gpu:<count>`, the rest one to one.
 
@@ -1057,17 +1056,17 @@ bounds the **allocation** (asked: ranks, cores, GPUs, time, domain), and both
 enter resolution at **prep, on the machine that will run it** — which is the
 whole reason describe and prep are two verbs
 ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.3.1).
-There is no catalogue default for `mpi_np` — its item is declared **valueless**
-and marked as one the machine answers ([`template.md`](?doc=engines/template.md)
-§ 6.4) — and no other default either: the run states it, on its run card or
+There is no catalogue default for `mpi_np` — a catalogue item no template
+carries, marked as one the machine answers ([`template.md`](?doc=engines/template.md)
+§ 2, § 6.4) — and no other default either: the run states it, on its run card or
 with `prep --np`, or prep refuses
 ([`architecture.md § 5.2`](?doc=execution/architecture.md)). That is why it may
 not appear in a floor-2 template at all.
 
 **"No default" means the run states it.** `execution` is somebody saying, and
-a flag beats it (§ 4.3a). The item stays valueless in the template either way —
-the decision lives in the job request, which is a different file with a
-different job. The target's record **checks** the statement and never supplies
+a flag beats it (§ 4.3a). No template carries the item either way — the
+decision lives in the job request, which is a different file with a different
+job. The target's record **checks** the statement and never supplies
 one: a rank count read off a machine's width is a number nobody stated for this
 run.
 

@@ -274,34 +274,6 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
 # --------------------------------------------------------------------- #
 
 
-def test_a_comma_string_coerces_for_every_sequence_shape():
-    """Four sequence shapes reach this function, and each parses the text a
-    person types: ``Sequence[str]`` (``species_order``), ``Sequence[int]``,
-    ``Sequence[float]`` and the TUPLE (``kgrid``).
-
-    Three spellings are accepted because a person writes a k-grid all three
-    ways and the field means the same thing each time.
-    """
-    import dataclasses
-    import typing
-
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.web.blueprints._shared import coerce_to_field_type
-
-    hints = typing.get_type_hints(SiestaConfig)
-    fields = {f.name: f for f in dataclasses.fields(SiestaConfig)}
-
-    def coerce(name, value):
-        return coerce_to_field_type(fields[name], value, hints)
-
-    for spelling in ("4,4,1", "4x4x1", "4 4 1"):
-        assert coerce("kgrid", spelling) == (4, 4, 1), spelling
-    assert coerce("kgrid", [4, 4, 1]) == (4, 4, 1)
-    assert coerce("kgrid_displacement", "0.5,0.5,0.0") == (0.5, 0.5, 0.0)
-    assert coerce("species_order", "Au,C,H,S") == ["Au", "C", "H", "S"]
-    assert coerce("mesh_cutoff", "300") == 300.0
-
-
 def test_a_blank_is_not_chosen_and_a_value_that_will_not_read_is_refused_by_name(
         web_client, peptide_xyz):
     """`web/form-schema.md` § 1.1 (plan § 5w K7), at the one door every form
@@ -321,31 +293,11 @@ def test_a_blank_is_not_chosen_and_a_value_that_will_not_read_is_refused_by_name
     r = preflight({"mesh_cutoff": None, "max_scf_iter": "",
                    "basis_size": None, "kgrid": None})
     assert r.status_code == 200, r.get_json()
-    for name, value in (("kgrid", [4.5, 4, 1]), ("max_scf_iter", "2.5"),
-                        ("mesh_cutoff", "abc")):
+    for name, value in (("kgrid", [4.5, 4, 1]), ("kgrid", "4,4"),
+                        ("max_scf_iter", "2.5"), ("mesh_cutoff", "abc")):
         r = preflight({name: value})
         assert r.status_code == 400, (name, r.get_json())
         assert name in r.get_json()["error"], r.get_json()
-
-
-def test_a_kgrid_that_is_not_three_numbers_is_still_refused(web_client,
-                                                            peptide_xyz):
-    """Parsing the text must not swallow a value that is not one.  The
-    length is deliberately NOT checked in the coercion -- ``_validate_kgrid``
-    already says it better -- so this pins that the refusal still arrives."""
-    r = web_client.post("/api/build/preflight", json={
-        "structure": _env(peptide_xyz),
-        "engine": "siesta", "calculation": "optimization",
-        "params": {"kgrid": "4,4"},
-    })
-    body = r.get_json()
-    # The config PARSES, so the envelope is the
-    # ordinary one and the complaint arrives where a wrong value belongs:
-    # an error Issue naming the field, rather than a 400 naming a cast.
-    errs = [i for i in body["issues"]
-            if i["severity"] == "error" and i["where"] == "config.kgrid"]
-    assert errs, body["issues"]
-    assert "3-tuple" in errs[0]["message"], errs[0]
 
 
 # --------------------------------------------------------------------- #

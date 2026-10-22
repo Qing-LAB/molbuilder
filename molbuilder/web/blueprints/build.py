@@ -53,7 +53,6 @@ from __future__ import annotations
 
 import dataclasses
 
-import typing
 import json
 import pathlib
 from datetime import datetime
@@ -933,9 +932,6 @@ def api_build_preflight():
 # --------------------------------------------------------------------- #
 
 
-_PYSCF_HINTS  = typing.get_type_hints(PySCFConfig)
-
-
 def _siesta_config_from_params(params: Dict[str, Any],
                                calculation: str) -> SiestaConfig:
     """A SiestaConfig from a form's payload for a ``calculation`` of that
@@ -952,8 +948,7 @@ def _pyscf_config_from_params(params: Dict[str, Any],
     is not chosen -- a blank solvent is the gas phase, the field's own
     default.  Dispersion's ``"none"`` is its value for no correction,
     kept as itself (the field's note)."""
-    return _config_from_params(PySCFConfig, params, _PYSCF_HINTS,
-                               calculation)
+    return _config_from_params(PySCFConfig, params, calculation)
 
 
 # --------------------------------------------------------------------- #
@@ -1632,6 +1627,64 @@ def api_task_setup_save():
     })
 
 
+@bp.route("/api/task-setup/value", methods=["POST"])
+def api_task_setup_value():
+    """THE SETTING DOOR, FOR A PAGE (`engines/template.md` § 5.4;
+    `web/web-api.md`): what was typed into a cell or a card row, read as its
+    item's declared type (`template.read_text`) and judged in its home
+    (`template.accepts`) -- ``{ok, value, refusal}``, the value in the
+    item's spelling or the one refusal, said as a sentence.  The page keeps
+    no reader and no check of its own.
+
+    Body ``{engine, calculation, item, text, home, stage?}``: ``home`` one
+    of `template.HOMES`; ``text`` what was typed -- ``""`` a blank, answered
+    ``blank: true`` (nothing typed: the caller removes the row's value),
+    ``null`` the row's *unset*, judged as one.  A run card's ``time`` and
+    ``domain`` are read by the job request's reader, as the allocation's
+    are (`job_request.read_lane_ask`)."""
+    from molbuilder import template as _T
+    from molbuilder.job_request import LANE_ASKS, read_lane_ask
+    body = request.get_json(silent=True) or {}
+    engine = str(body.get("engine") or "").lower()
+    kind = str(body.get("calculation") or "")
+    name = str(body.get("item") or "")
+    home = str(body.get("home") or "")
+    if not (engine and kind and name and home):
+        return _unstated(engine=engine, calculation=kind, item=name,
+                         home=home)
+    if home not in _T.HOMES:
+        return jsonify({"ok": False, "error": (
+            f"home {home!r} is not one of {', '.join(_T.HOMES)}")}), 400
+    stage = body.get("stage") or None
+    text = body.get("text")
+    if isinstance(text, str) and not text.strip():
+        return jsonify({"ok": True, "value": None, "blank": True,
+                        "refusal": None})
+    if name in LANE_ASKS and home == "run_card":
+        # THE RUN'S OWN TWO ASKS, read by the job request's reader as the
+        # allocation's are (`job-request.md` § 3.2a).
+        try:
+            return jsonify({"ok": True, "value": read_lane_ask(name, text),
+                            "refusal": None})
+        except ValueError as exc:
+            return jsonify({"ok": True, "value": None,
+                            "refusal": f"{exc}."})
+    try:
+        item = _T.one(_T.catalogue(), name, engine=engine)
+    except (KeyError, ValueError):
+        item = None
+    if item is None:
+        return jsonify({"ok": False, "error": (
+            f"{name!r} is not a setting of {engine}")}), 400
+    value, why = _T.read_text(item, text)
+    why = why or _T.accepts(item, value, home, engine=engine, kind=kind,
+                            stage=stage)
+    if why:
+        return jsonify({"ok": True, "value": None,
+                        "refusal": f"{name} = {_T.shown(text)}{why}."})
+    return jsonify({"ok": True, "value": value, "refusal": None})
+
+
 @bp.route("/api/task-setup/sweepable", methods=["GET"])
 def api_task_setup_sweepable():
     """The parameters a benchmark may sweep, for the Task-setup picker.
@@ -1669,7 +1722,7 @@ def api_task_setup_sweepable():
         return _unstated(calculation=kind)
     out = []
     for it in _T.select(parsed, engine=engine, calculation=kind):
-        if "execution" not in (it.category or ()):
+        if not _T.is_run_setting(it):
             continue
         out.append({
             "name":            it.name,
@@ -1687,10 +1740,9 @@ def api_task_setup_sweepable():
             # by asking the catalogue.
             "type":            it.type or "",
             "choices":         list(it.choices) if it.choices else None,
-            # THE KIND'S OWN DEFAULT (`template.recommended_for`), never the
-            # general one -- what the hover calls *Recommended*.
-            "default":         (_T.with_recommended(it, kind).default
-                                if kind else it.default),
+            # THE ONE DEFAULT (`template.default_of`): the kind's own, never
+            # the general one -- what the hover calls *Recommended*.
+            "default":         _T.default_of(it, kind),
             # The unit rides too: the machine card's default/help text
             # reads m.unit, and max_memory_mb rendered unitless without
             # it (allocation items never pass through the columns door,
@@ -1714,33 +1766,14 @@ def _column_items(engine: str, kind: str):
     hold may become a column. The ones it is not allowed to hold may not."*
     """
     from molbuilder import template as _T
-    run_settings = _T.run_settings(engine)
     for it in _T.select(_T.catalogue(), engine=engine):
-        # THE membership rule, asked of the item rather than restated here.
-        # A RUN SETTING is the rung's run card's, never a column (plan § 5w
-        # K5; `engines/stages.md` § 6.2): the machine's answers, and the ones
-        # a person gives -- `use_gpu`, `restart`, the solver.
-        if it.name in run_settings:
-            continue
-        # A column belongs to this folder's KIND (template.md § 6.3's
-        # sibling rule); the tab passes its description's kind (P2).
-        if it.calculations and kind not in it.calculations:
-            continue
-        # ...and a ROLE item is not a column at all for this kind: the rung
-        # decides it, so a cell offering it would present a choice with one
-        # correct answer, and a person who changed it would not be tuning
-        # the run but stopping it being the run it is (template.md § 6.4's
-        # third answerer, 2026-09-16).
-        if kind in it.role:
-            continue
-        # ...nor is a value that binds EVERY rung of this kind (template.md
-        # § 6.4's `shared`: "the value binds every rung and no stage
-        # overrides it").  It is edited in the template, on the tab that
-        # owns it; a column here would be a per-rung override `prep`
-        # refuses by name.
-        if kind in it.shared:
-            continue
-        yield it
+        # THE membership rule, asked of the setting door rather than
+        # restated here (`engines/template.md` § 5.4): a column is a home a
+        # stage's override may hold -- never a run setting (the run card's),
+        # an item this kind does not carry, one the rung fixes, or one every
+        # stage shares.
+        if _T.why_not_in(it, "override", engine=engine, kind=kind) is None:
+            yield it
 
 
 @bp.route("/api/task-setup/columns", methods=["GET"])

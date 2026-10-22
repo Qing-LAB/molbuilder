@@ -586,8 +586,11 @@ def _execution_from_obj(obj: Mapping[str, Any], *,
 
     The arity is what tells it from `bench`: several values per axis is a
     plan to measure, one value per parameter is what to use.  So a LIST here
-    is refused by name, the block it belongs in said out loud.  MEMBERSHIP
-    is the preflight's, as for `bench`; the shape is checked here."""
+    is refused by name, the block it belongs in said out loud.  What a
+    setting's value may be is the setting door's, asked by the preflight
+    (`engines/template.md` § 5.4); the shape is checked here -- and the
+    run's own scheduler asks are read as the allocation's are (§ 3.2a): a
+    wall in the record's spelling, a queue by its name."""
     raw = obj.get("execution")
     if raw is None:
         return {}
@@ -601,8 +604,36 @@ def _execution_from_obj(obj: Mapping[str, Any], *,
                     f"(execution/job-request.md 3.2)", where=at)
         if isinstance(val, Mapping):
             _refuse(f"{key!r} takes a scalar, got an object", where=at)
+        if key in LANE_ASKS:
+            try:
+                val = read_lane_ask(key, val)
+            except ValueError as exc:
+                _refuse(str(exc), where=at)
         out[key] = val
     return out
+
+
+def read_lane_ask(key: str, val: Any) -> str:
+    """A run card's own scheduler ask, read as the allocation's are
+    (§ 3.2a): ``time`` a wall in the record's spelling (``"4h"`` ->
+    ``"0-04:00:00"``), ``domain`` a queue's name -- or ``ValueError``
+    saying what it is.  The one reader of the two rows, a file's and a
+    page's (`/api/task-setup/value`)."""
+    from .template import shown
+    if not isinstance(val, str) or not val.strip():
+        raise ValueError(
+            ("'time' is this run's wall, written as text -- \"4h\", "
+             "\"7-00:00:00\"; left out, the allocation's is used"
+             if key == "time" else
+             "'domain' is a queue's name, written as text; left out, the "
+             "allocation's is used")
+            + f" (got {shown(val)}; execution/job-request.md 3.2a)")
+    if key == "time":
+        try:
+            return canonical_time(val)
+        except ValueError as exc:
+            raise ValueError(f"time: {exc}") from None
+    return val
 
 
 def path_of(base) -> Path:
@@ -662,4 +693,4 @@ def write(base, request: JobRequest):
 __all__ = ["SCHEMA", "FILENAME", "LANE_ASKS", "LANE_ASK_ROWS",
            "Allocation", "Notify", "StageRequest", "JobRequest",
            "bench_from_obj", "from_dict", "from_text", "fresh", "of",
-           "path_of", "write"]
+           "path_of", "read_lane_ask", "write"]

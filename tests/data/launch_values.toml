@@ -64,6 +64,16 @@ run_unset = ["threads"]
 refused = 'the run card on Task setup ("execution": {"threads": N} in job-request.json), or --cpus-per-task N'
 
 [[case]]
+name = "a flag's count is a count: --np 0 is refused as it is typed, naming the flag and the item's reason"
+prep = ["--np", "0"]
+refused = "--np 0: it must be greater than 0 -- a count of MPI processes: 0 runs nothing"
+
+[[case]]
+name = "a run card's value is its item's type: a rank count written as text is refused at prep, in the item's words"
+run = { mpi_np = "8" }
+refused = "execution sets mpi_np = '8', which is not a whole number"
+
+[[case]]
 name = "a run on a scheduler names its queue -- shown the record's queues with its fit on each"
 allocation_unset = ["domain"]
 queues = [
@@ -252,7 +262,7 @@ deck = ["MAX_MEMORY_MB = None", "max_memory = MAX_MEMORY_MB,", "max_memory_mb=MA
 
 [[case]]
 name = "a run's placement is recorded at prep, each value with its source, and said"
-said = ["placed on cpu (cpu/public)", "queue, wall, memory from the allocation", "ranks, cores per rank from the run card",
+said = ["placed on cpu (cpu/public)", "queue, wall, memory from the job request's allocation", "ranks, cores per rank from the run card",
         "header: -J H2_01_coarse  -N 1  -n 2  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
 
 [[case]]

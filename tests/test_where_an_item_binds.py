@@ -165,11 +165,10 @@ def test_a_run_card_value_its_rung_does_not_read_is_refused_where_it_is_saved(
     r = _save(web_client, d, _transport(on="transmission",
                                         rung_execution={"gpu_count": 1}))
     assert r.status_code == 400, r.get_json()
-    assert ("stage 'transmission' states gpu_count = 1 on its run card, "
-            "which only the seed / electrode_L / electrode_R / device / "
-            "relaxation / force_constants rungs of a transport calculation "
-            "read, not 'transmission'") in r.get_json()["error"], \
-        r.get_json()["error"]
+    assert ("stage 'transmission' execution sets gpu_count = 1, which only "
+            "the seed / electrode_L / electrode_R / device rungs of a "
+            "transport calculation read, not 'transmission'") \
+        in r.get_json()["error"], r.get_json()["error"]
     assert ("not 'transmission' -- remove it from that run card -- on Task "
             "setup, the × beside it") in r.get_json()["error"], \
         r.get_json()["error"]

@@ -108,9 +108,11 @@ value at all for a cited row the person emptied, which `prep` fills with the
 documented default ([`engines/transport.md`](?doc=engines/transport.md)
 § 3.8.3). **A value that will not read as its type is
 refused, naming its field** — client-side by `collectForm`, whose caption then
-says why beside the field, and by the server's door for any other caller; a
-fractional count is one, never rounded, and so is a triple holding only some
-of its components.
+says why beside the field, and by the server's door for any other caller —
+the setting door's reader (`template.read_text`,
+[`engines/template.md`](?doc=engines/template.md) § 5.4); a fractional count
+is one, never rounded, and so is a triple holding only some of its
+components.
 
 An item's hard limit (`above`) is **not** sent: the form computes no verdict of
 its own. The settings gate's refusal is its live check, and lands beside the
@@ -223,7 +225,7 @@ carried copies of them until 2026-10-18; it carries none now.*
 | **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s | the control's badge; the settings gate's messages |
 | **`tier`** | `basic` / `advanced` — a judgement about the parameter; the form dims an advanced field (§ 1.2) | `form-schema.js` |
 | **`range`** | `(min, max)`, inclusive — a recommendation, warned and never refused ([`engines/template.md`](?doc=engines/template.md) § 5.3) | the control's bounds; the settings gate; the description check |
-| **`choices`** | the legal values of an enum → a dropdown | the dropdown; the settings gate; the description check; `_shared.coerce_to_field_type` |
+| **`choices`** | the legal values of an enum → a dropdown | the dropdown; the settings gate; the description check; the setting door's reader (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) |
 | **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`). **Display only** — it never converts anything | beside the control; the settings gate's messages |
 | **`pattern`** | a regex the value must match | the control's `pattern` |
 | **`null_label`** | what the *unset* option is called on an optional field — `"(default)"`, `"(auto)"` | the tri-select's blank |

@@ -701,8 +701,8 @@ flowchart TB
 
 **Every parameter of the calculation already has a value** — that is the
 premise, and it is the catalogue's doing. The exceptions are the run settings,
-which the template declares **valueless** (`template.md` § 6.4): how a run
-runs is the job request's, never the description's ([`job-request.md`](?doc=execution/job-request.md) § 2). So
+which no template carries (`template.md` § 2, § 6.4): how a run runs is the
+job request's, never the description's ([`job-request.md`](?doc=execution/job-request.md) § 2). So
 there are exactly two tracks:
 
 ```mermaid
@@ -717,9 +717,9 @@ flowchart TB
         A1 --> A2 --> A3
     end
 
-    subgraph MACH["track B — a RUN SETTING, valueless in the template (mpi_np · omp_threads · gpu_count · max_memory_mb, a cap whose absence is no cap · diag_algorithm · use_gpu · block_size …)"]
+    subgraph MACH["track B — a RUN SETTING, never in the template (mpi_np · omp_threads · gpu_count · max_memory_mb, a cap whose absence is no cap · diag_algorithm · use_gpu · block_size …)"]
         direction TB
-        B1["<b>1 · describe</b><br/>the item is written with NO value<br/><i>read_template refuses one</i>"]
+        B1["<b>1 · describe</b><br/>the template holds NO such item<br/><i>read_template refuses one</i>"]
         B2["<b>2 · job-request.json</b><br/><code>bench</code> = points to MEASURE (never an answer)<br/><code>execution</code> = the ONE value to USE"]
         B3["<b>3 · at prep</b> — <code>prep_run_inputs</code><br/><code>execution</code>, then a <code>prep</code> flag.<br/><i>no third source: a benchmark does not steer a run</i>"]
         B4["<b>3b · nothing stated?</b><br/>the machine's answers: <b>prep REFUSES</b>, naming the run card<br/>and the flag — no width, no default, no rank per GPU<br/>a speed setting: the item's default, recorded <i>not chosen</i>"]

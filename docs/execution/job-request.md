@@ -73,13 +73,17 @@ kinds:
 | **the launch shape and the memory cap** — the machine's answers (`allocation = true`) | `mpi_np`, `omp_threads`, PySCF's `threads`, `gpu_count`, `max_memory_mb` | the ranks and the cores per rank are refused at prep, and a GPU run's count; a memory cap left out is no cap ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 | **the speed settings** | `use_gpu`, `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method`, `ts_elecs_out_of_core`, `wall_slack`, `continue_retries` | the catalogue's default (§ 4) |
 
-**A run setting lives in the job request and nowhere else.** The template
-declares every one, valueless, as it already declared the machine's answers,
-and the template file's reader (`template_file.of`) refuses a value written on
-one, naming `molbuilder jobset migrate` (§ 8); a
-stage's `overrides` never names one ([`stages.md`](?doc=engines/stages.md)
-§ 6.2). **The catalogue's `value` on a run setting is its default**, and the
-one: every run setting is in the catalogue's `staging` group —
+**A run setting lives in the job request and nowhere else.** The catalogue
+declares it; no template carries it, valueless or not — a template holding one
+is refused by its reader, naming `molbuilder jobset migrate` (§ 8), which takes
+it out, a value it holds onto the calculation's run card
+([`template.md`](?doc=engines/template.md) § 2: *a home that must stay empty is
+removed, never policed*); a stage's `overrides` never names one
+([`stages.md`](?doc=engines/stages.md) § 6.2). **Its default is the
+catalogue's `default`**, a kind's `recommended` first — the one answer
+`template.default_of` gives every reader ([`template.md`](?doc=engines/template.md)
+§ 5.4); a run setting states no `value` in the catalogue, since no template
+starts from one. Every run setting is in the catalogue's `staging` group —
 `diag_algorithm`, `block_size`, `parallel_over_k` and `ts_solution_method`
 come there from `budget`, `ts_elecs_out_of_core` from `stage` — which the
 parameter tabs do not offer and Task setup's run card shows
@@ -112,10 +116,10 @@ run keeps its first SCF solution, its log saying `stability: NOT CHECKED`
 ([`pyscf.md`](?doc=engines/pyscf.md) § 7.3); and its solvent model has not
 been compared with PySCF's here. Choosing the GPU knowing that is the
 person's: the run card's GPU switch says it, beside the switch, for a PySCF
-calculation ([`task-setup.md`](?doc=web/task-setup.md) § 6.2), and the
-preflight says it among prep's notes — a `warning`, never an `error` — for a
-run on the GPU whose reference is unrestricted or that carries a solvent
-model. `use_gpu` stays a run setting, as on SIESTA.
+calculation ([`task-setup.md`](?doc=web/task-setup.md) § 6.2), and prep says it
+among each deck's own findings — the PySCF settings gate's, a `warn`, never an
+`error` — for a run on the GPU whose reference is unrestricted or that carries
+a solvent model. `use_gpu` stays a run setting, as on SIESTA.
 
 **A setting that moves an iterative solve's path is the description's**: the
 mixing, its history, the initial guess, a step's size. Where a system has
@@ -318,6 +322,23 @@ device ask, the wrapper and the
 Task setup tab's cards and hints alike — and a transport rung takes its run
 card as every other rung does.
 
+**Every value on a card is its item's to judge and spell** *(2.28.0, plan
+§ 1w)*: a catalogue item's by the setting door — its type, its choices, its
+limits, and whether a run card may hold it at all (`template.accepts`,
+`template.spell`, [`template.md`](?doc=engines/template.md) § 5.4) — and the
+run's own `time` and `domain` by this reader, as the allocation's are (§ 3.1,
+§ 3.2a). So `"mpi_np": "8"`, `"use_gpu": "yes"` and `"diag_algorithm": "elpa"`
+are refused where the job request is read — at Task setup's Save and at prep's
+preflight — in the item's words, never later as something else.
+
+**`null` on a card is *unset*.** For an item whose unset is an answer — the
+catalogue's `optional`: the launch shape, `block_size`, `parallel_over_k` —
+a rung's `null` leaves it unset on that rung, over the calculation's card: a
+calculation-wide `"use_gpu": true, "gpu_count": 2` and a rung's
+`"use_gpu": false, "gpu_count": null` run that rung on no GPU. For any other
+item it is refused, naming the key: a speed setting with a default is stated
+or left out.
+
 **Absent is a state, as everywhere here.** A run whose launch shape is stated
 neither here nor by a `prep` flag is refused, and the refusal names both
 places ([`architecture.md § 5.2`](?doc=execution/architecture.md)).  **A
@@ -375,6 +396,13 @@ RUN's.** So the scheduler ladder gains one rung, for these two names only:
 > `allocation` → **`execution`** → a `prep` flag — and stated nowhere,
 > refused at prep on a target with a scheduler; a submitted job's wall may be
 > restated at launch (`launch --time`)
+
+**Spelled as the allocation's are.** A card's `time` is read through the same
+door as `allocation.time` (`scheduler/quantities.canonical_time`) and held in
+SLURM's spelling — `"4h"` is read, and written back, as `"0-04:00:00"` — and
+one that cannot be read is refused by this reader, naming the card. A card's
+`domain` is a queue's name, judged at prep against the target's record, as the
+allocation's is (§ 3.1).
 
 **`mem` is deliberately NOT among them.** The line is *does this differ
 between the two lanes* — and memory does not: a trial and a run compute the
@@ -472,9 +500,9 @@ destroy the plan to measure.
 > asks are what this file is for.
 >
 > `template.md` § 7 is absolute: the **template** may not
-> carry a machine value, `read_template` refuses a hand-edited
-> `mpi_np`, and the item stays valueless. That rule is about a different
-> file with a different job.
+> carry a machine value, and no template carries `mpi_np` at all —
+> `read_template` refuses one. That rule is about a different file with a
+> different job.
 
 **Where the answer goes instead.** `bench` runs on the target and writes
 `bench-result.json`, whose `choice` carries the measured value alongside the
@@ -498,6 +526,13 @@ already declares sweepable — the `execution` category, which
 [`template.md` § 6.2](?doc=engines/template.md) defines as *"knobs that change
 speed and not the answer"*. Sweeping something outside it means each point
 silently measures a different calculation, and the comparison is meaningless.
+**And a run setting the trials cannot vary is no row**: one every trial fixes
+— `continue_retries`, a trial running once (the pins below) — whose points
+would be one measurement under many labels, and of the machine's answers any
+but the grid's axes — ranks, cores per rank, devices — a memory cap being no
+axis the grid sweeps. Each is refused where the job request is written, by the
+setting door ([`template.md`](?doc=engines/template.md) § 5.4, `home_of`),
+never first at `prep bench`; and a point is a value to try, never `null`.
 
 **The bench lane speaks SIESTA today, and `prep bench` says so by name.** A
 trial is a MEASUREMENT, and what makes it one is the pin set applied over
@@ -577,17 +612,21 @@ job request.
 ## 4. A speed setting nobody stated takes the catalogue's default *(decided 2026-10-21)*
 
 **For each speed setting a rung reads, a run takes the rung's card, else the
-calculation's, else the catalogue's default** — and for an item the catalogue
-gives no default (`block_size`, `parallel_over_k`), what its not-set line
-says: no keyword written, the engine's own, or worked out (`parallel_over_k`,
+calculation's, else the catalogue's default** — `template.default_of`, the one
+default every reader asks ([`template.md`](?doc=engines/template.md) § 5.4),
+which `resolve` lays over whatever the engine's config class held — and for an
+item the catalogue gives no default (`block_size`, `parallel_over_k`), what its
+not-set line says: no keyword written, the engine's own, or worked out (`parallel_over_k`,
 from the k-point grid and the solver; [`template.md`](?doc=engines/template.md) § 6.6,
 obligation 4). Each is written into the deck, the run script or the header as
 any value is.
 
-**Where each value came from is recorded in words of its own** — *the stage's
-run card*, *the calculation's run card*, *the catalogue's default · not
-chosen* — beside the description's (*this stage's override*, *the template ·
-…*) and a benchmark's (*a pin*, *a sweep point*): in the deck's PROVENANCE
+**Where each value came from is recorded in one vocabulary** —
+`template.SAID` ([`template.md`](?doc=engines/template.md) § 5.4): *the stage's
+run card*, *the calculation's run card*, *a prep flag*, *the job request's
+allocation*, *the catalogue's default · not chosen* — beside the description's
+(*this stage's override*, *the template · …*) and a benchmark's (*a pin*, *a
+sweep point*): in the deck's PROVENANCE
 `parameters:` rows for what the deck renders, and in the pipeline log for every
 run setting, the run script's own (`wall_slack`, `continue_retries`) included
 ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.2;
@@ -636,7 +675,12 @@ where its last run reached.
 
 **What stays fixed of a launched group is its members** — a stage put into it
 or taken out takes the way back it took before
-([`job-system.md`](?doc=execution/job-system.md) R-P5, R-L7). And **a change to
+([`job-system.md`](?doc=execution/job-system.md) R-P5, R-L7). **What may be
+done to a group now is one answer**, `ready.group_answer`
+([`job-system.md`](?doc=execution/job-system.md), *The task*): prep's offer and
+its refusals, the launch's, `status`'s next step and Task setup's boxes all
+read it, so a launched group whose members changed is offered by none of them,
+and every way on is the one composer's (`commands.way_on`). And **a change to
 what a launched stage computes** still goes back to the state saved before its
 group's first launch. In a sequence (`--one-job`), a launched group is read as
 its last prep wrote it ([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 2a).
@@ -726,10 +770,13 @@ for the items the rung reads (§ 3.2), the one run-card door. **Its reader
 checks** what the record says of itself against the description beside it —
 the schema, the stage names, the groups' order, each card's one value and
 each benchmark row's list of points, the allocation's spellings, the
-reports; **the preflight checks** what needs the vocabulary or the ladder —
-that each name on a card or a benchmark is a run setting the rung reads, and
-each value one its item takes; no stage sharing a job with one it builds on
-(`group.check_groups`, § 3.3). Its name is the catalogue's (`runfiles.WRITTEN`).
+reports, a card's `time` spelled and an unset key's `null` (§ 3.2); **the
+preflight checks** what needs the vocabulary or the ladder — through the
+setting door, each value on a card or a benchmark row one its item takes in
+that home: a run setting the rung reads, of its type, among the choices the
+kind offers, within its limits (`template.accepts`,
+[`template.md`](?doc=engines/template.md) § 5.4); no stage sharing a job with
+one it builds on (`group.check_groups`, § 3.3). Its name is the catalogue's (`runfiles.WRITTEN`).
 
 **Task setup works on both as edited**: its prep plan reads the job request
 as the page holds it — the page sends it, read by the one reader — as it
@@ -743,17 +790,24 @@ describe door writes what `molbuilder describe` writes.
 ## 8. What moves on disk — `jobset migrate`
 
 A calculation described before 2.27.0 holds its job request inside `task.json`
-(`molbuilder/task@1`) and its speed settings' values in its template. Every
-reader refuses it by name, naming `molbuilder jobset migrate --bundle <calc>`,
-which:
+(`molbuilder/task@1`) and its speed settings' values in its template; one
+described by 2.27.x holds every run setting in its template, declared and
+valueless. Every reader refuses either by name, naming
+`molbuilder jobset migrate --bundle <calc>`. **What migrate moves is decided by
+what a file holds, never by its version** *(2.28.0, plan § 1w: the template's
+reader refused a run-setting value by content while migrate moved one only
+from a `task@1` calculation, so a value in a 2.27.0 template was dropped)* —
+each change where it is found:
 
 - writes `job-request.json` from `task.json`'s `allocation`, `execution`, each
   stage's `execution` and `group`, `bench` and `notify` — a `notify` block's
   keys left out written with what their absence meant, `every_hours: 0` as
   `null` — and rewrites `task.json` without them, at `molbuilder/task@2`;
-- moves each run setting's value out of the template onto the calculation's
-  run card, where the card states none — unless the template records it *not
-  chosen* and it is the catalogue's default now — so every deck renders the
+- takes every run-setting item out of the template, valueless or not, and
+  moves a value it holds onto the calculation's run card — of the job request
+  it writes, or of the one already beside the description — where the card
+  states none, unless the template records it *not chosen* and it is the
+  catalogue's default now (`template.default_of`) — so every deck renders the
   values it did, and a value a person chose stays chosen;
 - moves `restart` and `density_fit` off the run cards: the calculation's
   card's into the template, a stage's into its overrides, `varies` gaining it;
@@ -763,6 +817,9 @@ which:
   (`Job.program`), a placement's source `description` as `allocation`;
 - keeps each file it rewrites beside its new one, `<name>.pre-<rule>`, as every
   migration does.
+
+**A calculation described by 2.27.x is migrated once more**: its template's
+declared run-setting items go, and nothing it computes changes.
 
 **A prepared stage is prepared again before its first launch**: its deck's
 record of who set each value has changed (§ 4), so its first launch refuses the

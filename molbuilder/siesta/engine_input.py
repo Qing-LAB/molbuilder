@@ -232,10 +232,10 @@ def run_setting_keywords() -> frozenset:
     """Every fdf keyword a SIESTA run setting writes -- the catalogue's
     `execution` items' ``anchor`` and ``expands`` (`template.md` § 6.2),
     asked, never listed."""
-    from ..template import catalogue
+    from ..template import catalogue, is_run_setting
     out = set()
     for it in catalogue().items:
-        if "execution" not in (it.category or ()) or (
+        if not is_run_setting(it) or (
                 it.engines and "siesta" not in it.engines):
             continue
         for word in ((it.anchor,) if it.anchor else ()) + tuple(

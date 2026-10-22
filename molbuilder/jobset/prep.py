@@ -876,7 +876,7 @@ def _resolve_stage(stage, *, task, request, template, template_text,
         pset = resolve(template_text, task, engine_seam(task.engine).config_cls,
                        allocation=(allocation or Resources()), stage=stage,
                        sweep=sweep, pins=pins, run_settings=run_settings,
-                       translation=translation,
+                       launch_from=sources, translation=translation,
                        environment=environment)
     except ResolveError as exc:
         raise PrepError(str(exc)) from exc
@@ -1026,21 +1026,19 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     log.received(template_path.name, f"{len(pset[0].provenance)} fields")
     log.received("stage", pset.stage)
     log.received("allocation", _flat_resources(allocation or Resources()))
-    # EACH VALUE'S SOURCE IN THE DECK'S OWN WORDS (`resolve.LAYER_WORDS`;
-    # `execution/job-request.md` § 4) -- a run setting's card, or the
-    # catalogue's default, not chosen.
-    from ..resolve import LAYER_WORDS
+    # EACH VALUE'S SOURCE IN THE ONE VOCABULARY, the words `resolve`
+    # composed for the deck's table (`ResolvedConfig.said`, `engines/
+    # template.md` § 5.4).
     for _el in pset:
-        _rows = config_rows(_el.values, _el.provenance,
-                            _el.render_config())
+        _rows = config_rows(_el.render_config(), _el.provenance)
         _decided = [r for r in _rows if r[2] not in ("template", "default")]
         log.step(f"{_el.label} — what this rung decided")
         for _n, _v, _s in _decided:
-            log.chose(_n, _v, LAYER_WORDS.get(_s, _s))
+            log.chose(_n, _v, _el.said[_n])
         log.step(f"{_el.label} — the rest, as the template and the "
                  f"catalogue declare")
         for _n, _v, _s in _rows[len(_decided):]:
-            log.chose(_n, _v, LAYER_WORDS.get(_s, _s))
+            log.chose(_n, _v, _el.said[_n])
     log.produced("ParameterSet", f"{len(pset)} element(s) -> spec_for")
 
     # ---- 3. the structure: the kind's rung ----------------------------- #
@@ -1163,7 +1161,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                 _sources = said_by(_sources, "system_label",
                                    SET_AFTER["trial_label"])
                 # The forced cold has ONE setter -- the measurement pin
-                # (`_MEASUREMENT_PINS`, resolved with provenance "pin") --
+                # (`template.TRIAL_PINS`, resolved with provenance "pin") --
                 # and ONE verifier, the submission door
                 # (`agreement.check_trial_starts_cold`; user-settled
                 # 2026-08-21: prep bakes the intent, submission determines

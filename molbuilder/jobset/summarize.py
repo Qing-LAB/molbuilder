@@ -361,10 +361,10 @@ def _pins_vocabulary(engine: str) -> Dict[str, type]:
     one-door membership rule the declaration lane uses
     (`_declared_execution_pins`, `generator.md` § 4.3a).
     """
-    from ..template import catalogue, select
+    from ..template import catalogue, is_run_setting, select
     vocab: Dict[str, type] = {}
     for it in select(catalogue(), engine=engine):
-        if "execution" not in (it.category or ()) or it.allocation:
+        if not is_run_setting(it) or it.allocation:
             continue
         py = _ITEM_TYPES.get(it.type)
         if py is not None:

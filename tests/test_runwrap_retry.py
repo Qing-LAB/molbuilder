@@ -67,15 +67,19 @@ def _machine():
 
 
 def _render(**kw) -> str:
-    """The wrapper's text for a four-rank, one-thread SIESTA job.
+    """The wrapper's text for a four-rank, one-thread SIESTA job, carrying
+    the run settings every job carries -- its wall's slack and its retries
+    (`engines/template.md` § 5.4).
 
     ``kw`` are allocation fields: the door takes the object whole (A8), so
     they are set on it rather than passed beside it."""
     names = RunNames.of("JOB", "01_coarse", "flat")
     return render_run_wrapper(Path("/x") / names.name(".fdf"),
                               machine_record=_machine(), names=names,
-                              resources=Resources(mpi_np=4, cpus_per_task=1,
-                                                  **kw))
+                              resources=Resources(**{
+                                  "mpi_np": 4, "cpus_per_task": 1,
+                                  "wall_slack": 600, "continue_retries": 1,
+                                  **kw}))
 
 
 # --------------------------------------------------------------------- #

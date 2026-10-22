@@ -616,7 +616,6 @@ category = ["execution"]
 engines = ["siesta"]
 engine_key = "(molbuilder: baked into the run wrapper at install time; never an .fdf line and never an sbatch flag)"
 type = "int"
-value = 1
 default = 1
 range = [0, 5]
 group = "staging"
@@ -641,7 +640,6 @@ engine_key = "(molbuilder: SIESTA takes it on its command line as MaxWalltime.Sl
 # from its environment (pyscf.md 3.9).
 launch = { siesta = ["-fdf", "MaxWalltime={left}:s", "-fdf", "MaxWalltime.Slack={slack}:s"] }
 type = "int"
-value = 600
 default = 600
 unit = "s"
 range = [30, 7200]
@@ -917,6 +915,7 @@ engine_key = "(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)"
 type = "int"
 allocation = true
 range = [1, 1024]
+above = { value = 0, why = "a count of MPI processes: 0 runs nothing" }
 group = "staging"
 label = "MPI ranks (np)"
 null_label = "(not stated: prep refuses)"
@@ -943,6 +942,7 @@ allocation = true
 null_label = "(none asked; a GPU run states one or prep refuses)"
 optional = true
 range = [1, 16]
+above = { value = 0, why = "a count of GPUs: a run asking none leaves the row blank" }
 group = "staging"
 label = "GPUs (G)"
 help = """
@@ -1004,6 +1004,7 @@ engines = ["siesta"]
 engine_key = "(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)"
 type = "int"
 allocation = true
+above = { value = 0, why = "a count of threads per rank: 0 runs nothing" }
 group = "staging"
 label = "OMP threads per rank"
 null_label = "(not stated: prep refuses)"
@@ -1022,6 +1023,7 @@ type = "int"
 allocation = true
 unit = "MB"
 range = [100, 1000000]
+above = { value = 0, why = "a cap holds that many MB; no cap is the row left blank, never 0" }
 group = "staging"
 run_card = true
 label = "Max memory"
@@ -1051,7 +1053,6 @@ expands = ["Diag.ELPA.GPU", "gpu4pyscf"]
 engine_key = "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)"
 manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'; PySCF 2.13 pyscf.dft.rks.RKS 'to_gpu()'"
 type = "bool"
-value = false
 default = false
 group = "staging"
 label = "Use GPU (NVIDIA)"
@@ -1077,9 +1078,8 @@ engine_key = "Diag.Algorithm"
 manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "enum"
 choices = ["ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
-value = "ELPA-1STAGE"
 default = "ELPA-1STAGE"
-engine_default = { none = "what the build carries: ELPA, else Expert, QR with Diag.NoExpert", source = "SIESTA 5.4.2 diag_option.F90:225-242: algo = fdf_get('Diag.Algorithm', trim(algo))" }
+engine_default = { value = "ScaLAPACK", source = "SIESTA 5.4.2 diag_option.F90:213,242: Diag.DivideAndConquer defaults to .true., so algo = 'Divide-and-Conquer' -- ELPA only with Diag.ELPA set (224), whatever the build carries -- then algo = fdf_get('Diag.Algorithm', trim(algo))" }
 group = "staging"
 run_card = true
 label = "Diagonalizer"
@@ -1724,6 +1724,7 @@ anchor = "lib.num_threads"
 engine_key = "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']"
 manual = "PySCF 2.13 pyscf.lib.misc 'num_threads()'"
 type = "int"
+above = { value = 0, why = "a count of threads: 0 runs nothing" }
 group = "staging"
 label = "CPU threads"
 null_label = "(not stated: prep refuses)"
@@ -2728,7 +2729,6 @@ engine_key = "TS.SolutionMethod"
 manual = "SIESTA 5.4.2 TranSIESTA §'Options' (TS.SolutionMethod)"
 type = "enum"
 choices = ["BTD", "full"]
-value = "BTD"
 default = "BTD"
 engine_default = { value = "BTD", source = "SIESTA 5.4.2 m_ts_options.F90:180: chars = fdf_get('TS.SolutionMethod', 'BTD')" }
 group = "staging"
@@ -2843,7 +2843,6 @@ anchor = "TS.Elecs.Out-of-core"
 engine_key = "TS.Elecs.Out-of-core"
 manual = "SIESTA 5.4.2 TranSIESTA §'Electrode options'"
 type = "bool"
-value = true
 default = true
 engine_default = { value = true, source = "SIESTA 5.4.2 m_ts_options.F90:476: Elecs(:)%out_of_core = fdf_get('TS.Elecs.Out-of-core', .true.)" }
 group = "staging"

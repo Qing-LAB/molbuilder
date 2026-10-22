@@ -120,6 +120,28 @@ def _load(bundle: str) -> tuple:
         "`molbuilder describe` first.")
 
 
+def _flags_may_stand(calc, allocation) -> None:
+    """Each launch flag stated is a value of its item, asked of the setting
+    door in a prep flag's home (`engines/template.md` § 5.4) as it is typed
+    -- a count of ranks, threads or GPUs above 0, a memory cap above 0 --
+    refused naming the flag."""
+    from ..scheduler.quantities import parse_gres_flag
+    from ..template import accepts, catalogue, select
+    from .model import AS_RESOURCE
+    from .placement import _LAUNCH_WORDS
+    engine, kind = str(calc.task.engine), str(calc.task.calculation)
+    for it in select(catalogue(), engine=engine, allocation=True):
+        field = AS_RESOURCE.get(it.name, it.name)
+        said = getattr(allocation, field, None)
+        if said in (None, ""):
+            continue
+        clause = accepts(it, parse_gres_flag(said) if field == "gres"
+                         else said, "flag", engine=engine, kind=kind)
+        if clause:
+            flag = _LAUNCH_WORDS[field][1].split()[0]
+            raise click.ClickException(f"{flag} {said}{clause}.")
+
+
 def _calc_of(folder):
     """The calculation a verb works on, opened ONCE through its door
     (`calculation.open`, A16) -- a folder that is not one, or a record that
@@ -1144,15 +1166,21 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
         raise
     # THE CALCULATION, OPENED ONCE for the whole prep (A16).
     calc = _calc_of(base)
+    allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
+                        gres=gres, time=time_, mem=mem,
+                        max_memory_mb=max_memory_mb, domain=domain)
+    try:
+        _flags_may_stand(calc, allocation)
+    except click.ClickException as e:
+        _ledger(base, "prep", "refused", kind=kind,
+                groups=list(groups) or None, reason=e.format_message())
+        raise
     asked = None
     if kind == "task":
         # THE TASK'S QUESTION (`job-system.md`, *The task*): the groups,
         # each prepared, launched or waiting, then which to prepare --
         # answered here, or by --group.
         groups, asked = _ask_which_groups(calc, list(groups))
-    allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
-                        gres=gres, time=time_, mem=mem,
-                        max_memory_mb=max_memory_mb, domain=domain)
 
     shown: list = []
 

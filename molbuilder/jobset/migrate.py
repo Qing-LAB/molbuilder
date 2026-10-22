@@ -552,7 +552,8 @@ def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
                 continue
             item = _T.one(_T.catalogue(), it.name, engine=str(task.engine))
             if (it.source == "default" and item is not None
-                    and it.value == item.value):
+                    and it.value == _T.default_of(item,
+                                                  str(task.calculation))):
                 said.append(f"{it.name} = {it.value!r}: the catalogue's "
                             f"default, not chosen -- taken out of the "
                             f"template; a run takes it there still")

@@ -460,7 +460,7 @@ control, and a finding on the transmission grid on the transmission's tab.
 The fourth is `electrode_kz`'s recommended range in the catalogue,
 `[50, 200]`, warned as every item's range is: by the settings gate on each
 lead's deck (`validation/metadata.py`) and by the description's own check on
-a lead's value (`validation/task.py`, `_values_in_bounds`), both through
+a lead's value (`validation/task.py`, `_values_in_range`), both through
 `metadata.outside_range`.
 
 | warning | why | the literature |
@@ -3290,7 +3290,7 @@ the parameters this way is what makes the rest of the design fall out.
 | **the person** | the transmission window and grid, the TBtrans outputs, broadening, the NEGF contour, the leads | an ordinary item with a `value` |
 | **the citation** | basis, energy shift, XC functional + authors, mesh cutoff, transverse k, electronic temperature — the **electronic contract** | ⚠️ **SUPERSEDED by § 3.8.0** — this says *declared, valueless, filled at `prep`*, which is the SEALED reading § 2a.7 reversed. The values are filled ONCE at `molbuilder describe` into this calculation's template, carry a value there, and the person may change them |
 | **the description** | job label, the bias list | the label is an ordinary item; the bias is `task.json`'s own `bias` block, because it is the sweep axis (§ 2a.11) |
-| **the machine** | memory ceiling, thread count, ranks | `allocation` items — valueless on floor 2, filled at `prep` (G1) |
+| **the machine** | memory ceiling, thread count, ranks | run settings — no template item; the job request's run cards, answered at `prep` (G1; [`template.md`](?doc=engines/template.md) § 2) |
 | **the geometry** | which atoms are electrode / bridge / buffer, which are frozen | **not an item at all** — § 7's structure exclusion; it travels in the `.molstruct.json` sidecar and the deck's ATOM-METADATA block |
 
 Two of those rows are corrections to what ships today:
@@ -3368,7 +3368,7 @@ result inherits it. Both refusal doors then read one declaration.
    − 9 relaxation-driver rows                values from the form or, for the
      (calculations = ["optimization"])       contract rows, VALUELESS
    + ~20 transport rows                    + transport's own rows, with values
-     (calculations = ["transport"])        + the allocation rows, valueless
+     (calculations = ["transport"])        (no run setting: the job request's)
 ```
 
 The narrowing is the framework's own: `template_with_values(cfg,

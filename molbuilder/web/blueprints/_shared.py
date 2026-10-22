@@ -19,10 +19,7 @@ contracts.
 from __future__ import annotations
 
 import dataclasses
-import functools
 import math
-import re
-import typing
 from dataclasses import fields
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -520,7 +517,8 @@ _CONTROL_FOR_TYPE = {
     "int3":    "int-triple",
     "float3":  "float-triple",
     # A list renders as a TEXT input holding a comma-separated value, which
-    # ``coerce_to_field_type`` parses back.  No new control kind: the
+    # the setting door's reader parses back (`template.read_text`).  No new
+    # control kind: the
     # renderer has one for this shape already.
     "strlist": "text",
     "intlist": "text",
@@ -835,208 +833,33 @@ def _item_to_field(item, id_prefix: str,
     return out
 
 
-def coerce_to_field_type(field: dataclasses.Field, value: Any,
-                         resolved_hints: Dict[str, Any], *,
-                         choices=None) -> Any:
-    """Convert a JSON-arriving value to the field's declared type.
-
-    The form layer can deliver number-typed fields as strings ("300"
-    rather than 300) when the request comes from a non-browser HTTP
-    client (the in-tree JS frontend coerces with parseFloat/parseInt
-    so the test path is fine).  Without coercion, the dataclass
-    happily stores the string, downstream the validator's range check
-    raises ``TypeError`` on ``string < int`` and the validator-pass
-    swallows it as a "skip this validator", quietly losing the
-    out-of-range warning.
-
-    Coercion respects ``Optional[X]`` (the empty string and ``None``
-    pass through as ``None``).  ``bool`` accepts the JSON literal True
-    / False as well as the strings ``"true"`` / ``"false"`` / ``"1"`` /
-    ``"0"`` (case-insensitive).  A Tuple-typed field like ``kgrid`` takes
-    a list OR the comma text a person types (``"4,4,1"``, ``"4x4x1"``,
-    ``"4 4 1"`` -- the spellings ``--kgrid`` itself takes), and coerces
-    per component.
-
-    Unknown / unhandled types pass through untouched -- the dataclass
-    constructor sees what the caller sent.
-
-    A value it cannot make is refused with a ``ValueError`` that names the
-    field -- a fractional count among them (:func:`_as_number`).
-    """
-    ann = resolved_hints.get(field.name, field.type)
-    origin = typing.get_origin(ann)
-    args   = typing.get_args(ann)
-    is_optional = (origin is typing.Union and type(None) in args)
-    if is_optional:
-        if value is None or value == "":
-            return None
-        ann = next((a for a in args if a is not type(None)), str)
-        origin = typing.get_origin(ann)
-        args   = typing.get_args(ann)
-
-    # AN ENUM'S VALUE IS ONE OF ITS MEMBERS, WITH THE MEMBER'S TYPE
-    # (`engines/template.md` § 5): `unpaired_electrons` is 0-10 or "free",
-    # and a client that sends the text "2" means the member 2.  Matched on
-    # the member's own spelling, so "free" stays a word and "2" becomes a
-    # number; a value naming no member is refused here, by name.
-    # THE ENUM'S MEMBERS ARE THE CATALOGUE'S (`engines/template.md` § 2.1),
-    # handed in by the caller that holds the item.
-    if choices:
-        from molbuilder.template import is_member
-        if is_member(value, choices):
-            return value
-        for c in choices:
-            if not isinstance(value, bool) and str(c) == str(value).strip():
-                return c
-        raise ValueError(f"{field.name} = {value!r} is not one of "
-                         f"{', '.join(map(repr, choices))}")
-
-    if ann is bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().lower() in ("true", "1", "yes", "on")
-        return bool(value)
-    if ann in (int, float):
-        return _as_number(field.name, value, ann)
-    if ann is str:
-        return str(value)
-    # Tuple[int, int, int] (kgrid, tbt_k_grid) and Tuple[float, float, float]
-    # (kgrid_displacement).
-    #
-    # A COMMA STRING PARSES, for the same reason the Sequence[*] branches
-    # just below accept one: a non-browser client sends the text a person
-    # would type.
-    #
-    # A value that is neither a string nor a sequence is REFUSED here rather
-    # than passed through, with a ValueError naming the field -- what this
-    # function promises the caller for a value it cannot make.  The LENGTH
-    # is not checked -- that is `_validate_kgrid`'s sentence to pass, and it
-    # says it better.
-    if origin is tuple and args:
-        elem_t = args[0]
-        if isinstance(value, str):
-            value = [s for s in re.split(r"[,\sx]+", value.strip()) if s]
-        if not isinstance(value, (list, tuple)):
-            raise ValueError(f"{field.name} = {value!r} is not a list of "
-                             f"values")
-        return tuple(_as_number(field.name, v, elem_t)
-                     if elem_t in (int, float) else elem_t(v)
-                     for v in value)
-    # Sequence[str] (species_order in SiestaConfig) -- accept either
-    # a comma-string or an already-list value.
-    if origin in (list, tuple) and args and args[0] is str:
-        if isinstance(value, str):
-            return [s.strip() for s in value.split(",") if s.strip()]
-        return value
-    # Sequence[int] (frozen_indices / es_explicit_indices) -- accept
-    # comma-separated indices with optional range syntax
-    # "0-35, 100, 150-200" -> [0,1,...,35, 100, 150,...,200].  Used by
-    # the Spectra tab's frozen-atom + L4 explicit-mode lists.
-    if origin in (list, tuple) and args and args[0] is int:
-        if isinstance(value, str):
-            return _parse_int_list_with_ranges(value)
-        if isinstance(value, (list, tuple)):
-            # Already a sequence; each element read as a whole number,
-            # refused element-wise.
-            return [_as_number(field.name, v, int) for v in value]
-        return value
-    # Anything else: pass through.
-    return value
-
-
-def _as_number(name: str, value: Any, typ: type) -> Any:
-    """``value`` read as ``typ`` -- ``int`` or ``float`` -- or refused,
-    naming the field (`web/form-schema.md` § 1.1).  A count with a fraction
-    is not a count, and is never rounded: ``int(4.5)`` gave 4, a k-point
-    count of 4.5 a mesh of four (the K3 review)."""
-    try:
-        if isinstance(value, bool):
-            raise ValueError
-        x = float(value.strip() if isinstance(value, str) else value)
-    except (TypeError, ValueError):
-        raise ValueError(f"{name} = {value!r} is not a number") from None
-    if not math.isfinite(x):
-        raise ValueError(f"{name} = {value!r} is not a finite number")
-    if typ is int:
-        if not x.is_integer():
-            raise ValueError(f"{name} = {value!r} is not a whole number -- "
-                             f"a count is never rounded")
-        return int(x)
-    return x
-
-
-def _parse_int_list_with_ranges(s: str):
-    """Parse ``"0-35, 100, 150-200"`` -> ``[0, 1, ..., 35, 100, 150, ..., 200]``.
-
-    Each comma-separated token is either a bare integer or
-    ``<lo>-<hi>`` (inclusive on both ends).  Whitespace around
-    commas / hyphens is tolerated.  Empty tokens (trailing comma)
-    are skipped.
-
-    Raises ``ValueError`` with the offending token so the caller can
-    surface it as a typed error to the user.
-    """
-    out = []
-    for tok in s.split(","):
-        tok = tok.strip()
-        if not tok:
-            continue
-        if "-" in tok:
-            # Negative-prefix support would be ambiguous with the
-            # range separator; indices are 0-based so negatives don't
-            # need to be supported here.
-            lo_s, _, hi_s = tok.partition("-")
-            try:
-                lo = int(lo_s.strip())
-                hi = int(hi_s.strip())
-            except ValueError:
-                raise ValueError(
-                    f"could not parse index range {tok!r}; "
-                    f"expected '<int>-<int>'"
-                )
-            if hi < lo:
-                raise ValueError(
-                    f"index range {tok!r} is empty (hi < lo)"
-                )
-            out.extend(range(lo, hi + 1))
-        else:
-            try:
-                out.append(int(tok))
-            except ValueError:
-                raise ValueError(
-                    f"could not parse index {tok!r}; "
-                    f"expected an integer"
-                )
-    return out
-
-
 def config_from_params(cls, params: Dict[str, Any],
-                       hints: Dict[str, Any],
                        calculation: str = ""):
     """The config a form's payload describes (`web/form-schema.md` § 1.1):
     the kind's own recommendations (`template.apply_recommended`), with the
-    values the payload holds laid over them, each coerced to its field's
-    declared type.
+    values the payload holds laid over them, each read as its item's
+    declared type by the setting door's reader (`template.read_text`,
+    `engines/template.md` § 5.4) -- the reader every page asks.
 
     **A blank is not chosen**, for every field: ``None`` or ``""`` leaves the
     field at what lies under it -- the kind's recommendation, else the class
     default, which for an optional field is its own blank.
 
     **A value that will not read as its type is refused, naming its
-    field** (``coerce_to_field_type``): the caller says it as the refusal.
+    field**: the caller says it as the refusal.
     """
-    by_name = {f.name: f for f in fields(cls)}
-    from molbuilder.template import items_of
+    by_name = {f.name for f in fields(cls)}
+    from molbuilder.template import items_of, read_text
     items = items_of(cls)
     kwargs: Dict[str, Any] = {}
     for k, v in params.items():
-        f = by_name.get(k)
-        if f is None or v is None or v == "":
+        if k not in by_name:
             continue
-        kwargs[k] = coerce_to_field_type(
-            f, v, hints,
-            choices=(items[k].choices if items.get(k) is not None else None))
+        value, why = read_text(items[k], v)
+        if why:
+            raise ValueError(f"{k} = {v!r}{why}")
+        if value is not None:
+            kwargs[k] = value
     base = cls()
     if calculation:
         from molbuilder.template import apply_recommended
@@ -1054,14 +877,7 @@ def siesta_config_from_params(params: Dict[str, Any],
     comma-typed tuple and a number typed as text mean the same thing on
     every tab."""
     from molbuilder.config.siesta import SiestaConfig
-    return config_from_params(SiestaConfig, params, _siesta_hints(),
-                              calculation)
-
-
-@functools.lru_cache(maxsize=1)
-def _siesta_hints() -> Dict[str, Any]:
-    from molbuilder.config.siesta import SiestaConfig
-    return typing.get_type_hints(SiestaConfig)
+    return config_from_params(SiestaConfig, params, calculation)
 
 
 class PeriodicityRefused(Exception):
@@ -1143,7 +959,6 @@ __all__ = [
     "err",
     "finite_float",
     "catalogue_to_form_schema",
-    "coerce_to_field_type",
     "config_from_params",
     "PeriodicityRefused",
     "checked_periodicity",

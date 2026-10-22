@@ -564,6 +564,11 @@ method = "GET"
 takes_no_path = "An engine and a calculation kind; the items come from the shipped catalogue."
 
 [[route]]
+rule = "/api/task-setup/value"
+method = "POST"
+takes_no_path = "An engine, a calculation kind, a setting's name, its home and stage, and the text typed; the setting comes from the shipped catalogue."
+
+[[route]]
 rule = "/api/transport/describe"
 method = "POST"
 [[route.path]]

@@ -291,7 +291,9 @@ def test_a_hand_edited_value_of_the_wrong_type_is_refused_by_name():
     the ``type`` is what a reader MUST check.  Until 2026-08-12 no reader
     did -- the string "three hundred" flowed into a float field and out
     the other side of config_from_template as a str, to surface later in
-    rendering with a message about anything but the edit."""
+    rendering with a message about anything but the edit.  The refusal
+    names the item and what it declares, in the setting door's one wording
+    (`engines/template.md` § 5.4)."""
     import re
     text = T.template_with_values(SiestaConfig(system_label="JOB",
                                           mesh_cutoff=300.0))
@@ -301,7 +303,7 @@ def test_a_hand_edited_value_of_the_wrong_type_is_refused_by_name():
     mutated = text.replace(block, re.sub(
         r"^value = .*$", 'value = "three hundred"', block, flags=re.M))
     assert mutated != text
-    with pytest.raises(ValueError, match="mesh_cutoff.*float"):
+    with pytest.raises(ValueError, match="mesh_cutoff.*not a number"):
         T.read_template(mutated)
     # an enum outside its own choices is the same class of edit
     text2 = T.template_with_values(SiestaConfig(system_label="JOB",
@@ -330,7 +332,8 @@ def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
     mutated = text.replace(block, re.sub(
         r"^value = .*$", 'value = "Au"', block, flags=re.M))
     assert mutated != text
-    with pytest.raises(ValueError, match="species_order.*strlist"):
+    with pytest.raises(ValueError,
+                       match="species_order.*not a list of text values"):
         T.read_template(mutated)
     i = text.index("[item.kgrid]")
     j = text.index("[item.", i + 10)
@@ -338,7 +341,7 @@ def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
     mutated = text.replace(block, re.sub(
         r"^value = .*$", "value = 3", block, flags=re.M))
     assert mutated != text
-    with pytest.raises(ValueError, match="kgrid.*int3"):
+    with pytest.raises(ValueError, match="kgrid.*not three whole numbers"):
         T.read_template(mutated)
 
 

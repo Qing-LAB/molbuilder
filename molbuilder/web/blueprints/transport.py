@@ -509,19 +509,14 @@ def api_transport_describe() -> Any:
     except (DescribeError, ComposeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
 
-    # Refused HERE, not at prep on the cluster: an unknown knob, a shared
-    # value or a role-fixed one names itself while changing it is still
-    # free.  Three questions, three markers, one catalogue
-    # (`engines/transport.md` § 3.8.2; `engines/template.md` § 6.4).
-    # The one rule for "binds every stage" (`template.shared_by_every_stage`),
-    # which `resolve` refuses at prep for every kind -- asked here too, so
-    # the tab refuses while changing it is still free.
+    # Refused HERE, not at prep on the cluster: an unknown knob names
+    # itself while changing it is still free.  THE VOCABULARY IS WHAT PREP
+    # CAN RESOLVE, asked rather than listed
+    # (`stages.resolvable_override_names`).  Whether a rung's override may
+    # hold a known one -- shared, fixed by the rung, a run setting, read by
+    # that rung -- and its value's own rules are the description's own
+    # check's, below: the setting door, asked with the rung, as at prep.
     _shared_names = _T.shared_by_every_stage(engine, "transport")
-    # ...and the one rule for "the rung fixes it", which `resolve` refuses
-    # at prep for every kind, with the same reason.
-    _role_names = _T.fixed_by_role(engine, "transport")
-    # THE VOCABULARY IS WHAT PREP CAN RESOLVE, and it is asked rather than
-    # listed (`stages.resolvable_override_names`).
     for _rung, _name in [(r, n) for r, b in bags.items() for n in b]:
         if _name not in _RESOLVABLE:
             return jsonify({"ok": False,
@@ -533,29 +528,6 @@ def api_transport_describe() -> Any:
                                      f"machine fact the description must "
                                      f"never carry (engines/template.md "
                                      f"7)."}), 400
-        if _name in _role_names:
-            return jsonify({"ok": False,
-                            "error": f"{_name!r} is fixed by the rung, so "
-                                     f"it cannot be a per-stage override: "
-                                     f"{_T.why_role(_name)}."}), 400
-        if _name in _shared_names:
-            # SHARED, therefore not a per-stage override -- and that is the
-            # reason, not "the citation owns it" (`engines/transport.md`
-            # § 2a.7: the cited run DEFAULTS these values; what stays true
-            # is that every rung shares them).
-            return jsonify({"ok": False,
-                            "error": f"{_name!r} is shared by "
-                                     f"{_T.shared_by(_name)}, so it cannot be "
-                                     f"a per-stage override: "
-                                     f"{_T.why_shared(_name)}.  Change it on "
-                                     f"the shared panel, which edits the "
-                                     f"calculation's template -- there one "
-                                     f"value applies to every rung that "
-                                     f"reads it."
-                            }), 400
-    # A RUNG'S VALUE ON A RUNG THAT DOES NOT READ IT is the description's
-    # own check's to refuse, below, as at every describe and at prep
-    # (`template.unread_overrides`, plan § 5w K4).
     for _name in shared_chosen:
         if _name not in _shared_names:
             return jsonify({"ok": False,

@@ -38,13 +38,12 @@ so a call site cannot forget half of it.
 from __future__ import annotations
 
 import dataclasses
-import functools
 import re
 from dataclasses import dataclass, field
 from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
                     Union)
 
-from .jobset.model import Resources
+from .jobset.model import AS_RESOURCE, Resources
 from .template import STATE_ITEMS
 
 
@@ -127,11 +126,16 @@ class ResolvedConfig:
     #: words), ...)`` -- the deck's PROVENANCE table (`job-contracts.md`
     #: § 3.2, `engines/template.md` § 6.6 obligation 5): the kind's engine
     #: and deck items this rung reads, the scheduler's excepted, each in
-    #: :data:`LAYER_WORDS` and, for the template's, the template's own record
+    #: `template.SAID` and, for the template's, the template's own record
     #: of it (`template.SOURCE_WORDS`), an optional item nobody set with who
     #: answers it (:data:`BLANK_ANSWERED_BY`); the rows the rung decided
     #: first.  A value prep sets after it is re-worded there (:data:`SET_AFTER`).
     deck_sources: Tuple[Tuple[str, str], ...] = ()
+    #: WHO SET EVERY VALUE, in the same words -- ``{field: words}`` for each
+    #: field of the config, composed once with :attr:`deck_sources` (which
+    #: is its deck items' rows): what the pipeline log says beside each value
+    #: (`engines/template.md` § 5.4, one vocabulary).
+    said: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def is_trial(self) -> bool:
@@ -160,7 +164,6 @@ class ResolvedConfig:
         # map (`jobset.model.AS_RESOURCE`, `job-contracts.md` § 6.2): a run's
         # cores per rank are SIESTA's ``omp_threads`` and PySCF's
         # ``threads``, its GPU count the number in ``gres``.
-        from .jobset.model import AS_RESOURCE
         from .scheduler.quantities import parse_gres_flag
         machine = {}
         for name in _emitter_fields(type(self.values)):
@@ -334,16 +337,6 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
             f"the template.")
 
 
-#: Where a resolved value came from, in words -- `provenance`'s own sources.
-#: Said by a refusal and by the deck's PROVENANCE table alike.
-LAYER_WORDS = {"template": "the template", "stage": "this stage's override",
-               "sweep": "a sweep point", "pin": "a pin", "role": "the rung",
-               # A RUN SETTING'S, in words of its own (`execution/
-               # job-request.md` § 4): the card it came from, or nobody's.
-               "stage_card": "the stage's run card",
-               "calc_card": "the calculation's run card",
-               "default": "the catalogue's default · not chosen"}
-
 #: WHO SETS A VALUE AFTER THE LAYERS -- the deck's PROVENANCE table's words
 #: for the deck's ``SystemLabel`` where prep spells it (`job-contracts.md`
 #: § 3.2): a transport rung's from the calculation's label
@@ -393,12 +386,12 @@ def _deck_sources(values, provenance: Mapping[str, str],
     an optional item nobody set says who answers it
     (:data:`BLANK_ANSWERED_BY`, else the engine's own default)."""
     from .pipeline_log import config_rows
-    from .template import SOURCE_WORDS
+    from .template import SAID, SOURCE_WORDS
     rows = []
     for name, value, src in config_rows(values, provenance):
         if name not in items:
             continue
-        who = LAYER_WORDS.get(src, src)
+        who = SAID[src]
         if src == "template":
             who = f"{who} · {SOURCE_WORDS[origins.get(name) or 'unrecorded']}"
         if src == "default" and value is None:
@@ -427,16 +420,14 @@ def _refuse_what_cannot_stand(values, provenance: Mapping[str, str],
     choice the kind does not offer -- a vibration's relaxation set to
     ``Verlet`` -- or a value at or below its hard limit -- ``fc_displacement
     = 0``.  One pass and one door, so one value draws one refusal."""
-    from .template import catalogue, select, why_not
+    from .template import SAID, catalogue, select, shown, why_not
     for it in select(catalogue(), engine=engine, calculation=kind):
         have = getattr(values, it.name, None)
         clause = why_not(it, have, engine=engine, kind=kind)
         if clause:
             src = provenance.get(it.name, "template")
-            shown = list(have) if isinstance(have, tuple) else have
             raise ResolveError(
-                f"{LAYER_WORDS.get(src, src)} sets {it.name} = "
-                f"{shown!r}{clause}.")
+                f"{SAID[src]} sets {it.name} = {shown(have)}{clause}.")
 
 
 def resolve(template_text: str, task, config_cls, *,
@@ -446,6 +437,7 @@ def resolve(template_text: str, task, config_cls, *,
                          Sequence[Mapping[str, Any]], None] = None,
             pins: Optional[Mapping[str, Any]] = None,
             run_settings: Optional[Mapping[str, Tuple[Any, str]]] = None,
+            launch_from: Optional[Mapping[str, str]] = None,
             translation: Optional[MachineTranslation] = None,
             environment: Any = None) -> ParameterSet:
     """Turn the description and this machine's allocation into a `ParameterSet`.
@@ -461,10 +453,15 @@ def resolve(template_text: str, task, config_cls, *,
     ``run_settings`` are the run settings the job request's cards state,
     ``{name: (value, "stage_card" | "calc_card")}`` -- laid over the
     template, which holds none of them, under the sweep; a run setting no
-    card states is the catalogue's default, not chosen
-    (`execution/job-request.md` § 4).  ``pins`` are a benchmark trial's
-    alone: its one-point declarations and its measurement pins
-    (`generator.md` § 4.2), laid last but the rung's answers.
+    card states is the catalogue's default, not chosen, laid here
+    (`template.default_of`; `execution/job-request.md` § 4).
+    ``launch_from`` says where each field of ``allocation`` was stated,
+    ``{Resources field: "flag" | "run card" | "allocation"}``
+    (`jobset/prep_inputs.fold_allocation`), so the launch shape is said by
+    its source; a field it does not name is the allocation's.  ``pins`` are
+    a benchmark trial's alone: its one-point declarations and its
+    measurement pins (`generator.md` § 4.2), laid last but the rung's
+    answers.
 
     ``translation`` is the specialisation's coupling
     (:class:`MachineTranslation`): its declared axes, and what machine ask
@@ -509,11 +506,11 @@ def resolve(template_text: str, task, config_cls, *,
     # Asked ONCE: every door below that could set one refuses, and the
     # answers are laid on each element last, so the gate, the record and
     # the deck read one value.
-    from .template import (engine_name, fixed_by_role, role_answers,
-                           shared_by, shared_by_every_stage, why_role,
-                           why_shared)
+    from .template import (accepts, catalogue, engine_name, fixed_by_role,
+                           role_answers, select, shown, why_role)
     _engine = engine_name(config_cls)
     _kind = task.calculation
+    _items = {it.name: it for it in select(catalogue(), engine=_engine)}
     fixed = fixed_by_role(_engine, _kind)
     answers = role_answers(_engine, _kind, stage_obj.name)
     _refuse_a_stated_answer(template_text, _engine, _kind)
@@ -526,53 +523,30 @@ def resolve(template_text: str, task, config_cls, *,
     _parsed = read_template(template_text)
     origins = {it.name: it.source for it in _parsed.items}
     deck_items = _deck_items(_engine, _kind, stage_obj.name)
+    every_item = {f.name: bool(_items.get(f.name) is not None
+                               and _items[f.name].optional)
+                  for f in dataclasses.fields(config_cls)}
 
     if stage_obj.overrides:
-        # A RUN SETTING is the job request's (`execution/job-request.md`
-        # § 2) -- the machine's answers and a person's alike.  It arrives
-        # here as a run setting, from a run card.
-        from .template import run_settings as _settings_of, why_run_setting
-        bad = sorted(set(stage_obj.overrides) & _settings_of(_engine))
-        if bad:
-            raise ResolveError(
-                f"stage {stage_obj.name!r} overrides {bad[0]!r}, "
-                f"{why_run_setting(bad[0])}.")
-        # A VALUE THAT BINDS EVERY STAGE is not one stage's (the
-        # catalogue's `shared`, `template.md` § 6.4) -- for every kind: the
-        # electronic state's four items everywhere (ES1), transport's shared
-        # rows on its ladder.  Refused HERE, the one door every kind's prep
-        # goes through.
-        bound = sorted(set(stage_obj.overrides)
-                       & shared_by_every_stage(_engine, _kind))
-        if bound:
-            raise ResolveError(
-                f"stage {stage_obj.name!r} overrides "
-                f"{', '.join(map(repr, bound))}, which "
-                f"{'is' if len(bound) == 1 else 'are'} shared by "
-                f"{shared_by(bound[0])}: {why_shared(bound[0])}.  "
-                f"Change {'it' if len(bound) == 1 else 'them'} in the "
-                f"template, where one value applies to every stage that reads it.")
-        # ...nor one the RUNG fixes (T-F5: a device override of the bias in
-        # a single-bias calculation ran the device at one voltage and the
-        # transmission, which reads the device's Hamiltonian, at another).
-        held = sorted(set(stage_obj.overrides) & fixed)
-        if held:
-            raise ResolveError(
-                f"stage {stage_obj.name!r} overrides "
-                f"{', '.join(map(repr, held))}, which the rung fixes: "
-                f"{why_role(held[0])}.  Remove the override.")
-        # ...nor one THIS RUNG DOES NOT READ (`template.md` § 6.4's `stages`,
-        # by the rung's role -- plan § 5w K4): a force-constant run's
-        # relaxation settings, a seed's transmission window, an item the
-        # kind does not carry at all.  Each would be written into a deck
-        # that ignores it.
-        from .template import unread_overrides, why_unread
-        unread = unread_overrides(_engine, _kind, stage_obj.name,
-                                  sorted(stage_obj.overrides))
-        if unread:
-            raise ResolveError(
-                f"stage {stage_obj.name!r} overrides {unread[0]!r}, "
-                f"{why_unread(unread[0], _engine, _kind, stage_obj.name)}.")
+        # EVERY OVERRIDE MAY STAND ON ITS RUNG -- the setting door, asked in
+        # a stage's overrides (`engines/template.md` § 5.4): not a run
+        # setting (the job request's, `execution/job-request.md` § 2), not
+        # one every stage shares (the electronic state, transport's shared
+        # rows), not one the rung fixes (T-F5: a device override of the bias
+        # ran the device at one voltage and the transmission at another),
+        # not one this rung does not read (plan § 5w K4); its type, the
+        # kind's choices, its limits.  Refused HERE, the one door every
+        # kind's prep goes through; a name no field carries is
+        # `effective_config`'s.
+        for key in sorted(stage_obj.overrides):
+            it = _items.get(key)
+            value = stage_obj.overrides[key]
+            clause = (accepts(it, value, "override", engine=_engine,
+                              kind=_kind, stage=stage_obj.name)
+                      if it is not None else None)
+            if clause:
+                raise ResolveError(f"stage {stage_obj.name!r} sets {key} = "
+                                   f"{shown(value)}{clause}.")
         # ...nor A 0 WRITTEN BEFORE ITS MEANING CHANGED, which meant *not
         # set*, as the template's did (`template.ZERO_WAS_NOT_SET`, 2.1.0)
         # -- refused by the same rule, naming `jobset migrate`.
@@ -588,32 +562,25 @@ def resolve(template_text: str, task, config_cls, *,
         provenance.update({k: "stage" for k in stage_obj.overrides})
 
     # THE RUN SETTINGS (`execution/job-request.md` § 4): the template holds
-    # none, so each is the catalogue's default -- not chosen -- until a run
-    # card states it, the stage's over the calculation's.
-    from .template import run_settings as _run_settings_of
-    ours = _run_settings_of(_engine) & known
-    provenance.update({k: "default" for k in ours
-                       if provenance.get(k) == "template"})
+    # none, so each is the catalogue's default -- not chosen, the ONE
+    # default (`template.default_of`), laid over whatever the config class
+    # held -- until a run card states it, the stage's over the
+    # calculation's: the values prep's card read took through the setting
+    # door (`prep_inputs.card_settings`, `engines/template.md` § 5.4).
+    from .template import default_of, is_run_setting
+    ours = {k for k in known if _items.get(k) is not None
+            and is_run_setting(_items[k])}
     run_settings = dict(run_settings or {})
-    if run_settings:
-        bad = sorted(set(run_settings) - ours)
-        if bad:
-            raise ResolveError(
-                f"run setting(s) {', '.join(map(repr, bad))} name nothing "
-                f"a run card states for {config_cls.__name__} "
-                f"(execution/job-request.md 2).")
-        held = sorted(set(run_settings) & fixed)
-        if held:
-            raise ResolveError(
-                f"run setting(s) {', '.join(map(repr, held))} name what the "
-                f"rung fixes: {why_role(held[0])}.")
-        try:
-            base = effective_config(base, {k: v for k, (v, _layer)
-                                           in run_settings.items()})
-        except ValueError as exc:
-            raise ResolveError(str(exc)) from exc
-        provenance.update({k: layer for k, (_v, layer)
-                           in run_settings.items()})
+    try:
+        base = effective_config(base, {
+            **{k: default_of(_items[k], _kind) for k in ours
+               if k not in run_settings},
+            **{k: v for k, (v, _layer) in run_settings.items()}})
+    except ValueError as exc:
+        raise ResolveError(str(exc)) from exc
+    provenance.update({k: "default" for k in ours})
+    provenance.update({k: layer for k, (_v, layer)
+                       in run_settings.items()})
 
     pins = dict(pins or {})
     bad = sorted(set(pins) & machine_facts)
@@ -720,6 +687,16 @@ def resolve(template_text: str, task, config_cls, *,
         _refuse_what_cannot_stand(values, prov, _engine, _kind)
 
         resources = dataclasses.replace(allocation, **machine)
+        # THE LAUNCH SHAPE, SAID BY WHERE IT WAS STATED (`engines/
+        # template.md` § 5.4): a trial's point, else the fold's source, else
+        # nobody -- never the template, which carries none.
+        for name in _emitter_fields(config_cls):
+            field_ = AS_RESOURCE.get(name, name)
+            prov[name] = (
+                "sweep" if field_ in machine
+                else (launch_from or {}).get(field_, "allocation")
+                if getattr(resources, field_, None) not in (None, "")
+                else "default")
         # § 6.2's translation boundary (job-contracts.md): floor 3 maps
         # config → exchange HERE, and ``continue_retries`` is the one
         # rider that is legitimately also a template item (a retry
@@ -759,14 +736,22 @@ def resolve(template_text: str, task, config_cls, *,
         if point and not resources.use_gpu and resources.gres:
             resources = dataclasses.replace(resources, gres=None)
 
-        elements.append(ResolvedConfig(
+        element = ResolvedConfig(
             values=values,
             resources=resources,
             point=dict(point),
             label=_label_for(task.label, point, stage),
             provenance=prov,
-            deck_sources=_deck_sources(values, prov, origins, deck_items),
-        ))
+        )
+        # WHO SET EACH VALUE, composed ONCE for every field, on the values
+        # the deck is handed (the launch shape folded in); the deck's table
+        # is its own items' rows.
+        said = _deck_sources(element.render_config(), prov, origins,
+                             every_item)
+        elements.append(dataclasses.replace(
+            element,
+            deck_sources=tuple((n, w) for n, w in said if n in deck_items),
+            said=dict(said)))
 
     # Two points may render ONE label -- the token drops out-of-set
     # characters (`job-contracts.md` § 6.3), so "ELPA-1" and "ELPA1" would
@@ -850,60 +835,6 @@ def _stage_of(task, stage: Optional[str]):
         f"{', '.join(s.name for s in task.stages)}.")
 
 
-@functools.lru_cache(maxsize=1)
-def _catalogue_types() -> Mapping[str, str]:
-    """``{item name: declared type}`` from the catalogue, parsed ONCE.
-
-    Cached because the ⊕ operator asks per override and ``resolve`` applies it
-    four times per sweep element: parsing an 1100-line file each time measured
-    **24 ms per call**, which a sweep multiplies. The catalogue is a shipped
-    data file and does not change inside a process.
-    """
-    from . import template as _t
-    try:
-        return {i.name: i.type
-                for i in _t.catalogue().items}
-    except Exception:                       # pragma: no cover - defensive
-        return {}
-
-
-def _annotated(config, name: str):
-    """The field's RESOLVED annotation, ``Optional[...]`` unwrapped.
-
-    The fallback both predicates below share when the catalogue has no item
-    for a name -- a config class used in a test fixture, or a field that is
-    not a template item.  It resolves the annotation properly rather than
-    string-matching it.
-    """
-    import typing
-
-    from . import template as _t
-    try:
-        ann = typing.get_type_hints(type(config)).get(name)
-    except Exception:
-        return None
-    inner, _ = _t._unwrap_optional(ann)
-    return inner
-
-
-def _declares_float(config, name: str) -> bool:
-    """Whether the CATALOGUE declares *name* a float (`template.md` § 5)."""
-    declared = _catalogue_types().get(name)
-    if declared is not None:
-        return declared == "float"
-    return _annotated(config, name) is float
-
-
-def _declares_a_triple(config, name: str) -> bool:
-    """Whether the CATALOGUE declares *name* a fixed-length sequence --
-    ``int3`` (``kgrid``) or ``float3`` (``kgrid_displacement``)."""
-    import typing
-    declared = _catalogue_types().get(name)
-    if declared is not None:
-        return declared in ("int3", "float3")
-    return typing.get_origin(_annotated(config, name)) is tuple
-
-
 def effective_config(template, overrides: Mapping[str, Any], *,
                      where: str = ""):
     """Resolve one stage against the backbone: **the one place this happens.**
@@ -982,32 +913,14 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # NOTHING LOSSY is done.  A WHOLE float where a count is declared narrows
     # (``8.0`` -> ``8``); ``100.7`` would have to be truncated, and a string
     # would quietly parse; both are the caller's mistake and are refused BY
-    # NAME in the preflight (``validation/task.py``), which is where a wrong
-    # value belongs.  The rule is ``template.as_declared``'s, the one place a
-    # described value meets its declared type.
-    # **The catalogue's DECLARED TYPE decides** (`template.md` § 5: what a
-    # parser cannot know).
-    #
-    # AND JSON HAS ONE SEQUENCE, the same argument one shape up: ``kgrid``
-    # declares ``Tuple[int, int, int]`` and a description can only spell it
-    # ``[4, 4, 1]``.  ``list -> tuple`` is lossless, so it is done here,
-    # exactly as ``template._shape`` does it for the template's own side of
-    # the ⊕.
-    from .template import as_declared
-
-    def _as_declared(k, v):
-        declared = _catalogue_types().get(k)
-        if declared is not None:
-            return as_declared(declared, v)
-        # A field the catalogue does not describe: its annotation decides.
-        if (_declares_float(template, k)
-                and isinstance(v, int) and not isinstance(v, bool)):
-            return float(v)
-        if _declares_a_triple(template, k) and isinstance(v, list):
-            return tuple(v)
-        return v
-
-    widened = {k: _as_declared(k, v) for k, v in overrides.items()}
+    # NAME by the setting door (`engines/template.md` § 5.4), which is where
+    # a wrong value belongs.  AND JSON HAS ONE SEQUENCE: ``kgrid`` is a
+    # triple a description can only spell ``[4, 4, 1]``.  Both are the
+    # door's one spelling, the catalogue's declared type deciding
+    # (``template.spell``).
+    from .template import items_of, spell
+    items = items_of(type(template))
+    widened = {k: spell(items[k], v) for k, v in overrides.items()}
 
     # ``replace`` builds a NEW object, so the template is untouched and every
     # stage resolves against the same backbone regardless of order.
@@ -1130,5 +1043,5 @@ _DROP_RE = re.compile(r"[^A-Za-z0-9_]")
 
 
 __all__ = ["ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",
-           "MachineTranslation", "resolve", "point_token", "LAYER_WORDS",
+           "MachineTranslation", "resolve", "point_token",
            "SET_AFTER", "BLANK_ANSWERED_BY", "BLANK_ENGINE", "said_by"]

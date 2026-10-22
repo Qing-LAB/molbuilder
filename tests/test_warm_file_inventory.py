@@ -46,14 +46,18 @@ ENGINES = (
 
 def _wrapper(tmp_path, ext, body, warm=None, **kw):
     """The wrapper of a run that STATES its shape -- one written for an
-    unstated one is refused (`architecture.md` § 5.2) -- handed ``warm``,
-    the restart files in effect, as prep hands it."""
+    unstated one is refused (`architecture.md` § 5.2) -- and carries the run
+    settings every job carries, its wall's slack and its retries
+    (`engines/template.md` § 5.4), handed ``warm``, the restart files in
+    effect, as prep hands it."""
     names = RunNames.of("job", "01_coarse", "hierarchical")
     p = tmp_path / names.name(ext)
     p.write_text(body)
     return runwrap.render_run_wrapper(
         p, names=names, env="molbuilder-siesta", warm=warm,
-        resources=Resources(**{"mpi_np": 2, "cpus_per_task": 1, **kw}))
+        resources=Resources(**{"mpi_np": 2, "cpus_per_task": 1,
+                               "wall_slack": 600, "continue_retries": 1,
+                               **kw}))
 
 
 #: The generated comments that open the two blocks, in the order the wrapper

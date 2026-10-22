@@ -85,7 +85,7 @@ It is one of two files a generating surface writes, and they do not overlap:
 
 | file | holds | owned by |
 |---|---|---|
-| **the template** | every parameter, with a value — **what the calculation is** | this document |
+| **the template** | every parameter of what is computed, with a value — **what the calculation is**. A run setting — ranks, threads, GPUs, memory, the solver and the other speed settings — is the job request's ([`execution/job-request.md`](?doc=execution/job-request.md) § 2), never here (§ 2) | this document |
 | **`task.json`** | which parameters vary, and each stage's overrides — **what the mission is** | [`stages.md`](?doc=engines/stages.md) § 6 |
 
 > **effective config = the template's values ⊕ that stage's `overrides`**
@@ -166,22 +166,33 @@ The template is a **floor 2 — description** object
   that will run the job (floor 1), and a description asserting one would not be
   portable **(G1)**.
 
-  **The item may still be declared, valueless** (§ 6.4), because a person *may*
-  ask for 8 ranks or prefer a GPU — and by the test recorded at the bottom of
-  this section, *"may a person?"* is the criterion. A surface needs to know the
-  question exists in order to ask it; the wrapper writer needs to know to look.
-  What a reader **refuses** is a `value` on such an item: that is the failure
-  this rule was written against — a hand-edited `mpi_np` once passed and a deck
-  rendered for a rank count the allocation never granted. Declaring the question
-  is portable; answering it on the wrong machine is not.
-- **But a parameter a person may set is still an item.**
+  **And no run setting is declared here, valueless or not** *(2.28.0; plan
+  § 1w, the user, 2026-10-21: "identify the nature of this problem, rather than
+  hurrying to patch it up")*. A machine's answer — ranks, threads, GPUs,
+  memory — and every other run setting is the **job request's** to state
+  ([`execution/job-request.md`](?doc=execution/job-request.md) § 2): the
+  catalogue declares the item, and a run card answers it. Until 2.28.0 a
+  template declared each one valueless, so a surface would know the question
+  existed — and kept a slot a value could be written into. A slot that must
+  stay empty needs a reader to refuse what lands in it and a way on for the
+  person, and the two were decided apart: the refusal by what the file held,
+  the way on — `jobset migrate` — by the file's version, so a value written
+  into a 2.27.0 template was dropped by the very migration its refusal named
+  (the 2.27.0 review). **A home that must stay empty is removed, never
+  policed.** A surface asks the catalogue which questions a run has
+  (`/api/task-setup/sweepable`), and the wrapper is handed their answers on
+  the job's `Resources` (§ 6.1). A template holding a run-setting item is
+  refused by its reader, naming `molbuilder jobset migrate`, which takes it
+  out — a value it holds onto the calculation's run card (§ 6.4;
+  [`job-request.md`](?doc=execution/job-request.md) § 8).
+- **But a parameter a person may set is still a parameter.**
   `BlockSize` is the case that makes the distinction sharp: a rank count's VALUE
   is a machine fact, while `BlockSize` is an ordinary SIESTA keyword
   a person may set, benchmark, or leave to the engine
-  ([`tuning.md § 2.11`](?doc=engines/tuning.md)). It is an item with **no
-  `value`** until somebody supplies one — which is exactly what *"a missing
-  `value` means explicitly unset"* (§ 3) is for. `prep` writes a set one
-  verbatim and leaves an unset one to the engine.
+  ([`tuning.md § 2.11`](?doc=engines/tuning.md)). It is a catalogue item with
+  **no `default`** — unset is the engine's own automatic — and a run setting,
+  so a person who sets it states it on a run card, and `prep` writes it
+  verbatim; left unset, the deck says so in its place (§ 6.6, obligation 4).
 
   > **Corrected 2026-08-11 (user).** This bullet read *"a value derived from a
   > machine fact is not an item either — `BlockSize` is computed from the rank
@@ -250,9 +261,13 @@ of a catalogue fact is a defect, and a reader of one is the defect's cause.
 
 `default` stays on the class — a field must hold a value on the way to the
 engine — and the catalogue states it too; `test_the_DEFAULT_agrees` keeps the
-two equal. The merged items (`net_charge`, `spin_treatment`,
-`unpaired_electrons`) are declared once in the catalogue for both engines; the
-classes state their default alone.
+two equal. **Every reader asks the catalogue's, never the class's** — one door,
+`template.default_of` (§ 5.4): `resolve` lays the catalogue's default for a run
+setting no card states, over whatever the class held, so the class copy
+decides nothing *(the user's choice of 2026-10-21, plan § 1w: kept and held
+equal rather than derived)*. The merged items (`net_charge`,
+`spin_treatment`, `unpaired_electrons`) are declared once in the catalogue for
+both engines; the classes state their default alone.
 
 ### 2.2 The module, what it may depend on, and what is built on it
 
@@ -474,9 +489,11 @@ shape everyone copies, and this one showed three items that do not exist —
 was shown as `kind="deck"` when it is `produce` (§ 6). An illustration is
 read against the catalogue at review.
 
-The six items are chosen to show **all four `kind`s that any item carries** —
-`engine`, `deck`, `produce`, `wrapper` — and both value states. (`monitor` is
-the fifth member of the vocabulary and no item carries it; § 12.1 row 5.)
+The items are chosen to show **the three `kind`s a template's items carry** —
+`engine`, `deck`, `produce` — and both value states. The fourth, `wrapper`, is
+carried by run settings alone, which no template holds (§ 2): the catalogue's
+`mpi_np`, `continue_retries`, `wall_slack` (§ 6.4 shows one). (`monitor` is the
+fifth member of the vocabulary and no item carries it; § 12.1 row 5.)
 
 ```toml
 # BDT on Au(111) — geometry relaxation.
@@ -498,25 +515,6 @@ help     = """
 The real-space integration grid, in Ry.  Higher is finer and slower;
 convergence is checked, not assumed.
 Per-tier: screening 150 · publishable 350 · tight 500."""
-
-# kind = "deck" + read_by — a MERGED item whose value ALSO leaves the deck
-# (§ 6.1): one question gets one item, and each engine's writer renders its
-# own reach — `net_charge`'s worked example, § 6.3.  A RUN SETTING
-# (`execution`), so VALUELESS here: the job request's run card answers it,
-# else its `default` (§ 6.4).
-[item.use_gpu]
-kind     = "deck"
-category = ["execution"]
-expands  = ["Diag.ELPA.GPU", "gpu4pyscf"]
-type     = "bool"
-default  = false
-group    = "staging"
-read_by  = ["wrapper"]
-help     = """
-Run the ELPA diagonalization on a GPU.  The wrapper depends on this: it decides
-the environment (only the source build has GPU-capable ELPA) AND the GPU runtime
--- the gres ask, MPS, the NUMA pin.  So the value leaves the deck and reaches
-the launch, which is what read_by records."""
 
 # kind = "deck" — molbuilder's own item, reaching the deck as TWO keywords
 # where it writes any: a pinned count is `Spin.Fix` + `Spin.Total`.  This is
@@ -550,40 +548,17 @@ help       = """
 The order species are declared in.  A .XV read against a different order lands
 every coordinate on the wrong atom (run-identity.md § 4)."""
 
-# kind = "wrapper" — never reaches the deck at all: the run script carries it.
-# A run setting, valueless here.
-[item.continue_retries]
-kind     = "wrapper"
-category = ["execution"]
-type     = "int"
-default  = 1
-range    = [0, 5]
-group    = "staging"
-help     = "How many times the run wrapper retries a stage that did not converge.  0 means run once, whatever happens -- which is what a benchmark trial needs."
-
-# kind = "engine", and DELIBERATELY VALUELESS -- the § 6.4 state.  Unflagged,
-# because the scheduler does NOT grant it: a benchmark measures it.
-[item.block_size]
-kind     = "engine"
-category = ["execution"]
-anchor   = "BlockSize"
-type     = "int"
-optional = true
-group    = "staging"
-help     = """
-The ScaLAPACK/ELPA distribution block, in orbitals.  Left unset the keyword is
-NOT WRITTEN and SIESTA uses its own automatic; set to a number, that number is
-written verbatim (tuning.md § 2.11)."""
 ```
 
-**Four absences in this file are meaningful and none is an omission.**
-`use_gpu`, `continue_retries` and `block_size` have no `value` — they are run
-settings, and a run's are its job request's (§ 6.4; [`execution/job-request.md`](?doc=execution/job-request.md) § 2): what a run card
-states, else the item's `default`, or for `block_size`, which has none,
-SIESTA's own automatic. `unpaired_electrons` has neither `value` nor `default` —
-it is `optional`, so *unset* is one of its legal answers and there is no default
-to fall back to: unset is *auto*, answered by the electronic-state class
-(`science/chemistry-correctness.md` § 2a).
+**Two absences in this file are meaningful and neither is an omission.**
+`unpaired_electrons` has neither `value` nor `default` — it is `optional`, so
+*unset* is one of its legal answers and there is no default to fall back to:
+unset is *auto*, answered by the electronic-state class
+(`science/chemistry-correctness.md` § 2a). **And no run setting is here** —
+not `use_gpu`, not `block_size`, not `continue_retries`: each is a catalogue
+item the job request answers (§ 2; [`execution/job-request.md`](?doc=execution/job-request.md) § 2),
+a run card's value or else the item's `default` (`block_size` has none: SIESTA's
+own automatic).
 
 ---
 
@@ -611,7 +586,7 @@ flowchart TD
     TPL --> RD
     RD -->|"this engine's items only"| CFG
     CFG --> DECK
-    ALLOC -.->|"the run settings, valueless in the file"| DECK
+    ALLOC -.->|"the run settings, never in the file"| DECK
 
     CAT -.->|"⛔ never derived FROM a config class"| CFG
 ```
@@ -624,7 +599,7 @@ flowchart TD
 | surface → template | **only the answers.** The items themselves are not re-invented; the surface is filling in a form whose questions the catalogue already asked |
 | template → config | narrowed to one engine first, **then** read as that schema's fields. Skip the narrowing and a two-engine file is refused for both engines, each seeing the other's items as names it does not know |
 | config → deck | the engine's own writer, which never sees the template. It receives an ordinary config object, which is why a config class is a **translator** and not a source (§ 2.1) |
-| prep ⇢ deck | the run settings — the `execution` category, the machine's answers among them (`allocation = true`: `mpi_np`, `omp_threads`, `max_memory_mb`, `gpu_count`, PySCF's `threads`) — are answered here, by the run's own ask: its run card in the job request, or prep's flags — a speed setting nobody stated, by the item's default — on the machine that runs it, never in the file (§ 6.4, § 7; [`execution/job-request.md`](?doc=execution/job-request.md) § 2) |
+| prep ⇢ deck | the run settings — the `execution` category, the machine's answers among them (`allocation = true`: `mpi_np`, `omp_threads`, `max_memory_mb`, `gpu_count`, PySCF's `threads`) — are answered here, by the run's own ask: its run card in the job request, or prep's flags — a speed setting nobody stated, by the catalogue's default (`default_of`, § 5.4) — on the machine that runs it. The template holds none of them, not even declared (§ 2, § 6.4, § 7; [`execution/job-request.md`](?doc=execution/job-request.md) § 2) |
 
 > **⛔ There is no config → template writer, and there must not be one.**
 > `render_template(config)` reflected a Python class into a file, which made the
@@ -892,6 +867,8 @@ source:
 | `temperature_K` · `pressure_atm` | 0 | PySCF's ideal-gas thermochemistry divides by kT and takes logarithms of kT/P (`pyscf/hessian/thermo.py`), so 0 writes inf and nan. The harmonic sums SIESTA's finish uses take 0 K as their limit, the zero-point energy alone — which every record carries at any temperature, so the one rule costs no answer |
 | `block_size` | 0 | a count of orbitals per rank; unset is SIESTA's own automatic (`tuning.md` § 2.11) |
 | `kgrid` · `tbt_k_grid` | 0 | a k-point count per axis: 0 samples nothing (SIESTA's `kgrid.F` counts the points as the grid's determinant) |
+| `mpi_np` · `omp_threads` · `threads` · `gpu_count` | 0 | a count of processes, threads or devices: 0 runs nothing — refused on the run card, on a benchmark row and on a prep flag alike *(2.28.0, plan § 1w: until then a count was checked only where a header was rendered, 0 read as *unstated* there and a negative passed)* |
+| `max_memory_mb` | 0 | a cap holds that many MB; *no cap* is the row left blank, never `0` *(2.28.0: a PySCF script read 0 as no cap and the run script as no limit, while SIESTA's hint wrote it — one value, three meanings)* |
 | `electrode_kz` | **1** | a lead is periodic bulk along transport: one point there gives a wrong lead Hamiltonian, and the device attaches the self-energy built from it — a wrong transmission with no runtime error ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 
 **An inclusive limit is `at_least`** — the same shape, `at_least = { value =
@@ -912,12 +889,11 @@ a `relax_type` that moves atoms, on the rungs that read it
 (`validation.stages.check_a_relaxation_takes_a_step`, plan § 5w K4) — at every
 describe and at `prep`, never seeing the bench's pin, which is prep's own.
 
-**One door for whether a value may stand: `template.why_not(item, value,
-engine=, kind=)`.** It is asked by the description's own check (a stage's
-value, before anything reaches a machine), by `resolve` (whatever layer set the
-value, named) and by the settings gate (a render that skipped `resolve`), and
-it answers with the one clause every refusal gives, or nothing. **One value
-draws one refusal** — the first that holds of:
+**One door for whether a value may stand** — `template.accepts`, § 5.4's,
+asked by every place a value lives; what it asks of an item's limits is
+`template.why_not(item, value, engine=, kind=)`, the clause below. **One value
+draws one refusal** — the first that holds of the declared type and the home
+(§ 5.4), then of:
 
 1. **a component the kind fixes, holding another value** — a transport
    calculation's third k component, which no rung reads
@@ -948,10 +924,11 @@ kind's `recommended` value are held to its `above` when the catalogue is read
 value in a calculation's template is the per-value door's, like any value a
 person sets.
 
-**The values a description holds outside its stages are held too**: an
-`execution` block's values and a bench's points become pins and sweep points,
-so the description's own check asks the same door of them, and a value past its
-limit is refused where the description is written, not first at prep. *(Until 2026-09-30 three passes asked the offered set, the
+**The values a job request holds are held too**: a run card's values and a
+bench's points become run settings, pins and sweep points, so its check asks
+the same door of them — their type and their choices as well as their limits
+(§ 5.4) — and a value past its limit is refused where the job request is
+written, not first at prep. *(Until 2026-09-30 three passes asked the offered set, the
 limit and the fixed k axis separately, and one value could draw two refusals
 and a warning; the transport axis's own checks sat in the kind's validator.)*
 
@@ -972,6 +949,49 @@ greater than 1 the same day.)*
 value — by the description's own check, which the Transport tab's Send shows
 among its notices — and a repeated point is refused where the description is
 read, two runs of one voltage sharing one folder (`v<V>/`).
+
+### 5.4 The setting door — every place a value lives asks it *(2.28.0, plan § 1w)*
+
+*(The user, 2026-10-21: "you always break the rule of coding of unified api and
+framework level and keep creating different sets of handcrafted code".)*
+
+**A setting has one definition, its catalogue item, and what is done to a
+value of it is answered by one door, `template.py`'s (floor 1), never by the
+place the value lives.** Until 2.28.0 each place answered for itself: a
+setting's type was judged from the catalogue in the template reader and from
+the config class's annotation in the description's check, a run card's values
+by no type check at all and then by the benchmark's; its default came from the
+catalogue, from the config class and from literals in the run script and the
+deck writer; where a value came from was said in ten vocabularies; and a home
+added in 2.27.0, the run card, got none of it. The 2.27.0 review measured each
+(plan § 1w).
+
+| the question | the door | what it answers from |
+|---|---|---|
+| **may this value stand here?** | `accepts(item, value, home, *, engine, kind, stage=None)` → the one refusal clause, or none | in order, the first that holds: whether `home` may hold this item at all (`home_of`, below); `null` — *unset* — taken on a run card or an override only by an item whose unset is an answer (`optional`: the launch shape, `block_size`, `parallel_over_k`, an optional parameter of the description) and refused for any other, taken in the template by any item, whose item left valueless is its default (§ 6.4), and **never a benchmark row's point** — a point is a value to try, and a setting left off the row runs at its own; the item's `type`, the **catalogue's** — the config class's annotation judges nothing; then § 5.3's door: a component the kind fixes, a choice the kind does not offer (`offered`), a limit (`above`, `at_least`) |
+| **what is it, spelled?** | `spell(item, value)` → the value in its declared type | lossless only — a whole float for a count is the count, a list of three a triple (`as_declared`); **what a page sends** — a cell's or a card row's text, a form's value — is read by the same door, `read_text(item, text)` → `(value, refusal)`, its type judged, so no page keeps a reader of its own: a number as JSON writes one — decimal, with an exponent if any (`1e3` is 1000), never `0x10` or `1_000` — `true` / `false`, an enum's member by its spelling, a grid as `4,4,1`, `4x4x1`, `4 4 1` or the list `[4, 4, 1]`, a list by commas or spaces; and a refusal quotes a value through `shown(value)` — `null` for unset, `true` / `false`, a triple as the list it is written as |
+| **what does nobody's statement mean?** | `default_of(item, kind)` → the value, or none | the kind's `recommended`, else the item's `default` — **the one default**: `resolve` lays it for a run setting no card states, Task setup shows it in a blank row, migrate asks it whether a value was the default; for an item with neither, its `not_set` line says what applies (§ 6.6, obligation 4). A run setting states no `value` in the catalogue — no template starts from one — which the catalogue's reader checks |
+| **where may a value of it live?** | `home_of(item, kind)` → its homes; `why_not_in(item, home, *, engine, kind, stage=None)` → the clause for a home that may not hold it — `accepts`' first question, and asked alone where a name stands without a value (a `varies` column, a benchmark row's name) | read off the item's own markers: **the template** — what is computed (not a run setting, not `role`); **a stage's overrides** — the same, but not `shared`, and on a rung that reads it (`stages`); **a run card** — a run setting (`execution`); **a benchmark row** — a run setting a trial may vary: never one every trial fixes (`TRIAL_PINS` — no retry; [`job-request.md`](?doc=execution/job-request.md) § 3.4), and of the launch shape only the grid's axes (`GRID_AXES` — ranks, cores per rank, devices; [`generator.md`](?doc=execution/generator.md) § 4.3a), a memory cap being no axis it sweeps; **a prep flag** — the launch shape (`allocation = true`). The scheduler's asks — `allocation`'s `domain`, `time`, `mem`, `gpu_binding`, a card's `time` and `domain` — are not catalogue items; the job request's reader judges and spells them, the allocation's and a card's alike ([`job-request.md`](?doc=execution/job-request.md) § 3.1, § 3.2a) |
+| **who set it?** | `SAID` — one vocabulary | *the template* with its own source words (*from the junction you cited · you set this · not chosen · not recorded*, § 6.6), *this stage's override*, *the stage's run card*, *the calculation's run card*, *a prep flag*, *the run card* (the launch fold's, which records a card as one — the placement line), *the job request's allocation*, *the catalogue's default · not chosen* (*not chosen* alone, beside who answers it, for an item with no default), *a sweep point*, *a pin*, *the rung* — composed once by `resolve` for every value of a rung (`ResolvedConfig.said`, the deck's table its own items' rows) and read by the deck's PROVENANCE rows, the pipeline log, prep's printed lines and its placement, and the page; none words its own |
+
+**The homes ask; none decides.** Each place a value is written or read asks
+the door with its own home, and keeps no check, spelling, default or word of
+its own:
+
+| home | who asks | when |
+|---|---|---|
+| the template | `read_template` / `config_from_template` — the item's type, as the door reads it (`as_declared`); the file names no kind, so the kind's rules — a component it fixes, a choice it does not offer, a limit — are `resolve`'s to ask when the template meets its kind (§ 5.3) | every read — prep, migrate, the folder answer |
+| a stage's overrides | the description's preflight (`validation.task`) and `resolve` | every describe and prep, and Task setup's Save |
+| a run card, a benchmark row | the job request's check (`validation.task.request_checks`), and prep's read of the cards and the bench (`prep_inputs`), whose values `resolve` lays | every prep, and Task setup's Save |
+| a prep flag | `jobset prep`'s flags (`--np`, `--cpus-per-task`, `--gpus`, `--max-memory-mb`) | as they are typed |
+| a page | Task setup's cells and cards, the parameter forms — through one server door, `POST /api/task-setup/value` (`{item, text, home, stage}` → `{value, refusal}`); the hand-over and Save through the readers above | as a value is typed; at Save |
+| migrate | the readers above, of every file it writes | before it writes |
+
+**And the deck says what it was given.** A deck writer, a run script and the
+scheduler's header write the value the job holds — a run setting's card value
+or the catalogue's default, laid by `resolve` — and fall back to no literal of
+their own: the run script's slack and retry count, and the solver a deck writes
+when none is set, are the job's (§ 6.6, obligation 4).
 
 ## 6. `kind` — which layer owns the item
 
@@ -1566,8 +1586,8 @@ are how a layer asks which is which instead of carrying its own list of names.
 
 | marker | who answers | when | what the template holds |
 |---|---|---|---|
-| `allocation` | the job request's run card or a `prep` flag — the launch shape and the memory cap, the machine's answers; stated nowhere, the shape is refused and the cap is none ([`execution/architecture.md`](?doc=execution/architecture.md) § 5.2) | at `prep`, on the machine that runs it | nothing — declared, valueless |
-| the `execution` category's other items, the speed settings | the job request's run card, else the item's `default` ([`execution/job-request.md`](?doc=execution/job-request.md) § 2, § 4) | at `prep` | nothing — declared, valueless; a value written here is refused, naming `jobset migrate` |
+| `allocation` | the job request's run card or a `prep` flag — the launch shape and the memory cap, the machine's answers; stated nowhere, the shape is refused and the cap is none ([`execution/architecture.md`](?doc=execution/architecture.md) § 5.2) | at `prep`, on the machine that runs it | **no item** — a run setting is not a template item (§ 2); one found here is refused, naming `jobset migrate` |
+| the `execution` category's other items, the speed settings | the job request's run card, else the catalogue's default (`default_of`, § 5.4; [`execution/job-request.md`](?doc=execution/job-request.md) § 2, § 4) | at `prep` | **no item**, as above |
 | `citation` | the citation's recorded contract — a cited run's deck, or a cited pair's `info.calculation` (`engines/transport.md` § 3.1) | at **`molbuilder describe`**, once | **a value**, which the person may then change |
 | `role` | the rung — the catalogue's `value`, or the rung's own `role_values` answer, or the bias point it renders | at `resolve`, for each rung | nothing — declared, valueless; no door may set it (the third answerer, below) |
 | `shared` | *(not an answerer — a scope)* | — | whatever answered it; the value binds every rung and no stage overrides it |
@@ -1810,8 +1830,8 @@ help       = "How many MPI ranks to run with."
 
 | the item | what it means | unset → | may it carry a value? |
 |---|---|---|---|
-| `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run (`architecture.md` § 5.2); a memory cap left unset is no cap -- a PySCF deck's run-settings block writes `MAX_MEMORY_MB = None`, which its `gto.M` hands PySCF as `max_memory`, read as not given, keeping its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB); the vibration deck wrote 4000 for the blank until 2026-10-06. Nothing fills one *(prep filled them from what the machine granted until 2026-10-02)* | **no.** A reader refuses one (§ 2, G1) |
-| `optional = true`, no value | *unset is a legal answer* | the engine's own default | yes — unless the item is a run setting (the `execution` category): its value is the job request's run card, never the template's (`execution/job-request.md` § 2) |
+| `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run (`architecture.md` § 5.2); a memory cap left unset is no cap -- a PySCF deck's run-settings block writes `MAX_MEMORY_MB = None`, which its `gto.M` hands PySCF as `max_memory`, read as not given, keeping its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB); the vibration deck wrote 4000 for the blank until 2026-10-06. Nothing fills one *(prep filled them from what the machine granted until 2026-10-02)* | **it is no template item at all** (§ 2, G1) |
+| `optional = true`, no value | *unset is a legal answer* | the engine's own default | yes — and a run setting (the `execution` category) is no template item at all: its value is the job request's run card (`execution/job-request.md` § 2) |
 
 **Five items carry it** — `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` — and
 `select(t, allocation=True)` is the one way to ask which. Nothing hand-lists
@@ -1848,13 +1868,13 @@ says that by being **unflagged** — no extra key, no second name.
 > page. One is now enough. *(User, 2026-08-17: unify them into one parameter
 > and one API.)*
 
-**This is how `execution` items live here without § 7's machine-fact rule being
-broken.** The template may say *"rank count is a parameter of this calculation"*;
-it may not say *"this job has 8 ranks"*. The rule's failure case was a
-hand-edited `mpi_np` **with a value** rendering a deck for ranks the allocation
-never granted — which stays impossible, because a reader refuses a value on the
-item and the value arrives at `prep` from the run's own ask — its run card
-in the job request ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.2) or prep's flags. The template carries the
+**Since 2.28.0 `execution` items do not live here at all** (§ 2). The
+catalogue says *"rank count is a parameter of a run"*; the job request says
+*"this run has 8 ranks"*; the template says neither. The rule's failure case
+was a hand-edited `mpi_np` **with a value** rendering a deck for ranks the
+allocation never granted — which stays impossible, because a template holding
+the item is refused and the value arrives at `prep` from the run's own ask — its run card
+in the job request ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.2) or prep's flags. The catalogue carries the
 **question**, the run states the **ask**, and `prep` resolves it.
 Same distinction `bench/result.py` draws between `asked` and `effective`, and for
 the same reason.
@@ -1967,22 +1987,26 @@ second and third on 2026-10-11 (plan § 5u.1, step 10):
 
 ## 7. What is an item, and what is not
 
-**The rule (D5): every parameter the engine's schema declares is an item, and
-each one's `kind` says who consumes it.** Membership is total, so *"is this
-field in the template?"* is never a judgement call and never a maintained list.
+**The rule (D5): every parameter the engine's schema declares is an item of
+the catalogue, and each one's `kind` says who consumes it; every one of them
+that says what is computed is an item of a calculation's template.**
+Membership is total, so *"is this field in the template?"* is never a judgement
+call and never a maintained list: it is the catalogue's own answer — a run
+setting (the `execution` category) is the job request's (§ 2), and every
+other parameter of the calculation's engine and kind is here.
 
 Three things are **not** items, each excluded by a rule that already exists:
 
 | not an item | why | where it lives instead |
 |---|---|---|
-| **a machine fact's VALUE** — how many ranks this job got, which queue, what wall time | this file must never *assert* a machine (§ 2, G1) | stated by the job and checked at `prep` against the target's record (`execution/architecture.md` § 5.2). The **item** may be declared (§ 6.4) so a surface can ask and the wrapper writer knows to look; writing a `value` to one **here** is what a reader **refuses** |
+| **a run setting** — how many ranks, which solver, the GPU; and a machine fact's value, which queue, what wall time | this file must never *assert* a machine (§ 2, G1), and how a calculation runs is not what it computes | the job request: a run card states each run setting, the allocation the queue's asks, checked at `prep` against the target's record (`execution/architecture.md` § 5.2). The catalogue declares the item; a template holding one is **refused**, naming `jobset migrate` (§ 2) |
 | **the ladder** — the list of stages | an item is a parameter; a list of stages is the mission | `task.json` ([`stages.md`](?doc=engines/stages.md) § 1.1) |
 | **the structure** — which atoms exist, and their labels | an input to the calculation, never edited by the generator, and it travels as its own file (§ 9.1) | the data files ([`project-layout.md`](?doc=execution/project-layout.md) § 2.1) |
 
 > **This rule is the TEMPLATE's, and it stays absolute** *(clarified
-> 2026-09-01)*. `read_template` refuses a hand-written `mpi_np` and
-> always will: this file is what a run's parameters ARE, shared by every stage
-> and every machine, and a rank count is true of neither.
+> 2026-09-01)*. `read_template` refuses a template holding `mpi_np` and
+> always will: this file is what a calculation's parameters ARE, shared by
+> every stage and every machine, and a rank count is true of neither.
 >
 > The job request is another file of floor 2 and answers a different
 > question — *how did the person ASK it to run* — so its run cards state a machine value and
@@ -1990,8 +2014,8 @@ Three things are **not** items, each excluded by a rule that already exists:
 > `bench` entry
 > is NOT that channel: `mpi_np: [8]` is *measure eight*, one trial, and the
 > run never reads it ([`generator.md § 4.3a`](?doc=execution/generator.md)).
-> Nothing about this section changes: the item here is still valueless, and a
-> value written here is still refused. The two files simply are not one rule.
+> Nothing about this section changes: the item is not here, and one written
+> here is refused. The two files simply are not one rule.
 
 **A parameter that cannot be given a `kind` is a gap in this vocabulary**, and
 the loud version of that is the only one that gets fixed: whatever writes a
@@ -2283,9 +2307,11 @@ than a special case:**
 
 ## 10. Complete, and lossless — two claims, both checkable
 
-**Complete for a surface** — every parameter the schema declares has an item. A
-parameter the schema carries and the template omits is a control no surface can
-offer and a value no user can see **(G2)**.
+**Complete for a surface** — every parameter of what is computed has an item
+here, and every run setting has its item in the catalogue, which the run card
+is drawn from (`/api/task-setup/sweepable`). A parameter the schema carries and
+neither offers is a control no surface can offer and a value no user can see
+**(G2)**.
 
 **Complete for `prep`** — resolving a stage against the template yields
 **exactly** the deck that stage would otherwise have been rendered with **(G4)**.
@@ -2439,7 +2465,7 @@ called six times:
 |---|---|---|---|
 | base | `config_from_template` | — | **yes**, unless the value is the answer every rung gives |
 | ⊕ stage | `task.json`'s stage `overrides` | **yes** — § 7 | **yes** |
-| ⊕ run settings | the run settings that are not the launch shape, over each item's `default`: a run's, the job request's run cards, the rung's over the calculation's (`prep_inputs.run_inputs`); a benchmark trial's, the calculation's card alone ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.4, § 4) | **yes** | **yes** |
+| ⊕ run settings | every run setting that is not the launch shape: the job request's run cards, the rung's over the calculation's (`prep_inputs.run_inputs`) — a benchmark trial's, the calculation's card alone — else the catalogue's default (`default_of`, § 5.4), laid over whatever the config class held ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.4, § 4) | **yes** | **yes** |
 | ⊕ sweep | the sweep point | **yes** | **yes** |
 | ⊕ pin | a benchmark trial's alone: its one-point declarations and its measurement pins (`generator.md` § 4.2) | **yes** | **yes** |
 | ⊕ the rung's answers | `template.role_answers`, provenance `role` — last, so it replaces nothing a person said | — | — |
@@ -2837,7 +2863,7 @@ description.
   ```toml
   # NOT `allocation`: the scheduler does not grant a block size.  The
   # person sets it on the run card, or a benchmark measures it -- a run
-  # setting, so the template holds no value for it (§ 6.4).
+  # setting, a CATALOGUE item no template carries (§ 2, § 6.4).
   [item.block_size]
   kind     = "engine"
   category = ["execution"]

@@ -15,9 +15,10 @@ everywhere).
 
 **Why this is a second file and not more of `task.py`.** § 6.6's eight checks
 split cleanly: four are answerable from the description alone and live in the
-codec, and four need the engine's field schema -- one of those four being the
-DECLARED-TYPE row, which needs the schema for the same
-reason the bounds row does: only the field knows what it can hold. ``task.py`` is L1 — it imports
+codec, and four need the engine's field schema and its catalogue -- one of
+those four being the DECLARED-TYPE row, which asks the setting door
+(`engines/template.md` § 5.4) for the catalogue's type, as the bounds row asks
+it for the limits. ``task.py`` is L1 — it imports
 ``persist`` and the standard library — and importing an engine into it is
 the upward import the layer rule forbids (`architecture.md` § 3, kept by
 review). Its docstring carries the same
@@ -37,12 +38,9 @@ while *parsing*, where there is no object yet to attach a finding to.
 from __future__ import annotations
 
 import dataclasses
-import re
-import typing
 from typing import Any, Dict, List, Optional
 
 from ..issues import Issue, ValidationError
-from ..template import is_member
 
 
 def preflight(task, config_cls=None, *,
@@ -100,15 +98,20 @@ def preflight(task, config_cls=None, *,
     # comparison the benchmark exists to make says nothing, and it says
     # nothing silently, which is why this is an error rather than a warning.
     if request is not None:
-        out.extend(request_checks(request, cls))
+        out.extend(request_checks(request))
 
     # -- 3. every named field exists in the schema ------------------------
     fields = {f.name: f for f in dataclasses.fields(cls)}
     out.extend(_names_exist(task, cls, fields))
-    # ...and every override is READ by the rung it is on (§ 6.4's `stages`,
-    # by the rung's role -- plan § 5w K4), the one door `resolve` asks too.
-    unread = _overrides_a_rung_reads(task)
-    out.extend(unread)
+    # -- 4. ...and every override's value may stand on its rung: the
+    #  setting door (`engines/template.md` § 5.4), asked in the override's
+    #  home -- a run setting, a shared item, one the rung fixes or does not
+    #  read; `null`; the catalogue's type (`relax_steps: 100.7` would reach
+    #  the deck as `MD.Steps 100.7`, the M2 seam walk, 2026-08-07); a
+    #  component the kind fixes, a choice it does not offer, a limit.  One
+    #  value, one refusal; the door `resolve` asks too.
+    refused = _overrides_may_stand(task, fields)
+    out.extend(refused)
 
     # The RESOLVED ladder (template ⊕ each stage's overrides) when the caller
     # has the template: the checks below that judge a rung as it will run
@@ -143,15 +146,11 @@ def preflight(task, config_cls=None, *,
         if why:
             out.append(Issue("error", why, where="job_request.stages.group"))
 
-    # -- 4. every value is inside the schema's bounds ---------------------
-    #  ...which begins with being a value that field can HOLD: `relax_steps:
-    #  100.7` is inside its range and is not an integer, and would reach the
-    #  deck as `MD.Steps 100.7` (the M2 seam walk, 2026-08-07).
-    out.extend(_values_are_the_declared_type(task, cls, fields))
-    out.extend(_values_in_bounds(
+    # -- 4b. a value that may stand outside its recommended range is warned
+    out.extend(_values_in_range(
         task, cls, fields,
         refused={(i.stage, i.where.split(".", 1)[1])
-                 for i in (*unread, *stepless)}))
+                 for i in (*refused, *stepless)}))
     out.extend(stepless)
     out.extend(_bias_points_in_range(task))
     out.extend(_window_reaches_the_bias(task, ladder))
@@ -164,61 +163,44 @@ def preflight(task, config_cls=None, *,
 
 
 
-def request_checks(request, cls) -> List[Issue]:
+def request_checks(request) -> List[Issue]:
     """THE JOB REQUEST'S OWN CHECKS that need the vocabulary
-    (`execution/job-request.md` § 3.2, § 3.4): every bench key a speed knob,
-    every run card's name an item its rung reads, every bench point fitting
-    its item, every value one its item may hold -- ``request`` read against
-    the description, whose engine and kind it holds."""
-    return [*_bench_names_a_speed_knob(request, cls),
-            *_run_card_names_what_its_rung_reads(request),
-            *bench_points_fit_their_items(request),
-            *_described_values_may_stand(request)]
+    (`execution/job-request.md` § 3.2, § 3.4, § 7): every value on a run
+    card -- the calculation's or a stage's -- and every benchmark point one
+    its item takes in that home, asked of the setting door
+    (`engines/template.md` § 5.4) -- ``request`` read against the
+    description, whose engine and kind it holds."""
+    return [*_run_cards_may_stand(request),
+            *bench_points_fit_their_items(request)]
 
 
-def _bench_names_a_speed_knob(request, cls) -> List[Issue]:
-    """§ 3.4: every ``bench`` key is an ``execution``-category field.
-
-    Read off the CONFIG CLASS's own metadata rather than a list kept here --
-    a second list of which parameters are sweepable is the copy that goes
-    stale, and this codebase has four documented cases of exactly that.
-    """
-    plan = request.bench
-    if not plan:
-        return []
-    from ..template import items_of
-    sweepable = {name for name, it in items_of(cls).items()
-                 if "execution" in tuple(it.category or ())}
-    out: List[Issue] = []
-    for name in sorted(plan):
-        if name in sweepable:
-            continue
-        known = ", ".join(sorted(sweepable)) or "(none)"
-        out.append(Issue(
-            "error",
-            f"bench names {name!r}, which {request.engine} does not declare as "
-            f"an `execution` parameter -- so sweeping it would measure a "
-            f"different calculation at each point and the comparison would "
-            f"mean nothing. Sweepable here: {known}",
-            where=f"job_request.bench.{name}"))
-    return out
+def _items_of(request) -> Dict[str, Any]:
+    """The catalogue's items for ``request``'s engine, by name."""
+    from ..template import catalogue, select
+    return {it.name: it
+            for it in select(catalogue(), engine=str(request.engine))}
 
 
-def _run_card_names_what_its_rung_reads(request) -> List[Issue]:
-    """`job-request.md` § 3.2: every name in an ``execution`` block -- the
-    calculation's or a stage's -- is an `execution` catalogue item the kind
-    carries, and on a stage's own card one its rung reads.
+def _run_settings_said(request) -> str:
+    """The run settings ``request``'s engine declares, as a refusal lists
+    what may be stated instead."""
+    from ..template import is_run_setting
+    return ", ".join(sorted(n for n, it in _items_of(request).items()
+                            if is_run_setting(it))) or "(none)"
 
-    THE SAME MEMBERSHIP `bench` USES, asked here because the two blocks are
-    one vocabulary at two arities.  A name outside it would be carried to
-    prep and refused there, or worse, carried into a deck as a value nobody
-    can read back.  And a stage's own value is one ITS RUNG READS
-    (`template.reads`, the door an override is asked through): a GPU count
-    on a transport ladder's transmission, which runs on no GPU, is refused
-    by name where the description is written, never met as G5's refusal
-    naming a switch that rung does not have (`web/task-setup.md` § 6.2b).
-    """
-    from ..template import catalogue, reads, select, why_unread
+
+def _run_cards_may_stand(request) -> List[Issue]:
+    """Every name on a run card -- the calculation's, a stage's -- is a run
+    setting, and its value one its item takes there (`job-request.md`
+    § 3.2): asked of the setting door in the run card's home, a stage's
+    card on that stage's rung -- a GPU count on a transport ladder's
+    transmission, which runs on no GPU, is refused by name where the
+    description is written, never met as G5's refusal naming a switch that
+    rung does not have (`web/task-setup.md` § 6.2b).  The run's own
+    scheduler asks, `time` and `domain`, are the job request's reader's
+    (§ 3.2a)."""
+    from ..job_request import LANE_ASKS
+    from ..template import accepts, shown
     blocks = [("execution", dict(request.execution or {}), None)]
     for name, entry in request.stages.items():
         if entry.execution:
@@ -226,133 +208,79 @@ def _run_card_names_what_its_rung_reads(request) -> List[Issue]:
                            dict(entry.execution), name))
     if not any(b for _w, b, _s in blocks):
         return []
-    # THE CATALOGUE'S `execution` ITEMS, PLUS THE TWO LANE ASKS.  `time` and
-    # `domain` are not catalogue items -- an engine has no opinion about a
-    # wall clock or a queue -- but a RUN owns them separately from the bench
-    # (`job-request.md` § 3.2a), so they are admitted here by name.
-    from ..job_request import LANE_ASKS
-    from ..template import a_kind
-    kind = _kind_of(request)
-    every = {i.name for i in select(catalogue(), engine=request.engine)
-             if "execution" in (i.category or ())}
-    # ...THAT THIS KIND CARRIES: a run card's value is read by the kind's
-    # decks or by nothing (`template.md` § 6.3), as an override is (K4).
-    carried = {i.name: i for i in select(catalogue(), engine=request.engine,
-                                         calculation=kind)
-               if "execution" in (i.category or ())}
-    known = set(carried) | set(LANE_ASKS)
-    engine = str(request.engine)
+    items = _items_of(request)
+    engine, kind = str(request.engine), _kind_of(request)
     out: List[Issue] = []
     for where, block, stage in blocks:
         for name in sorted(block):
-            if (stage is not None and name in carried
-                    and not reads(carried[name], engine, kind, stage)):
+            if name in LANE_ASKS:
+                continue
+            it = items.get(name)
+            if it is None:
                 out.append(Issue(
                     "error",
-                    f"stage {stage!r} states {name} = {block[name]!r} on its "
-                    f"run card, " + why_unread(
-                        name, engine, kind, stage,
-                        then="remove it from that run card -- on Task "
-                             "setup, the × beside it")
-                    + ".",
+                    f"{where} names {name!r}, which is not an execution "
+                    f"setting of {engine}.  This block says what the RUN "
+                    f"uses -- "
+                    f"ranks, threads, the device, the solver.  Execution "
+                    f"settings here: {_run_settings_said(request)}, "
+                    f"{', '.join(LANE_ASKS)}",
                     where=f"job_request.{where}.{name}"))
                 continue
-            if name in known:
-                continue
-            if name in every:
+            clause = accepts(it, block[name], "run_card", engine=engine,
+                             kind=kind, stage=stage)
+            if clause:
                 out.append(Issue(
                     "error",
-                    f"{where} names {name!r}, which {a_kind(kind)} does not "
-                    f"carry -- no rung of it reads it, so the value would "
-                    f"change nothing (engines/template.md 6.3)",
+                    f"{where} sets {name} = {shown(block[name])}{clause}.",
                     where=f"job_request.{where}.{name}"))
-                continue
-            out.append(Issue(
-                "error",
-                f"{where} names {name!r}, which is not an execution setting "
-                f"of {request.engine}.  This block says what the RUN uses -- "
-                f"ranks, threads, the device, the solver.  A physics value "
-                f"belongs in the template, and a per-stage one in that "
-                f"stage's `overrides` in task.json (engines/stages.md 6.2).  "
-                f"Execution settings here: "
-                f"{', '.join(sorted(known)) or '(none)'}",
-                where=f"job_request.{where}.{name}"))
-    return out
-
-
-def _described_values_may_stand(request) -> List[Issue]:
-    """The values a job request holds -- an ``execution`` block's, the
-    calculation's or a stage's, and a bench's points -- asked of the one
-    per-value door as a stage's value is (`engines/template.md` § 5.3):
-    they become run settings and sweep points.  A name the other checks
-    refuse (not an execution item, not a speed knob) is theirs; this asks
-    only whether the value may stand."""
-    out: List[Issue] = []
-    blocks = [("execution", dict(request.execution or {}))]
-    for name, entry in request.stages.items():
-        if entry.execution:
-            blocks.append((f"stage {name!r} execution", dict(entry.execution)))
-    for where, block in blocks:
-        for name in sorted(block):
-            clause = _why_not(request, name, block[name])
-            if clause:
-                out.append(Issue(
-                    "error", f"{where} sets {name} = {block[name]!r}{clause}.",
-                    where=f"job_request.{where}.{name}"))
-    for name in sorted(request.bench or {}):
-        for v in request.bench[name]:
-            clause = _why_not(request, name, v)
-            if clause:
-                out.append(Issue(
-                    "error", f"bench declares {name} = {v!r}{clause}.",
-                    where=f"job_request.bench.{name}"))
     return out
 
 
 def bench_points_fit_their_items(request) -> List[Issue]:
-    """`generator.md` § 4.3a's shape half at DESCRIBE time: every declared
-    point must fit its item -- a bool item takes true/false, an enum point
-    must be one of the item's choices, and a repeated point would measure
-    one configuration twice.  THE ONE HOME of those rules:
-    `jobset/prep_inputs.py::_declared_execution_pins` calls this same
-    function as its backstop.  Surfaced at save so a typo'd declaration
-    fails there, not after a queue on the cluster.
-
-    Membership is the sibling's question; an unknown name is skipped here
-    because `_bench_names_a_speed_knob` already reported it.
-    """
+    """Every benchmark row names a run setting -- a speed knob, so each
+    point measures one calculation (`job-request.md` § 3.4: sweep anything
+    else and the comparison says nothing, silently) -- and every point is
+    one its item takes in a benchmark row, asked of the setting door
+    (`engines/template.md` § 5.4); a repeated point would measure one
+    configuration twice.  THE ONE HOME of those rules: prep's bench
+    assembly (`jobset/prep_inputs.py::_declared_execution_pins`) asks this
+    same function as its backstop."""
     plan = request.bench
     if not plan:
         return []
-    from ..template import catalogue, select
-    items = {i.name: i for i in select(catalogue(), engine=request.engine)
-             if "execution" in (i.category or ())}
+    from ..template import accepts, shown, why_not_in
+    items = _items_of(request)
+    engine, kind = str(request.engine), _kind_of(request)
     out: List[Issue] = []
     for name in sorted(plan):
+        where = f"job_request.bench.{name}"
         it = items.get(name)
         if it is None:
-            continue
-        pts = list(plan[name])
-        for v in pts:
-            if it.type == "bool" and not isinstance(v, bool):
-                out.append(Issue(
-                    "error",
-                    f"bench declares {name!r} = {v!r}; the item is a bool "
-                    f"-- write true or false.",
-                    where=f"job_request.bench.{name}"))
-            elif it.type == "enum" and it.choices \
-                    and not is_member(v, it.choices):
-                out.append(Issue(
-                    "error",
-                    f"bench declares {name!r} = {v!r}; the choices are "
-                    f"{', '.join(map(str, it.choices))}.",
-                    where=f"job_request.bench.{name}"))
-        if len(pts) != len(set(pts)):
             out.append(Issue(
                 "error",
-                f"bench declares {name!r} = {pts!r}; a repeated point "
-                f"would measure one configuration twice.",
-                where=f"job_request.bench.{name}"))
+                f"bench names {name!r}, which is not a setting of {engine} "
+                f"-- a benchmark row sweeps a run setting.  Sweepable here: "
+                f"{_run_settings_said(request)}", where=where))
+            continue
+        home = why_not_in(it, "bench", engine=engine, kind=kind)
+        if home:
+            out.append(Issue("error", f"bench names {name!r}{home}.",
+                             where=where))
+            continue
+        pts = list(plan[name])
+        refused = [Issue("error", f"bench declares {name} = {shown(v)}"
+                                  f"{clause}.", where=where)
+                   for v in pts
+                   for clause in [accepts(it, v, "bench", engine=engine,
+                                          kind=kind)] if clause]
+        out.extend(refused)
+        # ONE VALUE, ONE REFUSAL: a repeat is judged among points that stand.
+        if not refused and len(pts) != len(set(pts)):
+            out.append(Issue(
+                "error",
+                f"bench declares {name} = {shown(pts)}; a repeated point "
+                f"would measure one configuration twice.", where=where))
     return out
 
 
@@ -398,34 +326,33 @@ def _names_exist(task, cls, fields) -> List[Issue]:
     in both passes the codec cleanly — the subset holds, and both are wrong the
     same way. This is the only place that can catch it.
 
-    A name that IS a field but is a RUN SETTING -- the catalogue's
-    ``execution`` items, the machine's answers (``mpi_np``) and a person's
-    (``use_gpu``, ``restart``) alike -- refuses too, with the run card's
-    story rather than the typo story: a rung states it in its ``execution``
-    and nowhere else (`engines/stages.md` § 6.8d, plan § 5w K5).
+    A ``varies`` name that IS a field is a column a stage may override, so
+    the setting door is asked whether a stage's overrides may hold it at all
+    (`engines/template.md` § 5.4, ``template.why_not_in``) -- a run setting
+    is the run card's, a shared item the template's, one the rung fixes
+    nobody's.  An override's own value is the door's in full
+    (:func:`_overrides_may_stand`).
     """
-    from ..template import run_settings, why_run_setting
-    on_the_card = run_settings(str(task.engine))
+    from ..template import items_of, why_not_in
+    items = items_of(cls)
+    engine, kind = str(task.engine), _kind_of(task)
 
     out: List[Issue] = []
     for name in (task.varies or ()):
         if name not in fields:
             out.append(Issue("error", _no_such_field(
                 name, fields, cls, "'varies' names"), where="task.varies"))
-        elif name in on_the_card:
-            out.append(Issue("error", f"'varies' names {name!r}, "
-                             f"{why_run_setting(name)}", where="task.varies"))
+            continue
+        home = why_not_in(items[name], "override", engine=engine, kind=kind)
+        if home:
+            out.append(Issue("error", f"'varies' names {name!r}{home}.",
+                             where="task.varies"))
     for st in (task.stages or ()):
         for key in st.overrides:
             if key not in fields:
                 out.append(Issue("error", _no_such_field(
                     key, fields, cls, f"stage {st.name!r} overrides",
                     value=st.overrides[key], is_set=True),
-                    where="task.stages.overrides", stage=st.name))
-            elif key in on_the_card:
-                out.append(Issue(
-                    "error", f"stage {st.name!r} overrides {key!r}, "
-                    f"{why_run_setting(key)}",
                     where="task.stages.overrides", stage=st.name))
     return out
 
@@ -444,138 +371,6 @@ def _no_such_field(name, fields, cls, lead, *, value=None,
     return (f"{lead} {name!r}, which is not a field of "
             f"{cls.__name__}{hint}")
 
-
-def _values_are_the_declared_type(task, cls, fields) -> List[Issue]:
-    """An override's value must be one the field can actually hold.
-
-    **Refused rather than coerced**, and the two halves of that decision are
-    deliberate. ``effective_config`` widens ``int -> float`` because JSON has
-    one number and ``150`` for a float field is the same value written
-    differently — lossless, so silence is honest. Everything else is the
-    caller's mistake: coercing ``relax_steps: 100.7`` to 100 would silently
-    run a different calculation from the one described, and parsing ``"150"``
-    would make a quoting slip invisible.
-
-    **The annotation is RESOLVED, never sniffed as source text**: under
-    ``from __future__ import annotations`` a field's ``type`` IS its source
-    text, so a literal-string comparison would leave every ``Optional[…]``
-    field and every sequence field (``kgrid``, ``kgrid_displacement``,
-    ``species_order``, ``ecp_atoms``) unchecked.
-    """
-    hints = typing.get_type_hints(cls)
-    out: List[Issue] = []
-    for st in (task.stages or ()):
-        for key, value in st.overrides.items():
-            f = fields.get(key)
-            if f is None:
-                continue                    # already reported by _names_exist
-            bad = _type_complaint(hints.get(key, f.type), value)
-            if bad:
-                out.append(Issue(
-                    "error",
-                    f"stage {st.name!r} sets {key} = {value!r}, {bad}",
-                    where=f"config.{key}", stage=st.name))
-    return out
-
-
-#: A declared type in the words someone editing the file would use. § 6.6's
-#: row asks a refusal to name *what the field declares*, and "not a whole
-#: number" does not tell a person who typed ``4,4,1`` that ``[4, 4, 1]`` is
-#: what the description wants.
-_PLURAL = {int: "whole numbers", float: "numbers", str: "text values",
-           bool: "true/false values"}
-_COUNT = {1: "one", 2: "two", 3: "three", 4: "four"}
-
-
-def _spell(declared) -> str:
-    origin = typing.get_origin(declared)
-    args = [a for a in typing.get_args(declared) if a is not Ellipsis]
-    elem = args[0] if args else None
-    if origin is tuple and args:
-        return (f"{_COUNT.get(len(args), str(len(args)))} "
-                f"{_PLURAL.get(elem, 'values')}, written as a list")
-    if origin is list:
-        return f"a list of {_PLURAL.get(elem, 'values')}"
-    return {int: "a whole number", float: "a number", bool: "true or false",
-            str: "text"}.get(declared,
-                             getattr(declared, "__name__", str(declared)))
-
-
-def _type_complaint(declared, value) -> Optional[str]:
-    """Why *value* cannot be this field's, or ``None`` if it can."""
-    origin = typing.get_origin(declared)
-    args = typing.get_args(declared)
-
-    # ``Optional[X]`` — ``None`` is always legal and the rest is X's question.
-    # A wider union declares no single shape to name, so it is left alone
-    # rather than guessed at.
-    if origin is typing.Union:
-        if value is None:
-            return None
-        inner = [a for a in args if a is not type(None)]
-        return _type_complaint(inner[0], value) if len(inner) == 1 else None
-
-    if origin in (tuple, list):
-        want = f"which is not {_spell(declared)}"
-        elem = next((a for a in args if a is not Ellipsis), None)
-        # A ``str`` is itself a sequence, and treating it as one is exactly
-        # how ``"4,4,1"`` reached a ``Tuple[int, int, int]``: it has three
-        # of something, and every check that asked only *"is it a sequence"*
-        # said yes.  So it is refused FIRST, by name, with the list it was
-        # trying to be.
-        if isinstance(value, str) or not isinstance(value, (list, tuple)):
-            return want + _write_it_as_a_list(value, args, origin)
-        if origin is tuple and Ellipsis not in args and len(value) != len(args):
-            return f"{want} -- it has {len(value)}, not {len(args)}"
-        for v in value:
-            if _scalar_complaint(elem, v):
-                return f"{want} -- {v!r} is not one"
-        return None
-
-    return _scalar_complaint(declared, value)
-
-
-def _write_it_as_a_list(value, args, origin) -> str:
-    """The comma-text a person typed, shown back as the list to write.
-
-    Only when it would actually BE the value — the same count, and every
-    piece the element type. A guess that does not parse is worse than no
-    guess, so there is no partial version of this.
-    """
-    if not isinstance(value, str):
-        return ""
-    pieces = [p for p in re.split(r"[,\sx]+", value.strip()) if p]
-    if origin is tuple and Ellipsis not in args and len(pieces) != len(args):
-        return ""
-    elem = next((a for a in args if a is not Ellipsis), None)
-    try:
-        shaped = [elem(p) for p in pieces] if elem in (int, float) else pieces
-    except (TypeError, ValueError):
-        return ""
-    return f" -- write {list(shaped)!r}"
-
-
-def _scalar_complaint(declared, value) -> Optional[str]:
-    """The same question for a single value. A type with no rule here is not
-    a refusal: this gate says what it knows and leaves the rest to bounds."""
-    is_bool = isinstance(value, bool)
-    if declared is bool:
-        return None if is_bool else "which is not true or false"
-    if declared is int:
-        if is_bool or not isinstance(value, (int, float)):
-            return "which is not a whole number"
-        if isinstance(value, float) and not value.is_integer():
-            return (f"which is not a whole number -- this field counts "
-                    f"things, so {value!r} would have to be rounded and the "
-                    f"run would not be the one described")
-        return None
-    if declared is float:
-        if is_bool or not isinstance(value, (int, float)):
-            return "which is not a number"
-        return None
-    if declared is str:
-        return None if isinstance(value, str) else "which is not text"
-    return None
 
 def _bias_points_in_range(task) -> List[Issue]:
     """The bias list's points are values of `bias_voltage_v`, and a value
@@ -634,119 +429,67 @@ def _kind_of(task) -> str:
     return str(task.calculation)
 
 
-def _why_not(task, key: str, value) -> str:
-    """The one clause refusing ``value`` for ``key`` on this description's
-    kind (`engines/template.md` § 5.3, ``template.why_not``) -- a component
-    the kind fixes, a choice it does not offer, a value past a hard limit --
-    or ``""`` when the value may stand.  Asked of the items the kind CARRIES,
-    as `resolve` and the settings gate ask it: an item the kind does not
-    carry reaches no deck of it, and is no door's to judge."""
-    from ..template import as_declared, catalogue, select, why_not
+def _overrides_may_stand(task, fields) -> List[Issue]:
+    """Every override's value may stand on its rung -- the setting door,
+    asked in a stage's overrides (`engines/template.md` § 5.4,
+    ``template.accepts``): whether that home may hold the item at all (a run
+    setting, a shared item, one the rung fixes, one the rung does not read
+    -- plan § 5w K4), ``null``, the catalogue's declared type, a component
+    the kind fixes, a choice it does not offer, a limit.  A description
+    carrying anything else renders a deck the engine rejects or, worse,
+    quietly reinterprets -- refused where the description is written, never
+    first at prep on the machine that runs it.  One value, one refusal; a
+    name no field carries is :func:`_names_exist`'s."""
+    from ..template import accepts, catalogue, select, shown
     engine, kind = str(task.engine), _kind_of(task)
-    item = next((it for it in select(catalogue(), engine=engine,
-                                     calculation=kind) if it.name == key),
-                None)
-    if item is None:
-        return ""
-    # ...ABOUT THE VALUE AS `resolve` WILL SEE IT: ``0.0`` for a count is the
-    # count 0 (``template.as_declared``, lossless), so the door judges what
-    # prep would -- and a value the type check refuses stays unconverted,
-    # for that refusal alone.
-    return why_not(item, as_declared(item.type, value), engine=engine,
-                   kind=kind) or ""
-
-
-def _overrides_a_rung_reads(task) -> List[Issue]:
-    """Every override is read by the rung it is on (`engines/template.md`
-    § 6.4's ``stages``, by the rung's role; plan § 5w K4): a force-constant
-    run's relaxation settings, a seed's transmission window, an item the
-    kind does not carry at all -- each is refused by name where the
-    description is written, never written into a deck that ignores it.  The
-    one door ``resolve`` asks too (``template.unread_overrides``)."""
-    from ..template import unread_overrides, why_unread
-    engine, kind = str(task.engine), _kind_of(task)
+    items = {it.name: it for it in select(catalogue(), engine=engine)}
     out: List[Issue] = []
     for st in (task.stages or ()):
-        for name in unread_overrides(engine, kind, st.name,
-                                     sorted(st.overrides)):
-            out.append(Issue(
-                "error",
-                f"stage {st.name!r} overrides {name!r}, "
-                f"{why_unread(name, engine, kind, st.name)}.",
-                where=f"config.{name}", stage=st.name))
+        for key, value in st.overrides.items():
+            if key not in fields:
+                continue                    # already reported by _names_exist
+            clause = accepts(items[key], value, "override", engine=engine,
+                             kind=kind, stage=st.name)
+            if clause:
+                out.append(Issue("error",
+                                 f"stage {st.name!r} sets {key} = "
+                                 f"{shown(value)}{clause}.",
+                                 where=f"config.{key}", stage=st.name))
     return out
 
 
-def _values_in_bounds(task, cls, fields, *,
-                      refused=frozenset()) -> List[Issue]:
-    """Every override's value is inside the bounds the schema declares.
-
-    Enum ``choices`` and what the one per-value door refuses -- a component
-    the kind fixes, a choice it does not offer, a value past a hard limit
-    (``template.why_not``) -- are refusals in § 6.6's sense: a description
-    carrying anything else renders a deck the engine will reject or, worse,
-    quietly reinterpret.  A numeric ``range`` is a RECOMMENDATION, warned
-    here as on every surface (`engines/template.md` § 5.3).
-
-    A field with neither is unbounded on purpose and is not checked — the
-    schema is the authority on what a bound is, and inventing one here would
-    refuse a description for breaking a rule nobody wrote.
-
-    ``refused`` holds the ``(stage, item)`` overrides the rung does not read
-    (:func:`_overrides_a_rung_reads`): each drew that refusal, and draws
-    nothing more here -- one value, one refusal (`engines/template.md` § 5.3).
-    """
+def _values_in_range(task, cls, fields, *,
+                     refused=frozenset()) -> List[Issue]:
+    """An override outside its item's recommended ``range`` is WARNED, as
+    on every surface: a range is a recommendation, never a limit
+    (`engines/template.md` § 5.3).  A field with none is unbounded on
+    purpose.  ``refused`` holds the ``(stage, item)`` overrides the door
+    refused (:func:`_overrides_may_stand`) or that a stepless relaxation
+    drew: each drew that refusal, and draws nothing more here -- one value,
+    one refusal."""
     from .metadata import outside_range
     from ..template import items_of
     items = items_of(cls)
     out: List[Issue] = []
     for st in (task.stages or ()):
         for key, value in st.overrides.items():
-            f = fields.get(key)
-            if f is None:
-                continue                    # already reported by _names_exist
-            if (st.name, key) in refused:
-                continue                    # the rung does not read it
+            if key not in fields or (st.name, key) in refused:
+                continue
             item = items.get(key)
             rng = item.range if item is not None else None
-            choices = item.choices if item is not None else None
-            if choices and not is_member(value, choices):
+            if not rng:
+                continue
+            lo, hi = rng
+            # PER COMPONENT FOR A TRIPLE, through the helper the settings
+            # gate asks too (`metadata.outside_range`).
+            for i, v in outside_range(value, rng):
+                shown = key if i is None else f"{key}[{i}]"
                 out.append(Issue(
-                    "error",
-                    f"stage {st.name!r} sets {key} = {value!r}, which is not "
-                    f"one of {', '.join(repr(c) for c in choices)}",
+                    "warn",
+                    f"stage {st.name!r} sets {shown} = {v!r}, outside the "
+                    f"recommended range [{lo}, {hi}] -- a recommendation, "
+                    f"not a limit (engines/template.md 5.3)",
                     where=f"config.{key}", stage=st.name))
-                continue
-            # ...AND ONE THAT MAY STAND FOR ITS ITEM ON THIS KIND -- the one
-            # per-value door every surface asks (`engines/template.md`
-            # § 5.3): refused where the description is written, never first
-            # at prep on the machine that runs it.  A value refused here
-            # draws that refusal alone, its range warning standing aside.
-            clause = _why_not(task, key, value)
-            if clause:
-                shown = list(value) if isinstance(value, tuple) else value
-                out.append(Issue("error",
-                                 f"stage {st.name!r} sets {key} = "
-                                 f"{shown!r}{clause}.",
-                                 where=f"config.{key}", stage=st.name))
-                continue
-            # THE RECOMMENDED RANGE, per component for a triple, through the
-            # helper the settings gate asks too (`metadata.outside_range`,
-            # which leaves a bool and any other non-number to the type
-            # check).  (An
-            # item this kind does not carry is refused above, by the rung
-            # check, and never reaches here.)
-            if rng:
-                lo, hi = rng
-                for i, v in outside_range(value, rng):
-                    shown = key if i is None else f"{key}[{i}]"
-                    out.append(Issue(
-                        "warn",
-                        f"stage {st.name!r} sets {shown} = {v!r}, outside "
-                        f"the recommended range [{lo}, {hi}] -- a "
-                        f"recommendation, not a limit (engines/template.md "
-                        f"5.3)",
-                        where=f"config.{key}", stage=st.name))
     return out
 
 

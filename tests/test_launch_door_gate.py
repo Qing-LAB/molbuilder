@@ -34,7 +34,8 @@ def _wrapper(tmp_path):
     # A PROBED MACHINE, its record saying how a shell enters an environment
     # there -- the activation the generator reads (`configuration.md` § 4); a
     # wrapper is not rendered without one.  Its shape is STATED, as every
-    # run's is (`architecture.md` § 5.2).
+    # run's is (`architecture.md` § 5.2), and it carries the run settings
+    # every job carries (`engines/template.md` § 5.4).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (tmp_path / "environment.json").write_text(
         _Env(scheduler=SLURM,
@@ -43,7 +44,9 @@ def _wrapper(tmp_path):
                                 "preamble": "true"}).to_json()
         + "\n")
     return write_run_wrapper(deck, env="e", names=names,
-                             resources=Resources(mpi_np=2, cpus_per_task=1),
+                             resources=Resources(mpi_np=2, cpus_per_task=1,
+                                                 wall_slack=600,
+                                                 continue_retries=1),
                              emit_sbatch=False)
 
 

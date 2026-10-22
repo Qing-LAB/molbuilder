@@ -68,12 +68,12 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
                  if item.name in _SHAPE_ITEMS]
         for item in items:
             field = AS_RESOURCE.get(item.name, item.name)
-            if getattr(allocation, field, None) in (None, "", 0):
+            if getattr(allocation, field, None) in (None, ""):
                 missing.append((field, item.name))
         # A RANK COUNT FOR AN ENGINE THAT RUNS ONE PROCESS names nothing it
         # runs: its header asks one task, and launch would have sent the
         # count (`submit._sbatch_request`).
-        if (getattr(allocation, "mpi_np", None) not in (None, "", 0)
+        if (getattr(allocation, "mpi_np", None) not in (None, "")
                 and "mpi_np" not in {i.name for i in items}):
             return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states "
                     f"a rank count (--np) for {engine}, which runs one "
@@ -223,16 +223,17 @@ def placed(resources, environment, *, one_process: bool, what: str,
 
 
 def _sources_said(sources) -> str:
-    """Where each launch value came from, by source -- ``wall, memory from
-    the description; ranks, cores per rank from the run card``."""
+    """Where each launch value came from, by source, in the one vocabulary
+    (`template.SAID`) -- ``wall, memory from the job request's allocation;
+    ranks, cores per rank from the run card``."""
+    from ..template import SAID
     by_source: dict = {}
     sources = sources or {}
     for field in _LAUNCH_WORDS:            # in the one order of the words
         if field in sources:
             by_source.setdefault(sources[field], []).append(
                 _LAUNCH_WORDS[field][0])
-    return "; ".join(f"{', '.join(fields)} from the {source}"
-                     if source != "flag" else f"{', '.join(fields)} from a flag"
+    return "; ".join(f"{', '.join(fields)} from {SAID[source]}"
                      for source, fields in by_source.items())
 
 
@@ -240,7 +241,7 @@ def placement_line(placement) -> str:
     """A run's placement, as both doors say it -- the queue it was placed
     on and where each value came from (`job-system.md` § 6.0): ``placed on
     short (cpu/public) -- queue from the run card; wall, memory from the
-    description; ranks, cores per rank from the run card``."""
+    job request's allocation; ranks, cores per rank from the run card``."""
     if not placement:
         return ""
     said = _sources_said(placement.get("from"))
