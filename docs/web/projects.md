@@ -269,10 +269,14 @@ touch it. The parts:
   call runs the button says *Reading sizes…* and refuses further clicks.
   The archive is the folder **as it stands now — the pure execution directory**:
   left out are the workspace store (`.molbuilder_workspace`), a checkpoint
-  folder's history (`.git`, `.binsnapshots`), and an engine's scratch a run
-  still holds — a device run's `tsgf/` pair, the files the one answer names
-  (`warmfiles.is_scratch`, which the checkpoint asks; `jobset scratch` lists
-  and empties them, [`job-system.md`](?doc=execution/job-system.md) § 5.3);
+  folder's history (`.git`, `.binsnapshots`), and what no copy of a run
+  folder carries, by the one answer the checkpoint asks
+  (`warmfiles.never_carried`, [`checkpointing.md`](?doc=execution/checkpointing.md)
+  S1): an engine's scratch a run still holds — a device run's `tsgf/` pair
+  (`jobset scratch` lists and empties them, [`job-system.md`](?doc=execution/job-system.md)
+  § 5.3) — and molbuilder's temporary files, there only while a write or a
+  reading runs (a TBtrans data file's reading's claim, the one writer's
+  temp), each said by its kind with its files and bytes;
   every other run file, engine restart files (`.DM`, `.TSDE`, `.XV`)
   included, rides along. *(Not via
   `git archive`: a checkpoint deliberately keeps large files out of git — they

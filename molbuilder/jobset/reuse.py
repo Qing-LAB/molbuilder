@@ -747,17 +747,18 @@ def _member(calc, finished, stage: str, once, copied: set
 
 
 def _copy_of(finished, stage: str, source: Path, run: Path) -> Copy:
-    """One run, as it will be copied: how it ended, what it holds."""
-    from ..warmfiles import is_scratch
+    """One run, as it will be copied: how it ended, what it holds -- its
+    size, and the engine's scratch it leaves behind, named."""
+    from ..warmfiles import is_scratch, never_carried
     from .continuation import stage_run_state
     state, _detail = stage_run_state(Path(finished.base), finished.task,
                                      stage, source)
     size, left = 0, []
-    for f in _files(source):
+    for f in _files(source, carried=False):
         if is_scratch(f.name):
             folder = f.parent.relative_to(source)
             left.append(f"{folder}/" if str(folder) != "." else f.name)
-        else:
+        elif not never_carried(f.name):
             size += f.stat().st_size
     return Copy(stage=stage, source=source, run=run,
                 shown=(f"{Path(finished.base).name}/"
@@ -766,17 +767,17 @@ def _copy_of(finished, stage: str, source: Path, run: Path) -> Copy:
                 size=size, left=tuple(dict.fromkeys(left)))
 
 
-def _files(run: Path) -> List[Path]:
+def _files(run: Path, *, carried: bool = True) -> List[Path]:
     """Every file under ``run`` a copy carries, in a stable order -- never
-    one the catalogue calls transient (`runfiles.is_transient`: a reading's
-    claim, a temp of the one writer, a lock), which speaks for a process
-    that is not the copy's."""
-    from ..runfiles import is_transient
+    an engine's scratch or a file the catalogue calls transient
+    (`warmfiles.never_carried`, the one answer every copier asks); with
+    ``carried`` false, every file there."""
+    from ..warmfiles import never_carried
     out: List[Path] = []
     for here, dirs, files in os.walk(run):
         dirs.sort()
         out.extend(Path(here) / f for f in sorted(files)
-                   if not is_transient(f))
+                   if not (carried and never_carried(f)))
     return out
 
 
@@ -790,7 +791,6 @@ def copy_in(calc, decision: Decision, plan) -> None:
     from ..paths import attempt_dir, attempts_in
     from ..runfiles import COPIED_FROM_FILE
     from ..runrecord import launch_record_path, write_copied_from
-    from ..warmfiles import is_scratch
     from .materialize import empty_run
     from .naming import stage_home
     base, task = Path(calc.base), calc.task
@@ -806,8 +806,7 @@ def copy_in(calc, decision: Decision, plan) -> None:
         for f in _files(c.source):
             # THE RUN'S OWN RECORDS are written for the copy, below; a
             # point's `shared/` keeps its own.
-            if (f in (record, c.source / COPIED_FROM_FILE)
-                    or is_scratch(f.name)):
+            if f in (record, c.source / COPIED_FROM_FILE):
                 continue
             plan.copy(f, c.run / f.relative_to(c.source))
         write_copied_from(c.run, c.copied_from, plan=plan)
@@ -876,9 +875,9 @@ def take_into(calc, takes: Sequence[Take], points, plan, *,
     ``.copied-from``."""
     from ..runfiles import (CALCDIR_FILE, CONTINUED_FROM_FILE,
                             COPIED_FROM_FILE, GATHERED_FROM_FILE,
-                            LAUNCH_RECORD_FILE, is_transient)
+                            LAUNCH_RECORD_FILE)
     from ..runrecord import write_copied_from
-    from ..warmfiles import is_scratch
+    from ..warmfiles import never_carried
     records = {CALCDIR_FILE, CONTINUED_FROM_FILE, COPIED_FROM_FILE,
                GATHERED_FROM_FILE, LAUNCH_RECORD_FILE, *given}
     from ..transport.energies import SHARED_DIR
@@ -887,7 +886,7 @@ def take_into(calc, takes: Sequence[Take], points, plan, *,
         pdir = folder_of[point_key(t.point)]
         for f in sorted(t.source.iterdir()):
             if (f.is_file() and f.name not in records
-                    and not is_scratch(f.name) and not is_transient(f.name)):
+                    and not never_carried(f.name)):
                 plan.copy(f, pdir / f.name)
         # ITS SHARED ENERGIES, with it (§ 2a.16).
         carry_shared(t.source / SHARED_DIR, pdir / SHARED_DIR, plan,

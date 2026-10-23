@@ -96,6 +96,20 @@ def _by_label(reading, regions: Dict[str, Sequence[int]]
     return out
 
 
+#: THE CURVES A DOS BLOCK MAY HOLD (:func:`point_dos`) -- a block holding
+#: none is no DOS: the record says why, never a blank plot (`web/results.md`
+#: § 2.5).
+DOS_CURVES = ("total", "by_label", "lead_spectral", "lead_bulk",
+              "eigenchannels", "by_spin")
+
+#: Why a point's block holds no curve: TBtrans wrote none, or, a point that
+#: shares energies, not every part of its grid holds one (`energies.joined`
+#: keeps no value on part of a grid).
+NO_CURVE = ("its files hold no DOS over its whole grid -- TBtrans wrote none "
+            "(TBT.DOS.Gf, TBT.DOS.Elecs and TBT.T.Eig off), or, for a point "
+            "that shares energies, not every part of its grid holds one")
+
+
 def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
               spin: str) -> Dict:
     """THE DOS BLOCK of a point's folder (`web/results.md` § 2.5):

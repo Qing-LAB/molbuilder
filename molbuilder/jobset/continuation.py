@@ -778,7 +778,7 @@ def point_rows(run, names, task, stage: str, *, launch, products, base):
     stage's latest run, the record for the run a transmission gathered
     (§ 2a.12), so the two never read a point two ways.  Returns ``(rows,
     running)``, the second whether any point not done is running."""
-    from ..parse.dirs import run_status
+    from ..runs import concluded
     from ..transport.stages import points_in
     from ..runrecord import copied_of, read_continued_from
     gathered = gathered_lines(run)
@@ -786,10 +786,13 @@ def point_rows(run, names, task, stage: str, *, launch, products, base):
     for pdir, pt in points_in(run, task, stage, base=base):
         ok, why = done(pdir, names, launch=launch, products=products,
                        launched_in=run)
-        # ITS RUN'S STATE AND VERDICT, the one status door's -- a point done
-        # finished; decided on these, never on the reason's words.
+        # ITS RUN'S STATE AND VERDICT, through the one door every reader of
+        # a run's state asks (`runs.concluded`: the run's record, and the
+        # scheduler where this machine sent its job, its answer written
+        # once) -- a point done finished; decided on these, never on the
+        # reason's words.
         opened = pdir.is_dir()
-        st = (run_status(pdir, names.stem, launch=launch, launched_in=run)
+        st = (concluded(pdir, names, base=base, launched_in=run)
               if opened else None)
         state = ("finished" if ok else st.state if st is not None
                  else "pending")

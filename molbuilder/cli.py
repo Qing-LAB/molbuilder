@@ -3347,14 +3347,17 @@ def cmd_checkpoint_config(path):
         click.echo("              it can never make it store less")
     else:
         click.echo("always large  (none) -- every file is measured")
-    scratch = cls["scratch"]
-    click.echo("in neither    " + (", ".join(scratch) if scratch else "(none)"))
-    click.echo("              an engine's scratch, recomputed by every run: "
+    neither = cls["in_neither"]
+    click.echo("in neither    " + (", ".join(neither) if neither else "(none)"))
+    click.echo("              an engine's scratch, recomputed by every run, "
+               "and molbuilder's")
+    click.echo("              temporary files, there while a write runs: "
                "never saved,")
-    click.echo("              and a restore removes it -- named by the "
+    click.echo("              and a restore removes them -- named by the "
                "engines' own")
-    click.echo("              warm-files.toml, not by molbuilder.json "
-               "(checkpointing.md S1)")
+    click.echo("              warm-files.toml and molbuilder's file "
+               "catalogue, not by")
+    click.echo("              molbuilder.json (checkpointing.md S1)")
     click.echo("\nedit molbuilder.json to change the size limit or the "
                "families (docs/execution/checkpointing.md § 4)")
 

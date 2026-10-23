@@ -239,6 +239,26 @@ def is_scratch(name: str) -> bool:
     return any(fnmatch.fnmatch(name, family) for family in scratch_families())
 
 
+def never_carried(name: str) -> bool:
+    """WHETHER NO COPY OF A RUN FOLDER CARRIES a file of this name -- no
+    checkpoint's state, no download, no reuse, no take-over: an engine's
+    scratch (:func:`is_scratch`, recomputed by every run) or a file the
+    catalogue calls transient (`runfiles.is_transient`, there only while a
+    write or a reading runs).  THE ONE ANSWER every copier asks
+    (`checkpointing.md` S1; the user, 2026-10-22: temporary files left out
+    of saves and downloads)."""
+    from .runfiles import is_transient
+    return is_scratch(name) or is_transient(name)
+
+
+def never_carried_families() -> Tuple[str, ...]:
+    """:func:`never_carried` as families of file names -- the engines'
+    scratch and the catalogue's transient files -- for a ``.gitignore`` and
+    an exclude line."""
+    from .runfiles import transient_families
+    return tuple(sorted(set(scratch_families()) | set(transient_families())))
+
+
 def _load(engine: str, base_dir=None) -> WarmFilesDoc:
     """Read and validate the rules file, preserving file order.
 

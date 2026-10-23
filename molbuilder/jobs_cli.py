@@ -116,8 +116,7 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
     try:
         job = find(job_id)
     except JobFileError as exc:
-        raise click.ClickException(f"its file does not read: {exc}") \
-            from None
+        raise click.ClickException(str(exc)) from None
     if job is None:
         raise click.ClickException(
             f"no job {job_id} is on file -- `molbuilder jobs status` lists "

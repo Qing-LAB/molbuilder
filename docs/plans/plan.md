@@ -1009,7 +1009,7 @@ the same day, with what it turned out to be.
 
 ---
 
-## 1z. TBtrans's files read by the SIESTA family's parser, a data file's reading kept *(2026-10-22; the user's yes; built for 2.31.0 — N9 in § 0a's queue)*
+## 1z. TBtrans's files read by the SIESTA family's parser, a data file's reading kept *(2026-10-22; the user's yes; shipped 2.31.0 — N9 in § 0a's queue)*
 
 *(The user, 2026-10-22, after Sol's report of `AuBDTAu_singlebias_equilibrium`
 took four minutes and showed nothing meanwhile: "can this be done ahead of
@@ -1065,7 +1065,7 @@ below says.
 | **N6** | **(a) shipped 2.29.0** | **The memory a run needs** (§ 1u) — (a), measured on a stage's runs, built 2026-10-22 (`job-request.md` § 3.1a); (b), the engine's own analysis for a stage's first run, next; (c) only where (a) and (b) leave a gap | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 | **N7** | **shipped 2.30.0** | **A transport calculation that reuses a finished one** (§ 1x, `engines/transport.md` § 2a.16) — built, two review rounds, released 2026-10-22 | the user, 2026-10-22: *"use existing information and previous result to continue a calculation by a certain design"* |
 | **N8** | a middle number | **Export the transport results — CSV and NetCDF** (§ 1y), contract first; its place in the order the user's | the user, 2026-10-22: *"export data for all the results in the transport data including convergence data, in format of csv and netcdf"* |
-| **N9** | **built for 2.31.0** | **TBtrans's files read by the SIESTA family's parser, a data file's reading kept** (§ 1z) — contract 2026-10-22 (`model/parse.md` § 5e, `engines/transport.md` § 2a.12), the user's yes (*"go ahead"*); built for 2.31.0, two review rounds, each revised once; with it, the scheduler asked after a sent run by the jobs list's rule (`running-a-job.md` § 4.2 — the user, 2026-10-22: *"you should fix that bug"*) | the user, 2026-10-22: Sol's report took four minutes; *"make this part of the parser of siesta engine"* |
+| **N9** | **shipped 2.31.0** | **TBtrans's files read by the SIESTA family's parser, a data file's reading kept** (§ 1z) — contract 2026-10-22 (`model/parse.md` § 5e, `engines/transport.md` § 2a.12), the user's yes (*"go ahead"*); built for 2.31.0, two review rounds, each revised once; with it, the scheduler asked after a sent run by the jobs list's rule (`running-a-job.md` § 4.2 — the user, 2026-10-22: *"you should fix that bug"*) | the user, 2026-10-22: Sol's report took four minutes; *"make this part of the parser of siesta engine"* |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 

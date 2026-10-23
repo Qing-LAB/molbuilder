@@ -2700,18 +2700,17 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     from ..runrecord import launch_record, next_run, read_continued_from
     from ..transport.energies import SHARED_DIR
     from ..transport.stages import hands_on, products_of
-    from ..runfiles import is_transient
-    from ..warmfiles import is_scratch
+    from ..warmfiles import never_carried
     from .continuation import done
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     job, names, stage = m.job, m.names, m.job.name
     stage_dir, run, prev = m.container, m.run_dir, m.ran
-    # AN ENGINE'S SCRATCH (the one answer, `warmfiles.is_scratch`):
-    # recomputed by every run, so never taken over -- it lies in the run's
-    # own folder for it (`Job.scratch_dir`), and a run made before held it
-    # in its points.  Nor a file the catalogue calls transient
-    # (`runfiles.is_transient`): a reading's claim speaks for a process
-    # that is not the new run's.
+    # WHAT NO COPY CARRIES (the one answer, `warmfiles.never_carried`): an
+    # engine's scratch, recomputed by every run, so never taken over -- it
+    # lies in the run's own folder for it (`Job.scratch_dir`), and a run
+    # made before held it in its points -- and a file the catalogue calls
+    # transient, a reading's claim speaking for a process not the new
+    # run's.
     # WHAT A POINT MUST HOLD TO BE DONE -- the one list (`products_of`):
     # what the rungs downstream take, and what a point hands to the next
     # (`hands_on`, the one answer of that).
@@ -2770,8 +2769,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         hand_over(base, HandOver(
             pdir, names, FIRST_ATTEMPT, CONTINUED, source=origin,
             files=tuple((at, f.name) for f in sorted(src.iterdir())
-                        if f.is_file() and not is_scratch(f.name)
-                        and not is_transient(f.name))),
+                        if f.is_file() and not never_carried(f.name))),
             plan.writes)
         # ITS SHARED ENERGIES, with it (`engines/transport.md` § 2a.16).
         from .reuse import carry_shared

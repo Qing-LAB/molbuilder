@@ -822,7 +822,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from .compose import read_provenance, recorded_junction
     from .stages import frames_of, rung_points, same_volts
     from .energies import joined, sharing_of
-    from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
+    from .tbtnc import (DOS_CURVES, NO_CURVE, ORBITAL_NOTE,
+                        ORBITAL_TYPES, TbtError, point_dos,
                         readings)
 
     base_dir = calc.base
@@ -948,6 +949,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             dos = joined(where, _dos)
         except TbtError as exc:
             dos_why = str(exc)
+        if dos is not None and not any(k in dos for k in DOS_CURVES):
+            # A BLOCK OF NO CURVE is no DOS, said.
+            dos, dos_why = None, NO_CURVE
         # THE POINT IT IS A COPY OF -- taken over from, or copied in with
         # its run from, the finished calculation this one reuses (§ 2a.16):
         # the run that computed it (`runrecord.copied_of`).

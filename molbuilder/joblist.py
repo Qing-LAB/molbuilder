@@ -1,7 +1,9 @@
 """THE JOBS LAUNCHED FROM THIS MACHINE -- each launch's address, kept the way
 a server keeps its pidfile (`execution/job-system.md` § 6.0a): one file per
 submission in molbuilder's state folder, written by the one sender the
-moment it goes (`jobset.submit._go`), read by `molbuilder jobs`.
+moment it goes (`jobset.submit._go`), read by `molbuilder jobs` -- each read
+by what it says, never by its file's name, so two clusters sharing a home
+keep their jobs of one number apart (:func:`_file_of`, :func:`find`).
 
 **An address, never a state.**  What a job is doing is read fresh each time
 -- its process, the scheduler, its runs' own files -- so nothing here can go
@@ -174,8 +176,16 @@ def _dir() -> Path:
     return jobs_dir()
 
 
-def _file_of(job_id: str) -> Path:
-    return _dir() / f"{job_id}.json"
+def _file_of(job: "Job") -> Path:
+    """Where a job's address is written first: a run here by its id
+    (``<host>-<pid>``); a queue job by the cluster it was sent to and its
+    number -- a home folder two clusters share holds both clusters' jobs of
+    one number (the user, 2026-10-22) -- by its number alone where its
+    cluster was not read.  Read back by what it says (:func:`find`), and
+    written again where it was read from."""
+    name = (f"{job.cluster}-{job.job_id}" if job.how == "queue"
+            and job.cluster else job.id)
+    return _dir() / f"{name}.json"
 
 
 #: THE CLUSTER EACH SCHEDULER HERE ANSWERS FOR, once it has said: a
@@ -217,18 +227,19 @@ def scheduler_of(job):
 
 def address_of(job_id, calculation) -> Optional[Job]:
     """THE ADDRESS of queue job ``job_id`` this machine sent for the
-    calculation at ``calculation`` -- its file on the jobs list -- or
-    ``None``: none on file (sent from another machine, or its end said and
-    its address removed), one that does not read, or another calculation's
-    job of that id."""
-    try:
-        job = find(str(job_id))
-    except JobFileError:
-        return None
-    if (job is None or job.how != "queue"
-            or Path(job.calculation) != Path(calculation).resolve()):
-        return None
-    return job
+    calculation at ``calculation`` -- its file on the jobs list, read by
+    what it says -- or ``None``: none on file (sent from another machine, or
+    its end said and its address removed), or another calculation's job of
+    that number.  Two clusters' jobs of one number for one calculation: the
+    one this machine's scheduler answers for (:func:`asked_here`)."""
+    calc = Path(calculation).resolve()
+    hits = [j for j in every() if isinstance(j, Job) and j.how == "queue"
+            and j.job_id == str(job_id) and Path(j.calculation) == calc]
+    if len(hits) < 2:
+        return hits[0] if hits else None
+    here = Asked()
+    return next((j for j in hits if asked_here(j, here)[0] is not None),
+                hits[0])
 
 
 def asked_here(job: "Job", here: "Asked") -> "Tuple[Optional[Any], str]":
@@ -346,12 +357,12 @@ def add_members(job_id: str, members: Dict[str, Dict[str, str]]) -> Job:
     """The runs a group's launch inside a sequence sends, added to the
     address of the job it rides (`job-system.md` § 6.0, *A sequence of
     groups*) -- read, its ``members`` grown, written again by the one
-    writer; :class:`JobFileError` when no file holds that job or it does
-    not read."""
+    writer where it was read from; :class:`JobFileError` when no file holds
+    that job, or the number is two clusters' (:func:`find`)."""
     import dataclasses
     job = find(job_id)
     if job is None:
-        raise JobFileError(f"{_file_of(job_id)}: no job {job_id} is on file")
+        raise JobFileError(f"{_dir()}: no job {job_id} is on file")
     grown = dataclasses.replace(job, members={**job.members, **members})
     write(grown)
     return grown
@@ -360,11 +371,12 @@ def add_members(job_id: str, members: Dict[str, Dict[str, str]]) -> Job:
 def write(job: Job) -> Path:
     """The job's file, written through the one writer into the folder made
     private (`config_dir.ensure_private_dir`): it names a calculation and a
-    process of this account."""
+    process of this account -- where it was read from, else
+    :func:`_file_of`."""
     from .config_dir import ensure_private_dir
     from .persist import write_json
     ensure_private_dir(_dir())
-    return write_json(_file_of(job.id), job.to_dict())
+    return write_json(job.path or _file_of(job), job.to_dict())
 
 
 def read(path: Path) -> Job:
@@ -420,16 +432,28 @@ def every() -> List[Union[Job, JobFileError]]:
 
 
 def find(job_id: str) -> Optional[Job]:
-    """The job ``job_id`` names, or ``None`` when no file holds it;
-    :class:`JobFileError` when its file does not read."""
-    f = _file_of(job_id)
-    return read(f) if f.is_file() else None
+    """The job ``job_id`` names -- a run here by its id, a queue job by its
+    number -- read by what each file on the list says, whatever its file's
+    name; ``None`` when none is on file.  Two clusters' jobs of that number:
+    the one this machine's scheduler answers for (:func:`asked_here`), and
+    :class:`JobFileError` naming both when neither or both are."""
+    hits = [j for j in every() if isinstance(j, Job) and j.id == str(job_id)]
+    if len(hits) < 2:
+        return hits[0] if hits else None
+    here = Asked()
+    mine = [j for j in hits if asked_here(j, here)[0] is not None]
+    if len(mine) == 1:
+        return mine[0]
+    raise JobFileError(
+        f"job {job_id} is on file for clusters "
+        f"{', '.join(sorted(str(j.cluster) for j in hits))} -- ask on the "
+        f"cluster that ran it")
 
 
 def forget(job: Job) -> None:
     """A job's address removed -- once its ending was said; its runs and
     the calculation's ledger keep its history."""
-    _file_of(job.id).unlink(missing_ok=True)
+    (job.path or _file_of(job)).unlink(missing_ok=True)
 
 
 __all__ = ["JOB_SCHEMA", "Job", "JobFileError", "NotGoing", "add_members",

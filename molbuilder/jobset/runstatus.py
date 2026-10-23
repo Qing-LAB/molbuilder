@@ -423,17 +423,29 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
 
 def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
                 refs, shape) -> StageStatus:
-    """One prepared job's status, read from where its attempts are."""
+    """One prepared job's status, read from where its attempts are -- a
+    run of points' row (:func:`_sweep_status`) or one run's
+    (:func:`_one_run_status`); a queued row's standing asked the same way
+    for both (`runs.standing_of`, `running-a-job.md` § 4.2)."""
     d = base / dirs[job.name]
     # WHICH FILES are this stage's: its stage's names (`naming.
     # run_names`) -- in either shape a flat folder holds every stage, an
     # attempt may hold several run indexes.  THE LABEL IS THIS JOB'S, NOT
     # THE JOBSET'S: a trial is relabelled with its point.
     names = run_names(jobset, job, shape)
-    swept = _sweep_status(base, jobset, job, task, d=d, names=names,
-                          ref=refs[job.name])
-    if swept is not None:
-        return swept
+    row = (_sweep_status(base, jobset, job, task, d=d, names=names,
+                         ref=refs[job.name])
+           or _one_run_status(base, jobset, job, task, d=d, names=names,
+                              ref=refs[job.name]))
+    if row.state != "queued":
+        return row
+    from ..runs import standing_of
+    return dataclasses.replace(row, standing=standing_of(row.launch, base))
+
+
+def _one_run_status(base: Path, jobset: JobSet, job, task, *, d: Path,
+                    names, ref) -> StageStatus:
+    """One run's row: the stage's newest run, through the one door."""
     # WHERE the run happened, asked of the layer that decides layout -- the
     # latest attempt where there is one, the container for a flat run
     # (project-layout.md § 1.5).
@@ -460,14 +472,11 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     if state == "pending":
         detail = _pending_detail(attempt, detail)
     where = attempt.name if attempt else None
-    from ..runs import standing_of
     return StageStatus(
-        ref=refs[job.name], dir=d.name, state=state, detail=detail,
+        ref=ref, dir=d.name, state=state, detail=detail,
         converged=converged, attempt=where,
         attempts=attempts_in(home),
         launch=launch,
-        standing=(standing_of(launch, base)
-                  if state == "queued" else None),
         relaunch_continues=job.relaunch_continues,
         # THE SAME LABEL THE STATE WAS READ WITH -- the stage's names'.
         warm_files=_warm_present(observed, names.label, jobset.engine,

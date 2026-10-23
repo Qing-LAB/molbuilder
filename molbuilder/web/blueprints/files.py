@@ -623,17 +623,20 @@ def _archive_plan(resolved: Path) -> dict:
     sends them (`zip_stream.Entry`); ``skipped`` the links whose target
     sits outside the picker root, counted, never followed; ``left_out``
     what the archive leaves out, each with its files and bytes: the
-    storage subtrees (`_archive_excluded_dirs`) and an engine's scratch
-    (`warmfiles.is_scratch`, the one answer the checkpoint asks).
+    storage subtrees (`_archive_excluded_dirs`) and what no copy of a run
+    folder carries (`warmfiles.never_carried`, the one answer the checkpoint
+    asks) -- an engine's scratch, and molbuilder's temporary files.
     """
-    from molbuilder.warmfiles import is_scratch
+    from molbuilder.warmfiles import is_scratch, never_carried
 
     root_path, _ = _root_containing(resolved)
     base = resolved.parent
     entries: List[Tuple[str, str, int]] = []
     skipped = 0
     left = {name: [0, 0] for name in sorted(_ARCHIVE_EXCLUDED)}
-    scratch = [0, 0]
+    # WHAT NO COPY CARRIES, said by what it is.
+    carried_by_none = {"an engine's scratch": [0, 0],
+                       "molbuilder's temporary files": [0, 0]}
 
     def _sized(path: Path) -> Optional[int]:
         try:
@@ -683,16 +686,17 @@ def _archive_plan(resolved: Path) -> dict:
             size = _sized(q)
             if size is None:
                 continue
-            if is_scratch(name):
-                scratch[0] += 1
-                scratch[1] += size
+            if never_carried(name):
+                kind = carried_by_none[
+                    "an engine's scratch" if is_scratch(name)
+                    else "molbuilder's temporary files"]
+                kind[0] += 1
+                kind[1] += size
                 continue
             entries.append((str(q), str(q.relative_to(base)), size))
     left_out = [{"what": name, "files": n, "bytes": b}
-                for name, (n, b) in left.items() if n]
-    if scratch[0]:
-        left_out.append({"what": "an engine's scratch", "files": scratch[0],
-                         "bytes": scratch[1]})
+                for name, (n, b) in [*left.items(),
+                                     *carried_by_none.items()] if n]
     return {"entries": entries, "skipped": skipped, "left_out": left_out}
 
 
@@ -703,8 +707,8 @@ def _rsync_line(resolved: Path, host: str) -> str:
     (`docs/web/projects.md` § 4)."""
     import getpass
     import shlex
-    from molbuilder.warmfiles import scratch_families
-    excludes = [*sorted(_ARCHIVE_EXCLUDED), *scratch_families()]
+    from molbuilder.warmfiles import never_carried_families
+    excludes = [*sorted(_ARCHIVE_EXCLUDED), *never_carried_families()]
     return " ".join(["rsync", "-a",
                      *(f"--exclude={shlex.quote(e)}" for e in excludes),
                      f"{getpass.getuser()}@{host}:"

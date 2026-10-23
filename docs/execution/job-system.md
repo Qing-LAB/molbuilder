@@ -2798,7 +2798,10 @@ here once its process exists, a queue job once the scheduler gives its id (a
 job whose id `sbatch` did not print gets none) — one file per submission in
 molbuilder's state folder, `<state dir>/jobs/`
 ([`configuration.md`](?doc=configuration.md), the tree), kept there past a
-logout as the run is; the ledger's `launched` line names it (`job`). A file
+logout as the run is: a run here's named `<host>-<pid>.json`, a queue job's
+`<cluster>-<id>.json` — a home folder two clusters share holds both clusters'
+jobs of one number *(the user, 2026-10-22)* — and every file read by what it
+says, never by its name (`joblist.find`, `address_of`); the ledger's `launched` line names it (`job`). A file
 that could not be written is said on the launch's line — beside a queue job's
 id, or beside a run left in the background, which is then named by its pid,
 `kill -- -<pid>`. **It holds an address, never a state:**
@@ -2806,7 +2809,7 @@ id, or beside a run left in the background, which is then named by its pid,
 | key | what it is |
 |---|---|
 | `schema` | `molbuilder/job@1` |
-| `id` | what `jobs stop` names: `<host>-<pid>` for a run here; for a queue job its job id, as `squeue` lists it |
+| `id` | what `jobs stop` names: `<host>-<pid>` for a run here; for a queue job its job id, as `squeue` lists it — a number two clusters' jobs share answered for by the cluster this machine's scheduler serves, and refused naming both where it serves neither |
 | `how` | `here` — waited on or left in the background (`background`) — or `queue` |
 | `host` | the node it was launched on: a pid means something only there, and a home folder a cluster's login nodes share holds every node's files |
 | `pid` · `started` | a run here: its process, and when the kernel started it with the boot it belongs to (Linux's `/proc`) — together what tells the run from a later process given the same pid. A warm retry re-execs in the same process, so the file stays true |

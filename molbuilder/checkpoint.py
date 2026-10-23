@@ -51,7 +51,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .jobset.model import FILENAME as _JOBSET_FILENAME
 from .task import FILENAME as _TASK_FILENAME
 from .runfiles import GITIGNORE_FILE, SNAPSHOT_DIR
-from .warmfiles import is_scratch
+from .warmfiles import never_carried
 
 
 # --------------------------------------------------------------------- #
@@ -64,9 +64,11 @@ from .warmfiles import is_scratch
 ARCHIVE_DIR = SNAPSHOT_DIR
 
 #: The two stores, never stored (S1): a store cannot contain itself.  Not a
-#: policy about worth -- the one other file no state holds is an engine's
-#: scratch, which its vocabulary names (`warmfiles.is_scratch`, S1); anything
-#: else excluded here would be a file in no snapshot, S1's losing branch.
+#: policy about worth -- the one other file no state holds is one no copy of
+#: a run folder carries (`warmfiles.never_carried`, S1): an engine's scratch,
+#: which its vocabulary names, and a file the catalogue calls transient;
+#: anything else excluded here would be a file in no snapshot, S1's losing
+#: branch.
 #:
 #: Derived from :data:`ARCHIVE_DIR` rather than spelling it again: two literals
 #: for one directory are two things that can disagree, and the one that would
@@ -97,12 +99,13 @@ def classification_for(engine: Optional[str] = None) -> Dict[str, object]:
     one would read a scope beside the folder being saved, which is the trap.
     """
     from .runtime_config import get_checkpoint
-    from .warmfiles import scratch_families
-    # THE ENGINES' SCRATCH, NEVER STORED (S1): the shipped vocabularies'
-    # families, for any folder -- shown here, beside the store a file goes
-    # to, and named in the generated `.gitignore`.
+    from .warmfiles import never_carried_families
+    # IN NEITHER STORE (S1): what no copy of a run folder carries -- the
+    # shipped vocabularies' scratch and the catalogue's transient files --
+    # for any folder; shown here, beside the store a file goes to, and
+    # named in the generated `.gitignore`.
     return {**get_checkpoint(engine),
-            "scratch": list(scratch_families())}
+            "in_neither": list(never_carried_families())}
 
 
 def is_big(path: Path, size_limit: int, always_large=()) -> bool:
@@ -124,13 +127,14 @@ def is_big(path: Path, size_limit: int, always_large=()) -> bool:
         return True
 
 
-def render_gitignore(always_large=(), scratch=()) -> str:
+def render_gitignore(always_large=(), in_neither=()) -> str:
     """The generated ignore block -- ONE source, and it is the classification.
 
     S1a: what git skips must be exactly what the archive takes, or a file falls
     between them and is in no snapshot at all.  So this renders **nothing but
-    archive patterns** plus the archive directory itself, and the engines'
-    scratch, which no store takes (S1); there is no fixed tail, because every
+    archive patterns** plus the archive directory itself, and what no copy
+    of a run folder carries, which no store takes (S1); there is no fixed
+    tail, because every
     line in one would be a file excluded by code nobody agreed to.
 
     The size gate cannot be expressed as a gitignore pattern, so a file that is
@@ -146,16 +150,16 @@ def render_gitignore(always_large=(), scratch=()) -> str:
         f"{ARCHIVE_DIR}/",
     ]
     lines += sorted(always_large)
-    if scratch:
-        # THE ENGINE'S SCRATCH, in neither store (S1): git skips it here,
-        # the archive by the walk (:func:`walk_entries`).
-        lines += ["", "# The engine's scratch -- never stored (S1).",
-                  *sorted(scratch)]
+    if in_neither:
+        # IN NEITHER STORE (S1): git skips it here, the archive by the walk
+        # (:func:`walk_files`).
+        lines += ["", "# An engine's scratch and molbuilder's temporary "
+                  "files -- never stored (S1).", *sorted(in_neither)]
     lines += [_GITIGNORE_END, ""]
     return "\n".join(lines)
 
 
-def write_gitignore(root: Path, always_large=(), scratch=()) -> None:
+def write_gitignore(root: Path, always_large=(), in_neither=()) -> None:
     """Write the generated block, preserving anything outside the markers.
 
     A user's own entries above or below the markers are theirs and are left
@@ -171,7 +175,7 @@ def write_gitignore(root: Path, always_large=(), scratch=()) -> None:
     *content* to reach; it had a wrong *moment*.
     """
     gi = root / GITIGNORE_FILE
-    body = render_gitignore(always_large, scratch)
+    body = render_gitignore(always_large, in_neither)
     if not gi.exists():
         _atomic_write_bytes(gi, body.encode("utf-8"))
         return
@@ -186,7 +190,7 @@ def write_gitignore(root: Path, always_large=(), scratch=()) -> None:
     _atomic_write_bytes(gi, text.encode("utf-8"))
 
 
-def gitignore_is_current(root: Path, always_large=(), scratch=()) -> bool:
+def gitignore_is_current(root: Path, always_large=(), in_neither=()) -> bool:
     """Does the marked block match what regenerating it would produce (I2b)?
 
     `.gitignore` records a *derivation*, so the derivation is the check: a
@@ -201,7 +205,7 @@ def gitignore_is_current(root: Path, always_large=(), scratch=()) -> bool:
     if b == -1 or e <= b:
         return False
     return text[b:e + len(_GITIGNORE_END)] == render_gitignore(
-        always_large, scratch).rstrip("\n")
+        always_large, in_neither).rstrip("\n")
 
 
 #: A subdirectory holding one of these is somebody's working directory.  One
@@ -447,13 +451,13 @@ def archive_key(root: Path, path: Path) -> str:
 
 def state_entries(entries: Dict[str, Tuple[str, int]]
                   ) -> Dict[str, Tuple[str, int]]:
-    """A STATE'S ENTRIES -- its MANIFEST's, an engine's scratch left out
-    (`warmfiles.is_scratch`): no entry of any state, one saved before the
+    """A STATE'S ENTRIES -- its MANIFEST's, what no copy carries left out
+    (`warmfiles.never_carried`): no entry of any state, one saved before the
     rule too (S1, I2).  Every reader of a MANIFEST asks this -- the verify,
-    the restore, the status, the reuse index -- so a state never needs its
-    scratch back."""
+    the restore, the status, the reuse index -- so a state never needs an
+    engine's scratch or a temporary file back."""
     return {k: v for k, v in entries.items()
-            if not is_scratch(Path(k).name)}
+            if not never_carried(Path(k).name)}
 
 
 #: Where a folder records the scratch families its archives were last
@@ -474,7 +478,7 @@ def prune_scratch(root: Path) -> int:
     cleared; an archive that does not read, or a file that cannot be
     removed, is passed over, and the walk is done again at the next save.
     Returns the bytes freed."""
-    from .warmfiles import scratch_families
+    from .warmfiles import is_scratch, scratch_families
     families = " ".join(scratch_families())
     base = root / ARCHIVE_DIR
     if not families or not base.is_dir():
@@ -570,8 +574,9 @@ def walk_entries(root: Path):
 def walk_files(root: Path):
     """Every regular file that belongs in a store (S1).
 
-    Skips the two stores (:data:`NEVER_STORED`), an engine's scratch
-    (`warmfiles.is_scratch` — in neither store, S1) and symlinks, and
+    Skips the two stores (:data:`NEVER_STORED`), what no copy of a run
+    folder carries (`warmfiles.never_carried` — an engine's scratch and the
+    catalogue's transient files, in neither store, S1) and symlinks, and
     nothing else: a walk with a private skip list is a walk that agrees with
     itself about files nobody stores.
 
@@ -582,12 +587,12 @@ def walk_files(root: Path):
     carve-out a carve-out from the **archive** rather than from the snapshot.
     """
     for entry in walk_entries(root):
-        if not entry.is_symlink() and not is_scratch(entry.name):
+        if not entry.is_symlink() and not never_carried(entry.name):
             yield entry
 
 
 def walk_symlinks(root: Path):
-    """Every symlink outside the two stores, an engine's scratch aside.
+    """Every symlink outside the two stores, what no copy carries aside.
 
     A save needs these by name: an always-large hint matches on a *name*, and a
     name says nothing about a link.  A carry link called ``job.DM`` is twenty
@@ -596,7 +601,7 @@ def walk_symlinks(root: Path):
     bring it back nor remove it (S1).
     """
     for entry in walk_entries(root):
-        if entry.is_symlink() and not is_scratch(entry.name):
+        if entry.is_symlink() and not never_carried(entry.name):
             yield entry
 
 
@@ -1520,7 +1525,7 @@ class Repo:
         here = self.standing_at()
         cls = self.classification()           # read once; it hits the filesystem
         edited = not gitignore_is_current(self.root, cls["always_large"],
-                                          cls["scratch"])
+                                          cls["in_neither"])
         changed, added, deleted = set(), set(), set()
 
         big = big_files(self.root, int(cls["size_limit_bytes"]),
@@ -1561,10 +1566,10 @@ class Repo:
             if len(record) < 4:               # the trailing empty field
                 continue
             code, name = record[:2], record[3:]
-            # AN ENGINE'S SCRATCH IS NO WORK OF THE FOLDER'S (S1), whatever
-            # git says of it -- one an older save tracked reads "deleted"
-            # when a walk empties its folder.
-            if is_scratch(Path(name).name):
+            # WHAT NO COPY CARRIES IS NO WORK OF THE FOLDER'S (S1), whatever
+            # git says of it -- an engine's scratch an older save tracked
+            # reads "deleted" when a walk empties its folder.
+            if never_carried(Path(name).name):
                 if code[0] in ("R", "C"):
                     idx += 1
                 continue
@@ -1750,17 +1755,18 @@ class Repo:
         # I2b: `.gitignore` records a DERIVATION, so the derivation is the
         # check -- regenerating it every save is what makes a hand edit
         # harmless rather than a file silently dropped from every store.
-        write_gitignore(self.root, always, cls["scratch"])
+        write_gitignore(self.root, always, cls["in_neither"])
         big = big_files(self.root, int(cls["size_limit_bytes"]), always)
         keys = [archive_key(self.root, path) for path in big]
 
-        # AN ENGINE'S SCRATCH AN OLDER SAVE TRACKED (a small one went to
-        # git) leaves the index FIRST -- the ignore rules do not reach a
-        # tracked file, so `add` below would write its new bytes into
-        # `.git/objects`.  In neither store (S1); the file itself stays.
+        # WHAT NO COPY CARRIES THAT AN OLDER SAVE TRACKED (a small one
+        # went to git: an engine's scratch, a reading's claim) leaves the
+        # index FIRST -- the ignore rules do not reach a tracked file, so
+        # `add` below would write its new bytes into `.git/objects`.  In
+        # neither store (S1); the file itself stays.
         tracked_scratch = [name for name in _run_git(
             ["ls-files", "-z"], cwd=self.path).stdout.split("\0")
-            if name and is_scratch(Path(name).name)]
+            if name and never_carried(Path(name).name)]
         _untrack(self.path, tracked_scratch)
 
         # THE BIG FILES ARE NEVER SHOWN TO `git add`, and that is not an
@@ -1919,7 +1925,7 @@ class Repo:
         emptied: set = set()
         for path in walk_entries(self.root):
             key = archive_key(self.root, path)
-            if is_scratch(path.name) or (key not in tracked
+            if never_carried(path.name) or (key not in tracked
                                          and key not in expected):
                 path.unlink()
                 emptied.add(path.parent)

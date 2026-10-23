@@ -198,7 +198,7 @@ can make a save faster; it can never make it store less.**
 ```text
 bdt-relax/                           the folder: the user typed this name
 ├── .git/                            the text history
-├── .gitignore                       generated — the archive's patterns and the engines' scratch (S1a)
+├── .gitignore                       generated — the archive's patterns, the engines' scratch, molbuilder's temporary files (S1a)
 ├── .binsnapshots/                   the archive
 │   ├── a19f0b72…c8e5/                 named by the sha256 of its own MANIFEST
 │   │   ├── 01_coarse/run-0/BDT_Au_relax.DM
@@ -251,9 +251,10 @@ it can tell.
 | **git** | the history of everything small | `checkpoint save` |
 | **the archive** — `.binsnapshots/<digest>/` | whole copies of everything large, named by content | `checkpoint save` |
 | **`MANIFEST.do_not_edit`** | what is in one archive, with a sha256 each — the name is the reminder (I2b) | `checkpoint save` |
-| **`.gitignore`** | what git skips — *generated* from the classification: the archive's patterns and the engines' scratch (S1a) | `checkpoint save` only |
+| **`.gitignore`** | what git skips — *generated* from the classification: the archive's patterns, the engines' scratch and molbuilder's temporary files (S1a) | `checkpoint save` only |
 | **the config** | the size limit and the per-engine hints | you, in molbuilder's config |
 | **the engines' file vocabularies** — `molbuilder/<engine>/warm-files.toml`, the `scratch` its sections state | which files are an engine's scratch, stored nowhere (S1) — every engine's, for every folder | shipped with molbuilder |
+| **the file catalogue's temporary files** — `runfiles.WRITTEN`'s `transient` rows | which files are molbuilder's temporary files, stored nowhere (S1) | shipped with molbuilder |
 | **the folder's engine** — `molbuilder.engine` in `.git/config` | which config entry's always-large families this folder's saves use | `Repo.name_engine`, once (below) |
 | **`molbuilder checkpoint …`** | the verbs you type (§ 5) | — |
 | **`Repo`** (`molbuilder/checkpoint.py`) | the class every surface goes through | — |
@@ -271,8 +272,9 @@ check never matches, and that file would be in no store. The section holds
 `size_limit_bytes` and `engines` and nothing else
 (`runtime_config._validate_checkpoint`). `molbuilder checkpoint config` prints
 the size limit and the always-large families a folder is saved under, and,
-under `in neither`, the engines' scratch (below) — never saved, removed by a
-restore, named by the engines' own `warm-files.toml` and not by
+under `in neither`, what no copy carries (below) — the engines' scratch and
+molbuilder's temporary files, never saved, removed by a restore, named by the
+engines' own `warm-files.toml` and the file catalogue, not by
 `molbuilder.json`.
 
 **The engines' scratch is not in this config.** It is the families of file
@@ -285,7 +287,9 @@ folder's engine, and every folder gets one answer, `warmfiles.is_scratch(name)`,
 the one every reader of the engines' scratch asks
 ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a). Here the
 save, the status, the restore and every reader of a MANIFEST
-(`state_entries`) ask it; `checkpoint.classification_for` hands the families
+(`state_entries`) ask it joined with the catalogue's temporary files
+(`warmfiles.never_carried`, S1's third exclusion); `checkpoint.classification_for`
+hands both families (`in_neither`, `warmfiles.never_carried_families`)
 beside the size limit and the always-large families, for the `.gitignore` a
 save generates and for `checkpoint config` to print (S1, S1c).
 
@@ -921,8 +925,9 @@ Each one names what it prevents and how to test it. **Status is in § 12.**
 ### Everything is saved
 
 **S1 — every regular file is in git or in the archive: never both, never
-neither — but the two stores and an engine's scratch.** The list, each with
-its reason:
+neither — but the two stores and what no copy of a run folder carries: an
+engine's scratch and molbuilder's temporary files.** The list, each with its
+reason:
 
 1. **The two stores** — `.git/` and `.binsnapshots/` — because a store cannot
    contain itself.
@@ -950,14 +955,30 @@ its reason:
    clears it from every archive published before, at the save's end (I1); every reader of a MANIFEST leaves it out (`state_entries`), so no
    state needs it back. The families are every engine's, whatever engine the
    folder records.
+3. **molbuilder's temporary files** *(the user, 2026-10-22: "leave them
+   out")* — the files the file catalogue calls `transient`, there only while
+   a write or a reading runs ([`project-layout.md`](?doc=execution/project-layout.md)
+   § 5; `runfiles.is_transient`): the one writer's temp before it replaces
+   its target, a sidecar's lock, a TBtrans data file's reading's claim. A
+   state holding one would bring back, at a restore, a file speaking for a
+   process that is no longer there. They are treated as an engine's scratch
+   is, by the same answer — `warmfiles.never_carried`, which every copier of
+   a run folder asks (a save, a restore's sweep, a folder's download, a
+   calculation that reuses a finished one, a launch taking points over):
+   not stored, named in the `.gitignore`, untracked where an older save
+   tracked one, left out of every state's entries, removed by a restore. The
+   one removal from a published archive (I1) stays an engine's scratch's:
+   a temporary file is small, in git if anywhere, and every reader of a
+   MANIFEST leaves one out.
 
 **No other category is exempt, including the ones it is tempting to exempt.**
-Editor leftovers, caches nothing names as an engine's scratch — all stored.
+Editor leftovers, caches nothing names as an engine's scratch or a
+temporary file of molbuilder's — all stored.
 Two reasons, and the second is the one that matters: storing them costs a
 little disk, which § 1 has already ruled is never an argument; and every
 exemption is a judgement about what is worth keeping, which § 2.1 says this
 system does not make — an engine's scratch is the engines' vocabularies' word,
-not this system's. A snapshot of *most* of a folder is not a snapshot of the
+and a temporary file the catalogue's, not this system's. A snapshot of *most* of a folder is not a snapshot of the
 folder.
 
 > **Any future exception belongs here, in this list, with its reason** — never in
@@ -1859,7 +1880,7 @@ the rows above it as well, naming three test files that no longer exist —
 | `Repo.init` / `.save` / `.restore` | the three verbs everything else is built on |
 | `Repo.tag` / `.states` / `.status` | naming and reading a history. **No `branch`** — a fork is what happens when you save from a restored state (§ 7.1), not a verb. **No `diff`** either: it is listed as unbuilt in § 16 |
 | `Repo.classification` · `classification_for(engine)` | the size limit and the always-large families from molbuilder's own config, for the engine the folder records, and the engines' scratch families (`warmfiles.scratch_families`, every engine's, whatever the folder records) for the generated `.gitignore` and `checkpoint config` — taking **no directory**, which is the shape of S1c |
-| `warmfiles.is_scratch` | the one answer to *is this file an engine's scratch* — the save, the status, the restore and every reader of a MANIFEST ask it (S1, § 4) |
+| `warmfiles.never_carried` | the one answer to *does no copy carry this file* — an engine's scratch (`warmfiles.is_scratch`) or a temporary file of molbuilder's (`runfiles.is_transient`): the save, the status, the restore, every reader of a MANIFEST, the download and every copy of a run folder ask it (S1, § 4); the one removal from a published archive asks `is_scratch` alone (I1) |
 | `Repo.name_engine` | records the folder's engine in `.git/config` (`molbuilder.engine`) when none is recorded — by `init`, on a folder it makes a checkpoint folder (the history's first save, `save_before`'s among them) or one that already is; it picks the always-large hints alone (§ 4) |
 | `walk_entries` | the one walk of a folder — the save's, the status's and the restore's sweep — never entering the two stores; an engine's scratch it yields, the walks of what a store takes (`walk_files`, `walk_symlinks`) pass over, and the restore's sweep removes (S1) |
 | `state_entries` · `prune_scratch` | a state's entries: a MANIFEST's, an engine's scratch left out, asked by every reader of one (I2); an engine's scratch cleared from every published archive once a save records its state, never failing it (I1) |

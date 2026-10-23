@@ -181,30 +181,57 @@ def test_every_regular_file_is_in_exactly_one_store(calc):
         "ordinary directory")
 
 
-def test_the_engines_scratch_is_in_neither_store_and_a_restore_removes_it(
-        tmp_path, checkpoint_config):
-    """S1's second exclusion: what an engine's vocabulary names scratch --
-    asked of it, never listed here, and of no engine the folder records --
-    is in neither store, reads as no unsaved work, and a restore removes it
-    as it removes every file the target does not hold, leaving no run folder
-    the target never had.  The failure it guards: a device run's two
-    Green's-function files (98 of 99 GB on Sol) copied into every save, and
-    a restore that leaves a `run-N/` behind which every reader counts as an
-    attempt."""
+def _scratch_of_an_engine(run):
+    """Each family an engine's vocabulary names scratch, one file each, big
+    by size too -- asked of the vocabularies, never listed here."""
     from molbuilder.warmfiles import scratch_families
+    families = scratch_families()
+    assert families, "the SIESTA vocabulary names its scratch"
+    (run / "tsgf").mkdir(parents=True)
+    return {run / "tsgf" / f"job{pat[1:]}": BIG for pat in families}
+
+
+def _temporary_files_of_molbuilders(run):
+    """A TBtrans data file's reading's claim and the one writer's temp, as
+    the catalogue names them (`runfiles.TBT_DIGEST_CLAIM`, its `{random}.tmp`
+    row) -- the claim small, for git; the temp of a big digest big, for the
+    archive's walk."""
+    from molbuilder.runfiles import TBT_DIGEST_CLAIM, compose
+    run.mkdir(parents=True)
+    return {run / compose("job", TBT_DIGEST_CLAIM, tbt="TBT"): b"{}",
+            run / "job.TBT.digest.nc.k3j9x_2a.tmp": BIG}
+
+
+#: S1's exclusions besides the two stores: what no copy of a run folder
+#: carries (`warmfiles.never_carried`), a row each.
+_NEVER_CARRIED = {"an engine's scratch": _scratch_of_an_engine,
+                  "molbuilder's temporary files":
+                      _temporary_files_of_molbuilders}
+
+
+@pytest.mark.parametrize("kind", list(_NEVER_CARRIED))
+def test_what_no_copy_carries_is_in_neither_store_and_a_restore_removes_it(
+        tmp_path, checkpoint_config, kind):
+    """S1's exclusions: what an engine's vocabulary names scratch, and what
+    the file catalogue calls transient -- asked of them, never listed here,
+    and of no engine the folder records -- is in neither store, reads as no
+    unsaved work, and a restore removes it as it removes every file the
+    target does not hold, leaving no run folder the target never had.  The
+    failures it guards: a device run's two Green's-function files (98 of
+    99 GB on Sol) copied into every save; a reading's claim brought back by
+    a restore, speaking for a process that is gone; and a restore that
+    leaves a `run-N/` behind which every reader counts as an attempt."""
     checkpoint_config(size_limit_bytes=1024)
     root = tmp_path / "AuBDTAu_device"
     root.mkdir()
     (root / "job.fdf").write_text("SystemLabel job\n")
     repo = Repo(str(root))
     first = repo.init(note="set up")              # no engine recorded
-    families = scratch_families()
-    assert families, "the SIESTA vocabulary names its scratch"
     run = root / "04_device" / "run-0"
-    (run / "tsgf").mkdir(parents=True)
-    scratch = [run / "tsgf" / f"job{pat[1:]}" for pat in families]
-    for path in scratch:
-        path.write_bytes(BIG)                     # big by size, too
+    made = _NEVER_CARRIED[kind](run)
+    scratch = list(made)
+    for path, data in made.items():
+        path.write_bytes(data)
     (run / "job.TSDE").write_bytes(BIG)
     state = repo.save("a device run")
     tracked, archived = _tracked(repo), _archived(repo, state)
@@ -1746,11 +1773,12 @@ def test_the_generated_block_contains_nothing_but_archive_patterns(calc):
 
     If git is told to skip something the archive does not take, that file is in
     no store -- and this catches it without any file existing at all.  The
-    one family besides the archive's is the engines' scratch, which no store
-    takes on purpose (S1), asked of their vocabularies.
+    families besides the archive's are what no copy carries -- the engines'
+    scratch and molbuilder's temporary files -- which no store takes on
+    purpose (S1), asked of their vocabularies and the catalogue.
     """
     from molbuilder.checkpoint import ARCHIVE_DIR
-    from molbuilder.warmfiles import scratch_families
+    from molbuilder.warmfiles import never_carried_families
     always = calc.classification()["always_large"]
     text = (calc.root / ".gitignore").read_text()
     block = text.split("=== molbuilder checkpoint BEGIN ===")[1] \
@@ -1759,7 +1787,7 @@ def test_the_generated_block_contains_nothing_but_archive_patterns(calc):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        assert line in (set(always) | set(scratch_families())
+        assert line in (set(always) | set(never_carried_families())
                         | {ARCHIVE_DIR + "/"}), (
             f"{line!r} is ignored by git and taken by nothing")
 
@@ -2801,11 +2829,11 @@ def _the_block_matches(shipped, engine):
     repo = Repo(str(root))
     repo.init(engine=engine, note="set up")
 
-    from molbuilder.warmfiles import scratch_families
-    # S1a: the archive's patterns, and the engines' scratch asked of their
-    # vocabularies (S1) -- nothing else.
+    from molbuilder.warmfiles import never_carried_families
+    # S1a: the archive's patterns, and what no copy carries asked of the
+    # vocabularies and the catalogue (S1) -- nothing else.
     allowed = (set(get_checkpoint(engine)["always_large"])
-               | set(scratch_families()) | {ARCHIVE_DIR + "/"})
+               | set(never_carried_families()) | {ARCHIVE_DIR + "/"})
     text = (root / ".gitignore").read_text()
     block = text.split("=== molbuilder checkpoint BEGIN ===")[1] \
                 .split("=== molbuilder checkpoint END ===")[0]

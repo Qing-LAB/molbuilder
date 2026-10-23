@@ -621,6 +621,15 @@ def _transient_rows() -> "tuple[Artifact, ...]":
     return tuple(a for a in WRITTEN if a.kind == "transient")
 
 
+def transient_families() -> "tuple[str, ...]":
+    """:func:`is_transient` as families of file names -- each field a star,
+    a role on the label after one -- for an ignore list or an exclude line
+    (`warmfiles.never_carried_families`)."""
+    return tuple(sorted({("*" + _FIELD_RE.sub("*", a.role)) if a.role
+                         else _FIELD_RE.sub("*", a.name)
+                         for a in _transient_rows()}))
+
+
 @functools.lru_cache(maxsize=65536)
 def _role_of(name: str) -> Optional[str]:
     """The DECLARED role this filename carries, or None — WITHOUT a label.
