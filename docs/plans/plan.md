@@ -1009,6 +1009,34 @@ the same day, with what it turned out to be.
 
 ---
 
+## 1z. TBtrans's files read by the SIESTA family's parser, a data file's reading kept *(2026-10-22; the user's yes; built for 2.31.0 — N9 in § 0a's queue)*
+
+*(The user, 2026-10-22, after Sol's report of `AuBDTAu_singlebias_equilibrium`
+took four minutes and showed nothing meanwhile: "can this be done ahead of
+time … save as a quick access result?"; "we can let the result to generate
+the digest - when it is in the transport directory it can show this
+progress/function so user can allow it and/or refresh it"; "no need to
+modify further the script side"; "we should use a unified api support rather
+than handcrafted code to do this"; "make this part of the parser of siesta
+engine would be my feeling".)*
+
+**Measured 2026-10-22** on Sol's point (copied to `~/tmp`, read-only): the
+report reads the 1.6 GB `.TBT.nc` six times over, 230,908 reads; Sol's
+`collect_record` 3 min 15 s wall, 32 s CPU; the page's request answered after
+237 s. One pass over the device DOS is 46,406 reads. TBtrans's k-averaged
+text files hold every average the report shows but the DOS per orbital,
+equal to the data file's to 5×10⁻⁸ relative.
+
+**The contract**: `model/parse.md` § 5e (one reader per TBtrans file in
+`parse/engines/`; `tbtrans-nc`, a registered FileParser, its reading kept
+beside the data file as `<label>.TBT.digest.nc`, per version of the file;
+`kept_state`, `fresh`, `progress`), `engines/transport.md` § 2a.12 (*A
+point's digest*: the report opens on the text files; the DOS by region and a
+selection's PDOS from the digests, read on the person's word with progress,
+*Read again*; `summarize task` reads what is missing), `web/results.md`
+§ 2.5 (the DOS tab's digest line), `web/web-api.md` (`/api/transport/digest`,
+GET and POST), the file catalogue's three rows (`project-layout.md` § 5).
+
 ## 0a. THE WORK ORDER — milestones, each closed by a full code-text review *(2026-09-27)*
 
 > *(user: "you need a consolidated persistent plan that get's updated at every
@@ -1035,8 +1063,9 @@ below says.
 | **N5** | **shipped 2.27.0** | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
 | **N5b** | **Built — 2.28.0** (2026-10-22) — the contract taken as written (the user: *"continue"*); A–D, one release | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
 | **N6** | **(a) shipped 2.29.0** | **The memory a run needs** (§ 1u) — (a), measured on a stage's runs, built 2026-10-22 (`job-request.md` § 3.1a); (b), the engine's own analysis for a stage's first run, next; (c) only where (a) and (b) leave a gap | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
-| **N7** | a middle number | **A transport calculation that reuses a finished one** (§ 1x) — built for 2.30.0 (`engines/transport.md` § 2a.16); the e2e rows, the release and two review rounds next | the user, 2026-10-22: *"use existing information and previous result to continue a calculation by a certain design"* |
+| **N7** | **shipped 2.30.0** | **A transport calculation that reuses a finished one** (§ 1x, `engines/transport.md` § 2a.16) — built, two review rounds, released 2026-10-22 | the user, 2026-10-22: *"use existing information and previous result to continue a calculation by a certain design"* |
 | **N8** | a middle number | **Export the transport results — CSV and NetCDF** (§ 1y), contract first; its place in the order the user's | the user, 2026-10-22: *"export data for all the results in the transport data including convergence data, in format of csv and netcdf"* |
+| **N9** | **built for 2.31.0** | **TBtrans's files read by the SIESTA family's parser, a data file's reading kept** (§ 1z) — contract 2026-10-22 (`model/parse.md` § 5e, `engines/transport.md` § 2a.12), the user's yes (*"go ahead"*); built for 2.31.0, two review rounds, each revised once; with it, the scheduler asked after a sent run by the jobs list's rule (`running-a-job.md` § 4.2 — the user, 2026-10-22: *"you should fix that bug"*) | the user, 2026-10-22: Sol's report took four minutes; *"make this part of the parser of siesta engine"* |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 

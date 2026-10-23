@@ -238,7 +238,128 @@ const WORKSPACE_TAG = "results:transport";
             panel.firstChild);
     }
 
+    /* EACH POINT'S DOS PER ORBITAL, READ ON THE PERSON'S WORD
+     * (`engines/transport.md` § 2a.12, `model/parse.md` § 5e): what is kept
+     * of each data file's reading, in the server's words, and its acts --
+     * read what is not kept, read every one again, take a reading over --
+     * each the server's to do (`/api/transport/digest`), one reading of a
+     * file at a time wherever it is asked.  While one runs, how far it is,
+     * asked every two seconds; read, the report's points read again. */
+    function _digestCard(panel, file, state) {
+        const box = _el("div", "transport-digest");
+        const head = _el("p", "transport-note");
+        const list = _el("ul", "transport-chain");
+        const bar = _el("div", "fdf-actions");
+        const read = _el("button", null, "Read the DOS per orbital");
+        const again = _el("button", null, "Read again");
+        const take = _el("button", null, "Take over");
+        [read, again, take].forEach((b) => { b.type = "button"; });
+        const msg = _el("span", "hint");
+        bar.appendChild(read);
+        bar.appendChild(again);
+        bar.appendChild(take);
+        bar.appendChild(msg);
+        box.appendChild(head);
+        box.appendChild(list);
+        box.appendChild(bar);
+        panel.appendChild(box);
+        let busy = false;
+        let reading = false;     // a reading under way at the last ask
+        let follow = null;       // the next ask while another one reads
+        const show = (points) => {
+            const all = [];
+            points.forEach((p) => p.readings.forEach(
+                (r) => all.push({ ...r, words: p.words })));
+            const todo = all.filter((r) => r.state !== "kept");
+            // WHOSE CLAIM: alive on this host stands; gone on this host is
+            // stale, the next reading's; on another host (alive null) stands
+            // until the person takes it over (`model/parse.md` § 5e).
+            const alive = (r) => (r.claim || {}).alive;
+            head.textContent = !all.length
+                ? "No finished transmission point has a data file yet."
+                : todo.length
+                ? "The DOS by region and a selection's PDOS read each "
+                  + "point's data file once, then keep it beside the file."
+                : "Every point's DOS per orbital is kept beside its data file.";
+            list.replaceChildren(...all.map((r) => _el("li", null,
+                r.words + ": " + r.file + " (" + r.size_words + ") — "
+                + r.said)));
+            read.hidden = !todo.some((r) => r.state !== "being read"
+                                     || alive(r) === false);
+            again.hidden = !all.length;
+            take.hidden = busy || !todo.some((r) => r.state === "being read"
+                                             && alive(r) === null);
+            read.disabled = again.disabled = take.disabled = busy;
+            return todo.some((r) => r.state === "being read"
+                             && alive(r) !== false);
+        };
+        const ask = async () => {
+            let b = null;
+            try {
+                b = await (await fetch("/api/transport/digest?path="
+                                       + encodeURIComponent(file))).json();
+            } catch (_) { b = null; }
+            if (state.disposed) return;
+            if (!b || !b.ok) {
+                // A POLL THAT FAILED says nothing of a reading followed: asked
+                // again in 2 s.
+                if (!busy && reading) {
+                    clearTimeout(follow);
+                    follow = setTimeout(ask, 2000);
+                }
+                return;
+            }
+            const now = show(b.points);
+            if (busy) return;               // this card's own reading asks
+            clearTimeout(follow);
+            // ANOTHER'S READING -- another tab's, `summarize task`'s, another
+            // host's -- followed every 2 s; when none reads, the record again,
+            // and one more look: a reading of several files is between two.
+            if (now) follow = setTimeout(ask, 2000);
+            else if (reading) {
+                if (state.reload) state.reload();
+                follow = setTimeout(ask, 2000);
+            }
+            reading = now;
+        };
+        const go = async (body) => {
+            busy = true;
+            clearTimeout(follow);
+            msg.textContent = "Reading — on a cluster's file system a point "
+                + "can take minutes; the rest of the report stays in use.";
+            await ask();
+            const timer = setInterval(() => {
+                if (state.disposed) { clearInterval(timer); return; }
+                ask();
+            }, 2000);
+            try {
+                const r = await fetch("/api/transport/digest", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: file, ...body }) });
+                const b = await r.json();
+                msg.textContent = b && b.ok
+                    ? (b.outcomes || []).filter((o) => o.state !== "kept")
+                        .map((o) => o.said).join("; ")
+                    : String((b && b.error) || r.status);
+            } catch (e) {
+                msg.textContent = String((e && e.message) || e);
+            } finally {
+                clearInterval(timer);
+                busy = false;
+                reading = false;            // the record is fetched below
+            }
+            if (state.disposed) return;
+            await ask();
+            if (state.reload) state.reload();
+        };
+        read.addEventListener("click", () => go({}));
+        again.addEventListener("click", () => go({ fresh: true }));
+        take.addEventListener("click", () => go({ take_over: true }));
+        ask();
+    }
+
     function _fillDOS(panel, rec, file, state) {
+        _digestCard(panel, file, state);
         panel.appendChild(state.nodes.dos);
         const menu = rec.pdos_orbitals || {};
         const bar = _el("div", "transport-pdos-bar");
@@ -1194,6 +1315,19 @@ const WORKSPACE_TAG = "results:transport";
                             disposed: false, file: file, dir: _dirOf(file),
                             nFrames: 1, average: {}, pendingFrame: null,
                             frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE } };
+            /* THE POINTS READ AGAIN -- once a data file's DOS per orbital
+             * is read (`_digestCard`): their regions, and a selection's
+             * PDOS asked again; the page around them stays as it is. */
+            state.reload = async () => {
+                try {
+                    const b = await (await fetch("/api/transport/record?path="
+                                                 + encodeURIComponent(file))).json();
+                    if (state.disposed || !b || !b.ok) return;
+                    state.points = Array.isArray(b.record.points) ? b.record.points : [];
+                    _redraw(state);
+                    _loadPdos(state);
+                } catch (_) { /* the report as it was stays */ }
+            };
             (async function () {
                 let rec;
                 try {

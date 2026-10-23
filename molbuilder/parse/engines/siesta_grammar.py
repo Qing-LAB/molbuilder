@@ -1243,11 +1243,26 @@ def tbt_nc(channel_tag: str) -> str:
     return channel_tag + "nc"
 
 
-def tbt_avtrans(channel_tag: str, pair: str) -> str:
-    """TBtrans's k-averaged transmission of a channel between a pair of
-    leads named as its ``TS.Elecs`` blocks are -- ``.TBT.AVTRANS_L-R``
-    (``m_tbt_save.F90``)."""
-    return channel_tag + "AVTRANS_" + pair
+#: TBtrans's K-AVERAGED TEXT FILES, by the quantity each holds -- its role
+#: after a channel's tag (:data:`TBT_CHANNELS`): ``{pair}`` the two leads as
+#: their ``TS.Elecs`` blocks name them (``L-R``), ``{lead}`` one of them.
+#: Written beside the data file by ``state_cdf2ascii`` from the data file's
+#: own variables, averaged over the k-points with its weights
+#: (``m_tbt_save.F90`` ``name_save``; `model/parse.md` § 5e): the
+#: transmission, its eigenchannels, the device's DOS, the spectral DOS of a
+#: lead, the bulk DOS of a lead -- each written when the deck asks for it.
+TBT_AVERAGED = {"transmission": "AVTRANS_{pair}",
+                "eigenchannels": "AVTEIG_{pair}",
+                "dos": "AVDOS",
+                "lead_spectral": "AVADOS_{lead}",
+                "lead_bulk": "AVBDOS_{lead}"}
+
+
+def tbt_averaged(channel_tag: str, quantity: str, *, pair: str = "",
+                 lead: str = "") -> str:
+    """TBtrans's k-averaged text file of ``quantity`` (:data:`TBT_AVERAGED`)
+    for a channel -- ``.TBT.AVTRANS_L-R``, ``.TBT_UP.AVBDOS_R``."""
+    return channel_tag + TBT_AVERAGED[quantity].format(pair=pair, lead=lead)
 
 
 def tbt_channels(line: str) -> Optional[Tuple[str, ...]]:

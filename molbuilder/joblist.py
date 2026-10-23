@@ -21,7 +21,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 #: Every job's file, at one major (`persist.check_schema`).
 JOB_SCHEMA = "molbuilder/job@1"
@@ -178,17 +178,28 @@ def _file_of(job_id: str) -> Path:
     return _dir() / f"{job_id}.json"
 
 
+#: THE CLUSTER EACH SCHEDULER HERE ANSWERS FOR, once it has said: a
+#: scheduler's name for its cluster does not change while a process runs.
+_CLUSTERS: Dict[Any, str] = {}
+
+
 class Asked:
     """The cluster a scheduler here answers for, as it names it -- asked
-    once a command for each scheduler, and only when a queue job is asked
-    of."""
+    once a command for each scheduler in the process, and only when a queue
+    job is asked of; an answer it could not give is asked again by the next
+    look."""
     def __init__(self):
         self._asked = {}
 
     def cluster(self, scheduler):
         if scheduler not in self._asked:
-            from .scheduler.queue import cluster
-            self._asked[scheduler] = cluster(scheduler)
+            got = _CLUSTERS.get(scheduler)
+            if got is None:
+                from .scheduler.queue import cluster
+                got = cluster(scheduler)
+                if got is not None:
+                    _CLUSTERS[scheduler] = got
+            self._asked[scheduler] = got
         return self._asked[scheduler]
 
 
@@ -204,19 +215,29 @@ def scheduler_of(job):
     return rec.scheduler if rec is not None else None
 
 
-def is_going(job: "Job", here: "Asked") -> "Tuple[Optional[bool], str]":
-    """``(going, said)`` -- whether the job is still going, its process or
-    the scheduler's list, ``None`` where this machine cannot ask -- and
-    that in words: THE ONE ANSWER, `molbuilder jobs` asks it of each job,
-    `jobset scratch` of the jobs that hold its runs."""
-    if job.how == "here":
-        going = going_here(job)
-        return going, {True: "its process is going",
-                       False: "its process has ended",
-                       None: (f"on {job.host}: ask there"
-                              if job.host != this_host() else
-                              "this machine cannot tell")}[going]
-    from .scheduler.queue import listed
+def address_of(job_id, calculation) -> Optional[Job]:
+    """THE ADDRESS of queue job ``job_id`` this machine sent for the
+    calculation at ``calculation`` -- its file on the jobs list -- or
+    ``None``: none on file (sent from another machine, or its end said and
+    its address removed), one that does not read, or another calculation's
+    job of that id."""
+    try:
+        job = find(str(job_id))
+    except JobFileError:
+        return None
+    if (job is None or job.how != "queue"
+            or Path(job.calculation) != Path(calculation).resolve()):
+        return None
+    return job
+
+
+def asked_here(job: "Job", here: "Asked") -> "Tuple[Optional[Any], str]":
+    """``(scheduler, "")`` when queue job ``job`` can be asked about on this
+    machine -- its calculation's copy of its machine's record names the
+    scheduler, and that scheduler answers for the cluster the job was sent
+    to, as the scheduler names it -- else ``(None, why not)``: THE ONE RULE
+    `molbuilder jobs` and the run door ask by (`job-system.md` § 6.0a;
+    `running-a-job.md` § 4.2)."""
     scheduler = scheduler_of(job)
     if scheduler is None:
         from .scheduler.record import UnknownTarget, calculation_record
@@ -227,15 +248,67 @@ def is_going(job: "Job", here: "Asked") -> "Tuple[Optional[bool], str]":
                 str(UnknownTarget.unreadable_copy(job.calculation)).split())
         return None, ("its calculation's record of its machine is not here, "
                       "so its scheduler cannot be asked")
+    if job.cluster is None:
+        # WHERE IT WENT IS NOT KNOWN: another cluster sharing this home
+        # would answer for an id that is not its own.
+        return None, ("the cluster it was sent to was not read when it "
+                      "went, so its scheduler is not asked")
     answers = here.cluster(scheduler)
-    if job.cluster is not None and answers != job.cluster:
+    if answers != job.cluster:
         return None, (f"sent to cluster {job.cluster}: ask there"
                       if answers is not None else
                       "the scheduler cannot be asked here")
+    return scheduler, ""
+
+
+#: The scheduler's answers of the last ten seconds, by query and job -- one
+#: look at a page, a run of points or a job's members asks for one job many
+#: times (`running-a-job.md` § 4.2).
+_ASKED_LATELY: Dict[Tuple[str, Optional[str], str], Tuple[float, Any]] = {}
+_ASKED_TTL_S = 10.0
+
+
+def asked_lately(job: "Job", what: str) -> Optional[Any]:
+    """The scheduler's answer to query ``what`` -- ``listed`` or
+    ``standing`` (`scheduler.queue`) -- about queue job ``job``, where this
+    machine can ask it (:func:`asked_here`), asked at most once per
+    :data:`_ASKED_TTL_S` per job in this process: `molbuilder jobs`, the
+    run door and a queued run's standing hear one answer.  ``None`` where
+    it cannot be asked."""
+    import time
+    from .scheduler import queue
+    key = (what, job.cluster, str(job.job_id))
+    now = time.monotonic()
+    kept = _ASKED_LATELY.get(key)
+    if kept is not None and now - kept[0] < _ASKED_TTL_S:
+        return kept[1]
+    scheduler, _why = asked_here(job, Asked())
+    got = (getattr(queue, what)(scheduler, str(job.job_id))
+           if scheduler is not None else None)
+    _ASKED_LATELY[key] = (now, got)
+    return got
+
+
+def is_going(job: "Job", here: "Asked") -> "Tuple[Optional[bool], str]":
+    """``(going, said)`` -- whether the job is still going, its process or
+    the scheduler's list, ``None`` where this machine cannot ask
+    (:func:`asked_here`) -- and that in words: THE ONE ANSWER, `molbuilder
+    jobs` asks it of each job, `jobset scratch` of the jobs that hold its
+    runs."""
+    if job.how == "here":
+        going = going_here(job)
+        return going, {True: "its process is going",
+                       False: "its process has ended",
+                       None: (f"on {job.host}: ask there"
+                              if job.host != this_host() else
+                              "this machine cannot tell")}[going]
+    scheduler, why = asked_here(job, here)
+    if scheduler is None:
+        return None, why
     # THE SCHEDULER'S OWN WORDS for a job it holds -- its state and reason,
     # so a job it took and will never start says why (`job-system.md`
-    # § 6.0a; `scheduler.md` R6).
-    answer = listed(scheduler, job.job_id)
+    # § 6.0a; `scheduler.md` R6) -- the answer the run door hears too.
+    answer = asked_lately(job, "listed")
     if answer is None:
         return None, "the scheduler cannot be asked here"
     going, said = answer
@@ -360,6 +433,8 @@ def forget(job: Job) -> None:
 
 
 __all__ = ["JOB_SCHEMA", "Job", "JobFileError", "NotGoing", "add_members",
-           "every", "find", "inside", "inside_job",
+           "address_of", "asked_here", "asked_lately", "every", "find",
+           "inside",
+           "inside_job",
            "forget", "going_here", "queue_job", "read", "run_here",
            "signal_here", "started_of", "this_host", "write"]

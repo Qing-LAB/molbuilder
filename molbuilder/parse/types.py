@@ -15,7 +15,7 @@ Forbidden by the doc:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -181,6 +181,28 @@ class EngineParamsResult(ParseResult):
     blocks: Dict[str, List[str]] = field(default_factory=dict)
     parse_warnings: List["ParseWarning"] = field(default_factory=list)
     result_kind: str = "engine-params"
+
+
+@dataclass(frozen=True)
+class TransmissionResult(ParseResult):
+    """A TBtrans data file's reading -- `parse.md` § 5e: its ``channel``
+    (``unpolarized``, ``up`` or ``down``), its energies at full precision
+    (``energy_ev``, eV), and the device's DOS averaged over the k-points
+    with TBtrans's weights, per device orbital -- ``dos[energy][column]``,
+    1/eV, ``None`` where TBtrans wrote no device DOS -- each column's
+    orbital (``orbital``, the geometry's 0-based index) and atom (``atom``),
+    the geometry's first orbital of each atom (``firsto``), the version of
+    the file it read (``version``: its size, its modification time in ns)
+    and whether it was answered from the file's kept reading (``kept``)."""
+    channel: str = ""
+    energy_ev: Tuple[float, ...] = ()
+    dos: Any = None
+    orbital: Tuple[int, ...] = ()
+    atom: Tuple[int, ...] = ()
+    firsto: Tuple[int, ...] = ()
+    version: Tuple[int, int] = (0, 0)
+    kept: bool = False
+    result_kind: str = "transmission"
 
 
 def answers_a_trajectory(parser_cls) -> bool:

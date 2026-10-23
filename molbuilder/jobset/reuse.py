@@ -443,21 +443,39 @@ def finished_window(finished) -> Tuple[float, float, int]:
         f"(engines/transport.md 2a.16)")
 
 
+def _shared_files(src: Path, label: str) -> List[Path]:
+    """WHAT A SHARING POINT'S ``shared/`` HOLDS of the finished point in
+    ``src`` (`engines/transport.md` § 2a.16) -- what the readers read of it
+    (`model/parse.md` § 5e): its data files, each with its kept reading when
+    there is one, and TBtrans's k-averaged text files; ``[]`` for a folder
+    not there."""
+    from ..parse.engines.tbtrans import averaged_files
+    from ..parse.engines.tbtrans_nc import data_files, digest_of
+    from ..transport.transiesta import LEAD_NAMES, LEAD_PAIR
+    if not src.is_dir():
+        return []
+    out: List[Path] = []
+    for nc in data_files(src, label).values():
+        out.append(nc)
+        if digest_of(nc).is_file():
+            out.append(digest_of(nc))
+    for got in averaged_files(src, label, pair=LEAD_PAIR,
+                              leads=tuple(LEAD_NAMES)).values():
+        for where in got.values():
+            out += (list(where.values()) if isinstance(where, dict)
+                    else [where])
+    return out
+
+
 def _shared_size(calc, contours) -> int:
     """What a point's ``shared/`` will hold, in bytes: the finished point's
-    ``.TBT.nc`` and ``.TBT.AVTRANS`` files and its own ``shared/``
+    files (:func:`_shared_files`) and its own ``shared/``
     (:func:`shared_into`)."""
-    from ..parse.engines.tbtrans import transmission_files
     from ..projects import find_projects_root
     from ..transport.energies import SHARED_DIR
-    from ..transport.tbtnc import tbt_files
-    from ..transport.transiesta import LEAD_PAIR
     src = (Path(find_projects_root(Path(calc.base))).resolve()
            / contours.source)
-    files = (list(tbt_files(src, calc.task.label).values())
-             + [f for fs in transmission_files(src, calc.task.label,
-                                               LEAD_PAIR).values()
-                for f in fs]
+    files = (_shared_files(src, calc.task.label)
              + (_files(src / SHARED_DIR) if (src / SHARED_DIR).is_dir()
                 else []))
     return sum(f.stat().st_size for f in files)
@@ -749,11 +767,16 @@ def _copy_of(finished, stage: str, source: Path, run: Path) -> Copy:
 
 
 def _files(run: Path) -> List[Path]:
-    """Every file under ``run``, in a stable order."""
+    """Every file under ``run`` a copy carries, in a stable order -- never
+    one the catalogue calls transient (`runfiles.is_transient`: a reading's
+    claim, a temp of the one writer, a lock), which speaks for a process
+    that is not the copy's."""
+    from ..runfiles import is_transient
     out: List[Path] = []
     for here, dirs, files in os.walk(run):
         dirs.sort()
-        out.extend(Path(here) / f for f in sorted(files))
+        out.extend(Path(here) / f for f in sorted(files)
+                   if not is_transient(f))
     return out
 
 
@@ -853,7 +876,7 @@ def take_into(calc, takes: Sequence[Take], points, plan, *,
     ``.copied-from``."""
     from ..runfiles import (CALCDIR_FILE, CONTINUED_FROM_FILE,
                             COPIED_FROM_FILE, GATHERED_FROM_FILE,
-                            LAUNCH_RECORD_FILE)
+                            LAUNCH_RECORD_FILE, is_transient)
     from ..runrecord import write_copied_from
     from ..warmfiles import is_scratch
     records = {CALCDIR_FILE, CONTINUED_FROM_FILE, COPIED_FROM_FILE,
@@ -864,7 +887,7 @@ def take_into(calc, takes: Sequence[Take], points, plan, *,
         pdir = folder_of[point_key(t.point)]
         for f in sorted(t.source.iterdir()):
             if (f.is_file() and f.name not in records
-                    and not is_scratch(f.name)):
+                    and not is_scratch(f.name) and not is_transient(f.name)):
                 plan.copy(f, pdir / f.name)
         # ITS SHARED ENERGIES, with it (§ 2a.16).
         carry_shared(t.source / SHARED_DIR, pdir / SHARED_DIR, plan,
@@ -899,18 +922,15 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
     (`engines/transport.md` § 2a.16): nothing where ``deck``, the one its
     prep wrote, computes its window whole; else ``held`` -- the ``shared/``
     of the rung's newest run here at the point, when it holds them whole --
-    or the finished point the deck names: its ``.TBT.nc`` and
-    ``.TBT.AVTRANS`` files and its own ``shared/``, the folder stamped with
-    its role, its ``.copied-from`` last.  Refused, :class:`ValueError`,
-    when neither is there."""
+    or the finished point the deck names: its files (:func:`_shared_files`)
+    and its own ``shared/``, the folder stamped with its role, its
+    ``.copied-from`` last.  Refused, :class:`ValueError`, when neither is
+    there."""
     from .. import calcdirs
-    from ..parse.engines.tbtrans import transmission_files
     from ..projects import find_projects_root
     from ..runfiles import COPIED_FROM_FILE
     from ..runrecord import write_copied_from
     from ..transport.energies import SHARED_DIR, Contours
-    from ..transport.tbtnc import tbt_files
-    from ..transport.transiesta import LEAD_PAIR
     contours = (Contours.of_deck(deck.read_text(encoding="utf-8",
                                                 errors="replace"))
                 if deck.is_file() else None)
@@ -922,10 +942,7 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
         return
     tree = Path(find_projects_root(Path(calc.base))).resolve()
     src = tree / contours.source
-    files = ((list(tbt_files(src, calc.task.label).values())
-              + [f for fs in transmission_files(src, calc.task.label,
-                                                LEAD_PAIR).values()
-                 for f in fs]) if src.is_dir() else [])
+    files = _shared_files(src, calc.task.label)
     if not files:
         raise ValueError(
             f"{_words(pt)} shares energies with {contours.source}, which "

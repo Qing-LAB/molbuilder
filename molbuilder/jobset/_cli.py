@@ -1807,6 +1807,12 @@ def summarize_cmd(kind: str, words, bundle: str,
         if _summary == "transport":
             from ..transport.record import (RecordError, collect_record,
                                             iv_table_text, write_record)
+            from ..transport.tbtnc import read_points
+            # EVERY POINT'S DOS PER ORBITAL, read where it is not kept: the
+            # record and the data file hold each region's (`model/parse.md`
+            # § 5e) -- said as it goes; a file another reading holds is not
+            # read again.
+            readings = read_points(_calc, say=click.echo)
             try:
                 rec = collect_record(_calc)
             except RecordError as e:
@@ -1826,7 +1832,8 @@ def summarize_cmd(kind: str, words, bundle: str,
             click.echo(f"-> {data}")
             _ledger(_P(bundle), "summarize", "transport-record",
                     out=str(out), data=str(data), points=len(rec["points"]),
-                    pending=len(rec["pending"]), failed=len(rec["failed"]))
+                    pending=len(rec["pending"]), failed=len(rec["failed"]),
+                    readings=readings)
             return
         if _is_vibration and _summary is None:
             # A VIBRATION WITH NO SWEEP TO COMPARE, said in the rule's words.

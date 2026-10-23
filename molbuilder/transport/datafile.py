@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 import numpy as np
 
 from ..ncdata import Var
-from .record import AVTRANS_ENERGY_HALF_DECIMAL_EV
+from ..parse.engines.tbtrans import PRINTED_HALF_DECIMAL_EV
 from .sort import REGION_BRIDGE, REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
 from .stages import same_volts
 
@@ -45,17 +45,24 @@ DATA_SCHEMA = "molbuilder/transport-data@3"
 
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
-#: point's is each spin's (↑ = ↓) and a polarized point's two files are
-#: summed (`tbtnc.spin_dos`) -- ↑ + ↓, as the record's ``dos`` states it.
-_TBT_NC_SOURCE = ("<label>.TBT.nc -- each spin's, up = down, for a "
-                  "non-polarized point; a polarized point's .TBT_UP.nc and "
-                  ".TBT_DN.nc summed, up + down")
+#: point's is each spin's (↑ = ↓) and a polarized point's two channels are
+#: summed (`tbtnc.point_dos`) -- ↑ + ↓, as the record's ``dos`` states it.
+#: Each from the file the SIESTA family's parser reads it from
+#: (`model/parse.md` § 5e): TBtrans's k-averaged text files, and the data
+#: file's digest for the DOS by region.
+_SPIN_SUMMED = ("each spin's, up = down, for a non-polarized point; a "
+                "polarized point's TBT_UP and TBT_DN summed, up + down")
+
+
+def _from(role: str) -> str:
+    return f"<label>{role} -- {_SPIN_SUMMED}"
+
 
 #: The eigenchannels are one file's own -- never summed over spin: a
 #: polarized point's are one set per spin, in the record (``dos.by_spin``).
-_EIG_SOURCE = ("<label>.TBT.nc of a non-polarized point -- each spin's, "
-               "up = down; a polarized point's are one set per spin, in the "
-               "record, none here")
+_EIG_SOURCE = ("<label>.TBT.AVTEIG_<L>-<R> of a non-polarized point -- each "
+               "spin's, up = down; a polarized point's are one set per spin, "
+               "in the record, none here")
 
 #: The regions molbuilder owns in the device, in order along z.
 _REGIONS = (REGION_LEFT_ELECTRODE, REGION_BRIDGE, REGION_RIGHT_ELECTRODE)
@@ -123,8 +130,9 @@ def _variables() -> Tuple[Var, ...]:
             "description's list, in its order, or 0 V"),
         Var("energy_ev", ("energy_ev",), "coordinate", "eV", "energy",
             "E - E_F, relative to the leads' Fermi level: the transmission's "
-            "grid, as .TBT.AVTRANS prints it, to 5 decimals; each DOS, read "
-            "from .TBT.nc, is on the same points within half that decimal"),
+            "grid, at the full precision of each point's .TBT.nc, ascending; "
+            "TBtrans's text files, printed to 5 decimals, put on it within "
+            "half that decimal"),
         Var("spin", ("spin",), "coordinate", "", "spin channel",
             "the record's: the one channel of a non-polarized run, or up "
             "and down", dtype=S),
@@ -196,17 +204,17 @@ def _variables() -> Tuple[Var, ...]:
             source="the device point's SIESTA output"),
         Var("dos_total", ("frame", "bias_v", "energy_ev"), "raw", "1/eV",
             "the device's density of states", "its Green-function DOS, "
-            "k-averaged", source=_TBT_NC_SOURCE),
+            "k-averaged", source=_from(".TBT.AVDOS")),
         Var("dos_region", ("frame", "bias_v", "region", "energy_ev"), "raw",
             "1/eV", "the device DOS by region",
             "summed over the region's atoms in the device",
-            source=_TBT_NC_SOURCE),
+            source=_from(".TBT.digest.nc, the data file's DOS per orbital")),
         Var("lead_spectral_dos", ("frame", "bias_v", "lead", "energy_ev"), "raw",
             "1/eV", "a lead's spectral DOS", "TBT.DOS.A, k-averaged",
-            source=_TBT_NC_SOURCE),
+            source=_from(".TBT.AVADOS_<lead>")),
         Var("lead_bulk_dos", ("frame", "bias_v", "lead", "energy_ev"), "raw",
             "1/eV", "a lead's bulk DOS", "TBT.DOS.Elecs, k-averaged",
-            source=_TBT_NC_SOURCE),
+            source=_from(".TBT.AVBDOS_<lead>")),
         Var("eigenchannel_transmission",
             ("frame", "bias_v", "eigenchannel", "energy_ev"), "raw", "1",
             "eigenchannel transmission", "TBT.T.Eig, k-averaged",
@@ -331,7 +339,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     junction; returns its path.  :class:`DataFileError` names what does not
     lay out on one grid."""
     from ..frame_average import fill_data_file
-    from ..ncdata import as_bytes, empty, in_memory, write_group
+    from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, write_group
     from ..persist import write_bytes
     from .compose import recorded_junction
     from .record import iv_notes_placed, order_unstated_said
@@ -436,11 +444,11 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         if dos.get("energy_ev") is not None and not (
                 len(dos["energy_ev"]) == len(grid)
                 and np.allclose(dos["energy_ev"], grid, rtol=0.0,
-                                atol=AVTRANS_ENERGY_HALF_DECIMAL_EV)):
+                                atol=PRINTED_HALF_DECIMAL_EV)):
             raise DataFileError(
                 f"{p['point']}'s DOS is on another energy "
                 f"grid than its transmission -- not the same points within "
-                f"the {AVTRANS_ENERGY_HALF_DECIMAL_EV:g} eV the transmission "
+                f"the {PRINTED_HALF_DECIMAL_EV:g} eV the transmission "
                 f"file's five decimals allow")
         if dos.get("total") is not None:
             values["dos_total"][f, b] = dos["total"]
@@ -511,11 +519,13 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     attrs["Conventions"] = "CF-1.8"
 
     # THE FILE, through the variable record's one writing loop (`ncdata`).
-    ds = in_memory("transport.nc")
-    write_group(ds, dims, VARIABLES, values)
-    ds.setncatts(attrs)
+    with NC_LOCK:
+        ds = in_memory("transport.nc")
+        write_group(ds, dims, VARIABLES, values)
+        ds.setncatts(attrs)
+        data = as_bytes(ds)
     out = data_file_path(base, attrs["label"])
-    write_bytes(out, as_bytes(ds))
+    write_bytes(out, data)
     return out
 
 
@@ -586,8 +596,8 @@ def read_data_file(path) -> Dict[str, Any]:
     arrays (the fill value NaN), its units, long name, definition and source.
     The file's door (`runfiles.WRITTEN`); refuses another schema by name."""
     import netCDF4
-    from ..ncdata import read_variables
-    with netCDF4.Dataset(str(path), "r") as ds:
+    from ..ncdata import NC_LOCK, read_variables
+    with NC_LOCK, netCDF4.Dataset(str(path), "r") as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
         if attrs.get("schema") != DATA_SCHEMA:
             raise DataFileError(f"{Path(path).name} states the schema "

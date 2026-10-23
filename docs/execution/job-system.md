@@ -2837,7 +2837,10 @@ state says how it ended, the scheduler's word among it (`scheduler.md` R16;
 scheduler no longer lists into the run's launch record, so the run's state
 says so wherever the folder goes) (its kind's query, run where the calculation's copy of its machine's
 record says the command is, asked on its own cluster — another cluster's job
-is said *sent to cluster C: ask there*; a record naming no query command,
+is said *sent to cluster C: ask there*, one whose cluster was not read when it
+went is not asked; the run door asks by the same rule and hears the same
+answer, asked at most once per ten seconds per job (`joblist.asked_here`,
+`asked_lately`); a record naming no query command,
 or a command that does not run here, says it cannot ask; a copy not here says
 its scheduler cannot be asked, and a copy that does not read is said in its
 own refusal's words (`record.calculation_environment`) — an older

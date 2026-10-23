@@ -7,7 +7,8 @@ the engine's own record of the settings it used (an
 two steps: new module here, import + ``register`` below.  The rest define no
 parser and are imported by the ones that read with them: ``siesta_grammar``,
 the SIESTA family's one table of output lines (§ 5d.5); ``tbtrans``, the
-transmission rung's readers; ``_run_ending`` and ``_helpers``.
+transmission rung's loop and its k-averaged text files (§ 5e);
+``_run_ending`` and ``_helpers``.
 
 Order matters: the registry tries parsers in insertion order, so
 more-specific parsers go first.  MolwatchLogFileParser leads because
@@ -21,6 +22,7 @@ from .siesta_mdnc import SiestaMdNcFileParser
 from .siesta import SiestaOutFileParser
 from .pyscf import PySCFOutFileParser
 from .siesta_fdflog import SiestaFdfLogParser
+from .tbtrans_nc import TBTransNcFileParser
 
 
 register(MolwatchLogFileParser)
@@ -29,6 +31,9 @@ register(MolwatchLogFileParser)
 # text .out.  Putting it after would cost every .MD.nc a content scan by
 # parsers that were always going to decline it.
 register(SiestaMdNcFileParser)
+# By name and the HDF5 magic, as the history is: TBtrans's data file
+# (`model/parse.md` § 5e).
+register(TBTransNcFileParser)
 register(SiestaOutFileParser)
 register(PySCFOutFileParser)
 register(SiestaFdfLogParser)
@@ -36,6 +41,7 @@ register(SiestaFdfLogParser)
 __all__ = [
     "MolwatchLogFileParser",
     "SiestaMdNcFileParser",
+    "TBTransNcFileParser",
     "SiestaOutFileParser",
     "PySCFOutFileParser",
     "SiestaFdfLogParser",

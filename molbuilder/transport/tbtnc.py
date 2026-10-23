@@ -1,24 +1,21 @@
-"""What a transmission run's ``<label>.TBT.nc`` says -- the device's DOS, its
-parts, the leads' DOS and the eigenchannels -- read for the transport report
+"""What a transmission point says of its DOS -- its total, its regions', the
+leads', the eigenchannels and a selection's PDOS -- for the transport report
 (`web/results.md` § 2.5; `engines/transport.md` § 2a.12).
 
-**sisl reads the file** (its TBtrans reader, `sisl.io.tbtrans.
-tbtncSileTBtrans`); nothing here parses NetCDF by hand.  sisl is in the
-`molbuilder` env (`envs/host-env.txt`), which the server runs in.
+**Read through the SIESTA family's parser** (`model/parse.md` § 5e): the
+averages from TBtrans's k-averaged text files, on the data file's own
+energies (`tbtrans_nc.point_averages`); the DOS per orbital from the data
+file's kept reading (`tbtrans_nc.kept`), summed here over a region's atoms or
+a selection's, narrowed to an orbital type by the device run's own
+``<label>.ORB_INDX``.  No file's format is read here: the parser reads them.
+**A reading not kept is no region's DOS and no PDOS** -- said, never read
+here: a data file is read on the person's word
+(`tbtrans_nc.TBTransNcFileParser.parse`).
 
-What the transmission deck asks TBtrans for (`transport/deck.py`
-``TBT_SECTION``) is what is here: ``TBT.DOS.Gf`` -- the device Green-function
-DOS per orbital, energy and k; ``TBT.DOS.A`` -- the spectral DOS of the FIRST
-electrode only (TBtrans skips the last without ``TBT.DOS.A.All``,
-``m_tbt_save.F90``); ``TBT.DOS.Elecs`` -- each lead's bulk DOS; ``TBT.T.Eig``
--- the transmission eigenvalues.  Every quantity is k-averaged, on the
-file's own energy grid, which is the grid of ``.TBT.AVTRANS_*``: TBtrans
-writes that file from the same variable (``state_cdf2ascii``).
-
-**An orbital's type is the device run's own ``<label>.ORB_INDX``**, which
-SIESTA writes by default (``WriteOrbitalIndex``, ``read_options.F90``): its
-``l`` and ``m``, named as SIESTA names them (``atmfuncs.f``
-``symfio``: for ``l = 1``, ``m = -1, 0, 1`` are p_y, p_z, p_x).
+**An orbital's type is the device run's ``.ORB_INDX``**, which SIESTA writes
+by default (``WriteOrbitalIndex``, ``read_options.F90``): its ``l`` and
+``m``, named as SIESTA names them (``atmfuncs.f`` ``symfio``: for ``l = 1``,
+``m = -1, 0, 1`` are p_y, p_z, p_x).
 """
 from __future__ import annotations
 
@@ -39,214 +36,288 @@ ORBITAL_NOTE = ("TBtrans writes each orbital's own DOS, not the terms "
                 "so a ring's π orbitals are p_x, p_y or p_z only when the "
                 "ring lies in a coordinate plane.")
 
+#: The words a point without its kept reading is said in.
+NOT_READ = ("its DOS per orbital is not read yet -- read it from the "
+            "report's DOS tab, or `jobset summarize task`")
+
 
 class TbtError(Exception):
-    """The file cannot answer what was asked -- the message says why."""
+    """The files cannot answer what was asked -- the message says why."""
 
 
-def tbt_name(label: str, spin: str) -> str:
-    """The name TBtrans gives a run's ``.TBT.nc`` of channel ``spin`` --
-    ``unpolarized``, ``up`` or ``down`` -- on the run's label, as the file
-    catalogue composes a name on a label (`runfiles.compose`); the channel's
-    tag is TBtrans's own (``siesta_grammar.TBT_CHANNELS``)."""
-    from ..parse.engines.siesta_grammar import TBT_CHANNELS, tbt_nc
-    from ..runfiles import compose
-    tag = dict(TBT_CHANNELS)[spin]
-    return compose(label, tbt_nc(tag))
+def _channels(spin: str) -> tuple:
+    return ("up", "down") if spin == "polarized" else ("unpolarized",)
 
 
-def tbt_files(run_dir: Path, label: str) -> Dict[str, Path]:
-    """The transmission run's ``.TBT.nc`` files in ``run_dir``, by spin --
-    ``{"unpolarized": …}`` or ``{"up": …, "down": …}`` -- each that is
-    there (`web/results.md` § 2.5): found through the file catalogue
-    (`runfiles.find`, as `runs.Run.on_label` finds an engine's own file on
-    the label), one role per channel (``siesta_grammar.TBT_CHANNELS``)."""
-    from ..parse.engines.siesta_grammar import TBT_CHANNELS, tbt_nc
-    from ..runfiles import find_on_label
-    out = {}
-    for spin, tag in TBT_CHANNELS:
-        hits = find_on_label(run_dir, label, tbt_nc(tag))
-        if hits:
-            out[spin] = hits[-1]
-    return out
-
-
-def energies_of(run_dir: Path, label: str) -> List[float]:
-    """The energies a point's run computed, in the order TBtrans wrote them,
-    at full precision -- its ``.TBT.nc``'s (the first channel's; a
-    polarized run's two are one grid, :func:`spin_dos`), never the five
-    decimals its ``.TBT.AVTRANS`` prints (`engines/transport.md` § 2a.16).
-    :class:`TbtError` when the run holds none."""
-    files = tbt_files(run_dir, label)
+def energies_of(folder, label: str) -> List[float]:
+    """The energies a point's run computed, ascending, at full precision
+    -- its first data file's, through the parser
+    (`tbtrans_nc.energies`; a polarized run's two are one grid), never the
+    five decimals its text files print (`engines/transport.md` § 2a.16).
+    :class:`TbtError` when the folder holds none."""
+    from ..parse.engines.tbtrans_nc import data_files, energies
+    files = data_files(folder, label)
     if not files:
-        raise TbtError(f"{Path(run_dir).name} holds no .TBT.nc of {label}")
-    return _floats(_open(next(iter(files.values()))).E)
+        raise TbtError(f"{Path(folder).name} holds no data file of {label}")
+    return list(energies(next(iter(files.values()))))
+
+
+def readings(folder, label: str) -> List[object]:
+    """What is kept of each data file's reading, the point's own and those
+    in its ``shared/``, recursively (`tbtrans_nc.kept_state`;
+    `engines/transport.md` § 2a.16) -- every reading the point's DOS by
+    region asks."""
+    from ..parse.engines.tbtrans_nc import data_files, kept_state
+    from .energies import SHARED_DIR
+    folder = Path(folder)
+    out = [kept_state(p) for p in data_files(folder, label).values()]
+    if (folder / SHARED_DIR).is_dir():
+        out += readings(folder / SHARED_DIR, label)
+    return out
 
 
 def _sum(a: List[float], b: List[float]) -> List[float]:
     return [x + y for x, y in zip(a, b)]
 
 
-def spin_dos(up: Path, down: Path, regions: Dict[str, Sequence[int]]) -> Dict:
-    """The DOS block of a POLARIZED point (`web/results.md` § 2.5): each
-    quantity of :func:`point_dos` summed over the two channels' files, and
-    ``by_spin`` -- each channel's own ``total`` and ``eigenchannels`` --
-    beside.  The two files are of one run, so their energy grids are one;
-    a run whose two differ is refused, never summed."""
-    a, b = point_dos(up, regions), point_dos(down, regions)
-    if len(a["energy_ev"]) != len(b["energy_ev"]) or any(
-            abs(x - y) > 1e-9 for x, y in zip(a["energy_ev"],
-                                              b["energy_ev"])):
-        raise TbtError(f"{Path(up).name} and {Path(down).name} are on "
+def _by_label(reading, regions: Dict[str, Sequence[int]]
+              ) -> Dict[str, List[float]]:
+    """Each region's DOS: the reading's columns of its atoms (0-based, the
+    device run's order) that are in the device, summed."""
+    import numpy as np
+    atom = np.asarray(reading.atom)
+    device = set(reading.atom)
+    out = {}
+    for name, atoms in regions.items():
+        mine = sorted(int(a) for a in atoms if int(a) in device)
+        if mine:
+            out[name] = [float(x) for x in
+                         reading.dos[:, np.isin(atom, mine)].sum(axis=1)]
+    return out
+
+
+def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
+              spin: str) -> Dict:
+    """THE DOS BLOCK of a point's folder (`web/results.md` § 2.5):
+    ``{energy_ev, total, by_label, lead_spectral, lead_bulk, eigenchannels}``
+    -- the averages TBtrans wrote, on the data file's energies; ``by_label``
+    each region's, from the data file's kept reading, present only when it
+    is kept.  A polarized point's two channels summed, and ``by_spin`` each
+    channel's own ``total`` and ``eigenchannels`` beside.  A quantity
+    TBtrans did not write is absent, never zero."""
+    from ..parse.engines.tbtrans_nc import data_files, kept, point_averages
+    from .transiesta import LEAD_NAMES, LEAD_PAIR
+    try:
+        av = point_averages(folder, label, pair=LEAD_PAIR,
+                            leads=tuple(LEAD_NAMES))
+    except (OSError, ValueError) as exc:
+        raise TbtError(str(exc)) from exc
+    channels = _channels(spin)
+    missing = [c for c in channels if c not in av]
+    if missing:
+        raise TbtError(f"{Path(folder).name} holds no k-averaged file of "
+                       f"the {' or '.join(missing)} channel")
+    data = data_files(folder, label)
+    per: Dict[str, Dict] = {}
+    for c in channels:
+        a = av[c]
+        d: Dict = {"energy_ev": a["energy_ev"]}
+        for src, dst in (("dos", "total"), ("lead_spectral", "lead_spectral"),
+                         ("lead_bulk", "lead_bulk"),
+                         ("eigenchannels", "eigenchannels")):
+            if src in a:
+                d[dst] = a[src]
+        reading = kept(data[c]) if c in data else None
+        if reading is not None and reading.dos is not None:
+            d["by_label"] = _by_label(reading, regions)
+        per[c] = d
+    if len(channels) == 1:
+        return per[channels[0]]
+    up, dn = per["up"], per["down"]
+    if len(up["energy_ev"]) != len(dn["energy_ev"]) or any(
+            abs(x - y) > 1e-9 for x, y in zip(up["energy_ev"],
+                                              dn["energy_ev"])):
+        raise TbtError(f"{Path(folder).name}: its two spin channels are on "
                        f"different energy grids -- not one run's two spins")
-    out: Dict = {"energy_ev": a["energy_ev"]}
-    if "total" in a and "total" in b:
-        out["total"] = _sum(a["total"], b["total"])
-        out["by_label"] = {k: _sum(v, b["by_label"][k])
-                           for k, v in a.get("by_label", {}).items()
-                           if k in b.get("by_label", {})}
+    out: Dict = {"energy_ev": up["energy_ev"]}
+    if "total" in up and "total" in dn:
+        out["total"] = _sum(up["total"], dn["total"])
+    if "by_label" in up and "by_label" in dn:
+        out["by_label"] = {k: _sum(v, dn["by_label"][k])
+                           for k, v in up["by_label"].items()
+                           if k in dn["by_label"]}
     for key in ("lead_spectral", "lead_bulk"):
-        both = {e: _sum(v, b[key][e]) for e, v in a.get(key, {}).items()
-                if e in b.get(key, {})}
+        both = {e: _sum(v, dn[key][e]) for e, v in up.get(key, {}).items()
+                if e in dn.get(key, {})}
         if both:
             out[key] = both
     out["by_spin"] = {
-        spin: {k: d[k] for k in ("total", "eigenchannels") if k in d}
-        for spin, d in (("up", a), ("down", b))}
+        s: {k: d[k] for k in ("total", "eigenchannels") if k in d}
+        for s, d in (("up", up), ("down", dn))}
     return out
 
 
-def _open(nc: Path):
-    import sisl
-    try:
-        return sisl.get_sile(str(nc))
-    except Exception as exc:                                  # noqa: BLE001
-        raise TbtError(f"{Path(nc).name} does not read: {exc}") from exc
-
-
-def _floats(a) -> List[float]:
-    return [float(x) for x in a]
-
-
-def _written(nc: Path) -> set:
-    """What TBtrans wrote, as ``"DOS"`` / ``"<elec>/ADOS"`` -- the file's
-    own variables, read with netCDF4: a quantity it was not asked for is
-    absent, and absence is decided here, never by a read that failed."""
-    import netCDF4
-    with netCDF4.Dataset(str(nc)) as ds:
-        out = set(ds.variables)
-        for g, grp in ds.groups.items():
-            out |= {f"{g}/{v}" for v in grp.variables}
-    return out
-
-
-def point_dos(nc: Path, regions: Dict[str, Sequence[int]]) -> Dict:
-    """The DOS block of one bias point (`web/results.md` § 2.5):
-    ``{energy_ev, total, by_label, lead_spectral, lead_bulk, eigenchannels}``
-    -- each k-averaged on the file's energy grid, ``by_label`` the device DOS
-    summed over each region's atoms (0-based, the device run's order) that
-    are in the device.  A quantity TBtrans did not write is absent, never
-    zero."""
-    tbt = _open(nc)
-    have = _written(nc)
-    dev = set(int(a) for a in tbt.a_dev)
-    out: Dict = {"energy_ev": _floats(tbt.E)}
-    if "DOS" in have:
-        out["total"] = _floats(tbt.DOS())
-        by_label = {}
-        for label, atoms in regions.items():
-            mine = sorted(int(a) for a in atoms if int(a) in dev)
-            if mine:
-                by_label[label] = _floats(tbt.DOS(atoms=mine))
-        out["by_label"] = by_label
-    spectral = {e: _floats(tbt.ADOS(e)) for e in tbt.elecs
-                if f"{e}/ADOS" in have}
-    bulk = {e: _floats(tbt.BDOS(e)) for e in tbt.elecs
-            if f"{e}/DOS" in have}
-    if spectral:
-        out["lead_spectral"] = spectral
-    if bulk:
-        out["lead_bulk"] = bulk
-    if len(tbt.elecs) >= 2:
-        a, b = tbt.elecs[0], tbt.elecs[1]
-        if f"{a}/{b}.T.Eig" in have:
-            eig = tbt.transmission_eig(a, b)
-            out["eigenchannels"] = [_floats(eig[:, i])
-                                    for i in range(eig.shape[1])]
-    return out
-
-
-def spin_selection_pdos(files: Dict[str, Path], orb_indx: Optional[Path],
-                        atoms: Sequence[int], orbitals: str = "all") -> Dict:
-    """:func:`selection_pdos` over a point's files (:func:`tbt_files`): the
-    one file's, or a polarized point's two channels summed
-    (`web/results.md` § 2.5)."""
-    if "unpolarized" in files:
-        return selection_pdos(files["unpolarized"], orb_indx, atoms, orbitals)
-    a = selection_pdos(files["up"], orb_indx, atoms, orbitals)
-    b = selection_pdos(files["down"], orb_indx, atoms, orbitals)
-    return {**a, "pdos": _sum(a["pdos"], b["pdos"])}
-
-
-def selection_pdos(nc: Path, orb_indx: Optional[Path],
+def selection_pdos(folder, label: str, orb_indx: Optional[Path],
                    atoms: Sequence[int], orbitals: str = "all") -> Dict:
-    """The PDOS of ``atoms`` (0-based, the device run's order), narrowed to
-    one orbital type (:data:`ORBITAL_TYPES`, or ``"all"``):
-    ``{energy_ev, pdos, atoms, outside_device}``.  Atoms outside the device
-    region (a buffer) have no DOS and are named, not counted."""
-    tbt = _open(nc)
-    dev = set(int(a) for a in tbt.a_dev)
+    """The PDOS of ``atoms`` (0-based, the device run's order) in a point's
+    folder, narrowed to one orbital type (:data:`ORBITAL_TYPES`, or
+    ``"all"``): ``{energy_ev, pdos, atoms, outside_device, orbitals}``, from
+    each data file's kept reading -- a polarized point's two channels
+    summed.  Atoms outside the device region (a buffer) have no DOS and are
+    named, not counted.  :class:`TbtError` names what is missing: a reading
+    not kept (:data:`NOT_READ`), a device DOS not written."""
+    import numpy as np
+    from ..parse.engines.tbtrans_nc import data_files, kept
     asked = sorted({int(a) for a in atoms})
     if not asked:
         raise TbtError("no atoms selected")
-    inside = [a for a in asked if a in dev]
-    outside = [a for a in asked if a not in dev]
-    if not inside:
-        raise TbtError("none of the selected atoms is in the device "
-                       "region, where TBtrans computes the DOS")
-    if "DOS" not in _written(nc):
-        raise TbtError(f"{Path(nc).name} holds no device DOS -- the run "
-                       f"was not asked for it (TBT.DOS.Gf)")
-    if orbitals == "all":
-        pdos = tbt.DOS(atoms=inside)
-    else:
-        if orbitals not in ORBITAL_TYPES:
-            raise TbtError(f"orbital type {orbitals!r}: one of "
-                           f"all, {', '.join(ORBITAL_TYPES)}")
-        if orb_indx is None or not Path(orb_indx).is_file():
-            raise TbtError("the device run's .ORB_INDX is not there, so "
-                           "its orbitals' types are not known")
-        orbs = _orbitals_of(tbt, Path(orb_indx), inside, orbitals)
-        if not orbs:
-            raise TbtError(f"the selected atoms have no {orbitals} "
-                           f"orbital in their basis")
-        pdos = tbt.DOS(orbitals=orbs)
-    return {"energy_ev": _floats(tbt.E), "pdos": _floats(pdos),
+    if orbitals != "all" and orbitals not in ORBITAL_TYPES:
+        raise TbtError(f"orbital type {orbitals!r}: one of all, "
+                       f"{', '.join(ORBITAL_TYPES)}")
+    files = data_files(folder, label)
+    if not files:
+        raise TbtError(f"{Path(folder).name} holds no data file of {label}")
+    total = None
+    inside: List[int] = []
+    outside: List[int] = []
+    energy: List[float] = []
+    for path in files.values():
+        reading = kept(path)
+        if reading is None:
+            raise TbtError(f"{path.name}: {NOT_READ}")
+        if reading.dos is None:
+            raise TbtError(f"{path.name} holds no device DOS -- the run was "
+                           f"not asked for it (TBT.DOS.Gf)")
+        device = set(reading.atom)
+        inside = [a for a in asked if a in device]
+        outside = [a for a in asked if a not in device]
+        if not inside:
+            raise TbtError("none of the selected atoms is in the device "
+                           "region, where TBtrans computes the DOS")
+        if orbitals == "all":
+            mask = np.isin(np.asarray(reading.atom), inside)
+        else:
+            if orb_indx is None or not Path(orb_indx).is_file():
+                raise TbtError("the device run's .ORB_INDX is not there, so "
+                               "its orbitals' types are not known")
+            orbs = _orbitals_of(reading.firsto, Path(orb_indx), inside,
+                                orbitals, path.name)
+            if not orbs:
+                raise TbtError(f"the selected atoms have no {orbitals} "
+                               f"orbital in their basis")
+            mask = np.isin(np.asarray(reading.orbital), orbs)
+        mine = reading.dos[:, mask].sum(axis=1)
+        total = mine if total is None else total + mine
+        energy = list(reading.energy_ev)
+    return {"energy_ev": energy, "pdos": [float(x) for x in total],
             "atoms": inside, "outside_device": outside,
             "orbitals": orbitals}
 
 
-def _orbitals_of(tbt, orb_indx: Path, atoms: Sequence[int],
-                 kind: str) -> List[int]:
-    """The unit-cell orbital indices of ``atoms`` of type ``kind`` -- each
+def _orbitals_of(firsto: Sequence[int], orb_indx: Path,
+                 atoms: Sequence[int], kind: str, name: str) -> List[int]:
+    """The geometry's orbital indices of ``atoms`` of type ``kind`` -- each
     atom's basis as the device run's ``.ORB_INDX`` lists it (sisl's reader,
     one entry per atom, in the run's order).  Its orbital counts must be the
-    ``.TBT.nc``'s, atom by atom, or the two files are not of one run and the
-    answer is refused."""
+    data file's, atom by atom (its reading's ``firsto``), or the two are not
+    of one run and the answer is refused."""
     import sisl
     l_want, m_want = ORBITAL_TYPES[kind]
     try:
         basis = sisl.get_sile(str(orb_indx)).read_basis()
     except Exception as exc:                                  # noqa: BLE001
         raise TbtError(f"{orb_indx.name} does not read: {exc}") from exc
-    firsto = [int(x) for x in tbt.geometry.firsto]
+    firsto = [int(x) for x in firsto]
     counts = [len(basis[i].orbitals) for i in range(len(basis))]
     if counts != [firsto[i + 1] - firsto[i] for i in range(len(firsto) - 1)]:
-        raise TbtError(f"{orb_indx.name} and {Path(tbt.file).name} list "
-                       f"different orbitals per atom -- not one run's files")
+        raise TbtError(f"{orb_indx.name} and {name} list different orbitals "
+                       f"per atom -- not one run's files")
     out: List[int] = []
     for a in atoms:
         for j, orb in enumerate(basis[a].orbitals):
             if orb.l == l_want and (m_want is None or orb.m == m_want):
                 out.append(firsto[a] + j)
+    return out
+
+
+def point_readings(calc) -> List[Dict]:
+    """EACH FINISHED TRANSMISSION POINT'S READINGS (`model/parse.md` § 5e):
+    the transmission's newest run, as the record reads it
+    (`record.result_folders`) -- per point its run finished, by the one
+    door every reader of a run's state asks (`runs.concluded`), its folder
+    and what is kept of each data file's reading, its own and those in its
+    ``shared/`` (:func:`readings`).  A point still running, or stopped, is
+    none: its data file is TBtrans's while it writes, and a partial one
+    after."""
+    from ..jobset.naming import stage_home
+    from ..runs import concluded
+    from .record import result_folders
+    base, task = Path(calc.base), calc.task
+    names = stage_home(base, task, "transmission").names(task.shape)
+    return [{"point": pt, "folder": where,
+             "readings": readings(where, task.label)}
+            for pt, where, run in result_folders(base, task, "transmission")
+            if where is not None and concluded(
+                where, names, base=base, launched_in=run).state == "finished"]
+
+
+def read_points(calc, *, fresh: bool = False, take_over: bool = False,
+                say=None, progress=None) -> List[Dict]:
+    """EVERY FINISHED POINT'S DATA FILES READ whose reading is not kept --
+    each one, with ``fresh`` -- one at a time, through the parser, which
+    claims each and keeps its reading (`tbtrans_nc.TBTransNcFileParser.
+    parse`; `model/parse.md` § 5e).  A file a reading on this host holds is
+    not read; one whose reader is gone is (the parser removes its stale
+    claim); one a reading on another host holds, only with ``take_over``,
+    the person's word.  ``say(words)`` is told as each begins and ends,
+    ``progress(path, k, n)`` as each k-point is read.  Answers each file's
+    outcome: ``{"file", "state", "said"}`` -- ``kept``, ``being read`` or
+    ``failed``."""
+    import time
+    from ..parse.engines.tbtrans_nc import (ReadingClaimed,
+                                            TBTransNcFileParser,
+                                            claim_words)
+    from ..report_fields import span_words
+    from ..units import gib_words
+    base = Path(calc.base)
+    tell = say or (lambda _w: None)
+    out: List[Dict] = []
+    for entry in point_readings(calc):
+        for k in entry["readings"]:
+            rel = str(k.path.relative_to(base))
+            if k.state == "kept" and not fresh:
+                continue
+            alive = (k.claim or {}).get("alive")
+            if k.state == "being read" and (
+                    alive is True or (alive is None and not take_over)):
+                said = f"{rel} is being read -- {claim_words(k.claim or {})}"
+                tell(said)
+                out.append({"file": rel, "state": "being read",
+                            "said": said})
+                continue
+            tell(f"reading {rel} ({gib_words(k.size)}) -- its DOS per "
+                 f"orbital, kept beside it")
+            began = time.time()
+            try:
+                got = TBTransNcFileParser.parse(
+                    k.path, fresh=fresh,
+                    take_over=take_over and alive is None,
+                    progress=(None if progress is None else
+                              (lambda i, n, p=k.path: progress(p, i, n))))
+            except ReadingClaimed as exc:
+                said = str(exc)
+                out.append({"file": rel, "state": "being read",
+                            "said": said})
+            except (OSError, RuntimeError, ValueError) as exc:
+                said = f"{rel} does not read: {exc}"
+                out.append({"file": rel, "state": "failed", "said": said})
+            else:
+                # KEPT ALREADY -- read by another meanwhile, or beside the
+                # claim of a reading that is gone, removed: nothing read.
+                said = (f"read {rel} in {span_words(time.time() - began)}"
+                        if not got.kept else f"{rel}: kept" + (
+                            " -- the claim of a reading that is gone "
+                            "removed" if k.state == "being read" else ""))
+                out.append({"file": rel, "state": "kept", "said": said})
+            tell(said)
     return out

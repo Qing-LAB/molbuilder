@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@9``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@10``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -44,6 +44,9 @@ from ..persist import json_safe
 if TYPE_CHECKING:
     from .stages import Point
 
+#: ``@10``: each finished point's ``digest`` -- what is kept of each data
+#: file's reading, its own and its ``shared/``'s: its state, size and claim
+#: (`model/parse.md` § 5e); the DOS by region from the kept readings alone.
 #: ``@9``: ``current_from`` on every point -- ``tbtrans`` (the junction's
 #: total from the printed figures) or ``joined`` (a point that shares energies
 #: with a finished calculation's, its current the record's over the joined
@@ -65,7 +68,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@9"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@10"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -110,12 +113,6 @@ CAVEAT = (
 _SCF_FIELDS = ("cycle", "energy", "delta_E", "dDmax", "dHmax", "ef",
                "phase", "dq", "vha_ev", "charges")
 
-#: How far a point's energies, read from its ``.TBT.nc`` at full precision,
-#: may be from those its transmission file prints, to five decimals of an eV
-#: (``f10.5``, ``m_tbt_save.F90`` ``save_DAT``): the same points, within
-#: half that last decimal -- asked of the energies (:func:`_full`) and of a
-#: point's DOS against its transmission (`datafile`).
-AVTRANS_ENERGY_HALF_DECIMAL_EV = 0.5e-5
 
 #: HOW FAR PAST THE BIAS WINDOW the transmission must reach for a current
 #: computed from T(E, 0) to be whole: the Fermi functions' tails, in kT
@@ -138,38 +135,6 @@ def record_path(base_dir, label: str) -> Path:
     """
     from ..runfiles import compose as _rf
     return Path(base_dir) / _rf(label, ".transport.json")
-
-
-def parse_avtrans(text: str) -> Tuple[List[float], List[float]]:
-    """``<label>.TBT.AVTRANS_<L>-<R>`` → ``(energies_ev, transmission)``.
-
-    The format (pinned live, 5.4.2): ``#`` comment lines, then two
-    columns — E in eV, and the k-averaged T(E).
-
-    E is relative to E_F -- TBtrans's own convention for its contour and
-    its output (`engines/transport.md` § 2a.12: T(E) is measured relative
-    to the leads' E_F), which is what the record states as
-    ``energies_relative_to_ef``.
-    """
-    energies: List[float] = []
-    trans: List[float] = []
-    for ln in text.splitlines():
-        s = ln.strip()
-        if not s or s.startswith("#"):
-            continue
-        parts = s.split()
-        if len(parts) < 2:
-            continue
-        try:
-            e, t = float(parts[0]), float(parts[1])
-        except ValueError:
-            continue
-        energies.append(e)
-        trans.append(t)
-    if not energies:
-        raise RecordError("no transmission rows parsed -- not an "
-                          "AVTRANS file?")
-    return energies, trans
 
 
 def _ran(run_dir):
@@ -198,65 +163,50 @@ def deck_spin(run_dir) -> str:
 
 
 def point_transmission(where, label: str, spin: str) -> Dict:
-    """What TBtrans wrote at one point, read through the family's one reader
-    (`parse.engines.tbtrans.transmission_files`): ``energy_ev`` and
-    ``transmission`` -- **per spin channel, so G = G0 · T(E_F)** with
-    G0 = 2e²/h: the unpolarized file's T as it is; a polarized point's two
-    channels averaged, (T↑ + T↓)/2, each kept whole in ``channels`` and
-    their sum in ``transmission_total`` -- and ``transmission_file``.
-    :class:`RecordError` names what is missing: a
-    polarized deck whose run wrote one channel is not done
-    (`engines/transport.md` § 2a.12)."""
-    from ..parse.engines.tbtrans import transmission_files
-    from .transiesta import LEAD_PAIR
+    """What TBtrans wrote at one point, read through the SIESTA family's
+    parser (`tbtrans_nc.point_averages`, `model/parse.md` § 5e): its
+    k-averaged transmission on the data file's energies, at full precision
+    (`engines/transport.md` § 2a.16) -- ``energy_ev`` and ``transmission``
+    **per spin channel, so G = G0 · T(E_F)** with G0 = 2e²/h: the
+    unpolarized file's T as it is; a polarized point's two channels
+    averaged, (T↑ + T↓)/2, each kept whole in ``channels`` and their sum in
+    ``transmission_total`` -- and ``transmission_file``.  :class:`RecordError`
+    names what is missing: a polarized deck whose run wrote one channel is
+    not done (`engines/transport.md` § 2a.12)."""
+    from ..parse.engines.tbtrans_nc import point_averages
+    from .transiesta import LEAD_NAMES, LEAD_PAIR
     # THE PAIR, from the leads' own block names (`TS.Elecs`), left to
     # right: the file TBtrans writes for it, never the first of a glob.
-    files = transmission_files(where, label, LEAD_PAIR)
+    try:
+        av = point_averages(where, label, pair=LEAD_PAIR,
+                            leads=tuple(LEAD_NAMES))
+    except (OSError, ValueError) as exc:
+        raise RecordError(str(exc)) from exc
+    have = {c for c, a in av.items() if "transmission" in a}
     if spin == "polarized":
-        missing = [c for c in ("up", "down") if not files.get(c)]
+        missing = [c for c in ("up", "down") if c not in have]
         if missing:
             raise RecordError(
                 f"the deck is spin-polarized and the run wrote no "
                 f"{' or '.join(missing)} channel transmission")
-        e_up, t_up = parse_avtrans(files["up"][0].read_text())
-        e_dn, t_dn = parse_avtrans(files["down"][0].read_text())
-        if e_up != e_dn:
+        up, dn = av["up"], av["down"]
+        if up["energy_ev"] != dn["energy_ev"]:
             raise RecordError("the two spin channels' energy grids differ")
-        return {"energy_ev": _full(where, label, e_up),
+        t_up, t_dn = up["transmission"], dn["transmission"]
+        return {"energy_ev": up["energy_ev"],
                 "transmission": [(a + b) / 2.0 for a, b in zip(t_up, t_dn)],
                 "channels": {"up": t_up, "down": t_dn},
                 # THE TOTAL, T↑ + T↓, what the report draws beside the two
                 # (`web/results.md` § 2.5).
                 "transmission_total": [a + b for a, b in zip(t_up, t_dn)],
-                "transmission_file": [files["up"][0].name,
-                                      files["down"][0].name]}
-    if not files.get("unpolarized"):
+                "transmission_file": [up["files"]["transmission"],
+                                      dn["files"]["transmission"]]}
+    if "unpolarized" not in have:
         raise RecordError("the run wrote no transmission file")
-    energies, trans = parse_avtrans(files["unpolarized"][0].read_text())
-    return {"energy_ev": _full(where, label, energies),
-            "transmission": trans,
-            "transmission_file": files["unpolarized"][0].name}
-
-
-def _full(where, label: str, printed: List[float]) -> List[float]:
-    """The energies of a point's ``.TBT.AVTRANS``, at the full precision of
-    its ``.TBT.nc`` -- TBtrans writes both from one variable, in one order
-    (`tbtnc`), and prints five decimals -- so a point's energies are the
-    ones it computed (`engines/transport.md` § 2a.16); the printed ones
-    where the run holds no ``.TBT.nc``.  Two that are not one grid are not
-    one run's files, and refused."""
-    from .tbtnc import TbtError, energies_of
-    try:
-        full = energies_of(where, label)
-    except TbtError:
-        return printed
-    if len(full) != len(printed) or any(
-            abs(a - b) > AVTRANS_ENERGY_HALF_DECIMAL_EV
-            for a, b in zip(full, printed)):
-        raise RecordError(f"{Path(where).name}: its .TBT.nc and its "
-                          f".TBT.AVTRANS are not one grid -- not one run's "
-                          f"files")
-    return full
+    one = av["unpolarized"]
+    return {"energy_ev": one["energy_ev"],
+            "transmission": one["transmission"],
+            "transmission_file": one["files"]["transmission"]}
 
 
 def point_currents(where, token: str, spin: str, *,
@@ -873,7 +823,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from .stages import frames_of, rung_points, same_volts
     from .energies import joined, sharing_of
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
-                        spin_dos, tbt_files, tbt_name)
+                        readings)
 
     base_dir = calc.base
     base, task = Path(base_dir), calc.task
@@ -986,23 +936,12 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                            "why": f"the run finished without its "
                                   f"transmission: {exc} ({st.detail})"})
             continue
-        # THE DOS, ITS PARTS AND THE EIGENCHANNELS, from the point's own
-        # `.TBT.nc` -- a polarized point's two, summed over spin with each
-        # spin's own beside (`tbtnc.point_dos` / `spin_dos`;
-        # `web/results.md` § 2.5).
+        # THE DOS, ITS PARTS AND THE EIGENCHANNELS -- TBtrans's averages,
+        # and each region's from the data file's kept reading -- a polarized
+        # point's two channels summed with each spin's own beside
+        # (`tbtnc.point_dos`; `web/results.md` § 2.5).
         def _dos(folder, spin=spin):
-            ncs = tbt_files(folder, task.label)
-            if spin == "polarized":
-                missing = [tbt_name(task.label, k)
-                           for k in ("up", "down") if k not in ncs]
-                if missing:
-                    raise TbtError(f"{' and '.join(missing)} not in "
-                                   f"{folder.relative_to(base)}")
-                return spin_dos(ncs["up"], ncs["down"], regions)
-            if "unpolarized" not in ncs:
-                raise TbtError(f"{tbt_name(task.label, 'unpolarized')} is "
-                               f"not in {folder.relative_to(base)}")
-            return point_dos(ncs["unpolarized"], regions)
+            return point_dos(folder, task.label, regions, spin)
         dos = None
         dos_why = None
         try:
@@ -1049,6 +988,11 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             **({"copied_from": copied} if copied else {}),
             "spin": spin,
             **({"dos": dos} if dos is not None else {"dos_why": dos_why}),
+            # WHAT IS KEPT OF EACH DATA FILE'S READING -- its own and those
+            # in its `shared/` -- the DOS by region's (`model/parse.md`
+            # § 5e): kept, missing, out of date or being read, with its
+            # size and its claim.
+            "digest": [k.to_wire(base) for k in readings(where, task.label)],
         })
     if not points_out and not partial:
         # THE WAY ON, by what the stage's state says: prepared (an attempt is
@@ -1196,7 +1140,8 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     nothing else.  :class:`RecordError` names what is missing."""
     from ..structure import frame_words
     from .stages import Point, frames_of, same_volts
-    from .tbtnc import TbtError, spin_selection_pdos as _pdos, tbt_files, tbt_name
+    from ..parse.engines.tbtrans_nc import data_files
+    from .tbtnc import TbtError, selection_pdos as _pdos
     base = Path(base_dir)
     n = frames_of(base)
     # THE POINT IS A FRAME AND A VOLTAGE (`engines/transport.md` § 2a.9):
@@ -1243,12 +1188,10 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     read_at, where = _at("transmission")
     if where is None:
         raise RecordError(f"no transmission point at {said}")
-    ncs = tbt_files(where, task.label)
-    if "unpolarized" not in ncs and not ("up" in ncs and "down" in ncs):
-        raise RecordError(f"the transmission at {said} has written "
-                          f"no {tbt_name(task.label, 'unpolarized')} (nor "
-                          f"both {tbt_name(task.label, 'up')} and "
-                          f"{tbt_name(task.label, 'down')})")
+    ncs = data_files(where, task.label)
+    if not ncs:
+        raise RecordError(f"the transmission at {said} has written no data "
+                          f"file")
     junction = recorded.structure if recorded is not None else None
     # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
     # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
@@ -1263,8 +1206,8 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
         from .energies import joined
         mine = junction.indices_of_yours(atoms)
-        got = joined(where, lambda f: _pdos(tbt_files(f, task.label), orb,
-                                            mine, orbitals))
+        got = joined(where, lambda f: _pdos(f, task.label, orb, mine,
+                                            orbitals))
         return {**got,
                 "atoms": sorted(junction.your_indices(got["atoms"])),
                 "outside_device": sorted(

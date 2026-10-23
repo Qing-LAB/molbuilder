@@ -939,11 +939,13 @@ def _own_job_s(launch) -> bool:
 
 def _ended_before_a_point(base, run, names) -> bool:
     """Whether a run of points none of whose points started has ended --
-    asked once of what knows: a job launched from this machine that holds
-    the run (`joblist.is_going`), else the run door, which asks the
-    scheduler where the job was sent from here and writes its answer into
-    the launch record (`runs.concluded`, `running-a-job.md` § 4.2);
-    ``False`` where neither can tell."""
+    asked once of what knows: a run here launched from this machine that
+    holds the run, by its process (`joblist.is_going`); else the run door,
+    which asks the scheduler where this machine sent the job and writes its
+    answer into the launch record (`runs.concluded`, `running-a-job.md`
+    § 4.2) -- a queue job's answer written by this very look, so the run
+    reads ended once its address is gone; ``False`` where neither can
+    tell."""
     from ..joblist import Asked, Job, every, is_going
     from ..parse.dirs.job import LIVE_STATES
     from ..paths import run_folder_of
@@ -952,7 +954,7 @@ def _ended_before_a_point(base, run, names) -> bool:
     want = RunRef.at(base, run)
     asked = Asked()
     for job in every():
-        if (not isinstance(job, Job)
+        if (not isinstance(job, Job) or job.how != "here"
                 or Path(job.calculation) != Path(base).resolve()):
             continue
         if any(str(run_folder_of(m["run"]) or m["run"]) == str(want)

@@ -616,6 +616,22 @@ name = "path"
 request = { query = { path = "{link_out_from_root}" } }
 
 [[route]]
+rule = "/api/transport/digest"
+method = "GET"
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/transport/digest"
+method = "POST"
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_dir}" } }
+
+[[route]]
 rule = "/api/transport/fit"
 method = "GET"
 [[route.path]]

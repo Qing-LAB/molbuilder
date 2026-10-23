@@ -131,23 +131,25 @@ class SiestaMdNcFileParser(FileParser):
             return False
         # Name and magic agree; confirm it is OUR schema rather than some
         # other netCDF that happens to be called .MD.nc.
-        try:
-            ds = _open(path)
-        except Exception:                                   # noqa: BLE001
-            return False
-        try:
-            return {"xa", "etot"}.issubset(set(ds.variables))
-        finally:
-            ds.close()
+        with _locked():
+            try:
+                ds = _open(path)
+            except Exception:                               # noqa: BLE001
+                return False
+            try:
+                return {"xa", "etot"}.issubset(set(ds.variables))
+            finally:
+                ds.close()
 
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:
         path = Path(path)
-        ds = _open(path)
-        try:
-            frames, warnings, lattice, series = _frames_from(ds, path)
-        finally:
-            ds.close()
+        with _locked():
+            ds = _open(path)
+            try:
+                frames, warnings, lattice, series = _frames_from(ds, path)
+            finally:
+                ds.close()
         return TrajectoryResult(
             **ParseResult.envelope(cls.name, path),
             frames=frames,
@@ -168,6 +170,14 @@ class SiestaMdNcFileParser(FileParser):
             },
             parse_warnings=warnings,
         )
+
+
+def _locked():
+    """The process's one NetCDF lock (`ncdata.NC_LOCK`): netCDF-C is not
+    thread-safe, and the server reads a relaxation's history while another
+    request reads a TBtrans data file."""
+    from molbuilder.ncdata import NC_LOCK
+    return NC_LOCK
 
 
 def _open(path: Path):

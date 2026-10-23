@@ -1,13 +1,13 @@
 """The transmission rung's files, found by TBtrans's own names.
 
-`model/parse.md` § 5d.2 and § 5d.5.  The spin-channel test names its files by
-TBtrans's own rule (``Util/TS/TBtrans/m_tbt_save.F90`` ``name_save``) because
+`model/parse.md` § 5d.2, § 5d.5 and § 5e.  The spin-channel test names its
+files by TBtrans's own rule (``Util/TS/TBtrans/m_tbt_save.F90`` ``name_save``) because
 no polarized transport run exists to measure.
 """
 from __future__ import annotations
 
 
-from molbuilder.parse.engines.tbtrans import transmission_files
+from molbuilder.parse.engines.tbtrans import averaged_files
 
 
 def test_a_polarized_run_s_two_channels_are_found(tmp_path):
@@ -16,6 +16,6 @@ def test_a_polarized_run_s_two_channels_are_found(tmp_path):
     for name in ("dev.TBT_UP.AVTRANS_L-R", "dev.TBT_DN.AVTRANS_L-R",
                  "other.TBT.AVTRANS_L-R"):
         (tmp_path / name).write_text("")
-    found = transmission_files(tmp_path, "dev", "L-R")
+    found = averaged_files(tmp_path, "dev", pair="L-R", leads=("L", "R"))
     assert sorted(found) == ["down", "up"]
-    assert found["up"][0].name == "dev.TBT_UP.AVTRANS_L-R"
+    assert found["up"]["transmission"].name == "dev.TBT_UP.AVTRANS_L-R"

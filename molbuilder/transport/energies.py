@@ -247,8 +247,8 @@ def _on(answer: Dict, energies: Sequence[float]) -> Dict:
 def held(folder: Path, label: str) -> List[float]:
     """Every energy the point in ``folder`` holds -- its own and those it
     shared, on its grid (:func:`joined`) -- read at full precision from its
-    ``.TBT.nc`` files (`tbtnc.tbt_files`), never the five decimals its
-    ``.TBT.AVTRANS`` prints."""
+    data files, through the parser (`tbtnc.energies_of`), never the five
+    decimals its text files print."""
     from .tbtnc import energies_of
     return sorted(joined(folder, lambda f: {"energy_ev":
                                             energies_of(f, label)})

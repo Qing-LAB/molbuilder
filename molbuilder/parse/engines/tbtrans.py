@@ -6,8 +6,9 @@ account of its k-point × energy loop: its size, the spin passes it makes,
 each pass's estimate while it runs and its time once it completed, its
 currents); this module says that loop in the one sentence the monitor's
 summary line, the run record and the transport report give
-(:func:`loop_words`), and finds the transmission files per spin channel
-(:func:`transmission_files`).
+(:func:`loop_words`), and finds and reads TBtrans's k-averaged text files
+per spin channel (:func:`averaged_files`, :func:`read_averaged`; § 5e).
+Its data file is :mod:`tbtrans_nc`'s.
 
 Not a registered viewer file: the transmission rung's result is the transport
 record (`engines/transport.md` § 2a.12).
@@ -114,20 +115,82 @@ def loop_words(loop: Optional[Dict[str, Any]], *, over: bool = False) -> str:
         for i, p in done)
 
 
-def transmission_files(directory, label: str, pair: str
-                       ) -> Dict[str, List[Path]]:
-    """``{channel: [AVTRANS file]}`` -- the unpolarized file, or the two
-    channels of a polarized run (``siesta_grammar.TBT_CHANNELS``), each the
-    transmission between the leads ``pair`` names (``L-R``, the caller's,
-    from the leads' own block names -- never the first of a glob), found on
-    the label through the catalogue (`runfiles.find_on_label`)."""
+#: How far a k-averaged text file's energies, printed to five decimals of an
+#: eV (``f10.5``, ``m_tbt_save.F90`` ``save_DAT``), may be from the data
+#: file's own, at full precision: half that last decimal, and a
+#: picoelectronvolt for the Ry/eV conversion's rounding -- an energy whose
+#: sixth decimal is 5 lies half a decimal from its print exactly -- asked
+#: wherever the two are matched (`model/parse.md` § 5e).
+PRINTED_HALF_DECIMAL_EV = 0.5e-5 + 1e-12
+
+
+def averaged_files(directory, label: str, *, pair: str,
+                   leads: "tuple[str, ...]") -> Dict[str, Dict[str, Any]]:
+    """TBtrans's k-averaged text files in ``directory`` (`model/parse.md`
+    § 5e), per channel -- the unpolarized one, or the two of a polarized run
+    (``siesta_grammar.TBT_CHANNELS``) -- by quantity
+    (``siesta_grammar.TBT_AVERAGED``): ``{channel: {"transmission": path,
+    "eigenchannels": path, "dos": path, "lead_spectral": {lead: path},
+    "lead_bulk": {lead: path}}}``, each one that is there; ``pair`` the
+    leads as their ``TS.Elecs`` blocks name them (``L-R``) and ``leads``
+    each of them, the caller's -- never the first of a glob -- found on the
+    label through the catalogue (`runfiles.find_on_label`)."""
     try:                                    # inside molbuilder
         from ...runfiles import find_on_label
     except ImportError:                     # beside a job, in a bundle
         from runfiles import find_on_label  # type: ignore[no-redef]
-    out: Dict[str, List[Path]] = {}
+    out: Dict[str, Dict[str, Any]] = {}
     for channel, tag in _G.TBT_CHANNELS:
-        files = find_on_label(directory, label, _G.tbt_avtrans(tag, pair))
-        if files:
-            out[channel] = files
+        got: Dict[str, Any] = {}
+        for quantity, role in _G.TBT_AVERAGED.items():
+            if "{lead}" in role:
+                per = {}
+                for lead in leads:
+                    hits = find_on_label(directory, label, _G.tbt_averaged(
+                        tag, quantity, lead=lead))
+                    if hits:
+                        per[lead] = hits[-1]
+                if per:
+                    got[quantity] = per
+            else:
+                hits = find_on_label(directory, label, _G.tbt_averaged(
+                    tag, quantity, pair=pair))
+                if hits:
+                    got[quantity] = hits[-1]
+        if got:
+            out[channel] = got
     return out
+
+
+def read_averaged(path) -> Dict[str, List]:
+    """One of TBtrans's k-averaged text files (`model/parse.md` § 5e) --
+    ``#`` lines, then a row per energy: the energy in eV, as printed (five
+    decimals), then the file's values -- as ``{"energy_ev": [...],
+    "columns": [[...], ...]}``, a list per value column, in the file's
+    order.  :class:`ValueError` names a file with no row, or a row that is
+    not the first one's width."""
+    energies: List[float] = []
+    columns: List[List[float]] = []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for n, line in enumerate(fh, start=1):
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            parts = s.split()
+            try:
+                values = [float(x) for x in parts]
+            except ValueError:
+                raise ValueError(f"{Path(path).name}, line {n}: {s!r} is "
+                                 f"not a row of numbers") from None
+            if not columns:
+                columns = [[] for _ in values[1:]]
+            if len(values) != len(columns) + 1:
+                raise ValueError(f"{Path(path).name}, line {n}: "
+                                 f"{len(values)} values, the first row "
+                                 f"{len(columns) + 1}")
+            energies.append(values[0])
+            for col, v in zip(columns, values[1:]):
+                col.append(v)
+    if not energies:
+        raise ValueError(f"{Path(path).name} holds no row")
+    return {"energy_ev": energies, "columns": columns}

@@ -1022,8 +1022,10 @@ Two small files answer the two questions *(the second decided by the user,
   [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). The
   hierarchy's `run.json` is its run's and answers for every run in it.
   **`ended`** is the scheduler's answer about a sent job, written once by
-  the first reader on the machine the job was sent to that found the
-  scheduler no longer listing it, or listing it ended —
+  the first reader where this machine sent the job (its address on the
+  jobs list, [`job-system.md`](?doc=execution/job-system.md) § 6.0a) that
+  found the scheduler no longer listing it, or listing it ended —
+  `asked_on` the cluster as the scheduler names it,
   `{asked_on, asked_at, listed: false, said}`, `said` the scheduler's words
   or empty — and `null` at launch, as every key is written every time
   (`runrecord.record_ended`, [`running-a-job.md`](?doc=execution/running-a-job.md)
@@ -2835,6 +2837,7 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `<base>-run<N>.scf-timing.log` *(SIESTA)* — only: the engine printed an SCF iteration | wall time per SCF iteration — on a TranSIESTA device, both its phases | the run script's tee of the output's SCF lines | `parse.instruments.scf_timing_rows.timing_of` | record |
 | `<base>-run<N>.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | molbuilder's log of reading the run's output | molbuilder's parser, reading the output (`parse._log.ParseLogger`) | none | record |
 | `<base>.molwatch.parse.log` *(hierarchical)* · `<base>-run<N>.molwatch.parse.log` *(flat)* — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
+| `<label>.<tbt>.digest.nc` *(transport)* — only: its data file read | a transmission point's data file, read once: its device DOS per orbital averaged over the k-points, what the file states of its geometry and electrodes, and TBtrans's own k-averaged quantities -- every variable with its units (NetCDF-4) | the SIESTA family's parser (`parse.engines.tbtrans_nc`), on the person's word: the Results tab's DOS tab, `jobset summarize task` | `parse.engines.tbtrans_nc.kept` | derived |
 | `<base>-run<N>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act | `runrecord.ending` | record |
 | `run.json` *(hierarchical)* · `<base>-run<N>.run.json` *(flat)* | the launch record: how, where and when the run was sent, what it continued from, and the run a warm retry retries | launch (`runrecord.write_launch`); a flat run's warm retry, the run script through the monitor's bundle (`runrecord.record_retry`) | `runrecord.launch_record` | record |
 | `.continued-from` *(hierarchical)* · `<base>-run<N>.continued-from` *(flat)* — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a walked point's start, a taken-over point's computing run (one hop) | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) -- with the files it takes; on the flat layout with the run's launch record | `runrecord.read_continued_from` | record |
@@ -2864,7 +2867,7 @@ does not name (§ 5.3).
 | **carried** | `.XV .DM`; `.CG` between stages of one optimizer | `warmfiles.warm_list` (§ 5.3) |
 | **named for the run** | `<label>.MD.nc` `.MD` `.MDE` `.ANI` — SIESTA's names for its history, each pointing at the run's own file while the engine runs, `<base>-run<N>.MD.nc` and its three siblings (§ 5.3), the pointer removed when it exits (`job-contracts.md` § 2.2) | none — the run's own file is read |
 | **read by nothing** | `0_NORMAL_EXIT` (on purpose: `runrecord.ending`), `MESSAGES`, `<El>.ion`, `CLOCK`, `FORCE_STRESS`, `BASIS_ENTHALPY`, `BASIS_HARRIS_ENTHALPY`, `OUTVARS.yml`, `PARALLEL_DIST`, `NON_TRIMMED_KP_LIST`; `<label>.alloc`, `.bib`, `.BASIS_ENTHALPY`, `.BONDS`, `.BONDS_FINAL`, `.EIG`, `.FA`, `.FAC`, `.HSX`, `.KP`, `.MD_CAR`, `.STRUCT_NEXT_ITER`, `.STRUCT_OUT`; `<El>.ion.nc`, `<El>.ion.xml` | ⚠ `.BONDS` is spelled `.Bonds` in `siesta/warm-files.toml` (D26) |
-| **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (§ 5.3, `transport.stages`); the device's `<label>.TSDE`, carried along a bias sweep; `<label>.TBT.AVTRANS_<pair>` | `transport.record` — a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files too: both channels' transmission and both `.nc` files, summed and kept per spin (`tbtnc.spin_dos`, 2026-10-11) |
+| **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (§ 5.3, `transport.stages`); the device's `<label>.TSDE`, carried along a bias sweep; a transmission point's `<label>.TBT.nc` and its k-averaged text files (`.TBT.AVTRANS_<pair>`, `.AVTEIG_<pair>`, `.AVDOS`, `.AVADOS_<lead>`, `.AVBDOS_<lead>`) | the SIESTA family's parser ([`model/parse.md`](?doc=model/parse.md) § 5e), for `transport.record` — a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files too: both channels, summed, each spin's total and eigenchannels kept beside (`tbtnc.point_dos`) |
 | **the engine's scratch** | the device's leads' surface Green's functions, `<NN>_device/run-<n>/tsgf/<label>.<v>.TSGFL` and `.TSGFR` — recomputed by every run, never carried, never taken over, emptied by the walk as each round begins and when it ends; in neither store of the saved history, removed by a restore (§ 6) | `warmfiles.is_scratch` — what is scratch, the one answer, over `scratch_families()`, the families every engine's shipped vocabulary names; `materialize.scratch_in` and `runstatus.scratch_answer` — `jobset scratch`, which lists them, says which a run still going keeps, and with `--empty` removes the rest; `transport.gf_files.status_line` — the device row of `jobset status` (`job-contracts.md` § 4.2a, `engines/transport.md` § 2a.11) |
 
 ### 5.5 Benchmarks and launch groups
@@ -2911,6 +2914,7 @@ Each is removed when its write ends; only a kill in between leaves one.
 <!-- manifest:transient -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
+| `<label>.<tbt>.digest.nc.reading` *(transport)* — only: while its data file is read | the claim of a data file's reading under way: who reads, since when, how far -- one reading of a file at a time | the SIESTA family's parser, removed when its reading ends | `parse.engines.tbtrans_nc.kept_state` | transient |
 | `<random>.tmp` | a file being written; it replaces its target when the write ends | `persist` and the codec, writing whole or not at all | none | transient |
 | `<random>.lock` | a sidecar's lock | `sidecars.molstruct.with_lock` | none | transient |
 <!-- /manifest -->

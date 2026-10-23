@@ -667,27 +667,17 @@ def _copy_of_its_machine(base):
         return None
 
 
-def _sent_here(rec) -> bool:
-    """WHETHER THIS SERVER RUNS ON THE MACHINE A JOB WAS SENT TO -- the
-    one rule the standing and the scheduler's answer are asked by
-    (`running-a-job.md` § 4.2): this server's own record
-    (`machine_scope_path`) names the machine the calculation's copy
-    (``rec``) names."""
-    from molbuilder.scheduler import machine_scope_path, read_environment
-    here = read_environment(machine_scope_path())
-    return bool(rec is not None and here is not None and rec.machine
-                and here.machine == rec.machine)
-
-
 def concluded(folder, names, *, base, run=None, launched_in=None):
     """THE STATE OF A RUN, ASKED ONCE OF ITS SCHEDULER AND WRITTEN ONCE
     (`running-a-job.md` § 4.2, *Asked once, written once*) -- the run
     door's answer (`rundir.run_state_of`), and for a sent run that still
-    reads live, on the machine the job was sent to (:func:`_sent_here`),
-    the scheduler asked whether it still lists the job (the kind's `listed`
-    query): one it no longer lists, or lists ended, is written into the
-    run's launch record (`runrecord.record_ended`) and the state read
-    again, ``failed`` from then on wherever the folder goes.  Asked only
+    reads live, where this machine sent its job -- its address on the jobs
+    list, asked on the cluster it was sent to (`joblist.address_of`,
+    `asked_here`: the one rule `molbuilder jobs` asks by) -- the scheduler
+    asked whether it still lists the job (the kind's `listed` query): one
+    it no longer lists, or lists ended, is written into the run's launch
+    record (`runrecord.record_ended`) and the state read again, ``failed``
+    from then on wherever the folder goes.  Asked only
     while the record holds no answer.  ``base`` is the calculation's
     folder (the record copy's); ``run`` and ``launched_in`` as
     `run_state_of` takes them."""
@@ -707,10 +697,9 @@ def concluded(folder, names, *, base, run=None, launched_in=None):
     if (not launch or launch.get("mode") != "submit"
             or not launch.get("job_id") or launch.get("ended")):
         return st
-    rec = _copy_of_its_machine(base)
-    if not _sent_here(rec):
-        return st
-    got = _listed_lately(rec.scheduler, str(launch["job_id"]))
+    from molbuilder.joblist import address_of, asked_lately
+    job = address_of(launch["job_id"], base)
+    got = asked_lately(job, "listed") if job is not None else None
     if got is None:
         return st
     going, said = got
@@ -725,30 +714,15 @@ def concluded(folder, names, *, base, run=None, launched_in=None):
                 detail=f"the scheduler lists it: {said}" if said
                 else "the scheduler lists it")
         return st
-    record_ended(where, names, which, asked_on=rec.machine, said=said)
+    try:
+        record_ended(where, names, which, asked_on=job.cluster, said=said)
+    except OSError as exc:
+        # NOT WRITTEN -- a full disk, a folder not ours: said, the run read
+        # as its folder says until a look can write it.
+        return replace(st, detail=(
+            f"{st.detail} -- the scheduler no longer lists job "
+            f"{launch['job_id']}, and that could not be written: {exc}"))
     return run_state_of(folder, names, run, launched_in=launched_in)
-
-
-#: The scheduler's answers of the last ten seconds, by job -- one look at
-#: a run of points, or at a job's members, asks for one job id many times.
-_LISTED_LATELY: Dict[Tuple[str, str], Tuple[float, Any]] = {}
-_LISTED_TTL_S = 10.0
-
-
-def _listed_lately(scheduler, job_id: str):
-    """`scheduler.queue.listed`, asked at most once per :data:`_LISTED_TTL_S`
-    per job on this server (`running-a-job.md` § 4.2, *Asked once, written
-    once*)."""
-    import time
-    from molbuilder.scheduler.queue import listed
-    key = (str(scheduler.kind), job_id)
-    now = time.monotonic()
-    kept = _LISTED_LATELY.get(key)
-    if kept is not None and now - kept[0] < _LISTED_TTL_S:
-        return kept[1]
-    got = listed(scheduler, job_id)
-    _LISTED_LATELY[key] = (now, got)
-    return got
 
 
 def state_of(run: "Run"):
@@ -777,23 +751,32 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
     (`running-a-job.md` § 4.2; `scheduler.queue.standing`): ``{asked_on,
     listed, state, reason, start, priority, say}`` -- ``say`` the one line
     a row shows -- or ``{asked_on: None, say: "ask on <machine>"}`` where
-    the scheduler cannot be asked from this server: it is asked only on
-    the machine the job was sent to, which is where this server's own
-    record (`machine_scope_path`) names the machine the calculation's copy
-    names; anywhere else the row says where to ask.  ``None`` for a run
+    the scheduler cannot be asked from this server: it is asked only where
+    this machine sent the job, by the one rule `molbuilder jobs` asks
+    (`joblist.address_of`, `asked_here`); anywhere else the row says where
+    to ask.  ``None`` for a run
     with no job id (a run here).  ``launch`` is the run's launch record,
     ``base`` its calculation's folder (the record copy's)."""
-    from molbuilder.scheduler.queue import standing
     jid = (launch or {}).get("job_id")
     if not jid:
         return None
-    rec = _copy_of_its_machine(base)
-    machine = (rec.machine if rec is not None else None) or "its machine"
-    got = standing(rec.scheduler, str(jid)) if _sent_here(rec) else None
+    from molbuilder.joblist import Asked, address_of, asked_here, asked_lately
+    from molbuilder.scheduler.record import LOCAL_TARGET
+    job = address_of(jid, base)
+    got = asked_lately(job, "standing") if job is not None else None
     if got is None:
-        return {"asked_on": None, "say": f"ask on {machine}"}
+        if job is not None:
+            # SENT FROM HERE, NOT ASKED: why, in the jobs list's words.
+            return {"asked_on": None, "say": asked_here(job, Asked())[1]
+                    or "the scheduler cannot be asked here"}
+        rec = _copy_of_its_machine(base)
+        machine = rec.machine if rec is not None else None
+        return {"asked_on": None, "say": (
+            f"ask on {machine}" if machine and machine != LOCAL_TARGET
+            else "ask on the machine that sent it")}
+    asked_on = job.cluster
     if not got.get("listed"):
-        return {"asked_on": machine, "listed": False,
+        return {"asked_on": asked_on, "listed": False,
                 "say": "the scheduler here no longer lists it"}
     words = [got["state"] + (f" ({got['reason']})" if got.get("reason")
                              else "")]
@@ -803,7 +786,7 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
         words.append("no start estimate yet")
     if got.get("priority"):
         words.append(f"priority {got['priority']}")
-    return {"asked_on": machine, "listed": True, "state": got["state"],
+    return {"asked_on": asked_on, "listed": True, "state": got["state"],
             "reason": got.get("reason"), "start": got.get("start"),
             "priority": got.get("priority"), "say": " · ".join(words)}
 

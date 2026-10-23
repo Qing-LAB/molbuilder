@@ -23,7 +23,6 @@ Run ON the target, with its record (`molbuilder jobset probe --write`):
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -78,9 +77,10 @@ def test_ask_reads_the_targets_answer_and_submits_nothing(tmp_path,
     from support.road import describe_calculation, jobset
     queue = env.domains[0].name
     bundle = describe_calculation(tmp_path, monkeypatch)
-    task = json.loads((bundle / "task.json").read_text())
-    task["allocation"] = {"domain": queue, "time": "0-00:05:00", "mem": "1G"}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    from support.road import read_request, write_request
+    req = read_request(bundle)
+    req["allocation"] = {"domain": queue, "time": "0-00:05:00", "mem": "1G"}
+    write_request(bundle, req)
     r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output

@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -1902,17 +1903,15 @@ def _frame_curves(run, label, volts):
     wrote at that frame's point, through its parser -- its energies at the
     full precision of the point's `.TBT.nc`, which the `.TBT.AVTRANS` prints
     to five decimals (§ 2a.12, *the data file*)."""
-    from molbuilder.parse.engines.tbtrans import transmission_files
-    from molbuilder.transport.record import parse_avtrans
-    from molbuilder.transport.tbtnc import energies_of
-    from molbuilder.transport.transiesta import LEAD_PAIR
+    from molbuilder.parse.engines.tbtrans_nc import point_averages
+    from molbuilder.transport.transiesta import LEAD_NAMES, LEAD_PAIR
     curves = []
     for f in range(_N_FRAMES):
         point = _frame_point(run, "05_transmission", f, volts)
-        files = transmission_files(point, label, LEAD_PAIR)
-        _printed, t = parse_avtrans(files["unpolarized"][0].read_text())
-        energies = energies_of(point, label)
-        curves.append(np.asarray(t, dtype=float))
+        got = point_averages(point, label, pair=LEAD_PAIR,
+                             leads=tuple(LEAD_NAMES))["unpolarized"]
+        energies = got["energy_ev"]
+        curves.append(np.asarray(got["transmission"], dtype=float))
     return np.asarray(energies, dtype=float), curves
 
 
@@ -2146,6 +2145,13 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         == junction.tab_said["mode's set"][0]["frame_set"]
 
 
+#: Two roundings stand between a point's total DOS as TBtrans printed it
+#: (`.TBT.AVDOS`, eight digits: at most 5e-8 relative) and its digest's
+#: orbitals summed (TBtrans's single precision, which the digest keeps:
+#: 6e-8) -- `model/parse.md` § 5e.
+_PRINTED_AND_SINGLE_RTOL = 2e-7
+
+
 @pytest.mark.parametrize("ask", _PDOS_ASKS, ids=lambda a: a["name"])
 def test_a_selections_pdos_is_asked_at_its_frame_and_voltage(junction, ask):
     """`web/results.md` § 2.5: the PDOS of a selection is asked at the
@@ -2172,12 +2178,150 @@ def test_a_selections_pdos_is_asked_at_its_frame_and_voltage(junction, ask):
     points = _record(junction.from_pair)["points"]
     point = next(p for p in points if (p["frame"], p["bias_v"]) == ask["at"])
     assert body["energy_ev"] == point["dos"]["energy_ev"]
-    assert np.allclose(body["pdos"], curve(point), rtol=1e-9,
+    # A REGION is the same digest's orbitals summed; the TOTAL is TBtrans's
+    # printed one (`model/parse.md` § 5e).
+    rtol = 1e-9 if "region" in ask else _PRINTED_AND_SINGLE_RTOL
+    assert np.allclose(body["pdos"], curve(point), rtol=rtol,
                        atol=0), ask["name"]
     others = [p for p in points if (p["frame"], p["bias_v"]) != ask["at"]]
     assert others and not any(
         np.allclose(body["pdos"], curve(p), rtol=1e-6, atol=0)
         for p in others), "the points' DOS do not tell them apart"
+
+
+def test_summarize_keeps_each_points_reading_and_its_digest_reads_alone(
+        junction):
+    """`model/parse.md` § 5e, `engines/transport.md` § 2a.12: `summarize
+    task` reads each transmission point's data file, saying so, keeps its
+    reading beside it and the record states it kept; the digest describes
+    itself, so a person's script reads it with netCDF4 alone -- its schema
+    and the data file it read; the device's DOS per orbital, whose columns
+    summed are the total DOS TBtrans printed, each column's atom one of the
+    device's; each atom's element and position; TBtrans's own T(E), on the
+    record's energies.  The silent failure: a digest a script cannot use
+    alone -- its elements gone when the Hamiltonian's geometry is not found,
+    its orbitals summed not the total TBtrans printed."""
+    import netCDF4
+    from molbuilder.parse.engines.tbtrans_nc import (DIGEST_SCHEMA,
+                                                     data_files, digest_of,
+                                                     kept_state)
+    from molbuilder.task import of as task_of
+    _said(junction, "summarize", "its DOS per orbital, kept beside it")
+    label = task_of(junction.bundle).label
+    for p in _record(junction)["points"]:
+        folder = _point(junction, "05_transmission", 0, p["bias_v"])
+        data = data_files(folder, label)["unpolarized"]
+        assert kept_state(data).state == "kept"
+        assert [d["state"] for d in p["digest"]] == ["kept"], p["digest"]
+        with netCDF4.Dataset(str(digest_of(data))) as ds:
+            assert ds.schema == DIGEST_SCHEMA
+            assert ds.data_file == data.name
+            assert int(ds.data_file_size) == data.stat().st_size
+            assert list(ds["energy"][:]) == p["dos"]["energy_ev"]
+            dos = np.asarray(ds["DOS"][:], dtype=float)
+            assert np.allclose(dos.sum(axis=1), p["dos"]["total"],
+                               rtol=_PRINTED_AND_SINGLE_RTOL, atol=0)
+            assert set(ds["column_atom"][:]) <= set(ds["device_atom"][:])
+            assert list(ds["element"][:]) == ["H"] * len(_LISTED)
+            assert ds["position"].shape == (len(_LISTED), 3)
+            assert list(ds["transmission"][:]) == p["transmission"]
+
+
+def _held(data, parse):
+    """A reading asked again while another reading of this process -- two
+    requests of one server -- holds the file."""
+    from molbuilder.parse.engines.tbtrans_nc import ReadingClaimed, kept_state
+    seen: dict = {}
+
+    def at(_k, _n):
+        if not seen:
+            seen["state"] = kept_state(data)
+            try:
+                parse(data, fresh=True)
+            except ReadingClaimed as exc:
+                seen["refused"] = str(exc)
+    parse(data, fresh=True, progress=at)
+    assert seen["state"].state == "being read"
+    assert seen["state"].claim["alive"] is True
+    assert f"process {os.getpid()}" in seen["refused"], seen
+
+
+def _gone(data, parse):
+    """A reading whose process ended in its first k-point: its claim stays,
+    said gone, and the next reading takes it."""
+    import subprocess
+    import sys
+    from molbuilder.parse.engines.tbtrans_nc import kept_state
+    code = ("import os, sys\n"
+            "from molbuilder.parse.engines.tbtrans_nc import "
+            "TBTransNcFileParser as P\n"
+            "P.parse(sys.argv[1], fresh=True,"
+            " progress=lambda k, n: os._exit(9))\n")
+    r = subprocess.run([sys.executable, "-c", code, str(data)],
+                       capture_output=True, text=True, timeout=300)
+    assert r.returncode == 9, r.stderr
+    left = kept_state(data)
+    assert left.state == "being read" and left.claim["alive"] is False
+    assert "that process is gone" in left.to_wire()["said"]
+    parse(data, fresh=True)
+
+
+def _gone_beside_a_kept_reading(data, parse):
+    """A reading again whose process ended in its first k-point, beside the
+    reading kept before it: the kept one is still the file's, and the next
+    asker answers it, removing the claim."""
+    from molbuilder.parse.engines.tbtrans_nc import kept_state
+    parse(data)
+    assert kept_state(data).state == "kept"
+    _gone(data, lambda _data, fresh: None)
+    assert parse(data).kept
+
+
+def _taken_over(data, parse):
+    """A reading taken over by another: the first stops at its next k-point,
+    the digest is the taker's."""
+    from molbuilder.parse.engines.tbtrans_nc import ReadingClaimed
+    seen: dict = {}
+
+    def at(_k, _n):
+        if not seen:
+            seen["taker"] = parse(data, fresh=True, take_over=True)
+    with pytest.raises(ReadingClaimed):
+        parse(data, fresh=True, progress=at)
+    assert not seen["taker"].kept
+
+
+#: `model/parse.md` § 5e, *one reading of a data file at a time*: each case
+#: ends with the file's reading kept and no claim or part left beside it.
+_CLAIMS = {"held by a reading under way": _held,
+           "left by a reading whose process is gone": _gone,
+           "left beside a kept reading": _gone_beside_a_kept_reading,
+           "taken over": _taken_over}
+
+
+@pytest.mark.parametrize("case", list(_CLAIMS))
+def test_one_reading_of_a_data_file_at_a_time(junction, tmp_path, case):
+    """`model/parse.md` § 5e: a reading claims its data file; another asker
+    is refused by name, saying whose reading it is; a claim whose process is
+    gone on this host is taken by the next reading; a claim taken over stops
+    its reading at its next k-point.  Each on a copy of a real point.  The
+    silent failure: two readings writing one digest, or a point left
+    unreadable by a reading that died."""
+    import shutil
+    from molbuilder.parse.engines.tbtrans_nc import (TBTransNcFileParser,
+                                                     data_files, digest_of,
+                                                     kept_state)
+    from molbuilder.task import of as task_of
+    label = task_of(junction.bundle).label
+    point = tmp_path / "point"
+    shutil.copytree(_point(junction, "05_transmission", 0, _BIAS[0]), point)
+    data = data_files(point, label)["unpolarized"]
+    _CLAIMS[case](data, TBTransNcFileParser.parse)
+    assert kept_state(data).state == "kept"
+    digest = digest_of(data)
+    beside = sorted(f.name for f in point.iterdir())
+    assert [n for n in beside if n.startswith(digest.name)] \
+        == [digest.name], beside
 
 
 def test_the_report_draws_the_junction_in_your_order(junction, page,
@@ -2841,7 +2985,8 @@ def reused(junction, tmp_path_factory):
     walked -- the transmission prepared while the device, prepared before
     it, has not launched; then that list narrowed, refused; the window
     fitted wider, each transmission point computing the energies the
-    finished one did not; the low-bias approximation, and its window fitted
+    finished one did not; the same window three times finer; the low-bias
+    approximation, and its window fitted
     wider, the transmission that runs once sharing as its one point; and
     the Transport tab's describe of a calculation reused.  And what a folder
     that cannot be reused is refused with."""
@@ -2927,6 +3072,16 @@ def reused(junction, tmp_path_factory):
                "3", "--mode", "direct", "--foreground", "--yes")
         _taken(fitted, "summarize", "summarize", "task")
         out["fitted"] = fitted
+
+        # THE SAME WINDOW, THREE TIMES FINER: each point's new energies
+        # between the finished ones, its deck's contours interleaved.
+        finer = described("finer", "--window", "-2,2", "--finer", "3")
+        _taken(finer, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        _taken(finer, "launch transmission", "launch", "task", "--group",
+               "3", "--mode", "direct", "--foreground", "--yes")
+        _taken(finer, "summarize", "summarize", "task")
+        out["finer"] = finer
 
         # THE LOW-BIAS APPROXIMATION -- the device and the transmission run
         # once -- then its window fitted wider: the transmission that runs
@@ -3122,6 +3277,46 @@ def test_a_fitted_window_computes_only_the_energies_the_finished_point_did_not(
         assert pb["shared"]["held"] == 401 and pb["shared"]["computed"] == 200
         if pa["current_a"]:
             assert abs(pb["current_a"] / pa["current_a"] - 1) < 1e-4
+
+
+def test_a_finer_grid_keeps_every_finished_energy_and_reads_its_data_file(
+        reused):
+    """§ 2a.16, *A wider window, fitted* -- three times finer: each point's
+    new energies lie between the finished ones, its deck's contours
+    interleaved, which TBtrans keeps in its data file contour by contour
+    and prints in its text files sorted (`model/parse.md` § 5e, *Both
+    ascending*); the point's result is its grid, ascending, T at the
+    finished energies the finished point's; its data file read by
+    `summarize task`, its digest kept, its regions drawn.  The silent
+    failure: every point sharing a finer grid refused as not one grid."""
+    import json
+    import numpy as np
+    from molbuilder.transport.energies import grid
+    finer, finished = reused["finer"], reused["finished"]
+    own = next(st["overrides"] for st in json.loads(
+        (finer.bundle / "task.json").read_text())["stages"]
+               if st["name"] == "transmission")
+    window = grid(own["transmission_emin_ev"], own["transmission_emax_ev"],
+                  own["transmission_n_points"])
+    a = json.loads((finished.bundle / "T.transport.json").read_text())
+    b = json.loads((finer.bundle / "T.transport.json").read_text())
+    assert not b["failed"], b["failed"]
+    assert len(b["points"]) == len(a["points"])
+    for pa, pb in zip(a["points"], b["points"]):
+        e = np.asarray(pb["energy_ev"])
+        assert e.size == 3 * len(pa["energy_ev"])
+        assert np.max(np.abs(e - window)) < 1e-9 and np.all(np.diff(e) > 0)
+        at = [int(np.argmin(np.abs(e - x))) for x in pa["energy_ev"]]
+        assert np.array_equal(np.asarray(pb["transmission"])[at],
+                              pa["transmission"])
+        assert pb["shared"]["held"] == len(pa["energy_ev"])
+        assert [d["state"] for d in pb["digest"]] == ["kept", "kept"], (
+            pb["digest"])
+        # THE REGIONS ON THE SAME ENERGIES AS THE TOTAL: their sum is it.
+        regions = np.sum([np.asarray(v) for v in
+                          pb["dos"]["by_label"].values()], axis=0)
+        assert np.allclose(regions, pb["dos"]["total"],
+                           rtol=_PRINTED_AND_SINGLE_RTOL, atol=0)
 
 
 def test_a_transmission_that_runs_once_shares_as_its_one_point(reused):

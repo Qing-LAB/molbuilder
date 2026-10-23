@@ -144,11 +144,17 @@ classDiagram
         params · blocks · parse_warnings
         result_kind = "engine-params"
     }
+    class TransmissionResult {
+        channel · energy_ev · dos · orbital ·
+        atom · firsto · version · kept
+        result_kind = "transmission"
+    }
     ParseResult <|-- TrajectoryResult
     ParseResult <|-- StructureResult
     ParseResult <|-- SidecarResult
     ParseResult <|-- InstrumentResult
     ParseResult <|-- EngineParamsResult
+    ParseResult <|-- TransmissionResult
 ```
 
 **The four envelope fields are built in ONE place** —
@@ -166,7 +172,8 @@ instead of raising.
 
 - **The discriminator.** Each concrete subclass sets `result_kind` to a fixed
   string (`"trajectory"`, `"structure"`, `"sidecar"`, `"instrument"`,
-  `"rundir"` — § 5.0 — and `"engine-params"` — § 5d.3).
+  `"rundir"` — § 5.0 — `"engine-params"` — § 5d.3 — and `"transmission"`
+  — § 5e).
   Consumers holding a `ParseResult` (cached, or sent over the wire)
   `match` on it; JSON deserialisation reads it to pick a class. Adding a kind =
   a new subclass + a new discriminator value (rule below).
@@ -508,7 +515,7 @@ read_provenance_block(fdf_text)   # the PROVENANCE block, or None
 ```
 molbuilder/parse/
 ├── base.py        # the ABC                   (FileParser)
-├── types.py       # ParseResult + 5 subclasses + ParseWarning
+├── types.py       # ParseResult + 6 subclasses + ParseWarning
 ├── registry.py    # _REGISTRY, detect/parse/register
 ├── errors.py      # ParseError, UnknownFormatError, AmbiguousFormatError
 ├── contract.py    # what a DIRECTORY records about itself:
@@ -527,7 +534,8 @@ molbuilder/parse/
 │   ├── molwatch_reader.py     # MolwatchReader — the progress-log pass       │ mb_monitor.pyz
 │   ├── _section_rules.py      # the line-rule engine both passes run on      │ (§ 4a)
 │   ├── _run_ending.py         # HOW A RUN ENDED — one reader per role (§ 2b) ─┘
-│   ├── tbtrans.py             # TBtrans's loop in words · its transmission files — not registered; travels
+│   ├── tbtrans.py             # TBtrans's loop in words · its k-averaged text files (§ 5e) — not registered; travels
+│   ├── tbtrans_nc.py          # registered: a TBtrans data file → TransmissionResult, its reading kept beside it (§ 5e)
 │   ├── transiesta.py          # where a run is, in words (§ 2b `doing`) — not registered; travels
 │   ├── siesta_fc.py           # SIESTA's .FC force constants, for the vibration kind
 │   └── _helpers.py            # Trajectory → TrajectoryResult adapters
@@ -1753,7 +1761,7 @@ case-blind throughout (user, 2026-05-28).
 | `siesta: Emadel`, SIESTA's own Makov–Payne term (`write_subs.F`) | `EMADEL` | the reading pass | `runtime_info["emadel_ev"]` |
 | TBtrans set up (`Util/TS/TBtrans/`): the transverse k-points and how they were chosen (`m_tbt_kpoint.F90`); the passes it says it will make — `tbt: Calculate spin UP and DOWN`, `tbt: Calculate spin = UP` or `DOWN`, `tbt: Non-polarized Hamiltonian` (`m_tbt_options.F90` 757–769), its whole loop once per channel (`m_tbtrans.F90`); its energies, `ts: <part> contour points = N` under `ts: >> TBtrans contour <<` (`m_tbt_contour.F90` 551–564) — TranSIESTA prints the same words for its own contours, so only that section's are TBtrans's | `TBT_KPOINTS`, `TBT_KMETHOD`, `TBT_SPIN`, `TBT_CONTOUR_BEGIN`, `TBT_CONTOUR_POINTS` | `tbt_channels`; the reading pass | `now()["tbtrans"]`: `k_points`, `k_method`, `channels` — the passes, in `TBT_CHANNELS`' names — and `energy_points`, summed over its contours |
 | TBtrans, each pass: its data file opened, `tbt: Initializing data file: <label>.TBT_UP.nc` (`m_tbt_save.F90` 513, a NetCDF-4 build), the name carrying the channel's tag; `tbt: Initial ETA in S s` once its first k-point and energy are done, then `tbt: Calculated N %, ETA in S s` each time another `TBT.Progress` per cent of the pass's loop is (5 by default; `m_tbt_trik.F90` 883–900, 1554; `m_tbt_options.F90` 486–487); `tbt: Completed in S s` (`m_tbt_trik.F90` 1646); then its currents, the `V [V] / I [A]` and `V [V] / P [W]` lines (`m_tbt_save.F90`) | `TBT_DATA_FILE`, `TBT_INITIAL_ETA`, `TBT_PROGRESS`, `TBT_COMPLETED`, `TBT_CURRENT`, `TBT_POWER` | `tbt_channel_of`; the reading pass | `now()["tbtrans"]["passes"]`, one per pass begun — at its data file, or at its first estimate in a build that writes none: its `channel` (its file's tag, else the next the set-up names); `done_pct` (`0` at the first estimate) and `eta_s` while it runs — each line is written at the start of an energy point, so the last is short of 100 % — gone at its `Completed in`, which states `loop_elapsed_s`; its `currents` [{`from`, `to`, `voltage_v`, `current_a`, `power_w`}]. A time that is not a number is not stated (no `eta_s`: TBtrans divides by the share done, and at `TBT.Progress 0` its line at 0 % says `Infinity`). `now()`'s own `done_pct` · `eta_s` are the pass underway's |
-| the transmission files, per channel (`m_tbt_save.F90` `name_save`) | `TBT_CHANNELS` | `tbtrans.transmission_files` | `{channel: [AVTRANS files]}` |
+| TBtrans's k-averaged text files, per channel (`m_tbt_save.F90` `name_save`): the transmission, its eigenchannels, the device's DOS, a lead's spectral and bulk DOS | `TBT_CHANNELS`, `TBT_AVERAGED` | `tbtrans.averaged_files`, `tbtrans.read_averaged` (§ 5e) | `{channel: {quantity: file}}`; each file's energies and columns |
 
 **TBtrans's loop, in words** — `tbtrans.loop_words(now()["tbtrans"], over=…)`,
 the one sentence the monitor's summary line, the run record and the transport
@@ -1888,6 +1896,145 @@ verdict are plan § 5t.3's P4, not yet built.*
   ES10); nothing reads it yet.
 * **The monitor's reports** carry the same state, read by the same stdlib
   readers (§ 4a, `execution/run-reports.md` § 2.3).
+
+## 5e. TBtrans's files — one reader each, and a costly reading kept beside its file *(built 2.31.0 — plan § 1z)*
+
+*(The user, 2026-10-22: "make this part of the parser of siesta engine would
+be my feeling"; "we should use a unified api support rather than handcrafted
+code to do this"; "we can let the result to generate the digest - when it is
+in the transport directory it can show this progress/function so user can
+allow it and/or refresh it"; "no need to modify further the script side";
+"Does the digest contain all the metadata information such that even when
+the user tried to look at this first using their own script, they can
+directly go for the digest if that's all they need?")*
+
+**What TBtrans writes.** A transmission run writes, beside its `.out`, its
+**data file** `<label>.TBT.nc` (`.TBT_UP.nc` and `.TBT_DN.nc` for a polarized
+point) — every quantity per k-point, energy and orbital, in Ry and Bohr — and
+its **k-averaged text files**: `.TBT.AVTRANS_<pair>`, `.TBT.AVTEIG_<pair>`,
+`.TBT.AVDOS`, `.TBT.AVADOS_<lead>`, `.TBT.AVBDOS_<lead>`
+(`siesta_grammar.TBT_AVERAGED`) — written from the same variables, averaged
+over the k-points with the same weights (`m_tbt_save.F90`,
+`state_cdf2ascii`), their energies printed to five decimals. *(Until 2.31.0
+they were read outside this package: `transport/record.py` parsed the
+transmission text itself and `transport/tbtnc.py` read the data file through
+sisl once per quantity — on Sol's AuBDTAu point, a 1.6 GB data file whose
+tables are stored as 113 × 401 pieces each, 231,000 reads and four minutes a
+report on `/scratch`, 2026-10-22.)*
+
+**One reader per file, in the SIESTA family's engines:**
+
+| file | its reader | answers |
+|---|---|---|
+| a k-averaged text file | `tbtrans.read_averaged(path)`, found by `tbtrans.averaged_files(folder, label, pair=, leads=)` — stdlib, it travels (§ 4a) | the energies as printed and each column, in the file's order |
+| a data file | `tbtrans_nc` — a registered FileParser, `tbtrans-nc` → `TransmissionResult` (`result_kind` `transmission`), reading through sisl; its files found by `tbtrans_nc.data_files(folder, label)` | its channel; its energies at full precision, in eV, **ascending**; the device's DOS averaged over the k-points with TBtrans's weights, **per device orbital**, its rows with the energies — read one k-point at a time, one pass over the table (46,450 reads on that point, 5 s here, measured), summed in double precision; each column's orbital (sisl's `o_dev`, sorted) and its atom; the geometry's first orbital of each atom; and the version of the file it read |
+
+**A point's averages are the text files' values on the data file's
+energies** — `tbtrans_nc.point_averages(folder, label, pair=, leads=)`, per
+channel: T(E), the eigenchannels, the device's total DOS, the first lead's
+spectral DOS and each lead's bulk DOS, matched to the data file's energies by
+their order within half the printed decimal (`tbtrans.PRINTED_HALF_DECIMAL_EV`)
+and refused when the two are not one grid; the printed energies where the
+folder holds no data file. They are the data file's own averages to the
+text's printed precision — 5×10⁻⁸ relative on that point — and cost a few
+kilobytes. **The DOS per orbital** — a region's DOS, a selection's PDOS — has
+no text file: it is the `TransmissionResult`'s.
+
+**Both ascending, one order for every reader.** TBtrans prints every
+k-averaged text file sorted by energy (`m_tbt_save.F90` `state_cdf2ascii`,
+its pivot) and keeps the data file's energies contour by contour, in the
+order its deck lists them — one order for a single window, two for a point
+that shares energies on a finer grid, whose deck lists the new energies as
+interleaved contours (`engines/transport.md` § 2a.16). So the parser holds a
+data file's energies ascending, the DOS rows with them, and `energies(path)`
+answers them so.
+
+**A data file's reading is kept beside it** — the digest,
+`<label>.TBT.digest.nc` (`.TBT_UP.digest.nc`, …; the catalogue's
+`.{tbt}.digest.nc`). § 2b reads a run's output once per version of the file
+— its size and modification time — and keeps the reading in memory; a data
+file's reading costs minutes on a cluster's file system, so `tbtrans-nc`
+keeps it **on disk**, stating the version it was read from — the parser its
+one writer and its one reader:
+
+| asked | answers |
+|---|---|
+| `kept_state(path)` | without reading the data file: `kept`, `missing`, `out of date` (a digest that is not a reading of the file as it is) or `being read` (its claim) — with the data file's size, and the words every surface says it in (`Kept.to_wire`) |
+| `kept(path)` | the kept reading when it is of the file as it is — never a read of the data file — else `None` |
+| `parse(path)` | the kept reading when it is current — a claim beside it whose reader is gone removed, any with `take_over`; else the data file read, its reading kept, and answered |
+| `parse(path, fresh=True)` | the data file read again, whatever is kept |
+| `parse(path, progress=…)` | the same, telling `progress(k, n)` as each k-point is read — in its caller's thread: a parser starts none (§ 7, rule 3) |
+| `parse(path, take_over=True)` | another reading's claim removed, and the file read in its place (below) |
+
+A digest is written through the variable record every NetCDF file
+molbuilder writes shares (`ncdata`: each variable's kind, units, words and
+source) and handed whole to the one writer (`persist.write_bytes`), so a
+reading cut short leaves none; a digest of another version, or one that
+does not hold a reading, is no kept reading. Whether one is current is
+read from its attributes alone, never its tables.
+
+**The digest describes itself, so a person's own script may read it alone**
+(NetCDF-4, `molbuilder/tbt-digest@1`, every variable with its units and what
+it is): the energies relative to the leads' Fermi level (eV, full precision);
+the device's DOS per orbital (1/eV) with each column's orbital and atom and
+the geometry's first orbital of each atom; each atom's position and the cell
+(Å), the device's atoms, and each atom's element — read from the Hamiltonian
+TBtrans read beside it, `<label>.TS.HSX`, when it is there and is the data
+file's geometry (the data file states no elements); the k-points and their
+weights; each electrode's name, chemical potential and temperature (eV), the
+device's η; TBtrans's own k-averaged T(E), eigenchannels, total DOS and the
+leads' DOS, each naming the text file it came from; and the data file's
+name, size, time and what it states of itself, with the molbuilder that read
+it. **What it does not hold, it says**: the atom order is TBtrans's geometry
+— TranSIESTA's order, the device run's — and a molbuilder calculation's
+junction records the way back to yours (the calculation's
+`<label>.transport.nc` is in yours); each orbital's type is the device run's
+`<label>.ORB_INDX`, which the data file does not state.
+
+**One reading of a data file at a time, wherever it is asked** *(the user,
+2026-10-22: "how do you avoid accidental multiple digest generator to
+run?")*. Two tabs, a second click, the server and `summarize task` on the
+command line — on any node that shares the file system — may each ask. A
+reading starts by **claiming** the data file: it creates
+`<digest>.reading` through the one writer, exclusively
+(`persist.write_bytes(…, exclusive=True)`: a unique file beside it, linked
+into place or refused), stating the host, the process and when the kernel
+started it (`joblist.started_of`), when the reading began and how far it is
+— k-point *i* of *n*, rewritten as it goes; the claim is removed
+once the digest is in place. **Any other asker finds it and does not read**:
+`kept_state` answers `being read`, with the claim, and `parse` refuses by
+name (`ReadingClaimed`) — so the page shows that reading's progress, the
+server's own or another process's, and `summarize` says who is reading and
+goes on without that point's DOS by region. **A claim whose reader is gone**
+— on this host, its process no longer there, or another process now under
+its id, or this very process reading no such file (a claim copied or
+restored with its folder) — is stale: the next asker removes it, and reads
+or answers the kept reading. **One on another host** cannot be asked
+whether its process lives: it stands, the page saying since when and how
+far, and *Take over* — `take_over`, on the person's word — removes it and
+reads in its place; a reading whose claim is taken over stops at its next
+k-point. Nothing guesses a timeout.
+
+**One NetCDF access at a time in the process** (`ncdata.NC_LOCK`): the
+netCDF-C library is not thread-safe, and netCDF4 lets other threads run while
+it works, so two request threads inside it at once can crash the server
+(measured 2026-10-22: two readings and two pages asking states, in one
+process, segfaulted in 2 of 3 runs). Every NetCDF open, read and write
+molbuilder makes holds the one lock — this parser's, a data file one k-point
+at a time; a relaxation's `.MD.nc` (§ 5d); the transport and vibration data
+files — so a reading in one request lets the page's other requests in
+between its k-points.
+
+**A data file's tables are read on a person's word, never as a side effect
+of looking — and only a finished point's.** The run door, the run record and
+a folder's file list read no data file; the transport report reads the text
+files, the kept readings and, where a point's reading is not kept, the data
+file's energy list alone (a small read, the full precision the text files are
+put on), and says of each finished point's reading whether it is kept,
+offering to read it (`engines/transport.md` § 2a.12); `summarize task` reads
+the ones missing or out of date, saying so (`transport.tbtnc.read_points`). A
+running point's data file is TBtrans's while it writes, and a stopped one's
+is partial: neither is read.
 
 ## 6. Adding a parser
 

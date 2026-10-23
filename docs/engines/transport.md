@@ -947,10 +947,11 @@ status door's, as `jobset status` and the ladder say it — with a rung's SCF as
 it ran (every row of its last step, phase-tagged, the criteria each phase had to
 reach), a seed's and a device's energy and SCF convergence, the device's NEGF
 phase's own E_F, charge and cycles, and each lead's E_F; per bias point T(E),
-T(E_F), the conductance and the current (total and as printed), and from the
-point's `.TBT.nc` (read with sisl, `transport/tbtnc.py`) the device DOS, its
-PDOS by region, the leads' spectral and bulk DOS and the transmission
-eigenchannels; the points without a transmission as `pending` or `failed` in
+T(E_F), the conductance and the current (total and as printed), the device
+DOS, the leads' spectral and bulk DOS and the transmission eigenchannels —
+TBtrans's k-averaged text files on the data file's energies — and the PDOS by
+region from each point's kept reading of its data file (*A point's digest*,
+below; [`model/parse.md`](?doc=model/parse.md) § 5e); the points without a transmission as `pending` or `failed` in
 their run's words; for a frame set, each point's frame and that frame's
 `customized` rows, the I–V per frame, and the mode's average at each voltage
 (§ 2a.12, built 2026-10-10); the treatment; the provenance slot and the chain — each
@@ -2866,6 +2867,49 @@ time a point still to come is judged by; nothing projects it.
 The report draws it on the rung's row and the point's line (`web/results.md`
 § 2.5).
 
+**A point's digest — the DOS by region, read once, on your word** *(the user,
+2026-10-22: "we can let the result to generate the digest - when it is in the
+transport directory it can show this progress/function so user can allow it
+and/or refresh it"; "no need to modify further the script side"; "make this
+part of the parser of siesta engine"; built 2.31.0 — plan § 1z)*. A transmission point's data file keeps its densities of states per
+k-point, energy and orbital — 1.6 GB a point on Sol's AuBDTAu junction —
+and reading it whole is what a report waited on: four minutes on Sol's
+`/scratch` against 32 s of work (2026-10-22), the page showing nothing
+meanwhile. TBtrans's files are read by the SIESTA family's parser
+([`model/parse.md`](?doc=model/parse.md) § 5e), and the report takes what
+each costs:
+
+- **Opened, the report reads TBtrans's k-averaged text files** — T(E), the
+  eigenchannels, the device's total DOS, the leads' spectral and bulk DOS —
+  on the data file's own energies, at full precision (§ 2a.16): a few
+  kilobytes a point, so it opens in seconds wherever the files lie.
+- **The DOS by region, and a selection's PDOS, are a point's digest's** —
+  the data file's reading, kept beside it by the parser (§ 5e there), its
+  device DOS averaged over the k-points per orbital. A point whose digest is
+  missing or out of date has no DOS by region until it is read.
+- **Read on your word, never behind your back.** The report says, at the
+  top of its DOS tab, each finished point's digest — kept, not read yet, out
+  of date, or being read and by whom — with its data file's size, and offers
+  **Read the DOS per orbital** for the points without one, a reading whose
+  process is gone among them; while a reading runs — this tab's, another
+  tab's, `summarize task`'s or another host's — each says how far it is
+  (k-point *i* of *n*, since when) and the rest of the report stays in use;
+  when it ends, the regions appear and a selection's PDOS is asked again.
+  **Read again** reads every point's data file anew, kept or not; **Take
+  over** takes a reading another host holds, whose process cannot be asked
+  from here. One reading of a data file at a time, wherever it is asked
+  ([`model/parse.md`](?doc=model/parse.md) § 5e). A running point's data
+  file is not read: TBtrans is writing it. `summarize task` reads the ones
+  missing or out of date, saying so, since the record and the data file it
+  writes hold the DOS by region. The record states each point's readings
+  (`digest`: each data file's, its own and its `shared/`'s — its path from
+  the calculation, its state, size and claim).
+- **A point that shares energies** (§ 2a.16) reads its own files and those in
+  its `shared/`, each through the same parser — so a sharing point's
+  `shared/` holds the finished point's text files and its digest with its
+  data file.
+- **Nothing on the job's side changes**: the run writes what TBtrans writes.
+
 **The frame dimension** *(the record built 2026-10-10 — plan § 5z Q17-e,
 the frames' average the post-process's, `frame_average.average_block`, read by
 `record.collect_record`; the data file Q17-e2,
@@ -2962,7 +3006,7 @@ part — their rows, masses and average — is laid out by their post-process
 | `current_a` | frame, bias_v | derived | the junction's total, as `current_from` says: `tbtrans` — twice the printed figure unpolarized, the channels' sum polarized; `joined` — the record's over the point's joined grid, its printed figure the fill value (§ 2a.16) |
 | `iv_current_a` | frame, iv_bias_v | derived | the I–V — each point's own total (`iv_computed` `tbtrans`), or the record's linear response from that frame's 0 V slice (`linear-response`, the low-bias approximation): `I(V) = G₀ ∫ T(E, 0) [f(E − eV/2) − f(E + eV/2)] dE` at `iv_kt_ev`, the fill value where the window does not reach (§ 2a.10) |
 | `device_ef_ev` · `device_vha_ev` | frame, bias_v | raw | the device point's NEGF Fermi level and boundary Hartree potential, as TranSIESTA printed them — wherever the device point ran, its transmission done or not |
-| `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` · `eigenchannel_transmission` | frame, bias_v, (region · lead · eigenchannel), energy_ev | raw | from each point's `.TBT.nc`, k-averaged (`transport/tbtnc.py`); a polarized point's two files (`.TBT_UP.nc`, `.TBT_DN.nc`) summed over spin (`tbtnc.spin_dos`, 2026-10-11), its eigenchannels — one set per spin — not here (a run of polarized points has an `eigenchannel` dimension of 0) but each spin's in the record (`dos.by_spin`, `web/results.md` § 2.5) |
+| `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` · `eigenchannel_transmission` | frame, bias_v, (region · lead · eigenchannel), energy_ev | raw | k-averaged, TBtrans's own text files on the data file's energies, and `dos_region` from each point's kept reading of its data file (`transport/tbtnc.py` through the SIESTA family's parser, [`model/parse.md`](?doc=model/parse.md) § 5e; `summarize task` reads what is not kept); a polarized point's two channels summed over spin (`tbtnc.point_dos`, 2026-10-11), its eigenchannels — one set per spin — not here (a run of polarized points has an `eigenchannel` dimension of 0) but each spin's in the record (`dos.by_spin`, `web/results.md` § 2.5) |
 | `done` | frame, bias_v | state | 1 when the point has its transmission; 0 otherwise, its transmission's values the fill value — a gap, never filled in |
 | `point_folder` | frame, bias_v | state | the transmission point's folder, relative to the calculation's — where its raw values were read, and its `shared/` beside them for a point that shares energies (§ 2a.16); for a point not done, where its attempt is |
 | `average_transmission` · `average_delta_transmission` | bias_v, energy_ev | derived | the mode's average at the stated weights, and its change from frame 0's |
@@ -3784,8 +3828,10 @@ its name the layout's (`paths`) and its stamp the role `shared`
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) — a folder
 because tbtrans refuses to start where its own `<label>.TBT.nc` lies
 (`m_tbt_save.F90`) and overwrites its text outputs. It holds what the readers
-read of the finished point — its `.TBT.nc` and `.TBT.AVTRANS_<pair>` files
-(`.TBT_UP.` and `.TBT_DN.` on a polarized point), and its own `shared/`
+read of the finished point — its `.TBT.nc`, the digest of it, and its
+k-averaged text files (`.TBT.AVTRANS_<pair>`, `.AVTEIG_<pair>`, `.AVDOS`,
+`.AVADOS_<lead>`, `.AVBDOS_<lead>`; `.TBT_UP.` and `.TBT_DN.` on a polarized
+point; [`model/parse.md`](?doc=model/parse.md) § 5e), and its own `shared/`
 when it shared energies itself — and **`.copied-from`, written last**, naming
 the point it is a copy of: a folder without it is a copy cut short. A
 point that shares energies is done when its own run is, and its `shared/`

@@ -860,7 +860,7 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 | state | detail |
 |---|---|
 | `pending` | prepared, not launched (no run.json) |
-| `queued` | queued as job N · launched (direct), no output yet — and, on the Results tab's ladder row, its **standing** where this server runs on the machine the job was sent to (its own record names the machine the calculation's copy names): `PENDING (Priority) · expected to start 2026-10-19T14:02:00 · priority 1234`, the start as the scheduler prints it, the kind's `standing` query ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) through the run door (`runs.standing_of`); from any other machine the row says *ask on <machine>* |
+| `queued` | queued as job N · launched (direct), no output yet — and, on the Results tab's ladder row, its **standing** where this machine sent the job — its address on this machine's jobs list, the scheduler asked on the cluster the job was sent to as the scheduler names it ([`job-system.md`](?doc=execution/job-system.md) § 6.0a; `joblist.address_of`, `asked_here`: the one rule `molbuilder jobs` asks by): `PENDING (Priority) · expected to start 2026-10-19T14:02:00 · priority 1234`, the start as the scheduler prints it, the kind's `standing` query ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) through the run door (`runs.standing_of`); from any other machine the row says *ask on <machine>* |
 | `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result — **where the run is**, in the reading pass's words where its output states it (`model/parse.md` § 2b, `doing`): *running · negf SCF iteration 12*, and until a device's first SCF row its set-up, *running · computing the R lead's surface Green's function (estimated 49.170 GB)* — the same words the monitor's status line says; a sent run's bare *running* says too how long since the job itself last wrote, *running · last wrote 2 h 10 min ago*: the one fact a folder gives where its scheduler cannot be asked · *the scheduler lists it: PENDING (Requeue)*, a requeued job past the wall rule's bound, on the machine it was sent to |
 | `finished` | job_completed · concluded (rc=0 at …) |
 | `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · stopped before its end: the scheduler no longer listed job N (asked on *machine* at *when*); no exit recorded · the scheduler listed job N ended: *its words* (asked on *machine* at *when*) · stopped before its end: nothing was written for longer than its wall (*wall*; last write *when*), so the job is over; how it ended was not recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
@@ -881,9 +881,11 @@ Two more things say it is over, honestly *(user, 2026-10-19: "if the machine
 knows a way to probe status of a job, put it down with a status record so it
 does not have to be repeated; if not, just check time stamp")*:
 
-- **Asked once, written once.** On the machine the job was sent to (the
-  server's own record names the machine the calculation's copy names, as the
-  standing is asked, § 4.2 above), every reader of a sent run that still
+- **Asked once, written once.** Where this machine sent the job — its
+  address on this machine's jobs list, the scheduler asked on the cluster
+  the job was sent to (`job-system.md` § 6.0a; `joblist.address_of`,
+  `asked_here`: the one rule `molbuilder jobs` asks by, as the standing is
+  asked, § 4.2 above) — every reader of a sent run that still
   reads live — `status`, a launch again, the Results tab — asks the
   scheduler whether it still lists the job (the kind's `listed` query,
   [`scheduler.md`](?doc=execution/scheduler.md) § 6a). A job it no longer
@@ -892,7 +894,15 @@ does not have to be repeated; if not, just check time stamp")*:
   [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) by that
   first look, and the run reads `failed` from then on, wherever the folder
   is copied: *stopped before its end: the scheduler no longer listed job N
-  (asked on sol at …); no exit recorded*. The question is asked only while
+  (asked on sol at …); no exit recorded* — the cluster as the scheduler
+  names it, which the job's address records (a job whose cluster was not
+  read when it went is not asked: another cluster sharing this home would
+  answer for an id not its own). A run whose job has no address here —
+  sent from another machine — is not asked and reads as its folder says;
+  `molbuilder jobs status` removes an ended job's address only after its
+  members' look, which writes it, and that one answer serves both
+  (`joblist.asked_lately`). An answer that cannot be written — a full
+  disk — is said on the run's line, never a crash. The question is asked only while
   the record holds no answer, so the folder is concluded once (`runs.concluded`,
   the door every reader of a run's state asks). A job the scheduler still
   lists is left as it reads; nothing is written for it.

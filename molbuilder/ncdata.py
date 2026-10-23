@@ -9,10 +9,12 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         -- a group's dimensions and variables written from a table of
         :class:`Var`, each with its attributes and its CF ``coordinates``;
         :func:`in_memory` / :func:`as_bytes` -- the file built in memory and
-        handed to the one atomic writer (`persist.write_bytes`)
-USED-BY the transport data file (`transport.datafile`) and the vibration
+        handed to the one atomic writer (`persist.write_bytes`);
+        :data:`NC_LOCK` -- held by every NetCDF access the server reaches
+USED-BY the transport data file (`transport.datafile`), the vibration
         result's data file (`spectra.datafile`), beside the job in both
-        bundles (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`)
+        bundles (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`),
+        and a TBtrans data file's digest (`parse.engines.tbtrans_nc`)
 
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill; a boolean is an ``int8`` with
@@ -24,6 +26,7 @@ a job whose environment lacks it stops here, before the expensive part
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
@@ -61,6 +64,18 @@ class Var:
 
 #: The fill an integer flag takes where a cell is not stated.
 FLAG_FILL = -1
+
+#: ONE NETCDF ACCESS AT A TIME IN THIS PROCESS.  The netCDF-C library is not
+#: thread-safe and netCDF4 releases the GIL around its calls, so two threads
+#: of one server inside it at once can crash the process (netCDF4 1.7's own
+#: warning; measured 2026-10-22: a TBtrans data file read by two request
+#: threads while two more opened digests segfaulted in 2 of 3 runs).  Every
+#: NetCDF open, read and write molbuilder makes holds it -- a TBtrans data
+#: file's, through sisl, one k-point at a time (`parse.engines.tbtrans_nc`);
+#: a relaxation's ``.MD.nc`` (`parse.engines.siesta_mdnc`); the transport
+#: and vibration data files -- so a long reading lets the page's other
+#: requests in between.  Reentrant: a reader asks another.
+NC_LOCK = threading.RLock()
 
 
 def empty(var: Var, dims: Mapping[str, int]) -> np.ndarray:
@@ -170,6 +185,6 @@ def read_variables(group) -> Dict[str, Dict[str, Any]]:
             for name, v in group.variables.items()}
 
 
-__all__ = ["Var", "FLAG_FILL", "empty", "flag", "unflag", "number_attr",
+__all__ = ["Var", "FLAG_FILL", "NC_LOCK", "empty", "flag", "unflag", "number_attr",
            "unnumber_attr", "json_attr", "write_group", "in_memory",
            "as_bytes", "read_variables"]

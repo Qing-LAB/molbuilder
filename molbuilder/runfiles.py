@@ -160,6 +160,11 @@ FIELDS: "dict[str, Field]" = {
         what="the scheduler's kind, by its name in `scheduler/kinds.toml`",
         shape=r"[a-z][a-z0-9_]*",
         example="slurm"),
+    "tbt": Field(
+        what="a TBtrans data file's channel, as its name tags it: TBT "
+             "(unpolarized), TBT_UP or TBT_DN (spin up, spin down)",
+        shape=r"TBT(?:_UP|_DN)?",
+        example="TBT"),
     "pid": Field(
         what="the run script's own process id",
         shape=r"[0-9]+",
@@ -204,6 +209,12 @@ SCHEDULER_STDERR = "{scheduler}.{jobid}.err"
 #: The per-rank GPU launcher the run script writes beside the job, named on
 #: the script's own process id (`runwrap`), removed at its exit.
 RANK_LAUNCHER = ".mb-rank-launch-{pid}.sh"
+
+#: A TRANSMISSION POINT'S DATA FILE, READ (`model/parse.md` § 5e): its
+#: digest beside it, and the claim of a reading under way -- composed by
+#: the SIESTA family's parser (`parse.engines.tbtrans_nc`) from these.
+TBT_DIGEST = ".{tbt}.digest.nc"
+TBT_DIGEST_CLAIM = TBT_DIGEST + ".reading"
 #: A SIESTA pseudopotential, named for its element (`fixed_name`).
 PSEUDO_FILE = "{element}.psml"
 #: A record `jobset migrate` rewrote, kept beside its rewrite under the
@@ -592,6 +603,22 @@ def role_of(name) -> Optional[str]:
     a name: a pure function of the name, and every reader of a folder asks
     it of each of its files."""
     return _role_of(str(name).rsplit("/", 1)[-1])
+
+
+def is_transient(name) -> bool:
+    """Whether a file of this name is one the catalogue calls ``transient``
+    -- there only while a write or a reading runs (a temp of the one
+    writer, a lock, a reading's claim): never copied into another run or
+    calculation, where it would speak for a process that is not there."""
+    n = str(name).rsplit("/", 1)[-1]
+    # A ROW IS ITS ROLE on the label, else its whole name.
+    return any(_role_pattern(a.role or a.name).search(n)
+               for a in _transient_rows())
+
+
+@functools.lru_cache(maxsize=1)
+def _transient_rows() -> "tuple[Artifact, ...]":
+    return tuple(a for a in WRITTEN if a.kind == "transient")
 
 
 @functools.lru_cache(maxsize=65536)
@@ -1248,6 +1275,30 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="`jobset summarize task` "
                     "(`transport.datafile.write_data_file`)",
              door="transport.datafile.read_data_file"),
+    # A TRANSMISSION POINT'S DATA FILE, READ (`model/parse.md` § 5e): its
+    # device DOS per orbital averaged over the k-points, kept beside it per
+    # version of the file -- on the person's word, never as a side effect of
+    # looking; one beside each channel's data file.
+    Artifact(TBT_DIGEST,
+             "a transmission point's data file, read once: its device DOS "
+             "per orbital averaged over the k-points, what the file states "
+             "of its geometry and electrodes, and TBtrans's own k-averaged "
+             "quantities -- every variable with its units (NetCDF-4)",
+             fields=("tbt",), staged=False, calculation="transport",
+             when="summarize", level="run", kind="derived",
+             writer="the SIESTA family's parser "
+                    "(`parse.engines.tbtrans_nc`), on the person's word: "
+                    "the Results tab's DOS tab, `jobset summarize task`",
+             door="parse.engines.tbtrans_nc.kept",
+             only="its data file read"),
+    Artifact(TBT_DIGEST_CLAIM,
+             "the claim of a data file's reading under way: who reads, "
+             "since when, how far -- one reading of a file at a time",
+             fields=("tbt",), staged=False, calculation="transport",
+             when="summarize", level="transient", kind="transient",
+             writer="the SIESTA family's parser, removed when its reading "
+                    "ends", door="parse.engines.tbtrans_nc.kept_state",
+             only="while its data file is read"),
     # A SIESTA VIBRATION'S DISPLACEMENT SWEEP, summarised (`engines/
     # vibration.md` § 5.9): written at the calculation root by `summarize task`
     # when the ladder holds two or more force-constant stages -- a record of

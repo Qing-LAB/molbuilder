@@ -29,6 +29,10 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           calculation that reuses a
                                           finished one, fitted to the
                                           finished grid
+    GET  /api/transport/digest            what is kept of each point's data
+                                          file reading, and how far a
+                                          reading under way is
+    POST /api/transport/digest            read them, on the person's word
     POST /api/transport/describe          writes the FINISHED description
                                           into the chosen folder -- the
                                           web spelling of `molbuilder describe
@@ -387,38 +391,93 @@ def api_transport_record() -> Any:
     Errors: 400 for a path outside the projects tree, or one that is not a
     transport calculation's; 404 for nothing there.
     """
-    from pathlib import Path
     from molbuilder.transport.record import RecordError, collect_record
-    from .files import _PickerError, _resolve_within_roots
-
-    raw = str(request.args.get("path") or "")
-    try:
-        path = _resolve_within_roots(raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    if not path.exists():
-        return jsonify({"ok": False, "error": f"nothing at {raw}"}), 404
-    base = Path(path) if path.is_dir() else Path(path).parent
-    # THE FOLDER'S CALCULATION through its one door (`calculation.open`,
-    # A16), opened once: a folder below the root answers with the root, where
-    # it is (`calcdirs.where`).
-    from molbuilder import calcdirs
-    from molbuilder.calculation import NotACalculation, open as open_calc
-    root = calcdirs.where(base).root
-    try:
-        calc = open_calc(root if root is not None else base)
-    except (NotACalculation, OSError, ValueError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    task = calc.task
-    if task.calculation != "transport":
-        return jsonify({"ok": False, "error": (
-            f"{path.name}: {base.name} is a {task.calculation} "
-            f"calculation, not a transport one")}), 400
+    calc, refusal = _transport_calc(str(request.args.get("path") or ""))
+    if refusal is not None:
+        return refusal
     try:
         record = collect_record(calc, partial=True)
     except (RecordError, OSError, ValueError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "record": record})
+
+
+def _transport_calc(raw: str):
+    """``(calc, refusal)`` -- the transport calculation a path names: its
+    ``task.json``, its folder, or a folder below it, opened through its one
+    door (`calculation.open`, A16) at its root (`calcdirs.where`); or the
+    refusal: 400 for a path outside the projects tree or not a transport
+    calculation's, 404 for nothing there."""
+    from pathlib import Path
+    from molbuilder import calcdirs
+    from molbuilder.calculation import NotACalculation, open as open_calc
+    from .files import _PickerError, _resolve_within_roots
+    try:
+        path = _resolve_within_roots(raw)
+    except _PickerError as exc:
+        return None, (jsonify({"ok": False, "error": exc.message}),
+                      exc.status)
+    if not path.exists():
+        return None, (jsonify({"ok": False, "error": f"nothing at {raw}"}),
+                      404)
+    base = Path(path) if path.is_dir() else Path(path).parent
+    root = calcdirs.where(base).root
+    try:
+        calc = open_calc(root if root is not None else base)
+    except (NotACalculation, OSError, ValueError) as exc:
+        return None, (jsonify({"ok": False, "error": str(exc)}), 400)
+    if calc.task.calculation != "transport":
+        return None, (jsonify({"ok": False, "error": (
+            f"{path.name}: {base.name} is a {calc.task.calculation} "
+            f"calculation, not a transport one")}), 400)
+    return calc, None
+
+
+def _readings_answer(calc) -> Dict[str, Any]:
+    """Each transmission point's readings, as the digest routes answer
+    them: its point, in words, its folder, and each data file's reading --
+    its path from the calculation, its state, size and claim."""
+    from molbuilder.transport.tbtnc import point_readings
+    base = calc.base
+    return {"ok": True, "points": [
+        {"point": e["point"].to_wire(), "words": e["point"].words(),
+         "folder": str(e["folder"].relative_to(base)),
+         "readings": [k.to_wire(base) for k in e["readings"]]}
+        for e in point_readings(calc)]}
+
+
+@bp.route("/api/transport/digest", methods=["GET"])
+def api_transport_digest() -> Any:
+    """WHAT IS KEPT OF EACH TRANSMISSION POINT'S DATA FILE READING
+    (`model/parse.md` § 5e; `engines/transport.md` § 2a.12) -- ``?path=``
+    the calculation's ``task.json`` or folder: per point, each data file's
+    reading, its own and those in its ``shared/`` -- kept, missing, out of
+    date or being read, with its size and the claim of a reading under way,
+    how far it is.  Nothing is read: the page asks it while a reading
+    runs."""
+    calc, refusal = _transport_calc(str(request.args.get("path") or ""))
+    if refusal is not None:
+        return refusal
+    return jsonify(_readings_answer(calc))
+
+
+@bp.route("/api/transport/digest", methods=["POST"])
+def api_transport_digest_read() -> Any:
+    """READ, ON THE PERSON'S WORD, each point's data files whose reading is
+    not kept -- every one with ``fresh`` (*Read again*) -- in this request,
+    one at a time, each claimed so no other reading repeats it
+    (`tbtnc.read_points`, `model/parse.md` § 5e); ``take_over`` removes
+    another's claim (*Take over*).  Body ``{path, fresh, take_over}``.
+    Answers once every file is read or found being read: each file's
+    outcome, and the readings as they are then."""
+    body = request.get_json(silent=True) or {}
+    calc, refusal = _transport_calc(str(body.get("path") or ""))
+    if refusal is not None:
+        return refusal
+    from molbuilder.transport.tbtnc import read_points
+    outcomes = read_points(calc, fresh=bool(body.get("fresh")),
+                           take_over=bool(body.get("take_over")))
+    return jsonify({**_readings_answer(calc), "outcomes": outcomes})
 
 
 @bp.route("/api/transport/pdos", methods=["GET"])

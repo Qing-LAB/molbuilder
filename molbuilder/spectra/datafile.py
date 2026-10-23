@@ -40,16 +40,16 @@ import numpy as np
 
 # TWO WAYS, because this module travels beside the job.
 try:                                        # inside molbuilder
-    from ..ncdata import (Var, as_bytes, empty, flag, in_memory, json_attr,
-                          number_attr, read_variables, unflag, unnumber_attr,
-                          write_group)
+    from ..ncdata import (NC_LOCK, Var, as_bytes, empty, flag, in_memory,
+                          json_attr, number_attr, read_variables, unflag,
+                          unnumber_attr, write_group)
     from ..persist import write_bytes
     from ..structure import Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
     from structure import Structure as _Structure  # type: ignore[no-redef]
-    from ncdata import (Var, as_bytes, empty, flag, in_memory, json_attr,
-                        number_attr, read_variables, unflag, unnumber_attr,
-                        write_group)
+    from ncdata import (NC_LOCK, Var, as_bytes, empty, flag,
+                        in_memory, json_attr, number_attr, read_variables,
+                        unflag, unnumber_attr, write_group)
     from persist import write_bytes
 
 DATA_SCHEMA = "molbuilder/spectra-data@1"
@@ -312,132 +312,137 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
     grid = dict(thermo.pop("grid", None) or {})
     relaxation = dict(payload.get("relaxation") or {})
 
-    ds = in_memory(p.name)
-    attrs: Dict[str, Any] = {
-        "schema": DATA_SCHEMA, "json_sha256": str(json_sha256),
-        "spectra_schema_version": int(payload["schema_version"]),
-        "label": str(label), "Conventions": "CF-1.8",
-        **_block_attrs({k: payload[k] for k in _ROOT if k in payload},
-                       _ROOT, "", "the result"),
-        **_block_attrs(relaxation, _RELAXATION, "relaxation_",
-                       "the relaxation block"),
-    }
-    if "count" in removed:
-        attrs["removed_motions_count"] = int(removed["count"])
-    ds.setncatts(attrs)
-    ds.createDimension("xyz", 3)
+    # ONE NETCDF ACCESS AT A TIME IN THE PROCESS (`ncdata.NC_LOCK`).
+    with NC_LOCK:
+        ds = in_memory(p.name)
+        attrs: Dict[str, Any] = {
+            "schema": DATA_SCHEMA, "json_sha256": str(json_sha256),
+            "spectra_schema_version": int(payload["schema_version"]),
+            "label": str(label), "Conventions": "CF-1.8",
+            **_block_attrs({k: payload[k] for k in _ROOT if k in payload},
+                           _ROOT, "", "the result"),
+            **_block_attrs(relaxation, _RELAXATION, "relaxation_",
+                           "the relaxation block"),
+        }
+        if "count" in removed:
+            attrs["removed_motions_count"] = int(removed["count"])
+        ds.setncatts(attrs)
+        ds.createDimension("xyz", 3)
 
-    # /structure -- the arrays an analysis reaches for, and the structure
-    # whole as its one serialiser states it.
-    g = ds.createGroup("structure")
-    vars_ = _structure_vars()
-    values = _fill(vars_, {"atom": n_atoms, "xyz": 3})
-    held: List[int]
-    if structure is not None:
-        # THROUGH THE STRUCTURE'S OWN DOOR (`model/structure.md` § 2.1):
-        # its elements, positions, held set, cell and axis kinds as the
-        # instance states them, never a hand-walk of the dict.
-        s = _Structure.from_dict(structure)
-        values["element"][:] = [str(e) for e in s.elements]
-        values["position_ang"][:] = np.asarray(s.positions, dtype=float)
-        held = [int(i) for i in (s.frozen_atoms or ())]
-        if s.cell is not None:
-            values["cell_ang"][:] = np.asarray(s.cell, dtype=float)
-        if s.axis_kind is not None:
-            values["axis_kind"][:] = [str(k) for k in s.axis_kind]
-    else:
-        held = [int(i) for i in payload.get("frozen_atom_idxs") or ()]
-    values["held"][:] = 0
-    for i in held:
-        values["held"][i] = 1
-    if eq.get("masses_amu") is not None:
-        values["mass_amu"][:] = np.asarray(eq["masses_amu"], dtype=float)
-    write_group(g, {"atom": n_atoms}, vars_, values)
-    g.setncattr("structure_json", json_attr(structure))
+        # /structure -- the arrays an analysis reaches for, and the structure
+        # whole as its one serialiser states it.
+        g = ds.createGroup("structure")
+        vars_ = _structure_vars()
+        values = _fill(vars_, {"atom": n_atoms, "xyz": 3})
+        held: List[int]
+        if structure is not None:
+            # THROUGH THE STRUCTURE'S OWN DOOR (`model/structure.md` § 2.1):
+            # its elements, positions, held set, cell and axis kinds as the
+            # instance states them, never a hand-walk of the dict.
+            s = _Structure.from_dict(structure)
+            values["element"][:] = [str(e) for e in s.elements]
+            values["position_ang"][:] = np.asarray(s.positions, dtype=float)
+            held = [int(i) for i in (s.frozen_atoms or ())]
+            if s.cell is not None:
+                values["cell_ang"][:] = np.asarray(s.cell, dtype=float)
+            if s.axis_kind is not None:
+                values["axis_kind"][:] = [str(k) for k in s.axis_kind]
+        else:
+            held = [int(i) for i in payload.get("frozen_atom_idxs") or ()]
+        values["held"][:] = 0
+        for i in held:
+            values["held"][i] = 1
+        if eq.get("masses_amu") is not None:
+            values["mass_amu"][:] = np.asarray(eq["masses_amu"], dtype=float)
+        write_group(g, {"atom": n_atoms}, vars_, values)
+        g.setncattr("structure_json", json_attr(structure))
 
-    # /equilibrium -- the energy subgroup, whole or not at all (§ 6.2).
-    g = ds.createGroup("equilibrium")
-    mo = eq.get("mo_energies_eh")
-    g.setncatts({"scf_energy_eh": number_attr(eq.get("scf_energy_eh")),
-                 "homo_idx": _encode("int?", eq.get("homo_idx"))})
-    vars_ = _equilibrium_vars()
-    values = _fill(vars_, {"mo": len(mo or ())})
-    if mo:
-        values["mo_energy_eh"][:] = np.asarray(mo, dtype=float)
-    write_group(g, {"mo": len(mo or ())}, vars_, values)
+        # /equilibrium -- the energy subgroup, whole or not at all (§ 6.2).
+        g = ds.createGroup("equilibrium")
+        mo = eq.get("mo_energies_eh")
+        g.setncatts({"scf_energy_eh": number_attr(eq.get("scf_energy_eh")),
+                     "homo_idx": _encode("int?", eq.get("homo_idx"))})
+        vars_ = _equilibrium_vars()
+        values = _fill(vars_, {"mo": len(mo or ())})
+        if mo:
+            values["mo_energy_eh"][:] = np.asarray(mo, dtype=float)
+        write_group(g, {"mo": len(mo or ())}, vars_, values)
 
-    # /modes
-    g = ds.createGroup("modes")
-    n_free = len(free)
-    dims = {"mode": len(modes), "free_atom": n_free, "removed": len(patterns)}
-    vars_ = _mode_vars()
-    values = _fill(vars_, {**dims, "xyz": 3})
-    values["free_atom_index"][:] = free
-    for k, m in enumerate(modes):
-        values["index_1based"][k] = int(m["index_1based"])
-        values["frequency_cm1"][k] = float(m["frequency_cm1"])
-        values["eigenvector_canonical"][k] = np.asarray(
-            m["eigenvector_canonical"], dtype=float)
-        values["eigenvector_display"][k] = np.asarray(
-            m["eigenvector_display"], dtype=float)
-        values["has_imag"][k] = flag(m.get("has_imag"))
-        for name in ("ir_intensity_km_mol", "raman_activity_a4_amu",
-                     "zero_point_amplitude_amu12_ang"):
-            values[name][k] = number_attr(m.get(name))
-        if m.get("zero_point_displacement_ang") is not None:
-            values["zero_point_displacement_ang"][k] = np.asarray(
-                m["zero_point_displacement_ang"], dtype=float)
-        values["ir_active"][k] = flag(m.get("ir_active"))
-        values["raman_active"][k] = flag(m.get("raman_active"))
-        values["activity_class"][k] = str(m.get("activity_class") or "")
-    for r, pattern in enumerate(patterns):
-        values["removed_motion"][r] = np.asarray(pattern, dtype=float)
-    write_group(g, dims, vars_, values)
+        # /modes
+        g = ds.createGroup("modes")
+        n_free = len(free)
+        dims = {"mode": len(modes), "free_atom": n_free,
+                "removed": len(patterns)}
+        vars_ = _mode_vars()
+        values = _fill(vars_, {**dims, "xyz": 3})
+        values["free_atom_index"][:] = free
+        for k, m in enumerate(modes):
+            values["index_1based"][k] = int(m["index_1based"])
+            values["frequency_cm1"][k] = float(m["frequency_cm1"])
+            values["eigenvector_canonical"][k] = np.asarray(
+                m["eigenvector_canonical"], dtype=float)
+            values["eigenvector_display"][k] = np.asarray(
+                m["eigenvector_display"], dtype=float)
+            values["has_imag"][k] = flag(m.get("has_imag"))
+            for name in ("ir_intensity_km_mol", "raman_activity_a4_amu",
+                         "zero_point_amplitude_amu12_ang"):
+                values[name][k] = number_attr(m.get(name))
+            if m.get("zero_point_displacement_ang") is not None:
+                values["zero_point_displacement_ang"][k] = np.asarray(
+                    m["zero_point_displacement_ang"], dtype=float)
+            values["ir_active"][k] = flag(m.get("ir_active"))
+            values["raman_active"][k] = flag(m.get("raman_active"))
+            values["activity_class"][k] = str(m.get("activity_class") or "")
+        for r, pattern in enumerate(patterns):
+            values["removed_motion"][r] = np.asarray(pattern, dtype=float)
+        write_group(g, dims, vars_, values)
 
-    # /modes/electronic_structure -- one row per probed mode.
-    probed = [m for m in modes if m.get("electronic_structure") is not None]
-    windows = {len(m["electronic_structure"]["mo_energies_eq_eh"])
-               for m in probed}
-    if len(windows) > 1:
-        raise SpectraDataError(
-            f"the probed modes' orbital windows differ in size "
-            f"({sorted(windows)}): one window per result")
-    window = windows.pop() if windows else 0
-    ge = g.createGroup("electronic_structure")
-    vars_ = _es_vars()
-    values = _fill(vars_, {"es": len(probed), "window": window})
-    for k, m in enumerate(probed):
-        es = m["electronic_structure"]
-        values["mode_index_1based"][k] = int(m["index_1based"])
-        values["homo_index_in_window"][k] = int(es["homo_index_in_window"])
-        for name, *_ in _ES_SCALARS:
-            values[name][k] = float(es[name])
-        for name, _ in _ES_WINDOWS:
-            values[name][k] = np.asarray(es[name], dtype=float)
-    write_group(ge, {"es": len(probed), "window": window}, vars_, values)
-
-    # /thermo, and its grid.
-    g = ds.createGroup("thermo")
-    g.setncatts(_block_attrs(thermo, _THERMO, "", "the thermo block"))
-    gg = g.createGroup("grid")
-    if grid:
-        temps = [float(t) for t in grid.get("temperatures_K") or ()]
-        vars_ = _grid_vars()
-        values = _fill(vars_, {"temperature": len(temps)})
-        values["temperatures_K"][:] = temps
-        unknown = sorted(k for k in grid if k != "temperatures_K"
-                         and k not in {n for n, *_ in _GRID_CURVES})
-        if unknown:
+        # /modes/electronic_structure -- one row per probed mode.
+        probed = [m for m in modes
+                  if m.get("electronic_structure") is not None]
+        windows = {len(m["electronic_structure"]["mo_energies_eq_eh"])
+                   for m in probed}
+        if len(windows) > 1:
             raise SpectraDataError(
-                f"the thermo grid carries {unknown}, which this data file "
-                f"does not know how to state; refused rather than dropped")
-        for name, *_ in _GRID_CURVES:
-            if name in grid:
-                values[name][:] = np.asarray(grid[name], dtype=float)
-        write_group(gg, {"temperature": len(temps)}, vars_, values)
-        gg.setncattr("curves", json_attr([n for n, *_ in _GRID_CURVES
-                                          if n in grid]))
-    write_bytes(p, as_bytes(ds))
+                f"the probed modes' orbital windows differ in size "
+                f"({sorted(windows)}): one window per result")
+        window = windows.pop() if windows else 0
+        ge = g.createGroup("electronic_structure")
+        vars_ = _es_vars()
+        values = _fill(vars_, {"es": len(probed), "window": window})
+        for k, m in enumerate(probed):
+            es = m["electronic_structure"]
+            values["mode_index_1based"][k] = int(m["index_1based"])
+            values["homo_index_in_window"][k] = int(es["homo_index_in_window"])
+            for name, *_ in _ES_SCALARS:
+                values[name][k] = float(es[name])
+            for name, _ in _ES_WINDOWS:
+                values[name][k] = np.asarray(es[name], dtype=float)
+        write_group(ge, {"es": len(probed), "window": window}, vars_, values)
+
+        # /thermo, and its grid.
+        g = ds.createGroup("thermo")
+        g.setncatts(_block_attrs(thermo, _THERMO, "", "the thermo block"))
+        gg = g.createGroup("grid")
+        if grid:
+            temps = [float(t) for t in grid.get("temperatures_K") or ()]
+            vars_ = _grid_vars()
+            values = _fill(vars_, {"temperature": len(temps)})
+            values["temperatures_K"][:] = temps
+            unknown = sorted(k for k in grid if k != "temperatures_K"
+                             and k not in {n for n, *_ in _GRID_CURVES})
+            if unknown:
+                raise SpectraDataError(
+                    f"the thermo grid carries {unknown}, which this data file "
+                    f"does not know how to state; refused rather than dropped")
+            for name, *_ in _GRID_CURVES:
+                if name in grid:
+                    values[name][:] = np.asarray(grid[name], dtype=float)
+            write_group(gg, {"temperature": len(temps)}, vars_, values)
+            gg.setncattr("curves", json_attr([n for n, *_ in _GRID_CURVES
+                                              if n in grid]))
+        data = as_bytes(ds)
+    write_bytes(p, data)
     return p
 
 
@@ -450,7 +455,7 @@ def read_spectra_data(path) -> Dict[str, Any]:
     file's door (`runfiles.WRITTEN`); refuses another schema by name."""
     import netCDF4
     out: Dict[str, Any] = {}
-    with netCDF4.Dataset(str(path), "r") as ds:
+    with NC_LOCK, netCDF4.Dataset(str(path), "r") as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
         if attrs.get("schema") != DATA_SCHEMA:
             raise SpectraDataError(
