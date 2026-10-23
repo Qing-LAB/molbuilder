@@ -320,7 +320,11 @@ def _evaluate(rule: Rule, struct, n: int) -> FrozenSet[int]:
 #  Index-range parser                                                   #
 # --------------------------------------------------------------------- #
 
-_RANGE_TOKEN_RE = re.compile(r"^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$")
+#: ASCII digits alone (``re.ASCII``): the browser's one door shifts the
+#: number a person types (`_atom.js` `shiftExpression`, which reads every
+#: digit form as one), so a digit it did not see is refused, never read
+#: unshifted.
+_RANGE_TOKEN_RE = re.compile(r"^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$", re.ASCII)
 
 
 def parse_index_list(expression: str, *, first: int = 0,

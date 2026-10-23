@@ -158,16 +158,16 @@ _FRAME_ROWS = (("displacement_ang", "measured", "angstrom",
 
 #: The PDOS of a selection asked where the Results tab asks it
 #: (`/api/transport/pdos`, `web/results.md` § 2.5), a row each: every atom of
-#: the junction, or the ``atoms`` it names in your order; the point ``at`` --
+#: the junction, or the ``atoms`` it names in the user order; the point ``at`` --
 #: (frame index, voltage) -- whose total DOS it is, or whose ``region``'s;
 #: or the words it is ``refused`` with.
 _PDOS_ASKS = (
     {"name": "a frame set's point", "calc": "P/transport/F",
      "query": "frame=1&point=0.2&orbitals=all", "at": (1, 0.2)},
-    # THE BRIDGE, NAMED IN YOUR ORDER: its atoms are listed first, and
+    # THE BRIDGE, NAMED IN THE USER ORDER: its atoms are listed first, and
     # TranSIESTA's order puts the left block there -- the answer is the
     # bridge's only through the junction's order record.
-    {"name": "the bridge's atoms, named in your order",
+    {"name": "the bridge's atoms, named in the user order",
      "calc": "P/transport/F", "query": "frame=1&point=0.2&orbitals=all",
      "atoms": tuple(_at(p) for p in range(_LEAD, _LEAD + _WIRE)),
      "region": "bridge", "at": (1, 0.2)},
@@ -1032,7 +1032,7 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
     middle atom more for the spectrum is the partial Hessian over fewer
     atoms, every one balanced: information.  Freeing the right electrode's
     atom next to the bridge, which the relaxation held, is a warning naming
-    it: its force was never balanced -- named in your order also when the
+    it: its force was never balanced -- named in the user order also when the
     check is asked of the deck's held-first copy, as prep asks it, where that
     atom stands at another index (`model/overview.md` § 2.2a, I3: the sorted
     order never reaches a person)."""
@@ -1048,7 +1048,7 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
         from molbuilder.transport.sort import deck_sort_key, sort_by
         s = sort_by(s, deck_sort_key("siesta", "vibration")).structure
         # the row's premise: in the copy the freed atom has another index
-        assert s.indices_of_yours([_FREED]) != [_FREED]
+        assert s.map_from_user_index([_FREED]) != [_FREED]
     cfg = SiestaConfig(system_label="J", psml_lib="pseudopotential",
                        already_relaxed=True, **RELAXED_WITH)
     found = [i for i in validate(s, cfg, calculation="vibration")
@@ -1860,8 +1860,11 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     line = status_line(run.bundle, task, stage_home(run.bundle, task,
                                                     "device").dir, None,
                        device_job.scratch_dir)
+    # A SIZE IN THE UNIT IT REACHES (`units.size_words`, the one spelling).
+    import re
     assert line.startswith("tsgf/: one pair at a time, about ") and \
-        f"({n_orb} orbitals × " in line and " GiB a lead at 0 V" in line, line
+        f"({n_orb} orbitals × " in line and re.search(
+            r"about [0-9.]+ (B|KiB|MiB|GiB) a lead at 0 V", line), line
 
 
 def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
@@ -1960,7 +1963,7 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     door, holds every point on one grid -- frame x voltage x energy, the
     I-V's voltages the description's -- its T(E) TBtrans's own, each frame's
     definition rows and every atom's element, mass and coordinates beside it
-    in your order, the cited set's (`model/overview.md` § 2.2a, I1), the
+    in the user order, the cited set's (`model/overview.md` § 2.2a, I1), the
     device's facts, the I-V and the mode's average each at its own point as
     the record states them; every dimension a coordinate of its own name and
     the labels of its points coordinates beside it; every variable says what
@@ -2024,7 +2027,8 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     assert set(attrs_of["transmission"]["coordinates"].split()) \
         == frame_labels
     assert set(attrs_of["positions_ang"]["coordinates"].split()) \
-        == frame_labels | {"element", MASS_CHANNEL}
+        == frame_labels | {"element", MASS_CHANNEL, "user_atom_index",
+                           "engine_atom_index"}
     for var in VARIABLES:
         attrs = attrs_of[var.name]
         assert attrs["long_name"] and attrs["definition"], var.name
@@ -2066,6 +2070,11 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         parts = list(V["charge_part"])
         assert {k: V["device_charge"][cell][parts.index(k)]
                 for k in charges} == charges, cell
+        # EVERY NEGF ROW'S CHARGES, and the run's phases (@4).
+        for c, r in enumerate(rows):
+            for k, q in (r.get("charges") or {}).items():
+                assert V["device_scf_charge"][cell][c][parts.index(k)] == q
+        assert json.loads(V["device_scf_phases"][cell]) == p["scf_phases"]
     assert list(V["rung"]) == ["seed", "electrode_L", "electrode_R"]
     for r, name in enumerate(V["rung"]):
         rows = by[name]["scf"]
@@ -2079,6 +2088,320 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         assert V["point_state"][cell] == p["state"] == "finished", cell
     assert got["attrs"]["leads_ef_differ_ev"] == rec["leads"]["differ_ev"]
     assert got["attrs"]["Conventions"] == "CF-1.8"
+
+
+def _export(junction, monkeypatch, run, fmt, to):
+    """`molbuilder jobset export` of ``run`` into ``to``, the one door
+    pointed at the junction's tree."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.road import jobset
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    r = jobset("export", "--bundle", run.bundle, "--format", fmt,
+               "--to", to)
+    assert r.exit_code == 0, r.output
+    return r.output
+
+
+def _listing(folder):
+    return sorted(str(f.relative_to(folder)) for f in folder.rglob("*")
+                  if ".git" not in f.parts and ".binsnapshots" not in f.parts)
+
+
+def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
+                                                   tmp_path):
+    """§ 2a.12, *Export*: the command's NetCDF is the data file `summarize
+    task` wrote, variable for variable; its CSV is the same values as long
+    tables -- T(E) at each frame, voltage and energy -- with their README;
+    the report's route hands the tables over as one zip, named; and nothing
+    is written into the calculation's folder.  The silent failure: an export
+    whose numbers are not the data file's, or which leaves files in the
+    calculation."""
+    import csv
+    import io
+    import zipfile
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.datafile import data_file_path, read_data_file
+    from molbuilder.web.app import create_app
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.road import jobset
+    run = junction.from_pair
+    label = task_of(run.bundle).label
+    before = _listing(run.bundle)
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    inside = jobset("export", "--bundle", run.bundle, "--format", "csv",
+                    "--to", run.bundle / "out")
+    assert inside.exit_code != 0 and "inside the calculation" in (
+        inside.output), inside.output
+    _export(junction, monkeypatch, run, "netcdf", tmp_path)
+    _export(junction, monkeypatch, run, "csv", tmp_path)
+    assert _listing(run.bundle) == before, "nothing written in it"
+    want = read_data_file(data_file_path(run.bundle, label))["variables"]
+    got = read_data_file(tmp_path / f"{label}.transport.nc")["variables"]
+    assert sorted(got) == sorted(want)
+    for name, v in want.items():
+        a, b = np.asarray(v["data"]), np.asarray(got[name]["data"])
+        same = (np.allclose(a, b, equal_nan=True, rtol=0, atol=0)
+                if a.dtype.kind == "f" else np.array_equal(a, b))
+        assert same, name
+    rows = list(csv.DictReader(io.StringIO(
+        (tmp_path / f"{label}.transport-csv"
+         / "frame_bias_v_energy_ev.csv").read_text())))
+    T = np.asarray(want["transmission"]["data"])
+    E = np.asarray(want["energy_ev"]["data"])
+    for r in rows:
+        f = int(r["frame"])
+        b = list(_BIAS).index(float(r["bias_v"]))
+        e = int(np.argmin(np.abs(E - float(r["energy_ev"]))))
+        assert float(r["transmission"]) == T[f, b, e], r
+    assert len(rows) == T.size
+    readme = (tmp_path / f"{label}.transport-csv" / "README.txt").read_text()
+    assert "frame_bias_v_energy_ev.csv" in readme and "transmission:" in readme
+    answer = create_app(config={}).test_client().get(
+        f"/api/transport/export?path={run.bundle / 'task.json'}&format=csv")
+    assert answer.status_code == 200, answer.get_json()
+    assert (f"{label}.transport-csv.zip"
+            in answer.headers["Content-Disposition"])
+    names = zipfile.ZipFile(io.BytesIO(answer.data)).namelist()
+    assert f"{label}.transport-csv/README.txt" in names
+    assert f"{label}.transport-csv/frame_bias_v_energy_ev.csv" in names
+
+
+def test_an_export_reads_no_data_file_and_says_what_is_missing(
+        junction, monkeypatch, tmp_path):
+    """§ 2a.12, *Export* (the user, 2026-10-23: "the export should only
+    contain information that is already processed"): a point whose DOS per
+    orbital is not kept exports without its DOS by region -- its reading
+    said `not read yet` in the file, the export's own line saying how many
+    and how to read them -- and no data file is read: its digest is still
+    not there after.  The silent failure: an export reading a cluster's
+    gigabytes on a press of a button, or one whose empty regions say
+    nothing of why."""
+    import shutil
+    from molbuilder.parse.engines.tbtrans_nc import data_files, digest_of
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.datafile import read_data_file
+    run = junction
+    label = task_of(run.bundle).label
+    data = data_files(_point(run, "05_transmission", 0, _BIAS[0]),
+                      label)["unpolarized"]
+    kept = tmp_path / "kept.digest.nc"
+    shutil.move(str(digest_of(data)), str(kept))
+    try:
+        out = _export(junction, monkeypatch, run, "netcdf", tmp_path)
+        assert "1 finished point exports without its DOS by region" in out, out
+        assert not digest_of(data).exists(), "the export read a data file"
+        V = {k: v["data"] for k, v in read_data_file(
+            tmp_path / f"{label}.transport.nc")["variables"].items()}
+        b = list(_BIAS).index(_BIAS[0])
+        assert "not read yet" in str(V["dos_per_orbital_reading"][0, b])
+        assert np.isnan(np.asarray(V["dos_region"][0, b], float)).all()
+    finally:
+        shutil.move(str(kept), str(digest_of(data)))
+
+
+def test_the_files_say_which_index_their_atoms_are_listed_by(junction):
+    """`model/overview.md` § 2.2b: the data file is listed by user index,
+    each atom's engine index the composed junction's order record's; a
+    point's digest by engine index, each atom's user index the same
+    record's; `molbuilder atom-index` says so of the point's folder and maps
+    an index each way.  The silent failure: a script asking sisl about the
+    wrong atoms, nothing in its file it could have checked."""
+    from molbuilder.atom_index import atom_index_map
+    from molbuilder.parse.engines.tbtrans_nc import data_files, digest_of
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.compose import recorded_junction
+    from molbuilder.transport.datafile import data_file_path
+    from support.road import molbuilder
+    run = junction
+    label = task_of(run.bundle).label
+    composed = recorded_junction(run.bundle).structure
+    n, record = composed.n_atoms, composed.atom_order
+    # THE RECORD'S OWN LISTS, as its sidecar states them -- the expectation,
+    # never the map's code.
+    engine_of_user = (list(record.original_to_sorted) if record is not None
+                      else list(range(n)))
+    user_of_engine = (list(record.sorted_to_original) if record is not None
+                      else list(range(n)))
+    data = atom_index_map(data_file_path(run.bundle, label))
+    assert (data.listed_by, list(data.user), list(data.engine)) == (
+        "user_index", list(range(n)), engine_of_user)
+    point = _point(run, "05_transmission", 0, _BIAS[0])
+    digest = digest_of(data_files(point, label)["unpolarized"])
+    kept = atom_index_map(digest)
+    assert (kept.listed_by, list(kept.user), list(kept.engine)) == (
+        "engine_index", user_of_engine, list(range(n)))
+    assert kept.stated_by == str(digest)
+    out = molbuilder("atom-index", str(point), "--to-engine", "0").output
+    assert f"user index 0 -> engine index {engine_of_user[0]}" in out, out
+    out = molbuilder("atom-index", str(point), "--to-user",
+                     str(engine_of_user[0])).output
+    assert "-> user index 0" in out, out
+    # A LEAD'S FILE GATHERED INTO THE DEVICE RUN is its electrode cell's own
+    # (§ 2.2a, I6) -- refused, never answered with the junction's map.
+    from molbuilder.identity import rung_label
+    from molbuilder.atom_index import AtomIndexUnknown
+    lead = (_point(run, "04_device", 0, _BIAS[0])
+            / f"{rung_label(label, 'electrode_L')}.TSHS")
+    with pytest.raises(AtomIndexUnknown, match="electrode_L rung's file"):
+        atom_index_map(lead)
+    # ...AND IN ITS OWN RUN it is that run's, a structure of its own: the
+    # engine column alone.
+    own = atom_index_map(run.bundle / "02_electrode_L" / "run-0"
+                         / f"{rung_label(label, 'electrode_L')}.XV")
+    assert (own.listed_by, own.user) == ("engine_index", None), own
+
+
+def test_an_older_junction_is_refused_to_an_editor_and_marked_for_a_viewer(
+        junction, tmp_path):
+    """`model/overview.md` § 2.2a, I8, I9; § 2.2b, F4: the composed junction
+    whose sidecar states no order record -- written before the field --
+    is refused to an editor's read and a builder's, and opened for a viewer
+    marked `order_unstated` and said; a save from that view states
+    `not_stated`.  On a copy of the calculation's records and its junction,
+    the sidecar as a molbuilder before v14 wrote it.  The silent failure:
+    TranSIESTA's order opened and saved as the user's."""
+    import json
+    import shutil
+    from molbuilder.runfiles import JUNCTION_FILE, JUNCTION_SIDECAR_FILE
+    from molbuilder.workingcopy_structure import (ORDER_UNSTATED,
+                                                  StructureCodec)
+    run = junction.single
+    calc = tmp_path / "P" / "transport" / run.bundle.name
+    calc.mkdir(parents=True)
+    for f in run.bundle.iterdir():
+        if f.is_file():
+            shutil.copy(f, calc / f.name)
+    side = calc / JUNCTION_SIDECAR_FILE
+    payload = json.loads(side.read_text())
+    del payload["atom_order"], payload["atom_index_map"]
+    side.write_text(json.dumps({**payload, "schema_version": 13}))
+    with pytest.raises(ValueError, match="states no order record"):
+        StructureCodec().load(calc / JUNCTION_FILE, frames=True,
+                              in_user_order=True, said_out=[])
+    said: list = []
+    seen = StructureCodec().load(calc / JUNCTION_FILE, frames=True,
+                                 said_out=said, opened=(ORDER_UNSTATED,))
+    assert seen.order_unstated and [n.where for n in said] == [
+        ORDER_UNSTATED], said
+    out = tmp_path / "saved.xyz"
+    StructureCodec().write(seen.frame_at(0), out)
+    written = json.loads(out.with_suffix(".molstruct.json").read_text())
+    assert written["atom_index_map"]["atoms_listed_by"] == "not_stated"
+
+
+def test_a_scripts_parse_keeps_a_reading_that_states_both_indices(
+        junction, tmp_path):
+    """`model/parse.md` § 3, § 5e: `molbuilder.postprocess.parse` of a
+    transmission point's `.TBT.nc` hands the parser the point's run's map,
+    so the reading it keeps states each atom's user and engine index -- as
+    the report's own reading does.  The silent failure: a person's script
+    keeping a reading the report then calls out of date, reading the
+    cluster's gigabytes again."""
+    import shutil
+    from molbuilder.atom_index import atom_index_map
+    from molbuilder.parse.engines.tbtrans_nc import data_files, digest_of
+    from molbuilder.postprocess import parse
+    from molbuilder.task import of as task_of
+    run = junction
+    label = task_of(run.bundle).label
+    data = data_files(_point(run, "05_transmission", 0, _BIAS[0]),
+                      label)["unpolarized"]
+    kept = tmp_path / "kept.digest.nc"
+    shutil.move(str(digest_of(data)), str(kept))
+    try:
+        got = parse(data)
+        want = atom_index_map(data.parent)
+        assert (got.atom_index_map.user, got.atom_index_map.engine) == (
+            want.user, want.engine), got.atom_index_map
+        written = atom_index_map(digest_of(data))
+        assert (written.user, written.engine) == (want.user, want.engine)
+    finally:
+        digest_of(data).unlink(missing_ok=True)
+        shutil.move(str(kept), str(digest_of(data)))
+
+
+def test_a_scripts_read_structure_gives_the_map_of_what_it_returns(junction):
+    """`model/parse.md` § 3; `model/overview.md` § 2.2b:
+    `postprocess.read_structure` of the calculation's junction -- the
+    engine's record, its atoms in TranSIESTA's order -- returns it in the
+    user order with the atom index map OF THAT STRUCTURE: listed by user
+    index, row u's engine index the row of the engine's record that atom is.
+    The silent failure: a script asks sisl about row u of the returned
+    structure through the file's own map, listed by engine index -- another
+    atom."""
+    from molbuilder.postprocess import read_structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    path = junction.bundle / _record(junction)["junction_file"]
+    struct, atoms, _said = read_structure(path)
+    record = StructureCodec().load(path)
+    assert atoms.listed_by == "user_index"
+    assert list(atoms.engine) != list(range(struct.n_atoms)), (
+        "the junction's sort moved no atom: this row bounds nothing")
+    for u in range(struct.n_atoms):
+        assert np.allclose(struct.positions[u],
+                           record.positions[atoms.engine[u]]), u
+
+
+def test_the_data_file_holds_the_calculations_own_records(junction):
+    """§ 2a.12, *the data file* (@4): the calculation's own records -- its
+    description, template and job request, each the file's text -- the
+    provenance chain, and each point's transmission k-points, as the
+    record states them.  The silent failure: a result no one can rerun or
+    compare, its settings left behind."""
+    from molbuilder.job_request import path_of as request_path
+    from molbuilder.task import of as task_of, path_of as task_path
+    from molbuilder.template_file import template_path
+    from molbuilder.transport.datafile import data_file_path, read_data_file
+    run = junction
+    label = task_of(run.bundle).label
+    got = read_data_file(data_file_path(run.bundle, label))
+    attrs = got["attrs"]
+    assert attrs["description"] == task_path(run.bundle).read_text()
+    assert attrs["template"] == template_path(run.bundle, label).read_text()
+    assert attrs["job_request"] == request_path(run.bundle).read_text()
+    rec = _record(run)
+    assert json.loads(attrs["provenance_chain"]) == rec["provenance"]["chain"]
+    V = {k: v["data"] for k, v in got["variables"].items()}
+    for p in rec["points"]:
+        b = list(_BIAS).index(p["bias_v"])
+        assert V["tbt_k_points"][0, b] == p["k_points"], p
+        assert V["tbt_k_method"][0, b] == p["k_method"], p
+
+
+def test_a_ladder_without_a_transmission_exports_what_exists(
+        junction, monkeypatch, tmp_path):
+    """§ 2a.12, *Export* (the user, 2026-10-22: "export what exists"): a
+    calculation whose transmission never ran exports its rungs' facts and
+    every SCF history -- the seed's, the leads', the device's -- its energy
+    axis empty, where `summarize task` refuses.  The silent failure: the
+    convergence of a ladder still running out of reach until it ends --
+    and why each value is what it is: each run's state in the run door's
+    sentence, and at every voltage why there is no frames' average, as the
+    record says them."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.datafile import read_data_file
+    from molbuilder.transport.record import collect_record
+    run = junction.single
+    _export(junction, monkeypatch, run, "netcdf", tmp_path)
+    V = {k: v["data"] for k, v in read_data_file(
+        tmp_path / f"{task_of(run.bundle).label}.transport.nc")[
+            "variables"].items()}
+    assert len(V["energy_ev"]) == 0
+    assert list(V["rung"]) == ["seed", "electrode_L", "electrode_R"]
+    assert all(n > 0 for n in V["rung_scf_cycles"]), V["rung_scf_cycles"]
+    assert (np.asarray(V["device_scf_cycles"]) > 0).all()
+    assert not np.asarray(V["done"]).any()
+    rec = collect_record(open_calculation(run.bundle), partial=True)
+    stage = {s["stage"]: s for s in rec["stages"]}
+    assert [V["rung_detail"][r] for r in range(3)] == [
+        stage[n]["detail"] for n in V["rung"]]
+    assert all(V["rung_detail"]), V["rung_detail"]
+    device = stage["device"].get("by_point") or [stage["device"]]
+    assert set(np.asarray(V["device_detail"]).ravel()) == {
+        d["detail"] for d in device}
+    assert list(V["average_why"]) == [rec["average"]["why"]] * len(
+        V["bias_v"]), V["average_why"]
 
 
 def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
@@ -2159,7 +2482,7 @@ def test_a_selections_pdos_is_asked_at_its_frame_and_voltage(junction, ask):
     orbitals, so every atom of the junction (the device region's counted,
     the rest named outside it) is that point's total DOS, and the bridge's
     atoms its bridge's, as the record states them, and no other point's; the
-    atoms named in your order, asked and answered (`model/overview.md`
+    atoms named in the user order, asked and answered (`model/overview.md`
     § 2.2a, I1); a frame set's point names its frame, one structure's names
     none, and either asked otherwise is refused by name (`web/web-api.md`,
     `/api/transport/pdos`)."""
@@ -2324,11 +2647,11 @@ def test_one_reading_of_a_data_file_at_a_time(junction, tmp_path, case):
         == [digest.name], beside
 
 
-def test_the_report_draws_the_junction_in_your_order(junction, page,
+def test_the_report_draws_the_junction_in_the_user_order(junction, page,
                                                      monkeypatch):
     """`web/results.md` § 2.5, § 3; `model/overview.md` § 2.2a, I1: the
     transport report draws the composed junction -- the engine's record, in
-    TranSIESTA's order -- put back in your order, the order its PDOS
+    TranSIESTA's order -- put back in the user order, the order its PDOS
     selections are named in, and says so: the viewer's notice names the
     order the file was in, and no line says its atoms are in the engine's
     order.  Mounted through the registry with the page's default context, on
@@ -2364,7 +2687,7 @@ def test_the_report_draws_the_junction_in_your_order(junction, page,
         assert name == "transport", name
         page.wait_for_function(
             "() => [...document.querySelectorAll('.molviewer-notices')]"
-            "      .some((n) => n.textContent.includes('put back in your order'))",
+            "      .some((n) => n.textContent.includes('put back in the user order'))",
             timeout=30000)
         notices = " ".join(page.locator(".molviewer-notices").all_inner_texts())
         assert "TranSIESTA's order" in notices, notices

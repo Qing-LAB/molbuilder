@@ -18,7 +18,7 @@ figure TBtrans printed and the factor between them (:data:`CURRENT_MEANS`)
 -- and the provenance that says which junction built it — the citation (from
 ``slot-provenance.json``).  The junction it names (``junction_file``)
 carries its own order record in its sidecar (`model/overview.md` § 2.2a), so
-every index in the engine's order goes back to yours.
+every index in the engine's order goes back to the user order.
 
 Reading is ASYNCHRONOUS by design, the same doctrine as the bench
 summarizer: a point whose transmission has not run yet reads as
@@ -82,11 +82,11 @@ CURRENT_MEANS = {
         "TBtrans prints one spin channel's (its Landauer integral has no "
         "factor 2 for spin), and the two channels of a non-polarized "
         "calculation carry the same current, so the total is twice the "
-        "printed figure (current_a_printed, as TBtrans printed it)."),
+        "figure TBtrans printed."),
     "polarized": (
         "current_a is the junction's total current, the sum of its two spin "
         "channels' currents as TBtrans printed each (empty when it printed "
-        "only one); current_a_printed is the channel it printed first."),
+        "only one)."),
     # A POINT THAT SHARES ENERGIES with a finished calculation's point
     # (`engines/transport.md` § 2a.16): TBtrans printed its own run's
     # energies' current alone.
@@ -95,8 +95,9 @@ CURRENT_MEANS = {
         "finished calculation's point: its current_a is the record's, over "
         "its joined grid -- each energy's transmission, times the grid's "
         "spacing, times the two leads' Fermi functions' difference, G0 times "
-        "the sum (TBtrans's own rule) -- and current_a_printed is none, "
-        "TBtrans having printed its own run's energies' current alone."),
+        "the sum (TBtrans's own rule) -- and no figure TBtrans printed "
+        "is its current, TBtrans having printed its own run's energies' "
+        "current alone."),
 }
 
 #: THE CAVEAT that goes with any DFT-NEGF conductance (`engines/transport.md`
@@ -758,7 +759,9 @@ def _rung_points(base: Path, task, name: str, token: str,
 def device_regions(junction) -> Dict[str, List[int]]:
     """The device's regions molbuilder owns -- L-electrode, bridge,
     R-electrode -- as atom indices (0-based, the composed junction's order,
-    which is every rung's deck's), from the calculation's composed junction
+    which is the seed's, the device's and the transmission's decks' -- each
+    electrode rung lists a cell of its own), from the calculation's composed
+    junction
     (`compose.recorded_junction`).  ``{}`` before it is composed
     (``None``)."""
     from .sort import ELECTRODE_LABELS, REGION_BRIDGE
@@ -791,6 +794,16 @@ def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
             row["points"] = list(st["taken"])
         out.append(row)
     return out
+
+
+def not_transport(calc) -> Optional[str]:
+    """Why the calculation ``calc`` (`calculation.open`) answers no transport
+    door -- it is another kind -- or ``None``: the one sentence the
+    transport routes and an export refuse with."""
+    if calc.task.calculation == "transport":
+        return None
+    return (f"{Path(calc.base).name} is a {calc.task.calculation} "
+            f"calculation, not a transport one")
 
 
 def collect_record(calc, *, partial: bool = False) -> Dict:
@@ -838,6 +851,13 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     home = stage_home(base, task, "transmission")
     token, names = home.token, home.names(task.shape)
     regions = device_regions(junction)
+    # THE JUNCTION'S ATOM INDEX MAP -- every junction rung's deck written from
+    # it -- which each point's kept reading must state (`model/overview.md`
+    # § 2.2b, F7).
+    from ..atom_permutation import AtomIndexMap
+    junction_atoms = (AtomIndexMap.of_engine_record(junction.atom_order,
+                                                    junction.n_atoms)
+                      if junction is not None else None)
     stages = _stage_facts(calc, task.label)
     # A POINT NOT OPENED stands where its rung does -- the ready door's
     # `ready` / `waiting` and what for, on the rung's row (prep opens every
@@ -942,7 +962,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # point's two channels summed with each spin's own beside
         # (`tbtnc.point_dos`; `web/results.md` § 2.5).
         def _dos(folder, spin=spin):
-            return point_dos(folder, task.label, regions, spin)
+            return point_dos(folder, task.label, regions, spin,
+                             junction_atoms)
         dos = None
         dos_why = None
         try:
@@ -1131,22 +1152,26 @@ def order_unstated_said(base: Path, recorded) -> Optional[str]:
     return f"{recorded.order_unstated}.  {order_recorded(base=base)}"
 
 
-def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
+def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
                    frame: Optional[int] = None) -> Dict:
-    """The PDOS of ``atoms`` at the point (``frame``, ``bias_v``), narrowed
-    to one orbital type (`tbtnc.selection_pdos`; `web/results.md` § 2.5):
-    read from that point's transmission run's ``.TBT.nc``, each orbital's
-    type from the device run's ``.ORB_INDX`` at the same point -- the two
-    runs share the composed junction's atom order.  ``atoms`` are named in
-    your order, the order the report draws the junction in, and so are the
-    answer's ``atoms`` and ``outside_device`` (`model/overview.md` § 2.2a,
-    I1, I3).  ``frame`` is the frame's index, named for a frame set and for
-    nothing else.  :class:`RecordError` names what is missing."""
+    """The PDOS of ``atoms`` at the point (``frame``, ``bias_v``) of the
+    transport calculation ``calc`` (`calculation.open`), narrowed to one
+    orbital type (`tbtnc.selection_pdos`; `web/results.md` § 2.5): read from
+    that point's kept reading of its transmission run's data file, each
+    orbital's type from the device run's ``.ORB_INDX`` at the same point --
+    the two runs share the composed junction's atom order.  ``atoms`` are
+    named in the user order, the order the report draws the junction in,
+    and so are the answer's ``atoms`` and ``outside_device``
+    (`model/overview.md` § 2.2a, I1, I3); an index that is not one of the
+    junction's atoms is refused by name.  ``frame`` is the frame's index,
+    named for a frame set and for nothing else.  :class:`RecordError` names
+    what is missing."""
+    from ..atom_permutation import AtomIndexError
     from ..structure import frame_words
     from .stages import Point, frames_of, same_volts
     from ..parse.engines.tbtrans_nc import data_files
     from .tbtnc import TbtError, selection_pdos as _pdos
-    base = Path(base_dir)
+    base, task = Path(calc.base), calc.task
     n = frames_of(base)
     # THE POINT IS A FRAME AND A VOLTAGE (`engines/transport.md` § 2a.9):
     # a frame set's names its frame, one structure's names none.
@@ -1157,6 +1182,10 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
         raise RecordError(f"this calculation cites one structure, so a "
                           f"point names no frame: leave out "
                           f"{frame_words(int(frame))}")
+    if frame is not None and (isinstance(frame, bool)
+                              or int(frame) != frame):
+        raise RecordError(f"a frame is named by its index, a whole number: "
+                          f"{frame!r}")
     if frame is not None and not 0 <= int(frame) < n:
         raise RecordError(f"{frame_words(int(frame))} is not one of this "
                           f"calculation's {n} frame(s): 0 … {n - 1}")
@@ -1183,7 +1212,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     # THE SELECTION CROSSES INTO THE JUNCTION'S ORDER through its own order
     # record, and the answer's atoms back (`model/overview.md` § 2.2a, I3):
     # the runs list the atoms as the composed junction does.  A record that
-    # states no order names no atom in yours (I9).
+    # states no order names no atom in the user order (I9).
     from .compose import recorded_junction
     recorded = recorded_junction(base)
     unstated = order_unstated_said(base, recorded)
@@ -1205,20 +1234,34 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     from ..runs import run_of
     dev_run = run_of(dev) if dev is not None else None
     orb = dev_run.on_label(".ORB_INDX") if dev_run is not None else None
+    # THE SELECTION, each atom one of the junction's -- refused by name
+    # otherwise, never wrapped (`model/overview.md` § 2.2a).
+    try:
+        mine = junction.map_from_user_index(atoms)
+    except AtomIndexError as exc:
+        raise RecordError(str(exc)) from exc
+    # THE JUNCTION'S ATOM INDEX MAP, which each reading's must be (F7).
+    from ..atom_permutation import AtomIndexMap
+    junction_atoms = AtomIndexMap.of_engine_record(junction.atom_order,
+                                                   junction.n_atoms)
     try:
         # THE POINT IT WAS READ AT, stated beside the answer: under the
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
         from .energies import joined
-        mine = junction.indices_of_yours(atoms)
         got = joined(where, lambda f: _pdos(f, task.label, orb, mine,
-                                            orbitals))
+                                            orbitals,
+                                            expected=junction_atoms))
         return {**got,
-                "atoms": sorted(junction.your_indices(got["atoms"])),
+                "atoms": sorted(junction.map_to_user_index(got["atoms"])),
                 "outside_device": sorted(
-                    junction.your_indices(got["outside_device"])),
+                    junction.map_to_user_index(got["outside_device"])),
                 "point": Point(frame=read_at.frame, volts=read_at.volts,
                                of=want.of).to_wire()}
-    except (TbtError, OSError, ValueError) as exc:
+    except TbtError as exc:
+        # THE READER'S REFUSAL, in its words -- naming its file where a
+        # file is what it is about.
+        raise RecordError(str(exc)) from exc
+    except (OSError, ValueError) as exc:
         # A FILE THAT DOES NOT READ is a refusal in its words, as the record
         # says every other one.
         raise RecordError(f"{', '.join(p.name for p in ncs.values())}: "

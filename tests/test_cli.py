@@ -487,13 +487,13 @@ def test_modify_stdin_stdout_pipe(tmp_path, monkeypatch, capsys):
 #: order, said naming the file and the order in its words (§ 2.2a, I8), so
 #: index 0 is your first oxygen, not the carbon.
 _AGREEMENT_ROWS = [
-    dict(name="a file in your order", remapped=False, delete="1",
+    dict(name="a file in the user order", remapped=False, delete="1",
          said=("count from 0", "atom index 1 (C)", "--yes"),
          left=["S", "C", "S"]),
-    dict(name="an engine's record, opened in your order: the indices count "
-              "in yours", remapped=True, delete="0",
+    dict(name="an engine's record, opened in the user order: the indices count "
+              "in the user order", remapped=True, delete="0",
          said=("in.xyz", "held atoms first", "count from 0",
-               "count in your order", "atom index 0 (O)", "--yes"),
+               "count in the user order", "atom index 0 (O)", "--yes"),
          left=["O", "C"]),
 ]
 
@@ -507,7 +507,7 @@ def test_modify_asks_to_agree_that_atom_indices_count_from_0(row, tmp_path):
     acts only once that is agreed: with no one to ask (no terminal) it is
     refused, naming `--yes`, and writes nothing; agreed, the atom at that
     index is the one that goes.  `modify` is an editor (§ 2.2a, I8): a file
-    in an engine's order is opened in yours, said, and the indices count in
+    in an engine's order is opened in the user order, said, and the indices count in
     yours."""
     from click.testing import CliRunner
     from molbuilder.workingcopy_structure import StructureCodec

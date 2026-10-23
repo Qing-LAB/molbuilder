@@ -19,6 +19,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
+from .engine_atom_index import pdb_numbering
 from .structure import Structure
 
 # Provenance strings surfaced to the user (build.py -> the result banner).
@@ -152,7 +153,7 @@ def _struct_from_rdkit(mol, smiles, title) -> Structure:
         p = conf.GetAtomPosition(i)
         elements.append(sym)
         positions.append([p.x, p.y, p.z])
-        atom_names.append(f"{sym}{i + 1}")
+        atom_names.append(f"{sym}{pdb_numbering(i)}")
     return Structure(
         elements=elements,
         positions=np.asarray(positions, dtype=float),
@@ -184,7 +185,7 @@ def _openbabel_build(pybel, smiles, title, optimize, rdkit_stage) -> Tuple[Struc
         sym = pybel.ob.GetSymbol(atom.atomicnum)
         elements.append(sym)
         positions.append(list(atom.coords))
-        atom_names.append(f"{sym}{i + 1}")
+        atom_names.append(f"{sym}{pdb_numbering(i)}")
     if not elements:
         raise ValueError(
             f"OpenBabel produced no atoms for SMILES {smiles!r}.")

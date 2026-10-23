@@ -27,7 +27,7 @@ from molbuilder.transport.sort import SORT_TRANSPORT, SortError, sort_by
 
 def _junction(shuffle=True, extra=()):
     """Au(2 layers)-S-C-C-S-Au(2 layers) along z, one atom per layer,
-    deliberately interleaved in the input order when ``shuffle``.
+    deliberately interleaved in the user order when ``shuffle``.
     ``extra`` rows are appended AFTER the shuffle (post_init fills the
     parallel arrays, so atoms must all exist at construction)."""
     # (element, z, partition)
@@ -159,7 +159,27 @@ class TestBookkeepingCrossesTheSort:
             got.positions[tagged, 2] == 5.0 and val == -0.3
         # parallel array rides with its atom
         for j, name in enumerate(got.atom_names):
-            assert name == f"n{got.your_indices([j])[0]}"
+            assert name == f"n{got.map_to_user_index([j])[0]}"
+
+    def test_an_index_that_is_no_atom_is_refused_never_wrapped(self):
+        """`model/overview.md` § 2.2a, *Forbidden*: every map door refuses an
+        atom index that is not one of the structure's atoms -- ``-1`` is no
+        atom, never the last one -- the sorted copy's order record, a
+        structure in the user order and the atom index map alike.  The
+        silent failure: a selection's ``-1`` asked of the engine's data
+        answers the last atom's DOS."""
+        from molbuilder.atom_permutation import AtomIndexError, AtomIndexMap
+        struct, _ = _junction(shuffle=True)
+        got = sort_by(struct, SORT_TRANSPORT).structure
+        n = got.n_atoms
+        atoms = AtomIndexMap.of_engine_record(got.atom_order, n)
+        for door in (got.map_to_user_index, got.map_from_user_index,
+                     struct.map_from_user_index, atoms.map_to_engine_index,
+                     atoms.map_to_user_index):
+            for bad in (-1, n):
+                with pytest.raises(AtomIndexError,
+                                   match=f" {bad} is not one of the {n} atoms"):
+                    door([bad])
 
     def test_cell_title_vacuum_are_untouched(self):
         struct, _ = _junction(shuffle=True)

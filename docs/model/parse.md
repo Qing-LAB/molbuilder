@@ -446,6 +446,30 @@ flowchart TD
 | `parse(path)` | `detect` + `parse` in one call |
 | `register(parser)` | add a parser at module-init time (idempotent; not for runtime registration) |
 
+**One layer a notebook imports — the post-processing layer,
+`molbuilder.postprocess`** *(the user, 2026-10-23: "this has to be part of
+the module … that the user would be able to import and use as a unified
+layer for post-processing")*. This package is floor 1 and knows no
+calculation, so the layer sits above it and above the run door, and only
+gathers what is already there, one import for a person's script:
+
+| name | what it is, and whose |
+|---|---|
+| `parse(path)` | this registry's: an engine's file, a run's file → its result — a TBtrans data file handed its run's atom index map by the layer, which knows the run (`atom_index_map`), so the reading it keeps states both columns (§ 5e) |
+| `read_structure(path)` | a structure pair through the codec's read, **in the user order** — an engine's record (a calculation's `junction.xyz`) put back through its order record — as `(structure, atoms, said)`: `atoms` the atom index map of the structure returned (an engine's record's map relisted by user index, `AtomIndexMap.as_listed_by_user`), `said` what the read says, a line each ([`model/overview.md`](?doc=model/overview.md) § 2.2a, I8; § 2.2b) |
+| `atom_index_map(path)` | the run door's floor: which index a file's atoms are listed by, and both indices of each ([`model/overview.md`](?doc=model/overview.md) § 2.2b) |
+| `read_transport_data(path)` | a transport calculation's data file, `<label>.transport.nc` (`transport.datafile.read_data_file`), with its atom index map |
+| `read_spectra_data(path)` | a vibration result's data file, `<label>.spectra.nc` (`spectra.datafile.read_spectra_data`), with its atom index map |
+
+`from molbuilder.postprocess import parse, atom_index_map,
+read_transport_data` — molbuilder's own doors ask the same functions at
+their own floors; nothing in the layer is a second reader. Every file it
+opens, it opens through the one door, one access a handle (§ 5e, *One door
+for every NetCDF file*). It imports with
+the notebook env's packages alone ([`web/jupyter.md`](?doc=web/jupyter.md)
+§ 7), and the worked examples a person starts from are the post-processing
+documents ([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)).
+
 **Errors** (`errors.py`): `UnknownFormatError` and `AmbiguousFormatError`, both on a `ParseError`
 base.
 
@@ -462,7 +486,7 @@ greppable.)*
 
 ```python
 from pathlib import Path
-from molbuilder.parse import parse
+from molbuilder.postprocess import parse    # the layer a script imports (§ 3)
 
 r = parse(Path("projects/BDT/optimization/BDT.out"))
 if r.result_kind == "trajectory":            # a SIESTA / PySCF / molwatch .out
@@ -1334,9 +1358,10 @@ Units come from each variable's own `unit` attribute (`xa` is Bohr while
 rather than assumed — a wrong factor is invisible in the result and wrong by a
 fixed ratio in every number downstream.
 
-Reading uses `netCDF4` when present and falls back to `scipy.io.netcdf_file`;
-both are exercised by the tests, because `molbuilder-pySCF` has scipy and no
-netCDF4.
+Reading goes through the one door for every NetCDF file
+([`model/datafiles.md`](?doc=model/datafiles.md) § 4, `ncdata.reading`), netCDF4's — which every env that reads it carries (the
+host's for the data files; `molbuilder-pySCF` since its result's data file,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 6.10.6).
 
 ---
 
@@ -1968,13 +1993,14 @@ one writer and its one reader:
 
 A digest is written through the variable record every NetCDF file
 molbuilder writes shares (`ncdata`: each variable's kind, units, words and
-source) and handed whole to the one writer (`persist.write_bytes`), so a
+source — [`model/datafiles.md`](?doc=model/datafiles.md) § 2–3) and handed
+whole to the one writer (`persist.write_bytes`), so a
 reading cut short leaves none; a digest of another version, or one that
 does not hold a reading, is no kept reading. Whether one is current is
 read from its attributes alone, never its tables.
 
 **The digest describes itself, so a person's own script may read it alone**
-(NetCDF-4, `molbuilder/tbt-digest@1`, every variable with its units and what
+(NetCDF-4, `molbuilder/tbt-digest@2`, every variable with its units and what
 it is): the energies relative to the leads' Fermi level (eV, full precision);
 the device's DOS per orbital (1/eV) with each column's orbital and atom and
 the geometry's first orbital of each atom; each atom's position and the cell
@@ -1985,11 +2011,25 @@ weights; each electrode's name, chemical potential and temperature (eV), the
 device's η; TBtrans's own k-averaged T(E), eigenchannels, total DOS and the
 leads' DOS, each naming the text file it came from; and the data file's
 name, size, time and what it states of itself, with the molbuilder that read
-it. **What it does not hold, it says**: the atom order is TBtrans's geometry
-— TranSIESTA's order, the device run's — and a molbuilder calculation's
-junction records the way back to yours (the calculation's
-`<label>.transport.nc` is in yours); each orbital's type is the device run's
-`<label>.ORB_INDX`, which the data file does not state.
+it. **Its atoms are listed by engine index** — TBtrans's geometry,
+TranSIESTA's order, the device run's — **and it carries its atom index map**
+([`model/overview.md`](?doc=model/overview.md) § 2.2b, *since 2.32.0*,
+`@2`): `atoms_listed_by` `engine_index`, `atom_index_base` `0`, and per atom
+`engine_atom_index` and `user_atom_index` — **handed to the parser by the
+caller that knows the run** (`tbtnc.read_points` asks the run door for the
+point's map; a point's `shared/` files take the point's; the post-processing
+layer's `parse` asks `atom_index_map`), the parser knowing no calculation
+(floor 1); `column_atom` and `device_atom` count by engine
+index, marked so. A data file no run of ours holds has no run to answer: its
+digest states `engine_index` and no user index, its `atom_index_why` saying
+so (F3). **A digest
+that states no user index for a file a run of ours holds reads as out of
+date** — the next reading writes it whole. The `@1` digest's prose
+`atom_order` attribute is not written at `@2`; the map says it. **What it does not hold, it says**: each orbital's type
+is the device run's `<label>.ORB_INDX`, which the data file does not state. A
+digest `@1` (2.31.x) holds the same reading without the map: `jobset migrate`
+writes the map into it from its run's deck, the data file never read again
+(§ 2.2b); left as it is, it reads as out of date, as any other version does.
 
 **One reading of a data file at a time, wherever it is asked** *(the user,
 2026-10-22: "how do you avoid accidental multiple digest generator to
@@ -2015,15 +2055,15 @@ far, and *Take over* — `take_over`, on the person's word — removes it and
 reads in its place; a reading whose claim is taken over stops at its next
 k-point. Nothing guesses a timeout.
 
-**One NetCDF access at a time in the process** (`ncdata.NC_LOCK`): the
-netCDF-C library is not thread-safe, and netCDF4 lets other threads run while
-it works, so two request threads inside it at once can crash the server
-(measured 2026-10-22: two readings and two pages asking states, in one
-process, segfaulted in 2 of 3 runs). Every NetCDF open, read and write
-molbuilder makes holds the one lock — this parser's, a data file one k-point
-at a time; a relaxation's `.MD.nc` (§ 5d); the transport and vibration data
-files — so a reading in one request lets the page's other requests in
-between its k-points.
+**Every NetCDF file this parser opens goes through the one door** — one
+access, one handle, closed before the next; the measured failures that make
+the rule, and the rule for every data file molbuilder keeps, are
+[`model/datafiles.md`](?doc=model/datafiles.md) § 4. This parser's long
+reading is a series of accesses, one k-point an access (113 opens on Sol's
+AuBDTAu point: 1.4 s held, 5.6 s reopened, on this workstation's disk) — so
+the page's other requests run between its steps and never meet a held
+handle — each step checking the data file is the version the reading began
+with, and refusing a file that changed rather than mix two.
 
 **A data file's tables are read on a person's word, never as a side effect
 of looking — and only a finished point's.** The run door, the run record and

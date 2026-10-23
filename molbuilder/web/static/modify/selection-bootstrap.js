@@ -306,7 +306,7 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
                 window.molbuilder.status.set("status", text, kind);
             const load = async (which) => {
                 try {
-                    /* AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md`
+                    /* AN EDITOR HOLDS ONLY THE USER ORDER (`model/overview.md`
                      * § 2.2a, I8): a file in an engine's order is answered
                      * restored, and the answer says so -- said below with
                      * what the read said. */

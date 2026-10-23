@@ -1113,7 +1113,7 @@ def append_structure(
     incoming atoms carrying a label nothing recognises -- silently unfrozen.
 
     **An engine's order** -- an addition whose atoms are in an engine's
-    order (it carries its order record) is put back in yours first, and said
+    order (it carries its order record) is put back in the user order first, and said
     (`model/overview.md` § 2.2a).
 
     **A stated origin** -- centring the incoming structure reframes its
@@ -1135,10 +1135,10 @@ def append_structure(
     if addition.n_atoms == 0:
         return struct.copy(), notes
 
-    # THE ADDITION IN YOUR ORDER (`model/overview.md` § 2.2a): one in an
+    # THE ADDITION IN THE USER ORDER (`model/overview.md` § 2.2a): one in an
     # engine's order is restored before it joins, since a merge joins
-    # structures in the person's order (`Structure.concat`) -- and said.
-    incoming, said = addition.in_your_order("the added structure")
+    # structures in the user order (`Structure.concat`) -- and said.
+    incoming, said = addition.in_user_order("the added structure")
     if said:
         notes.append(said)
     if center and incoming.n_atoms:

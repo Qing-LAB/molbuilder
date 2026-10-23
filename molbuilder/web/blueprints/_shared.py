@@ -389,7 +389,7 @@ def structure_to_dict(
         "annotations":   wire["annotations"],
         # The order the atoms are in, in words, worked out by the structure
         # like the resolved box (`model/overview.md` § 2.2a): what a viewer
-        # holding an engine's order marks itself with; none in your order.
+        # holding an engine's order marks itself with; none in the user order.
         "atom_order_said": wire["atom_order_said"],
         "issues":        base["issues"],
         "extra":         base["extra"],
@@ -902,8 +902,8 @@ class PeriodicityRefused(Exception):
 
 def for_writing(struct: Structure, *, judged_as=None):
     """``(struct, notices)``: a structure the browser sent, as a web door
-    writes it for a person -- IN YOUR ORDER (``model/overview.md`` § 2.2a,
-    I1): one in an engine's order is put back (``Structure.in_your_order``)
+    writes it for a person -- IN THE USER ORDER (``model/overview.md`` § 2.2a,
+    I1): one in an engine's order is put back (``Structure.in_user_order``)
     and said in a ``structure.restored`` notice naming the order in its
     words -- and ITS BOX JUDGED (:func:`checked_periodicity`), a refusal the
     door's 400, the verdicts said after the restore.  THE ONE SEQUENCE the
@@ -912,7 +912,7 @@ def for_writing(struct: Structure, *, judged_as=None):
     refused.  ``judged_as`` -- the hand-over's -- is what the gate judges in
     the structure's place: the box as prep will place it (`cell.entering`);
     what is written stays as given."""
-    struct, said = struct.in_your_order("the structure")
+    struct, said = struct.in_user_order("the structure")
     restored = []
     if said is not None:
         from molbuilder.workingcopy_structure import RESTORED, read_notice

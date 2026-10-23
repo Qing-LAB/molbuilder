@@ -1,20 +1,32 @@
-"""A DATA FILE'S VARIABLES, EACH STATING ITSELF -- the variable record and the
-writing loop every NetCDF file molbuilder writes shares (`engines/transport.md`
-§ 2a.12, *the data file*; `engines/vibration.md` § 6.10.5).
+"""THE DATA-FILE FRAMEWORK -- the variable record, the one writer, the one door
+and the tables every NetCDF file molbuilder writes or opens shares
+(`model/datafiles.md`; each file's variables are its chapter's:
+`engines/transport.md` § 2a.12, `engines/vibration.md` § 6.10.5,
+`model/parse.md` § 5e).
 
-MODULE  ncdata (L1; numpy and netCDF4)
+MODULE  ncdata (L1; numpy, netCDF4 and persist)
 ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         derived, state, coordinate), its units, its words; :func:`empty` --
         the array a variable starts as, its fill stated; :func:`write_group`
         -- a group's dimensions and variables written from a table of
-        :class:`Var`, each with its attributes and its CF ``coordinates``;
-        :func:`in_memory` / :func:`as_bytes` -- the file built in memory and
-        handed to the one atomic writer (`persist.write_bytes`);
-        :data:`NC_LOCK` -- held by every NetCDF access the server reaches
-USED-BY the transport data file (`transport.datafile`), the vibration
-        result's data file (`spectra.datafile`), beside the job in both
-        bundles (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`),
-        and a TBtrans data file's digest (`parse.engines.tbtrans_nc`)
+        :class:`Var`, each with its attributes and its CF ``coordinates``,
+        the atom axis given as its atom index map; :func:`in_memory` /
+        :func:`as_bytes` -- the file built in memory and handed to the one
+        atomic writer (`persist.write_bytes`); :func:`reading` -- the one
+        door every NetCDF file molbuilder opens goes through, one access and
+        one handle at a time under :data:`NC_LOCK` (:class:`OpenedTwice` a
+        file opened again inside its own access); :func:`read_variables` /
+        :func:`read_atom_index_map` -- a group's variables and the map of its
+        atom axis, read back; :func:`as_tables` -- a data file as long CSV
+        tables and a README, every word the file's own (an export)
+USED-BY the transport data file (`transport.datafile`: written and read) and
+        its export (`transport.export`, the tables); the vibration result's
+        data file (`spectra.datafile`), beside the job in both bundles
+        (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`); a
+        TBtrans data file and its digest (`parse.engines.tbtrans_nc`); a
+        relaxation's ``.MD.nc`` (`parse.engines.siesta_mdnc`); the atom index
+        map's reader of a data file (`atom_index`); a frame set's rows in the
+        transport data file (`frame_average`, its JSON attributes)
 
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill; a boolean is an ``int8`` with
@@ -25,20 +37,39 @@ a job whose environment lacks it stops here, before the expensive part
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
+from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import netCDF4
 import numpy as np
+
+# TWO WAYS, because this module travels beside the job.
+try:                                        # inside molbuilder
+    from .atom_permutation import (ATOM_INDEX_BASE, FIELD_BASE, FIELD_ENGINE,
+                                   FIELD_LISTED_BY, FIELD_USER, FIELD_WHY,
+                                   AtomIndexMap)
+    from .persist import json_safe
+except ImportError:                         # beside a job, in a bundle
+    from atom_permutation import (  # type: ignore[no-redef]
+        ATOM_INDEX_BASE, FIELD_BASE, FIELD_ENGINE, FIELD_LISTED_BY,
+        FIELD_USER, FIELD_WHY, AtomIndexMap)
+    from persist import json_safe  # type: ignore[no-redef]
+
+#: THE ATOM AXIS's name -- a dimension of this name is given to the writer as
+#: its atom index map, never a count (`model/overview.md` § 2.2b, F6).
+ATOM_AXIS = "atom"
 
 
 @dataclass(frozen=True)
 class Var:
     """One variable of the file: its ``name``, its dimensions, its ``kind``
     (``coordinate``, ``given``, ``raw`` -- as an engine wrote it --,
-    ``derived``, ``state``), ``units``, ``long_name``, ``definition`` and,
+    ``measured`` -- read off the structures, a frame set's rows
+    (`model/structure.md` § 2.2f) --, ``derived``, ``state``), ``units``, ``long_name``, ``definition`` and,
     for a raw one, ``source`` -- the file it was read from.  A
     ``coordinate`` names a dimension's points: the dimension's own values
     when it is named as the dimension (a NetCDF coordinate variable), else
@@ -48,7 +79,11 @@ class Var:
     coordinate.  ``fill`` is an integer variable's fill value, where a cell
     can be not stated (a flag of a run that did not run: neither 0 nor 1);
     a number's is NaN, a text's the empty string.  A boolean variable is
-    an ``int8`` with ``flag=True``: ``flag_values 0 1`` beside it."""
+    an ``int8`` with ``flag=True``: ``flag_values 0 1`` beside it.  A
+    variable whose VALUES are atom indices -- a subset of the atoms, the
+    atom each orbital is on -- is ``atom_index=True``: they count by the
+    file's atom index map, and its attribute says so
+    (`model/overview.md` § 2.2b)."""
     name: str
     dims: Tuple[str, ...]
     kind: str
@@ -60,6 +95,21 @@ class Var:
     auxiliary: bool = False
     fill: Any = None
     flag: bool = False
+    atom_index: bool = False
+
+
+#: The map's two columns as variables on the atom axis -- labels of its
+#: points, so a NetCDF reader opens them as coordinates.
+_MAP_VARS = (
+    Var(FIELD_USER, (ATOM_AXIS,), "coordinate", "1", "the atom's user index",
+        "its index in the structure the user built or cited, from 0 -- the "
+        "structure's own view numbers it user index + 1 "
+        "(model/overview.md 2.2b)", dtype="i4", auxiliary=True),
+    Var(FIELD_ENGINE, (ATOM_AXIS,), "coordinate", "1",
+        "the atom's engine index",
+        "its index in the order the engine ran -- its deck's, from 0 "
+        "(model/overview.md 2.2b)", dtype="i4", auxiliary=True),
+)
 
 
 #: The fill an integer flag takes where a cell is not stated.
@@ -78,9 +128,15 @@ FLAG_FILL = -1
 NC_LOCK = threading.RLock()
 
 
-def empty(var: Var, dims: Mapping[str, int]) -> np.ndarray:
+def size_of(dim) -> int:
+    """A dimension's size as ``dims`` gives it: a count, or -- the atom
+    axis -- its atom index map's atom count."""
+    return dim.n_atoms if isinstance(dim, AtomIndexMap) else int(dim)
+
+
+def empty(var: Var, dims: Mapping[str, Any]) -> np.ndarray:
     """The array ``var`` starts as, over ``dims``: every cell its fill."""
-    shape = tuple(int(dims[d]) for d in var.dims)
+    shape = tuple(size_of(dims[d]) for d in var.dims)
     if var.dtype is str:
         return np.full(shape, "", dtype=object)
     if var.dtype in ("i1", "i2", "i4", "i8"):
@@ -115,21 +171,48 @@ def unnumber_attr(value) -> Optional[float]:
 
 
 def json_attr(value) -> str:
-    """A nested block as an attribute: its JSON text."""
-    return json.dumps(value, ensure_ascii=False, allow_nan=False,
+    """A nested block as an attribute: its JSON text, a number JSON cannot
+    hold the null every reader takes (`persist.json_safe`), every character
+    as written."""
+    return json.dumps(json_safe(value), ensure_ascii=False, allow_nan=False,
                       sort_keys=False)
 
 
-def write_group(group, dims: Mapping[str, int], variables: Sequence[Var],
+def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
                 values: Mapping[str, np.ndarray]) -> None:
     """``dims`` created on ``group`` (a dataset or a group) and every
     variable of ``variables`` written from ``values[name]`` with its
     attributes -- ``kind``, ``units``, ``long_name``, ``definition``, its
-    ``source`` where raw, ``flag_values`` where a flag, and the CF
-    ``coordinates`` naming each auxiliary coordinate along its
-    dimensions.  Numbers are compressed; the fill value is said."""
+    ``source`` where raw, ``flag_values`` where a flag, ``atom_index`` where
+    its values are atom indices, and the CF ``coordinates`` naming each
+    auxiliary coordinate along its dimensions.  Numbers are compressed; the
+    fill value is said.
+
+    **The atom axis is given as its atom index map**, never a count
+    (`model/overview.md` § 2.2b, F6): its fields are stated from it --
+    ``atoms_listed_by`` and ``atom_index_base`` as the group's attributes,
+    each column it knows as a variable on the axis -- and an axis given as
+    a bare number is refused, as is a map whose atom count is not the
+    axis's."""
+    atoms = dims.get(ATOM_AXIS)
+    if atoms is not None and not isinstance(atoms, AtomIndexMap):
+        raise ValueError(
+            "the atom axis is given as its atom index map, never a count: a "
+            "file says which index its atoms are listed by "
+            "(model/overview.md 2.2b)")
+    if atoms is not None:
+        stated = atoms.to_dict()
+        group.setncatts({FIELD_LISTED_BY: stated[FIELD_LISTED_BY],
+                         FIELD_BASE: np.int32(ATOM_INDEX_BASE),
+                         # WHY A COLUMN IS NOT WRITTEN, where one is not (F1).
+                         **({FIELD_WHY: stated[FIELD_WHY]}
+                            if FIELD_WHY in stated else {})})
+        columns = [v for v in _MAP_VARS if v.name in stated]
+        variables = tuple(variables) + tuple(columns)
+        values = {**values, **{v.name: np.asarray(stated[v.name], dtype="i4")
+                               for v in columns}}
     for name, size in dims.items():
-        group.createDimension(name, int(size))
+        group.createDimension(name, size_of(size))
     auxiliary = [a for a in variables if a.auxiliary]
     for var in variables:
         # THE FILL VALUE, said: NaN for a number, the variable's own for an
@@ -155,11 +238,61 @@ def write_group(group, dims: Mapping[str, int], variables: Sequence[Var],
                       **({"source": var.source} if var.source else {}),
                       **({"flag_values": np.array([0, 1], dtype="i1"),
                           "flag_meanings": "no yes"} if var.flag else {}),
+                      # ITS VALUES ARE ATOM INDICES, counting by the file's
+                      # atom index map (§ 2.2b).
+                      **({"atom_index": np.int8(1)} if var.atom_index
+                         else {}),
                       **({"coordinates": " ".join(labels)} if labels
                          else {})})
         data = values[var.name]
         if data.size:
             nc[...] = data
+
+
+#: The files an access holds open now, in this process -- the door's own
+#: check that no file is opened a second time inside one access.
+_OPEN: "set" = set()
+
+
+class OpenedTwice(Exception):
+    """A file opened again inside its own access -- a mistake in the code,
+    never a file that does not read, so no reader's refusal swallows it."""
+
+
+@contextlib.contextmanager
+def reading(path, *, sile: bool = False):
+    """THE ONE DOOR FOR EVERY NETCDF FILE molbuilder opens
+    (`model/datafiles.md` § 4): ``with reading(path) as ds:`` -- the process's
+    one lock held (:data:`NC_LOCK`), the file opened read-only -- a
+    ``netCDF4.Dataset``, or with ``sile`` a sisl sile, for an engine's own
+    file sisl reads (a TBtrans ``.TBT.nc``) -- and closed before the lock is
+    released.  **No handle outlives its access**, so molbuilder's process
+    never holds two handles on one file: the netCDF-C/HDF5 libraries crash a
+    process that opens a file again after a second handle on it read a text
+    variable and closed (measured 2026-10-23, netCDF-C 4.10.1, HDF5 2.2.0),
+    and a door that never makes a second handle cannot reach it.  A file
+    opened again inside its own access is refused by name -- the one
+    mistake the door can see.  Nothing is read but what the reader reads;
+    a long reading is a series of accesses."""
+    key = str(Path(path).resolve())
+    with NC_LOCK:
+        if key in _OPEN:
+            raise OpenedTwice(
+                f"{Path(path).name} is opened again inside its own access -- "
+                f"one handle a file in this process (model/datafiles.md 4)")
+        _OPEN.add(key)
+        try:
+            if sile:
+                import sisl
+                handle = sisl.get_sile(str(path))
+            else:
+                handle = netCDF4.Dataset(str(path), mode="r")
+            try:
+                yield handle
+            finally:
+                handle.close()
+        finally:
+            _OPEN.discard(key)
 
 
 def in_memory(name: str) -> "netCDF4.Dataset":
@@ -171,6 +304,26 @@ def in_memory(name: str) -> "netCDF4.Dataset":
 def as_bytes(ds: "netCDF4.Dataset") -> bytes:
     """The in-memory dataset closed, as the file's bytes."""
     return bytes(ds.close())
+
+
+def read_atom_index_map(group, *, source: str,
+                        said: str = "") -> Optional[AtomIndexMap]:
+    """The atom index map ``group`` states of its atom axis
+    (`model/overview.md` § 2.2b) -- its attributes and columns, read by the
+    map's one reader, checked -- or ``None`` where it states none: a file
+    written before the rule, which its reader answers by F3."""
+    if FIELD_LISTED_BY not in group.ncattrs():
+        return None
+    d: Dict[str, Any] = {FIELD_LISTED_BY: str(group.getncattr(FIELD_LISTED_BY))}
+    if FIELD_BASE in group.ncattrs():
+        d[FIELD_BASE] = int(group.getncattr(FIELD_BASE))
+    if FIELD_WHY in group.ncattrs():
+        d[FIELD_WHY] = str(group.getncattr(FIELD_WHY))
+    for name in (FIELD_USER, FIELD_ENGINE):
+        if name in group.variables:
+            d[name] = [int(i) for i in np.asarray(group.variables[name][...])]
+    return AtomIndexMap.from_dict(d, n_atoms=len(group.dimensions[ATOM_AXIS]),
+                                  source=source, said=said)
 
 
 def read_variables(group) -> Dict[str, Dict[str, Any]]:
@@ -185,6 +338,141 @@ def read_variables(group) -> Dict[str, Dict[str, Any]]:
             for name, v in group.variables.items()}
 
 
-__all__ = ["Var", "FLAG_FILL", "NC_LOCK", "empty", "flag", "unflag", "number_attr",
+def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
+    """A DATA FILE AS TABLES -- the NetCDF file ``name`` whose bytes are
+    ``data``, laid out for a spreadsheet or a script, every word the file's
+    own: **one long table per set of axes** in each group, every variable
+    over the same dimensions in it, named by them
+    (``frame_bias_v_energy_ev.csv``; a group's under its path,
+    ``modes/mode.csv``; ``scalars.csv`` for none); one row per point of those
+    axes, each axis a column of its coordinate's values under its own name (a
+    dimension with no coordinate, its index), each variable a column named
+    with its units (``dos_total [1/eV]``), a value not stated -- its fill --
+    an empty cell.  And the README: the file's attributes, then table by
+    table each column's long name, units, kind, definition and source, and
+    where the file's fill is an empty cell.  Returns ``({table's path: its
+    CSV text}, the README's text)`` -- any data file molbuilder writes lays
+    out the same way."""
+    import csv
+    import io
+    import itertools
+
+    def said(v) -> Dict[str, Any]:
+        return {k: v.getncattr(k) for k in v.ncattrs() if k != "_FillValue"}
+
+    def text(values) -> List[str]:
+        """A variable's values as cells, in its array's order: the fill and
+        NaN empty, a number at full precision."""
+        arr = np.ma.asarray(values)
+        mask = np.ma.getmaskarray(arr).ravel().tolist()
+        flat = np.ma.getdata(arr).ravel().tolist()
+        out = []
+        for x, m in zip(flat, mask):
+            if m or x is None:
+                out.append("")
+            elif isinstance(x, bytes):
+                out.append(x.decode("utf-8", "replace"))
+            elif isinstance(x, float):
+                out.append("" if x != x else repr(x))
+            else:
+                out.append(str(x))
+        return out
+
+    def attr(v) -> str:
+        """An attribute as JSON where it is a number or a list -- a value not
+        stated said so -- its text as written otherwise."""
+        if isinstance(v, str):
+            return v
+        v = np.asarray(v).tolist()
+        if isinstance(v, float) and v != v:
+            return "not stated"
+        return json_attr(v)
+
+    def read(group, path: str, sizes: Dict[str, int],
+             axes: Dict[str, Any], out: List[Dict[str, Any]]) -> None:
+        """Each group's attributes, sizes and variables, read into memory --
+        a dimension and a coordinate seen from an enclosing group as the
+        format resolves them, the nearest enclosing one's."""
+        sizes = {**sizes, **{k: len(d) for k, d in group.dimensions.items()}}
+        axes = dict(axes)
+        held: Dict[str, Any] = {}
+        for var, v in group.variables.items():
+            v.set_auto_mask(True)
+            fill = (v.getncattr("_FillValue") if "_FillValue" in v.ncattrs()
+                    else None)
+            entry = (tuple(v.dimensions), v[...], said(v), fill)
+            if tuple(v.dimensions) == (var,):
+                axes[var] = entry
+            else:
+                held[var] = entry
+        out.append({"path": path, "sizes": sizes, "axes": axes, "held": held,
+                    "attrs": {k: group.getncattr(k)
+                              for k in group.ncattrs()}})
+        for sub, g in group.groups.items():
+            read(g, f"{path}/{sub}" if path else sub, sizes, axes, out)
+
+    # THE FILE READ under the lock every NetCDF access holds; its tables
+    # written out of it.
+    read_groups: List[Dict[str, Any]] = []
+    with NC_LOCK, netCDF4.Dataset("data", mode="r", memory=data) as ds:
+        read(ds, "", {}, {}, read_groups)
+
+    def header(var: str, info: Dict[str, Any]) -> str:
+        units = str(info.get("units") or "")
+        return f"{var} [{units}]" if units not in ("", "1") else var
+
+    tables: Dict[str, str] = {}
+    lines = [f"{name}, as tables", "",
+             "Every table is long: one row per point of its axes, each axis "
+             "a column, each variable a column named with its units; an "
+             "empty cell is a value the file does not state.", ""]
+    for g in read_groups:
+        path, sizes, axes, held = g["path"], g["sizes"], g["axes"], g["held"]
+        here = f"{path}/" if path else ""
+        if g["attrs"]:
+            lines.extend([f"THE ATTRIBUTES OF {path or 'THE FILE'}", ""])
+            # A TEXT OF SEVERAL LINES -- a record's file -- indented under
+            # its name.
+            lines.extend(f"  {k}: " + attr(v).replace("\n", "\n    ")
+                         for k, v in g["attrs"].items())
+            lines.append("")
+        by_dims: Dict[Tuple[str, ...], List[str]] = {}
+        for var, (dims, *_rest) in held.items():
+            by_dims.setdefault(dims, []).append(var)
+        for dims, names in by_dims.items():
+            table = here + ("_".join(dims) or "scalars") + ".csv"
+            axis_cells = [text(axes[d][1]) if d in axes
+                          else [str(i) for i in range(sizes[d])]
+                          for d in dims]
+            columns = [text(held[n][1]) for n in names]
+            out = io.StringIO()
+            w = csv.writer(out, lineterminator="\n")
+            w.writerow(list(dims) + [header(n, held[n][2]) for n in names])
+            for k, point in enumerate(itertools.product(*axis_cells)):
+                w.writerow(list(point) + [c[k] for c in columns])
+            tables[table] = out.getvalue()
+            rows = int(np.prod([sizes[d] for d in dims])) if dims else 1
+            lines.extend([f"{table} -- over {', '.join(dims) or 'nothing'}, "
+                          f"{rows} row{'s' if rows != 1 else ''}"])
+            for var in [*dims, *names]:
+                _d, _a, info, fill = (axes.get(var) or held.get(var)
+                                      or ((), None, {}, None))
+                what = "; ".join(
+                    f"{k} {info[k]}" for k in ("long_name", "units", "kind",
+                                               "definition", "source")
+                    if info.get(k) not in (None, ""))
+                if fill is not None and not (isinstance(fill, float)
+                                             and fill != fill):
+                    what += (f"; its fill, {attr(fill)} in the file, an "
+                             f"empty cell here")
+                lines.append(f"  {header(var, info) if var in held else var}"
+                             f": {what or 'an index'}")
+            lines.append("")
+    return tables, "\n".join(lines) + "\n"
+
+
+__all__ = ["Var", "ATOM_AXIS", "FLAG_FILL", "NC_LOCK", "as_tables", "empty",
+           "read_atom_index_map", "size_of", "flag", "unflag", "number_attr",
+           "reading", "OpenedTwice",
            "unnumber_attr", "json_attr", "write_group", "in_memory",
            "as_bytes", "read_variables"]

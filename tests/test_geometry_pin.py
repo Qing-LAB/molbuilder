@@ -26,10 +26,17 @@ Keys of a ``[[case]]``:
     label set edited by hand.
 ``as_v12``
     the sidecar rewritten as a molbuilder before v13 wrote it: schema 12, its
-    pin the retired ``structure_hash``, no ``geometry_hash``.
+    pin the retired ``structure_hash``, no ``geometry_hash``, no
+    ``atom_index_map``.
 ``as_v13``
     the sidecar rewritten as a molbuilder before v14 wrote it: schema 13, no
-    ``atom_order``.
+    ``atom_order``, no ``atom_index_map``.
+``marked``
+    ``true``: the pair as a viewer of a run whose deck states no order holds
+    it -- ``order_unstated`` (`model/overview.md` § 2.2b, F4).
+``stated``
+    the ``atoms_listed_by`` the written pair's sidecar states; and the
+    pair's read then says ``read_said``.
 ``door``
     ``load`` -- ``StructureCodec().load(path)``, the door every builder reads
     through; ``route_load`` -- the pair in a project, then ``POST
@@ -42,7 +49,7 @@ Keys of a ``[[case]]``:
     the pair's sidecar is on disk beside the geometry.
 ``refused``
     the door raises ``GeometryChangedError`` with this text in its message;
-    otherwise it opens, with the pair's labels applied, in your order -- or,
+    otherwise it opens, with the pair's labels applied, in the user order -- or,
     for the ``remapped`` pair, carrying ``order``.
 ``unreadable``
     the door raises ``ValueError`` -- an unreadable sidecar's
@@ -52,7 +59,7 @@ Keys of a ``[[case]]``:
     ``true``: the opened ``remapped`` pair -- the road's CO2 in its engine's
     order (`support.road.co2_in_engine_order`) -- carries the road's order
     record (`support.road.CO2_HELD_FIRST`); restored, it is the pair as
-    built.  A ``remapped`` row without it opens as built, in your order.
+    built.  A ``remapped`` row without it opens as built, in the user order.
 ``body``
     what a ``route_load`` row adds to ``{path}`` -- ``restore``, an editor's
     open.
@@ -60,7 +67,10 @@ Keys of a ``[[case]]``:
     ``{where, severity, words}``: the route's answer carries this notice,
     its message holding each of ``words`` -- what the contract says it
     names; a ``route_load`` row without it carries none of its kinds (a
-    changed geometry, a restore).
+    changed geometry, a restore, a pair that states no order).
+``read_said``
+    ``{where, severity, words}``: the codec's read of the written pair says
+    this notice, as ``said``.
 """
 from __future__ import annotations
 
@@ -73,7 +83,8 @@ import pytest
 
 from molbuilder.sidecars import molstruct
 from molbuilder.structure import Structure
-from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED, RESTORED,
+from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED,
+                                              ORDER_NOT_STATED, RESTORED,
                                               StructureCodec)
 from support.road import (CO2, CO2_HELD_FIRST, co2_in_engine_order,
                           road_structure)
@@ -83,8 +94,9 @@ _TABLE = tomllib.loads(
     (Path(__file__).parent / "data" / "geometry_pin.toml").read_text())
 _PAIR = _TABLE["pair"]
 _CASES = _TABLE["case"]
-#: The notices a ``route_load`` row reads: a changed geometry, a restore.
-_SAID = (GEOMETRY_CHANGED, RESTORED)
+#: The notices a ``route_load`` row reads: a changed geometry, a restore, a
+#: pair that states no order (F4).
+_SAID = (GEOMETRY_CHANGED, RESTORED, ORDER_NOT_STATED)
 
 
 def _the_pair(plain: bool) -> Structure:
@@ -143,6 +155,18 @@ def _written_by_the_route(case, built: Structure, path: Path,
     for f in answer.get_json().get("files", []):
         (path.parent / f["name"]).write_text(f["text"])
     _said(case, answer.get_json())
+    if "stated" in case:
+        side = json.loads(molstruct.sidecar_path_for(path).read_text())
+        assert side["atom_index_map"]["atoms_listed_by"] == case["stated"], (
+            side["atom_index_map"])
+        said: list = []
+        got = StructureCodec().load(path, said_out=said)
+        _said({"said": case.get("read_said")},
+              {"notices": [{"where": n.where, "severity": n.severity,
+                            "message": n.message} for n in said]})
+        assert got.order_unstated is False, "a read of a file leaves it false"
+        assert (got.elements, got.regions) == (built.elements, built.regions)
+        return
     _opened_as_built(case, StructureCodec().load(path))
 
 
@@ -163,10 +187,10 @@ def _edited(case, path: Path) -> None:
     payload = json.loads(side.read_text())
     payload.update(case.get("sidecar", {}))
     if case.get("as_v12"):
-        del payload["geometry_hash"]
+        del payload["geometry_hash"], payload["atom_index_map"]
         payload.update(schema_version=12, structure_hash="0" * 64)
     if case.get("as_v13"):
-        del payload["atom_order"]
+        del payload["atom_order"], payload["atom_index_map"]
         payload.update(schema_version=13)
     side.write_text(json.dumps(payload))
 
@@ -179,6 +203,8 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
         built = co2_in_engine_order()
     else:
         built = _the_pair(case.get("plain", False))
+    if case.get("marked"):
+        built.order_unstated = True
     name = "co." + case.get("format", "xyz")
     if case["door"].startswith("route_"):
         from conftest import _point_the_one_door_at

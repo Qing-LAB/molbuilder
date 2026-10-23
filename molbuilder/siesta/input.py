@@ -1178,11 +1178,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         frozen = list(getattr(struct, "frozen_atoms", []) or [])
         if frozen:
             if v: out += [
-                "# %block Geometry.Constraints holds atom indices SIESTA's",
-                "# relaxer must NOT move.  1-based indices (SIESTA convention)",
-                "# converted from molbuilder's 0-based Structure.frozen_atoms.",
-                "# Source: /modify sidecar (or Python API: struct.frozen_atoms).",
-                "# Without this block SIESTA relaxes every atom.",
+                "# %block Geometry.Constraints holds the atoms SIESTA must",
+                "# NOT move, by SIESTA's own number (from 1) of this deck's",
+                "# atom list -- the engine index + 1; a sorted deck's",
+                "# ATOM-METADATA block maps each to its user index.",
+                "# Without this block SIESTA moves every atom.",
             ]
             out.append("%block Geometry.Constraints")
             # One ``position`` line per chunk of up to 20 indices: libfdf
@@ -1190,8 +1190,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # ``External/libfdf/src/parse.F90``, SIESTA 5.4.2), so a held
             # set written on one line would not survive; the block takes
             # any number of ``position`` lines.
-            from ..engine_atom_index import siesta_atom_index
-            ids_1based = [siesta_atom_index(i) for i in frozen]
+            from ..engine_atom_index import siesta_numbering
+            ids_1based = [siesta_numbering(i) for i in frozen]
             chunk = 20
             for i in range(0, len(ids_1based), chunk):
                 segment = ids_1based[i:i + chunk]

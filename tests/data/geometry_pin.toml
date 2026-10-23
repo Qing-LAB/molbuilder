@@ -17,7 +17,7 @@
 # (`tests/data/prep_protocol.toml`).
 #
 # THE ORDER RECORD rides the same sidecar (v14, `structure-molstruct.md` § 1;
-# `model/overview.md` § 2.2a): null for a pair in your order -- every pair
+# `model/overview.md` § 2.2a): null for a pair in the user order -- every pair
 # written for a person -- and, for an engine's own record in the engine's
 # order, the key and both directions, read back whole or refused.
 #
@@ -102,9 +102,17 @@ name = "the browser's load door says nothing of a pair as it was written"
 door = "route_load"
 
 [[case]]
-name = "a pair written before v14 states no order record, and opens in your order"
+name = "a pair written before v14 states no order record, and opens in the user order -- warned that it may not be (F4)"
 as_v13 = true
-door = "load"
+door = "route_load"
+said = { where = "structure.order_not_stated", severity = "warn", words = ["co.xyz states no atom order (saved before 2026-10-14): read as listed by user index"] }
+
+[[case]]
+name = "a save of a view of a run whose order nothing states writes not_stated, and its read warns -- nothing molbuilder writes claims what it does not know (F4)"
+door = "route_save"
+marked = true
+stated = "not_stated"
+read_said = { where = "structure.order_not_stated", severity = "warn", words = ["co.xyz states its atom order is not known", "saved from a view of a structure whose order nothing states"] }
 
 # ---- THE ORDER RECORD (v14) ----------------------------------------------- #
 # The silent failure: an engine's record read back without its order record,
@@ -124,14 +132,14 @@ door = "route_load"
 order = true
 
 [[case]]
-name = "...and in your order when an editor opens it, saying so -- the Molbuilder tab holds only your order"
+name = "...and in the user order when an editor opens it, saying so -- the Molbuilder tab holds only the user order"
 pair = "remapped"
 door = "route_load"
 body = { restore = true }
 said = { where = "structure.restored", severity = "info", words = ["co.xyz", "held atoms first"] }
 
 [[case]]
-name = "a viewer's save of a structure in an engine's order writes your order, and says so"
+name = "a viewer's save of a structure in an engine's order writes the user order, and says so"
 pair = "remapped"
 door = "route_save"
 said = { where = "structure.restored", severity = "info", words = ["the structure", "held atoms first"] }

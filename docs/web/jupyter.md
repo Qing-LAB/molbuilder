@@ -547,6 +547,22 @@ its sidecar (`model/structure.md` § 2.2e). A file `ase` writes carries no
 sidecar, and its comment line is never metadata (§ 2.3), so it reads as atoms
 and coordinates only.
 
+**And molbuilder itself — the one its server runs** *(the user, 2026-10-23:
+"this has to be part of the module … that the user would be able to import
+and use as a unified layer for post-processing")*. The notebook server is
+started with molbuilder's own source folder on its Python path
+(`PYTHONPATH`, set in the server's environment by `jupyter.run_shepherd`),
+which a kernel it starts inherits — so a cell imports the molbuilder that
+wrote the files it reads, `from molbuilder.postprocess import parse,
+atom_index_map` ([`model/parse.md`](?doc=model/parse.md) § 3,
+[`model/overview.md`](?doc=model/overview.md) § 2.2b): nothing installed into
+this env, no second copy to drift. *(Measured 2026-10-23: outside the
+checkout, `import molbuilder` fails in this env; with the source on the path,
+`molbuilder.parse`, `runs`, `structure`, `atom_permutation` and both data
+files' readers import.)* **The layer imports with this env's packages** —
+numpy, netCDF4, sisl and xarray, the recipe's (xarray listed there since 2.32.0 — the user's yes, 2026-10-23; until then it came only as another package's dependency) — and a reader that needs more is not part of
+it.
+
 **It still holds no calculation engine** — no `pyscf`, `siesta` or `rdkit`.
 Running one from a notebook would be a second place to run a calculation,
 off the record. That half of the 2026-09-14 ruling stands. The cost that

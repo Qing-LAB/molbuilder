@@ -335,7 +335,11 @@ def the_suite_cannot_submit_a_job(tmp_path_factory, monkeypatch):
 
 
 def _env_fingerprint():
-    """What every conda env on this machine CONTAINS, cheaply.
+    """What each of MOLBUILDER'S OWN conda envs contains, cheaply -- the
+    envs its install framework acts on (`envs.recipes.effective_name` over
+    `builtin_recipes`, a config's renames honoured), the only ones its code
+    can install into or remove (the user, 2026-10-23: "our env are the only
+    thing we should focus on").
 
     Per env: the mtime and entry count of ``conda-meta/`` (conda's own record
     of what is installed) and of ``site-packages/`` (pip's).  An install, an
@@ -347,6 +351,7 @@ def _env_fingerprint():
     away".
     """
     import molbuilder.diagnostics as _diag
+    from molbuilder.envs.recipes import builtin_recipes, effective_name
     # The bound snapshot when a test has one (that is what makes this
     # checkable without a fake manager binary), a fresh probe otherwise --
     # which is the case at both ends of a session, where it matters.
@@ -356,8 +361,11 @@ def _env_fingerprint():
     # `caps.conda_envs` IS the {name: prefix} map, so this reads the
     # registry once rather than twice -- the manager is slow (1.2 s per call
     # on a warm workstation) and this runs at both ends of a session.
+    ours = {effective_name(r, caps) for r in builtin_recipes()}
     out = {}
     for name, prefix in dict(caps.conda_envs).items():
+        if name not in ours:
+            continue
         sig = []
         for sub in ("conda-meta", "lib"):
             d = pathlib.Path(prefix) / sub

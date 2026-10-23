@@ -1355,7 +1355,7 @@ function mountPanel(doc, card, model) {
      * viewer holding a structure in an engine's order says so, in the
      * server's words for it, read from the structure at every redraw --
      * never a notice, which a change to the structure clears.  An editor
-     * never holds one: its load asks for your order (I8). */
+     * never holds one: its load asks for the user order (I8). */
     const orderLine = el("p", "molviewer-order");
     orderLine.hidden = true;
     root.appendChild(orderLine);
@@ -1365,7 +1365,7 @@ function mountPanel(doc, card, model) {
         orderLine.hidden = !said;
         orderLine.textContent = said
             ? "The atoms are listed " + said + "; a save or a download "
-              + "writes them in your order."
+              + "writes them in the user order."
             : "";
     }
     root.appendChild(pages.selection);

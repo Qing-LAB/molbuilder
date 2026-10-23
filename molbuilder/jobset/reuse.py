@@ -138,7 +138,7 @@ class Reuse:
     def lines(self, base) -> List[str]:
         """The manifest in words, one group after another in the ladder's
         order, then the totals."""
-        from ..units import gib_words
+        from ..units import size_words
         base = Path(base)
         out = [f"reuses {self.reuses} -- what this calculation copies, and "
                f"what it runs"]
@@ -158,7 +158,7 @@ class Reuse:
                     out.append(f"           "
                                f"{str(c.run.relative_to(base)):<{w_run}}  <-  "
                                f"{c.shown:<{w_from}}  {c.ended}  "
-                               f"{gib_words(c.size)}{left}")
+                               f"{size_words(c.size)}{left}")
             else:
                 out.append(head + "prepared here -- " + d.why[0])
                 out.extend(f"           {w}" for w in d.why[1:])
@@ -170,12 +170,12 @@ class Reuse:
         size = sum(c.size for c in copies)
         shares = sum(d.shares for d in self.groups)
         if size or shares:
-            out.append(f"  copied now: {gib_words(size)}"
+            out.append(f"  copied now: {size_words(size)}"
                        + (f" -- the transmission's first launch copies "
-                          f"{gib_words(shares)} into its points' shared/"
+                          f"{size_words(shares)} into its points' shared/"
                           if shares else "")
                        + f" -- the next save stores it again: "
-                         f"{gib_words(size + shares)}")
+                         f"{size_words(size + shares)}")
         return out
 
     def to_wire(self, base) -> dict:

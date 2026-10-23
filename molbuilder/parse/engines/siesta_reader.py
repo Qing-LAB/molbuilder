@@ -80,6 +80,14 @@ _SIESTA_DIAG_ALGORITHMS = frozenset({
 _OOM = frozenset(m for m, st in _G.FATAL_MARKERS if st == "out_of_memory")
 
 
+
+#: HOW THE ECHO'S ATOM RANGES COUNT -- TranSIESTA's ``Position in
+#: geometry 1 -- 9`` is SIESTA's numbers, from 1, of the deck's own atom
+#: list: each the engine index + 1 (`model/overview.md` § 2.2b, F5).
+TS_ECHO_ATOM_NUMBERS = ("SIESTA's numbers, from 1, of the deck's own atom "
+                        "list (engine index + 1): the electrodes' atom "
+                        "ranges as TranSIESTA prints them")
+
 class SiestaReader:
     """The one SIESTA reading pass: :meth:`feed` it lines, ask :meth:`now`
     while the run grows, and :meth:`finish` at the end of the output.
@@ -779,6 +787,9 @@ class SiestaReader:
         if where == "options" or (where == "electrodes" and name is None):
             return self.ts_info.setdefault("options", {})
         if where == "electrodes":
+            # HOW ITS ATOM RANGES COUNT, said beside them: an engine's fact
+            # named as the engine's (`model/overview.md` § 2.2a, F5).
+            self.ts_info.setdefault("atom_numbers", TS_ECHO_ATOM_NUMBERS)
             return self.ts_info.setdefault("electrodes", {}).setdefault(
                 name, {})
         segments = self.ts_info.setdefault("contours", {}).setdefault(

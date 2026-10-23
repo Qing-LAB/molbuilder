@@ -30,6 +30,7 @@ from typing import Optional
 import click
 
 from .ledger import record as _ledger
+from ..transport.export import FORMATS as _EXPORT_FORMATS
 from .model import JobSet
 from .errors import PrepError
 from .submit import SubmitError
@@ -813,11 +814,11 @@ def describe_cmd(structure, bundle: str, shape: str,
         # frozen atoms and cell -- frame 0 of a frame set, and said
         # (`model/structure.md` § 2.3, *Which frame*).
         said: list = []
-        # A CALCULATION'S STRUCTURE IS IN YOUR ORDER (`model/overview.md`
+        # A CALCULATION'S STRUCTURE IS IN THE USER ORDER (`model/overview.md`
         # § 2.2a, I1): a file in an engine's order is read restored, said,
         # and one of a run whose order nothing states is refused (I9).
         whole = StructureCodec().load(structure, frames=True, said_out=said,
-                                      in_your_order=True)
+                                      in_user_order=True, a_copy=True)
         for notice in said:            # what the read says (structure.md § 2.3)
             click.echo(notice.message)
         if whole.n_frames > 1:
@@ -1823,7 +1824,8 @@ def summarize_cmd(kind: str, words, bundle: str,
             # leaves the pair the last summarize wrote.
             from ..transport.datafile import DataFileError, write_data_file
             try:
-                data = write_data_file(_P(bundle), _tt, rec)
+                data = write_data_file(_P(bundle), _tt, rec,
+                                       readings=readings)
             except DataFileError as e:
                 raise click.ClickException(str(e))
             out = write_record(_P(bundle), rec)
@@ -2725,7 +2727,7 @@ def migrate_cmd(bundle: str) -> None:
     from ..calcdirs import described as _described
     from .migrate import CURRENT, MigrateError, migrate_state
     try:
-        said = migrate_state(bundle)
+        said, wrote = migrate_state(bundle)
     except MigrateError as exc:
         # A REFUSAL IS WRITTEN DOWN, in a described calculation's own ledger
         # (`architecture.md` § 2.1, floor 7).
@@ -2738,9 +2740,78 @@ def migrate_cmd(bundle: str) -> None:
             _ledger(bundle, "migrate", "current", reason=CURRENT)
         click.echo(f"{bundle} is current -- {CURRENT}.")
         return
+    if not wrote:
+        # WHAT IS LEFT AS IT IS, said and written down -- never current.
+        if _described(bundle):
+            _ledger(bundle, "migrate", "left", reason="; ".join(said))
+        click.echo(f"{bundle}: nothing written -- what an older molbuilder "
+                   f"wrote and this one leaves as it is:")
+        for line in said:
+            click.echo(f"  {line}")
+        return
     click.echo(f"migrated {bundle}:")
     for line in said:
         click.echo(f"  {line}")
+
+
+@jobset_group.command("export",
+                      short_help="a transport calculation's every result, "
+                                 "as NetCDF or as CSV tables")
+@click.option("--format", "fmt", required=True,
+              type=click.Choice(list(_EXPORT_FORMATS)),
+              help="netcdf: the data file, every variable saying what it "
+                   "is; csv: its tables, one per set of axes, and a README.")
+@click.option("--to", "to", required=True, type=click.Path(file_okay=False),
+              help="the folder it is written into -- never one inside the "
+                   "calculation.")
+@_bundle_option()
+def export_cmd(bundle: str, fmt: str, to: str) -> None:
+    """Every result of a transport calculation as it stands -- its data
+    file, ``<label>.transport.nc``, or the same as tables,
+    ``<label>.transport-csv/`` -- from what is already there, no data file
+    read: the points without their DOS by region said, and written into the
+    folder named, never into the calculation (engines/transport.md 2a.12,
+    *Export*).  A ladder in progress exports what exists, a point not done
+    an empty cell; what is there already under that name is refused before
+    anything is composed, naming it."""
+    from pathlib import Path as _P
+    from ..persist import write_bytes
+    from ..transport.export import ExportError, export, name_of
+    from ..units import size_words
+    calc = _calc_of(_P(bundle))
+    base, dest_dir = _P(calc.base).resolve(), _P(to).resolve()
+    if dest_dir == base or base in dest_dir.parents:
+        raise click.ClickException(
+            f"{to} is inside the calculation -- an export is written "
+            f"outside it, its own records untouched; name another folder "
+            f"with --to")
+    dest = dest_dir / name_of(calc, fmt)
+    if dest.exists():
+        raise click.ClickException(
+            f"{dest} is there already -- move it aside, or name another "
+            f"folder with --to; nothing was written")
+    try:
+        got = export(calc, fmt)
+    except ExportError as exc:
+        raise click.ClickException(str(exc)) from None
+    files = ({dest: got.files[got.name]} if fmt == "netcdf" else
+             {dest / rel: data for rel, data in got.files.items()})
+    # WRITTEN OUTSIDE THE CALCULATION: an export changes nothing of it, so
+    # its ledger has no line of it.  A group's tables in its own folder.
+    try:
+        for path, data in files.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_bytes(path, data)
+    except OSError as exc:
+        raise click.ClickException(
+            f"writing {dest} stopped: {exc} -- what is there is not the "
+            f"whole export; remove it and export again") from None
+    size = sum(len(d) for d in files.values())
+    click.echo(f"wrote {dest} ({size_words(size)}"
+               + (f", {len(files) - 1} tables and README.txt)"
+                  if fmt == "csv" else ")"))
+    if got.said:
+        click.echo(f"note: {got.said}")
 
 
 @jobset_group.command("scratch",
@@ -2761,7 +2832,7 @@ def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
     them behind.  Listed with each file's stage and size; ``--empty``
     removes them from every run not queued or running, after one question
     (job-system.md § 5.3)."""
-    from ..units import gib_words
+    from ..units import size_words
     from .ask import confirm
     from .commands import command
     from .runstatus import scratch_answer
@@ -2774,10 +2845,10 @@ def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
     click.echo("the engine's scratch its runs hold (never saved, "
                "checkpointing.md S1):")
     for f in answer.found:
-        click.echo(f"  {f.stage or '-':<14} {gib_words(f.size):>10}  "
+        click.echo(f"  {f.stage or '-':<14} {size_words(f.size):>10}  "
                    f"{f.path.relative_to(base)}")
     click.echo(f"  {len(answer.found)} file(s), "
-               f"{gib_words(sum(f.size for f in answer.found))}")
+               f"{size_words(sum(f.size for f in answer.found))}")
     # A RUN GOING KEEPS ITS SCRATCH, each said with why (`scratch_answer`).
     for f, why in answer.kept:
         click.echo(f"  kept: {f.path.relative_to(base)} -- {why}")
@@ -2792,7 +2863,7 @@ def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
         return
     go = answer.free
     size = sum(f.size for f in go)
-    said = confirm(f"about to remove {len(go)} file(s), {gib_words(size)}:",
+    said = confirm(f"about to remove {len(go)} file(s), {size_words(size)}:",
                    auto_yes=auto_yes, question="remove them?", default=False,
                    unanswered="nothing removed")
     _ledger(base, "scratch", "question",
@@ -2814,7 +2885,7 @@ def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
         gone.append(str(f.path.relative_to(base)))
         freed += f.size
     _ledger(base, "scratch", "emptied", bytes=freed, files=gone)
-    click.echo(f"removed {len(gone)} file(s), {gib_words(freed)}.")
+    click.echo(f"removed {len(gone)} file(s), {size_words(freed)}.")
 
 
 @jobset_group.command("machines",

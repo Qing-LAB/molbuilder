@@ -159,7 +159,11 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
 
 - **Scope** = the dataclass's own metadata fields, named once as
   `METADATA_FIELDS`: `regions`, `cell`, `engine_offset`, `offset_by`,
-  `axis_kind`, `vacuum`, `annotations`, `customized` (§ 2.2d). (`regions` is the
+  `axis_kind`, `vacuum`, `annotations`, `customized` (§ 2.2d), `atom_order`
+  and `order_unstated` (below). **What a file states of them** is named
+  once too: `FILE_FIELDS`, every one but the view's (`VIEW_FIELDS`, below)
+  — the sidecar's spread — and of those the deck's ATOM-METADATA block
+  carries every one but the box (`ATOM_METADATA_FIELDS`, `BOX_FIELDS`). (`regions` is the
   whole label store; a reserved label such as `frozen_atoms` is in it, so there
   is no field of its own to serialise — `structure-annotations.md` § 2.)
   `customized`'s frame row sets are indexed by frame, so the block is applied
@@ -194,8 +198,8 @@ keys, and an unlisted one was dropped on every save)*; (5) add a
 save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
 writer (`sidecars/molstruct.to_dict`), its reader
 (`parse/sidecars/molstruct.load_text`) or `apply_to_structure` — each SPREADS
-`METADATA_FIELDS` through the two methods above, so it picks the field up for
-free. *(Until 2026-10-09 the reader named the six fields by keyword, so a
+`FILE_FIELDS` through the two methods above, so it picks the field up for
+free; a field a file must not state is the view's, added to `VIEW_FIELDS`. *(Until 2026-10-09 the reader named the six fields by keyword, so a
 seventh would have been dropped on every load — found by the § 5z.8 review.)*
 
 **To remove one:** delete it from the dataclass + both methods, and add its
@@ -209,10 +213,31 @@ code has never done — found by review when `cell_origin` was retired. Never
 leave a "read-but-never-write" half-migration — that is the drift this contract
 exists to prevent.
 
+**A field of the view, `order_unstated`** *(2.32.0 —
+[`model/overview.md`](?doc=model/overview.md) § 2.2b, F4; the user,
+2026-10-23: "build it")*. A tenth field, true for a structure the load route
+read from a run whose deck states no order (I9) — its atoms may be in the
+engine's order, and nothing says. It rides `to_dict` / `from_dict` and the
+browser's road whole (MolView carries it in `otherMetadata`, unopened), so a
+Save, a Download or a hand-over of that view reaches the codec still
+marked; **a file states it only as its map** — the codec writes
+`atoms_listed_by` `not_stated` — and the sidecar and the deck never carry
+it as a field (`VIEW_FIELDS`, left out of `FILE_FIELDS`; a result file's
+embedded structure, `to_dict(view=False)`, leaves it out too). A read of a
+file for a person sets it false: a `not_stated` pair is read as listed by
+user index, warned (`structure.order_not_stated`), and saved again records
+the user index. **A copy molbuilder makes of a pair for a calculation**,
+with no save of the person's in between — the source pair `molbuilder
+describe` reads and the description's one writer copies
+(`describe.write_description`) — reads it marked
+(`StructureCodec.load(…, a_copy=True)`), so the copy states `not_stated`
+as its source does: nothing molbuilder writes claims what it does not know
+(F4).
+
 **The order record of a remapped structure** *(built 2026-10-14 in the model —
 [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1–R2:
 the model, the browser's road, the deck's block and `runs.view_of`)*. A ninth
-field, **`atom_order`**: null for a structure in your order; for one in an
+field, **`atom_order`**: null for a structure in the user order; for one in an
 engine's order, its order record — an `atom_permutation.Permutation`: the key
 that made it (one of the keys `atom_permutation` names) and both directions,
 checked to be inverse bijections over the structure's atoms by
@@ -222,13 +247,18 @@ It rides every road a metadata field rides — `replace`, `copy`, `frame_at`,
 the sidecar (v14, `structure-molstruct.md`); the deck's ATOM-METADATA block;
 the browser. **Two calls cross with it**: `transport.sort.sort_by` sets it
 (refusing a structure that already has one, I4), and **`Structure.restored()`**
-moves every per-atom field and every frame's atoms back to your order through
+moves every per-atom field and every frame's atoms back to the user order through
 it and clears it — `info` (its relaxation record's fingerprint sorts its
 lines, so it survives) and the `customized` rows untouched; a structure in
-your order comes back unchanged. `Structure.in_your_order(what)` is that
+the user order comes back unchanged. `Structure.in_user_order(what)` is that
 restore with the sentence a door says of it (*… held atoms first …*), and
-**an atom of a structure that may be remapped is named in your order** —
-`Structure.your_indices` for its index, `Structure.atoms_named` for the words
+**an atom of a structure that may be remapped is named in the user order** —
+`Structure.map_to_user_index` for its index, `Structure.map_from_user_index` the
+other way — a structure's own index and the user index, the identity for a
+structure with no record (whether a structure was given to an engine is the
+writer door's to say, and an engine's index the atom index map's,
+[`model/overview.md`](?doc=model/overview.md) § 2.2b, F2) —
+`Structure.atoms_named` for the words
 every message names atoms in (`atom_words`, with each element): a deck's
 sorted copy names the atom the person knows. `runs.view_of` attaches it from a run's
 deck; the codec carries it, and refuses to write it except for an engine's
@@ -760,7 +790,7 @@ truncate to first char), or crashing on a TER between ATOM blocks.
 
 **The one reading door.** `StructureCodec().load(path, *, frame=None,
 frames=False, retired_out=None, said_out=None, opened=(),
-in_your_order=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on
+in_user_order=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on
 the extension (`.xyz` / `.pdb`, anything else refused by name) and applies the
 `.molstruct.json` beside it through `apply_to_structure`. **The pair is the
 file**: a reader that takes the geometry alone hands back a structure smaller
@@ -768,13 +798,18 @@ than what is on disk. **What the read says** to a person goes in `said_out`,
 each a notice by its name and level — one table, `READ_NOTICES`, made by
 `read_notice`: `structure.lone_file` (info, below), `structure.geometry_changed`
 (warn, `structure-molstruct.md` § 3), `structure.order_unstated` (warn,
-`model/overview.md` § 2.2a, I9) and `structure.restored` (info, I8). The two
-warned states are refusals for a door that builds from the file; a door that
-only shows it names them in `opened` and opens it, said. `in_your_order` is the
+`model/overview.md` § 2.2a, I9), `structure.restored` (info, I8) and
+`structure.order_not_stated` (warn — a pair that states no atom order, or
+states `not_stated`, read as listed by user index, `model/overview.md`
+§ 2.2b, F4). The first two warned states are refusals for a door that builds
+from the file; a door that only shows it names them in `opened` and opens it,
+said. **`structure.order_not_stated` refuses nothing** — every door opens the
+pair, saying it — since a pair saved before the order was recorded is almost
+always in the user order and cannot be told otherwise. `in_user_order` is the
 read of an editor or of `molbuilder describe`: a structure in an engine's order is put
-back in yours and said, and a run whose order nothing states is refused —
+back in the user order and said, and a run whose order nothing states is refused —
 asking to open it as well is refused too. A calculation's own structure needs
-no such read: molbuilder writes it in your order (I1).
+no such read: molbuilder writes it in the user order (I1).
 
 **A lone file says what was read** *(user, 2026-10-09: "If the XYZ file doesn't
 come with a JSON file, then we would notify the user that we're dumping the
@@ -1014,7 +1049,7 @@ molbuilder dna ATGC > seq.xyz                      # Structure on stdout
 **A remapped file on the command line** *([`model/overview.md`](?doc=model/overview.md)
 § 2.2a, I8)*: `molbuilder modify` is an editor — it opens a remapped pair
 restored, says so, and its agreement says the atom indices it takes count in
-your order, not the file's; `xv2xyz --from-run` writes the run's geometry
+the user order, not the file's; `xv2xyz --from-run` writes the run's geometry
 restored, and says so; a bare `xv2xyz` of an `.XV` a reordered run of ours
 holds is refused, naming `--from-run` *(2026-10-14, plan § 5ab R1–R2)*.
 
@@ -1096,7 +1131,7 @@ task #75).
 
 | Door | Does | Server seam |
 |---|---|---|
-| `openMolecule(path, {confirmDiscard?, restore?})` | dirty-gate → `molview.data.installMolecule({path, restore, enforce: true})` — `restore` asks for a file in an engine's order put back in yours ([`model/overview.md`](?doc=model/overview.md) § 2.2a) | `POST /api/build/load` (`build.py:596`) → `StructureCodec.read` |
+| `openMolecule(path, {confirmDiscard?, restore?})` | dirty-gate → `molview.data.installMolecule({path, restore, enforce: true})` — `restore` asks for a file in an engine's order put back in the user order ([`model/overview.md`](?doc=model/overview.md) § 2.2a) | `POST /api/build/load` (`build.py:596`) → `StructureCodec.read` |
 | *(saving)* `projects.molviewFiles.save("project", stem, exportFile(range))` | asks WHERE (`chooseSavePath`) → POST → confirms an overwrite → refreshes the sidebar | `POST /api/structure/save` → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + the `geometry_hash` of what it writes) |
 
 `openMolecule` is **only** for a project-file path. A generated structure

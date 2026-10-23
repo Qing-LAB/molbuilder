@@ -35,8 +35,9 @@ async function _postJSON(url, body) {
 
 /* A browser download of in-memory bytes.  Four lines of DOM, and they live
  * HERE — the projects module — because § 11.2a forbids exactly these four
- * lines inside the viewer: where files may go is one module's knowledge. */
-function _download(filename, blob) {
+ * lines inside the viewer: where files may go is one module's knowledge.
+ * Every page that hands a person a file asks it (`projects.download`). */
+export function download(filename, blob) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -100,7 +101,7 @@ export const molviewFiles = {
                 const notices = Array.isArray(res.body.notices)
                     ? res.body.notices : null;
                 if (files.length === 1) {
-                    _download(files[0].name,
+                    download(files[0].name,
                               new Blob([files[0].text],
                                        { type: "text/plain" }));
                     return { ok: true, files: [files[0].name],
@@ -109,7 +110,7 @@ export const molviewFiles = {
                 const enc = new TextEncoder();
                 const archive = storeZip(files.map((f) => ({
                     name: f.name, bytes: enc.encode(f.text) })));
-                _download(stem + ".zip", archive);
+                download(stem + ".zip", archive);
                 return { ok: true,
                          files: [stem + ".zip ("
                                  + files.map((f) => f.name).join(" + ")
@@ -162,7 +163,7 @@ export const molviewFiles = {
         if (!blob) return { ok: false, error: "nothing to export" };
         try {
             if (destination === "download") {
-                _download(filename, blob);
+                download(filename, blob);
                 return { ok: true, files: [filename] };
             }
             if (destination === "project") {

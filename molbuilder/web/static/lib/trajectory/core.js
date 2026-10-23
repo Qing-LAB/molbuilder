@@ -805,7 +805,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // a question that already has an owner, and the tab keeps no copy of the playhead.)
 
     // Build the per-atom force vectors for ONE frame under the current FILTER knobs.
-    // Returns a per-atom array (ORIGINAL atom order) of [fx,fy,fz]; a SUPPRESSED atom is
+    // Returns a per-atom array (the run file's own order -- the engine order for a sorted
+    // run, the one the viewer draws and marks) of [fx,fy,fz]; a SUPPRESSED atom is
     // zeroed -- frozen atoms when "hide frozen" is on (their forces are constraint-balancing
     // artefacts, not physical free-atom forces) and sub-threshold magnitudes -- which the
     // engine renders as NO arrow.  This decides WHICH forces show; the
@@ -2425,16 +2426,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
             label:     state.label || "",
             mtime:     state.mtime || null,
         });
-        var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        var url  = URL.createObjectURL(blob);
-        var a    = document.createElement("a");
-        a.href     = url;
-        a.download = fileStem + "_plots.csv";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        setStatus("Exported " + a.download + ".", "ok");
+        // THE FILE LAYER'S ONE DOWNLOAD (`projects.download`).
+        var name = fileStem + "_plots.csv";
+        window.molbuilder.projects.download(
+            name, new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        setStatus("Exported " + name + ".", "ok");
     });
 
     // Viewer resize: the embed installs its own ResizeObserver on the

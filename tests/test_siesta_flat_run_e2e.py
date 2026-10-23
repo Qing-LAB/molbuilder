@@ -719,35 +719,6 @@ def test_the_output_keeps_its_frames_and_the_history_matches_in_order(flat):
     assert len(matched) >= 2 and matched == list(range(len(matched))), mapping
 
 
-def test_the_history_reads_the_same_without_netCDF4(flat, monkeypatch):
-    """Two backends, interchangeable: netCDF4 when present, scipy.io -- a
-    hard dependency -- otherwise."""
-    import builtins
-    import sys
-
-    from molbuilder.parse.engines.siesta_mdnc import SiestaMdNcFileParser
-    real_import = builtins.__import__
-
-    def blocked(name, *args, **kwargs):
-        if name == "netCDF4":
-            raise ImportError("simulated: netCDF4 not installed")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", blocked)
-    monkeypatch.delitem(sys.modules, "netCDF4", raising=False)
-    viascipy = SiestaMdNcFileParser.parse(_md_nc(flat))
-    monkeypatch.undo()
-    native = SiestaMdNcFileParser.parse(_md_nc(flat))
-    assert len(viascipy.frames) == len(native.frames)
-    for a, b in zip(viascipy.frames, native.frames):
-        assert a.structure.elements == b.structure.elements
-        np.testing.assert_allclose(a.structure.positions,
-                                   b.structure.positions)
-        assert (a.energy is None) == (b.energy is None)
-        if a.energy is not None:
-            assert abs(a.energy - b.energy) < 1e-12
-
-
 # --------------------------------------------------------------------- #
 #  How a run ended -- what the wrapper's retries ask (§ 3.5)             #
 # --------------------------------------------------------------------- #

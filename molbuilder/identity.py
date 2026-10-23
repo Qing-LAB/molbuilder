@@ -633,6 +633,13 @@ def _cap_for(stage_names: Sequence[str]) -> int:
 _LEAD_REGION_OF = {"electrode_L": "L-electrode", "electrode_R": "R-electrode"}
 
 
+def lead_stages() -> "tuple[str, ...]":
+    """The transport lead rungs' stage names -- each a structure of its own
+    (`model/overview.md` § 2.2a), its files on its own stem
+    (:func:`rung_label`)."""
+    return tuple(_LEAD_REGION_OF)
+
+
 def electrode_hs_stem(job_name: str, label: str) -> str:
     """The ONE spelling of an electrode run's identity -- its SystemLabel,
     and therefore the stem of the ``.TSHS`` the device deck references.

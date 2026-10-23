@@ -2145,16 +2145,10 @@
             }
             lines.push(row.join(","));
         }
-        const blob = new Blob([lines.join("\n") + "\n"],
-                              { type: "text/csv" });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement("a");
-        a.href     = url;
-        a.download = "spectra-modes.csv";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        // THE FILE LAYER'S ONE DOWNLOAD (`projects.download`).
+        window.molbuilder.projects.download(
+            "spectra-modes.csv",
+            new Blob([lines.join("\n") + "\n"], { type: "text/csv" }));
     }
 
     // ----- ES panel (§ 9.2.4) ----------------------------------
@@ -2496,8 +2490,8 @@
     // just hands it the geometry + mode via vib.showMode; it never touches a
     // raw viewer.
     //
-    // Geometry source: results.equilibrium.elements + positions_ang
-    // (works after page reload).
+    // Geometry source: the result's own structure, `r.structure`, in the
+    // user order (engines/vibration.md § 6.10.1; works after page reload).
     //
     // The mode shape is faithful (eigenvector_display carries the
     // direction + relative amplitudes correctly, with max(|L|)=1 per
@@ -2921,15 +2915,9 @@
     /* The page owns the destination, so the page makes the link. The module never
      * touches one: it hands back bytes and a suggested name (§ 12). */
     function _download(blob, filename) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        // Revoke on the next turn: revoking synchronously can beat the click.
-        setTimeout(() => URL.revokeObjectURL(url), 0);
+        // THE FILE LAYER'S ONE DOWNLOAD (`projects.download`): where files
+        // may go is the projects module's.
+        window.molbuilder.projects.download(filename, blob);
     }
 
     /* "91% C, 9% H" from {"C": 0.914, "H": 0.086}.

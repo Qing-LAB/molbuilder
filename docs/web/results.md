@@ -653,16 +653,17 @@ exists or is named here; nothing worked out in the browser:
 |---|---|---|
 | ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` (built) |
 | a transmission's loop | each point's TBtrans output through the reading pass, in its one sentence (`tbtrans.loop_words`, `model/parse.md` § 5d.5) — what the point's run record states as `computation.time.progress` · `estimated_at` (§ 5d.1b) | `/api/transport/record`: each point not finished whose run wrote its output — running, or stopped — carries `progress` `{said, estimated_at}`, `estimated_at` only while an estimate stands; the transmission rung carries its running point's, with that point (`frame`, `of`, `bias_v`), how many points are still to come after it (`after`) and the last finished point in the ladder's order with its loop (`measured`: its point and `loop_elapsed_s`, its passes' loops summed, `model/parse.md` § 5c.1). The rung's row: *at 0.2 V: unpolarized (1 of 1): 40 % done, about 3h left (TBtrans's estimate) · estimated 10m ago — 3 more points after it; the loop at 0 V took 6h*; the point's line: its `said` and the age. A point named as every page names one (`lib/results/point-words.js`), a time and an age as every page says them (`lib/time-ago.js`, [`ui-contract.md`](?doc=web/ui-contract.md) § 4) |
-| device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) — opened in your order (`openMolecule(…, {restore: true})`, the load route's `restore`), its notice saying so; `junction.xyz` itself stays the engine's record ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
+| device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) — opened in the user order (`openMolecule(…, {restore: true})`, the load route's `restore`), its notice saying so — a junction whose order is not recorded (I9) opened as a viewer opens it, in TranSIESTA's order, marked, the record's `order_unstated` line above it; `junction.xyz` itself stays the engine's record ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
 | T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record — per spin channel, `(T↑ + T↓)/2` for a polarized point — each channel kept in `channels` and their sum in `transmission_total` (`record.point_transmission`) |
 | DOS and PDOS | from the transmission run's files, each read by the SIESTA family's parser ([`model/parse.md`](?doc=model/parse.md) § 5e; [`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`), from TBtrans's k-averaged `<label>.TBT.AVDOS`; the **left** lead's spectral DOS (`TBT.DOS.A`, `.TBT.AVADOS_<L>` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, plan § 5u.1 step 7); both leads' bulk DOS (`TBT.DOS.Elecs`, `.TBT.AVBDOS_<lead>`); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F — from the point's **digest**, the data file `<label>.TBT.nc`'s device DOS per orbital, k-averaged once and kept beside it | per point in the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on the data file's energies, E − E_F (`tbtnc.point_dos`) — `by_label` present only when the point's digest is kept; a block holding no curve is no DOS, its `dos_why` said instead (`tbtnc.NO_CURVE`: TBtrans wrote none, or not every part of a sharing point's grid holds one) |
 | a point's digest | each finished transmission point's data files, their reading kept or not — at the top of the DOS tab: one line per data file, *its point: its file (its size) — kept / not read yet / out of date / being read by whom, k-point i of n, since when*; **Read the DOS per orbital** when one is not kept and not being read, or its reading's process on this host is gone; **Read again** (every one, kept or not); **Take over** when one is being read on another host; while any reading runs — this tab's, another tab's, `summarize task`'s, another host's — the line is asked again every 2 s and the rest of the report stays in use; when it ends, the record is fetched again — the regions drawn, a selection's PDOS asked again | `GET /api/transport/digest?path=` the readings' states, nothing read; `POST /api/transport/digest` `{path, fresh, take_over}` reads them in the request (`tbtnc.read_points`); per point in the record as `digest` (since 2.31.0) |
-| PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | `GET /api/transport/pdos?path=&point=&frame=&atoms=&orbitals=` (`frame` a frame set's index) — stateless, read from that point's digest and the device run's `.ORB_INDX` on request, on the data file's energies, refused by name while the digest is not kept (`tbtnc.NOT_READ`) — the atoms chosen in your order, as the junction is drawn, mapped into the junction's through its order record and the answer's atoms back (`transport.record.selection_pdos`); refused by name for a calculation whose junction's sidecar states no order record |
+| PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | `GET /api/transport/pdos?path=&point=&frame=&atoms=&orbitals=` (`frame` a frame set's index) — stateless, read from that point's digest and the device run's `.ORB_INDX` on request, on the data file's energies, refused by name while the digest is not kept (`tbtnc.NOT_READ`) — the atoms chosen in the user order, as the junction is drawn, mapped into the junction's through its order record and the answer's atoms back (`transport.record.selection_pdos`); refused by name for a calculation whose junction's sidecar states no order record |
 | eigenchannels | `TBT.T.Eig` (4 by default): the transmission of each channel at each energy — eigenvalues only; TBtrans writes no channel wavefunctions with this deck | from TBtrans's k-averaged `<label>.TBT.AVTEIG_<L>-<R>`, on the data file's energies: per point `dos.eigenchannels: [[...], ...]`, drawn under T(E) on the same axis |
 | I–V | `iv` in the record | built (table); the curve is new, drawn from the same arrays |
 | convergence | each rung's SCF history, phase-tagged: `cycle, energy, delta_E, dDmax, dHmax, ef, phase` (`periodic` / `negf`), and on a NEGF row the charges, `dq` and `vha_ev` (the SIESTA reader, `siesta_reader.py`) | **new** in the record: per rung `scf: [...]`, read by the same parse the record already makes of each rung's output. `/api/watch/*` cannot serve it: it holds one file for the whole server, the trajectory viewer's |
 | device NEGF figures | the NEGF phase's E_F, iterations, and charge | **new** in the record's device stage, read from the same parse (the periodic start's never shown as the device's, § 2a.12) |
 | provenance chain | each rung's `.gathered-from` (`runrecord.read_gathered_from`) — and, a calculation that reuses a finished one, what each point is a copy of (`copied_from`, `runrecord.copied_of`) beside what it started from ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | **new** in the record: `provenance.chain` |
+| export | the report's header: **Export** — *CSV* · *NetCDF* — every result of the calculation as it stands, downloaded: `<label>.transport.nc`, or the tables and their `README.txt` as `<label>.transport-csv.zip` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *Export*); beside the buttons, how many points export without their DOS by region and the way to read them (the DOS tab's *Read the DOS per orbital*), a refusal in its words, both buttons disabled while one runs; and a link, *How to read these in Python*, to [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md) | `GET /api/transport/export?path=&format=` — composed on request from what is there (`transport.export`), no data file read; the file handed over by `projects.download` *(since 2.32.0)* |
 | what a point is a copy of, and what it shares | a calculation that reuses a finished one: each point's `copied_from` and `shared` — the finished point, the energies it holds and those its own run computed — said under the points table in the manifest's words ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `points[].copied_from`, `points[].shared` in the record (since 2.30.0) |
 
 **PDOS of the atoms you choose** *(user, 2026-10-07: "what if we want to be
@@ -671,31 +672,56 @@ some pi system we are interested in?")*. The DOS tab draws the total and the
 three regions by default, and **any set of atoms you select** as a curve of
 its own:
 
-* **You select in the device card** — MolView's Selection page, as anywhere
-  else: atoms picked one by one, *by element* (every S, every C), *by label*
-  (any label of the structure, yours included — a label is only a set of atoms
-  here, read and never interpreted). The report reads the selection through
-  MolView's handle (`data.selection.get()`, `subscribe`) and keeps nothing of
-  its own.
-* **Add it as a curve** — the DOS tab's *Add selection*, named by you (`S`,
-  `ring C`), its colour the next of the plot theme's; several overlaid; each
-  removable. They follow the selected bias point and frame like every other
-  curve, and stay while the report is open.
-* **Computed on the server, on request** — the per-orbital DOS summed over
-  those atoms' orbitals, from the point's digest (the data file's DOS per
-  orbital, k-averaged once — the DOS tab's digest line above). Nothing is
-  precomputed for selections nobody asked for.
-* **And by orbital type** — one menu beside *Add selection*: *all*, *s*,
-  *p*, *d*, *p_x*, *p_y*, *p_z*. The curve is then the selected atoms'
-  orbitals of that type. Each orbital's type is the device run's own
-  `<label>.ORB_INDX`, which SIESTA writes by default (`WriteOrbitalIndex`,
-  `read_options.F90:1909`): one row per orbital — its atom, species, `n`, `l`,
-  `m`, zeta, whether it is a polarization orbital, and its name (`s`, `px`,
-  `pz`, `dxy` …). **A π system** is the selected atoms' *p_x*, *p_y* or *p_z*
-  — the one perpendicular to the ring, which is exact when the ring lies in a
-  coordinate plane. TBtrans writes each orbital's own DOS and not the terms
-  between orbitals, so a *p* orbital pointing any other way cannot be formed;
-  the tab says so in one line under the menu.
+**Three numbered steps, in the order a person takes them** *(the user,
+2026-10-23: "start with like first select the group of atoms you would like
+to extract information from, and then you have to like say give a name to
+this selection, and then add this to the plot" — a name box beside a button
+read as if typing the name selected the atoms)*:
+
+1. **Select atoms in the Device view** (the card on the left) — MolView's
+   Selection page, as anywhere else: atoms picked one by one, *by element*
+   (every S, every C), *by label* (any label of the structure, the user's
+   included — a label is only a set of atoms here, read and never
+   interpreted). **A line under the step says what is selected now** —
+   *Selected now: 2 atoms (#13 S, #14 S)* — each atom's number as the view
+   shows it and its element — or *none yet* — following the selection
+   through MolView's handle (`data.selection.get()`, `subscribe`); the report
+   keeps nothing of its own.
+2. **Which orbitals** — one menu: *all*, *s*, *p*, *d*, *p_x*, *p_y*, *p_z*.
+   The curve is then the selected atoms' orbitals of that type. Each
+   orbital's type is the device run's own `<label>.ORB_INDX`, which SIESTA
+   writes by default (`WriteOrbitalIndex`, `read_options.F90:1909`): one row
+   per orbital — its atom, species, `n`, `l`, `m`, zeta, whether it is a
+   polarization orbital, and its name (`s`, `px`, `pz`, `dxy` …). **A π
+   system** is the selected atoms' *p_x*, *p_y* or *p_z* — the one
+   perpendicular to the ring, which is exact when the ring lies in a
+   coordinate plane. TBtrans writes each orbital's own DOS and not the terms
+   between orbitals, so a *p* orbital pointing any other way cannot be formed;
+   the step says so in one line under the menu.
+3. **Name the curve and add it** — the name (`S`, `ring C`; left empty,
+   *selection N*) and *Add to the plot*, which stays disabled until step 1
+   has atoms. A point whose DOS per orbital is not kept says so here, naming
+   the *Read the DOS per orbital* above, before anything is asked.
+
+**The curves on the plot** are listed under the steps, each with its atom
+count and orbitals, its colour the next of the plot theme's, several
+overlaid, each removable; they follow the selected bias point and frame like
+every other curve, and stay while the report is open. **Computed on the
+server, on request** — the per-orbital DOS summed over those atoms'
+orbitals, from the point's digest (the data file's DOS per orbital,
+k-averaged once — the DOS tab's digest line above). Nothing is precomputed
+for selections nobody asked for.
+
+**Which index the atoms carry, said where they are picked**
+([`model/overview.md`](?doc=model/overview.md) § 2.2b): one line in the Device
+view — *Atoms are numbered as in your structure (user index + 1). The
+engine's own files list them by engine index — the digest, and `.TBT.nc` as
+sisl reads it, counted from 0; `molbuilder atom-index` shows both, and the
+post-processing document how to use them* — the last a link to
+[`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md).
+A junction whose order is not recorded (I9) is drawn as TranSIESTA lists it,
+and the line then says that instead, in the record's words
+(`order_unstated`).
 
 **Shared, not copied** — what this needs from modules that exist:
 
@@ -822,12 +848,13 @@ the electrode rungs, which run on a cell of their own) run on a reordered
 copy; their frames, forces, held atoms and labels agree with each other in
 the engine's order, and the viewer says so above its tabs — *The atoms are
 listed in the engine's order (held atoms first)*, or *(TranSIESTA's order)*,
-*; a save or a download writes them in your order* — from the structure it
+*; a save or a download writes them in the user order* — from the structure it
 holds, at every redraw, never a notice that a poll would clear: the server
 words it from the order record (`atom_permutation.SORT_KEY_WORDS`), as it
-works out the resolved box. Saving or exporting from it writes the person's
+works out the resolved box. Saving or exporting from it writes the user
 order, restored, and says so (I1); the transport report draws its junction
-restored, said by the load's notice. **A run prepared before 2.10.0** states no order: the load
+restored, said by the load's notice — one whose order is not recorded as
+TranSIESTA lists it, marked, its record's line saying so. **A run prepared before 2.10.0** states no order: the load
 says so — the trajectory tab's status line, kept on every summary line it
 writes — and a save, download or hand-over from it writes the structure as
 the engine listed it (I9; user, 2026-10-14: "Write it, warned").

@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 14,
+  "schema_version": 15,
   "n_atoms_total": 2,
   "n_frames_total": 2,
   "geometry_hash": "3b7e…(sha256 hex)",
@@ -47,6 +47,9 @@ plus the structure's **metadata fields** spread in alongside them.
   "customized": {"rows":   [{"name": "temperature", "value": 300, "unit": "K"}],
                  "frames": [[], [{"name": "mode", "value": 31}]]},
   "atom_order": null,
+  "atom_index_map": {"atoms_listed_by": "user_index", "atom_index_base": 0,
+                     "user_atom_index": [0, 1],
+                     "atom_index_why": "given to no engine: its engine order is each calculation's, stated by that calculation's files"},
 
   "atom_names": ["CA", "SG"],
   "residue_ids": [14, 14],
@@ -74,6 +77,7 @@ of them: its sidecar holds the envelope, the metadata fields and
 | `n_frames_total` | *(v11)* frame count of the paired document — what `customized.frames` is indexed against; a mismatch on load is refused like the atom count's (§ 3) |
 | `geometry_hash` | *(v13)* sha256 of the paired geometry's atom lines and the cell they sit in (hex) — the integrity pin (§ 3); a v7–v12 file carries `structure_hash`, a hash of the geometry file's bytes, read and never compared |
 | `created_by` / `created_at` | provenance stamp (`created_at` is ISO-8601 UTC, `…Z`) |
+| `atom_index_map` | *(v15)* which index the atoms are listed by and each atom's indices (`model/overview.md` § 2.2b) — written by the codec from the door that writes the pair, never a `Structure` field and never edited; read, it is checked against `atom_order` |
 | `selection_rules` | a sidecar-**only** pass-through, **not** a `Structure` field (§ 4) |
 
 **Three kinds of information, one contract** *(user, 2026-08-20; the third
@@ -90,7 +94,9 @@ unfolds along exactly those lines.
 
 The **metadata fields** (`regions`, `cell`, `engine_offset`, `offset_by`,
 `axis_kind`, `vacuum`, `annotations`, `customized`, `atom_order`) are exactly the set
-`Structure`'s codec owns (`METADATA_FIELDS`) — they are **spread in, not
+a file states of what `Structure`'s codec owns (`FILE_FIELDS`: `METADATA_FIELDS`
+but the view's `order_unstated`, which a pair states only as its
+`atom_index_map`, `model/structure.md` § 2.2) — they are **spread in, not
 re-listed**, by the writer and the reader alike
 (`structure_fields_via_dataclass` round-trips them through a scratch `Structure`
 of `n_atoms_total` atoms and `n_frames_total` frames, so the sidecar can never
@@ -100,7 +106,7 @@ bug).
 
 **`atom_order`** *(v14, 2026-10-14 —
 [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1)* is `null`
-for a structure in the person's input order, and for one in an engine's order
+for a structure in the user order, and for one in an engine's order
 its **order record**, written whole:
 
 ```text
@@ -108,6 +114,39 @@ its **order record**, written whole:
                "sorted_to_original": [2, 0, 1],      each a bijection of 0 … n−1,
                "original_to_sorted": [1, 2, 0]}      the two inverse
 ```
+
+**`atom_index_map`** *(v15, 2026-10-23 — [`model/overview.md`](?doc=model/overview.md)
+§ 2.2b)* says it of the pair in the words every file molbuilder writes uses,
+written by the codec from the door that writes the pair (F2) — never made
+from `atom_order` alone, never edited: a pair the user saves, given to no
+engine, states no engine index, and why —
+
+```text
+"atom_index_map": {"atoms_listed_by": "user_index", "atom_index_base": 0,
+                   "user_atom_index": [0, 1, 2],
+                   "atom_index_why": "given to no engine: its engine order is each calculation's, stated by that calculation's files"}
+```
+
+— and a calculation's composed junction, listed by engine index —
+
+```text
+"atom_index_map": {"atoms_listed_by": "engine_index", "atom_index_base": 0,
+                   "user_atom_index": [2, 0, 1],
+                   "engine_atom_index": [0, 1, 2]}
+```
+
+Read, it is kept with the pair as the file states it and **checked against
+`atom_order`** through the map's own makers — listed by engine index with
+the record's columns, or, with no record, listed by user index, by engine
+index with both columns the identity (an engine record whose sort moved
+nothing), or `not_stated` — or the pair is refused by name. The reader keeps
+the version the file states (`schema_version`), never this build's.
+`atom_order` is the record the structure carries; the map is what every
+reader of a file reads. A pair saved from a view of a structure whose order
+nothing states (I9 — a run's deck, or a composed junction's sidecar, written
+before the rule) states `"atoms_listed_by": "not_stated"`, its
+`atom_index_why` saying so; a v7–v13 pair states nothing — both read as
+listed by user index, with a warning (F4).
 
 It is **system** information (stored whole, never per atom), and it holds
 only for the atom list as it stands — so an edit that adds or removes atoms
@@ -141,17 +180,24 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v14. The reader accepts {7, 8, 9, 10, 11, 12, 13, 14} and nothing else.**
+**Current schema: v15. The reader accepts {7, 8, 9, 10, 11, 12, 13, 14, 15} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 14                 # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14})
+SCHEMA_VERSION    = 15                 # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15})
 ```
 
+*(v15, 2026-10-23, plan § 1ab.)* **Additive**: **`atom_index_map`** (§ 1),
+which index the atoms are listed by and each atom's indices
+([`model/overview.md`](?doc=model/overview.md) § 2.2b) — written into every
+pair from v15 on. A v14 file states none, and its map is made from its
+`atom_order` as it is read; a v7–v13 file states no order at all, and is read
+as listed by user index, warned (`model/overview.md` § 2.2b, F4).
+
 *(v14, 2026-10-14, plan § 5ab R1.)* **Additive**: the optional
-**`atom_order`** (§ 1), `null` for a structure in your order — which every
+**`atom_order`** (§ 1), `null` for a structure in the user order — which every
 pair a person's save writes is — and an engine's record's order record. A
-v7–v13 file states none and is read as your order.
+v7–v13 file states none and is read as the user order.
 
 *(v13, 2026-10-14, plan V1.9 / M2m.)* **The pin is the geometry hash**
 (§ 3): `geometry_hash` replaces `structure_hash`, which a v7–v12 file still
@@ -290,7 +336,8 @@ at any of them is refused, not upgraded.
 | v11 | *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`**. **Readable**: a v7–v10 file holds nothing indexed by frame
 | v12 | *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine`. **Readable**: a v7–v11 file's stated offset is read as the person's
 | v13 | *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired. **Readable**: a v7–v12 file opens unchecked
-| **v14** | **current** *(2026-10-14)* — the optional **`atom_order`**, the order record of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a). **Additive, readable**: a v7–v13 file is read as the person's order. *A pair saved before v14 from a reordered run's view is in the engine's order with nothing to say so* — it cannot be told apart, and the release says it (I9)
+| v14 | *(2026-10-14)* — the optional **`atom_order`**, the order record of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a). **Additive, readable**: a v7–v13 file is read as the user order. *A pair saved before v14 from a reordered run's view is in the engine's order with nothing to say so* — it cannot be told apart, and the release says it (I9)
+| **v15** | **current** *(2026-10-23)* — **`atom_index_map`**, which index the atoms are listed by and each atom's indices (§ 1; `model/overview.md` § 2.2b), written into every pair. **Additive, readable**: a v14 file's map is made from its `atom_order` as it is read; a v7–v13 file is read as listed by user index, warned (F4)
 
 ### Changing the schema
 

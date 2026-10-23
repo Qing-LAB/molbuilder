@@ -188,7 +188,7 @@ flowchart LR
   S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json and job-request.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
   T -->|"prep task"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA, from a sorted copy: &lt;label&gt;_01_freq.fdf (box ticked),<br/>or &lt;label&gt;_01_relax.fdf, then &lt;label&gt;_02_freq.fdf<br/>prepared once relax has finished"]
   P -->|"launch task"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
-  R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 9,<br/>its data file .spectra.nc beside it"]
+  R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 10,<br/>its data file .spectra.nc beside it"]
   A --> V["Results tab<br/>chart · modes table · animation ·<br/>electronic structure · thermochemistry"]
 ```
 
@@ -1124,7 +1124,7 @@ decided** (2026-09-23), under the contract of
 [`model/overview.md`](?doc=model/overview.md) § 2.2:
 
 - `prep` sorts a **copy** with the `held-first` key — held atoms first, free
-  atoms last, each in the input's own relative order — through the one sort
+  atoms last, each in the user order among themselves — through the one sort
   machinery (`transport/sort.py`: `sort_by(struct, "held-first")` hands its
   order to the shared `apply_order`, which remaps every per-atom field, checks
   the bijection and records both directions; a second key over the same
@@ -1138,17 +1138,17 @@ decided** (2026-09-23), under the contract of
   `FC.First = n_held + 1`, `FC.Last = N`;
 - the finish (§ 5.5) reads the order record from its own deck beside the job
   (`deck_record.order_record_of`) and puts every per-atom row back in the
-  input order through `Permutation.rows_to_input_order` and `original_of` —
-  the only way any reader may: **the input order never reaches the engine and
+  user order through `Permutation.map_rows_to_user_order` and `map_to_user_index` —
+  the only way any reader may: **the user order never reaches the engine and
   the sorted order never reaches a person.** A deck stating none is in the
-  input order (I2); a stage prepared before 2.10.0 and not yet launched is
+  user order (I2); a stage prepared before 2.10.0 and not yet launched is
   refused at its launch, its deck planned again — prepared again, it states
   its record — and one that ran then was finished by its own bundle
   (`job-system.md` § 6.0, step 1).
 
 The deck writer checks the shape and refuses by name a copy whose free atoms
 are not one trailing run (`vibration_deck.fc_facts`): a deck rendered from the
-input order would nudge the wrong atoms and converge without complaint.
+user order would nudge the wrong atoms and converge without complaint.
 TranSIESTA's `elec-pos` demands consecutive atoms for the same reason, which
 is why the machinery already existed. Two sorts are never composed: `sort_by`
 refuses a structure already remapped, and a door restores before it sorts
@@ -1157,9 +1157,9 @@ order never reaches a person: a door that shows a reordered run marks it, and
 a door that writes for a person restores it (I1).
 
 ```text
-input order (the person's):        sorted copy (the engine's):
-  1 H  free                          1 H  held   ← Geometry.Constraints: position 1
-  2 H  held                          2 H  free   ← FC.First = 2, FC.Last = 2
+the user order:                    sorted copy (the engine's):
+  user index 0  H  free              engine index 0  H  held   ← Geometry.Constraints: SIESTA's atom 1
+  user index 1  H  held              engine index 1  H  free   ← FC.First = 2, FC.Last = 2 (SIESTA's atom 2)
                                      the deck's ATOM-METADATA block:
                                      "atom_order": {"key": "held-first",
                                        "sorted_to_original": [1, 0], "original_to_sorted": [1, 0]}
@@ -1207,12 +1207,12 @@ as the attempt's `.continued-from`, so the run says which relaxation it was
 measured at. From that run prep reads the **last geometry step of the
 stage's own output and the cell that run used** through the run door
 (`runs.steps_of`: the stage's own output at its run's index, so a flat bundle
-answers with this stage's file), restored to the input order through
+answers with this stage's file), restored to the user order through
 `relax`'s order record ([`model/overview.md`](?doc=model/overview.md)
 § 2.2a), takes them onto the calculation's structure, and sorts it as every
 prep does (`jobset/prep.py::_vibration_stage_geometry`); the `--from` row
 below refuses a run that is not this calculation's atoms, compared in the
-input order, and a `relax` run whose deck was written before the order was
+user order, and a `relax` run whose deck was written before the order was
 recorded is refused by name (I9). The output rather than
 `<label>.XV`, because on the flat shape both stages share one `.XV` and the
 force-constant run overwrites it with its last displacement, while the output
@@ -1347,7 +1347,7 @@ states:
 #   "temperature_K":298.15,           # the thermochemistry's temperature (§ 4.7)
 #   "masses_amu":[1.008, 1.008],      # every atom's mass, the deck's order (I3)
 #   "title":"...",                    # the structure's title -> the result's structure (§ 6.10.1)
-#   "identity":{...},                 # the identity columns, in your order -> the result's structure
+#   "identity":{...},                 # the identity columns, the deck's order -- restored with the rest -> the result's structure
 #   "molbuilder_version":"1.1.0"      # the molbuilder that prepared it -> the result
 # }
 # === molbuilder vibration END ===
@@ -1472,7 +1472,7 @@ is guessed at on the node:
 | the stationarity criterion (`relax_force_tol`, resolved for the stage), the person's statement (`already_relaxed`), the ladder's relaxation — the `relax` stage's relaxation record (`parse/contract.relaxation_of`), read by `prep` with the coordinates, from the output they came from (`runs.steps_of`), and that stage's name — the thermochemistry's temperature (`temperature_K`), the stage's name, and the molbuilder that prepared the deck | the deck's `vibration` block, written by `prep` | its reader beside that one, `deck_record.extract_vibration_record` |
 | the force constants | `<label>.FC` | `parse/engines/siesta_fc.py` |
 | the reference geometry and its forces (FC step 0); SIESTA's version | the run's output | SIESTA's one reading pass, `siesta_reader` |
-| the order back to the input's | the deck's ATOM-METADATA block, its `atom_order` (none for a deck in the input order — [`model/overview.md`](?doc=model/overview.md) § 2.2a, I2, I5) | the block's reader and the order record's, `deck_record.extract_atom_metadata` and `order_record_of` |
+| the order back to the user order | the deck's ATOM-METADATA block, its `atom_order` (none for a deck in the user order — [`model/overview.md`](?doc=model/overview.md) § 2.2a, I2, I5) | the block's reader and the order record's, `deck_record.extract_atom_metadata` and `order_record_of` |
 | the masses | every atom's, as `prep` stated them — `chemistry.atomic_mass`, the isotope-averaged standard weights (I3) | the deck's `vibration` block, its reader `deck_record.extract_vibration_record`; written into the result as `equilibrium.masses_amu` (§ 6.2) |
 
 **When the finish fails**, the session log names the reason and the
@@ -1513,7 +1513,7 @@ job with it (`Job.finish`, from the deck's own spec); the wrapper runs it;
 | layer | module | what it answers |
 |---|---|---|
 | the math | `spectra/normal_modes.py` | the harmonic path and the steps after it -- the wavenumbers, the display form, the thermo sums and their grid (§ 4.5, § 4.7) -- which both routes call: the PySCF deck imports them from `mb_pyscf.pyz` |
-| the analysis, engine-neutral | `spectra/vibrational_analysis.py` | a second-derivative block over the free atoms, the masses, the geometry with its held set and frame → the result (`SpectraResults`): frequencies, both eigenvector forms, the removed motions, the vibrational thermochemistry, the stationarity verdict, and every per-atom row back in the input order through the recorded permutation. Any route that has a block calls it |
+| the analysis, engine-neutral | `spectra/vibrational_analysis.py` | a second-derivative block over the free atoms, the masses, the geometry with its held set and frame → the result (`SpectraResults`): frequencies, both eigenvector forms, the removed motions, the vibrational thermochemistry, the stationarity verdict, and every per-atom row back in the user order through the recorded permutation. Any route that has a block calls it |
 | the PySCF route | `spectra/pyscf_vibration.py` | the rules the PySCF script calls inside its run, imported from `mb_pyscf.pyz`: the HOMO and its orbital window, the Hessian with dμ/dR (`dipole_derivatives`), the GPU array bridge |
 | the SIESTA route | `spectra/siesta_vibration.py` | `read_force_constant_run(deck, output)` gathers the inputs above from the attempt the deck sits in; `finish(deck, output)` runs the analysis and writes the file; `main` is the bundle's entry |
 | the prose | `spectra/methods.py` | the route's Methods paragraph (`siesta_methods_text`), beside every other Methods sentence |
@@ -1526,7 +1526,7 @@ ref      = the first step of the output with forces (FC step 0)    # sorted orde
 H_AA     = mean over ± of fc[a, α, ·, b, β], a, b ∈ FREE           # the central difference
 H_AA     = ½ (H_AA + H_AAᵀ);  × Bohr²/Hartree_eV                   # symmetrise; → Hartree/Bohr²
 λ, L, patterns = vibrational_modes(H, masses_amu, R_ref, held, axis_kind, cell)
-rows → input order through Permutation.rows_to_input_order          # the deck's order record, inverted once
+rows → user order through Permutation.map_rows_to_user_order          # the deck's order record, inverted once
 write <label>.spectra.json beside the run:  engine 'siesta', the SIESTA version from the output,
     intensities null, the MO block null, thermo = the vibrational sums (§ 4.7's second regime),
     hessian_scope 'free'|'all', removed_motions, relaxation (the verdict below and the ladder's record),
@@ -1552,7 +1552,7 @@ workstation (`tests/test_siesta_vibration_e2e.py`, SIESTA 5.4.2): CO₂ listed
 O O C with the carbon held, so the held-first deck is a 3-cycle of the input →
 four modes — a degenerate bend pair moving the oxygens in the (x, y) plane, two
 stretches along z — two motions removed (the turns about the carbon, about x
-and about y), the oxygens reported as atoms 0 and 1 and the carbon as 2 — the
+and about y), the oxygens reported as atom indices 0 and 1 and the carbon as atom index 2, the user order — the
 spectrum written by the launch itself.
 
 **What the finish judges (built 2026-09-24; in the job since 2026-09-28).** Stationarity: SIESTA
@@ -2039,8 +2039,9 @@ registered in [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 | **7** | 2026-10-10 | `equilibrium.masses_amu` — every atom's mass, as the deck stated it and the analysis weighted by it (I3); the derived per-mode keys — the activity classes, the zero-point amplitude and displacement — **written by both engines** through one function and checked on read (§ 6.6), where until now the SIESTA finish wrote them and the PySCF deck did not. A v4–v6 file reads as before: no masses, its derived keys computed on read |
 | **8** | 2026-10-14 | the SIESTA route's `engine_metadata` names its force-constant range in SIESTA's numbering, `fc_range_engine_1based` — the deck's held-first order, an engine fact and not an atom's identity ([`model/overview.md`](?doc=model/overview.md) § 2.2a). A v4–v7 file reads as before, its range read under v8's name (`SpectraResults.from_dict`) |
 | **9** | 2026-10-18 | **the result states its structure whole** — `structure`, `Structure.to_dict()` of the equilibrium structure (§ 6.10.1): the geometry, the box, the labels with the held atoms as `frozen_atoms`, the identity columns, `info`; `structure_hash`, `frozen_atom_idxs` and `equilibrium.{elements, positions_ang}` are read from a v4–v8 file and never written (`frozen_atom_idxs` still in a PySCF file written before any geometry exists, § 6.10.2); `relaxation.record` carries the relaxing stage's record whole. The reader serves every file as this shape |
+| **10** | 2026-10-23 | **the result states its atom index map** — `atom_index_map` ([`model/overview.md`](?doc=model/overview.md) § 2.2b): listed by user index, each atom's engine index its stages' deck order (held atoms first for SIESTA's; the user order for PySCF's) — always written, each column where it is known; a v4–v9 file reads, its map made on read from its structure (the user column) and its stages' deck (the engine column) |
 
-`READABLE_SCHEMA_VERSIONS = {4, 5, 6, 7, 8, 9}`; an older or unknown version is
+`READABLE_SCHEMA_VERSIONS = {4, 5, 6, 7, 8, 9, 10}`; an older or unknown version is
 refused by name.
 
 ### 6.2 The keys, and who writes each
@@ -2048,11 +2049,12 @@ refused by name.
 | key | written by | meaning |
 |---|---|---|
 | `schema_version` · `engine` · `engine_version` · `molbuilder_version` · `timestamp` | both | provenance; `engine` is `pyscf` or `siesta` |
-| `structure` | both, from v9 (§ 6.10.1) | the equilibrium structure whole, `Structure.to_dict()`: the geometry the Hessian is taken at, in the input order, its box, its labels — the held atoms as `frozen_atoms` — its identity columns and `info`. A v4–v8 file's is built on read from its old keys. `structure_hash` (v4–v8) is read, never written |
-| `n_atoms_total` · `free_atom_idxs` · `frozen_atom_idxs` | both | 0-based, in the **input** order (SIESTA: inverted through the record); the two lists partition `range(n_atoms_total)` and the reader refuses otherwise. From v9 the held list is the structure's label, and `frozen_atom_idxs` is written only before any geometry exists (§ 6.10.2) |
+| `structure` | both, from v9 (§ 6.10.1) | the equilibrium structure whole, `Structure.to_dict()`: the geometry the Hessian is taken at, in the user order, its box, its labels — the held atoms as `frozen_atoms` — its identity columns and `info`. A v4–v8 file's is built on read from its old keys. `structure_hash` (v4–v8) is read, never written |
+| `n_atoms_total` · `free_atom_idxs` · `frozen_atom_idxs` | both | 0-based, in the **user** order (SIESTA: mapped back through the record); the two lists partition `range(n_atoms_total)` and the reader refuses otherwise. From v9 the held list is the structure's label, and `frozen_atom_idxs` is written only before any geometry exists (§ 6.10.2) |
+| `atom_index_map` | both, from v10 | which index the result's atoms are listed by — `user_index` — and each atom's user and engine index (`model/overview.md` § 2.2b); the SIESTA finish from its deck's order record, the PySCF deck the identity |
 | `equilibrium.{scf_energy_eh, mo_energies_eh, homo_idx}` | PySCF | the reference SCF and its orbital ladder — the **energy subgroup** of the equilibrium block, which travels whole or not at all: **`null` in all three on SIESTA** (a periodic engine has a Fermi level, not a HOMO), and `null` in one slot only is a broken file. The two geometry keys below are separate and always present |
 | `equilibrium.{elements, positions_ang}` | v4–v8 | the geometry the Hessian is taken at (§ 4.2); from v9 it is the structure's, which the animation draws from |
-| `equilibrium.masses_amu` | both, from v7, wherever the geometry is | every atom's mass in amu, in the input order — the masses the analysis weighted by, as the deck states them (I3): one positive finite number per atom, refused otherwise (§ 6.7). What a mode's frame set's `mass_amu` channel is copied from ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
+| `equilibrium.masses_amu` | both, from v7, wherever the geometry is | every atom's mass in amu, in the user order — the masses the analysis weighted by, as the deck states them (I3): one positive finite number per atom, refused otherwise (§ 6.7). What a mode's frame set's `mass_amu` channel is copied from ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
 | `modes[]` | both | ascending frequency; every entry a vibration (§ 6.3) |
 | `removed_motions.{count, patterns}` | both | what the harmonic analysis removed before diagonalising: the count and the orthonormal Cartesian patterns over the free atoms; `len(modes) = 3·n_free − count` by construction |
 | `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
@@ -2195,7 +2197,7 @@ v7, which states none.
 ### 6.7 What the reader refuses
 
 `SpectraResults` is built at the boundary and refuses, by name: a schema
-version outside `{4, 5, 6, 7, 8, 9}` (`READABLE_SCHEMA_VERSIONS`, § 6.1); masses that are not one positive finite
+version outside `{4, 5, 6, 7, 8, 9, 10}` (`READABLE_SCHEMA_VERSIONS`, § 6.1); masses that are not one positive finite
 number per atom, or that come without the geometry they belong to; in a v7
 file, the geometry without its masses — `equilibrium.masses_amu` travels with
 `equilibrium.positions_ang`, so an in-progress file not yet at its geometry
@@ -2234,14 +2236,22 @@ d = json.load(open("siesta_PDT.spectra.json"))
 for m in d["modes"]:                        # ascending; a negative wavenumber is imaginary
     print(m["index_1based"], m["frequency_cm1"], m["ir_intensity_km_mol"])   # None: not computed
 L = d["modes"][0]["eigenvector_canonical"]  # one row per FREE atom, in the order of:
-free = d["free_atom_idxs"]                  # 0-based, the person's own (input) numbering
-xyz = d["equilibrium"]["positions_ang"]     # every atom, the geometry the modes are taken at
+free = d["free_atom_idxs"]                  # atom indices, from 0, by the file's map:
+atoms = d["atom_index_map"]                 # v10: atoms_listed_by "user_index", each atom's engine index
+xyz = d["structure"]["positions"]           # every atom, the geometry the modes are taken at (v9)
 m = d["equilibrium"]["masses_amu"]          # every atom's mass, amu -- what L is weighted by (v7)
 q_zp = d["modes"][0]["zero_point_amplitude_amu12_ang"]   # sqrt(hbar / 2 omega), None if imaginary
 ```
 
-With molbuilder importable, `molbuilder.sidecars.spectra.parse_spectra_json(path)`
-returns the typed `SpectraResults`, through the gates of § 6.7.
+With molbuilder importable, a script's one import is the post-processing
+layer, `molbuilder.postprocess` ([`model/parse.md`](?doc=model/parse.md) § 3):
+`read_spectra_data("<label>.spectra.nc")` the same result as data with its
+atom index map, and `atom_index_map(path)` the map of either file — the
+reader's answer, which adds what the run's deck states (F3) to what the file
+states of itself (`SpectraResults.atom_index_map_stated`, a result before
+v10 its user column alone). molbuilder's own read,
+`molbuilder.sidecars.spectra.parse_spectra_json(path)`, returns the typed
+`SpectraResults`, through the gates of § 6.7.
 
 ### 6.9 What each file of a vibration holds
 
@@ -2259,7 +2269,7 @@ SIESTA from the label (§ 5.4).
 | `<label>.FC` · `<label>.FCC` | each SIESTA force-constant attempt | **the raw force constants**: one header (atoms, the displacement in Å), then one row of three numbers in eV/Å² per displaced atom, direction, side and atom (§ 5.4); `.FCC` the same with the held atoms' rows zeroed | SIESTA |
 | `<label>_<NN>_<stage>-run<N>.out` | each attempt | the engine's own account — every displacement's SCF and forces; FC step 0 is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
 | `<label>_<NN>_<stage>-run<N>.pyscf.log` · `<label>_<NN>_<stage>.log` · `<label>_<NN>_<stage>_geom_optim.xyz` | the PySCF attempt — in the flat shape the last two carry the run's number too, `<label>_<NN>_<stage>-run<N>.log` (`engines/pyscf.md` § 2) | the engine's own account; PySCF's own log; geomeTRIC's trajectory | PySCF |
-| `<label>_<NN>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks and the ATOM-METADATA block's order record — the order the deck is written in and the way back to yours — which the finish reads (§ 5.2, § 5.3; `model/overview.md` § 2.2a, I5) | `prep` |
+| `<label>_<NN>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks and the ATOM-METADATA block's order record — the order the deck is written in and the way back to the user order — which the finish reads (§ 5.2, § 5.3; `model/overview.md` § 2.2a, I5) | `prep` |
 | `<label>_<NN>_<stage>.runwrap-<stamp>.log` | each attempt | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
 
 ### 6.10 Schema 9 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14, built 2026-10-18)*
@@ -2300,7 +2310,7 @@ one loss-free serialiser, read back by `Structure.from_dict`
 
 | part | what it is |
 |---|---|
-| the coordinates | the geometry the Hessian is taken at (§ 4.2): on PySCF `COORDS_EQ_ANG` — the relaxed geometry when the deck relaxed, the input otherwise; on SIESTA the force-constant reference geometry, FC step 0 (§ 5.5) — **in the input order**, SIESTA's put back through its deck's order record (§ 5.2) |
+| the coordinates | the geometry the Hessian is taken at (§ 4.2): on PySCF `COORDS_EQ_ANG` — the relaxed geometry when the deck relaxed, the input otherwise; on SIESTA the force-constant reference geometry, FC step 0 (§ 5.5) — **in the user order**, SIESTA's put back through its deck's order record (§ 5.2) |
 | the labels | as the run was given them: the reserved `frozen_atoms` — **the atoms this calculation held**, the partial Hessian's fixed set ([`science/normal-modes.md`](?doc=science/normal-modes.md) § 1) — the transport partition, every other label |
 | the box | the cell, the axis kinds, the stated engine offset and whose it is, the vacuum — the run's |
 | the identity columns and channels | as the run was given them |
@@ -2327,7 +2337,7 @@ count.
 - **SIESTA**: the deck already states the labels, channels and customized
   rows (its ATOM-METADATA block) and the box (its ENGINE-OFFSET block), in the
   deck's held-first order; the finish builds the structure from them and the
-  reference geometry, puts it back in the input order through the recorded
+  reference geometry, puts it back in the user order through the recorded
   permutation (§ 5.2), and takes from the `vibration` block **only what no
   block carries** — the title and the identity columns. Nothing is stated
   twice in the deck (`script_emit.emit_atom_metadata`: *"a key of its own
@@ -2389,21 +2399,30 @@ calculation compares it ([`model/structure.md`](?doc=model/structure.md)
 
 #### 5. The data file — `<label>.spectra.nc`
 
-**The same result, as structured data**: NetCDF-4, written by the one writer
+**The same result, as structured data**: NetCDF-4 — one of the data-file
+framework's files ([`model/datafiles.md`](?doc=model/datafiles.md): each
+variable stating itself, the one writer, the one door; this section lists its
+groups and variables) — written by the result's one writer
 (`write_spectra_payload`) at every write, from the payload the JSON is written
 from — one source, two files, both through `persist`'s one atomic writer (a
 temporary beside each, then a rename; plan K13), so the result file is no
 longer written by a private writer (plan V1.37). The `.nc` states the sha256
 of the JSON bytes written with it, which ties each to its pair at every
 phase's rewrite. The JSON stays the result a person reads and the Results tab
-loads (§ 6.8); molbuilder itself reads the `.nc` only in its round-trip test.
+loads (§ 6.8); molbuilder itself reads the `.nc` in its round-trip test and
+for its atom index map (`model/overview.md` § 2.2b), as a person's script
+does.
 The NetCDF is for analysis and for loading a large result fast —
-`xarray.open_dataset(path, group="modes")`.
+`xarray.load_dataset(path, group="modes")`: read whole and the file closed,
+so a molbuilder read of the same file in the same kernel is never refused
+(one handle at a time, [`model/datafiles.md`](?doc=model/datafiles.md) § 4).
 
 ```text
-/                     dims xyz(3), atom, free_atom, mode, removed, mo
-                      attributes: schema "molbuilder/spectra-data@1", json_sha256,
-                      spectra_schema_version 9, engine, engine_version,
+/                     dim xyz(3); each group its own dims -- atom in
+                      /structure, free_atom, mode, removed in /modes, mo in
+                      /equilibrium
+                      attributes: schema "molbuilder/spectra-data@2", json_sha256,
+                      spectra_schema_version 10, engine, engine_version,
                       molbuilder_version, timestamp, label, methods_text,
                       bibliography_keys; the scalar blocks -- phase_*, ir_route,
                       ir_fd_step_ang, raman_route, raman_fd_step_ang, hessian_scope,
@@ -2412,10 +2431,14 @@ The NetCDF is for analysis and for loading a large result fast —
                       relaxation.record as JSON-text attributes
 /structure            element(atom)  position_ang(atom, xyz)  mass_amu(atom)
                       held(atom)  cell_ang(xyz, xyz)  axis_kind(xyz)
+                      user_atom_index(atom)  engine_atom_index(atom)
+                      attributes atoms_listed_by "user_index",
+                      atom_index_base 0 -- the atom index map
                       attribute structure_json: Structure.to_dict(), whole
 /equilibrium          scf_energy_eh, homo_idx (attributes)  mo_energy_eh(mo)
 /modes                index_1based(mode)  frequency_cm1(mode)
-                      free_atom_index(free_atom)     -- which atom each row is
+                      free_atom_index(free_atom)     -- which atom each row is,
+                                                        by user index
                       eigenvector_canonical(mode, free_atom, xyz)
                       eigenvector_display(mode, free_atom, xyz)
                       zero_point_amplitude_amu12_ang(mode)
@@ -2429,8 +2452,23 @@ The NetCDF is for analysis and for loading a large result fast —
     /thermo/grid      dims temperature: every curve of § 4.7
 ```
 
+**The atoms are listed by user index, and the file says so** *(since
+2.32.0 — [`model/overview.md`](?doc=model/overview.md) § 2.2b)*: `/structure`
+carries the atom index map — each atom's user and engine index, the engine's
+the stages' deck order (held atoms first for SIESTA's, the user order for
+PySCF's, which sorts nothing) — made by the finish from the deck's order
+record and handed to the one writer with the atoms; `free_atom_index` counts
+by user index, marked so. The JSON — schema 10 — states the same map,
+`atom_index_map`, at its top. A result written before 2.32.0 (schema 4–9,
+`spectra-data@1`) is read as it is, its map made as it is read — the user
+column its own (I1: a result lists its atoms by user index), the engine
+column from its run's deck where the deck answers, and otherwise not known,
+said — and never rewritten: its JSON's hash is named by its
+data file and by every frame set made from it (`info.vibration`).
+
 **The structure has one serialiser**: `/structure` holds the arrays an
-analysis reaches for and `Structure.to_dict()` whole, as JSON text — never
+analysis reaches for and `Structure.to_dict(view=False)` whole — the
+structure's own fields, a view's mark left out ([`model/overview.md`](?doc=model/overview.md) § 2.2b, F4) — as JSON text — never
 a second encoding of the labels, channels or `info` by hand
 ([`model/structure.md`](?doc=model/structure.md) § 2.1: *outside this class
 nobody assembles or picks apart a structure dict*), so a field the structure
@@ -2494,7 +2532,7 @@ Each names where it holds and what pins it.
 | I4 | **The Hessian is over the free atoms**, and the run says so (R8): `hessian_scope`, `n_atoms_in_hessian`, `hessian_density_fit` | `spectra/pyscf_vibration.dipole_derivatives`; the FC range on SIESTA | the free-atom-block check in `tests/test_vibration_e2e.py`; `tests/test_siesta_vibration_deck.py` |
 | I5 | **Stationarity is judged on the free atoms** (R5), and the number is recorded beside the all-atom one | `_vib_gradient_check`; the relax callback | the held-water run's `relaxation` block |
 | I6 | **The held set has one source** — the structure's `frozen_atoms` region — and reaches every phase from it: the PySCF `$freeze` file, the free-atom Hessian, the SIESTA `Geometry.Constraints` and FC range | `VibrationConfigView.frozen_indices`; `fc_facts` | `tests/test_vibration_render_gate.py`; the wrapper's constraint banner reads the deck's one spelling |
-| I7 | **The reorder is recorded once and inverted once**: the sorted copy's own `atom_order`, made by `sort_by` and stated by its deck, crossed back only by `Structure.restored()` and the record's own methods (`Permutation.rows_to_input_order`); the input order never reaches the engine, the sorted order never reaches a person (`model/overview.md` § 2.2a, I3, I5) | `atom_permutation.py` (the record and its one reader), `transport/sort.py`, `deck_record.py`, `spectra/vibrational_analysis.py` | `tests/test_siesta_vibration_e2e.py` (the road's CO2, its carbon last in the input → the result's oxygens atoms 0 and 1, the carbon 2) |
+| I7 | **The reorder is recorded once and inverted once**: the sorted copy's own `atom_order`, made by `sort_by` and stated by its deck, crossed back only by `Structure.restored()` and the record's own methods (`Permutation.map_rows_to_user_order`); the user order never reaches the engine, the sorted order never reaches a person (`model/overview.md` § 2.2a, I3, I5) | `atom_permutation.py` (the record and its one reader), `transport/sort.py`, `deck_record.py`, `spectra/vibrational_analysis.py` | `tests/test_siesta_vibration_e2e.py` (the road's CO2, its carbon last in the user order → the result's oxygens atom indices 0 and 1, the carbon 2) |
 | I8 | **One start state per kind on SIESTA**: the density read, the geometry declined out loud; the vibration warm-file section names `.FC`/`.FCC` inventory-only | `siesta/vibration_deck.start_state_lines`, `siesta/warm-files.toml` | `tests/test_siesta_vibration_deck.py`, `tests/test_warmfiles.py` |
 | I9 | **Every mean field the PySCF deck builds is dressed by the one generated door** (`_mb_configure_scf`, `_mb_configure_theory`), on either method; no SCF knob is spelled twice | `pyscf/scf_setup.py`; every `_build_mf_at` | `tests/test_vibration_render_gate.py::test_the_level_of_theory_has_one_spelling_per_deck`; the honesty gate |
 | I10 | **Every parameter the form shows is honoured by the render, or refused by name** | `tests/test_vibration_form_honesty.py`; `validation/spectra.py` | the same test |
@@ -2539,7 +2577,7 @@ Each names where it holds and what pins it.
 | `molbuilder/pyscf/scf_setup.py` | the generated SCF and DFT dressers (I9) |
 | `molbuilder/siesta/vibration_deck.py` · `siesta/input.py::spec_for` · `siesta/layout.py::FC_SECTION` · `siesta/warm-files.toml` | the SIESTA deck (§ 5.3) |
 | `molbuilder/config/pyscf.py` · `config/siesta.py` · `data/catalogue.template.toml` | the fields and the catalogue rows of § 3 |
-| `molbuilder/transport/sort.py` · `molbuilder/atom_permutation.py` | `sort_by`, `SORT_KEYS`, `apply_order` — `sort_by` sets the copy's `atom_order` and refuses a remapped input; the record itself — `Permutation`, the type of the structure's `atom_order`, read from a dict by its one reader (`Permutation.from_dict`), `original_of` and `sorted_of` — in `atom_permutation`, which travels with the finish (§ 5.2; `model/overview.md` § 2.2a) |
+| `molbuilder/transport/sort.py` · `molbuilder/atom_permutation.py` | `sort_by`, `SORT_KEYS`, `apply_order` — `sort_by` sets the copy's `atom_order` and refuses a remapped input; the record itself — `Permutation`, the type of the structure's `atom_order`, read from a dict by its one reader (`Permutation.from_dict`), `map_to_user_index` and `map_to_engine_index` — in `atom_permutation`, which travels with the finish (§ 5.2; `model/overview.md` § 2.2a) |
 | `molbuilder/deck_record.py` | the molbuilder blocks' grammar and their one JSON reader, with `extract_engine_offset`, `extract_vibration_record`, and `extract_atom_metadata` with `order_record_of`, the ATOM-METADATA block's order record (`model/overview.md` § 2.2a, I5) — below `script_emit`, which writes the blocks, so the finish can read the three beside the job (§ 5.3) |
 | `molbuilder/validation/spectra.py` · `validation/__init__.py` | the two kinds' checks and the dispatch (§ 3.3) |
 | `molbuilder/jobset/prep.py` · `jobset/_cli.py` · `jobset/materialize.py` | the sort at prep, the relax stage's record into the deck's `vibration` block, the finish onto the stage's job; `molbuilder describe`'s kind gate; the bundle brought into each attempt |
@@ -2613,7 +2651,7 @@ flowchart TB
   numbers are § 11);
 - the `.FC` units and the `.FCC` shape on H₂ (§ 5.4); CO₂ with its carbon
   held, listed last, on SIESTA through jobset — the held-first deck a 3-cycle
-  of the input, the result back in the input order (§ 5.5).
+  of the input, the result back in the user order (§ 5.5).
 - **the convergence condition and the step, measured 2026-09-24** on H₂ with
   one atom held (GGA/DZP, the road end to end: an optimization calculation,
   its final frame exported from the Results tab, the vibration on the pair):
@@ -2659,7 +2697,7 @@ only (V1.17); the δ-convergence comparison run with a mesh rung beside it
 |---|---|
 | `tests/spectra/test_normal_modes.py` | every row of the science acceptance table — the rank rule alone, no engine |
 | `tests/test_vibration_e2e.py` | the rank gate against PySCF; the water loop (relaxation, three modes, thermo, the viewer loads it; the file states every atom's mass, `chemistry.atomic_mass`'s, and every mode's derived values, which its reader checks — red with the writer's derivation removed, and the deck refusing to run on masses other than PySCF's own); IR alone in water's windows with the route recorded; the solvated chain; frequencies unmoved by asking for IR; water with O held; the free-atom block check; the probe on the modes an explicit list names and no other, after a list the reader cannot take is refused at prep; at prep alone, a setting that enters nothing said to (a pressure with atoms held, a window outside `all`), and a Hartree–Fock deck naming no functional, no dispersion and no grid, with the warnings that say so and none for `dispersion = "none"` |
-| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_relax_run_e2e.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the record table of § 2.2 on a relaxation run on the road (a matching record's info line, a looser record's warning, another geometry, another level of theory or engine, the unticked offer to skip, no record accepted with a hint), and the `freq` stage building on it; the whole SIESTA road through jobset on the road's CO₂ (O O C, the carbon held — the held-first deck a 3-cycle of the input) in both states of the box, the launch alone leaving the spectrum (red with the wrapper's finish removed), the result in the input order through the deck's order record (red with the finish reading none), four modes — a degenerate bend pair in the (x, y) plane, two stretches along z — each zero-point amplitude ħ/2ω, the file stating every atom's mass as prep stated it and every mode's derived values, `partial` on this route — unticked, `freq` on the shared relaxation, written at the geometry `relax` reached, its deck stating SIESTA's atoms 2–3 nudged and the held-first order record, the reference forces within the template's own tolerance, and launched again starting over; ticked, `freq` refused before `relax` has run and with no `relax` stage unticked, then alone at the geometry as given, judged off a stationary point; the displacement sweep — every force-constant stage at the relaxed geometry, a stage still to come pending in its attempt's words, the record naming each stage's files and copying none, each stage's nudged atoms in SIESTA's numbering; a flat calculation refusing a second force-constant stage (the deck test, no engine); the finish run where molbuilder is not -- every launch above, by the job's own python |
+| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_relax_run_e2e.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the record table of § 2.2 on a relaxation run on the road (a matching record's info line, a looser record's warning, another geometry, another level of theory or engine, the unticked offer to skip, no record accepted with a hint), and the `freq` stage building on it; the whole SIESTA road through jobset on the road's CO₂ (O O C, the carbon held — the held-first deck a 3-cycle of the input) in both states of the box, the launch alone leaving the spectrum (red with the wrapper's finish removed), the result in the user order through the deck's order record (red with the finish reading none), four modes — a degenerate bend pair in the (x, y) plane, two stretches along z — each zero-point amplitude ħ/2ω, the file stating every atom's mass as prep stated it and every mode's derived values, `partial` on this route — unticked, `freq` on the shared relaxation, written at the geometry `relax` reached, its deck stating SIESTA's atoms 2–3 nudged and the held-first order record, the reference forces within the template's own tolerance, and launched again starting over; ticked, `freq` refused before `relax` has run and with no `relax` stage unticked, then alone at the geometry as given, judged off a stationary point; the displacement sweep — every force-constant stage at the relaxed geometry, a stage still to come pending in its attempt's words, the record naming each stage's files and copying none, each stage's nudged atoms in SIESTA's numbering; a flat calculation refusing a second force-constant stage (the deck test, no engine); the finish run where molbuilder is not -- every launch above, by the job's own python |
 | `tests/test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibration_as_its_modes` | the ticked SIESTA road on CO2 and then the Results tab, read against `web/spectra.md`: the mode positions under their heading — one line of one height, no curve, no height numbers — with no width or floor control and the sentence saying why, no infrared, Raman or orbital column and the summary saying *not computed on this route*, no Raman or probe dot, the electronic-structure tab naming the planned projected density of states, the thermochemistry labelled vibrational-only with no pressure and its bars summing to `F_vib` — every hiding read from the computed style (red against the width control shown whatever the strengths, the `.spectra-phase[hidden]` guard removed, the notice's route branch removed, the RRHO labels forced) |
 | `tests/test_engine_offset_reaches_every_deck.py` | a force-constant stage written at the `relax` stage's geometry, unmoved (§ 5.2a); the input's relaxation record left behind while its calculation record still sets the electronic state (V1.35); what the stage is told about the relaxation its ladder ran — within tolerance, above it with the continue-and-launch remedy, a held set changed between the stages — on the run's deck and on a bench trial's (V1.36) |
 | `tests/test_vibration_e2e.py` · `tests/test_displacement_sweep.py` | matching by shape on free water made on the road (atoms of unequal mass): a rank swap found, a mixed pair's overlap the mass-weighted cosine; a PySCF vibration refused by `summarize task` on the road |
@@ -2777,7 +2815,7 @@ after ([`science/normal-modes.md`](?doc=science/normal-modes.md) §§ 1, 4.1, 9)
 **CO₂ on SIESTA — the road.** § 1.4 and § 5.5: listed O O C with the carbon
 held, the held-first deck a 3-cycle of the input, four modes — a degenerate
 bend pair in the (x, y) plane, two stretches along z — two motions removed,
-every atom reported by its own number in the input order.
+every atom reported by its own index in the user order.
 
 **CO₂ — mutual exclusion.** A centrosymmetric molecule's infrared-active
 modes are Raman-silent and vice versa. The run: 653.45 cm⁻¹ (×2) infrared

@@ -119,6 +119,19 @@ class MolwatchReader:
         if held is not None:
             self.runtime_info["frozen_atoms"] = held
 
+    def _on_atom_index_map(self, line: str, line_no: int) -> None:
+        """``# atom_index_map: {…}`` into ``runtime_info["atom_index_map"]``
+        -- which index the log's atoms are listed by, as the log states it
+        (`model/overview.md` § 2.2b); a line that is not JSON states
+        nothing."""
+        import json
+        m = _MG.ATOM_INDEX_MAP.match(line)
+        if m:
+            try:
+                self.runtime_info["atom_index_map"] = json.loads(m.group(1))
+            except ValueError:
+                pass
+
     def _on_convergence(self, line: str, line_no: int) -> None:
         """``# convergence.<key>: <value>`` into
         ``runtime_info["convergence_targets"]``, flat or staged (#534), the
@@ -241,6 +254,10 @@ class MolwatchReader:
             SectionRule(name="frozen_atoms", aliases=["# frozen_atoms: ..."],
                         start=matches_regex_ci(_MG.FROZEN_ATOMS.pattern),
                         on_start=self._on_frozen_atoms),
+            SectionRule(name="atom_index_map",
+                        aliases=["# atom_index_map: {...}"],
+                        start=matches_regex_ci(_MG.ATOM_INDEX_MAP.pattern),
+                        on_start=self._on_atom_index_map),
             SectionRule(name="convergence",
                         aliases=["# convergence.<key>: ...",
                                  "# convergence.<stage>.<key>: ..."],

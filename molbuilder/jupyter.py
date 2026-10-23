@@ -848,6 +848,15 @@ def run_shepherd(serve_port: int) -> int:
     # runtime file's token authenticates against the running server, and the
     # argv carries no token at all.
     env["JUPYTER_TOKEN"] = token
+    # MOLBUILDER ITSELF, for a notebook's import: the source folder this
+    # server runs from, first on the path every kernel inherits -- so a cell
+    # imports the molbuilder that wrote the files it reads
+    # (`molbuilder.postprocess`), nothing installed into this env
+    # (`web/jupyter.md` § 7).
+    source = str(Path(__file__).resolve().parent.parent)
+    env["PYTHONPATH"] = os.pathsep.join(
+        [source] + [p for p in env.get("PYTHONPATH", "").split(os.pathsep)
+                    if p and p != source])
     try:
         # NO PIPE AND NO SINK.  This process's stdout and stderr ARE the
         # notebook log -- the supervisor opened it and handed it over -- so

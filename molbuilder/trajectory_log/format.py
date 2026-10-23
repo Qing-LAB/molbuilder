@@ -35,6 +35,7 @@ def write_initial_preview(
     frame=None,
     frozen_atoms=(),
     plan=None,
+    atom_index_map=None,
 ) -> None:
     """Write a ``<path>.molwatch.log`` holding its header and exactly one
     block: step 0, the structure's coordinates, no energy, no forces, no SCF
@@ -53,6 +54,8 @@ def write_initial_preview(
     then what that deck writes, not a placement worked out again here.
 
     ``plan`` (`jobset.planned.Plan`) receives the file instead of the disk.
+    ``atom_index_map`` -- the run's atoms' indices (`model/overview.md`
+    § 2.2b) -- stated in the header.
     """
     from ..cell import to_engine
     from .emitter import header_and_preview
@@ -62,7 +65,8 @@ def write_initial_preview(
         job=job, engine=engine, generator=generator,
         elements=list(struct.elements), coords_ang=positions,
         frozen_atoms=frozen_atoms or (),
-        convergence_targets=convergence_targets)
+        convergence_targets=convergence_targets,
+        atom_index_map=atom_index_map)
     if plan is not None:
         plan.text(path, text)
         return

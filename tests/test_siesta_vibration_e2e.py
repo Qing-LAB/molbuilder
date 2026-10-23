@@ -169,7 +169,7 @@ def _the_result(attempt):
 def _common_assertions(d):
     from molbuilder.spectra.results import SCHEMA_VERSION
     assert d["engine"] == "siesta" and d["schema_version"] == SCHEMA_VERSION
-    # YOUR ORDER: the oxygens atoms 0 and 1, the held carbon atom 2.
+    # THE USER ORDER: the oxygens atoms 0 and 1, the held carbon atom 2.
     assert d["structure"]["elements"] == CO2["elements"]
     assert d["structure"]["metadata"]["regions"]["frozen_atoms"] == [2]
     assert d["free_atom_idxs"] == [0, 1] and "frozen_atom_idxs" not in d
@@ -235,7 +235,7 @@ def _states_its_masses_and_derived_values(d):
 
 
 def _relaxed_geometry(attempt):
-    """Where the `relax` run in ``attempt`` ended, in your order -- the run
+    """Where the `relax` run in ``attempt`` ended, in the user order -- the run
     door's one read of a run's geometry (`runs.steps_of`)."""
     from molbuilder.runs import openable, run_of, steps_of
     return np.asarray(steps_of(run_of(attempt), openable(attempt)[0])
@@ -247,7 +247,7 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geom
     """The box unticked (the default `init` writes): the ladder is `relax`
     then `freq`; after `relax`, `freq` is written at the geometry `relax`
     reached, in the held-first order its deck states, and the modes come out
-    in your order with the reference forces within the template's own
+    in the user order with the reference forces within the template's own
     tolerance (vibration.md § 2.2, § 5.2a, § 5.5).  And a force-constant
     stage launched again starts over: its kind's rerun carries nothing of
     its own (`warm-files.toml` [vibration] `resumes`, `job-system.md` § 5.4,
@@ -292,7 +292,7 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geom
     assert d["phase_relaxation"] == "complete"
     assert d["relaxation"]["enabled"] is True and d["relaxation"]["n_steps"] >= 1
     # the geometry in the file is the one the force constants were taken
-    # at -- where `relax` ended, in your order
+    # at -- where `relax` ended, in the user order
     assert np.allclose(d["structure"]["positions"],
                        _relaxed_geometry(run.attempt("relax")), atol=1e-5)
 
@@ -336,7 +336,7 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
     # nothing relaxed: the force-constant run itself never does
     assert d["phase_relaxation"] == "not requested"
     assert d["relaxation"]["enabled"] is False
-    # at the geometry as given, in your order, placed in its box as the deck
+    # at the geometry as given, in the user order, placed in its box as the deck
     # states it -- design + applied_offset (`model/structure-periodicity.md`
     # § 6.0) -- and judged off a stationary point by the template's 0.01 eV/A
     from molbuilder.deck_record import extract_engine_offset

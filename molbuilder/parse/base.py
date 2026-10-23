@@ -27,11 +27,16 @@ class FileParser(ABC):
     * ``label``  — UI-friendly description.
     * ``hint``   — what file to point at when ``can_parse`` says no.
     * ``output`` — the concrete ``ParseResult`` subclass returned.
+    * ``keeps_atom_index_map`` — ``True`` for a parser whose kept reading
+      states its atoms' indices: its ``parse`` takes ``atoms=``, the run's
+      atom index map, handed by the caller that knows the run
+      (`model/parse.md` § 5e) -- this package knows no calculation.
     """
     name:   str
     label:  str
     hint:   str
     output: Type[ParseResult]
+    keeps_atom_index_map: bool = False
 
     @classmethod
     def footgun_hint_for(cls, filename: str):

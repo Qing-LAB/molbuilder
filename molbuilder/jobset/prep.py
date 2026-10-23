@@ -336,7 +336,7 @@ def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
     vibration is written with -- `freq`, or any stage after `relax` in a
     displacement sweep, asked of `vibration_render_kind` and never of a name
     (`engines/vibration.md` § 5.2a, § 5.9): the calculation's structure as
-    given, in your order, and no cell or record of its own, when the ladder
+    given, in the user order, and no cell or record of its own, when the ladder
     holds no `relax` stage; when it does, that structure with the
     coordinates the stage relaxed to, in the cell it ran in -- read from the
     run the stage builds on, ``builds_on``, the `Continuation` prep decided
@@ -344,7 +344,7 @@ def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
     or the `relax` run named with ``--from``, `engines/vibration.md` § 5.2a's
     table), through the run door's one read of a run's geometry
     (`runs.steps_of`: its output parsed by the registry, its view, restored
-    to your order through `relax`'s own order record): only the coordinates
+    to the user order through `relax`'s own order record): only the coordinates
     and the cell are taken, the labels and the held set staying this
     calculation's (`model/overview.md` § 2.2a, I3-I5) -- with that run's
     relaxation record, which the same read answers (the output's
@@ -423,7 +423,7 @@ def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
         raise PrepError(
             f"{builds_on.where()} holds no engine output of `{relax}`; "
             f"there is no geometry to read.  {again}")
-    # `relax`'S GEOMETRY IN YOUR ORDER, through the run door's one read
+    # `relax`'S GEOMETRY IN THE USER ORDER, through the run door's one read
     # (`runs.steps_of`): restored through `relax`'s own order record (I5); a
     # run whose order nothing states is refused by name (I9).
     from ..runs import OrderUnstated, RunStepsError, steps_of
@@ -437,7 +437,7 @@ def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
     relaxed, cell = steps.last, steps.lattice
     if list(relaxed.elements) != list(struct.elements):
         raise PrepError(
-            f"{out.name} describes {relaxed.formula}, listed in your order "
+            f"{out.name} describes {relaxed.formula}, listed in the user order "
             f"as {' '.join(relaxed.elements)}, and this calculation is "
             f"{' '.join(struct.elements)}: the `{relax}` stage ran a "
             f"different structure.  To redo it, "
@@ -445,7 +445,7 @@ def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
     if log is not None:
         log.step(f"the geometry the `{pset.stage}` stage measures at")
         log.received(str(out.relative_to(base)),
-                     "its last geometry step, in your order, is written as "
+                     "its last geometry step, in the user order, is written as "
                      "the deck's coordinates, in that run's cell")
     # THE ENGINE'S COORDINATES STATE THE ENGINE'S ORIGIN -- 0, set together
     # with them (`model/structure-periodicity.md` § 6.0) -- so this deck
@@ -467,6 +467,63 @@ def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
             (relaxed.info or {}).get("relaxation"))
 
 
+def _structure_path(task, base: Path) -> Optional[Path]:
+    """Where the structure this calculation is *of* is -- beside the
+    calculation first, at the recorded path second (`stages.md` § 6.3); the
+    suffix-corrected candidate is the codec's own naming rule (a .pdb source
+    travels as <stem>.xyz).  ``None`` when it is in neither place, and for
+    a calculation of no structure of its own -- a transport calculation,
+    which cites its junction."""
+    from ..workingcopy_structure import StructureCodec
+    if task.structure is None:
+        return None
+    src = Path(task.structure.source)
+    for candidate in (base / src.name,
+                      (base / src.name).with_suffix(
+                          StructureCodec.GEOMETRY_SUFFIX),
+                      src):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _order_said(task, base: Path) -> list:
+    """WHAT THE PAIR THIS CALCULATION IS OF STATES OF ITS ORDER, when it
+    states none (`model/overview.md` § 2.2b, F4): prep takes it as the user
+    order of this calculation, the warning said -- its structure's pair, or
+    a transport calculation's cited pair (:func:`_cited_pair_path`), the
+    codec's read notice from its one read (`StructureCodec.load`).  A pair
+    that does not read says nothing here: the read that builds refuses
+    it."""
+    from ..workingcopy_structure import ORDER_NOT_STATED, StructureCodec
+    path = _structure_path(task, base) or _cited_pair_path(task, base)
+    if path is None:
+        return []
+    said: list = []
+    try:
+        StructureCodec().load(path, frames=True, said_out=said)
+    except (OSError, ValueError):
+        return []
+    return [n for n in said if n.where == ORDER_NOT_STATED]
+
+
+def _cited_pair_path(task, base: Path) -> Optional[Path]:
+    """A transport calculation's cited structure pair (`engines/transport.md`
+    § 3.1), fenced to the projects tree -- ``None`` for a cited run's
+    folder, and for any other kind of calculation."""
+    citation = ((task.slots or {}).get("junction")
+                if task.calculation == "transport" else None)
+    if not citation:
+        return None
+    from ..projects import OutsideRoot, contain, find_projects_root
+    root = Path(find_projects_root(base))
+    try:
+        path = contain(root / citation, root)
+    except OutsideRoot:
+        return None
+    return path if path.is_file() else None
+
+
 def _structure_for(task, base: Path, pset):
     """The structure this calculation is *of*, from the reference in the
     description (`stages.md` § 6.3 — a reference plus a witness, never a copy).
@@ -482,25 +539,20 @@ def _structure_for(task, base: Path, pset):
     from ..structure_pair import GeometryChangedError
     from ..workingcopy_structure import StructureCodec
     codec = StructureCodec()
-    src = Path(task.structure.source)
     # The codec, not the bare loader: describe writes the structure as the
     # pair (--vacuum lives NOWHERE a bare .xyz can put it), and the codec
     # applies the .molstruct.json and compares its pin with the file
-    # (`structure-molstruct.md` § 3).  The suffix-corrected candidate is the
-    # codec's own naming rule (a .pdb source travels as <stem>.xyz).
-    for candidate in (base / src.name,
-                      (base / src.name).with_suffix(codec.GEOMETRY_SUFFIX),
-                      src):
-        if candidate.is_file():
-            try:
-                struct = codec.load(candidate)
-            except GeometryChangedError as exc:
-                # THE PIN (`structure-molstruct.md` § 3): the atoms or the
-                # cell moved after the pair was written -- a deck rendered
-                # now would put the old labels on them.
-                raise PrepError(f"the structure has changed since this "
-                                f"calculation was described: {exc}") from None
-            break
+    # (`structure-molstruct.md` § 3).
+    candidate = _structure_path(task, base)
+    if candidate is not None:
+        try:
+            struct = codec.load(candidate)
+        except GeometryChangedError as exc:
+            # THE PIN (`structure-molstruct.md` § 3): the atoms or the
+            # cell moved after the pair was written -- a deck rendered
+            # now would put the old labels on them.
+            raise PrepError(f"the structure has changed since this "
+                            f"calculation was described: {exc}") from None
     else:
         raise PrepError(
             f"the structure this calculation describes is not here: "
@@ -614,7 +666,7 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
     The atoms in the order the force-constant run needs -- the held ones
     first, so it nudges one contiguous range -- on a COPY, whose order record
     its deck states and the job's finish inverts (`model/overview.md`
-    § 2.2a, I5); the input order never reaches the engine
+    § 2.2a, I5); the user order never reaches the engine
     and the sorted order never reaches a person.  The `relax` rung is the
     relaxation deck; every other rung is written at the coordinates the
     relax rung reached, in that run's own cell, so the force constants are
@@ -639,7 +691,7 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
             f"(engines/vibration.md 5.9): describe it with --shape "
             f"hierarchical, or keep one force-constant stage here.")
     from ..transport.sort import deck_sort_key, sort_by
-    # THE GEOMETRY FIRST, IN YOUR ORDER (`model/overview.md` § 2.2a, I3-I5;
+    # THE GEOMETRY FIRST, IN THE USER ORDER (`model/overview.md` § 2.2a, I3-I5;
     # plan V1.41): a force-constant stage's coordinates and cell are the
     # relaxation's, restored through `relax`'s own order record, taken onto
     # the calculation's structure -- and then this prep sorts, as every prep
@@ -1252,7 +1304,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                                       and _point is not None
                                       else rung.struct),
                                      cfg, _seed_dir,
-                                     engine=task.engine, names=_names,
+                                     engine=task.engine,
+                                     kind=task.calculation, names=_names,
                                      frame=spec_at[_seed_dir].engine_frame,
                                      relaxes=(rung.render_kind
                                               == "optimization"),
@@ -1749,7 +1802,7 @@ def _environment_rows(environment) -> "List[tuple]":
 
 
 def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
-                         names, frame=None,
+                         kind: str, names, frame=None,
                          relaxes: bool = True, plan=None) -> None:
     """Write the one-block preview the Watch tab discovers before a run starts.
 
@@ -1760,6 +1813,10 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     ``names`` are the deck's
     stage's (`runfiles.RunNames`): the seed is the FIRST run's log, named as
     that run names it -- in a shared folder with its number, ``-run0``.
+    Its header states its atoms' indices (`model/overview.md` § 2.2b): the
+    deck's structure listed by engine index, both columns from its order
+    record -- the engine column alone for a structure of its own (an
+    electrode cell, `transport.sort.deck_own_structure`).
     """
     if not getattr(cfg, "write_molwatch_log", False):
         return
@@ -1794,7 +1851,21 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
         convergence_targets=(targets or None),
         frame=frame,
         frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []),
-        plan=plan)
+        plan=plan, atom_index_map=_deck_atoms(struct, engine, kind,
+                                              names.stage).to_dict())
+
+
+def _deck_atoms(struct, engine: str, kind: str, stage):
+    """THE ATOM INDEX MAP of the files a deck of ``struct`` makes its run
+    write (`model/overview.md` § 2.2b, F2): listed by engine index, both
+    columns from the structure's order record, the identity where it
+    carries none; the engine column alone for a structure of its own."""
+    from ..atom_permutation import AtomIndexMap
+    from ..transport.sort import deck_own_structure
+    own = deck_own_structure(engine, kind, stage)
+    if own:
+        return AtomIndexMap.of_own_structure(struct.n_atoms, own)
+    return AtomIndexMap.of_engine_record(struct.atom_order, struct.n_atoms)
 
 
 def _job_for(element, script: str, task, stage_name: Optional[str],
@@ -2284,7 +2355,8 @@ def checked(base, described: Described, *, target,
     base = Path(base).resolve()
     issues = preflight(described.task, template_text=described.template_text,
                        request=described.calc.request)
-    described.findings[:] = [i for i in issues if i.severity != "error"]
+    described.findings[:] = ([i for i in issues if i.severity != "error"]
+                             + _order_said(described.task, base))
     errors = [i for i in issues if i.severity == "error"]
     if errors:
         raise PrepError(

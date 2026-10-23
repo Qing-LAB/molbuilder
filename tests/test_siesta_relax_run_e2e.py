@@ -197,8 +197,6 @@ def test_the_force_constants_build_on_the_relaxation(relaxed):
     (`engines/vibration.md` § 5.2a's table, W38 F9)."""
     from molbuilder.jobset.continuation import (continuation_answer,
                                                 continue_from_choices)
-    from molbuilder.task import of as task_of
-    task = task_of(relaxed.bundle)
     calc = open_calculation(relaxed.bundle)
     got, refused = continuation_answer(calc, "freq")
     assert refused is None, refused
@@ -218,7 +216,7 @@ def test_the_force_constants_build_on_the_relaxation(relaxed):
 # --------------------------------------------------------------------- #
 
 def _carrying_the_record(relaxed, *, shift_z: float = 0.0):
-    """The geometry the relaxation left, in your order, with what the run
+    """The geometry the relaxation left, in the user order, with what the run
     says about it -- its labels, its box, its record -- through the run
     door's one read (`runs.steps_of`): what the Results tab's export writes
     (`model/overview.md` § 2.2a, I1); its second oxygen moved by
@@ -373,7 +371,7 @@ def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(relaxed):
 # carbon, then the oxygens as listed (`engines/vibration.md` § 5.2).  Every
 # door that shows, writes or builds from the run is asked of it -- the silent
 # failure: a run in its engine's order shown, saved or converted as if it
-# were in yours, the carbon taken for the first oxygen, with nothing to say
+# were in the user order, the carbon taken for the first oxygen, with nothing to say
 # so.
 
 #: The viewer's mark of a structure in this order (`web/molview.md` § 6.2).
@@ -385,7 +383,7 @@ _ORDER_NOTICES = ("structure.restored", "structure.order_unstated")
 
 
 def _says_restored(got, row) -> None:
-    """A door that put the structure back in your order says so (§ 2.2a,
+    """A door that put the structure back in the user order says so (§ 2.2a,
     I8): the file, and the order it was in, in its words."""
     assert got.named in got.text and "held atoms first" in got.text, (
         got.text)
@@ -419,7 +417,7 @@ def _in_the_engines_order(struct) -> None:
     assert struct.atom_order.to_dict() == CO2_HELD_FIRST
 
 
-def _in_your_order(struct) -> None:
+def _in_the_user_order(struct) -> None:
     """The road's CO2 as it was written: O O C, the carbon held, no order
     record -- and each atom in its own place, the first oxygen above the
     carbon and the second below it, as `support.road.CO2` put them."""
@@ -429,7 +427,7 @@ def _in_your_order(struct) -> None:
     assert z[0] > z[2] > z[1], z
 
 
-_STRUCTURES = {"engine": _in_the_engines_order, "yours": _in_your_order}
+_STRUCTURES = {"engine": _in_the_engines_order, "user": _in_the_user_order}
 
 #: Each row: the door (:func:`_ask`) asked of the run and what the door is
 #: given (``file``, a file of the run a person names; ``from_run``;
@@ -451,16 +449,16 @@ _ROWS = [
               "engine's order, marked", door="build_load",
          file="CO2.xyz", ok=True, notices=[], structure="engine",
          marked=True),
-    dict(name="...and in your order when an editor opens it, saying so",
+    dict(name="...and in the user order when an editor opens it, saying so",
          door="build_load", file="CO2.xyz", restore=True,
          ok=True, notices=[("structure.restored", "info")], says="restored",
-         structure="yours", marked=False),
+         structure="user", marked=False),
     dict(name="a bare xv2xyz of the run's .XV is refused, naming "
               "--from-run", door="xv2xyz", file="CO2.XV",
          ok=False, says="engine order", wrote=False),
-    dict(name="xv2xyz --from-run writes the pair in your order, and says so",
+    dict(name="xv2xyz --from-run writes the pair in the user order, and says so",
          door="xv2xyz", file="CO2.XV", from_run=True,
-         ok=True, says="restored", structure="yours", wrote=True),
+         ok=True, says="restored", structure="user", wrote=True),
     dict(name="a bare file reader reads the run's output as the engine wrote "
               "it, and says so", door="watch_parse",
          ok=True, says="engine order"),

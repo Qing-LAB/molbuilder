@@ -122,11 +122,11 @@ export function scatter(displacements, basis, atomCount) {
     for (let k = 0; k < basis.length; k++) {
         const gi = Math.floor(Number(basis[k]));
         if (!isFinite(gi) || gi < 0 || gi >= n) {
-            refuse("a mode's basis names atom " + String(basis[k])
+            refuse("a mode's basis names atom index " + String(basis[k])
                  + ", which the structure does not have (" + n + " atoms)");
         }
         if (seen.has(gi)) {
-            refuse("a mode's basis names atom " + gi + " twice");
+            refuse("a mode's basis names atom index " + gi + " twice");
         }
         seen.add(gi);
         out[gi] = [Number(displacements[k][0]),

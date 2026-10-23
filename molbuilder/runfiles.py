@@ -977,6 +977,18 @@ class Artifact:
     #: that name at the run's own file while the engine runs, so the file
     #: holds the run's steps alone.  ``""`` for every other file.
     written_when: str = ""
+    #: WHICH INDEX ITS ATOMS ARE LISTED BY (`model/overview.md` § 2.2b, F3):
+    #: ``user_index`` or ``engine_index`` for a file molbuilder writes that
+    #: holds atoms -- the answer for a file of this kind written before the
+    #: file said so itself; ``""`` for any other row (an engine's own file is
+    #: its run's deck's, F3).
+    listed_by: str = ""
+    #: AN ENGINE'S INPUT counts its atoms as its engine does (F5): every
+    #: numbering its own text uses, by its name in `engine_atom_index`
+    #: (``siesta``, ``geometric``, ``pyscf``) -- a PySCF deck uses PySCF's
+    #: and writes geomeTRIC's -- said wherever its atom index map is shown;
+    #: empty for a file that is not one.
+    counted_by: "tuple[str, ...]" = ()
 
 
 #: THE FIXED NAMES -- files molbuilder writes that are not named on the label,
@@ -1018,12 +1030,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="prep", level="stage", kind="derived",
              writer="prep (`script_emit.prepare_deck`), in the stage's "
                     "folder; a copy in each attempt",
-             door="runfiles.find_by_role"),
+             door="runfiles.find_by_role",
+             listed_by="engine_index", counted_by=("siesta",)),
     Artifact(".py", "the PySCF script this rung runs", engine="pyscf",
              when="prep", level="stage", kind="derived",
              writer="prep (`script_emit.prepare_deck`), in the stage's "
                     "folder; a copy in each attempt",
-             door="runfiles.find_by_role"),
+             door="runfiles.find_by_role",
+             listed_by="engine_index", counted_by=("pyscf", "geometric")),
     # THE SUFFIX IS SPELLED, NOT IMPORTED, and that is the LAYERING rule
     # rather than a lapse: this module is L1 and `template` is L2, so
     # importing it here is the upward import review refuses
@@ -1054,13 +1068,15 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="setup", level="calculation", kind="input",
              writer="the hand-over and `molbuilder describe` "
                     "(`StructureCodec.source_files`)",
-             door="jobset.prep._structure_for"),
+             door="jobset.prep._structure_for",
+             listed_by="user_index"),
     Artifact(".source.molstruct.json", "its cell and its region labels",
              staged=False,
              when="setup", level="calculation", kind="input",
              writer="the hand-over and `molbuilder describe` "
                     "(`StructureCodec.source_files`)",
-             door="jobset.prep._structure_for"),
+             door="jobset.prep._structure_for",
+             listed_by="user_index"),
     # THE DECK'S COMPANION REPORT (`script_emit.VALIDATION_SUFFIX`): a file
     # molbuilder writes and does not declare reads as ENGINE OUTPUT.
     Artifact(".validation.txt", "what the generator checked before it wrote "
@@ -1074,22 +1090,26 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # deck that writes it.
     Artifact(ROLE_INITIAL, "the input geometry, echoed back before "
                              "anything ran", staged=False, engine="pyscf",
-             kind="result", writer="the PySCF deck"),
+             kind="result", writer="the PySCF deck",
+             listed_by="engine_index"),
     # ITS SIDECAR, the pair's other half -- written by the deck through the
     # codec (`StructureCodec.write_moved`, imported from `mb_pyscf.pyz`).
     Artifact("_initial.molstruct.json", "the input geometry's cell and "
                                         "labels",
              staged=False, engine="pyscf", kind="result",
-             writer="the PySCF deck"),
+             writer="the PySCF deck",
+             listed_by="engine_index"),
     Artifact("_optimized.molstruct.json", "the relaxed geometry's cell and "
                                           "labels -- the sidecar of the "
                                           "restart file `_optimized.xyz`",
              staged=False, engine="pyscf", kind="result",
-             writer="the PySCF deck"),
+             writer="the PySCF deck",
+             listed_by="engine_index"),
     Artifact(ROLE_CONSTRAINTS, "which atoms are held still, in geomeTRIC's "
                                  "own format",
              staged=False, engine="pyscf", kind="derived",
-             writer="the PySCF deck", only="atoms are held"),
+             writer="the PySCF deck", only="atoms are held",
+             listed_by="engine_index", counted_by=("geometric",)),
     # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
     # finish after the force-constant run (`engines/vibration.md` § 5.5).
     Artifact(ROLE_SPECTRA, "the spectrum this run computed: frequencies, "
@@ -1098,7 +1118,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              staged=False, calculation="vibration", kind="result",
              writer="the run itself: the PySCF deck, or a SIESTA "
                     "force-constant job's finish (`mb_vibration.pyz`)",
-             door="parse.sidecars.spectra.SpectraSidecarFileParser"),
+             door="parse.sidecars.spectra.SpectraSidecarFileParser",
+             listed_by="user_index"),
     # THE SAME RESULT AS STRUCTURED DATA, written beside the JSON at every
     # write by the one writer (`engines/vibration.md` § 6.10.5).
     Artifact(".spectra.nc", "the spectrum as data on its grids -- the "
@@ -1108,7 +1129,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              staged=False, calculation="vibration", kind="result",
              writer="the run itself, with the JSON "
                     "(`sidecars.spectra.write_spectra_payload`)",
-             door="spectra.datafile.read_spectra_data"),
+             door="spectra.datafile.read_spectra_data",
+             listed_by="user_index"),
     # ---- the wrapper --------------------------------------------------
     Artifact(".run.sh", "the wrapper — activates the environment, tees "
                         "the output, catches a kill",
@@ -1138,7 +1160,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "the flat shape numbered for run 0; PySCF's deck "
                     "writes each step into its run's own, SIESTA never "
                     "does",
-             door="parse.engines.molwatch.MolwatchLogFileParser"),
+             door="parse.engines.molwatch.MolwatchLogFileParser",
+             listed_by="engine_index"),
     # ---- history: stdout and the logs ---------------------------------
     # ALL OF THIS IS HISTORY AND NOT STATE -- it is what a person goes back
     # to read, and nothing may treat it as leftovers.
@@ -1214,7 +1237,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                                 "own here, PySCF handing it a logging setup "
                                 "that prints to the screen",
              attempt="shared", engine="pyscf", kind="result",
-             writer="geomeTRIC, under the prefix the deck hands it"),
+             writer="geomeTRIC, under the prefix the deck hands it",
+             listed_by="engine_index"),
     # A TEMPLATE, NOT A GLOB.  The stamp is a FIELD: the file it names is real and
     # concrete, and what varies is a value the name carries (§ 5l.1).
     Artifact(".runwrap-{stamp}.log", "the wrapper's own session log — one per "
@@ -1283,7 +1307,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              level="calculation", kind="result",
              writer="`jobset summarize task` "
                     "(`transport.datafile.write_data_file`)",
-             door="transport.datafile.read_data_file"),
+             door="transport.datafile.read_data_file",
+             listed_by="user_index"),
     # A TRANSMISSION POINT'S DATA FILE, READ (`model/parse.md` § 5e): its
     # device DOS per orbital averaged over the k-points, kept beside it per
     # version of the file -- on the person's word, never as a side effect of
@@ -1299,7 +1324,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`parse.engines.tbtrans_nc`), on the person's word: "
                     "the Results tab's DOS tab, `jobset summarize task`",
              door="parse.engines.tbtrans_nc.kept",
-             only="its data file read"),
+             only="its data file read",
+             listed_by="engine_index"),
     Artifact(TBT_DIGEST_CLAIM,
              "the claim of a data file's reading under way: who reads, "
              "since when, how far -- one reading of a file at a time",
@@ -1384,7 +1410,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                                    "run, as `molbuilder runtime-info` read it",
              attempt="maybe", kind="record",
              writer="`molbuilder runtime-info`, beside the file it reads",
-             only="a person runs `molbuilder runtime-info`"),
+             only="a person runs `molbuilder runtime-info`",
+             listed_by="engine_index"),
     Artifact(".{engine}.{shape}.pipeline.log",
              "what each step of a prep received, decided and produced",
              fields=("engine", "shape"), when="prep", level="calculation",
@@ -1458,7 +1485,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the prep that composes the junction, or records an "
                     "older one's order "
                     "(`transport.compose.write_compose_record`)",
-             door="transport.compose.recorded_junction"),
+             door="transport.compose.recorded_junction",
+             listed_by="engine_index"),
     Artifact(name=JUNCTION_SIDECAR_FILE,
              what="its cell, its region labels and the citation's record",
              calculation="transport", when="prep", level="calculation",
@@ -1466,7 +1494,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the prep that composes the junction, or records an "
                     "older one's order "
                     "(`transport.compose.write_compose_record`)",
-             door="transport.compose.recorded_junction"),
+             door="transport.compose.recorded_junction",
+             listed_by="engine_index"),
     Artifact(name=JUNCTION_CITED_FILE,
              what="the deck the junction was cited from, as it was",
              calculation="transport", when="prep", level="calculation",
@@ -1475,7 +1504,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "older one's order "
                     "(`transport.compose.write_compose_record`)",
              door="transport.compose.load_compose_record",
-             only="a run is cited"),
+             only="a run is cited",
+             listed_by="engine_index", counted_by=("siesta",)),
     Artifact(name=SLOT_PROVENANCE_FILE,
              what="where each part of the junction came from, with hashes",
              calculation="transport", when="prep", level="calculation",
@@ -1628,6 +1658,35 @@ WRITTEN: "tuple[Artifact, ...]" = (
 #: The rows NAMED ON THE LABEL -- the role rows every reader of the run-file
 #: grammar walks; the fixed names are the rest of :data:`WRITTEN`.
 ON_THE_LABEL: "tuple[Artifact, ...]" = tuple(a for a in WRITTEN if a.role)
+
+
+def _row_named(name: str) -> "Optional[Artifact]":
+    """The catalogue row of a file of this name: the row of its whole name,
+    else of the longest role its name ends with; ``None`` for a file the
+    catalogue does not list."""
+    for a in WRITTEN:
+        if a.name and not a.role and a.name == name:
+            return a
+    found = [a for a in ON_THE_LABEL
+             if (_role_pattern(a.role).search(name) if a.fields
+                 else name.endswith(a.role))]
+    return max(found, key=lambda a: len(a.role)) if found else None
+
+
+def listed_by_of(name: str) -> str:
+    """WHICH INDEX A FILE OF THIS NAME IS LISTED BY -- its catalogue row's
+    (:attr:`Artifact.listed_by`, `model/overview.md` § 2.2b, F3); ``""`` for
+    a row that says nothing, and for a file the catalogue does not list."""
+    row = _row_named(name)
+    return row.listed_by if row is not None else ""
+
+
+def counted_by_of(name: str) -> "tuple[str, ...]":
+    """WHOSE NUMBERINGS A FILE OF THIS NAME'S OWN TEXT COUNTS ITS ATOMS BY --
+    an engine's input's (:attr:`Artifact.counted_by`, F5); empty for any
+    other file."""
+    row = _row_named(name)
+    return row.counted_by if row is not None else ()
 
 #: The attempt counter as a GLOB, per :attr:`Artifact.attempt`.  Empty string
 #: means the unindexed spelling; ``-run*`` the wrapper's.

@@ -15,7 +15,8 @@ USED-BY `sidecars.spectra.write_spectra_payload`, the one writer of the
 **One source, two files.**  The ``.nc`` states the sha256 of the JSON bytes
 written with it, which ties each to its pair at every phase's rewrite.  The
 JSON stays the result a person reads and the Results tab loads; molbuilder
-itself reads the ``.nc`` only in its round-trip test.
+itself reads the ``.nc`` in its round-trip test, for its atom index map
+(`atom_index`), and for a person's script (`postprocess.read_spectra_data`).
 
 **What was not computed says so once**: a fill value where the JSON has
 ``null`` (a number's NaN, a text's empty string, an integer's stated fill,
@@ -40,19 +41,28 @@ import numpy as np
 
 # TWO WAYS, because this module travels beside the job.
 try:                                        # inside molbuilder
+    from ..atom_permutation import MAP_KEY, AtomIndexMap
     from ..ncdata import (NC_LOCK, Var, as_bytes, empty, flag, in_memory,
-                          json_attr, number_attr, read_variables, unflag,
-                          unnumber_attr, write_group)
+                          json_attr, number_attr, read_atom_index_map,
+                          read_variables, reading, unflag, unnumber_attr,
+                          write_group)
     from ..persist import write_bytes
     from ..structure import Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
+    from atom_permutation import MAP_KEY, AtomIndexMap  # type: ignore[no-redef]
     from structure import Structure as _Structure  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes, empty, flag,
-                        in_memory, json_attr, number_attr, read_variables,
-                        unflag, unnumber_attr, write_group)
+                        in_memory, json_attr, number_attr,
+                        read_atom_index_map, read_variables, reading, unflag,
+                        unnumber_attr, write_group)
     from persist import write_bytes
 
-DATA_SCHEMA = "molbuilder/spectra-data@1"
+DATA_SCHEMA = "molbuilder/spectra-data@2"
+#: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
+#: the same variables without its atom index map, read as it is and never
+#: rewritten -- its map made as it is read (`engines/vibration.md`
+#: § 6.10.5; `model/overview.md` § 2.2b, F3).
+READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1", DATA_SCHEMA)
 
 #: The fill of an integer attribute that can be not stated.
 _INT_FILL = -1
@@ -179,11 +189,11 @@ def _block_back(attrs: Mapping[str, Any], table: Mapping[str, str],
 def _structure_vars() -> Tuple[Var, ...]:
     return (
         Var("element", ("atom",), "given", "", "the atom's element",
-            "the chemical symbol, in the input order", dtype=str,
+            "the chemical symbol, in the user order", dtype=str,
             auxiliary=True),
         Var("position_ang", ("atom", "xyz"), "given", "Angstrom",
             "the atom's position",
-            "the geometry the Hessian is taken at (§ 4.2), in the input order"),
+            "the geometry the Hessian is taken at (§ 4.2), in the user order"),
         Var("mass_amu", ("atom",), "given", "amu", "the atom's mass",
             "the mass the analysis weighted by (equilibrium.masses_amu, I3)"),
         Var("held", ("atom",), "given", "1", "whether the atom was held",
@@ -210,9 +220,10 @@ def _mode_vars() -> Tuple[Var, ...]:
             "the harmonic frequency; negative for an imaginary mode"),
         Var("free_atom_index", ("free_atom",), "given", "1",
             "which atom each row is",
-            "the 0-based atom index, in the input order, of each free-atom "
-            "row of the eigenvectors (free_atom_idxs)", dtype="i4",
-            auxiliary=True),
+            "the 0-based atom index, in the user order, of each free-atom "
+            "row of the eigenvectors (free_atom_idxs) -- counting by the "
+            "file's atom index map, in /structure", dtype="i4",
+            auxiliary=True, atom_index=True),
         Var("eigenvector_canonical", ("mode", "free_atom", "xyz"), "derived",
             "1", "the mass-weighted eigenvector",
             "sum over atoms of m |L|^2 = 1 (§ 6.3)"),
@@ -296,7 +307,8 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
                      if k not in _ROOT and k not in (
                          "schema_version", "free_atom_idxs",
                          "frozen_atom_idxs", "structure", "equilibrium",
-                         "modes", "relaxation", "thermo", "removed_motions"))
+                         "modes", "relaxation", "thermo", "removed_motions",
+                         MAP_KEY))
     if unknown:
         raise SpectraDataError(
             f"the result carries {unknown}, which this data file does not "
@@ -333,7 +345,17 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         # whole as its one serialiser states it.
         g = ds.createGroup("structure")
         vars_ = _structure_vars()
-        values = _fill(vars_, {"atom": n_atoms, "xyz": 3})
+        # THE ATOM AXIS AS ITS MAP (`model/overview.md` § 2.2b): the
+        # result's own, listed by user index.
+        if MAP_KEY not in payload:
+            raise SpectraDataError(
+                "the result states no atom_index_map: its data file says "
+                "which index its atoms are listed by (model/overview.md "
+                "2.2b)")
+        atoms = AtomIndexMap.from_dict(payload[MAP_KEY],
+                                       n_atoms=n_atoms,
+                                       source="the result's atom_index_map")
+        values = _fill(vars_, {"atom": atoms, "xyz": 3})
         held: List[int]
         if structure is not None:
             # THROUGH THE STRUCTURE'S OWN DOOR (`model/structure.md` § 2.1):
@@ -354,7 +376,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             values["held"][i] = 1
         if eq.get("masses_amu") is not None:
             values["mass_amu"][:] = np.asarray(eq["masses_amu"], dtype=float)
-        write_group(g, {"atom": n_atoms}, vars_, values)
+        write_group(g, {"atom": atoms}, vars_, values)
         g.setncattr("structure_json", json_attr(structure))
 
         # /equilibrium -- the energy subgroup, whole or not at all (§ 6.2).
@@ -452,15 +474,16 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
 
 def read_spectra_data(path) -> Dict[str, Any]:
     """``<label>.spectra.nc`` back as the payload the JSON holds -- the
-    file's door (`runfiles.WRITTEN`); refuses another schema by name."""
-    import netCDF4
+    file's door (`runfiles.WRITTEN`); a schema it does not read
+    (:data:`READABLE_DATA_SCHEMAS`) refused by name."""
     out: Dict[str, Any] = {}
-    with NC_LOCK, netCDF4.Dataset(str(path), "r") as ds:
+    with reading(path) as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
-        if attrs.get("schema") != DATA_SCHEMA:
+        if attrs.get("schema") not in READABLE_DATA_SCHEMAS:
             raise SpectraDataError(
                 f"{Path(path).name} states the schema "
-                f"{attrs.get('schema')!r}, not {DATA_SCHEMA}")
+                f"{attrs.get('schema')!r}; this molbuilder reads "
+                f"{', '.join(READABLE_DATA_SCHEMAS)}")
         out["schema_version"] = int(attrs["spectra_schema_version"])
         out.update(_block_back(attrs, _ROOT, ""))
         relaxation = _block_back(attrs, _RELAXATION, "relaxation_")
@@ -476,6 +499,11 @@ def read_spectra_data(path) -> Dict[str, Any]:
         else:
             out["frozen_atom_idxs"] = [int(i) for i, h in enumerate(held_flags)
                                        if int(h) == 1]
+        # THE ATOM INDEX MAP the file states of /structure (§ 2.2b), back as
+        # the result's own block.
+        atoms = read_atom_index_map(g, source=f"{Path(path).name}/structure")
+        if atoms is not None:
+            out[MAP_KEY] = atoms.to_dict()
         # /equilibrium
         g = ds["equilibrium"]
         scf = unnumber_attr(g.getncattr("scf_energy_eh"))

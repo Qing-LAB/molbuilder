@@ -9,7 +9,7 @@
 [[case]]
 name = "an atom moved past the tolerance is another calculation"
 moved_ang = 2.0e-6
-names = "block AtomicCoordinatesAndAtomicSpecies, row"
+names = "block AtomicCoordinatesAndAtomicSpecies, SIESTA's atom"
 
 [[case]]
 name = "an atom moved within it is the same engine input"

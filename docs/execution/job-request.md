@@ -952,6 +952,17 @@ is refused by name, nothing written:
   to measure;
 - rewrites each row of `job-set.json`: the program onto the job
   (`Job.program`), a placement's source `description` as `allocation`;
+- writes the atom index map into each transmission point's digest written
+  before it (`tbt-digest@1` → `@2`) — every attempt's points, not the
+  latest alone — from the point's run's deck, the TBtrans data file never
+  read again ([`model/overview.md`](?doc=model/overview.md) § 2.2b, *since
+  2.32.0*). **A digest whose run states no order (I9) is named and left** —
+  and the calculation is then not said current, the line saying what is
+  left; a point holding no older digest is not named. A digest that does
+  not open is no kept reading: it is left, and the next reading writes it
+  whole (`model/parse.md` § 5e). A vibration result is not rewritten: its map is
+  made as it is read, and its JSON's hash stays the one its data file and
+  the frame sets made from it name;
 - keeps each file it rewrites beside its new one, `<name>.pre-<rule>`, as every
   migration does.
 

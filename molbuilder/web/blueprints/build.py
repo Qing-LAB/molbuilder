@@ -496,7 +496,7 @@ def api_structure_save():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # WRITTEN AS THE EXPORT WRITES IT (`_shared.for_writing`): in your order,
+    # WRITTEN AS THE EXPORT WRITES IT (`_shared.for_writing`): in the user order,
     # its box judged -- a save and a download cannot produce different bytes,
     # nor disagree about a refusal.  Runs BEFORE the overwrite gate, so
     # nobody is asked to confirm an overwrite for a save that will be
@@ -563,7 +563,7 @@ def api_structure_export():
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # WRITTEN AS THE SAVE WRITES IT (`_shared.for_writing`): in your order,
+    # WRITTEN AS THE SAVE WRITES IT (`_shared.for_writing`): in the user order,
     # its box judged -- a cell it refuses leaves as a 400 carrying the gate's
     # sentence, not as a 500.
     from ._shared import for_writing
@@ -625,8 +625,8 @@ def api_build_load():
 
     A path load answers the file AS IT IS -- a pair in an engine's order
     with its order record -- unless ``restore: true``, which an editor's open
-    asks, and the transport report, which names its selections in your
-    order: then in your order, the codec's ``in_your_order`` read, said in a
+    asks, and the transport report, which names its selections in the
+    user order: then in the user order, the codec's ``in_user_order`` read, said in a
     ``structure.restored`` notice naming the order in its words
     (``model/overview.md`` § 2.2a, I8).
     """
@@ -653,10 +653,10 @@ def api_build_load():
         # A PAIR WHOSE GEOMETRY CHANGED OPENS HERE, said: this is the door the
         # Molbuilder tab fixes it through (`structure-molstruct.md` § 3) --
         # and so does a run whose order nothing states, for a viewer (I9).
-        # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8):
+        # AN EDITOR HOLDS ONLY THE USER ORDER (`model/overview.md` § 2.2a, I8):
         # its open asks for the file restored, said, and a run whose order
         # nothing states is refused it -- as the transport report's drawing
-        # does, its selections named in your order; any other viewer is
+        # does, its selections named in the user order; any other viewer is
         # answered the file as it is, its order record attached.
         from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED,
                                                       ORDER_UNSTATED)
@@ -667,7 +667,7 @@ def api_build_load():
                 said_out=read_said,
                 opened=((GEOMETRY_CHANGED,) if restore
                         else (GEOMETRY_CHANGED, ORDER_UNSTATED)),
-                in_your_order=restore)
+                in_user_order=restore)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
@@ -684,7 +684,7 @@ def api_build_load():
         from molbuilder.periodicity_gate import notices_for_report
         # WHAT THE READ SAID, each notice at its level (`workingcopy_structure
         # .READ_NOTICES`): a lone file, a changed geometry, a run whose order
-        # nothing states, a structure put back in your order.
+        # nothing states, a structure put back in the user order.
         said = notices_for_report(read_said)
         if retired.get("cell_origin") is not None:
             corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
@@ -1164,7 +1164,7 @@ def api_task_setup_handover():
     from molbuilder.workingcopy_structure import StructureCodec
     from ._shared import for_writing
     # A CALCULATION'S STRUCTURE IS WRITTEN AS A SAVE WRITES IT
-    # (`_shared.for_writing`): in your order, its box judged -- AS PREP WILL
+    # (`_shared.for_writing`): in the user order, its box judged -- AS PREP WILL
     # PLACE IT (`cell.entering`, structure-periodicity.md § 6.0): an
     # engine's origin is not carried into the calculation, so a flush face
     # it left is not this calculation's.  The pair is written as given, its

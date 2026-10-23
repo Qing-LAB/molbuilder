@@ -941,7 +941,7 @@ transmission that runs once now shares as its one point, and every point of
 a record lies on one grid within the 10⁻⁹ eV rule. **Next**: the commit, at
 the user's word.
 
-## 1y. Export the transport results — CSV and NetCDF *(2026-10-22; asked, the contract next — N8 in § 0a's queue)*
+## 1y. Export the transport results — CSV and NetCDF *(2026-10-22; the user's yes; built for 2.32.0 — N8 in § 0a's queue)*
 
 *(The user, 2026-10-22: "we also need to add "export data" for all the
 results in the transport data including convergence data, in format of csv
@@ -971,6 +971,15 @@ composition the record and the data file read (`record.collect_record`), never
 a second reader; whether the export is the Results report's action, the
 command line's (`summarize task` writes the data file already), or both; and
 whether it is composed on request or written into the calculation's folder.
+
+**The user's answers (2026-10-22)**: both, one composition; fresh on request,
+nothing written into the calculation's folder; CSV as long tables, one per set
+of axes, with a `README.txt`. **The contract**: `engines/transport.md` § 2a.12,
+*Export*; `web/results.md` § 2.5 (the report's Export); `web/web-api.md`
+(`GET /api/transport/export`); `execution/job-system.md` (`jobset export`).
+**To build**: `datafile` handing the file's bytes as well as writing it;
+`ncdata.as_tables` (a data file's variables as long tables and their README,
+generic); `transport.export`; the route, the verb, the report's button.
 
 ## 0. Rule R3, restated
 
@@ -1008,6 +1017,144 @@ is done, withdrawn or measured untrue leaves for
 the same day, with what it turned out to be.
 
 ---
+
+## 1ab. Every file says which index its atoms are listed by — the atom index map *(2026-10-23; the user's yes, "Agree. Go ahead."; built for 2.32.0 — AIM, with N8)*
+
+*(The user, 2026-10-23, after reading how the transport data file and a
+point's `.TBT.nc` list the atoms in different orders: "We don't want any
+accidental error that could lead to misinterpretation of the data … we need
+a good framework, agreement, or a contract such that we have a consistent
+layer that the user use, rather than have to handcraft all these
+translations".)*
+
+**Measured** (two read-only surveys of every file molbuilder writes and every
+engine file it reads, `file:line` for each claim, checked against the code,
+2026-10-23): every crossing between orders goes through § 2.2a's API — but
+only structure sidecars and decks state their order in a field a program can
+read; the transport and vibration data files say it in words, the digest in
+a prose attribute with no mapping, and the trajectory log prep seeds,
+`runtime-info`'s and `watch parse`'s answers say nothing. Four errors against
+§ 2's written rules: `transiesta.py:573` counts `elec-pos` to SIESTA's number
+by hand (`:578` likewise from the end); the Transport tab's reuse answer sends
+masses in the engine order beside a structure in the user order
+(`web/blueprints/transport.py:347`, read by no page yet); `positions_ang`'s
+words say "as composed" of values in the user order; a page comment calls the
+engine order "ORIGINAL" (`trajectory/core.js:808`).
+
+**The user's six answers (2026-10-23)**: the user's saved structures carry
+the map too; a deck's block is measured against a finished calculation's
+reuse before every deck writes one; one release with N8 (2.32.0); `jobset
+migrate` writes the map into older digests and vibration results; the layer
+lives in `molbuilder.parse` — the review found that package is floor 1, below the
+run door, so the layer sits above both as `molbuilder.postprocess` (the
+user's yes, 2026-10-23); a notebook's kernel imports the molbuilder its
+server runs. With them: the words *user index* and *engine index*, the
+translations named by what they change — **map** for which list the atoms
+are in, `map_to_user_index` / `map_to_engine_index`; **convert** for where
+counting starts (the user: *"use `convert_to_xxx`, to differentiate from other
+designs"*; *"or we should use 'map' when we really mean 'order' of index, and
+use 'convert' when we mean starting index"*) — the engine's counting — `convert_to_engine_numbering(i, engine)`,
+`siesta_numbering` … with no default engine (the user: *"if
+`to_engine_index` is siesta specific, maybe that should be explicit"*),
+`molbuilder atom-index` to
+see the correspondence, counting stated (`atom_index_base` 0), and the order
+carried by the data into the one writer; the fields named as they read
+(`atoms_listed_by`, no code word for the sort — the user: *"very unclear what
+they represent"*); a structure given to no engine stating no engine index; a
+structure file stating nothing read as listed by user index, warned where it
+may not be (the user: *"assume user index, and give warning that no explicit
+info is available"*), and `not_stated` written where molbuilder does not
+know.
+
+**The contract**: `model/overview.md` § 2.2b (and § 2.2a's words renamed to
+the user and engine order); `model/structure.md` § 2.2,
+`structure-molstruct.md` (v15); `model/parse.md` § 3 (the layer), § 5e (the
+digest `@2`); `engines/transport.md` § 2a.12 (the data file's map, *Export*
+reading nothing, the notebook examples moved);
+`engines/vibration.md` § 6.10.5 (`spectra-data@2`, schema 10);
+`web/results.md` § 2.5 (the PDOS steps, the Device view's line, the export
+row); `web/jupyter.md` § 7; `execution/job-contracts.md` (the rows).
+
+**To build, in order**: (1) `AtomIndexMap` in `atom_permutation` (it
+travels); `ncdata.write_group` taking an atom dimension as its map,
+`Var(atom_index=True)`; (2) every writer of § 2.2b's table given its map from
+where its atoms came from — the transport data file, the vibration result's
+two files, the digest (from its run's deck), the seeded trajectory log,
+`runtime-info`, `watch parse`, the codec (sidecar v15), `junction.xyz`'s
+comment line, each from the door that knows its columns (F2); (3)
+`atom_index_map(path)` on the run door's floor and the post-processing layer
+a notebook imports (`model/parse.md` § 3), `molbuilder atom-index`; the DOS by
+region and a selection's PDOS checking the digest's map against the
+junction's record (F7); (4) the rename — `in_user_order`,
+`map_to_user_index`, `map_from_user_index`, the order record's
+`convert_…` methods, `engine_atom_index`'s `convert_to_engine_numbering` /
+`convert_from_engine_numbering` and `siesta_numbering`, `geometric_numbering`,
+`pyscf_numbering` (no default engine), the words "the user order" in code and
+messages, nothing
+kept under the old names; (5) the four errors above; (6) `jobset migrate`'s
+rule for an older digest (`job-request.md` § 8) — an older vibration result
+is read with its map made, never rewritten (its hash is named by its data
+file and the frame sets made from it); (7) the notebook kernel's path
+(`jupyter.run_shepherd`), and xarray listed in the notebook env's recipe (the
+user's yes, 2026-10-23); (8) the deck
+measurement — a finished calculation's reuse against a deck that always
+writes its block — and its answer brought to the user; (9) with N8: *Export*
+reading nothing, the PDOS steps, the post-processing document
+(`engines/transport-postprocessing.md`) written with every example run on a
+real calculation.
+
+**Built for 2.32.0 (2026-10-23)**, all nine steps — step 8 answered by the
+user: every deck writes its block, and F4's `not_stated` is built (a view's
+mark, never a file's field). **Reviewed three times** (the user: *"really
+thorough review on this item index handling … Do it 3 times"*): the contract
+against the code, the engine side, then adversarially on the real reordered
+calculations the e2e tests build — each round's findings verified and
+triaged, then revised once. Dropped in the third round's triage: refusal
+messages of an out-of-range index not spelled through `atom_words`, and
+`modify --electrode` asking agreement before refusing a negative centre
+(polish of an odd input); the chemistry round trips' index-keyed metadata
+and identity columns (only a builder's fresh output reaches them, and the
+DNA builder's clash relief was measured keeping its identity columns).
+Reported to the user, unchanged: RDKit's fallback adds fewer hydrogens than
+OpenBabel on some inputs (ethanol: 4 against 6). **With it, the data-file
+framework's page** (`model/datafiles.md`; the user: *"make it a general data
+file framework doc … and add the specific case for transport"*): the door
+rule moved there from `model/parse.md` § 5e, each data file's chapter
+citing it.
+
+## 1aa. Extending a finished transport calculation — what may change, and what is fixed *(2026-10-22; the user's four answers; contract drafted — N11 in § 0a's queue)*
+
+*(The user, 2026-10-22, on citing a finished calculation on the Transport
+tab: "I see that all of the options are still open … Why can't we just have
+the citation be limited to a few parameters that we actually allow them to
+change or suggest they would change? … what are the things that we could
+touch and what are the things that we should not touch? These are completely
+unclear to me.")*
+
+**Read 2026-10-22**: the command line's `describe --reuses` takes only
+`--bias`, the treatment and `--window`/`--finer`; the Transport tab, picking
+a finished transport calculation, fills all five cards and leaves every field
+editable, the fitted window its one reuse-specific help; Task setup edits
+anything after; prep's manifest (`reuse.decide`) then says what is copied
+and what runs — after the fact.
+
+**The user's answers (2026-10-22)**: the values that would re-run everything
+**read-only, with a way out** (a new calculation from the junction with these
+settings); offered — **the voltages and the treatment, the energy window and
+its finer grid, the transmission's analysis, the device's convergence**; **the
+same limits on Task setup**; the command line **saying** what will be reused,
+never refusing. **The rule found in the ladder, not a list**: what runs once
+(the seed, the leads — `stages.per_point_rungs`' complement) and the shared
+values are fixed; what runs per point (the device, the transmission), the
+voltages, the treatment and the window are the person's.
+
+**The contract**: `engines/transport.md` § 2a.16, *Extending it*;
+`web/tabs.md` (the Extend view); `web/task-setup.md` (the same limits).
+**To build**: the Extend view (its meta line with each rung's measured time,
+the extension controls each saying what it re-runs, the fixed values
+read-only with the way out, Describe's answer carrying `reuse.decide`'s
+manifest); Task setup's limits for a calculation with `reuses`; `describe
+--reuses` printing the manifest.
 
 ## 1z. TBtrans's files read by the SIESTA family's parser, a data file's reading kept *(2026-10-22; the user's yes; shipped 2.31.0 — N9 in § 0a's queue)*
 
@@ -1064,8 +1211,10 @@ below says.
 | **N5b** | **Built — 2.28.0** (2026-10-22) — the contract taken as written (the user: *"continue"*); A–D, one release | **One door per setting, one answer per launched group** (§ 1w) — the nature of the 2.27.0 review's findings, contract first, then A → B → C → D | the user, 2026-10-21: *"identify the nature of this problem, rather than hurrying to patch it up"* |
 | **N6** | **(a) shipped 2.29.0** | **The memory a run needs** (§ 1u) — (a), measured on a stage's runs, built 2026-10-22 (`job-request.md` § 3.1a); (b), the engine's own analysis for a stage's first run, next; (c) only where (a) and (b) leave a gap | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 | **N7** | **shipped 2.30.0** | **A transport calculation that reuses a finished one** (§ 1x, `engines/transport.md` § 2a.16) — built, two review rounds, released 2026-10-22 | the user, 2026-10-22: *"use existing information and previous result to continue a calculation by a certain design"* |
-| **N8** | a middle number | **Export the transport results — CSV and NetCDF** (§ 1y), contract first; its place in the order the user's | the user, 2026-10-22: *"export data for all the results in the transport data including convergence data, in format of csv and netcdf"* |
+| **N8** | **built for 2.32.0** — the user's yes, 2026-10-22; revised 2026-10-23: the export reads no data file (the user: *"the export should only contain information that is already processed"*), the PDOS block as three numbered steps, the post-processing document | **Export the transport results — CSV and NetCDF** (§ 1y), contract first; its place in the order the user's | the user, 2026-10-22: *"export data for all the results in the transport data including convergence data, in format of csv and netcdf"* |
+| **AIM** | **built for 2.32.0**, with N8 — the user's yes, 2026-10-23; reviewed three times, each revised once (§ 1ab) | **Every file says which index its atoms are listed by — the atom index map** (§ 1ab, `model/overview.md` § 2.2b) | the user, 2026-10-23: *"we need to be able to differentiate or actually detect it explicitly"* |
 | **N9** | **shipped 2.31.0** | **TBtrans's files read by the SIESTA family's parser, a data file's reading kept** (§ 1z) — contract 2026-10-22 (`model/parse.md` § 5e, `engines/transport.md` § 2a.12), the user's yes (*"go ahead"*); built for 2.31.0, two review rounds, each revised once; with it, the scheduler asked after a sent run by the jobs list's rule (`running-a-job.md` § 4.2 — the user, 2026-10-22: *"you should fix that bug"*) | the user, 2026-10-22: Sol's report took four minutes; *"make this part of the parser of siesta engine"* |
+| **N11** | a middle number — contract drafted 2026-10-22, the user's four answers | **Extending a finished transport calculation — what may change, and what is fixed** (§ 1aa) | the user, 2026-10-22: *"what are the things that we could touch and what are the things that we should not touch?"* |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 

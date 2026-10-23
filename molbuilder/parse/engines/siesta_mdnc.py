@@ -131,25 +131,19 @@ class SiestaMdNcFileParser(FileParser):
             return False
         # Name and magic agree; confirm it is OUR schema rather than some
         # other netCDF that happens to be called .MD.nc.
-        with _locked():
-            try:
-                ds = _open(path)
-            except Exception:                               # noqa: BLE001
-                return False
-            try:
+        from molbuilder.ncdata import reading
+        try:
+            with reading(path) as ds:
                 return {"xa", "etot"}.issubset(set(ds.variables))
-            finally:
-                ds.close()
+        except (OSError, RuntimeError, ValueError):
+            return False
 
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:
+        from molbuilder.ncdata import reading
         path = Path(path)
-        with _locked():
-            ds = _open(path)
-            try:
-                frames, warnings, lattice, series = _frames_from(ds, path)
-            finally:
-                ds.close()
+        with reading(path) as ds:
+            frames, warnings, lattice, series = _frames_from(ds, path)
         return TrajectoryResult(
             **ParseResult.envelope(cls.name, path),
             frames=frames,
@@ -170,30 +164,6 @@ class SiestaMdNcFileParser(FileParser):
             },
             parse_warnings=warnings,
         )
-
-
-def _locked():
-    """The process's one NetCDF lock (`ncdata.NC_LOCK`): netCDF-C is not
-    thread-safe, and the server reads a relaxation's history while another
-    request reads a TBtrans data file."""
-    from molbuilder.ncdata import NC_LOCK
-    return NC_LOCK
-
-
-def _open(path: Path):
-    """Open the dataset, preferring netCDF4 and falling back to scipy.
-
-    Both read the classic format SIESTA writes.  Two backends because the
-    read path must not become a reason to add a dependency: ``netCDF4`` is
-    present in the molbuilder env today, and ``scipy`` is a hard dependency
-    already, so one of them is always there.
-    """
-    try:
-        from netCDF4 import Dataset                        # type: ignore
-        return Dataset(str(path))
-    except ImportError:
-        from scipy.io import netcdf_file                   # type: ignore
-        return netcdf_file(str(path), "r", mmap=False)
 
 
 def _var(ds, name: str):
@@ -410,8 +380,13 @@ def upgrade_frames(frames: Sequence, out_path: Path, *,
     nc_path = sibling_md_nc(out_path, label)
     if nc_path is None:
         return list(frames), info
+    from molbuilder.ncdata import OpenedTwice
     try:
         nc = SiestaMdNcFileParser.parse(nc_path)
+    except OpenedTwice:
+        # A MISTAKE IN THE CODE, never a file that does not read
+        # (`ncdata.OpenedTwice`): raised, as the door says.
+        raise
     except Exception as exc:                                # noqa: BLE001
         # An unreadable sibling is not an error in the .out: the run is
         # still perfectly described by its text output.  Recorded, not

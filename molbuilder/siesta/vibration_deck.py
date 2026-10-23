@@ -30,7 +30,7 @@ from typing import List
 
 from .. import script_emit as _sc
 from ..atom_permutation import SORT_HELD_FIRST
-from ..engine_atom_index import siesta_atom_index
+from ..engine_atom_index import siesta_numbering
 from ..structure import Structure
 
 
@@ -58,11 +58,14 @@ def fc_facts(struct: Structure, cfg) -> dict:
             f"rendered from a copy sorted with the {SORT_HELD_FIRST!r} key, "
             "which records its order (model/overview.md 2.2a) -- `prep` "
             "does this; a deck rendered "
-            "from the input order is a deck rendered from the wrong "
+            "from the user order is a deck rendered from the wrong "
             "structure.")
     return {
-        "fc_first": siesta_atom_index(free[0]),
-        "fc_last": siesta_atom_index(free[-1]),
+        # SIESTA'S NUMBERS of the deck's own atom list, said where they are
+        # stated -- the pipeline log's row among them (F5).
+        "numbering": "SIESTA's, from 1, of the deck's own atom list",
+        "fc_first": siesta_numbering(free[0]),
+        "fc_last": siesta_numbering(free[-1]),
         "n_free": len(free),
         "n_held": len(held),
         "fc_displacement": float(cfg.fc_displacement),
@@ -93,7 +96,7 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
             f"# The range is the {f['n_free']} FREE atom(s); the {f['n_held']} held",
             "# atom(s) come first in this deck's numbering because the structure",
             f"# was sorted with the {SORT_HELD_FIRST!r} key -- the order record",
-            "# back to the input order is this deck's ATOM-METADATA block",
+            "# back to the user order is this deck's ATOM-METADATA block",
             "# (model/overview.md 2.2a).  Fixed by the kind, not a preference.",
         ]
     out += [
@@ -140,8 +143,9 @@ def stage_science(cfg, derived: dict) -> str:
     """The one-line header for a force-constant rung, in the deck's own
     units -- `_stage_science`'s job for a run that moves nothing."""
     f = derived["fc"]
-    return (f"force constants over atoms {f['fc_first']}..{f['fc_last']} "
-            f"({f['n_free']} free, {f['n_held']} held), "
+    return (f"force constants over SIESTA's atoms {f['fc_first']}.."
+            f"{f['fc_last']} -- its own numbering, of the deck's held-first "
+            f"order ({f['n_free']} free, {f['n_held']} held), "
             f"FC.Displacement {f['fc_displacement']:g} Bohr, "
             f"MeshCutoff {cfg.mesh_cutoff} Ry")
 

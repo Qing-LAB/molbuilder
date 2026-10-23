@@ -6,6 +6,7 @@ from typing import Optional
 
 import numpy as np
 
+from ...engine_atom_index import pdb_numbering
 from ...structure import Structure
 
 
@@ -33,12 +34,12 @@ def rdkit_mol_to_structure(mol, *, title: Optional[str] = None) -> Structure:
         positions.append([p.x, p.y, p.z])
         info = atom.GetPDBResidueInfo()
         if info is not None:
-            atom_names.append(info.GetName().strip() or f"{atom.GetSymbol()}{i + 1}")
+            atom_names.append(info.GetName().strip() or f"{atom.GetSymbol()}{pdb_numbering(i)}")
             residue_ids.append(info.GetResidueNumber() or 1)
             residue_names.append(info.GetResidueName().strip() or "MOL")
             chain_ids.append(info.GetChainId().strip() or "A")
         else:
-            atom_names.append(f"{atom.GetSymbol()}{i + 1}")
+            atom_names.append(f"{atom.GetSymbol()}{pdb_numbering(i)}")
             residue_ids.append(1)
             residue_names.append("MOL")
             chain_ids.append("A")

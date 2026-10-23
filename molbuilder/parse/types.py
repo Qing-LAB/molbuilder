@@ -192,8 +192,10 @@ class TransmissionResult(ParseResult):
     1/eV, ``None`` where TBtrans wrote no device DOS -- each column's
     orbital (``orbital``, the geometry's 0-based index) and atom (``atom``),
     the geometry's first orbital of each atom (``firsto``), the version of
-    the file it read (``version``: its size, its modification time in ns)
-    and whether it was answered from the file's kept reading (``kept``)."""
+    the file it read (``version``: its size, its modification time in ns),
+    whether it was answered from the file's kept reading (``kept``), and
+    its atoms' index map (``atom_index_map``, listed by engine index --
+    `model/overview.md` § 2.2b)."""
     channel: str = ""
     energy_ev: Tuple[float, ...] = ()
     dos: Any = None
@@ -202,6 +204,7 @@ class TransmissionResult(ParseResult):
     firsto: Tuple[int, ...] = ()
     version: Tuple[int, int] = (0, 0)
     kept: bool = False
+    atom_index_map: Any = None
     result_kind: str = "transmission"
 
 

@@ -600,7 +600,7 @@ classDiagram
 | `info` | the records that describe the structure without being it (§ 8.4a) | **Shared by every frame**, carried verbatim; never hashed, never gated for the host's writes |
 | `customized` | `Row[]` — `{name, value, unit?, note?}`, the structure's named values (`model/structure.md` § 2.2d) | **Shared by every frame.** Part of the structure: written only through `data.customized` (§ 9.3), gated like any edit (§ 9.4) |
 | `otherMetadata` | every other key of the structure's metadata, as the server stated it — today `atom_order`, the order record (`model/overview.md` § 2.2a) | **Shared by every frame**, carried whole and never opened: in from the envelope's `metadata`, back out into it |
-| `orderSaid` | the order the atoms are in, in the server's words — *in the engine's order (held atoms first)* — or `null` in your order | **Worked out by the server** from the order record, like the resolved box (`atom_order_said` on the answer); shown, never sent back (§ 6.8) |
+| `orderSaid` | the order the atoms are in, in the server's words — *in the engine's order (held atoms first)* — or `null` in the user order | **Worked out by the server** from the order record, like the resolved box (`atom_order_said` on the answer); shown, never sent back (§ 6.8) |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
 | `rowsPerFrame` | `Row[][]` or `null` | `rowsPerFrame[f]` = frame `f`'s own `customized` rows; `null` when no frame has one, otherwise exactly one entry per frame. Folded in from the envelope's `metadata.customized.frames` and out again only by the two translators (§ 11.1), as the annotations are |
@@ -1052,7 +1052,7 @@ structure's own `atom_order`, read at every settle, so the mark lasts exactly
 as long as the state — one line above the tabs, `.molviewer-order`, in the
 words the server sends beside the structure (`orderSaid`, § 6.2). The Molbuilder tab's open of a remapped file says once,
 as a notice of that load — `structure.restored`, info, naming the order in its words — that it
-restored it: true of the load, and the editor then holds the person's order.)*
+restored it: true of the load, and the editor then holds the user order.)*
 
 Some answers come back with **notices**: `{severity, message, where, about}`, in plain language,
 about the structure the answer describes. They are not errors — an error fails
@@ -3575,7 +3575,7 @@ a viewer keeps what § 11.2 deliberately keeps out of the truth:
 | `measuring` | whether the ruler is on — a standing preference, applied like a switch |
 | `measurement` | the ruler's picked atoms (§ 11.6) — applied under `match`, for **every** viewer: no truth lane restores this one, so `hasTruthLane` has nothing to say about it |
 | `selection` | the picked atoms — **read back only by a viewer with no truth lane** (read-only); where a draft exists it owns the selection, and two lanes restoring one fact is § 5.2's drift |
-| `match` | the structure this context belonged to (atom + frame counts) |
+| `match` | the structure this context belonged to: its atoms' elements in order, its atom and frame counts, and the order it is listed in (the server's words for an engine's order, none for the user order) — so a selection is never put back onto another structure that merely has as many atoms, the same molecule listed in an engine's order among them (`model/overview.md` § 2.1: an index holds only against the structure it was made on) |
 
 **Writing it is never an edit.** The lane's writer is MolView's own, debounced,
 triggered by view/switch/frame changes and by the end of a camera gesture — a
@@ -4178,8 +4178,12 @@ the index (§ 11.4).
 
 This is the browser end of a rule that spans the whole application: the server
 never translates — its messages name the index, said as one
-(`structure.atom_words`) — and the number a user reads here equals the atom
-number in the generated input file. Its single home is
+(`structure.atom_words`) — and the number a user reads here is index + 1 of
+the structure this view holds: the deck's own number for the same atom where
+the deck lists the atoms as the view does, and not where the calculation
+sorted them (an editor and the transport report hold the user order; a
+sorted deck's number is the engine index + 1 — `model/overview.md` § 2.2b,
+F5). Its single home is
 [`model/overview.md`](?doc=model/overview.md) § 2, and MolView defers to it
 rather than restating it.
 

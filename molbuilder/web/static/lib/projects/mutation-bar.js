@@ -95,23 +95,12 @@ function _setZipBusy(busy, label) {
   _updateButtonEnablement();
 }
 
-/* A size as a person reads it, in the largest unit that keeps it above 1. */
-function _sizeWords(n) {
-  let v = Number(n) || 0;
-  for (const unit of ["bytes", "KB", "MB", "GB", "TB"]) {
-    if (v < 1024 || unit === "TB") {
-      return unit === "bytes" ? v + " bytes" : v.toFixed(1) + " " + unit;
-    }
-    v /= 1024;
-  }
-  return String(n);
-}
-
-/* WHAT THE ARCHIVE WOULD BE: its files and exact size; `skipped` -- links
+/* WHAT THE ARCHIVE WOULD BE: its files and exact size, in the server's
+ * one spelling of a size (`units.size_words`); `skipped` -- links
  * pointing out of the projects tree, left behind on purpose, never in
  * silence; and what it leaves out, each with how much. */
 function _describeArchive(out) {
-  let text = (Number(out.files) || 0) + " files, " + _sizeWords(out.bytes);
+  let text = (Number(out.files) || 0) + " files, " + out.size_words;
   if (Number(out.skipped) > 0) {
     text += " — " + out.skipped + " link(s) pointing outside the "
       + "projects tree left out";
@@ -121,7 +110,7 @@ function _describeArchive(out) {
 
 function _leftOutWords(out) {
   const parts = (out.left_out || []).map((l) =>
-    l.what + " (" + l.files + " files, " + _sizeWords(l.bytes) + ")");
+    l.what + " (" + l.files + " files, " + l.size_words + ")");
   return parts.length ? "Left out: " + parts.join("; ") + "." : "";
 }
 

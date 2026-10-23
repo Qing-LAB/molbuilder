@@ -295,10 +295,14 @@ def spectra_render_checks(struct: Structure,
     # the run.  The Methods paragraph restates it beside the results.
     frozen_now = sorted(int(i) for i in (cfg.frozen_indices or []))
     if frozen_now:
+        # NAMED IN THE USER ORDER -- a viewer's structure may be an engine's
+        # (`model/overview.md` § 2.2a, `Structure.atoms_named`).
+        named = (struct.atoms_named(frozen_now)
+                 if hasattr(struct, "atoms_named") else atom_words(frozen_now))
         issues.append(Issue(
             severity="info",
             message=(
-                f"{len(frozen_now)} atom(s) ({atom_words(frozen_now)}) are "
+                f"{len(frozen_now)} atom(s) ({named}) are "
                 f"frozen: the deck's relaxation, when it runs, holds them "
                 f"fixed (geomeTRIC $freeze; under already_relaxed there is "
                 f"no relaxation), and the Hessian is taken over the free "
@@ -506,7 +510,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     if bad:
         issues.append(Issue(
             severity="error",
-            message=(f"the frozen set names {atom_words(bad)}, outside "
+            message=(f"the frozen set names {struct.atoms_named(bad)}, outside "
                      f"this structure's {n} atoms -- its indices are "
                      f"0 … {n - 1}."),
             where="structure.regions"))
@@ -544,7 +548,8 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
         issues.append(Issue(
             severity="info",
             message=(
-                f"{len(held)} atom(s) (indices {held}) are held: they sit "
+                f"{len(held)} atom(s), {struct.atoms_named(held)}, are held: "
+                f"they sit "
                 f"in Geometry.Constraints outside the FC.First..FC.Last "
                 f"range, so no force constant is taken with respect to "
                 f"them and the run nudges the {n_free} free atom(s) only "

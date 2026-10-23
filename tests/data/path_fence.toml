@@ -632,6 +632,14 @@ name = "path"
 request = { json = { path = "{outside_dir}" } }
 
 [[route]]
+rule = "/api/transport/export"
+method = "GET"
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}", format = "csv" } }
+
+[[route]]
 rule = "/api/transport/fit"
 method = "GET"
 [[route.path]]

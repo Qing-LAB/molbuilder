@@ -146,6 +146,7 @@ def science_view(cfg, struct: Structure) -> "VibrationConfigView":
 def _vib_constants(cfg, names) -> List[str]:
     """The vibration deck's own constants, beside the lifted ones; its
     result's name through the stage's ``names`` (`input.run_file_expr`)."""
+    from ..atom_permutation import AtomIndexMap
     from ..sidecars.spectra import finite_or_none, write_spectra_payload
     from .. import constants
     from ..spectra.normal_modes import (display_form, frequencies_cm1,
@@ -183,7 +184,8 @@ def _vib_constants(cfg, names) -> List[str]:
            # codec, the progress-log writer, the relaxation, the HOMO and
            # Hessian rules, the harmonic path and the thermochemistry, the
            # structure the result states, the result's writer and its scrub,
-           # and the mode selector (§ 4.8).
+           # the mode selector (§ 4.8), and the atom index map the result
+           # states (`model/overview.md` § 2.2b).
            *emit_bundle_imports(
                StructureCodec, MolwatchEmitter, relax, wall_deadline,
                homo_index, mo_window,
@@ -192,7 +194,7 @@ def _vib_constants(cfg, names) -> List[str]:
                thermo_temperatures, vibrational_thermo,
                vibrational_thermo_grid, equilibrium_structure,
                write_spectra_payload, finite_or_none, select_modes,
-               constants),
+               constants, AtomIndexMap),
            f"JSON_PATH = _mb_outfile({run_file_expr(names, ROLE_SPECTRA)})",
            # THE WALL (`engines/pyscf.md` § 3.9): the deadline this deck
            # keeps -- its relaxation stops at it, its displaced SCFs refuse
@@ -317,8 +319,9 @@ def _vib_relax_block(cfg, names) -> List[str]:
             "    # relaxation (frozen means frozen -- user ruling",
             "    # 2026-08-21; engines/pyscf.md § 7a role table).  geomeTRIC",
             "    # takes the set as a $freeze constraints file, the",
-            "    # optimization deck's own mechanism; indices are 1-based",
-            "    # there.  The SAME set is excluded from the Hessian below",
+            "    # optimization deck's own mechanism; it numbers atoms from 1",
+            "    # (geomeTRIC's numbers, the atom indices + 1).  The SAME",
+            "    # set is excluded from the Hessian below",
             "    # (partial Hessian), so the geometry the frequencies are",
             "    # computed at is one where the fixed atoms never moved.",
             # THE ONE WRITER both decks use (`input.emit_constraints_file`):

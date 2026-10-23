@@ -29,6 +29,7 @@ from molbuilder.sidecars.molstruct import (
     normalise_selection_rules,
     structure_fields_via_dataclass,
 )
+from molbuilder.atom_permutation import MAP_KEY
 from molbuilder.structure_pair import MolstructJsonError
 
 from ._helpers import build_sidecar_result
@@ -40,6 +41,7 @@ from ._helpers import build_sidecar_result
 
 def _normalised_dict(
     *,
+    schema_version: int,
     n_atoms_total: int,
     n_frames_total: Optional[int],
     geometry_hash: Optional[str],
@@ -49,8 +51,12 @@ def _normalised_dict(
     info: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
+    atom_index_map: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Re-validate + canonicalise sidecar fields.  Private read-side
+    """Re-validate + canonicalise sidecar fields -- keeping the version the
+    file STATES (``schema_version``), never this build's: a reader asks it
+    of the file (`model/overview.md` § 2.2b, F4), and the file's own atom
+    index map, read by the map's one reader (``atom_index_map``, v15).  Private read-side
     helper; mirrors the write side's ``to_dict`` validation so an on-
     disk sidecar that snuck past with hand-edited indices fails loudly
     at load time (with the file path in the error message) rather than
@@ -108,8 +114,17 @@ def _normalised_dict(
         except (ValueError, TypeError) as exc:
             raise MolstructJsonError(str(exc)) from exc
 
+    # THE PAIR'S OWN MAP (v15), read by the map's one reader -- checked
+    # against `atom_order` where the pair is applied (`apply_to_structure`).
+    if atom_index_map is not None:
+        from molbuilder.atom_permutation import AtomIndexError, AtomIndexMap
+        try:
+            atom_index_map = AtomIndexMap.from_dict(
+                atom_index_map, n_atoms=n_atoms_total).to_dict()
+        except AtomIndexError as exc:
+            raise MolstructJsonError(str(exc)) from exc
     return {
-        "schema_version":  SCHEMA_VERSION,
+        "schema_version":  int(schema_version),
         "n_atoms_total":   n_atoms_total,
         **({"n_frames_total": n_frames_total}
            if n_frames_total is not None else {}),
@@ -129,6 +144,8 @@ def _normalised_dict(
         "selection_rules": normed_rules,
         "created_by":      str(created_by),
         "created_at":      created_at,
+        **({MAP_KEY: atom_index_map}
+           if atom_index_map is not None else {}),
     }
 
 
@@ -212,7 +229,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
     # HERE, where the payload is still whole: this function reads the keys it
     # NAMES, so a stray one would be dropped before ``apply_to_structure``
     # could refuse it.
-    from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+    from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
                                       RETIRED_METADATA_KEYS,
                                       RETIRED_IDENTITY_KEYS)
     # `info` (schema 9): the free-form NON-structural store -- known by
@@ -221,7 +238,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
     # AND THE RETIRED ONES, which are accepted and ignored rather than
     # refused -- a key this project used to write is not a key nobody reads,
     # and the files carrying it are the user's (`structure.RETIRED_METADATA_KEYS`).
-    known = (set(METADATA_FIELDS) | set(IDENTITY_FIELDS)
+    known = (set(FILE_FIELDS) | set(IDENTITY_FIELDS)
              | set(ENVELOPE_KEYS) | {"info"} | set(RETIRED_METADATA_KEYS)
              | set(RETIRED_IDENTITY_KEYS) | set(RETIRED_ENVELOPE_KEYS))
     stray = sorted(k for k in data if k not in known)
@@ -236,7 +253,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
         retired_out.update({k: data[k] for k in RETIRED_METADATA_KEYS
                             if data.get(k) is not None})
     if stated_out is not None:
-        stated_out.update(k for k in data if k in METADATA_FIELDS)
+        stated_out.update(k for k in data if k in FILE_FIELDS)
 
     # Re-validate the fields via _normalised_dict.  This
     # catches malformed user-edited JSON BEFORE any consumer tries to
@@ -245,18 +262,20 @@ def load_text(text: str, *, source: str = "<sidecar>",
     # which file is at fault).
     try:
         return _normalised_dict(
+            schema_version  = sv,
             n_atoms_total   = n,
             n_frames_total  = data.get("n_frames_total"),
             geometry_hash   = data.get("geometry_hash"),
             # SPREAD, never listed: every field the Structure names, read by
             # the same tuple the writer spreads (`model/structure.md` § 2.2).
-            fields          = {k: data.get(k) for k in METADATA_FIELDS},
+            fields          = {k: data.get(k) for k in FILE_FIELDS},
             selection_rules = data.get("selection_rules"),
             identity        = {k: data[k] for k in IDENTITY_FIELDS
                                if k in data},
             info            = data.get("info"),
             created_by      = data.get("created_by", "unknown"),
             created_at      = data.get("created_at"),
+            atom_index_map  = data.get(MAP_KEY),
         )
     except MolstructJsonError as exc:
         raise MolstructJsonError(f"sidecar {source}: {exc}") from exc

@@ -145,12 +145,17 @@ def _atoms(n: int, **metadata):
                      **metadata)
 
 
-def test_emit_atom_metadata_returns_none_when_it_has_nothing_to_say():
-    """The contract's emission rule: absent block when the structure has no
-    label, channel, named value or order record.  Otherwise an empty
-    in-body block would silently suppress a later .molstruct.json sidecar
-    via the in-body-wins rule."""
-    assert sc.emit_atom_metadata(_atoms(100)) is None
+def test_every_deck_states_its_atoms_and_reads_as_labelling_nothing():
+    """`job-contracts.md` § 3.4 (the user, 2026-10-23: "every deck writes its
+    block"): a structure with no label, channel, named value or order record
+    still writes the block -- its atom count and its order record, null in
+    the user order -- so its run's atom index map has a count to be made
+    from; and the block reads as one that labels nothing (the one
+    predicate), so an empty block never stands for labels it does not
+    hold."""
+    payload = _atom_metadata_payload(sc.emit_atom_metadata(_atoms(100)))
+    assert (payload["n_atoms_total"], payload["atom_order"]) == (100, None)
+    assert not sc.atom_metadata_has_something(payload)
 
 
 def test_emit_atom_metadata_with_regions_only():

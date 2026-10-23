@@ -390,19 +390,22 @@ def atom_metadata_has_something(payload: Optional[Dict[str, Any]]) -> bool:
     """THE ONE PREDICATE for the ATOM-METADATA block (`job-contracts.md`
     § 3.4; `model/overview.md` § 2.2a): it has something to say when any
     field it carries does -- a label, a channel, a named value, an order
-    record (``structure.ATOM_METADATA_FIELDS``).  Asked of a structure's
-    metadata by the writer, and of a block by its reader and the run door."""
+    record (``structure.ATOM_METADATA_FIELDS``).  Asked of a block by its
+    reader and the run door: every deck writes one since 2.32.0, and one
+    with nothing to say reads as a deck that labels nothing."""
     from molbuilder.structure import ATOM_METADATA_FIELDS
     return bool(payload) and any(payload.get(f) for f in ATOM_METADATA_FIELDS)
 
 
 def emit_atom_metadata(struct: Any,
                        created_by: str = "molbuilder",
-                       created_at: Optional[str] = None) -> Optional[str]:
+                       created_at: Optional[str] = None) -> str:
     """Emit the ATOM-METADATA block of ``struct``, the structure the deck is
-    written from, or return ``None`` when it has nothing to say
-    (:func:`atom_metadata_has_something`) -- absence is the honest signal
-    that this generation had no labels, no named values and no order record.
+    written from -- **every deck's** (`model/overview.md` § 2.2b; the user,
+    2026-10-23: "every deck writes its block"): its ``n_atoms_total`` is the
+    count every atom index map of its run is made from, its ``atom_order``
+    the run's order record, ``null`` in the user order -- a structure with
+    nothing else to say still states its atoms.
 
     This is **data-model persistence** (``model/structure-annotations.md`` § 4a) — the
     script's engine-agnostic, round-trippable copy of the structure's
@@ -417,13 +420,11 @@ def emit_atom_metadata(struct: Any,
     reserved ``frozen_atoms`` among the rest; the channels; the named values
     (a deck is one frame, so its own and its frame's rows); and the order
     record of a structure in an engine's order (``model/overview.md`` § 2.2a,
-    I5), ``null`` in your order.  Atom indices are 0-based, as in the
+    I5), ``null`` in the user order.  Atom indices are 0-based, as in the
     sidecar and the ``Structure``.
     """
     from molbuilder.structure import ATOM_METADATA_FIELDS
     metadata = struct.metadata_to_dict()
-    if not atom_metadata_has_something(metadata):
-        return None
     # THE VERSION THE SIDECAR STAMPS, from the one constant -- never a literal.
     #
     # A block that claims a version it is not written in is worse than one
@@ -466,10 +467,10 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
     the rule's.  The coordinates the deck writes carry no offset of their own:
     design + applied_offset == these, the invariant.
 
-    Written for EVERY deck, labelled or not.  ATOM-METADATA is the sidecar's
-    shape and is emitted only when there are labels; this is a fact about the
-    emission -- the provenance § 6.1 clause 5 promises -- and it is what a
-    reader of the run asks instead of deriving a corner of its own.
+    Written for EVERY deck, labelled or not, as ATOM-METADATA is: this is a
+    fact about the emission -- the provenance § 6.1 clause 5 promises -- and
+    it is what a reader of the run asks instead of deriving a corner of its
+    own.
     """
     # AT 8 DECIMALS -- the transport rungs' geometry block (SIESTA's writes
     # 10) -- and never -0.0.  A re-prep that reloads the composed junction
@@ -1399,11 +1400,9 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         if marks:
             record.append(emit_bench_marks(**marks))
             in_record.append("BENCH-MARKS")
-    atoms = emit_atom_metadata(struct, created_by=spec.created_by,
-                               created_at=generated_at_now())
-    if atoms:
-        record.append(atoms)
-        in_record.append("ATOM-METADATA")
+    record.append(emit_atom_metadata(struct, created_by=spec.created_by,
+                                     created_at=generated_at_now()))
+    in_record.append("ATOM-METADATA")
     # PLACED AT THE HAND-OFF (user, 2026-09-25): the cell origin at (0,0,0)
     # and every atom inside the cell, or the deck refuses (§ 6.0, check 3).
     # EVERY deck places its atoms and says so, so a spec without a frame is
@@ -1438,9 +1437,6 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         elif "BENCH-MARKS" not in in_record:
             log.note("BENCH-MARKS: this engine declares anchors but had "
                      "none to state for this configuration")
-        if "ATOM-METADATA" not in in_record:
-            log.note("ATOM-METADATA: nothing — this structure carries no "
-                     "regions or annotations")
         log.produced("deck", f"{len(text.splitlines())} lines, "
                              f"{len(emitted)} recorded for the gate")
     return RenderedDeck(text=text, emitted=tuple(emitted),

@@ -32,6 +32,7 @@ from .sort import (
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
 )
+from ..engine_atom_index import siesta_numbering, siesta_numbering_from_end
 from ..parse.engines import siesta_grammar as _G
 from ..identity import electrode_hs_stem
 from ..runfiles import compose
@@ -568,15 +569,16 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
         # `begin` / `end` are the binary's own tokens (it accepts
         # elec-pos | start | begin | end), which is more permissive than the
         # manual documents.
+        # THE ELECTRODE'S POSITION IN SIESTA'S NUMBERING (`model/overview.md`
+        # § 2.1, *convert*): its first atom from the start, or -- the right
+        # electrode -- its last atom from the end; the indices are the
+        # deck's own, the engine order.
         if i == 0:
-            # 1-based index of the electrode's first atom.
-            lines.append(f"  elec-pos begin     {min(idxs) + 1}")
+            lines.append(f"  elec-pos begin     "
+                         f"{siesta_numbering(min(idxs))}")
         else:
-            # Counted from the end: -1 is the last atom, so the
-            # electrode's last atom (0-based ``max``) sits at
-            # -(n_total - max).
             lines.append(f"  elec-pos end       "
-                         f"{-(n_total - max(idxs))}")
+                         f"{siesta_numbering_from_end(max(idxs), n_total)}")
         # `bloch 1 1 1`, FIXED, not a control.  molbuilder derives
         # the electrode from the junction's own labelled atoms, so the
         # electrode cell IS the device cross-section and no expansion
@@ -668,7 +670,8 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
         run_start = prev = buffer_idx[0]
         for j in buffer_idx[1:] + [None]:
             if j is None or j != prev + 1:
-                lines.append(f"  atom [ {run_start + 1} -- {prev + 1} ]")
+                lines.append(f"  atom [ {siesta_numbering(run_start)} -- "
+                             f"{siesta_numbering(prev)} ]")
                 run_start = j
             prev = j if j is not None else prev
         lines.append("%endblock TS.Atoms.Buffer")

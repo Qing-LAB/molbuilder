@@ -11,7 +11,7 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from ..units import gib_words
+from ..units import size_words
 
 #: What the engine stores per matrix element: a complex double.
 _BYTES = 16
@@ -49,15 +49,15 @@ def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
     volts = sorted({_voltage_of(p.name, label) for p in files})
     if len(files) == 2 and len(volts) == 1:
         return (f"{scratch_dir}/: the {volts[0]} pair, 2 files, "
-                f"{gib_words(size)}")
+                f"{size_words(size)}")
     if len(files) == 1:
         # ONE FILE OF THE PAIR: the round's first point writing the second
         # while its run is going; a walk that stopped between the two
         # writes once it has ended.
-        return (f"{scratch_dir}/: one file, {files[0].name}, {gib_words(size)} "
+        return (f"{scratch_dir}/: one file, {files[0].name}, {size_words(size)} "
                 + ("-- the round's pair being written" if going else
                    "-- a walk that did not reach its end; yours to remove"))
-    return (f"{scratch_dir}/: {len(files)} files, {gib_words(size)} -- "
+    return (f"{scratch_dir}/: {len(files)} files, {size_words(size)} -- "
             f"{', '.join(p.name for p in files)}; the walk leaves one "
             f"pair at most, so these are an edit's")
 
@@ -242,10 +242,10 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
         deck = _reads(path)
         energies.append(energy_points(deck) + 2)
         if same:
-            sizes.append(f"{gib_words(file_bytes(orbitals['L'], deck))} a lead at {v:g} V")
+            sizes.append(f"{size_words(file_bytes(orbitals['L'], deck))} a lead at {v:g} V")
         else:
             sizes.append(", ".join(
-                f"{lead} {gib_words(file_bytes(n, deck))}"
+                f"{lead} {size_words(file_bytes(n, deck))}"
                 for lead, n in orbitals.items()) + f" a lead at {v:g} V")
     k = k_points_time_reversed(first.grid)
     orbs = (f"{orbitals['L']} orbitals" if same

@@ -43,9 +43,9 @@ function _modelOf(viewer) {
  * the answer says so -- model/structure.md § 2.3); format (.xyz vs
  * .pdb) is dispatched server-side from the extension.  `confirmDiscard` is the injected
  * dirty-canvas gate (UI policy; this layer stays DOM-free).  `restore: true` asks for
- * a file in an engine's order put back in your order, said in the answer's
+ * a file in an engine's order put back in the user order, said in the answer's
  * `structure.restored` notice (`model/overview.md` § 2.2a) -- a viewer that names
- * atoms in your order, the transport report, asks it.  Returns `{ok:true, payload}`
+ * atoms in the user order, the transport report, asks it.  Returns `{ok:true, payload}`
  * | `{ok:false, cancelled|error}`.
  */
 export async function openMolecule(viewer, path, opts) {

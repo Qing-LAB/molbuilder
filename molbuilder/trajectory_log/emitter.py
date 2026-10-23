@@ -72,7 +72,7 @@ def _convergence_lines(targets) -> list:
 
 def header_and_preview(*, job, engine, generator, elements, coords_ang,
                        frozen_atoms=(), runtime_info=None,
-                       convergence_targets=None) -> str:
+                       convergence_targets=None, atom_index_map=None) -> str:
     """The text a ``.molwatch.log`` starts with: its header and the step-0
     preview -- the structure, nothing computed yet.  THE ONE WRITER of both:
     prep's seed writes it before a run starts (`format.write_initial_preview`)
@@ -82,7 +82,9 @@ def header_and_preview(*, job, engine, generator, elements, coords_ang,
     SIESTA run's ``.out`` states too, read as the log's own content
     (`model/parse.md` § 5.3).  ``runtime_info`` writes one
     ``# runtime.<key>: <value>`` line per key handed in, in its order, with
-    no whitelist: the reader accepts any key.
+    no whitelist: the reader accepts any key.  ``atom_index_map`` -- the
+    map's own block (`model/overview.md` § 2.2b) -- one
+    ``# atom_index_map: {…}`` line, the log's atoms' indices said.
     """
     lines = ["# molwatch trajectory log v1",
              f"# generator: {generator}",
@@ -93,6 +95,10 @@ def header_and_preview(*, job, engine, generator, elements, coords_ang,
     if frozen_atoms:
         lines.append("# frozen_atoms: " + " ".join(
             str(int(i)) for i in sorted(frozen_atoms)))
+    if atom_index_map is not None:
+        import json
+        lines.append("# atom_index_map: "
+                     + json.dumps(atom_index_map, separators=(",", ":")))
     for k, v in (runtime_info or {}).items():
         # a value cannot break the line-oriented parse
         lines.append(f"# runtime.{k}: "
@@ -125,7 +131,8 @@ class MolwatchEmitter:
     """
 
     def __init__(self, path, job, mol, runtime_info=None,
-                 convergence_targets=None, frozen_atoms=()):
+                 convergence_targets=None, frozen_atoms=(),
+                 atom_index_map=None):
         self.path = path
         self.job  = job
         self._scf_buf   = []   # per-cycle dicts; reset each new SCF
@@ -140,7 +147,8 @@ class MolwatchEmitter:
                 elements=[mol.atom_symbol(i) for i in range(mol.natm)],
                 coords_ang=mol.atom_coords(unit='Ang'),
                 frozen_atoms=frozen_atoms, runtime_info=runtime_info,
-                convergence_targets=convergence_targets))
+                convergence_targets=convergence_targets,
+                atom_index_map=atom_index_map))
         self._step      = 1    # log block counter; step 0 was the preview
 
     # ----- SCF cycle hook (wired to mf.callback) -----

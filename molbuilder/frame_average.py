@@ -28,7 +28,6 @@ row.
 """
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -488,6 +487,15 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
         Var("average_conductance_change_percent", ("bias_v",), "derived",
             "%", "the averaged conductance's change",
             "100 (<G> - G_0) / G_0, in per cent of frame 0's"),
+        Var("average_why", ("bias_v",), "state", "",
+            "why the frames' average is none",
+            "at every voltage, why there is no average (one structure, the "
+            "weights not stated); or the frames this voltage's waits for",
+            dtype=str),
+        Var("average_conductance_why", ("bias_v",), "state", "",
+            "why the averaged conductance or its change is none",
+            "the window not straddling E_F, or frame 0's conductance zero",
+            dtype=str),
     )
 
 
@@ -497,12 +505,14 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     """Fill the data file's frame part, in place: each frame's rows -- the
     vocabulary's numbers in their own variables, the fill value where a
     frame states none, and every row as written in ``frame_rows`` -- the
-    masses, the frames' average at each voltage (``index`` placing a
-    voltage on ``biases``), and the attributes: the vocabulary's structure
-    rows and ``info.vibration`` where stated, every row as written, what is
-    said of the weights, their sum, and what the average assumes.  An
-    attribute takes a number or a text: any other value is said as text."""
+    masses, the frames' average at each voltage and why it is none there
+    (``index`` placing a voltage on ``biases``), and the attributes: the
+    vocabulary's structure rows and ``info.vibration`` where stated, every
+    row as written, what is said of the weights, their sum, and what the
+    average assumes.  An attribute takes a number or a text: any other
+    value is said as text."""
     from .frameset import read
+    from .ncdata import json_attr
     rows = read(structure) if structure is not None else None
     if rows is not None:
         check_units(rows)
@@ -510,11 +520,19 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
         if masses is not None:
             values[MASS_CHANNEL][:] = [_or_nan(m) for m in masses]
         for f, frame in enumerate(rows.frames):
-            values["frame_rows"][f] = json.dumps(list(frame), default=str)
+            values["frame_rows"][f] = json_attr(list(frame))
             for r in FRAME_ROWS:
                 values[r.name][f] = _or_nan(rows.value(r.name, f))
+    # WHY AN AVERAGE IS NONE, at each voltage: the block's reason at every
+    # one, or the voltage's own.
+    if average.get("why"):
+        values["average_why"][:] = str(average["why"])
     for e in average.get("at") or ():
         b = index(e["bias_v"], biases)
+        for key, name in (("why", "average_why"),
+                          ("conductance_why", "average_conductance_why")):
+            if e.get(key):
+                values[name][b] = str(e[key])
         for key, name in (("transmission", "average_transmission"),
                           ("delta_transmission",
                            "average_delta_transmission"),
@@ -534,16 +552,13 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
             for k in ("run", "result_sha256"):
                 attrs[f"vibration_{k}"] = str(info.get(k) or "")
         # EVERY ROW AS WRITTEN, and what is said of the weights.
-        attrs["structure_rows"] = json.dumps(list(rows.structure),
-                                             default=str)
-        attrs["frame_warnings"] = json.dumps(list(rows.warnings))
+        attrs["structure_rows"] = json_attr(list(rows.structure))
+        attrs["frame_warnings"] = json_attr(list(rows.warnings))
         if rows.weights is not None:
             attrs["weight_sum"] = float(average.get("weight_sum"))
             attrs["weight_tolerance"] = float(average.get("tolerance"))
-            attrs["average_assumptions"] = json.dumps(
+            attrs["average_assumptions"] = json_attr(
                 list(average.get("assumptions") or ()))
-    if average.get("why"):
-        attrs["average_why"] = str(average["why"])
 
 
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",

@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 from ..parse.fdf import (FDF_FALSE_WORDS, FDF_TRUE_WORDS, GEOMETRY_KEYS,
                          deck_atoms, fdf_key, fdf_true, parse_fdf_params,
                          read_fdf)
+from ..engine_atom_index import siesta_numbering
 from ..structure import SAME_PLACE_ANG, farthest_apart
 
 _LOGICAL = FDF_TRUE_WORDS | FDF_FALSE_WORDS
@@ -201,11 +202,10 @@ def _geometry_difference(ran: str, now: str) -> Optional[str]:
         return (f"{block}: the run had {len(had.labels)} atoms, it renders "
                 f"{len(has.labels)} now")
     for i, (za, la, zb, lb) in enumerate(zip(
-            had.atomic_numbers, had.labels, has.atomic_numbers, has.labels),
-            start=1):
+            had.atomic_numbers, had.labels, has.atomic_numbers, has.labels)):
         if (za, la) != (zb, lb):
-            return (f"{block}, row {i}: the run had {la} (Z {za}), it "
-                    f"renders {lb} (Z {zb}) now")
+            return (f"{block}, SIESTA's atom {siesta_numbering(i)}: the run "
+                    f"had {la} (Z {za}), it renders {lb} (Z {zb}) now")
     params = [parse_fdf_params(text) for text in (ran, now)]
     states = [read_fdf(text)[1] for text in (ran, now)]
     for what, key, a, b in (
@@ -223,8 +223,10 @@ def _geometry_difference(ran: str, now: str) -> Optional[str]:
                         else " -- one deck does not state it"))
         i, d = farthest_apart(a, b)
         if d > SAME_PLACE_ANG:
-            return (f"{what}, row {i + 1}: {d:.2e} Å from where the run had "
-                    f"it")
+            return (f"{what}, " + (f"SIESTA's atom {siesta_numbering(i)}"
+                                   if key.startswith("atomic") else
+                                   f"lattice vector index {i}")
+                    + f": {d:.2e} Å from where the run had it")
     return None
 
 

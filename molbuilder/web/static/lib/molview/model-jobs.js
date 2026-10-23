@@ -293,7 +293,7 @@ export function structureFromServer(payload) {
             otherMetadata: otherMetadata,
             /* THE ORDER THE ATOMS ARE IN, in the server's words -- worked
              * out there from the order record, like the resolved box
-             * (`model/overview.md` § 2.2a): null in your order.  Shown, never
+             * (`model/overview.md` § 2.2a): null in the user order.  Shown, never
              * sent back. */
             orderSaid: typeof payload.atom_order_said === "string"
                 ? payload.atom_order_said : null,
@@ -643,7 +643,7 @@ function requestBodyFor(input) {
                                         : { frames: true };
     // A project file is read BY THE SERVER, which owns file access and the
     // pairing with the sidecar — the browser sends a path and no text — in
-    // your order when the caller asks (`model/overview.md` § 2.2a).
+    // the user order when the caller asks (`model/overview.md` § 2.2a).
     if (typeof input.path === "string" && input.path) {
         return Object.assign({ path: input.path },
                              input.restore === true ? { restore: true } : {},

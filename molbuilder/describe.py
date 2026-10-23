@@ -304,7 +304,7 @@ def write_description(desc: Description, dest, *,
     if src is not None and src.is_file():
         codec = StructureCodec()
         pair = codec.source_files(
-            struct if struct is not None else codec.load(src),
+            struct if struct is not None else codec.load(src, a_copy=True),
             desc.task.label)
         desc = _dc.replace(desc, task=_dc.replace(
             desc.task, structure=_dc.replace(

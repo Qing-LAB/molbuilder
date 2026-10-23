@@ -279,16 +279,28 @@ B8)*.
    reads a run — or **a structure pair** — its `.xyz`, a frame set's included,
    whose frames the card's frame-set table states (§ 3.8.1 there), and whose
    pseudopotential directory the shared panel then asks — and **a
-   transport calculation's folder**, to reuse it: its meta line says what it
-   computed (its junction's citation, its treatment, its voltages, its
-   window, where each group stands), and every card fills from it — the
-   shared panel and each rung's tab from its template and its rungs'
-   overrides, the bias list and the treatment from its description, the line
-   over the shared panel naming that calculation and each value keeping the
-   source its template records — a blank its value nobody chose, the hint
-   what runs, left as it was by Describe — its electrode rename its own and
-   not offered; Describe then writes what `molbuilder describe --reuses` writes
-   ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16). Anything else
+   transport calculation's folder**, to extend it — the tab then draws the
+   **Extend** view in place of its five cards (`engines/transport.md` § 2a.16,
+   *Extending it*): a meta line of what the finished calculation computed (its
+   junction, its treatment, its voltages, its window, each rung's state and the
+   time its runs took); **What you can extend** — the bias list with the
+   finished voltages done and fixed and new ones added (the start/stop/step
+   builder), the treatment, the transmission's window and how many times finer
+   (`/api/transport/fit`, its fitted ends and count, how many energies are
+   shared and how many computed), and, folded, the **device's** and the
+   **transmission's** tabs as the engine strip draws them — each control saying
+   what its change re-runs, with the time the finished runs of those rungs took;
+   **Fixed by <the finished calculation>**, folded — the shared panel's and the
+   seed's and the leads' values, read-only, as its template states them — and
+   its one action, *Start a new calculation from this junction with these
+   settings*, which draws the five cards filled from the finished calculation,
+   named a new calculation that reuses nothing. Describe writes what
+   `molbuilder describe --reuses` writes, and its answer says what the new
+   calculation will reuse and what will run (`reuse.decide`, the manifest's
+   words).
+   *(Until the Extend view is built — plan § 1aa — every card fills from the
+   finished calculation and every field is editable; the fitted window is its
+   one help.)* Anything else
    answers *not citable* with the condition named, and the citation held
    stays held. The describe door answers one
    summary line (how the run ended, what its record states) and **findings** through the one renderer

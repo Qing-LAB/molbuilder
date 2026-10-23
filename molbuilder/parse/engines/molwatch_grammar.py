@@ -45,6 +45,10 @@ CONVERGENCE = re.compile(r"^#\s*convergence\.(" + CONV_KEY + r"):\s*(.*)$")
 #: § 5.3).  Written by prep's preview and by the script's writer
 #: (`trajectory_log`); absent when the run holds nothing.
 FROZEN_ATOMS = re.compile(r"^#\s*frozen_atoms:\s*(.*)$")
+#: ``# atom_index_map: {…}`` -- which index the log's atoms are listed by,
+#: and both indices of each, as one JSON object (`model/overview.md`
+#: § 2.2b); written by every writer of a log's start.
+ATOM_INDEX_MAP = re.compile(r"^#\s*atom_index_map:\s*(.*)$")
 
 # ---- The step block -------------------------------------------------------------
 BLOCK_BEGIN = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+begin\s*====")

@@ -40,7 +40,12 @@ jobset status      every stage's state, and each group's next step; with
 
 Beside them, on a calculation: `jobset scratch` — an engine's scratch its
 runs hold, listed, and emptied with `--empty` from every run not going;
-`jobset migrate` — what an older molbuilder wrote in it, rewritten. On a
+`jobset migrate` — what an older molbuilder wrote in it, rewritten;
+`jobset export` — a transport calculation's every result, as NetCDF or as
+CSV tables, from what is already there (no data file read; the points
+without their DOS by region said), written into a folder you name outside
+the calculation ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.12, *Export*; since 2.32.0). On a
 machine: `jobset probe` and
 `jobset machines` — its record, and the records prep can target (§ 5.3).
 
@@ -1901,7 +1906,7 @@ and how much, *remove them? [y/N]*, Enter answering no; `--yes` answers it.
 With nobody to ask nothing is removed, the ledger's answer reads *no answer
 (not a terminal): nothing removed* (`ask.confirm`'s `unanswered`), and the
 verb refuses. With none free, it says *nothing to remove.* A file gone since
-it was listed is passed over, and *removed N file(s), X GiB.* counts what was
+it was listed is passed over, and *removed N file(s), X GiB.* — the size in the largest unit it reaches (`units.size_words`) counts what was
 removed. The question and its answer, and what was removed with how much,
 are written to the ledger (`scratch`: `question`, `emptied`). Nothing but
 what the vocabularies name scratch is ever touched.
@@ -2247,7 +2252,7 @@ starts from**:
 **What crosses between stages, when a deck is a reordered copy**
 *([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R3)*. A stage that takes another's **geometry** — a SIESTA
 force-constant stage taking `relax`'s — reads it through the run door
-(`runs.steps_of`) and restores it to the person's order through that run's
+(`runs.steps_of`) and restores it to the user order through that run's
 own order record; its coordinates and cell are taken onto the calculation's
 structure, which this prep sorts as every prep does (I3–I5) — never row by
 row from one deck's order into another's. A **restart file** — the stage

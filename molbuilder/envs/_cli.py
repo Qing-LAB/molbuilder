@@ -799,12 +799,8 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
 
     _du = _builds.tree_bytes
 
-    def _human(n: int) -> str:
-        for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
-            if n < 1024:
-                return f"{n:.1f} {unit}"
-            n /= 1024  # type: ignore[assignment]
-        return f"{n:.1f} PiB"
+    # A SIZE IN THE ONE SPELLING (`units.size_words`).
+    from ..units import size_words
 
     click.echo(f"[clean] {effective}", err=True)
     click.echo(f"[clean]   artifact root: {paths.root}", err=True)
@@ -822,7 +818,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
         size = _du(path)
         total_bytes += size
         marker = "  " if path.exists() else "--"
-        size_s = _human(size) if path.exists() else "absent"
+        size_s = size_words(size) if path.exists() else "absent"
         click.echo(
             f"  {marker} {label:<26} {size_s:>12}   {desc}",
             err=True,
@@ -831,7 +827,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
             present.append((label, path))
     click.echo("", err=True)
     click.echo(
-        f"  TOTAL reclaimable: {_human(total_bytes)} "
+        f"  TOTAL reclaimable: {size_words(total_bytes)} "
         f"({len(present)} dirs present)",
         err=True,
     )
@@ -839,7 +835,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
     click.echo("Will NOT touch (load-bearing or small):", err=True)
     for label, path, desc in kept:
         size = _du(path) if path.exists() else 0
-        size_s = _human(size) if path.exists() else "absent"
+        size_s = size_words(size) if path.exists() else "absent"
         click.echo(
             f"     {label:<26} {size_s:>12}   {desc}",
             err=True,
@@ -859,7 +855,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
         if not click.confirm(
             f"Delete {len(present)} build-only "
             f"director{'y' if len(present) == 1 else 'ies'} "
-            f"({_human(total_bytes)})?",
+            f"({size_words(total_bytes)})?",
             default=False, err=True,
         ):
             click.echo("[clean] aborted by user.", err=True)
@@ -883,7 +879,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
         )
         sys.exit(1)
     click.echo(
-        f"[clean] freed ~{_human(total_bytes)} "
+        f"[clean] freed ~{size_words(total_bytes)} "
         f"({len(present)} dirs removed).",
         err=True,
     )

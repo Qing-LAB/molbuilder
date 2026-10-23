@@ -546,7 +546,8 @@ prefix, so there's no column-width fragility:
 # job: <job_name>
 # units: energy=eV, force=eV/Ang, coords=Ang
 # created: <ISO8601 local timestamp>
-# frozen_atoms: <i> <j> ...              # optional -- the atoms the run holds, 0-based
+# atom_index_map: {"atoms_listed_by": "engine_index", ...}   # which index the log's atoms are listed by (model/overview.md § 2.2b)
+# frozen_atoms: <i> <j> ...              # optional -- the atoms the run holds, by engine index, from 0
 # runtime.<key>: <value>                 # optional, repeated (threads, gpu, host, ...)
 # convergence.<key>: <value>             # optional, repeated -- the stage's targets
 

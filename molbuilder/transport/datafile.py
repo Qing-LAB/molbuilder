@@ -9,10 +9,11 @@ ROLE    one NetCDF-4 file per transport calculation, frame x voltage x
         variable stating its units, its long name,
         its definition and, for a raw one, the file it was read from.  The
         variables are :data:`VARIABLES`, one table the writer fills and the
-        reader reads; :func:`write_data_file` writes it from the composition
-        `summarize task` writes the JSON record from; :func:`read_data_file`
-        is its door
-USED-BY `jobset summarize task`, beside `record.write_record`
+        reader reads; :func:`data_file_bytes` builds it from the composition
+        `summarize task` writes the JSON record from, :func:`write_data_file`
+        writes it; :func:`read_data_file` is its door
+USED-BY `jobset summarize task`, beside `record.write_record`; an export
+        (`transport.export`), which hands the bytes out
 
 **One shape for every transport calculation** (user, 2026-10-10: "doing a
 derivative is trivial if the result are saved with these parameter and
@@ -26,22 +27,24 @@ two calculations is a line of xarray on it.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from ..ncdata import Var
+from ..ncdata import Var, json_attr
 from ..parse.engines.tbtrans import PRINTED_HALF_DECIMAL_EV
 from .sort import REGION_BRIDGE, REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
 from .stages import same_volts
 
-#: The file's schema, stated in it.  ``@2``: the atom axis is in your order
-#: (`model/overview.md` § 2.2a, I1) -- the composed junction restored through
-#: its order record.  An older file is refused by its version, and `summarize
+#: The file's schema, stated in it.  ``@4``: every result the record holds
+#: -- each spin's DOS, eigenchannels and currents, each point's transmission
+#: k-points and loop time, what a point shares or is a copy of, every NEGF
+#: row's charges, each run's phases, the calculation's own records and its
+#: provenance (`engines/transport.md` § 2a.12, *Export*; the user,
+#: 2026-10-23).  An older file is refused by its version, and `summarize
 #: task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@3"
+DATA_SCHEMA = "molbuilder/transport-data@4"
 
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
@@ -58,11 +61,10 @@ def _from(role: str) -> str:
     return f"<label>{role} -- {_SPIN_SUMMED}"
 
 
-#: The eigenchannels are one file's own -- never summed over spin: a
-#: polarized point's are one set per spin, in the record (``dos.by_spin``).
-_EIG_SOURCE = ("<label>.TBT.AVTEIG_<L>-<R> of a non-polarized point -- each "
-               "spin's, up = down; a polarized point's are one set per spin, "
-               "in the record, none here")
+#: The eigenchannels are one channel's own -- never summed over spin: each
+#: spin channel's set, a non-polarized point's one.
+_EIG_SOURCE = ("<label>.TBT.AVTEIG_<L>-<R> -- each channel's own: TBT_UP and "
+               "TBT_DN polarized")
 
 #: The regions molbuilder owns in the device, in order along z.
 _REGIONS = (REGION_LEFT_ELECTRODE, REGION_BRIDGE, REGION_RIGHT_ELECTRODE)
@@ -140,9 +142,10 @@ def _variables() -> Tuple[Var, ...]:
             "the I-V's voltage",
             "the description's voltage list, in its order, or 0 V"),
         Var("atom", ("atom",), "coordinate", "1", "atom index",
-            "counted from 0 in your order -- the composed junction put back "
-            "in your order through its order record",
-            dtype="i4"),
+            "the atom's user index, from 0 -- the file is listed by user "
+            "index (atoms_listed_by), the composed junction put back in the "
+            "user order through its order record; engine_atom_index beside "
+            "it (model/overview.md 2.2b)", dtype="i4"),
         Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
             "x, y, z", dtype=S),
         Var("element", ("atom",), "given", "", "the atom's element",
@@ -155,14 +158,14 @@ def _variables() -> Tuple[Var, ...]:
             dtype=S),
         Var("eigenchannel", ("eigenchannel",), "coordinate", "1",
             "eigenchannel", "counted from 0, as TBtrans orders them -- as "
-            "many as its .TBT.nc holds, those it was asked for (TBT.T.Eig); "
-            "none where no file is read, nor for a polarized point, whose "
-            "eigenchannels are one set per spin, in the record", dtype="i4"),
+            "many as its files hold, those it was asked for (TBT.T.Eig), "
+            "each spin channel's; none where no file is read", dtype="i4"),
         # THE FRAMES' POST-PROCESS: their rows, their masses and their
         # average (`frame_average`).
         *data_file_variables(Var),
         Var("positions_ang", ("frame", "atom", "xyz"), "given", "angstrom",
-            "atom positions", "every frame's coordinates as composed"),
+            "atom positions", "every frame's coordinates, listed by user index "
+            "-- the composed junction restored"),
         Var("transmission_by_spin", ("frame", "bias_v", "spin", "energy_ev"),
             "raw", "1", "transmission, by spin channel",
             "T(E), k-averaged, channel by channel",
@@ -174,16 +177,20 @@ def _variables() -> Tuple[Var, ...]:
         Var("conductance_g0", ("frame", "bias_v"), "derived", "G0",
             "conductance", "G / G0 = T at E - E_F = 0, linearly interpolated; "
             "G0 = 2 e^2 / h"),
-        Var("current_a_printed", ("frame", "bias_v"), "raw", "A",
-            "current, as TBtrans printed it", "one spin channel's",
+        Var("current_by_spin_a", ("frame", "bias_v", "spin"), "raw", "A",
+            "current, as TBtrans printed it, by spin channel",
+            "each channel's own -- a non-polarized point's one channel, half "
+            "the junction's total; the fill value for a point whose energies "
+            "two runs computed, each printing its own part",
             source="the transmission point's TBtrans output"),
         Var("current_a", ("frame", "bias_v"), "derived", "A",
             "the junction's total current",
             "as current_from says: tbtrans -- twice the printed figure "
-            "unpolarized, the channels' sum polarized; joined -- a point that "
+            "unpolarized, the channels' sum polarized (current_by_spin_a); "
+            "joined -- a point that "
             "shares energies with a finished calculation's, the record's "
             "over its joined grid, its printed figure the fill value"),
-        Var("current_from", ("frame", "bias_v"), "derived", "",
+        Var("current_from", ("frame", "bias_v"), "state", "",
             "which current current_a is", "tbtrans or joined "
             "(engines/transport.md 2a.16)", dtype=S),
         Var("iv_current_a", ("frame", "iv_bias_v"), "derived", "A",
@@ -194,6 +201,11 @@ def _variables() -> Tuple[Var, ...]:
             "over that frame's 0 V transmission, E in eV, f the Fermi "
             "function at iv_kt_ev; the fill value at a voltage whose window "
             "and Fermi tails reach past the transmission's (iv_notes)"),
+        Var("iv_current_by_spin_a", ("frame", "iv_bias_v", "spin"),
+            "derived", "A", "the I-V's current, by spin channel",
+            "a polarized calculation's, each spin's as the record states it; "
+            "the fill value for a non-polarized one, whose spins carry half "
+            "the total each"),
         Var("device_ef_ev", ("frame", "bias_v"), "raw", "eV",
             "the device point's Fermi level",
             "its NEGF phase's last cycle, in TranSIESTA's frame",
@@ -205,6 +217,11 @@ def _variables() -> Tuple[Var, ...]:
         Var("dos_total", ("frame", "bias_v", "energy_ev"), "raw", "1/eV",
             "the device's density of states", "its Green-function DOS, "
             "k-averaged", source=_from(".TBT.AVDOS")),
+        Var("dos_total_by_spin", ("frame", "bias_v", "spin", "energy_ev"),
+            "raw", "1/eV", "the device's density of states, by spin channel",
+            "each channel's Green-function DOS, k-averaged -- a "
+            "non-polarized point's one channel",
+            source="<label>.TBT.AVDOS (TBT_UP / TBT_DN polarized)"),
         Var("dos_region", ("frame", "bias_v", "region", "energy_ev"), "raw",
             "1/eV", "the device DOS by region",
             "summed over the region's atoms in the device",
@@ -216,9 +233,9 @@ def _variables() -> Tuple[Var, ...]:
             "1/eV", "a lead's bulk DOS", "TBT.DOS.Elecs, k-averaged",
             source=_from(".TBT.AVBDOS_<lead>")),
         Var("eigenchannel_transmission",
-            ("frame", "bias_v", "eigenchannel", "energy_ev"), "raw", "1",
-            "eigenchannel transmission", "TBT.T.Eig, k-averaged",
-            source=_EIG_SOURCE),
+            ("frame", "bias_v", "spin", "eigenchannel", "energy_ev"), "raw",
+            "1", "eigenchannel transmission, by spin channel",
+            "TBT.T.Eig, k-averaged", source=_EIG_SOURCE),
         Var("done", ("frame", "bias_v"), "state", "1", "the point is done",
             "1 when the point has its transmission; 0 otherwise, its "
             "transmission's values the fill value -- a gap, never filled "
@@ -228,6 +245,50 @@ def _variables() -> Tuple[Var, ...]:
             "the transmission point's folder",
             "relative to the calculation folder: where its raw values were "
             "read -- for a point not done, where its attempt is", dtype=S),
+        Var("point_why", ("frame", "bias_v"), "state", "",
+            "why a point is not done",
+            "in its run's words: pending, or failed and what stopped it",
+            dtype=S),
+        Var("point_progress", ("frame", "bias_v"), "state", "",
+            "how far a point not done got",
+            "its TBtrans loop -- running, or where it stopped -- in its run "
+            "record's sentence (model/parse.md 5d.1b)", dtype=S),
+        Var("dos_why", ("frame", "bias_v"), "state", "",
+            "why a done point has no DOS",
+            "in its reader's words -- its DOS variables the fill value",
+            dtype=S),
+        Var("tbt_k_points", ("frame", "bias_v"), "raw", "1",
+            "the transmission's transverse k-points",
+            "as the point's TBtrans run states it", dtype="i4", fill=-1,
+            source="the transmission point's TBtrans output"),
+        Var("tbt_k_method", ("frame", "bias_v"), "raw", "",
+            "how those k-points were chosen",
+            "as the point's TBtrans run states it", dtype=S,
+            source="the transmission point's TBtrans output"),
+        Var("loop_elapsed_s", ("frame", "bias_v"), "raw", "s",
+            "the transmission's loop time",
+            "its passes' k-point x energy loops summed, as TBtrans measured "
+            "them (model/parse.md 5c.1)",
+            source="the transmission point's TBtrans output"),
+        Var("copied_from", ("frame", "bias_v"), "state", "",
+            "the run a point is a copy of",
+            "a calculation that reuses a finished one "
+            "(engines/transport.md 2a.16)", dtype=S),
+        Var("shared_from", ("frame", "bias_v"), "state", "",
+            "the finished point whose energies a point shares",
+            "engines/transport.md 2a.16", dtype=S),
+        Var("shared_held", ("frame", "bias_v"), "state", "1",
+            "the energies a point shares", "how many the finished point "
+            "holds", dtype="i4", fill=-1),
+        Var("shared_computed", ("frame", "bias_v"), "state", "1",
+            "the energies a point's own run computes",
+            "beside those it shares", dtype="i4", fill=-1),
+        Var("dos_per_orbital_reading", ("frame", "bias_v"), "state", "",
+            "the point's data-file reading, the DOS by region's",
+            "kept, or each data file's state in its words -- a reading just "
+            "tried that failed, or that another reading holds, in that "
+            "reading's -- dos_region the fill value where it is not kept "
+            "(model/parse.md 5e)", dtype=S),
         # EVERY RUN'S STATE AND CONVERGENCE, on the grid it varies over.
         Var("rung", ("rung",), "coordinate", "", "rung",
             "the rungs that run once, by their stage names", dtype=S),
@@ -246,6 +307,9 @@ def _variables() -> Tuple[Var, ...]:
         Var("device_state", ("frame", "bias_v"), "state", "",
             "the device point's state", "the run door's word for its run",
             dtype=S),
+        Var("device_detail", ("frame", "bias_v"), "state", "",
+            "what the device point's state says",
+            "the run door's sentence for its run", dtype=S),
         Var("device_scf_converged", ("frame", "bias_v"), "state", "1",
             "the device point's SCF converged",
             "1 converged, 0 not, -1 not stated", dtype="i1", fill=-1),
@@ -284,8 +348,18 @@ def _variables() -> Tuple[Var, ...]:
             dtype="i4", fill=-1),
         *_scf_vars("device", ("frame", "bias_v", "scf_cycle"),
                    _SCF_COLUMNS + _NEGF_SCF_COLUMNS),
+        Var("device_scf_charge", ("frame", "bias_v", "scf_cycle",
+                                  "charge_part"), "raw", "e",
+            "every NEGF row's charges", "column by column, as TranSIESTA "
+            "printed them", source="the device point's SIESTA output"),
+        Var("device_scf_phases", ("frame", "bias_v"), "state", "",
+            "the device run's phases", "periodic and negf: what each had to "
+            "reach and how it ended, JSON", dtype=S),
         Var("rung_state", ("rung",), "state", "", "the rung's state",
             "the run door's word for its run", dtype=S),
+        Var("rung_detail", ("rung",), "state", "",
+            "what the rung's state says",
+            "the run door's sentence for its run", dtype=S),
         Var("rung_scf_converged", ("rung",), "state", "1",
             "the rung's SCF converged", "1 converged, 0 not, -1 not stated",
             dtype="i1", fill=-1),
@@ -299,6 +373,12 @@ def _variables() -> Tuple[Var, ...]:
             "the cycles beyond it are the fill value; -1 where none ran",
             dtype="i4", fill=-1),
         *_scf_vars("rung", ("rung", "scf_cycle"), _SCF_COLUMNS),
+        Var("rung_scf_phases", ("rung",), "state", "", "the rung's phases",
+            "what each had to reach and how it ended, JSON", dtype=S),
+        Var("rung_copied_from", ("rung",), "state", "",
+            "the run a rung's newest run is a copy of",
+            "a calculation that reuses a finished one "
+            "(engines/transport.md 2a.16)", dtype=S),
     )
 
 
@@ -333,21 +413,41 @@ def _index(v: float, voltages: Sequence[float]) -> int:
     return k
 
 
-def write_data_file(base_dir, task, record: Dict) -> Path:
-    """Write ``<label>.transport.nc`` from ``record`` -- the composition
+def write_data_file(base_dir, task, record: Dict, *,
+                    readings: Sequence[Dict] = ()) -> Path:
+    """Write ``<label>.transport.nc`` from ``record`` (:func:`data_file_bytes`,
+    ``readings`` as it takes them) beside the calculation's record; returns
+    its path -- `summarize task`'s deliverable."""
+    from ..persist import write_bytes
+    name, data = data_file_bytes(base_dir, task, record, readings=readings)
+    out = Path(base_dir) / name
+    write_bytes(out, data)
+    return out
+
+
+def data_file_bytes(base_dir, task, record: Dict, *,
+                    readings: Sequence[Dict] = ()) -> "Tuple[str, bytes]":
+    """``<label>.transport.nc`` from ``record`` -- the composition
     `record.collect_record` answers -- and the calculation's composed
-    junction; returns its path.  :class:`DataFileError` names what does not
-    lay out on one grid."""
+    junction, as ``(its name, its bytes)``, written nowhere: `summarize
+    task` writes them (:func:`write_data_file`), an export hands them out
+    (`transport.export`).  ``readings`` -- the outcomes of the data files'
+    readings just made (`tbtnc.read_points`) -- say a file that failed to
+    read, or that another reading holds, in that outcome's words.
+    :class:`DataFileError` names what does not lay out on one grid."""
     from ..frame_average import fill_data_file
     from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, write_group
-    from ..persist import write_bytes
     from .compose import recorded_junction
     from .record import iv_notes_placed, order_unstated_said
     from .stages import (TRANSPORT_STAGES, frame_token, frames_of,
                          per_point_rungs, rung_points)
     from .transiesta import LEAD_NAMES
     base = Path(base_dir)
-    # THE ATOM AXIS IN YOUR ORDER (`model/overview.md` § 2.2a, I1): the
+    # A READING JUST TRIED AND NOT KEPT, in its outcome's words -- never
+    # read as one not tried (`tbtnc.read_points`).
+    tried = {o["file"]: o["said"] for o in readings
+             if o.get("state") != "kept"}
+    # THE ATOM AXIS IN THE USER ORDER (`model/overview.md` § 2.2a, I1): the
     # composed junction, in the engine's order, restored through its record
     # -- which a junction whose sidecar states none does not hold (I9).
     recorded = recorded_junction(base)
@@ -377,11 +477,28 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
                        if p.get("channels"))) if polarized
              else list(dict.fromkeys(p["spin"] for p in done_points)))
     leads = list(LEAD_NAMES)
-    n_eig = max((len((p.get("dos") or {}).get("eigenchannels") or ())
-                 for p in done_points), default=0)
+
+    def by_spin(p) -> List[Dict]:
+        """Each spin channel's own block of a point's DOS, in ``spins``'
+        order: a polarized point's ``by_spin``, a non-polarized one's its
+        one channel's -- the block itself."""
+        dos = p.get("dos") or {}
+        if polarized:
+            return [(dos.get("by_spin") or {}).get(s) or {} for s in spins]
+        return [dos]
+    n_eig = max((len(c.get("eigenchannels") or ())
+                 for p in done_points for c in by_spin(p)), default=0)
     iv = record.get("iv") or {}
     iv_biases = _voltages(task.bias)
     n_atoms = junction.n_atoms if junction is not None else 0
+    # THE ATOM AXIS, LISTED BY USER INDEX, with each atom's engine index --
+    # the device run's, from the composed junction's order record
+    # (`model/overview.md` § 2.2b, F2: a result for the user), so a script
+    # asks sisl about a point's `.TBT.nc` straight from this file.
+    from ..atom_permutation import AtomIndexMap
+    atoms = AtomIndexMap.of_engine_record(
+        recorded.structure.atom_order if recorded is not None else None,
+        n_atoms).as_listed_by_user()
     # EVERY RUN'S CONVERGENCE: the rungs that run once, by the stage table;
     # the device's runs, one a point; one SCF-row axis long enough for the
     # longest; TranSIESTA's charge columns as its header named them.
@@ -392,12 +509,15 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         [device] if device else [])
     histories = ([by_stage.get(r) or {} for r in once] + device_runs)
     n_cycles = max((len(h.get("scf") or ()) for h in histories), default=0)
+    # EVERY NEGF ROW'S charge columns, and the last cycle's.
     parts = list(dict.fromkeys(
-        k for h in device_runs
-        for k in (((h.get("negf") or {}).get("charges")) or {})))
+        [k for h in device_runs
+         for k in (((h.get("negf") or {}).get("charges")) or {})]
+        + [k for h in device_runs for row in h.get("scf") or ()
+           for k in (row.get("charges") or {})]))
 
     dims = {"frame": n_frames, "bias_v": len(biases), "energy_ev": len(grid),
-            "spin": len(spins), "iv_bias_v": len(iv_biases), "atom": n_atoms,
+            "spin": len(spins), "iv_bias_v": len(iv_biases), "atom": atoms,
             "xyz": 3, "region": len(_REGIONS), "lead": len(leads),
             "eigenchannel": n_eig, "rung": len(once), "scf_cycle": n_cycles,
             "charge_part": len(parts)}
@@ -436,10 +556,37 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         for s, name in enumerate(spins):
             values["transmission_by_spin"][f, b, s] = (
                 chans[name] if polarized else p["transmission"])
-        for name in ("conductance_g0", "current_a", "current_a_printed",
-                     "current_from"):
+        for name in ("conductance_g0", "current_a", "current_from"):
             if p.get(name) is not None:
                 values[name][f, b] = p[name]
+        # EACH CHANNEL'S PRINTED CURRENT: a polarized point's two, a
+        # non-polarized one's its one -- none for a point whose energies two
+        # runs computed, its channels' the record's over its joined grid.
+        printed = ({} if p.get("current_from") == "joined"
+                   else p.get("current_by_spin_a") or {} if polarized
+                   else {spins[0]: p.get("current_a_printed")}
+                   if spins else {})
+        for s, name in enumerate(spins):
+            if printed.get(name) is not None:
+                values["current_by_spin_a"][f, b, s] = printed[name]
+        # THE TRANSMISSION'S OWN SETTINGS AND TIME, what it shares and what
+        # it is a copy of, and its DOS per orbital's reading.
+        for key, name in (("k_points", "tbt_k_points"),
+                          ("k_method", "tbt_k_method"),
+                          ("loop_elapsed_s", "loop_elapsed_s"),
+                          ("copied_from", "copied_from")):
+            if p.get(key) is not None:
+                values[name][f, b] = p[key]
+        _shared_facts(p, (f, b), values)
+        if p.get("dos_why"):
+            values["dos_why"][f, b] = p["dos_why"]
+        kept = p.get("digest") or ()
+        if kept:
+            values["dos_per_orbital_reading"][f, b] = (
+                "kept" if all(d.get("state") == "kept" for d in kept)
+                else "; ".join(tried.get(d.get("file"))
+                               or f"{d.get('file')}: {d.get('said')}"
+                               for d in kept))
         dos = p.get("dos") or {}
         if dos.get("energy_ev") is not None and not (
                 len(dos["energy_ev"]) == len(grid)
@@ -460,31 +607,63 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
             for k, lead in enumerate(leads):
                 if lead in (dos.get(key) or {}):
                     values[name][f, b, k] = dos[key][lead]
-        for k, curve in enumerate(dos.get("eigenchannels") or ()):
-            values["eigenchannel_transmission"][f, b, k] = curve
+        for s, channel in enumerate(by_spin(p)):
+            if channel.get("total") is not None:
+                values["dos_total_by_spin"][f, b, s] = channel["total"]
+            for k, curve in enumerate(channel.get("eigenchannels") or ()):
+                values["eigenchannel_transmission"][f, b, s, k] = curve
     for p in list(record.get("pending") or ()) + list(record.get("failed")
                                                        or ()):
         f, b = at(p)
         values["point_state"][f, b] = p.get("state") or ""
         values["point_folder"][f, b] = p.get("attempt") or ""
-    for f, v, i in zip(iv.get("frame") or [None] * len(iv_biases),
-                       iv.get("voltages_v") or (), iv.get("current_a") or ()):
+        values["point_why"][f, b] = p.get("why") or ""
+        values["point_progress"][f, b] = (p.get("progress") or {}).get(
+            "said") or ""
+        _shared_facts(p, (f, b), values)
+    rows = list(zip(iv.get("frame") or [None] * len(iv.get("voltages_v")
+                                                   or ()),
+                    iv.get("voltages_v") or ()))
+    for (f, v), i in zip(rows, iv.get("current_a") or ()):
         if i is not None:
             values["iv_current_a"][0 if f is None else int(f),
                                    _index(v, iv_biases)] = i
+    # EACH SPIN'S I-V CURRENT, a polarized calculation's (the record's).
+    for s, key in ((spins.index("up") if "up" in spins else None,
+                    "current_up_a"),
+                   (spins.index("down") if "down" in spins else None,
+                    "current_down_a")):
+        if s is None:
+            continue
+        for (f, v), i in zip(rows, iv.get(key) or ()):
+            if i is not None:
+                values["iv_current_by_spin_a"][0 if f is None else int(f),
+                                               _index(v, iv_biases), s] = i
     _device_facts(device, device_runs, biases, parts, values)
     for r, name in enumerate(once):
         _run_facts(by_stage.get(name) or {}, "rung", (r,), values,
                    _SCF_COLUMNS)
+        if (by_stage.get(name) or {}).get("copied_from"):
+            values["rung_copied_from"][r] = by_stage[name]["copied_from"]
     average = record.get("average") or {}
 
     attrs: Dict[str, Any] = {
         "schema": DATA_SCHEMA,
         "label": str(record.get("label") or task.label),
         "treatment": str(record.get("treatment") or ""),
+        "treatment_note": str(record.get("treatment_note") or ""),
+        "current_means": json_attr(record.get("current_means") or {}),
         "energies_relative_to_ef": 1,
         "caveat": str(record.get("caveat") or ""),
         "frames": int(n_frames),
+        # WHERE EACH RESULT CAME FROM: each rung's run and what it was
+        # gathered from, a run of points' points (`record._chain`).
+        "provenance_chain": json_attr(
+            (record.get("provenance") or {}).get("chain") or []),
+        # THE CALCULATION'S OWN RECORDS, as they read when the file was
+        # written -- its description, its template, its job request -- each
+        # through its door's path, the file's text.
+        **_records_of(base, task),
     }
     slot = ((record.get("provenance") or {}).get("slot") or {})
     for key in ("citation", "kind"):
@@ -501,7 +680,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         attrs["iv_window_ev"] = [float(x) for x in iv["window_ev"]]
     # EACH NOTE PLACED BY ITS FRAME AND VOLTAGE (`record.iv_notes_placed`):
     # the record keys them by its table's rows, an axis this file has not.
-    attrs["iv_notes"] = json.dumps([
+    attrs["iv_notes"] = json_attr([
         {**n, "frame": 0 if n["frame"] is None else int(n["frame"])}
         for n in iv_notes_placed(iv)])
     # THE LEADS COMPARED, THE FERMI FRAMES, EACH RUN'S TOLERANCES (§ 2a.12).
@@ -512,8 +691,8 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         if leads_agree.get(key) is not None:
             attrs[name] = (int(leads_agree[key]) if key == "agree"
                            else float(leads_agree[key]))
-    attrs["fermi_frames"] = json.dumps(record.get("fermi_frames") or {})
-    attrs["scf_criteria"] = json.dumps(
+    attrs["fermi_frames"] = json_attr(record.get("fermi_frames") or {})
+    attrs["scf_criteria"] = json_attr(
         {name: by_stage[name]["scf_criteria"] for name in TRANSPORT_STAGES
          if (by_stage.get(name) or {}).get("scf_criteria")})
     attrs["Conventions"] = "CF-1.8"
@@ -524,8 +703,23 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         write_group(ds, dims, VARIABLES, values)
         ds.setncatts(attrs)
         data = as_bytes(ds)
-    out = data_file_path(base, attrs["label"])
-    write_bytes(out, data)
+    return data_file_path(base, attrs["label"]).name, data
+
+
+def _records_of(base: Path, task) -> Dict[str, str]:
+    """``{description, template, job_request}`` -- the calculation's own
+    records' texts, each found by its owner's door (`task.path_of`,
+    `template_file.template_path`, `job_request.path_of`); one not there is
+    not stated."""
+    from ..job_request import path_of as request_path
+    from ..task import path_of as task_path
+    from ..template_file import template_path
+    out = {}
+    for name, path in (("description", task_path(base)),
+                       ("template", template_path(base, task.label)),
+                       ("job_request", request_path(base))):
+        if Path(path).is_file():
+            out[name] = Path(path).read_text(encoding="utf-8")
     return out
 
 
@@ -561,15 +755,33 @@ def _device_facts(device: Dict, runs: Sequence[Dict],
                 values["device_charge"][cell + (k,)] = negf["charges"][part]
         _run_facts(p, "device", cell, values,
                    _SCF_COLUMNS + _NEGF_SCF_COLUMNS)
+        # EVERY NEGF ROW'S CHARGES, column by column.
+        for c, row in enumerate(p.get("scf") or ()):
+            for k, part in enumerate(parts):
+                if part in (row.get("charges") or {}):
+                    values["device_scf_charge"][cell + (c, k)] = (
+                        row["charges"][part])
+
+
+def _shared_facts(point: Dict, cell: Tuple, values: Dict[str, Any]) -> None:
+    """What a point shares with a finished calculation's (`engines/
+    transport.md` § 2a.16), at ``cell`` -- done or not, as the record
+    states it."""
+    shared = point.get("shared") or {}
+    for key, name in (("from", "shared_from"), ("held", "shared_held"),
+                      ("computed", "shared_computed")):
+        if shared.get(key) is not None:
+            values[name][cell] = shared[key]
 
 
 def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
                columns) -> None:
-    """One run's state, convergence and SCF history into ``prefix``'s
-    variables at ``cell`` -- a rung's index, or a device point's (frame,
-    voltage)."""
-    if run.get("state"):
-        values[f"{prefix}_state"][cell] = run["state"]
+    """One run's state and its sentence, convergence and SCF history into
+    ``prefix``'s variables at ``cell`` -- a rung's index, or a device
+    point's (frame, voltage)."""
+    for key in ("state", "detail"):
+        if run.get(key):
+            values[f"{prefix}_{key}"][cell] = run[key]
     if run.get("scf_converged") is not None:
         values[f"{prefix}_scf_converged"][cell] = int(bool(
             run["scf_converged"]))
@@ -578,6 +790,8 @@ def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
                           ("fermi_ev", "rung_fermi_ev")):
             if run.get(key) is not None:
                 values[name][cell] = run[key]
+    if run.get("scf_phases"):
+        values[f"{prefix}_scf_phases"][cell] = json_attr(run["scf_phases"])
     # A RUN THAT DID NOT RUN states no history: its count keeps the fill,
     # -1, never 0, which is a count (§ 2a.12).
     if "scf" not in run:
@@ -595,9 +809,8 @@ def read_data_file(path) -> Dict[str, Any]:
     {name: {"dims", "data", "attrs"}}}`` -- each variable's values as numpy
     arrays (the fill value NaN), its units, long name, definition and source.
     The file's door (`runfiles.WRITTEN`); refuses another schema by name."""
-    import netCDF4
-    from ..ncdata import NC_LOCK, read_variables
-    with NC_LOCK, netCDF4.Dataset(str(path), "r") as ds:
+    from ..ncdata import read_variables, reading
+    with reading(path) as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
         if attrs.get("schema") != DATA_SCHEMA:
             raise DataFileError(f"{Path(path).name} states the schema "

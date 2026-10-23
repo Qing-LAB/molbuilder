@@ -56,10 +56,19 @@ export function attachUiContext(deps) {
     let timer = null;
     let disposed = false;
 
+    /* WHICH STRUCTURE THE LOOK BELONGS TO (§ 11.2b): its atoms -- each
+     * one's element, in order -- its frame count, and the order it is
+     * listed in (`orderSaid`, the server's words for an engine's order) --
+     * so a selection is never put back onto another structure that merely
+     * has as many atoms, the same molecule listed in an engine's order
+     * among them (`model/overview.md` § 2.1: indices hold only against the
+     * structure they were made on). */
     function matchOf() {
         const s = model.getStructure();
         if (!s || !Array.isArray(s.elements)) return null;
-        return { n_atoms: s.elements.length, n_frames: model.frameCount() };
+        return { n_atoms: s.elements.length, n_frames: model.frameCount(),
+                 elements: s.elements.join(" "),
+                 order: s.orderSaid || null };
     }
 
     function payload() {
@@ -119,7 +128,9 @@ export function attachUiContext(deps) {
             const then_ = saved.match || null;
             const matches = !!(now && then_
                 && now.n_atoms === then_.n_atoms
-                && now.n_frames === then_.n_frames);
+                && now.n_frames === then_.n_frames
+                && now.elements === then_.elements
+                && now.order === then_.order);
             if (matches) {
                 if (Number.isInteger(saved.frame)) {
                     model.setCurrentFrame(saved.frame);

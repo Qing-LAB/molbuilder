@@ -18,16 +18,16 @@ the PySCF deck imports from `mb_pyscf.pyz` and every other route calls here,
 with the steps after it -- the wavenumbers, the display form, the thermo grid
 -- from the same module.  What this module adds is the rest of the ONE result
 both engines write (§ 6): the removed motions, the stationarity verdict at the
-geometry the block belongs to, and every per-atom row in the person's order.
+geometry the block belongs to, and every per-atom row in the user order.
 
 WHAT A CALLER HANDS IN, AND IN WHICH ORDER.  Everything per-atom -- the
 block, the masses, the positions, the elements, the held set, the reference
 forces -- is in the order the block was computed in: a sorted copy's, when
 the deck was written from one (held atoms first for a SIESTA force-constant
 run, § 5.2).  ``permutation`` is that copy's record, and every row this
-module writes goes back to the input order through it, once
+module writes goes back to the user order through it, once
 (`atom_permutation.Permutation`, I7); without one the block's order IS the
-input's.
+user order.
 
 WHAT A CALLER SAYS FOR ITS ROUTE: the engine and its version, the Methods
 paragraph, the route's own ``engine_metadata`` and ``config``, and one
@@ -43,7 +43,8 @@ import numpy as np
 
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
-    from ..atom_permutation import Permutation
+    from ..atom_permutation import (AtomIndexMap, Permutation,
+                                    map_rows_to_user_order, map_to_user_index)
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..identity import (LAUNCHED_WAY_BACK, LAUNCH_MODE_NOTE,
                             checkpoint_words, launch_as_typed)
@@ -54,7 +55,8 @@ try:                                        # inside molbuilder
     from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                           SCHEMA_VERSION, ModeData, SpectraResults)
 except ImportError:                         # beside a job, in mb_vibration.pyz
-    from atom_permutation import Permutation
+    from atom_permutation import (AtomIndexMap, Permutation,  # type: ignore
+                                  map_rows_to_user_order, map_to_user_index)
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from identity import (LAUNCHED_WAY_BACK, LAUNCH_MODE_NOTE,
                           checkpoint_words, launch_as_typed)
@@ -106,7 +108,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     (``relaxation.record``), and ``phase_relaxation`` is complete; without
     it the phase is `not requested`.  ``relaxation_stage`` names that stage,
     for the remedy (:func:`nonstationary_remedy`).  ``structure`` is the
-    equilibrium structure, whole and in the input order --
+    equilibrium structure, whole and in the user order --
     ``Structure.to_dict()``, the one serialiser (`engines/vibration.md`
     § 6.10.1) -- which the result states; the reader checks its atom count,
     coordinates and held label against the result's own.
@@ -122,9 +124,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         raise ValueError(
             f"{n} elements, {R.shape[0]} positions and {masses.shape[0]} "
             f"masses: every per-atom input describes the same atoms")
-    if permutation is None:
-        permutation = Permutation(tuple(range(n)), tuple(range(n)))
-    if permutation.n_atoms != n:
+    if permutation is not None and permutation.n_atoms != n:
         raise ValueError(
             f"the recorded permutation describes {permutation.n_atoms} atoms; "
             f"the block has {n}")
@@ -137,16 +137,17 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         hessian, masses, R, held_b, tuple(axis_kind), cell=cell)
     freqs_cm1 = frequencies_cm1(lam)
 
-    # BACK TO THE INPUT ORDER, through the record's one inversion (I7): every
-    # per-atom row this result carries follows the person's numbering.
-    L, free_atom_idxs = permutation.rows_to_input_order(L_b, free_b)
-    patterns, _ = permutation.rows_to_input_order(patterns_b, free_b)
-    frozen_atom_idxs = sorted(permutation.original_of(held_b))
+    # BACK TO THE USER ORDER, through the record's one inversion (I7) -- or
+    # none, for a run in the user order: every per-atom row this result
+    # carries follows the user index.
+    L, free_atom_idxs = map_rows_to_user_order(permutation, L_b, free_b, n)
+    patterns, _ = map_rows_to_user_order(permutation, patterns_b, free_b, n)
+    frozen_atom_idxs = sorted(map_to_user_index(permutation, held_b, n))
     everyone = list(range(n))
-    positions_in, _ = permutation.rows_to_input_order(R, everyone)
-    masses_in, _ = permutation.rows_to_input_order(masses, everyone)
-    elements_in, _ = permutation.rows_to_input_order(
-        np.asarray(elements, dtype=object), everyone)
+    positions_in, _ = map_rows_to_user_order(permutation, R, everyone, n)
+    masses_in, _ = map_rows_to_user_order(permutation, masses, everyone, n)
+    elements_in, _ = map_rows_to_user_order(
+        permutation, np.asarray(elements, dtype=object), everyone, n)
     elements_in = [str(e) for e in elements_in]
 
     display = display_form(L)
@@ -216,6 +217,10 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
                    .replace("+00:00", "Z")),
         structure_hash=None,
         structure=(dict(structure) if structure is not None else None),
+        # LISTED BY USER INDEX, each atom's engine index the deck's order
+        # (`model/overview.md` § 2.2b, F2: a result for the user).
+        atom_index_map=AtomIndexMap.of_engine_record(
+            permutation, n).as_listed_by_user().to_dict(),
         n_atoms_total=n,
         free_atom_idxs=free_atom_idxs,
         frozen_atom_idxs=frozen_atom_idxs,

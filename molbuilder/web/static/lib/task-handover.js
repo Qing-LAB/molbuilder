@@ -284,7 +284,7 @@
                 ? "error" : "warn";
             // WHO SPOKE is the door's: on a hand-over, what the server said
             // of the structure -- the cell gate, or a structure put back in
-            // your order (`model/overview.md` § 2.2a); the description's own
+            // the user order (`model/overview.md` § 2.2a); the description's own
             // check on the transport describe, which has no Task setup to
             // open next (`workflow.md` § 9, gates ② and ③).
             // The findings themselves are the findings panel's, above.

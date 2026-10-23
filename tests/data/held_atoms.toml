@@ -27,7 +27,7 @@ threads = 1
 [[case]]
 name = "a PySCF run states the atom it holds in its progress log -- the preview prep writes, and the script's own writer"
 engine = "pyscf"
-deck = ["frozen_atoms=[0])"]
+deck = ["frozen_atoms=[0]"]
 progress_log_holds = [0]
 
 [[case]]
@@ -35,7 +35,7 @@ name = "...and a PySCF vibration's, whose script relaxes before its frequencies"
 engine = "pyscf"
 calculation = "vibration"
 stage = "freq"
-deck = ["frozen_atoms=[0])"]
+deck = ["frozen_atoms=[0]"]
 progress_log_holds = [0]
 
 [[case]]

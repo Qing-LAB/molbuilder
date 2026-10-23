@@ -2629,6 +2629,10 @@ _JUPYTER = Recipe(
         # (`.transport.nc`, `.spectra.nc`; `web/jupyter.md` § 7) -- sisl
         # brings it, listed for its own reason.
         "netcdf4",
+        # xarray: the post-processing document reads those files with it
+        # (`engines/transport-postprocessing.md`) -- another package brought
+        # it until 2.32.0; listed for its own reason (the user, 2026-10-23).
+        "xarray",
         # git: uniform across every env -- see the _HOST recipe for why it is
         # everywhere.  A notebook that inspects a calculation folder wants it.
         "git",
@@ -2636,7 +2640,7 @@ _JUPYTER = Recipe(
     verify_argv=("bash", "-c",
                  "set -e; jupyter lab --version; "
                  "python -c \"import jupyter_server, ipykernel, numpy, "
-                 "scipy, pandas, matplotlib, ase, sisl; "
+                 "scipy, pandas, matplotlib, ase, sisl, netCDF4, xarray; "
                  "print('jupyternb OK')\""),
     verify_expect_contains="jupyternb OK",
     system_preconditions=(

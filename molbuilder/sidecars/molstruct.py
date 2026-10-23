@@ -68,6 +68,13 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 # guaranteed where ``fcntl`` is present.  Web-server deployments are
 # POSIX in practice; the fallback path exists so unit tests / dev
 # tools running on Windows don't fail to import.
+# THE MAP'S KEY, named once (`atom_permutation.MAP_KEY`) -- this module
+# travels beside a job with the map's module.
+try:                                        # inside molbuilder
+    from ..atom_permutation import MAP_KEY
+except ImportError:                         # beside a job, in a bundle
+    from atom_permutation import MAP_KEY  # type: ignore[no-redef]
+
 try:
     import fcntl as _fcntl
     _HAVE_FLOCK = True
@@ -86,10 +93,14 @@ except ImportError:                  # pragma: no cover - Windows branch
 #:
 #: A version gate that admits a version the code cannot honour is worse than
 #: no gate: it turns a loud failure into a quiet one.
-SCHEMA_VERSION = 14  # 14: + `atom_order`, the order record of a structure
-#                      in an engine's order, null in yours
+SCHEMA_VERSION = 15  # 15: + `atom_index_map`, which index the atoms are
+#                   listed by and each atom's indices (model/overview.md
+#                   § 2.2b), an envelope key the codec writes from the door
+#                   that writes the pair.
+#                   14: + `atom_order`, the order record of a structure
+#                      in an engine's order, null in the user order
 #                      (model/overview.md § 2.2a) -- additive: a 7-13 file
-#                      reads as your order.
+#                      reads as the user order.
 #                   13: the pin is `geometry_hash` -- the atom lines as
 #                      written and the cell, never the comment line
 #                      (structure-molstruct.md § 3) -- and `structure_hash`,
@@ -156,9 +167,12 @@ SCHEMA_VERSION = 14  # 14: + `atom_order`, the order record of a structure
 #: v13 put `geometry_hash` in place of `structure_hash`: a 7-12 file has no
 #: geometry hash, and its pair opens unchecked -- metadata is never required.
 #:
-#: v14 added `atom_order`, absent meaning your order -- which every pair a
+#: v14 added `atom_order`, absent meaning the user order -- which every pair a
 #: 7-13 writer made for a person is in.
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14})
+#: v15 added `atom_index_map`; a 7-14 file states none, and its map is made
+#: from its `atom_order` -- a 7-13 file read as listed by user index, warned
+#: (`model/overview.md` § 2.2b, F4).
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
@@ -166,7 +180,7 @@ READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14})
 #: of passing the whole payload and letting unknown keys fall on the floor.
 ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "n_frames_total",
                  "geometry_hash", "selection_rules", "created_by",
-                 "created_at")
+                 "created_at", MAP_KEY)
 
 #: An envelope key the schema once wrote and no longer does -- tolerated on
 #: read, never applied, dropped on rewrite, as `structure.RETIRED_METADATA_KEYS`
@@ -337,9 +351,9 @@ def structure_fields_via_dataclass(
     Raises :class:`MolstructJsonError` on any invalid field.
     """
     try:                                        # inside molbuilder
-        from molbuilder.structure import Structure
+        from molbuilder.structure import FILE_FIELDS, Structure
     except ImportError:                         # beside a job, in a bundle
-        from structure import Structure
+        from structure import FILE_FIELDS, Structure
     import numpy as _np
     n = int(n_atoms_total)
     frames = int(n_frames_total)
@@ -350,7 +364,10 @@ def structure_fields_via_dataclass(
         scratch.apply_metadata_dict(raw)
     except (ValueError, TypeError) as exc:
         raise MolstructJsonError(str(exc)) from exc
-    return scratch.metadata_to_dict()
+    # WHAT A FILE STATES: every field but the view's (`structure.FILE_FIELDS`)
+    # -- the view's mark is stated only as the pair's atom index map.
+    return {k: v for k, v in scratch.metadata_to_dict().items()
+            if k in FILE_FIELDS}
 
 
 def frozen_atoms(payload: Optional[Dict[str, Any]]) -> List[int]:
@@ -420,6 +437,7 @@ def to_dict(
     info: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
+    atom_index_map: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the canonical sidecar dict from the metadata FIELDS dict + envelope.
 
@@ -436,6 +454,9 @@ def to_dict(
     / ``geometry_hash`` / ``created_*``) and the sidecar-only ``selection_rules`` (keyed by region
     label or the literal ``"frozen_atoms"``, each a JSON rule tree validated by
     re-parsing through :func:`molbuilder.selection.from_json`) are layered on.
+    ``atom_index_map`` -- which index the atoms are listed by, and each
+    atom's indices (`model/overview.md` § 2.2b) -- the codec's, from the door
+    that writes the pair; checked by the map's one reader.
     Doesn't write anywhere; use :func:`save` for that.
     """
     if not isinstance(n_atoms_total, int) or n_atoms_total < 0:
@@ -522,6 +543,17 @@ def to_dict(
         "created_by":      str(created_by),
         "created_at":      created_at or _now_iso_z(),
     }
+    if atom_index_map is not None:
+        try:                                    # inside molbuilder
+            from ..atom_permutation import AtomIndexMap, AtomIndexError
+        except ImportError:                     # beside a job, in a bundle
+            from atom_permutation import (  # type: ignore
+                AtomIndexMap, AtomIndexError)
+        try:
+            AtomIndexMap.from_dict(atom_index_map, n_atoms=n_atoms_total)
+        except AtomIndexError as exc:
+            raise MolstructJsonError(str(exc)) from exc
+        out[MAP_KEY] = dict(atom_index_map)
     # The `info` block (schema 9): the free-form NON-structural store,
     # written only when something is recorded -- an empty store writes
     # no `info` key.
@@ -703,11 +735,11 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"belong to these frames; write the pair again from the frame set "
             f"it describes.")
     try:                                        # inside molbuilder
-        from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+        from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
                                           RETIRED_IDENTITY_KEYS,
                                           RETIRED_METADATA_KEYS)
     except ImportError:                         # beside a job, in a bundle
-        from structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+        from structure import (FILE_FIELDS, IDENTITY_FIELDS,
                                RETIRED_IDENTITY_KEYS, RETIRED_METADATA_KEYS)
     # A RETIRED KEY IS NOT A STRAY ONE -- the THIRD gate asking that
     # question, and it has to give the same answer as the other two
@@ -717,7 +749,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     # `parse.sidecars.molstruct.load_text` answers first.  This gate takes a
     # payload DIRECTLY, so a caller that builds one in code does reach it.
     stray = [k for k in sidecar_data
-             if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
+             if k not in FILE_FIELDS and k not in ENVELOPE_KEYS
              and k not in IDENTITY_FIELDS and k != "info"
              and k not in RETIRED_METADATA_KEYS
              and k not in RETIRED_IDENTITY_KEYS
@@ -725,7 +757,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "
-            f"metadata field {list(METADATA_FIELDS)!r} nor an envelope key "
+            f"metadata field {list(FILE_FIELDS)!r} nor an envelope key "
             f"{list(ENVELOPE_KEYS)!r}.  Refused rather than ignored: a key "
             f"nobody reads is metadata the writer thinks it saved.")
     # Identity first (schema 8), FULL-REPLACE -- the same semantics
@@ -757,7 +789,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     struct.apply_info_dict(raw_info if isinstance(raw_info, dict) else None)
     try:
         struct.apply_metadata_dict(
-            {k: v for k, v in sidecar_data.items() if k in METADATA_FIELDS})
+            {k: v for k, v in sidecar_data.items() if k in FILE_FIELDS})
     except (ValueError, TypeError) as exc:
         # Surface field-validation failures as the sidecar-layer error type,
         # preserving the clear per-field message from the dataclass invariants.
@@ -768,6 +800,43 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     if (struct.engine_offset is not None and struct.offset_by is None
             and int(sidecar_data.get("schema_version") or SCHEMA_VERSION) < 12):
         struct.offset_by = "person"
+    # THE ATOM INDEX MAP AGAINST THE ORDER RECORD (`model/overview.md`
+    # § 2.2b): one statement of one order -- a pair whose map says another
+    # order than its record is refused by name.
+    if MAP_KEY in sidecar_data:
+        _map_agrees(sidecar_data[MAP_KEY], struct)
+
+
+def _map_agrees(block, struct) -> None:
+    """THE MAP A SIDECAR STATES, read by the map's one reader and checked
+    against the structure's order record through the map's own makers
+    (`model/overview.md` § 2.2b): with a record, listed by engine index
+    with that record's columns; with none, listed by user index, ``not
+    stated`` (F4), or by engine index with both columns the identity -- an
+    engine record whose sort moved nothing.  Refused by name otherwise: one
+    pair, one order."""
+    try:                                        # inside molbuilder
+        from ..atom_permutation import (AtomIndexError, AtomIndexMap,
+                                        LISTED_BY_ENGINE)
+    except ImportError:                         # beside a job, in a bundle
+        from atom_permutation import (  # type: ignore
+            AtomIndexError, AtomIndexMap, LISTED_BY_ENGINE)
+    try:
+        atoms = AtomIndexMap.from_dict(block, n_atoms=struct.n_atoms)
+    except AtomIndexError as exc:
+        raise MolstructJsonError(str(exc)) from exc
+    record = struct.atom_order
+    if record is not None or atoms.listed_by == LISTED_BY_ENGINE:
+        want = AtomIndexMap.of_engine_record(record, struct.n_atoms)
+        agrees = (atoms.listed_by == LISTED_BY_ENGINE
+                  and (atoms.user, atoms.engine) == (want.user, want.engine))
+    else:
+        agrees = True
+    if not agrees:
+        raise MolstructJsonError(
+            "the sidecar's atom_index_map states another order than its "
+            "atom_order record -- one pair, one order (model/overview.md "
+            "2.2b)")
 
 
 def load(sidecar_path, *, retired_out=None, stated_out=None):

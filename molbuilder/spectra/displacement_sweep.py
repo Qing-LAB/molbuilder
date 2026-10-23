@@ -158,7 +158,7 @@ def collect_sweep(calc, *,
     from .. import __version__ as _mb_version
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from .results import mass_of
-    from ..engine_atom_index import from_engine_index
+    from ..engine_atom_index import convert_from_engine_numbering
     from ..jobset.commands import rollback
     from ..jobset.materialize import latest_attempt
     from ..jobset.naming import stage_home
@@ -347,8 +347,8 @@ def collect_sweep(calc, *,
     constants: List[Dict[str, Any]] = []
     rng = ref_meta.get("fc_range_engine_1based") or []
     # SIESTA's atom numbers through the one door (`engine_atom_index`).
-    displaced = (list(range(from_engine_index(int(rng[0]), "siesta"),
-                            from_engine_index(int(rng[1]), "siesta") + 1))
+    displaced = (list(range(convert_from_engine_numbering(int(rng[0]), "siesta"),
+                            convert_from_engine_numbering(int(rng[1]), "siesta") + 1))
                  if len(rng) == 2 else [])
     H_ref, ref_why = None, "a force-constant file is missing"
     if ref_fc_file is not None and displaced:

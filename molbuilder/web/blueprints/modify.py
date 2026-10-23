@@ -969,7 +969,7 @@ def _read_relaxed_result(path):
     A RUN IS ITS DIRECTORY: a run of ours -- its folder, or a file in it --
     is read through the run door as the transport citation reads a run
     (`runs.openable`, `runs.steps_of`): its LAST geometry step, in the box
-    the run had, in your order.  Anything else is a structure pair, read
+    the run had, in the user order.  Anything else is a structure pair, read
     through ``StructureCodec``, the ONE authority on the ``.xyz`` +
     ``.molstruct.json`` pair.  A run's file picked by name (an ``.XV``) is
     not read: the run door answers for the run.

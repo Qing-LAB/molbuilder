@@ -6,7 +6,7 @@ or unconcluded relaxation is a refusal naming what to run first, never a
 trigger to run it); read the junction it holds — a cited run's folder
 through the run door, as the Results tab reads a run (`runs.run_of`,
 `runs.openable`, and the one read of a run's geometry, `runs.steps_of`, in
-your order), or a cited pair through the codec, in your order; sort it for
+the user order), or a cited pair through the codec, in the user order; sort it for
 TranSIESTA (`sort.sort_by`, P2); apply the lead gate;
 extract the two electrode models from the sorted blocks (the wizard's
 move, § 3); and record the provenance — the citation, its kind, and the
@@ -28,7 +28,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import numpy as np
 
 from ..cell import entering
-from ..structure import SAME_PLACE_ANG, Structure, farthest_apart
+from ..structure import (SAME_PLACE_ANG, Structure, farthest_apart,
+                         frame_words)
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE, SortError,
                    deck_sort_key, sort_by)
 from .wizard import ElectrodeModel, extract_electrode_model
@@ -187,6 +188,10 @@ class CitedPair:
     sidecar: Path                 # its .molstruct.json
     structure: Structure          # every frame (`StructureCodec.load(frames=True)`)
     calculation: Dict[str, object]
+    #: WHAT ITS READ SAID (`workingcopy_structure.READ_NOTICES`): a pair that
+    #: states no atom order, read as listed by user index (`model/overview.md`
+    #: § 2.2b, F4); one in an engine's order, put back in the user order.
+    said: Tuple = ()
 
     @property
     def n_frames(self) -> int:
@@ -301,8 +306,14 @@ def _classify_pair(path: Path) -> CitedPair:
             f"{path} carries no info.calculation -- it has no .molstruct.json "
             f"beside it -- so nothing says which settings its geometry was "
             f"optimized with.  {CITATION_CONDITION}.")
+    # A BUILDER'S READ (`model/overview.md` § 2.2a, I3, I8): the pair in the
+    # user order -- an engine's record put back, a pair whose order nothing
+    # states refused -- and what the read says kept for the doors that tell
+    # a person (prep, the Transport tab).
+    said: list = []
     try:
-        struct = StructureCodec().load(path, frames=True)
+        struct = StructureCodec().load(path, frames=True, in_user_order=True,
+                                       said_out=said)
     except (ValueError, OSError) as exc:
         raise ComposeError(f"{path} does not read as a structure pair "
                            f"({exc}).  {CITATION_CONDITION}.") from exc
@@ -315,7 +326,7 @@ def _classify_pair(path: Path) -> CitedPair:
             f"optimized with.  {CITATION_CONDITION}.")
     _frames_keep_the_leads(struct, path)
     return CitedPair(path=path, sidecar=sidecar, structure=struct,
-                     calculation=calc)
+                     calculation=calc, said=tuple(said))
 
 
 def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
@@ -450,10 +461,10 @@ def _run_geometry(cited: CitedRun, kinds):
     the run door as the Results tab reads a run (`execution/architecture.md`
     § 3.2; `model/parse.md` § 5.3, § 5b): the file that holds its result
     (`runs.openable`), and the run door's one read of its geometry
-    (`runs.steps_of`, IN YOUR ORDER): its LAST geometry step, the relaxed
+    (`runs.steps_of`, IN THE USER ORDER): its LAST geometry step, the relaxed
     junction, in the run's box, with what its deck declared -- the labels,
     the held atoms -- and what the run says about itself; and its FIRST
-    step's coordinates, in your order too, where the relaxation started, for
+    step's coordinates, in the user order too, where the relaxation started, for
     the lead gate's *frozen means unmoved*.  The axis kinds are ``kinds``
     (:func:`junction_axis_kind`: z transport), stated at construction so
     ``__post_init__`` validates the box."""
@@ -464,7 +475,7 @@ def _run_geometry(cited: CitedRun, kinds):
             f"{cited.path} holds no output of the run {cited.run.basename} "
             f"that a parser reads, so nothing says what geometry the "
             f"relaxation left.  {CITATION_CONDITION}.")
-    # THE RUN'S GEOMETRY IN YOUR ORDER, through the run door's one read
+    # THE RUN'S GEOMETRY IN THE USER ORDER, through the run door's one read
     # (`runs.steps_of`): the relaxed junction and where it started, each
     # restored through the run's own order record -- and the composer sorts
     # it for TranSIESTA from there (`model/overview.md` § 2.2a, I3, I4).  A
@@ -517,14 +528,14 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     engine").
 
     *prior_positions* is the geometry the cited relaxation STARTED from,
-    in your order, or ``None`` when there is none to compare against — the
+    in the user order, or ``None`` when there is none to compare against — the
     recompose-from-record path, where the comparison was made when the
     record was written.  *held_by_relaxation* is the atoms the cited
-    junction's relaxation record held, in your order
+    junction's relaxation record held, in the user order
     (:func:`_held_by_its_relaxation`), or ``None`` the same way.
 
-    A refusal names atoms in the person's own order, the device's own
-    answer (`Structure.your_indices`), never by their place in TranSIESTA's
+    A refusal names atoms in the user order, the device's own
+    answer (`Structure.map_to_user_index`), never by their place in TranSIESTA's
     deck order (`engine_atom_index`).
     """
     # BOTH BLOCKS, THEN RAISE, so a junction with two broken blocks is
@@ -642,7 +653,7 @@ def refuse_inside_citation(dest, cited, *, what: str = "the cited junction",
 
 
 def _held_by_its_relaxation(relaxed: Structure):
-    """The atoms the cited junction's relaxation held, in your order, as its
+    """The atoms the cited junction's relaxation held, in the user order, as its
     record says (`parse.contract.held_atoms_of`) -- read from the junction
     as cited, before it enters the calculation, because the record is about
     those coordinates; ``None`` when it carries no record about them."""
@@ -687,9 +698,9 @@ def compose_junction(citation: str, *, tree_root,
     # The electrode models, extracted from the SORTED blocks -- and the
     # § 3 lead gates, which is the same step: a block that is not frozen
     # bulk does not become a model (`wizard.extract_electrode_model`).  The
-    # starting geometry stays in your order: the gate compares each atom of
+    # starting geometry stays in the user order: the gate compares each atom of
     # the sorted device with itself there, through the device's own answer
-    # (`Structure.your_indices`).
+    # (`Structure.map_to_user_index`).
     elec_l, elec_r = _extract_and_gate_electrodes(
         dev, prior_positions=start, held_by_relaxation=held)
 
@@ -865,7 +876,7 @@ class RecordedJunction:
     structure: Structure
     #: WHY ITS ORDER IS NOT STATED -- its sidecar written before the field
     #: (`model/overview.md` § 2.2a, I9) -- in one sentence, the fact alone:
-    #: each door that names the junction's atoms in your order says its own
+    #: each door that names the junction's atoms in the user order says its own
     #: way on.  ``None`` for a sidecar that states it (null for an order the
     #: sort left as it was).
     order_unstated: Optional[str]
@@ -882,13 +893,18 @@ def recorded_junction(base_dir) -> Optional[RecordedJunction]:
     gather (:func:`load_compose_record`), the transport record, its data
     file and a selection's PDOS, and `prep task` with no group named."""
     from ..sidecars.molstruct import sidecar_path_for
-    from ..workingcopy_structure import StructureCodec
+    from ..workingcopy_structure import (ORDER_UNSTATED, StructureCodec,
+                                         pair_order_unstated_said)
     path = Path(base_dir) / JUNCTION_GEOMETRY
     if not path.is_file():
         return None
     stated: set = set()
     try:
-        struct = StructureCodec().load(path, frames=True, stated_out=stated)
+        # ITS ORDER IS THIS READ'S TO JUDGE, below -- opened whatever its
+        # sidecar states, as a door that shows it does (I9).
+        struct = StructureCodec().load(path, frames=True, stated_out=stated,
+                                       opened=(ORDER_UNSTATED,),
+                                       said_out=[])
     except ValueError as exc:
         # THE CODEC'S REFUSALS are ValueErrors -- a sidecar that does not
         # parse, one whose geometry pin is not the file's, an atom list that
@@ -899,10 +915,8 @@ def recorded_junction(base_dir) -> Optional[RecordedJunction]:
         structure=struct,
         order_unstated=(
             None if "atom_order" in stated else
-            f"the composed junction's {sidecar_path_for(path).name} states "
-            f"no order record -- it was written before the field -- so its "
-            f"atoms stand in TranSIESTA's order with nothing stating the way "
-            f"back to yours"))
+            "the composed junction's "
+            + pair_order_unstated_said(sidecar_path_for(path).name)))
 
 
 def junction_difference(recorded: Structure,
@@ -913,7 +927,7 @@ def junction_difference(recorded: Structure,
     vectors, by the one rule two geometries are compared by
     (`structure.farthest_apart`, `structure.SAME_PLACE_ANG`); the same kind
     on each axis; every label the same set of atoms -- else the first
-    difference, in words, an atom named in your order
+    difference, in words, an atom named in the user order
     (`Structure.atoms_named`)."""
     if recorded.n_atoms != composed.n_atoms:
         return (f"it holds {composed.n_atoms} atoms, the record "
@@ -933,14 +947,15 @@ def junction_difference(recorded: Structure,
         if d > SAME_PLACE_ANG:
             return (f"{composed.atoms_named([i])} stands {d:.2e} Å from its "
                     f"recorded place"
-                    + (f" in frame {f}" if recorded.n_frames > 1 else ""))
+                    + (f" in {frame_words(f, recorded.n_frames)}"
+                       if recorded.n_frames > 1 else ""))
     if (recorded.cell is None) != (composed.cell is None):
         return "its cell is not the recorded one"
     if recorded.cell is not None:
         i, d = farthest_apart(recorded.cell, composed.cell)
         if d > SAME_PLACE_ANG:
-            return (f"its lattice vector {i + 1} stands {d:.2e} Å from the "
-                    f"recorded one")
+            return (f"its lattice vector index {i} stands {d:.2e} Å from "
+                    f"the recorded one")
     axes = [tuple(s.axis_kind or ()) for s in (recorded, composed)]
     if axes[0] != axes[1]:
         return f"its axes are {axes[1]}, the record's {axes[0]}"

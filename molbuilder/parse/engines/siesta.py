@@ -243,9 +243,9 @@ class SiestaParser:
         # prints; translated through the engine index API, never a bare
         # n - 1 (wrong for a 0-based engine).
         if read["held"]:
-            from ...engine_atom_index import from_engine_index
+            from ...engine_atom_index import convert_from_engine_numbering
             runtime_info["frozen_atoms"] = sorted(
-                from_engine_index(n, "siesta") for n in read["held"])
+                convert_from_engine_numbering(n, "siesta") for n in read["held"])
 
         _scan_log.info(
             f"parsed {len(frames)} frames, run_state={read['run_state']}, "

@@ -360,12 +360,15 @@ class OrderUnstated(ValueError):
     (`workingcopy_structure.ORDER_UNSTATED`)."""
 
 
-def _reorders(run: "Run") -> bool:
-    """Whether ``run``'s decks are written from a sorted copy (I9) -- the one
-    table's answer for its stage (`transport.sort.deck_sort_key`)."""
+def _reorders(task, stage: Optional[str], kind: Optional[str] = None
+              ) -> bool:
+    """Whether a stage's decks are written from a sorted copy (I9) -- the one
+    table's answer for it (`transport.sort.deck_sort_key`), for ``kind``
+    where the deck is another kind's (the cited relaxation's deck) and the
+    calculation's otherwise."""
     from molbuilder.transport.sort import deck_sort_key
-    task = run.place.task
-    return deck_sort_key(task.engine, task.calculation, run.stage) is not None
+    return deck_sort_key(task.engine, kind or task.calculation,
+                         stage) is not None
 
 
 @dataclass(frozen=True)
@@ -401,7 +404,7 @@ class Declared:
     def atom_order(self):
         """THE RUN'S ORDER RECORD (`model/overview.md` § 2.2a, I5): its
         deck's, read by the order record's one reader through
-        ``deck_record.order_record_of`` -- ``None`` for a run in your order,
+        ``deck_record.order_record_of`` -- ``None`` for a run in the user order,
         or a deck that states none."""
         from molbuilder.deck_record import order_record_of
         return order_record_of(self.atom_metadata)
@@ -410,7 +413,7 @@ class Declared:
         """This record, refused when nothing states the order its run's atoms
         are in (I9, :attr:`order_unstated`): :class:`OrderUnstated`, the
         sentence every door says.  THE ONE REFUSAL of every door that builds
-        from the run (:meth:`RunView.in_your_order`) or would write its file
+        from the run (:meth:`RunView.in_user_order`) or would write its file
         as it stands (a bare ``xv2xyz``)."""
         if self.order_unstated:
             raise OrderUnstated(self.order_unstated)
@@ -432,17 +435,28 @@ def declared(run: Run) -> Declared:
     """WHAT ``run`` DECLARED ABOUT ITS ATOMS -- read from its own deck
     (:attr:`Run.deck`) by the readers of molbuilder's blocks, never from a
     file looked for beside an output by its name (`model/parse.md` § 5.3,
-    plan B12).  A run with no deck here, or one whose deck carries neither
-    record, declares nothing; a block its deck carries and that cannot be
-    read is refused, :class:`deck_record.DeckRecordUnreadable` naming the
-    deck."""
-    deck = run.deck
+    plan B12): :func:`declared_of_deck` of its deck, for its stage."""
+    return declared_of_deck(run.deck, run.place.task, run.stage)
+
+
+def declared_of_deck(deck: Optional[Path], task, stage: Optional[str], *,
+                     kind: Optional[str] = None) -> Declared:
+    """WHAT A DECK OF ``task``'s DECLARES ABOUT ITS ATOMS, for ``stage``
+    (``None`` at the calculation's root) -- a run's (:func:`declared`), a
+    stage's prepared deck, the cited deck at a transport calculation's root
+    (`model/overview.md` § 2.2b), whose ``kind`` -- a relaxation's -- is the
+    one its order is judged by.  No deck, or one that carries neither
+    record, declares nothing; a deck that does not read, or a block it
+    carries that cannot be read, is refused,
+    :class:`deck_record.DeckRecordUnreadable` naming the deck -- read as
+    one that declares nothing, a sorted run would be shown unmarked."""
+    from molbuilder.deck_record import DeckRecordUnreadable
     if deck is None:
         return Declared()
     try:
         text = deck.read_text(encoding="utf-8-sig", errors="replace")
-    except OSError:
-        return Declared(deck=deck)
+    except OSError as exc:
+        raise DeckRecordUnreadable(f"{deck}: does not read ({exc})") from exc
     from molbuilder.deck_record import (DeckRecordUnreadable,
                                         extract_atom_metadata,
                                         extract_engine_offset)
@@ -460,11 +474,11 @@ def declared(run: Run) -> Declared:
     # what its block states, never by the molbuilder that wrote it (the user,
     # 2026-10-15: "feature/format detection") nor by a file found beside it.
     # A block written since states `atom_order` for every structure, null in
-    # your order; a deck with no block wrote no label, so its sort had
+    # the user order; a deck with no block wrote no label, so its sort had
     # nothing to move.
     block = said.atom_metadata
     if (order is None and block is not None and "atom_order" not in block
-            and _reorders(run)):
+            and _reorders(task, stage, kind)):
         # THE WAY ON, in the words a text read later says -- the run door
         # does not ask whether the stage was launched (`identity`).
         from molbuilder.identity import way_back_words
@@ -476,6 +490,52 @@ def declared(run: Run) -> Declared:
                 f"may be in the engine's order, and nothing states it; to "
                 f"have it recorded, {way_back_words(None)}"))
     return said
+
+
+def atom_index_map_of(run: Run):
+    """THE ATOM INDEX MAP OF A RUN'S FILES (`model/overview.md` § 2.2b, F2,
+    F3) -- every file of ``run`` that states none, an engine's and an older
+    one of molbuilder's, is listed by engine index and answered here, from
+    its deck (I5): both columns from the deck's order record, the identity
+    where it states none; the engine column alone for a deck of a structure
+    of its own (`transport.sort.deck_own_structure` -- an electrode cell).
+    A deck written before the order was recorded is refused by name (I9);
+    one that states no atom count names it."""
+    return deck_atom_index_map(declared(run), run.place.task, run.stage)
+
+
+def deck_atom_index_map(said: Declared, task, stage: Optional[str]):
+    """THE ATOM INDEX MAP A DECK STATES (`model/overview.md` § 2.2b, F2,
+    F3) -- what ``said`` (:func:`declared_of_deck`) holds, for ``task``'s
+    ``stage``: both columns from its order record, the identity where it
+    states none; the engine column alone for a stage of a structure of its
+    own.  Its run's files, and the deck itself wherever it lies."""
+    from molbuilder.atom_permutation import AtomIndexMap
+    from molbuilder.transport.sort import deck_own_structure
+    said = said.require_order()
+    record = said.atom_order
+    n = (said.atom_metadata or {}).get("n_atoms_total")
+    if n is None and record is not None:
+        n = record.n_atoms
+    if n is None and said.deck is not None and said.deck.suffix == ".fdf":
+        # A DECK WITH NOTHING ELSE TO SAY -- no block -- states its count in
+        # the engine's own keyword, read through the one fdf reader.
+        from molbuilder.parse.fdf import read_fdf
+        got = read_fdf(said.deck.read_text(encoding="utf-8-sig",
+                                           errors="replace"))[0].get(
+            "numberofatoms")
+        n = int(got[0]) if got else None
+    if n is None:
+        raise ValueError(f"{said.deck.name if said.deck else 'the run'} "
+                         f"states no atom count -- a deck written before "
+                         f"2.32.0 with no label, no named value and no "
+                         f"order record -- so its atoms' indices cannot be "
+                         f"stated")
+    own = deck_own_structure(task.engine, task.calculation, stage)
+    atoms = (AtomIndexMap.of_own_structure(int(n), own) if own
+             else AtomIndexMap.of_engine_record(record, int(n)))
+    from dataclasses import replace
+    return replace(atoms, stated_by=str(said.deck or ""))
 
 
 @dataclass(frozen=True)
@@ -502,17 +562,17 @@ class RunView:
         says of it (:attr:`Declared.order_unstated`, I9)."""
         return self.declared.order_unstated
 
-    def in_your_order(self, struct, what: str):
+    def in_user_order(self, struct, what: str):
         """``(structure, said)``: ``struct`` -- the run's atoms as a file of
         the run states them, in its engine's order -- with what the run says
-        about it (:meth:`onto`), put back in your order, and the sentence a
-        door says of it (``Structure.in_your_order``, naming ``what``).  THE
+        about it (:meth:`onto`), put back in the user order, and the sentence a
+        door says of it (``Structure.in_user_order``, naming ``what``).  THE
         ONE WAY a door that builds from a run's file crosses back: the run
         door's geometry (:func:`steps_of`), the codec's read of an editor or
         a builder, ``xv2xyz --from-run``.  A run whose order nothing states
         is refused (:meth:`Declared.require_order`, I9)."""
         self.declared.require_order()
-        return self.onto(struct).in_your_order(what)
+        return self.onto(struct).in_user_order(what)
 
     def structure(self, elements, positions):
         """One geometry step of the run as a ``Structure``, with what the
@@ -528,7 +588,9 @@ class RunView:
         under the structure's own field names (plan § 5q D15), when the run
         says one; the labels and the rest of its deck's ATOM-METADATA block,
         the order record among them (`model/overview.md` § 2.2a, I5); the
-        ``info`` record."""
+        ``info`` record; and, for a run whose deck states no order (I9),
+        the view's mark (``Structure.order_unstated``), so a file written
+        from it says so (§ 2.2b, F4)."""
         from molbuilder.script_emit import apply_atom_metadata
         per = self.periodicity or {}
         if per.get("cell") is not None:
@@ -544,6 +606,8 @@ class RunView:
             apply_atom_metadata(struct, self.atom_metadata)
         if self.info:
             struct.apply_info_dict(self.info)
+        if self.order_unstated:
+            struct.order_unstated = True
         return struct
 
 
@@ -573,7 +637,7 @@ class RunStepsError(ValueError):
 
 @dataclass(frozen=True)
 class RunSteps:
-    """A run's geometry, IN YOUR ORDER (:func:`steps_of`): the ``first`` and
+    """A run's geometry, IN THE USER ORDER (:func:`steps_of`): the ``first`` and
     ``last`` geometry steps of its output -- where it started and where it
     ended -- each with what the run says about it (its labels, its box, its
     ``info``: the deck's ``calculation``, the output's ``relaxation``),
@@ -589,7 +653,7 @@ def steps_of(run: Run, output) -> RunSteps:
     (`model/overview.md` § 2.2a, I3-I5, I9): ``output``, the run's file the
     door chose, parsed by the registry; its first and last geometry steps
     through the run's view (:func:`view_of` -- its deck's labels, order
-    record and box, the output's own lattice); each crossed back to your
+    record and box, the output's own lattice); each crossed back to the user
     order (``Structure.restored``).  Asked by the force-constant prep
     (`relax`'s geometry and its relaxation record) and the transport
     citation (the relaxed junction and where it started).  Raises
@@ -617,8 +681,8 @@ def steps_of(run: Run, output) -> RunSteps:
                    n_atoms=len(last.structure.elements), lattice=lattice)
     return RunSteps(
         lattice=lattice,
-        first=view.in_your_order(first.structure, output.name)[0],
-        last=view.in_your_order(last.structure, output.name)[0])
+        first=view.in_user_order(first.structure, output.name)[0],
+        last=view.in_user_order(last.structure, output.name)[0])
 
 
 def saved_pair_row(path) -> Optional["tuple[str, str]"]:
@@ -1131,7 +1195,8 @@ def folder_answer(directory) -> Dict[str, Any]:
 
 
 __all__ = ["Place", "place_of", "speaking", "Run", "run_of", "Declared",
-           "declared", "OrderUnstated", "RunView",
+           "declared", "declared_of_deck", "deck_atom_index_map",
+           "OrderUnstated", "atom_index_map_of", "RunView",
            "view_of",
            "RunSteps", "RunStepsError", "steps_of", "about", "run_answer",
            "transmission_point", "openable", "folder_answer", "state_of",

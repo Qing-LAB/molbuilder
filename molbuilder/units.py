@@ -131,10 +131,15 @@ TEMPERATURE_K: Mapping[str, float] = {
 }
 
 
-def gib_words(n_bytes: float) -> str:
-    """A size in bytes as a person reads it -- ``49.2 GiB`` -- the one
-    spelling every line about a file's size uses."""
-    return f"{n_bytes / 1024 ** 3:.1f} GiB"
+def size_words(n_bytes: float) -> str:
+    """A size in bytes as a person reads it -- ``49.2 GiB``, ``245.0 KiB``
+    -- in the largest binary unit it reaches, one decimal: the one spelling
+    every line about a file's size uses."""
+    for unit, power in (("PiB", 5), ("TiB", 4), ("GiB", 3), ("MiB", 2),
+                        ("KiB", 1)):
+        if n_bytes >= 1024 ** power:
+            return f"{n_bytes / 1024 ** power:.1f} {unit}"
+    return f"{int(n_bytes)} B"
 
 
 def convert(value: float, unit: Optional[str], table: Mapping[str, float], *,

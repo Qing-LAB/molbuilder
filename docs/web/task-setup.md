@@ -193,7 +193,13 @@ two electrode labels in its own copy of the junction (`swap_electrodes`,
 [`engines/transport.md`](?doc=engines/transport.md) § 4), and the finished
 calculation it reuses (`reuses`), whose groups its prep copies in — what is
 copied, and its size, prep's Preview says (§ 11.1) ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — and the
-label every emitted file is stemmed on. **A cited frame set says what its frames are**,
+label every emitted file is stemmed on. **A calculation that extends a finished one keeps the Extend view's limits**
+(`engines/transport.md` § 2a.16, *Extending it*): the stage table's rows of
+the rungs that run once — the seed, the leads — and the shared values
+read-only, saying *fixed by <the finished calculation>*, with the same way out
+(a new calculation from the junction, on the Transport tab); the device's and
+the transmission's rows, the bias list and the treatment as on any
+calculation, each saying what it re-runs; the manifest under Preview as now. *(Contract drafted 2026-10-22, plan § 1aa.)* **A cited frame set says what its frames are**,
 under them: its count and, for a mode's set, its mode line and a row per
 frame — the frame-set card the Transport tab's junction card draws, from the
 describe door's own door (`frame_average.answer`,

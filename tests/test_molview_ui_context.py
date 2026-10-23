@@ -8,7 +8,8 @@ vendor 3Dmol, pinned in test_molview_3dmol_embed.py).  What these pin:
      no draft (the user's rule, verbatim: "not a change of data");
   2. the round trip — switches, style, frame and camera come back;
   3. the match guard — a different structure gets the preferences but
-     never the pose, the frame, or the selection;
+     never the pose, the frame, or the selection — the same molecule
+     listed in another order among them;
   4. selection ownership — the truth lane owns it where one exists, the
      ui lane carries it only for read-only viewers;
   5. ordering — the context applies AFTER a draft restore's view.reset(),
@@ -18,6 +19,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+import pytest
 
 from tests._node_esm import run_node
 
@@ -259,3 +262,49 @@ def test_the_context_applies_after_a_draft_restore_not_under_it():
         "the draft's view.reset() landed AFTER the context — the ordering "
         "§ 11.2b states is broken"
     )
+
+
+@pytest.mark.parametrize("then, now, restored", [
+    pytest.param(("O O C", None), ("O O C", None), [2],
+                 id="the structure it was made on: put back"),
+    pytest.param(("O O C", None), ("C O O", None), [],
+                 id="the same molecule, its elements in another order"),
+    pytest.param(("O O C", None),
+                 ("O O C", "listed in the engine's order (held atoms first)"),
+                 [], id="the same elements, listed in an engine's order"),
+])
+def test_a_selection_is_put_back_only_on_the_structure_it_was_made_on(
+        then, now, restored):
+    """§ 11.2b's `match`: an atom index holds only against the structure it
+    was made on (`model/overview.md` § 2.1), so the read-only viewer's
+    selection comes back only where the elements, in order, and the order
+    the structure is listed in are the ones it was made on.  The silent
+    failure: a selection made on the user's pair put back onto a run's own
+    file of the same molecule, as many atoms listed in the engine's order --
+    other atoms selected, and the transport report asking their PDOS."""
+    def payload(spec):
+        elements, said = spec
+        rows = ", ".join(f"__atomRow({i}, {json.dumps(e)}, {i})"
+                         for i, e in enumerate(elements.split()))
+        extra = json.dumps({"atom_order_said": said} if said else {})
+        return f"__payload([{rows}], {extra})"
+    out = _run(
+        f"""
+        const store = makeStore();
+        const one = await session(store, {{ model: {{ mode: "readonly" }} }});
+        globalThis.__nextPayload = {payload(then)};
+        await one.model.installMolecule({{ text: "3\\n\\nO\\nO\\nC\\n",
+                                           filename: "x.xyz" }});
+        await WAIT_RESTORE();
+        one.model.selection.add([2]);
+        await WAIT_FLUSH();
+        one.off();
+        const two = await session(store, {{ model: {{ mode: "readonly" }} }});
+        globalThis.__nextPayload = {payload(now)};
+        await two.model.installMolecule({{ text: "3\\n\\nO\\nO\\nC\\n",
+                                           filename: "x.xyz" }});
+        await WAIT_RESTORE();
+        console.log(JSON.stringify({{ selection: two.model.selection.get() }}));
+        """
+    )
+    assert out["selection"] == restored, out

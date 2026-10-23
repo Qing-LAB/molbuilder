@@ -152,16 +152,26 @@ def farthest_apart(a, b) -> Tuple[int, float]:
 #: missing labels nobody noticed were gone.
 METADATA_FIELDS = ("regions", "cell", "engine_offset", "offset_by",
                    "axis_kind", "vacuum", "annotations", "customized",
-                   "atom_order")
+                   "atom_order", "order_unstated")
+
+#: THE VIEW'S FIELDS, NAMED ONCE (`model/overview.md` § 2.2b, F4): a fact of
+#: the view a structure was loaded into -- it rides to the browser and back
+#: (`to_dict`, MolView's `otherMetadata`) so a Save, a Download or a
+#: hand-over of that view still knows it, and **a file states it only as
+#: its atom index map** (the codec's), never as a field: the sidecar and the
+#: deck leave it out (:data:`FILE_FIELDS`).
+VIEW_FIELDS = ("order_unstated",)
+#: What a file states of the metadata -- the sidecar's spread.
+FILE_FIELDS = tuple(f for f in METADATA_FIELDS if f not in VIEW_FIELDS)
 
 #: THE SPLIT A DECK MAKES, NAMED ONCE (`model/overview.md` § 2.2a;
 #: `execution/job-contracts.md` § 3.4): the box -- which the deck states as
 #: where its atoms were placed, its ENGINE-OFFSET block (the resolved cell,
-#: which holds the vacuum) -- and every other metadata field, which its
+#: which holds the vacuum) -- and every other field a file states, which its
 #: ATOM-METADATA block carries: the labels, the channels, the named values,
 #: the order record.
 BOX_FIELDS = ("cell", "engine_offset", "offset_by", "axis_kind", "vacuum")
-ATOM_METADATA_FIELDS = tuple(f for f in METADATA_FIELDS
+ATOM_METADATA_FIELDS = tuple(f for f in FILE_FIELDS
                              if f not in BOX_FIELDS)
 
 #: WHOSE A STATED OFFSET IS (`model/structure-periodicity.md` § 6.0): an
@@ -182,11 +192,11 @@ FRAME_SET_NOT_EDITED = (
 #: What every door that would edit, reorder or merge a REMAPPED structure
 #: answers (``model/overview.md`` § 2.2a): a structure in an engine's order
 #: carries its order record, which holds only for the atom list as it stands,
-#: so it is restored to the person's order first.  One sentence, so every
+#: so it is restored to the user order first.  One sentence, so every
 #: door says the same thing.
 REMAPPED_NOT_EDITED = (
     "the structure is in an engine's order, which its order record states -- "
-    "restore it to your order with restored() first (model/overview.md § 2.2a)")
+    "restore it to the user order with restored() first (model/overview.md § 2.2a)")
 
 
 def restored_said(what: str, order) -> str:
@@ -195,7 +205,18 @@ def restored_said(what: str, order) -> str:
     was in, in its words (``atom_permutation.SORT_KEY_WORDS``).  One
     sentence, so every door says the same thing."""
     return (f"{what} was in an engine's order ({order.words}); it is put "
-            f"back in your order")
+            f"back in the user order")
+
+
+def _checked_indices():
+    """The map doors' one bounds check (``atom_permutation.checked_indices``)
+    -- an atom index that is not one of the structure's atoms refused by
+    name, never wrapped (`model/overview.md` § 2.2a)."""
+    try:                                        # inside molbuilder
+        from .atom_permutation import checked_indices
+    except ImportError:                         # beside a job, in a bundle
+        from atom_permutation import checked_indices  # type: ignore
+    return checked_indices
 
 
 def _order_record_type():
@@ -734,13 +755,21 @@ class Structure:
     #: nothing else names a key of it.
     customized:    Optional[Dict[str, Any]] = None
     #: THE ORDER RECORD of a structure in an engine's order
-    #: (``model/overview.md`` § 2.2a): ``None`` in the person's own order, an
+    #: (``model/overview.md`` § 2.2a): ``None`` in the user order, an
     #: ``atom_permutation.Permutation`` otherwise -- the key that made it and
     #: both directions, read by its one reader.  PRESENT MEANS REMAPPED, and
     #: nothing else states it.  Set by ``transport.sort.sort_by``, cleared by
     #: :meth:`restored`; it rides every derived copy that keeps the atoms in
     #: place, and an edit that adds or removes atoms refuses it.
     atom_order:    Optional[Any] = None
+    #: A FIELD OF THE VIEW (:data:`VIEW_FIELDS`; ``model/overview.md``
+    #: § 2.2b, F4): ``True`` for a structure read from a run whose deck
+    #: states no order (I9) -- its atoms may be in the engine's order and
+    #: nothing says.  Set by the run's view (``runs.RunView.onto``), carried
+    #: to the browser and back, and stated by a file only as its map: the
+    #: codec writes ``atoms_listed_by`` ``not_stated``.  Every read of a file
+    #: leaves it ``False``.
+    order_unstated: bool = False
     #: METADATA (model/structure.md § 2.2a) -- what the MolView Metadata
     #: pane shows -- that is NOT part of the structure: no emitter reads
     #: it, it never enters `geometry_hash`, and the read-only gate does
@@ -907,6 +936,12 @@ class Structure:
                 raise ValueError(REMAPPED_NOT_EDITED)
             self.atom_order = Permutation.from_dict(self.atom_order,
                                                     n_atoms=n)
+        if not isinstance(self.order_unstated, bool):
+            raise ValueError(f"order_unstated is true or false; got "
+                             f"{self.order_unstated!r}")
+        if self.order_unstated and self.atom_order is not None:
+            raise ValueError("a structure carrying its order record states "
+                             "its order: order_unstated cannot be true")
 
     def pbc(self) -> Tuple[bool, bool, bool]:
         """Per-axis periodicity as BOOLEANS — an interop accessor, not state.
@@ -1054,11 +1089,13 @@ class Structure:
     # geometry_hash / created_by / created_at) belongs to the sidecar layer;
     # both sit AROUND this contract, not inside it.
 
-    def metadata_to_dict(self) -> dict:
+    def metadata_to_dict(self, *, view: bool = True) -> dict:
         """Serialize this structure's metadata to a JSON-friendly dict (the
         sidecar field set).  The fields are already validated by
-        ``__post_init__``; this is a pure conversion to JSON types."""
-        return {
+        ``__post_init__``; this is a pure conversion to JSON types.  Without
+        ``view``, the view's fields are left out (:data:`VIEW_FIELDS`) -- what
+        a file that embeds a structure states of it."""
+        out = {
             # Every label, reserved ones included -- ONE key, because there is
             # one store.
             "regions":      {k: list(v)
@@ -1078,11 +1115,16 @@ class Structure:
             "annotations":  annotations_to_json(self.annotations),
             # None when no row, else every row and one set per frame (§ 2.2d).
             "customized":   _copy.deepcopy(self.customized),
-            # None in the person's own order, else the order record
+            # None in the user order, else the order record
             # (`model/overview.md` § 2.2a).
             "atom_order":   (self.atom_order.to_dict()
                              if self.atom_order is not None else None),
+            # The view's: read from a run whose deck states no order (I9) --
+            # a file states it only as its map (:data:`VIEW_FIELDS`).
+            "order_unstated": bool(self.order_unstated),
         }
+        return out if view else {k: v for k, v in out.items()
+                                 if k not in VIEW_FIELDS}
 
     def identity_to_dict(self) -> dict:
         """The identity columns that are REAL -- {} when everything is the
@@ -1168,6 +1210,7 @@ class Structure:
         self.annotations  = annotations_from_json(data.get("annotations"))
         self.customized   = data.get("customized")
         self.atom_order   = data.get("atom_order")
+        self.order_unstated = data.get("order_unstated", False)
         # Re-run the dataclass invariants ONCE: cell 3x3 of finite floats, the
         # ``axis_kind`` default and value check (nothing to reconcile: there
         # is one periodicity field), a stated offset of three finite
@@ -1234,13 +1277,15 @@ class Structure:
     #  add it here + the two metadata methods, nowhere else.              #
     # ------------------------------------------------------------------ #
 
-    def to_dict(self) -> dict:
+    def to_dict(self, *, view: bool = True) -> dict:
         """The ONE canonical serialiser: everything needed to reconstruct this
         Structure -- coordinates, per-atom identity columns, AND the full
         metadata field set (nested under ``metadata`` via
         :meth:`metadata_to_dict`).  Loss-free + filesystem-free; the round-trip
         unit the persistence + sidecar + CLI layers store.  Inverse:
-        :meth:`from_dict`.
+        :meth:`from_dict`.  Without ``view``, the view's fields are left out
+        -- a result file's embedded structure (`model/overview.md` § 2.2b,
+        F4: a file states the view's mark only as its map).
 
         A frame set carries ``frames`` IN PLACE OF ``positions`` -- one key or
         the other, never both, because ``positions`` is frame 0
@@ -1255,7 +1300,7 @@ class Structure:
             "residue_ids":   list(self.residue_ids)   if self.residue_ids   else [],
             "residue_names": list(self.residue_names) if self.residue_names else [],
             "chain_ids":     list(self.chain_ids)     if self.chain_ids     else [],
-            "metadata":      self.metadata_to_dict(),
+            "metadata":      self.metadata_to_dict(view=view),
             "info":          dict(self.info),
         }
 
@@ -1381,7 +1426,7 @@ class Structure:
             # THE ORDER THE ATOMS ARE IN, in words, worked out HERE like the
             # resolved box (`model/overview.md` § 2.2a; `web/results.md`
             # § 4): *in the engine's order (held atoms first)* for a
-            # structure carrying an order record, none in yours.  The record
+            # structure carrying an order record, none in the user order.  The record
             # itself rides the structure's own dict.
             "atom_order_said": (self.atom_order.said
                                 if self.atom_order is not None else None),
@@ -1742,19 +1787,19 @@ class Structure:
         return self._reordered(order)
 
     def restored(self) -> "Structure":
-        """This structure in the person's own order (``model/overview.md``
+        """This structure in the user order (``model/overview.md``
         § 2.2a) -- THE ONE WAY BACK from an engine's order.  Every per-atom
         field and every frame's atoms move back through the order record,
         and the record is cleared; ``info`` and the ``customized`` rows are
         untouched (nothing in them is indexed by atom).  A structure in the
-        person's order comes back unchanged -- the same object."""
+        user order comes back unchanged -- the same object."""
         if self.atom_order is None:
             return self
         return self._reordered(self.atom_order.original_to_sorted,
                                atom_order=None)
 
-    def in_your_order(self, what: str) -> "Tuple[Structure, Optional[str]]":
-        """``(structure, said)``: this structure in the person's order, and
+    def in_user_order(self, what: str) -> "Tuple[Structure, Optional[str]]":
+        """``(structure, said)``: this structure in the user order, and
         the sentence a door says of it -- :func:`restored_said`, naming
         ``what`` and the order in its words -- or ``None`` when it was in
         their order
@@ -1765,38 +1810,41 @@ class Structure:
             return self, None
         return self.restored(), restored_said(what, self.atom_order)
 
-    def your_indices(self, indices) -> List[int]:
+    def map_to_user_index(self, indices) -> List[int]:
         """The atoms named by their index in this structure, as indices in
-        the person's order (``model/overview.md`` § 2.2a): through the
-        order record (``original_of``) in an engine's order, as they stand
-        in yours, whose order is never recorded (I2).  THE ONE WAY an atom
-        of a structure that may be remapped is named in your order -- a
-        refusal naming atoms (:meth:`atoms_named`), a geometry held in your
-        order compared atom for atom."""
+        the user order (``model/overview.md`` § 2.2a): through the
+        order record (``map_to_user_index``) in an engine's order, as they stand
+        in the user order, whose order is never recorded (I2).  THE ONE WAY an atom
+        of a structure that may be remapped is named in the user order -- a
+        refusal naming atoms (:meth:`atoms_named`), a geometry held in the
+        user order compared atom for atom."""
         if self.atom_order is None:
-            return [int(i) for i in indices]
-        return self.atom_order.original_of(indices)
+            return _checked_indices()(indices, self.n_atoms)
+        return self.atom_order.map_to_user_index(indices)
 
-    def indices_of_yours(self, indices) -> List[int]:
-        """The atoms named by their index in the person's order, as indices
-        in this structure (``model/overview.md`` § 2.2a) -- :meth:`your_indices`
-        the other way: through the order record (``sorted_of``) in an engine's
-        order, as they stand in yours.  A selection made in your order asked
+    def map_from_user_index(self, indices) -> List[int]:
+        """The atoms named by their index in the user order, as indices
+        in this structure (``model/overview.md`` § 2.2a) -- :meth:`map_to_user_index`
+        the other way: through the order record (``map_to_engine_index``) in an engine's
+        order, as they stand in the user order.  A selection made in the user order asked
         of data in the engine's (the transport report's PDOS)."""
         if self.atom_order is None:
-            return [int(i) for i in indices]
-        return self.atom_order.sorted_of(indices)
+            return _checked_indices()(indices, self.n_atoms)
+        return self.atom_order.map_to_engine_index(indices)
 
     def atoms_named(self, indices, *, limit: Optional[int] = None) -> str:
         """The atoms named by their index here, as every message names them
-        (:func:`atom_words`) -- in the person's order, each with its element
-        (:meth:`your_indices`), so a deck's sorted copy names the atom the
-        person knows: ``atom indices 0 (O), 2 (C)``."""
+        (:func:`atom_words`) -- in the user order, each with its element
+        (:meth:`map_to_user_index`), so a deck's sorted copy names the atom the
+        person knows: ``atom indices 0 (O), 2 (C)``.  A refusal's index that
+        is no atom here is named as it stands -- it has no user index, and
+        no element."""
         idx = [int(i) for i in indices]
-        yours = self.your_indices(idx)
-        return atom_words(yours, {y: self.elements[i]
-                                  for y, i in zip(yours, idx)
-                                  if 0 <= i < self.n_atoms}, limit=limit)
+        atoms = [i for i in idx if 0 <= i < self.n_atoms]
+        user = dict(zip(atoms, self.map_to_user_index(atoms)))
+        return atom_words([user.get(i, i) for i in idx],
+                          {user[i]: self.elements[i] for i in atoms},
+                          limit=limit)
 
     def _reordered(self, order: Sequence[int], **also) -> "Structure":
         """The reorder :meth:`take` and :meth:`restored` share."""
@@ -2285,6 +2333,10 @@ class Structure:
         """Standard PDB TEXT. Hydrogens included, single MODEL, no CONECT.
         Not a file: ``StructureCodec().write(struct, path)`` writes one, and
         :meth:`to_xyz` records why there is no ``path`` argument."""
+        try:                                    # inside molbuilder
+            from .engine_atom_index import pdb_numbering
+        except ImportError:                     # beside a job, in a bundle
+            from engine_atom_index import pdb_numbering  # type: ignore
         buf = StringIO()
         if self.title:
             for record in _pdb_title_records(self.title):
@@ -2302,7 +2354,7 @@ class Structure:
             atname = name if len(name) >= 4 else f" {name:<3s}"
             # PDB serial column is 5 chars (cols 7-11).  Per spec, beyond
             # 99999 we wrap to "*****" rather than overflow the field.
-            serial = i + 1
+            serial = pdb_numbering(i)
             serial_str = f"{serial:5d}" if serial <= 99999 else "*****"
             # Residue id is 4 chars (cols 23-26) -- same wrap rule.
             rid_str = f"{rid:4d}" if rid <= 9999 else "****"
@@ -2424,6 +2476,7 @@ class Structure:
             customized  = _copy.deepcopy(self.customized),
             # Immutable, so shared: it holds while the atoms stay in place.
             atom_order  = self.atom_order,
+            order_unstated = self.order_unstated,
         )
 
     # ------------------------------------------------------------------ #
@@ -2612,7 +2665,7 @@ class Structure:
         # the frames of a set have no counterpart in the other input.
         if any(s.n_frames > 1 for s in structures):
             raise ValueError(FRAME_SET_NOT_EDITED)
-        # ...AND STRUCTURES IN THE PERSON'S ORDER: an order record has no
+        # ...AND STRUCTURES IN THE USER ORDER: an order record has no
         # counterpart in the other input (`model/overview.md` § 2.2a).
         if any(s.atom_order is not None for s in structures):
             raise ValueError(REMAPPED_NOT_EDITED)

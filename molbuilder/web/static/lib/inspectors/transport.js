@@ -26,7 +26,7 @@
  * charts' theme (`lib/plot-theme.js`), the page's cards and panel tabs, the
  * ladder's state chip.
  */
-import { mount } from "/static/lib/molview/index.js";
+import { mount, toDisplay } from "/static/lib/molview/index.js";
 import { molviewFiles } from "../projects/molview-doors.js";
 import { ALL, ONE, frameAxisControl } from "../frame-axis.js";
 import { frameWords, pointWords } from "../results/point-words.js";
@@ -166,6 +166,7 @@ const WORKSPACE_TAG = "results:transport";
             + (failed.length ? " · " + failed.length + " failed" : "")
             + (rec.energies_relative_to_ef ? " · energies relative to E_F"
                                            : "")));
+        head.appendChild(_exportBar(file));
         wrap.appendChild(head);
 
         /* ROW 1: the device beside the curves. */
@@ -179,9 +180,27 @@ const WORKSPACE_TAG = "results:transport";
         if (rec.order_unstated) {
             device.appendChild(_el("p", "transport-note", rec.order_unstated));
         }
-        device.appendChild(_el("p", "transport-note",
-            "Select atoms here (Selection page: pick, by element, by label) "
-            + "to add their PDOS in the DOS tab."));
+        /* WHICH INDEX ITS ATOMS ARE NUMBERED BY (`model/overview.md`
+         * § 2.2b; `web/results.md` § 2.5) -- the user's, the drawing put
+         * back through the junction's order record, unless the record says
+         * the order is not recorded (above), when it is TranSIESTA's. */
+        if (!rec.order_unstated) {
+            const line = _el("p", "transport-note",
+                "Atoms are numbered as in your structure (user index + 1). "
+                + "The engine's own files list them by engine index -- the "
+                + "digest, and .TBT.nc as sisl reads it, counted from 0; ");
+            line.appendChild(_el("code", null, "molbuilder atom-index"));
+            line.appendChild(root.document.createTextNode(
+                " shows both, and "));
+            const how = _el("a", null, "the post-processing document");
+            how.href = "/documents?doc=engines/transport-postprocessing.md";
+            how.target = "_blank";
+            how.rel = "noopener";
+            line.appendChild(how);
+            line.appendChild(root.document.createTextNode(
+                " how to use them."));
+            device.appendChild(line);
+        }
         row.appendChild(device);
 
         const curves = _card("Results", "transport-curves-card");
@@ -212,7 +231,7 @@ const WORKSPACE_TAG = "results:transport";
         wrap.appendChild(_rungs(rec, stages, state));
         host.appendChild(wrap);
 
-        _mountDevice(molHost, state, rec.junction_file);
+        _mountDevice(molHost, state, rec.junction_file, !!rec.order_unstated);
         _redraw(state);
     }
 
@@ -236,6 +255,62 @@ const WORKSPACE_TAG = "results:transport";
         panel.insertBefore(frameAxisControl(root.document, state.frameMode[key],
             (m) => { state.frameMode[key] = m; _redraw(state); }),
             panel.firstChild);
+    }
+
+    /* THE EXPORT -- every result as it stands, as the data file or its
+     * tables (`engines/transport.md` § 2a.12, *Export*): composed by the
+     * server from what is already there, no data file read, and handed over
+     * by the file layer's one download (`projects.download`); beside the
+     * buttons the server's own sentence -- the points it holds without their
+     * DOS by region and how to read them (its `X-Molbuilder-Said`) -- or a
+     * refusal, and the post-processing document's link. */
+    function _exportBar(file) {
+        const bar = _el("div", "fdf-actions transport-export");
+        bar.appendChild(_el("span", "hint",
+                            "Export every result as it stands:"));
+        const msg = _el("span", "hint");
+        const buttons = [["CSV", "csv"], ["NetCDF", "netcdf"]].map(
+            ([label, fmt]) => {
+                const b = _el("button", null, label);
+                b.type = "button";
+                b.addEventListener("click", () => run(fmt));
+                bar.appendChild(b);
+                return b;
+            });
+        const run = async (fmt) => {
+            buttons.forEach((b) => { b.disabled = true; });
+            msg.textContent = "Composing the export.";
+            try {
+                const r = await fetch("/api/transport/export?path="
+                    + encodeURIComponent(file) + "&format=" + fmt);
+                if (!r.ok) {
+                    let why = "HTTP " + r.status;
+                    try { why = (await r.json()).error || why; }
+                    catch (_) { /* the status is the answer */ }
+                    msg.textContent = why;
+                    return;
+                }
+                // THE NAME THE SERVER GAVE IT, as the header states it.
+                const said = r.headers.get("Content-Disposition") || "";
+                const utf = said.match(/filename\*=UTF-8''([^;]+)/i);
+                const plain = said.match(/filename="?([^";]+)"?/i);
+                const name = utf ? decodeURIComponent(utf[1])
+                    : plain ? plain[1] : "export";
+                root.molbuilder.projects.download(name, await r.blob());
+                msg.textContent = r.headers.get("X-Molbuilder-Said") || "";
+            } catch (e) {
+                msg.textContent = String((e && e.message) || e);
+            } finally {
+                buttons.forEach((b) => { b.disabled = false; });
+            }
+        };
+        bar.appendChild(msg);
+        const how = _el("a", null, "How to read these in Python");
+        how.href = "/documents?doc=engines/transport-postprocessing.md";
+        how.target = "_blank";
+        how.rel = "noopener";
+        bar.appendChild(how);
+        return bar;
     }
 
     /* EACH POINT'S DOS PER ORBITAL, READ ON THE PERSON'S WORD
@@ -332,25 +407,32 @@ const WORKSPACE_TAG = "results:transport";
                 if (state.disposed) { clearInterval(timer); return; }
                 ask();
             }, 2000);
+            // THE ANSWER, handed to the one who asked: the outcomes, or why
+            // there are none.
+            let answer;
             try {
                 const r = await fetch("/api/transport/digest", {
                     method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ path: file, ...body }) });
                 const b = await r.json();
-                msg.textContent = b && b.ok
-                    ? (b.outcomes || []).filter((o) => o.state !== "kept")
-                        .map((o) => o.said).join("; ")
-                    : String((b && b.error) || r.status);
+                answer = b && b.ok
+                    ? { ok: true, outcomes: b.outcomes || [] }
+                    : { ok: false, error: String((b && b.error) || r.status) };
             } catch (e) {
-                msg.textContent = String((e && e.message) || e);
+                answer = { ok: false, error: String((e && e.message) || e) };
             } finally {
                 clearInterval(timer);
                 busy = false;
                 reading = false;            // the record is fetched below
             }
-            if (state.disposed) return;
+            msg.textContent = answer.ok
+                ? answer.outcomes.filter((o) => o.state !== "kept")
+                    .map((o) => o.said).join("; ")
+                : answer.error;
+            if (state.disposed) return answer;
             await ask();
             if (state.reload) state.reload();
+            return answer;
         };
         read.addEventListener("click", () => go({}));
         again.addEventListener("click", () => go({ fresh: true }));
@@ -358,15 +440,26 @@ const WORKSPACE_TAG = "results:transport";
         ask();
     }
 
+    /* THE PDOS OF THE ATOMS YOU CHOOSE, in the order a person takes the
+     * steps (`web/results.md` § 2.5; the user, 2026-10-23): 1 select atoms
+     * in the Device view -- what is selected now said as it changes,
+     * through MolView's own selection (`state.onSelection`) --, 2 which
+     * orbitals, 3 name the curve and add it, disabled until atoms are
+     * selected; a point whose DOS per orbital is not kept said at step 3. */
     function _fillDOS(panel, rec, file, state) {
         _digestCard(panel, file, state);
         panel.appendChild(state.nodes.dos);
         const menu = rec.pdos_orbitals || {};
-        const bar = _el("div", "transport-pdos-bar");
-        const name = _el("input", "transport-pdos-name");
-        name.type = "text";
-        name.placeholder = "name (e.g. S, ring C)";
-        name.setAttribute("aria-label", "name for the selection");
+        const box = _el("div", null);
+        box.appendChild(_el("p", "transport-note",
+                            "The PDOS of atoms you choose:"));
+        const steps = _el("ol", "transport-pdos-steps");
+        const step1 = _el("li", null,
+            "Select atoms in the Device view (left): click them, or use its "
+            + "Selection page to pick by element (every S) or by label.");
+        const now = _el("p", "transport-note", "Selected now: none yet.");
+        step1.appendChild(now);
+        const step2 = _el("li", null, "Which orbitals: ");
         const orb = _el("select", "transport-pdos-orb");
         orb.setAttribute("aria-label", "orbital type");
         (menu.types || ["all"]).forEach((t) => {
@@ -374,25 +467,54 @@ const WORKSPACE_TAG = "results:transport";
             o.value = t;
             orb.appendChild(o);
         });
-        const add = _el("button", "transport-pdos-add", "Add selection");
+        step2.appendChild(orb);
+        if (menu.note) step2.appendChild(_el("p", "transport-note", menu.note));
+        const step3 = _el("li", null, "Name the curve: ");
+        const name = _el("input", "transport-pdos-name");
+        name.type = "text";
+        name.placeholder = "e.g. S, ring C";
+        name.setAttribute("aria-label", "name for the curve");
+        const add = _el("button", "transport-pdos-add", "Add to the plot");
         add.type = "button";
+        add.disabled = true;
         const msg = _el("span", "transport-pdos-msg");
-        bar.appendChild(name);
-        bar.appendChild(orb);
-        bar.appendChild(add);
-        bar.appendChild(msg);
-        panel.appendChild(bar);
-        if (menu.note) panel.appendChild(_el("p", "transport-note", menu.note));
+        step3.appendChild(name);
+        step3.appendChild(add);
+        step3.appendChild(msg);
+        [step1, step2, step3].forEach((li) => steps.appendChild(li));
+        box.appendChild(steps);
+        box.appendChild(_el("p", "transport-note", "Curves on the plot:"));
         const list = _el("ul", "transport-pdos-list");
-        panel.appendChild(list);
+        box.appendChild(list);
+        panel.appendChild(box);
         state.nodes.pdosList = list;
+        /* WHAT IS SELECTED NOW, and whether the point shown has its DOS per
+         * orbital kept -- each said where its step is. */
+        state.onSelection = () => {
+            const atoms = _selection(state);
+            /* EACH ATOM AS THE VIEW NUMBERS IT, with its element
+             * (`web/results.md` § 2.5): *2 atoms (#13 S, #14 S)*. */
+            const named = (a) => "#" + toDisplay(a)
+                + (state.elements && state.elements[a]
+                   ? " " + state.elements[a] : "");
+            now.textContent = atoms.length
+                ? "Selected now: " + atoms.length + " atom"
+                  + (atoms.length === 1 ? "" : "s") + " ("
+                  + atoms.slice(0, 8).map(named).join(", ")
+                  + (atoms.length > 8 ? ", …" : "") + ")."
+                : "Selected now: none yet.";
+            add.disabled = !atoms.length;
+            const p = _pointAt(state, _frame(state), state.bias);
+            const unread = p && (p.digest || []).some(
+                (d) => d.state !== "kept");
+            msg.textContent = unread
+                ? "This point's DOS per orbital is not read yet -- use "
+                  + "Read the DOS per orbital above first." : "";
+        };
+        state.onSelection();
         add.addEventListener("click", () => {
             const atoms = _selection(state);
-            if (!atoms.length) {
-                msg.textContent = "Select atoms in the device card first.";
-                return;
-            }
-            msg.textContent = "";
+            if (!atoms.length) return;
             state.pdos.push({
                 name: name.value.trim() || ("selection " + (state.pdos.length + 1)),
                 atoms: atoms, orbitals: orb.value, curve: null, error: null,
@@ -1217,13 +1339,15 @@ const WORKSPACE_TAG = "results:transport";
             }));
         }
         if (state.disposed || bias !== state.bias || frame !== _frame(state)) return;
+        // THE STEPS' LINES follow the point shown (`_fillDOS`).
+        if (state.onSelection) state.onSelection();
         _redraw(state);
     }
 
     /* THE DEVICE, read-only -- the structure presenter's door: MolView
      * mounted with its own owner, the composed junction opened through the
      * one file door (its sidecar brings the labels and the cell). */
-    async function _mountDevice(molHost, state, junctionFile) {
+    async function _mountDevice(molHost, state, junctionFile, unstated) {
         const ws = root.molbuilder && root.molbuilder.workspace;
         const proj = root.molbuilder && root.molbuilder.projects;
         if (!ws || !proj || !proj.parser) {
@@ -1249,13 +1373,23 @@ const WORKSPACE_TAG = "results:transport";
             return;
         }
         state.handle = handle;              // disposed with the report
-        /* IN YOUR ORDER (`model/overview.md` § 2.2a, I1): the composed
+        /* THE SELECTION FOLLOWED, for the PDOS steps' line (`_fillDOS`). */
+        if (handle.data && handle.data.selection
+                && typeof handle.data.selection.subscribe === "function") {
+            state.unsubSelection = handle.data.selection.subscribe(() => {
+                if (!state.disposed && state.onSelection) state.onSelection();
+            });
+        }
+        /* IN THE USER ORDER (`model/overview.md` § 2.2a, I1): the composed
          * junction is the engine's record, in TranSIESTA's order; the report
-         * draws it put back in yours, and names a selection's atoms so to the
-         * PDOS door, which crosses them into the junction's order. */
+         * draws it put back in the user order, and names a selection's atoms
+         * so to the PDOS door, which crosses them into the junction's order
+         * -- or, a junction whose order is not recorded (I9), drawn as a
+         * viewer draws it, in TranSIESTA's order, marked, the record's line
+         * above saying so (its PDOS refused by the record). */
         const res = await proj.parser.openMolecule(
             handle, (state.dir ? state.dir + "/" : "") + junctionFile,
-            { restore: true });
+            { restore: !unstated });
         if (state.disposed) return;
         if (res && res.ok === false) {
             molHost.appendChild(_el("p", "transport-note",
@@ -1268,6 +1402,12 @@ const WORKSPACE_TAG = "results:transport";
          * 2026-10-08 road walk, plan § 5x.7 F3).  The window's one camera
          * action beyond reset (`mount` handle `lookAlong`). */
         if (typeof handle.lookAlong === "function") handle.lookAlong("x");
+        /* EACH ATOM'S ELEMENT, once the junction is in -- what the PDOS
+         * steps' line names beside each selected atom's number. */
+        const drawn = handle.data.getStructure();
+        state.elements = drawn && Array.isArray(drawn.elements)
+            ? drawn.elements.slice() : null;
+        if (state.onSelection) state.onSelection();
         /* THE FRAME'S ONE OWNER is the model, now the junction is in it:
          * the frame held until now told to it, and the report following it
          * -- every chart, and each selection's PDOS asked again at the new
@@ -1376,6 +1516,7 @@ const WORKSPACE_TAG = "results:transport";
                 dispose() {
                     state.disposed = true;
                     try { state.unsubFrame && state.unsubFrame(); } catch (_) { /* gone */ }
+                    try { state.unsubSelection && state.unsubSelection(); } catch (_) { /* gone */ }
                     try { state.unsubPlay && state.unsubPlay(); } catch (_) { /* gone */ }
                     try { state.handle && state.handle.dispose(); } catch (_) { /* gone */ }
                     host.querySelectorAll(".plot-box").forEach(

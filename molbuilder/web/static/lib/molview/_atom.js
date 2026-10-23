@@ -30,7 +30,9 @@
  *
  * This is the browser end of a rule that spans the application: the server
  * never translates -- its messages name the index, said as one -- and the
- * number a user reads here equals the atom number in the generated input file.
+ * number a user reads here is index + 1 of the structure this view holds: a
+ * deck's own number for the atom where the deck lists the atoms as the view
+ * does, not where a calculation sorted them (model/overview.md § 2.2b, F5).
  * Its single home is model/overview.md § 2; MolView defers to it rather than
  * restating it.
  */
@@ -60,7 +62,10 @@ export function fromDisplay(number) { return number - 1; }
  */
 export function shiftExpression(expression, delta) {
     if (typeof expression !== "string") return expression;
-    return expression.split(",").map(function (token) {
+    /* DIGITS AS TYPED, ONE FORM: a full-width "１-３" (an East Asian input
+     * method's) is read as "1-3" before the shift, so the one shift is never
+     * skipped -- the server reads ASCII digits alone. */
+    return expression.normalize("NFKC").split(",").map(function (token) {
         const t = token.trim();
         if (t === "") return t;
         const range = t.match(/^(\d+)\s*-\s*(\d+)$/);

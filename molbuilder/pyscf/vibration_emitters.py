@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotation only -- importing
     # vibration_deck at run time would cycle (it imports this).
     from .vibration_deck import VibrationConfigView
-from ..structure import Structure
+from ..structure import Structure, atom_words
 
 #: The engine display string for deck headers.
 PYSCF_ENGINE_LABEL = "PySCF (analytic Hessian + dα/dR)"
@@ -77,6 +77,7 @@ PYSCF_ENGINE_LABEL = "PySCF (analytic Hessian + dα/dR)"
 #: deck's own, declared in `end_lines` beside the relaxation deck's.
 from .end_lines import SPECTRUM_END_MARKER   # noqa: E402
 
+from ..atom_permutation import MAP_KEY
 from ..spectra.results import SCHEMA_VERSION
 
 
@@ -534,6 +535,10 @@ def _emit_initial_state() -> List[str]:
                ".replace('+00:00', 'Z'),")
     out.append("    'n_atoms_total':      N_ATOMS,")
     out.append("    'free_atom_idxs':     FREE_ATOM_IDXS,")
+    # LISTED BY USER INDEX, its engine index the same -- PySCF sorts nothing
+    # (`model/overview.md` § 2.2b, F2: a result for the user).
+    out.append(f"    {MAP_KEY!r}:     _mb_AtomIndexMap.of_engine_record("
+               "None, N_ATOMS).as_listed_by_user().to_dict(),")
     # THE HELD ATOMS, as their own list until a geometry exists; the
     # structure states them from the equilibrium write on
     # (engines/vibration.md 6.10.2).
@@ -1460,7 +1465,8 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
                     else "no relaxation ran (the structure was stated relaxed) "
                          "and")
         parts.append(
-            f"{len(frozen)} atom(s) (0-based indices {sorted(frozen)}) "
+            f"{len(frozen)} atom(s) ({atom_words(sorted(frozen))}, counted "
+            f"from 0) "
             f"were held fixed throughout: {_held_by} no second "
             f"derivative was taken with respect to them, so the reported "
             f"frequencies are those of the free atoms moving in the "

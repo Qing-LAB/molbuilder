@@ -291,11 +291,11 @@ def _refuse_unless_frozen_bulk(
 
     # HELD BY THE RELAXATION TOO, when its record says which atoms it held:
     # the label is the person's to change, the record is what the relaxation
-    # did (`engines/transport.md` § 1.1, Step 0).  In your order, each atom
-    # here named there through the device's own answer (`your_indices`).
+    # did (`engines/transport.md` § 1.1, Step 0).  In the user order, each atom
+    # here named there through the device's own answer (`map_to_user_index`).
     if held_by_relaxation is not None:
         held = set(int(i) for i in held_by_relaxation)
-        free_then = [i for i, j in zip(idxs, device.your_indices(idxs))
+        free_then = [i for i, j in zip(idxs, device.map_to_user_index(idxs))
                      if j not in held]
         if free_then:
             raise ValueError(
@@ -314,10 +314,10 @@ def _refuse_unless_frozen_bulk(
         raise ValueError(
             f"cannot check {label!r} against the geometry the relaxation "
             f"started from: {len(prior)} atoms there, {len(now)} here")
-    # THE START IS IN YOUR ORDER: each atom here is compared with itself
-    # there, named through the device's own answer (`your_indices`).
+    # THE START IS IN THE USER ORDER: each atom here is compared with itself
+    # there, named through the device's own answer (`map_to_user_index`).
     moved = [(i, float(np.linalg.norm(now[i] - prior[j])))
-             for i, j in zip(idxs, device.your_indices(idxs))]
+             for i, j in zip(idxs, device.map_to_user_index(idxs))]
     moved = [(i, d) for i, d in moved if d > FROZEN_TOL_ANG]
     if moved:
         shown = "; ".join(
@@ -356,12 +356,12 @@ def extract_electrode_model(
        ``frozen_atoms`` (``engines/transport.md`` § 4: the lead atoms
        are frozen bulk by construction) -- and, when
        *held_by_relaxation* is given, held by the relaxation that left the
-       geometry: the atoms its record held, in your order
+       geometry: the atoms its record held, in the user order
        (`parse.contract.held_atoms_of`).
     2. **Actually unmoved**, when *prior_positions* is given -- the
-       geometry the relaxation started from, in your order
+       geometry the relaxation started from, in the user order
        (`model/overview.md` § 2.2a, I1), each atom of this structure
-       compared with itself there (``Structure.your_indices``).  Form B
+       compared with itself there (``Structure.map_to_user_index``).  Form B
        has none and passes on 1 alone, which is why 1 exists separately.
     3. **Evenly spaced** -- :func:`cell.bulk_z_period`, which refuses a
        block whose layers do not share one spacing.
@@ -369,7 +369,7 @@ def extract_electrode_model(
     1 before 2 because it is cheaper and its answer is the fix for both;
     1 and 2 before 3 because the spacings of a block that moved describe
     nothing.  Raises ``ValueError``; `compose` turns it into a
-    ``ComposeError`` verbatim.  A refusal names atoms in the person's order
+    ``ComposeError`` verbatim.  A refusal names atoms in the user order
     (``Structure.atoms_named``).
     """
     electrodes = {lab: (name, idxs)

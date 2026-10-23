@@ -138,7 +138,7 @@ with the whole enriched molecule — atoms, cell, the region/frozen labels, the
 - **`projects.parser.openMolecule(viewer, path, { confirmDiscard?, restore? })`** — for a
   viewer that shows a file whole (the Spectrum tab's Inspect-structure card,
   read-only; the transport report's junction, which passes `restore: true` to
-  draw it in your order, `model/overview.md` § 2.2a). It hands the path to `viewer.data.installMolecule({ path,
+  draw it in the user order, `model/overview.md` § 2.2a). It hands the path to `viewer.data.installMolecule({ path,
   restore, enforce: true })`, which asks for the whole file — a frame set with every
   frame (`molview.md` § 9.4) — and MolView installs it, the 3D viewer painting
   it with its labels and cell. If the model already has unsaved edits it can
@@ -442,6 +442,14 @@ and the `path` it reports is built from **the server's answer**, because
 `auto_rename` may have written `<stem>-2<ext>` and confirming the name we
 merely asked for would name a file that does not exist.
 MolView holds no file route; this door is where its exports become files.
+
+**A file handed to the person — `projects.download(filename, blob)`**
+*(2026-10-22)*: the one browser download of bytes a page holds — the four
+lines of DOM that make one, in this module because where files may go is its
+knowledge. `molviewFiles` hands its exports over through it, the transport
+report its export ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.12, *Export*), named as the server named the file, the spectra viewer
+its modes' CSV and the trajectory viewer its plots' CSV.
 
 **The unified save-where question — `projects.chooseSavePath(opts)`**
 *(2026-08-19, user)*: the move-to dialog composed with the name dialog, from

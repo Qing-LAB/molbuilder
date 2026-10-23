@@ -386,12 +386,14 @@ def spec_for(struct: Structure,
         # progress-log writer, the relaxation, the one XYZ reader a
         # continuing run reads its last geometry with, and the move onto
         # the GPU -- all of them, whatever this deck's settings call.
+        from ..atom_permutation import AtomIndexMap
         from ..runtime_info import to_gpu
         from ..trajectory_log.emitter import MolwatchEmitter
         from ..workingcopy_structure import StructureCodec
         from .relax_policy import relax, wall_deadline
         out += emit_bundle_imports(StructureCodec, MolwatchEmitter, relax,
-                                   wall_deadline, Structure, to_gpu)
+                                   wall_deadline, Structure, to_gpu,
+                                   AtomIndexMap)
 
         # ---- _save_structure helper (the PAIR writer), defined EARLY
         #      so the initial-geometry snapshot can be
@@ -679,7 +681,8 @@ def spec_for(struct: Structure,
             # Frozen-atom constraints (three-stage contract carrier).  When
             # Structure.frozen_atoms is non-empty, write a sibling
             # <JOB>.constraints.txt at run time and pass it to geomeTRIC via
-            # the ``constraints=`` kwarg.  Indices are 1-based per geomeTRIC.
+            # the ``constraints=`` kwarg.  Its atoms are geomeTRIC's numbers,
+            # from 1 (`engine_atom_index.geometric_numbering`).
             # See molbuilder/structure.py + pyscf/vibration_emitters.py for the
             # cross-engine carrier.
             frozen = list(getattr(struct, "frozen_atoms", []) or [])
@@ -690,10 +693,10 @@ def spec_for(struct: Structure,
                     out += [
                         '# Frozen atoms from /modify sidecar (or '
                         'Structure.frozen_atoms): hold these atom positions',
-                        '# fixed during the optimisation.  Indices are 1-based '
-                        'per geomeTRIC; molbuilder Structure',
-                        '# is 0-based so we shift below.  Without this block '
-                        'geomeTRIC moves every atom.',
+                        '# fixed during the optimisation.  The file numbers '
+                        'them as geomeTRIC does, from 1;',
+                        '# the atom indices here count from 0.  Without this '
+                        'block geomeTRIC moves every atom.',
                     ]
                 out += emit_constraints_file(frozen, names)
         return "\n".join(out) if out else None
@@ -1290,7 +1293,11 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
                f'JOB, mol, '
                f'runtime_info=_RUNTIME_INFO, '
                f'convergence_targets=_CONVERGENCE_TARGETS, '
-               f'frozen_atoms={sorted(int(i) for i in frozen_atoms)!r})')
+               f'frozen_atoms={sorted(int(i) for i in frozen_atoms)!r}, '
+               # ITS ATOMS' INDICES (`model/overview.md` § 2.2b): PySCF
+               # sorts nothing, so its run lists them as the user did.
+               f'atom_index_map=_mb_AtomIndexMap.of_engine_record('
+               f'None, mol.natm).to_dict())')
     out.append("")
     # THE END LINES the watch UI reads for its Finished / Error badge --
     # authoritative when present, not a stall heuristic -- written at exit
@@ -1331,9 +1338,14 @@ def _sidecar_for(struct: Structure) -> dict:
     # § 2).
     info = {k: v for k, v in (struct.info or {}).items()
             if k not in ("relaxation", "calculation")}
-    return StructureCodec().pair(
+    sidecar = StructureCodec().pair(
         struct.replace(engine_offset=np.zeros(3), offset_by="engine",
                        info=info)).sidecar
+    # A DECK CARRIES NO ATOM INDEX MAP OF ITS OWN (`model/overview.md`
+    # § 2.2b): its ATOM-METADATA block states its order; each pair the run
+    # writes states its own map (`StructureCodec.write_moved`).
+    from ..atom_permutation import MAP_KEY
+    return {k: v for k, v in sidecar.items() if k != MAP_KEY}
 
 
 def emit_outfile_helper() -> List[str]:
@@ -1564,8 +1576,8 @@ def emit_constraints_file(frozen, names, indent: str = "") -> List[str]:
     its path for the relaxation: one writer for both decks.  Its comment
     line is the frozen set's ONE SPELLING, which the run script reads back
     off the deck to name the held atoms in its header."""
-    from ..engine_atom_index import geometric_atom_index
-    ids = ",".join(str(geometric_atom_index(i)) for i in frozen)
+    from ..engine_atom_index import geometric_numbering
+    ids = ",".join(str(geometric_numbering(i)) for i in frozen)
     return [f"{indent}# Source: Structure.frozen_atoms = {list(frozen)!r}  "
             f"(0-based)",
             f'{indent}_FROZEN_CONSTRAINTS_PATH = _mb_outfile('

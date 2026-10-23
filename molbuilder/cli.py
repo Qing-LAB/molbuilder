@@ -33,6 +33,7 @@ import click
 from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
+from .atom_permutation import MAP_KEY
 from .structure import Structure, atom_words
 
 
@@ -434,8 +435,8 @@ def _agree_to_atom_indices(struct, indices, *, auto_yes: bool,
     structure is refused first -- unless ``check_range`` is off, for
     `--electrode`, whose later slabs may centre on atoms an earlier one adds
     and are checked against the grown structure, slab by slab.  ``restored``:
-    the file was in an engine's order and is edited in yours, so the
-    indices count in yours, not the file's (`model/overview.md` § 2.2a)."""
+    the file was in an engine's order and is edited in the user order, so the
+    indices count in the user order, not the file's (`model/overview.md` § 2.2a)."""
     from .jobset.ask import confirm
     n = struct.n_atoms
     outside = sorted({int(i) for i in indices if not 0 <= int(i) < n})
@@ -446,7 +447,9 @@ def _agree_to_atom_indices(struct, indices, *, auto_yes: bool,
     said = confirm(
         "Atom indices count from 0 here, as in code -- the UI's atom list "
         "numbers the same atoms from 1, so atom index 0 is #1 there.\n"
-        + ("  They count in your order, not the file's.\n" if restored else "")
+        + ("  They count in the user order, not the file's -- as the "
+           "Molbuilder tab numbers them; the Results tab shows this file in "
+           "its own order.\n" if restored else "")
         + f"  This call names "
         f"{struct.atoms_named(sorted({int(i) for i in indices}))}.",
         auto_yes=auto_yes, question="act on these atoms?", err=True)
@@ -468,7 +471,7 @@ def _struct_for_validate(path, *, editing: bool = False):
     says when it took one frame of several -- a line, never a refusal.
     ``editing`` is the editing command's read: a file of several frames is
     REFUSED (§ 2.3: an edit acts on one structure, and the command line has
-    no one to ask which), and the file is read IN YOUR ORDER
+    no one to ask which), and the file is read IN THE USER ORDER
     (`model/overview.md` § 2.2a, I8) -- one in an engine's order put back,
     said, one of a run whose order nothing states refused (I9), which a
     reading command opens, said.  A deck block of its run that cannot be
@@ -483,7 +486,7 @@ def _struct_for_validate(path, *, editing: bool = False):
         whole = StructureCodec().load(
             path, frames=True, said_out=said,
             opened=() if editing else (ORDER_UNSTATED,),
-            in_your_order=editing)
+            in_user_order=editing)
     except (DeckRecordUnreadable, OrderUnstated) as exc:
         raise click.ClickException(str(exc)) from exc
     for notice in said:                # what the read says (structure.md § 2.3)
@@ -952,7 +955,7 @@ def cmd_modify(input_path, output_path,
     with _resolve_input_path(input_path) as resolved:
         struct, _cell, said = _struct_for_validate(resolved, editing=True)
     n_in = struct.n_atoms
-    # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8): the
+    # AN EDITOR HOLDS ONLY THE USER ORDER (`model/overview.md` § 2.2a, I8): the
     # read opened a file in an engine's order restored, and said so.
     from .workingcopy_structure import RESTORED
     restored = any(s.where == RESTORED for s in said)
@@ -1143,6 +1146,33 @@ def _its_run(path):
         raise click.ClickException(str(exc)) from exc
 
 
+def _file_atoms(path, traj) -> Optional[dict]:
+    """THE ATOM INDEX MAP a bare reader states of a file it read
+    (`model/overview.md` § 2.2b, F3) -- a trajectory log's own header block,
+    read by the map's one reader, checked (:func:`atom_index.map_of_block`);
+    else what the one reader answers of the file (:func:`atom_index.
+    atom_index_map`: its sidecar, its run's deck); else -- a file nothing
+    of ours answers, a run whose deck states no order (I9) or no atom
+    count, the standard input -- the engine column the file's own rows are,
+    the user's not known, ``atom_index_why`` saying why (F1)."""
+    from .atom_index import AtomIndexUnknown, atom_index_map, map_of_block
+    from .atom_permutation import AtomIndexError, AtomIndexMap
+    stated = (traj.runtime_info or {}).get(MAP_KEY)
+    if stated is not None:
+        try:
+            return map_of_block(stated, Path(str(path)).name).to_dict()
+        except AtomIndexError as exc:
+            raise click.ClickException(str(exc))
+    why = "no run of ours holds this file: nothing states its atoms' user index"
+    if str(path) != "-":
+        try:
+            return atom_index_map(path).to_dict()
+        except (AtomIndexUnknown, AtomIndexError, ValueError) as exc:
+            why = str(exc)
+    n = len(traj.frames[0].structure.elements) if traj.frames else 0
+    return AtomIndexMap.of_own_structure(n, why).to_dict()
+
+
 def _say_a_file_is_not_its_run(path) -> None:
     """A BARE FILE READER reads a file, not a run (`model/parse.md` § 5.3):
     of a run of ours in its engine's order it says so, on stderr -- the
@@ -1160,7 +1190,7 @@ def _say_a_file_is_not_its_run(path) -> None:
             f"note: {Path(path).name} is {said.atom_order.said} -- this reads "
             f"the file as the engine wrote it, and the atom indices in it "
             f"count in that order; the Results tab shows the run marked so, "
-            f"and `molbuilder xv2xyz --from-run` writes it in your order",
+            f"and `molbuilder xv2xyz --from-run` writes it in the user order",
             err=True)
     elif said.order_unstated:
         click.echo(f"note: {said.order_unstated}", err=True)
@@ -1186,16 +1216,16 @@ def _refuse_a_reordered_run(xv_path: Path) -> None:
         raise click.ClickException(
             f"{xv_path.name} is {order.said}, as its run's deck states.  "
             f"Convert it with --from-run, which takes the run's labels and "
-            f"puts the atoms back in your order.")
+            f"puts the atoms back in the user order.")
 
 
 def _apply_run_metadata(struct, xv_path: Path):
     """``--from-run``: ``(struct, note, said)`` -- ``struct`` with what the run
     that wrote ``xv_path`` declared about its atoms and what it says about
-    itself, put back in your order (`RunView.in_your_order`; a pair is
-    written in your order, `model/overview.md` § 2.2a, I1), one line saying
+    itself, put back in the user order (`RunView.in_user_order`; a pair is
+    written in the user order, `model/overview.md` § 2.2a, I1), one line saying
     where it came from, and the sentence of the restore (``None`` for a run
-    in your order).
+    in the user order).
 
     THE RUN'S VIEW, THE ONE EVERY DOOR THAT BUILDS A STRUCTURE FROM A RUN
     ASKS (`runs.view_of`, `model/parse.md` § 5.3, § 5b; plan B12, D19): the
@@ -1237,7 +1267,7 @@ def _apply_run_metadata(struct, xv_path: Path):
             f"atoms, and {xv_path.name} holds {struct.n_atoms} -- they are "
             f"not one run's.")
     try:
-        struct, restored = view.in_your_order(struct, xv_path.name)
+        struct, restored = view.in_user_order(struct, xv_path.name)
     except OrderUnstated as exc:
         raise click.ClickException(f"--from-run: {exc}") from exc
     told = sorted(view.info or {})
@@ -1768,6 +1798,71 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
         )
 
 
+def _indices(text: str):
+    """A comma list of atom indices, as typed: whole numbers from 0."""
+    try:
+        return [int(t) for t in text.split(",") if t.strip()]
+    except ValueError:
+        raise click.BadParameter(f"{text!r}: atom indices, from 0, "
+                                 f"comma-separated (0,5)")
+
+
+@cli.command("atom-index",
+             short_help="which index a file's atoms are listed by, and both "
+                        "indices of each")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--to-engine", "to_engine", default=None, metavar="I,J",
+              help="user indices (from 0) to translate to engine indices.")
+@click.option("--to-user", "to_user", default=None, metavar="I,J",
+              help="engine indices (from 0) to translate to user indices.")
+def cmd_atom_index(path, to_engine, to_user):
+    """The atom index map of a file or a run folder (model/overview.md
+    § 2.2b): which index its atoms are listed by -- the user's (the
+    structure the user built or cited) or the engine's (the order the run
+    gave the engine) -- and both indices of each atom, every index counted
+    from 0; where it came from said first -- the file itself, its sidecar,
+    or its run's deck.  With --to-engine or --to-user, those indices
+    translated.  Nothing is written.
+
+    Examples::
+
+        molbuilder atom-index projects/P/transport/T/05_transmission/run-0/v0.2
+        molbuilder atom-index T.transport.nc --to-engine 0,5
+    """
+    from .atom_index import AtomIndexUnknown, atom_index_map
+    from .atom_permutation import AtomIndexError
+    try:
+        atoms = atom_index_map(path)
+    except (AtomIndexUnknown, AtomIndexError, OSError, ValueError) as exc:
+        raise click.ClickException(str(exc))
+    listed = {"user_index": "user index", "engine_index": "engine index",
+              "not_stated": "an order nothing states, read as user index"}
+    click.echo(f"{path}: atoms listed by {listed[atoms.listed_by]} "
+               f"-- stated by {atoms.stated_by or path}")
+    click.echo("every index below counts from 0; a view numbers an atom "
+               "its index + 1")
+    if atoms.said:
+        click.echo(f"note: {atoms.said}")
+    try:
+        if to_engine is not None:
+            got = atoms.map_to_engine_index(_indices(to_engine))
+            click.echo(f"user index {to_engine} -> engine index "
+                       f"{','.join(str(i) for i in got)}")
+            return
+        if to_user is not None:
+            got = atoms.map_to_user_index(_indices(to_user))
+            click.echo(f"engine index {to_user} -> user index "
+                       f"{','.join(str(i) for i in got)}")
+            return
+    except AtomIndexError as exc:
+        raise click.ClickException(str(exc))
+    click.echo(f"{'row':>5}  {'user index':>10}  {'engine index':>12}")
+    show = lambda v: "-" if v is None else str(v)
+    for k, row in enumerate(atoms.table()):
+        click.echo(f"{k:>5}  {show(row['user_index']):>10}  "
+                   f"{show(row['engine_index']):>12}")
+
+
 @cli.command("runtime-info",
              short_help="dump runtime_info as JSON sidecar from a SIESTA / PySCF output")
 @click.argument("input_path", metavar="input")
@@ -1822,6 +1917,11 @@ def cmd_runtime_info(input_path, out_path, pretty):
     if "frozen_atoms" in runtime_info and isinstance(
             runtime_info["frozen_atoms"], (set, frozenset)):
         runtime_info["frozen_atoms"] = sorted(runtime_info["frozen_atoms"])
+    # WHICH INDEX ITS ATOMS ARE LISTED BY -- the frozen atoms among them --
+    # stated in the file this writes (`model/overview.md` § 2.2b).
+    atoms = _file_atoms(input_path, traj)
+    if atoms is not None:
+        runtime_info[MAP_KEY] = atoms
 
     payload = json.dumps(runtime_info, indent=2 if pretty else None,
                          sort_keys=True)
@@ -3333,11 +3433,12 @@ def cmd_checkpoint_config(path):
     the engines' scratch in their shipped warm-files.toml -- never in the
     folder, so two folders cannot behave differently for no recorded reason.
     """
+    from molbuilder.units import size_words
     repo = _repo_or_exit(path)
     cls = repo.classification()
     limit = int(cls["size_limit_bytes"])
     click.echo(f"calculation   {repo.calculation()}")
-    click.echo(f"size limit    {limit} bytes ({limit / (1024 * 1024):.1f} MB)")
+    click.echo(f"size limit    {limit} bytes ({size_words(limit)})")
     click.echo("              over it -> the archive; under it -> git")
     always = cls["always_large"]
     if always:
@@ -3407,6 +3508,10 @@ def cmd_watch_parse(input_path, frames_only, pretty):
     _say_a_file_is_not_its_run(input_path)
 
     payload = trajectory_to_legacy_dict(traj)
+    # WHICH INDEX ITS ATOMS ARE LISTED BY (`model/overview.md` § 2.2b).
+    atoms = _file_atoms(input_path, traj)
+    if atoms is not None:
+        payload[MAP_KEY] = atoms
     if frames_only:
         # Drop the heavy per-atom arrays; keep the per-frame summary
         # (iteration index, energy, max_force, and both clocks).  Useful for

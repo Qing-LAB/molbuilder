@@ -62,22 +62,59 @@ def energies_of(folder, label: str) -> List[float]:
     return list(energies(next(iter(files.values()))))
 
 
-def readings(folder, label: str) -> List[object]:
-    """What is kept of each data file's reading, the point's own and those
-    in its ``shared/``, recursively (`tbtrans_nc.kept_state`;
-    `engines/transport.md` § 2a.16) -- every reading the point's DOS by
-    region asks."""
-    from ..parse.engines.tbtrans_nc import data_files, kept_state
+def point_data_files(folder, label: str) -> List[Path]:
+    """Every data file a point's DOS by region asks: the point's own and
+    those in its ``shared/``, recursively (`engines/transport.md`
+    § 2a.16)."""
+    from ..parse.engines.tbtrans_nc import data_files
     from .energies import SHARED_DIR
     folder = Path(folder)
-    out = [kept_state(p) for p in data_files(folder, label).values()]
+    out = list(data_files(folder, label).values())
     if (folder / SHARED_DIR).is_dir():
-        out += readings(folder / SHARED_DIR, label)
+        out += point_data_files(folder / SHARED_DIR, label)
     return out
+
+
+def readings(folder, label: str) -> List[object]:
+    """What is kept of each of the point's data files' readings
+    (:func:`point_data_files`, `tbtrans_nc.kept_state`); a run of ours holds
+    each, so a kept one stating no user index is out of date
+    (`model/overview.md` § 2.2b)."""
+    from ..parse.engines.tbtrans_nc import kept_state
+    return [kept_state(p, need_user=True)
+            for p in point_data_files(folder, label)]
 
 
 def _sum(a: List[float], b: List[float]) -> List[float]:
     return [x + y for x, y in zip(a, b)]
+
+
+def point_atoms(folder):
+    """THE ATOM INDEX MAP of a transmission point's files -- its run's deck's
+    (`runs.atom_index_map_of`, `model/overview.md` § 2.2b), and its
+    ``shared/`` files' too: the finished point it shares with ran the same
+    structure (`engines/transport.md` § 2a.16)."""
+    from ..runs import atom_index_map_of, run_of
+    run = run_of(folder)
+    if run is None:
+        raise TbtError(f"{Path(folder).name} is no run of ours: nothing "
+                       f"states its atoms' indices")
+    return atom_index_map_of(run)
+
+
+def _checked(reading, expected, name: str) -> None:
+    """THE DIGEST AGAINST ITS CALCULATION'S RECORD (`model/overview.md`
+    § 2.2b, F7): the map a reading states must be ``expected`` -- the
+    composed junction's, every junction rung's deck being written from it
+    -- or the regions and a selection would name other atoms; refused by
+    name."""
+    got = reading.atom_index_map
+    if got is None or (got.user, got.engine) != (expected.user,
+                                                 expected.engine):
+        raise TbtError(
+            f"{name}: its atoms' index map is not the composed junction's "
+            f"-- a reading of another structure, or of none of ours; read "
+            f"it again (model/overview.md 2.2b)")
 
 
 def _by_label(reading, regions: Dict[str, Sequence[int]]
@@ -111,14 +148,16 @@ NO_CURVE = ("its files hold no DOS over its whole grid -- TBtrans wrote none "
 
 
 def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
-              spin: str) -> Dict:
+              spin: str, expected) -> Dict:
     """THE DOS BLOCK of a point's folder (`web/results.md` § 2.5):
     ``{energy_ev, total, by_label, lead_spectral, lead_bulk, eigenchannels}``
     -- the averages TBtrans wrote, on the data file's energies; ``by_label``
     each region's, from the data file's kept reading, present only when it
     is kept.  A polarized point's two channels summed, and ``by_spin`` each
     channel's own ``total`` and ``eigenchannels`` beside.  A quantity
-    TBtrans did not write is absent, never zero."""
+    TBtrans did not write is absent, never zero.  ``regions`` count by
+    engine index; ``expected`` is the composed junction's atom index map,
+    which each kept reading's must be (F7)."""
     from ..parse.engines.tbtrans_nc import data_files, kept, point_averages
     from .transiesta import LEAD_NAMES, LEAD_PAIR
     try:
@@ -141,8 +180,9 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
                          ("eigenchannels", "eigenchannels")):
             if src in a:
                 d[dst] = a[src]
-        reading = kept(data[c]) if c in data else None
-        if reading is not None and reading.dos is not None:
+        reading = kept(data[c], need_user=True) if c in data else None
+        if reading is not None and reading.dos is not None and regions:
+            _checked(reading, expected, data[c].name)
             d["by_label"] = _by_label(reading, regions)
         per[c] = d
     if len(channels) == 1:
@@ -172,14 +212,16 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
 
 
 def selection_pdos(folder, label: str, orb_indx: Optional[Path],
-                   atoms: Sequence[int], orbitals: str = "all") -> Dict:
+                   atoms: Sequence[int], orbitals: str = "all", *,
+                   expected) -> Dict:
     """The PDOS of ``atoms`` (0-based, the device run's order) in a point's
     folder, narrowed to one orbital type (:data:`ORBITAL_TYPES`, or
     ``"all"``): ``{energy_ev, pdos, atoms, outside_device, orbitals}``, from
     each data file's kept reading -- a polarized point's two channels
     summed.  Atoms outside the device region (a buffer) have no DOS and are
     named, not counted.  :class:`TbtError` names what is missing: a reading
-    not kept (:data:`NOT_READ`), a device DOS not written."""
+    not kept (:data:`NOT_READ`), a device DOS not written, a reading whose
+    atom index map is not ``expected``, the composed junction's (F7)."""
     import numpy as np
     from ..parse.engines.tbtrans_nc import data_files, kept
     asked = sorted({int(a) for a in atoms})
@@ -196,9 +238,10 @@ def selection_pdos(folder, label: str, orb_indx: Optional[Path],
     outside: List[int] = []
     energy: List[float] = []
     for path in files.values():
-        reading = kept(path)
+        reading = kept(path, need_user=True)
         if reading is None:
             raise TbtError(f"{path.name}: {NOT_READ}")
+        _checked(reading, expected, path.name)
         if reading.dos is None:
             raise TbtError(f"{path.name} holds no device DOS -- the run was "
                            f"not asked for it (TBT.DOS.Gf)")
@@ -292,11 +335,14 @@ def read_points(calc, *, fresh: bool = False, take_over: bool = False,
                                             TBTransNcFileParser,
                                             claim_words)
     from ..report_fields import span_words
-    from ..units import gib_words
+    from ..units import size_words
     base = Path(calc.base)
     tell = say or (lambda _w: None)
     out: List[Dict] = []
     for entry in point_readings(calc):
+        # THE POINT'S ATOM INDEX MAP, its run's deck's -- each digest states
+        # it (`model/overview.md` § 2.2b), its `shared/` ones too.
+        atoms = None
         for k in entry["readings"]:
             rel = str(k.path.relative_to(base))
             if k.state == "kept" and not fresh:
@@ -309,20 +355,26 @@ def read_points(calc, *, fresh: bool = False, take_over: bool = False,
                 out.append({"file": rel, "state": "being read",
                             "said": said})
                 continue
-            tell(f"reading {rel} ({gib_words(k.size)}) -- its DOS per "
+            tell(f"reading {rel} ({size_words(k.size)}) -- its DOS per "
                  f"orbital, kept beside it")
             began = time.time()
             try:
+                atoms = atoms or point_atoms(entry["folder"])
                 got = TBTransNcFileParser.parse(
                     k.path, fresh=fresh,
-                    take_over=take_over and alive is None,
+                    # THE PERSON'S WORD covers the claim they were shown
+                    # -- one on another host when the list was taken --
+                    # never one made meanwhile (`model/parse.md` § 5e).
+                    take_over=(take_over and k.state == "being read"
+                               and alive is None),
                     progress=(None if progress is None else
-                              (lambda i, n, p=k.path: progress(p, i, n))))
+                              (lambda i, n, p=k.path: progress(p, i, n))),
+                    atoms=atoms)
             except ReadingClaimed as exc:
                 said = str(exc)
                 out.append({"file": rel, "state": "being read",
                             "said": said})
-            except (OSError, RuntimeError, ValueError) as exc:
+            except (OSError, RuntimeError, ValueError, TbtError) as exc:
                 said = f"{rel} does not read: {exc}"
                 out.append({"file": rel, "state": "failed", "said": said})
             else:

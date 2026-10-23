@@ -278,7 +278,7 @@ def order_record_of(block: Optional[Dict[str, Any]]):
     """THE DECK'S ORDER RECORD (`model/overview.md` § 2.2a, I5): an
     ATOM-METADATA payload's ``atom_order``, read by the order record's one
     reader (``atom_permutation.Permutation.from_dict``) over the block's own
-    atom count -- ``None`` for a deck in your order, or one that carries no
+    atom count -- ``None`` for a deck in the user order, or one that carries no
     block.  Asked by the run door (``runs.declared``) and by the finish
     beside a job, which reads its own deck's record (`model/overview.md`
     § 2.2a, I5)."""

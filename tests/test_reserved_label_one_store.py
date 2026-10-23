@@ -368,13 +368,13 @@ def test_the_metadata_dict_has_exactly_these_members():
     # STATED, not just compared to itself.  The assertion above checks the
     # writer against the constant; this one pins what the constant IS, so
     # adding a field to both at once still forces a conscious edit here.
-    # `model/structure-molstruct.md`: "(`regions`, `cell`, `engine_offset`,
-    # `offset_by`, `axis_kind`, `vacuum`, `annotations`, `customized`,
-    # `atom_order`)".
+    # `model/structure.md` § 2.2: "`regions`, `cell`, `engine_offset`,
+    # `offset_by`, `axis_kind`, `vacuum`, `annotations`, `customized`
+    # (§ 2.2d), `atom_order` and `order_unstated`".
     assert set(METADATA_FIELDS) == {"regions", "cell", "engine_offset",
                                     "offset_by", "axis_kind", "vacuum",
                                     "annotations", "customized",
-                                    "atom_order"}
+                                    "atom_order", "order_unstated"}
     assert "frozen_atoms" not in METADATA_FIELDS, (
         "the reserved label is a member of `regions`, not a field beside it"
     )
@@ -420,14 +420,15 @@ def test_the_sidecar_payload_has_exactly_these_members(tmp_path):
     """The shape on disk, pinned by membership: the structure's fields plus the
     envelope the sidecar layer owns, and nothing else. A stray key is refused on
     read rather than ignored -- a key nobody reads is metadata the writer thinks
-    it saved."""
-    from molbuilder.structure import METADATA_FIELDS
+    it saved.  What a file states of the metadata is every field but the
+    view's (`model/structure.md` § 2.2, `FILE_FIELDS`)."""
+    from molbuilder.structure import FILE_FIELDS
 
     target = tmp_path / "pinned.xyz"
     StructureCodec().write(_labelled(), target)
     saved = json.loads(molstruct.sidecar_path_for(target).read_text("utf-8"))
 
-    assert set(saved) == set(METADATA_FIELDS) | set(molstruct.ENVELOPE_KEYS), (
+    assert set(saved) == set(FILE_FIELDS) | set(molstruct.ENVELOPE_KEYS), (
         f"the sidecar's members drifted: {sorted(saved)}"
     )
     assert saved["regions"] == {"L-electrode": [0], FROZEN_LABEL: [1, 2]}

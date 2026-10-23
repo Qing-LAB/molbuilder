@@ -52,9 +52,11 @@ import numpy as np
 # (`runwrap.VIBRATION_COMPANIONS`).
 try:                                        # inside molbuilder
     from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
+    from ..atom_permutation import MAP_KEY
     from ..structure import Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
     from derived import DERIVED_MODE_KEYS, disagreements, with_derived
+    from atom_permutation import MAP_KEY  # type: ignore[no-redef]
     from structure import Structure as _Structure
 
 
@@ -78,7 +80,12 @@ except ImportError:                         # beside a job, in a bundle
 #          `spectra.derived` and checked on read (engines/vibration.md
 #          § 6.6).  A v4-v6 file reads as before: no masses, its derived
 #          values computed on read.
-SCHEMA_VERSION = 9   # 9: the result states its STRUCTURE whole
+SCHEMA_VERSION = 10  # 10: the result states its ATOM INDEX MAP
+#                    (model/overview.md § 2.2b): listed by user index,
+#                    each atom's engine index its stages' deck order; a
+#                    v4-v9 file reads, its map made on read
+#                    (`atom_index_map_stated`).  9: the result states its
+#                    STRUCTURE whole
 #                    (engines/vibration.md § 6.10): `Structure.to_dict()` of
 #                    the equilibrium structure -- the geometry, the box, the
 #                    labels, the held atoms; `structure_hash`,
@@ -90,7 +97,7 @@ SCHEMA_VERSION = 9   # 9: the result states its STRUCTURE whole
 #                    v4-v7 file reads as before, its range read under v8's
 #                    name (`from_dict`).
 #: Every version the reader serves as the v9 shape.
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9})
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -193,6 +200,7 @@ _RESULTS_KEYS = frozenset({
     "hessian_scope", "n_atoms_in_hessian", "hessian_density_fit", "ir_route",
     "ir_fd_step_ang", "raman_route", "raman_fd_step_ang", "phase_raman",
     "phase_ir", "phase_es", "engine_metadata", "runtime_info",
+    MAP_KEY,
 })
 
 
@@ -716,7 +724,7 @@ class SpectraResults:
     # XYZ in the input form.
     equilibrium_elements:      Optional[List[str]]  = None
     equilibrium_positions_ang: Optional[np.ndarray] = None
-    #: v7: every atom's mass in amu, in the input order -- the masses the
+    #: v7: every atom's mass in amu, in the user order -- the masses the
     #: analysis weighted by, as the deck stated them (`engines/vibration.md`
     #: § 6.2, I3).  Travels with the geometry: from v7 a file stating the
     #: geometry states them, and a file before v7 states none.
@@ -748,6 +756,13 @@ class SpectraResults:
     #: coordinates, the held list; no box, no other label: stated absent,
     #: never invented.  ``None`` only while a PySCF run has no geometry yet.
     structure:                 Optional[Dict[str, Any]] = None
+
+    #: v10: THE ATOM INDEX MAP (model/overview.md § 2.2b) -- the result is
+    #: listed by user index, and each atom's engine index is its stages'
+    #: deck order (held atoms first for SIESTA's; PySCF's the user order).
+    #: ``None`` on a file before v10, whose map is made on read
+    #: (:meth:`atom_index_map_stated`).
+    atom_index_map:            Optional[Dict[str, Any]] = None
 
     __eq__ = _no_equality
 
@@ -982,6 +997,11 @@ class SpectraResults:
                         f"size {w}; expected {es_window} to match earlier modes"
                     )
 
+        # THE ATOM INDEX MAP, checked by its one reader over these atoms
+        # (`model/overview.md` § 2.2b) -- after the atom count is.
+        if self.atom_index_map is not None:
+            self.atom_index_map_stated()
+
     def _modes_with_derived(self) -> List[Dict[str, Any]]:
         """Mode dicts, each with its DERIVED values stated beside the rest --
         the activity classes (a whole-run decision: a mode is active when
@@ -1007,6 +1027,23 @@ class SpectraResults:
                                             dtype=float),
                        regions=({"frozen_atoms": held} if held else {}))
         return s.to_dict()
+
+    def atom_index_map_stated(self):
+        """THE ATOM INDEX MAP the result states (v10), or -- a file before
+        v10 -- the one its structure says: listed by user index (I1), its
+        engine index its stages' deck's, which the file alone does not
+        state (`model/overview.md` § 2.2b, F3)."""
+        try:
+            from ..atom_permutation import AtomIndexMap
+        except ImportError:                 # beside a job, in a bundle
+            from atom_permutation import AtomIndexMap  # type: ignore
+        n = int(self.n_atoms_total)
+        if self.atom_index_map is not None:
+            return AtomIndexMap.from_dict(self.atom_index_map, n_atoms=n,
+                                          source="the result's atom_index_map")
+        return AtomIndexMap.of_user_structure(
+            n, said=("written before 2.32.0: its engine index is its "
+                     "stages' deck's"))
 
     def to_dict(self) -> Dict[str, Any]:
         structure = self.structure_stated()
@@ -1073,6 +1110,9 @@ class SpectraResults:
             "phase_es":             str(self.phase_es),
             "engine_metadata":      dict(self.engine_metadata),
             "runtime_info":         dict(self.runtime_info),
+            # THE ATOM INDEX MAP, always stated (§ 2.2b, F1): the result's
+            # own, or -- one written before v10 -- the user column alone.
+            MAP_KEY:                self.atom_index_map_stated().to_dict(),
         }
 
     @classmethod
@@ -1198,6 +1238,8 @@ class SpectraResults:
             phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
             engine_metadata      = meta,
             runtime_info         = dict(d.get("runtime_info", {})),
+            atom_index_map       = (dict(d[MAP_KEY])
+                                    if MAP_KEY in d else None),
         )
 
 

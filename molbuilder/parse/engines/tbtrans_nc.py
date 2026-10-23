@@ -49,7 +49,7 @@ import os
 import socket
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
@@ -60,7 +60,7 @@ from . import siesta_grammar as _G
 from .tbtrans import PRINTED_HALF_DECIMAL_EV, averaged_files, read_averaged
 
 #: The digest's schema, stated in it.
-DIGEST_SCHEMA = "molbuilder/tbt-digest@1"
+DIGEST_SCHEMA = "molbuilder/tbt-digest@2"
 #: The claims THIS PROCESS holds -- the readings its threads run, each by
 #: its claim's path and when it began: a claim naming this process and
 #: absent here is no reading of ours (a copy, a restored state).
@@ -97,7 +97,7 @@ class Kept:
         -- its size, and what is kept or who is reading; ``file`` the data
         file's path from ``base`` (a calculation's folder), its name
         without one."""
-        from molbuilder.units import gib_words
+        from molbuilder.units import size_words
         said = {"kept": "kept",
                 "missing": "not read yet",
                 "out of date": "out of date -- not a reading of its data "
@@ -109,7 +109,7 @@ class Kept:
         return {"file": (str(self.path.relative_to(base)) if base is not None
                          else self.path.name),
                 "state": self.state, "size": self.size,
-                "size_words": gib_words(self.size), "claim": self.claim,
+                "size_words": size_words(self.size), "claim": self.claim,
                 "said": said}
 
 
@@ -285,9 +285,11 @@ def _claimed(path, *, take_over: bool) -> Iterator[Callable[[int, int],
 
 # ---- the state, and the reading ------------------------------------------- #
 
-def kept_state(path) -> Kept:
+def kept_state(path, *, need_user: bool = False) -> Kept:
     """What is kept of data file ``path``'s reading, without reading it or
-    the digest's tables (`model/parse.md` § 5e)."""
+    the digest's tables (`model/parse.md` § 5e) -- ``need_user``: a run of
+    ours holds the file, so a digest stating no user index is out of date
+    (`model/overview.md` § 2.2b)."""
     path = Path(path)
     size = path.stat().st_size
     claim = _read_claim(_claim_path(path))
@@ -295,14 +297,15 @@ def kept_state(path) -> Kept:
         return Kept(path, "being read", size, claim)
     if not digest_of(path).is_file():
         return Kept(path, "missing", size)
-    return Kept(path, "kept" if _digest(path, part=()) is not None
-                else "out of date", size)
+    return Kept(path, "kept" if _digest(path, part=(), need_user=need_user)
+                is not None else "out of date", size)
 
 
-def kept(path) -> Optional[TransmissionResult]:
+def kept(path, *, need_user: bool = False) -> Optional[TransmissionResult]:
     """Data file ``path``'s kept reading when it is of the file as it is --
-    never a read of the data file; ``None`` otherwise."""
-    return _from_digest(Path(path))
+    never a read of the data file; ``None`` otherwise (``need_user`` as
+    :func:`kept_state`)."""
+    return _from_digest(Path(path), need_user=need_user)
 
 
 #: What a kept reading is read back from: the digest's variables -- those
@@ -312,36 +315,42 @@ _HELD = ("energy", "firsto")
 _READING = _HELD + ("DOS", "column_orbital", "column_atom")
 
 
-def _digest(path: Path, part: Tuple[str, ...]
+def _digest(path: Path, part: Tuple[str, ...], *, need_user: bool = False
             ) -> Optional[Dict[str, Any]]:
     """The digest beside data file ``path`` when it is a reading of the file
     as it is -- its schema and the version it states -- with the variables
-    ``part`` names that it holds; ``None`` otherwise: none there, another
-    version's, or one that does not read (read again, and written anew)."""
-    import netCDF4
+    ``part`` names that it holds and its atom index map; ``None`` otherwise:
+    none there, another version's, one stating no user index where
+    ``need_user``, or one that does not read (read again, and written
+    anew)."""
     import numpy as np
-    from molbuilder.ncdata import NC_LOCK
+    from molbuilder.atom_permutation import FIELD_USER
+    from molbuilder.ncdata import read_atom_index_map, reading
     digest = digest_of(path)
     if not digest.is_file():
         return None
     version = _version(path)
     try:
-        with NC_LOCK, netCDF4.Dataset(str(digest)) as ds:
+        with reading(digest) as ds:
             if (getattr(ds, "schema", "") != DIGEST_SCHEMA
                     or (int(ds.data_file_size), int(ds.data_file_mtime_ns))
                     != version
-                    or not all(v in ds.variables for v in _HELD)):
+                    or not all(v in ds.variables for v in _HELD)
+                    or (need_user and FIELD_USER not in ds.variables)):
                 return None
             ds.set_auto_mask(False)
             return {"channel": str(ds.channel), "version": version,
+                    "atom_index_map": read_atom_index_map(
+                        ds, source=digest.name),
                     **{v: np.asarray(ds[v][...]) for v in part
                        if v in ds.variables}}
     except (OSError, RuntimeError, KeyError, AttributeError, ValueError):
         return None
 
 
-def _from_digest(path: Path) -> Optional[TransmissionResult]:
-    got = _digest(path, part=_READING)
+def _from_digest(path: Path, *, need_user: bool = False
+                 ) -> Optional[TransmissionResult]:
+    got = _digest(path, part=_READING, need_user=need_user)
     if got is None:
         return None
     return TransmissionResult(
@@ -352,7 +361,8 @@ def _from_digest(path: Path) -> Optional[TransmissionResult]:
         orbital=tuple(int(o) for o in got.get("column_orbital", ())),
         atom=tuple(int(a) for a in got.get("column_atom", ())),
         firsto=tuple(int(o) for o in got["firsto"]),
-        version=got["version"], kept=True)
+        version=got["version"], kept=True,
+        atom_index_map=got["atom_index_map"])
 
 
 def _read(path: Path, progress: Callable[[int, int], None]
@@ -361,52 +371,53 @@ def _read(path: Path, progress: Callable[[int, int], None]
     averaged over the k-points per device orbital, one k-point at a time --
     and, for the digest to describe itself (:func:`_write_digest`), what
     else the file states and TBtrans's k-averaged text files beside it."""
-    import netCDF4
     import numpy as np
-    import sisl
-    from molbuilder.ncdata import NC_LOCK
+    from molbuilder.ncdata import reading
     version = _version(path)
-    with NC_LOCK:
-        tbt = sisl.get_sile(str(path))
-    try:
-        with NC_LOCK:
-            raw = np.asarray(tbt.E, dtype=float)
-            with netCDF4.Dataset(str(path)) as ds:
-                has_dos = "DOS" in ds.variables
-                stated = {k: str(ds.getncattr(k)) for k in ds.ncattrs()}
-            geometry = tbt.geometry
-            wk = [float(w) for w in tbt.wk]
-            o_dev = np.asarray(tbt.o_dev)
-            facts = {"device": [int(a) for a in tbt.a_dev],
-                     "kpt": np.asarray(tbt.kpt), "wkpt": wk,
-                     "electrodes": [str(e) for e in tbt.elecs]}
-            facts["mu_ev"] = [float(tbt.chemical_potential(e))
-                              for e in facts["electrodes"]]
-            facts["kT_ev"] = [float(tbt.kT(e)) for e in facts["electrodes"]]
-            facts["eta_ev"] = float(tbt.eta())
-        order = np.argsort(raw, kind="stable")
-        # TBTRANS'S OWN AVERAGES BESIDE IT, on its energies -- before the
-        # loop: files that are not one run's are refused before minutes of
-        # reading, not after.
-        elecs = facts["electrodes"]
-        averages = (point_averages(
-            path.parent, _label_of(path), pair="-".join(elecs[:2]),
-            leads=tuple(elecs)).get(channel_of(path), {})
-            if len(elecs) >= 2 else {})
-        dos = None
-        if has_dos:
-            acc = np.zeros((len(raw), len(o_dev)))
-            progress(0, len(wk))
-            for ik, w in enumerate(wk):
-                # ONE K-POINT A LOCK: the page's other requests between.
-                with NC_LOCK:
-                    acc += np.asarray(tbt.DOS(kavg=ik, sum=False),
-                                      dtype=float) * w
-                progress(ik + 1, len(wk))
-            dos = acc[order]
-    finally:
-        with NC_LOCK:
-            tbt.close()
+    # WHAT THE FILE STATES OF ITSELF -- one access, the plain reader's.
+    with reading(path) as ds:
+        has_dos = "DOS" in ds.variables
+        stated = {k: str(ds.getncattr(k)) for k in ds.ncattrs()}
+    # ITS GEOMETRY AND ELECTRODES -- one access, sisl's.
+    with reading(path, sile=True) as tbt:
+        raw = np.asarray(tbt.E, dtype=float)
+        geometry = tbt.geometry
+        wk = [float(w) for w in tbt.wk]
+        o_dev = np.asarray(tbt.o_dev)
+        facts = {"device": [int(a) for a in tbt.a_dev],
+                 "kpt": np.asarray(tbt.kpt), "wkpt": wk,
+                 "electrodes": [str(e) for e in tbt.elecs]}
+        facts["mu_ev"] = [float(tbt.chemical_potential(e))
+                          for e in facts["electrodes"]]
+        facts["kT_ev"] = [float(tbt.kT(e)) for e in facts["electrodes"]]
+        facts["eta_ev"] = float(tbt.eta())
+    order = np.argsort(raw, kind="stable")
+    # TBTRANS'S OWN AVERAGES BESIDE IT, on its energies -- before the loop:
+    # files that are not one run's are refused before minutes of reading,
+    # not after.
+    elecs = facts["electrodes"]
+    averages = (point_averages(
+        path.parent, _label_of(path), pair="-".join(elecs[:2]),
+        leads=tuple(elecs)).get(channel_of(path), {})
+        if len(elecs) >= 2 else {})
+    dos = None
+    if has_dos:
+        acc = np.zeros((len(raw), len(o_dev)))
+        progress(0, len(wk))
+        for ik, w in enumerate(wk):
+            # ONE K-POINT AN ACCESS (`ncdata.reading`): the page's other
+            # requests between, and no handle held across them -- the
+            # file's version the one the reading began with, or the
+            # reading is refused rather than mixed.
+            if _version(path) != version:
+                raise ValueError(f"{path.name} changed during its reading "
+                                 f"(at k-point {ik + 1} of {len(wk)}): "
+                                 f"read it again")
+            with reading(path, sile=True) as tbt:
+                acc += np.asarray(tbt.DOS(kavg=ik, sum=False),
+                                  dtype=float) * w
+            progress(ik + 1, len(wk))
+        dos = acc[order]
     result = TransmissionResult(
         **ParseResult.envelope(TBTransNcFileParser.name, path),
         channel=channel_of(path),
@@ -431,7 +442,8 @@ def _elements_of(path: Path, geometry) -> Optional[List[str]]:
     import numpy as np
     import sisl
     from molbuilder.ncdata import NC_LOCK
-    hsx = path.with_name(_label_of(path) + _G.TS_HSX)
+    from molbuilder.runfiles import compose
+    hsx = path.with_name(compose(_label_of(path), _G.TS_HSX))
     if not hsx.is_file():
         return None
     try:
@@ -447,20 +459,25 @@ def _elements_of(path: Path, geometry) -> Optional[List[str]]:
 
 
 def _digest_variables(path: Path, result: TransmissionResult,
-                      meta: Dict[str, Any]):
+                      meta: Dict[str, Any], atoms):
     """THE DIGEST'S VARIABLES, each stating itself (`ncdata.Var`): the
     reading, what the data file states of its geometry and electrodes, and
     TBtrans's own k-averages from their text files -- ``(dims, variables,
-    values)``."""
+    values)``; the atom axis as ``atoms``, its atom index map
+    (`model/overview.md` § 2.2b)."""
     import numpy as np
     from molbuilder.ncdata import Var
+    from molbuilder.runfiles import compose
     data = path.name
     av = meta["averages"]
     files = av.get("files", {})
-    hsx = _label_of(path) + _G.TS_HSX
+    hsx = compose(_label_of(path), _G.TS_HSX)
     n_atoms = len(result.firsto) - 1
+    if atoms.n_atoms != n_atoms:
+        raise ValueError(f"{data}: its geometry holds {n_atoms} atoms; the "
+                         f"map of its run states {atoms.n_atoms}")
     dims = {"energy": len(result.energy_ev), "column": len(result.orbital),
-            "atom": n_atoms, "atom_bound": len(result.firsto), "axis": 3,
+            "atom": atoms, "atom_bound": len(result.firsto), "axis": 3,
             "cell_vector": 3, "kpoint": len(meta["wkpt"]),
             "electrode": len(meta["electrodes"]),
             "device_atom": len(meta["device"])}
@@ -474,8 +491,8 @@ def _digest_variables(path: Path, result: TransmissionResult,
              dtype="i4", auxiliary=True),
          np.asarray(result.orbital, dtype="i4")),
         (Var("column_atom", ("column",), "coordinate", "",
-             "each column's atom", "0-based in the geometry",
-             dtype="i4", auxiliary=True),
+             "each column's atom", "its engine index, 0-based in the "
+             "geometry", dtype="i4", auxiliary=True, atom_index=True),
          np.asarray(result.atom, dtype="i4")),
         (Var("firsto", ("atom_bound",), "raw", "",
              "the geometry's first orbital of each atom",
@@ -489,8 +506,9 @@ def _digest_variables(path: Path, result: TransmissionResult,
              "the cell's three vectors", "one a row", source=data),
          np.asarray(meta["cell"], dtype=float)),
         (Var("device_atom", ("device_atom",), "coordinate", "",
-             "the atoms of the device region", "0-based in the geometry",
-             source=data, dtype="i4"),
+             "the atoms of the device region", "their engine indices, "
+             "0-based in the geometry", source=data, dtype="i4",
+             atom_index=True),
          np.asarray(meta["device"], dtype="i4")),
         (Var("kpt", ("kpoint", "axis"), "raw", "reduced",
              "the k-points averaged over", "in the cell's reciprocal "
@@ -557,15 +575,16 @@ def _digest_variables(path: Path, result: TransmissionResult,
 
 
 def _write_digest(path: Path, result: TransmissionResult,
-                  meta: Dict[str, Any]) -> None:
+                  meta: Dict[str, Any], atoms) -> None:
     """The reading kept beside the data file -- self-describing, so a
     person's own script may read it alone (`model/parse.md` § 5e): every
-    variable stating itself, through the variable record's one writing loop
-    (`ncdata`), handed to the one writer whole (`persist.write_bytes`)."""
+    variable stating itself, its atoms' index map among them, through the
+    variable record's one writing loop (`ncdata`), handed to the one writer
+    whole (`persist.write_bytes`)."""
     from molbuilder import __version__
     from molbuilder.ncdata import NC_LOCK, as_bytes, in_memory, write_group
     from molbuilder.persist import write_bytes
-    dims, variables, values = _digest_variables(path, result, meta)
+    dims, variables, values = _digest_variables(path, result, meta, atoms)
     attrs = {
         "title": ("a TBtrans data file, read: the device's DOS per orbital "
                   "averaged over its k-points, with what the file states of "
@@ -588,9 +607,6 @@ def _write_digest(path: Path, result: TransmissionResult,
                           "own; a molbuilder point that shares energies "
                           "with a finished one holds the others in its "
                           "shared/ folder, beside their own digest"),
-        "atom_order": ("TBtrans's geometry -- TranSIESTA's order, the "
-                       "device run's; a molbuilder calculation's junction "
-                       "records the way back to yours"),
         "orbital_types": ("not stated by the data file: the device run's "
                           "<label>.ORB_INDX names each orbital's l and m, "
                           "in the same order"),
@@ -604,6 +620,82 @@ def _write_digest(path: Path, result: TransmissionResult,
     write_bytes(digest_of(path), data)
 
 
+#: The digest schema written before its atom index map (2.31.x).
+DIGEST_SCHEMA_BEFORE_MAP = "molbuilder/tbt-digest@1"
+
+
+def digest_states_no_map(path) -> bool:
+    """Whether data file ``path``'s digest was written before its atom index
+    map (``tbt-digest@1``) -- what `jobset migrate` rewrites; ``False`` for
+    no digest or another schema's.  A digest that does not open answers
+    ``False`` too: it is no kept reading, and the next reading writes it
+    whole (`model/parse.md` § 5e)."""
+    from molbuilder.ncdata import reading
+    digest = digest_of(path)
+    if not digest.is_file():
+        return False
+    try:
+        with reading(digest) as ds:
+            return getattr(ds, "schema", "") == DIGEST_SCHEMA_BEFORE_MAP
+    except OSError:
+        return False
+
+
+def digest_with_map(path, atoms) -> Optional[bytes]:
+    """THE DIGEST OF DATA FILE ``path`` WRITTEN BEFORE ITS ATOM INDEX MAP
+    (``tbt-digest@1``, a reading of the file as it is), as ``@2`` bytes with
+    ``atoms`` -- its run's map -- stated (`model/overview.md` § 2.2b): every
+    variable and attribute as it holds them, through the one writer
+    (`ncdata.write_group`), the indices it counts marked; the data file never
+    read.  ``None`` where there is nothing to rewrite: no digest, another
+    schema's, or one not of the file as it is (read again)."""
+    import numpy as np
+    from molbuilder.ncdata import (NC_LOCK, Var, as_bytes, in_memory,
+                                   reading, write_group)
+    path = Path(path)
+    digest = digest_of(path)
+    if not digest.is_file():
+        return None
+    with reading(digest) as ds:
+        if (getattr(ds, "schema", "") != DIGEST_SCHEMA_BEFORE_MAP
+                or (int(ds.data_file_size), int(ds.data_file_mtime_ns))
+                != _version(path)
+                or not all(v in ds.variables for v in _HELD)):
+            return None
+        ds.set_auto_mask(False)
+        labels = {name for v in ds.variables.values()
+                  if "coordinates" in v.ncattrs()
+                  for name in str(v.getncattr("coordinates")).split()}
+        dims = {name: len(d) for name, d in ds.dimensions.items()}
+        variables, values = [], {}
+        for name, v in ds.variables.items():
+            said = {k: v.getncattr(k) for k in v.ncattrs()}
+            dtype = str if v.dtype is str else np.dtype(v.dtype).str[1:]
+            variables.append(Var(
+                name, tuple(v.dimensions), str(said.get("kind", "")),
+                str(said.get("units", "")), str(said.get("long_name", "")),
+                str(said.get("definition", "")),
+                source=str(said.get("source", "")), dtype=dtype,
+                auxiliary=name in labels,
+                fill=(said["_FillValue"] if "_FillValue" in said
+                      and dtype in ("i1", "i2", "i4", "i8") else None),
+                flag="flag_values" in said,
+                atom_index=name in ("column_atom", "device_atom")))
+            values[name] = np.asarray(v[...])
+        attrs = {k: ds.getncattr(k) for k in ds.ncattrs()
+                 if k != "atom_order"}
+    if atoms.n_atoms != dims.get("atom"):
+        raise ValueError(f"{digest.name}: its geometry holds "
+                         f"{dims.get('atom')} atoms; its run's map states "
+                         f"{atoms.n_atoms}")
+    attrs["schema"] = DIGEST_SCHEMA
+    with NC_LOCK:
+        out = in_memory(digest.name)
+        write_group(out, {**dims, "atom": atoms}, variables, values)
+        out.setncatts(attrs)
+        return as_bytes(out)
+
+
 class TBTransNcFileParser(FileParser):
     """``<label>.TBT.nc`` (``_UP`` / ``_DN``) -> :class:`TransmissionResult`
     -- the kept reading when it is of the file as it is, else the file read
@@ -613,6 +705,7 @@ class TBTransNcFileParser(FileParser):
     label = "TBtrans data file (.TBT.nc)"
     hint = "a transmission run's <label>.TBT.nc, written by tbtrans"
     output = TransmissionResult
+    keeps_atom_index_map = True
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
@@ -628,16 +721,22 @@ class TBTransNcFileParser(FileParser):
     @classmethod
     def parse(cls, path: Path, *, fresh: bool = False,
               take_over: bool = False,
-              progress: Optional[Callable[[int, int], None]] = None
-              ) -> TransmissionResult:
+              progress: Optional[Callable[[int, int], None]] = None,
+              atoms=None) -> TransmissionResult:
         """The reading of ``path``: kept, unless ``fresh`` or ``take_over``
         -- a stale claim beside it removed (:func:`_clear_claim`) -- else
         read: the file claimed (:class:`ReadingClaimed` while another reads
         it; ``take_over`` removes another's claim and reads in its place),
-        ``progress(k, n)`` told as each k-point is read, and kept."""
+        ``progress(k, n)`` told as each k-point is read, and kept.
+        ``atoms`` -- the atom index map of the run that holds the file,
+        handed by the caller that knows the run (this parser knows no
+        calculation): the digest states it, and a kept one stating no user
+        index is read again; none -- a file no run of ours holds -- the
+        engine index alone (`model/overview.md` § 2.2b, F3)."""
         path = Path(path)
+        need_user = atoms is not None and atoms.user is not None
         if not (fresh or take_over):
-            got = _from_digest(path)
+            got = _from_digest(path, need_user=need_user)
             if got is not None:
                 _clear_claim(_claim_path(path), take_over=False)
                 return got
@@ -647,8 +746,17 @@ class TBTransNcFileParser(FileParser):
                 if progress is not None:
                     progress(k, n)
             result, meta = _read(path, told)
-            _write_digest(path, result, meta)
-        return result
+            if atoms is None:
+                from molbuilder.atom_permutation import AtomIndexMap
+                atoms = AtomIndexMap.of_own_structure(
+                    len(result.firsto) - 1,
+                    "no atom index map was handed to this reading (a "
+                    "run's file is read with its run's, through "
+                    "molbuilder.postprocess.parse or its calculation): "
+                    "nothing here states "
+                    "its atoms' user index")
+            _write_digest(path, result, meta, atoms)
+        return replace(result, atom_index_map=atoms)
 
 
 # ---- a point's averages --------------------------------------------------- #
@@ -656,17 +764,12 @@ class TBTransNcFileParser(FileParser):
 def energies(path) -> Tuple[float, ...]:
     """Data file ``path``'s energies, at full precision, ascending: its
     kept reading's, or the file's own energy list (a small read)."""
-    import sisl
-    from molbuilder.ncdata import NC_LOCK
+    from molbuilder.ncdata import reading
     got = _digest(Path(path), part=("energy",))
     if got is not None and "energy" in got:
         return tuple(float(e) for e in got["energy"])
-    with NC_LOCK:
-        tbt = sisl.get_sile(str(path))
-        try:
-            return tuple(sorted(float(e) for e in tbt.E))
-        finally:
-            tbt.close()
+    with reading(path, sile=True) as tbt:
+        return tuple(sorted(float(e) for e in tbt.E))
 
 
 def point_averages(folder, label: str, *, pair: str,
@@ -717,5 +820,6 @@ def point_averages(folder, label: str, *, pair: str,
 
 
 __all__ = ["TBTransNcFileParser", "ReadingClaimed", "Kept", "DIGEST_SCHEMA",
+           "DIGEST_SCHEMA_BEFORE_MAP", "digest_with_map",
            "channel_of", "digest_of", "data_files", "kept_state", "kept",
            "claim_words", "energies", "point_averages"]

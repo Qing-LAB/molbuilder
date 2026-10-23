@@ -4011,6 +4011,7 @@ PYSCF_COMPANIONS: Dict[str, str] = {
     "workingcopy_structure.py": "molbuilder.workingcopy_structure",
     "structure.py":             "molbuilder.structure",
     "atom_permutation.py":      "molbuilder.atom_permutation",
+    "engine_atom_index.py":     "molbuilder.engine_atom_index",
     "molstruct.py":             "molbuilder.sidecars.molstruct",
     "structure_pair.py":        "molbuilder.structure_pair",
     "relax_policy.py":          "molbuilder.pyscf.relax_policy",

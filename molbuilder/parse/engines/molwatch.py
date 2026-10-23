@@ -10,7 +10,9 @@ Format reference (.molwatch.log):
 
     # molwatch trajectory log
     # engine: pyscf
-    # frozen_atoms: <i> <j> ...        (optional -- the atoms the run holds)
+    # atom_index_map: {...}            (which index its atoms are listed by)
+    # frozen_atoms: <i> <j> ...        (optional -- the atoms the run holds,
+                                        by engine index, from 0)
     # runtime.<key>: <value>           (optional, repeated)
     # convergence.<key>: <value>       (optional, repeated)
     ==== molwatch step 0 begin ====

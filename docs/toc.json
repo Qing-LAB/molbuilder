@@ -58,6 +58,9 @@
         },
         {
           "path": "model/parse.md"
+        },
+        {
+          "path": "model/datafiles.md"
         }
       ]
     },
@@ -102,7 +105,12 @@
           "path": "engines/pyscf.md"
         },
         {
-          "path": "engines/transport.md"
+          "path": "engines/transport.md",
+          "children": [
+            {
+              "path": "engines/transport-postprocessing.md"
+            }
+          ]
         },
         {
           "path": "engines/vibration.md",

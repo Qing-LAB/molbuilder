@@ -25,8 +25,8 @@ EVERY INPUT IS A RECORD THE ATTEMPT HOLDS, and each is read by its owner:
     the fdf reader, `parse.fdf`;
   * the deck's molbuilder blocks -- their one reader, `deck_record`:
     ``atom-metadata``'s order record (the deck's atoms in held-first order,
-    the way back to the input's; none for a deck the sort left in your
-    order -- `model/overview.md` § 2.2a, I5), ``engine-offset`` (the axis
+    the way back to the user order; none for a deck the sort left in the
+    user order -- `model/overview.md` § 2.2a, I5), ``engine-offset`` (the axis
     kinds, R3) and ``vibration`` (the stationarity criterion, the
     thermochemistry's temperature, the person's statement, the ladder's
     relaxation record, the stage, the molbuilder that prepared it);
@@ -70,7 +70,7 @@ try:                                        # inside molbuilder
                                extract_atom_metadata,
                                extract_engine_offset,
                                extract_vibration_record, order_record_of)
-    from ..engine_atom_index import from_engine_index, siesta_atom_index
+    from ..engine_atom_index import convert_from_engine_numbering, siesta_numbering
     from ..sidecars.spectra import dump_spectra_json
     from ..wrapper_log import LOG_CLOCK, LOG_LINE
     from .methods import extract_citation_keys, siesta_methods_text
@@ -90,7 +90,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                              extract_atom_metadata,
                              extract_engine_offset, extract_vibration_record,
                              order_record_of)
-    from engine_atom_index import from_engine_index, siesta_atom_index
+    from engine_atom_index import convert_from_engine_numbering, siesta_numbering
     from spectra_sidecar import dump_spectra_json
     from wrapper_log import LOG_CLOCK, LOG_LINE
     from methods import extract_citation_keys, siesta_methods_text
@@ -174,7 +174,7 @@ class ForceConstantRun:
     displaced: Tuple[int, ...]
     cell: Optional[np.ndarray]
     axis_kind: Tuple[str, str, str]
-    #: the deck's order record -- ``None`` for a deck in the input order
+    #: the deck's order record -- ``None`` for a deck in the user order
     permutation: Optional[Permutation]
     #: THE DECK'S STATEMENTS OF THE STRUCTURE but its atoms (`engines/
     #: vibration.md` § 6.10.1): its ATOM-METADATA payload (the labels, the
@@ -229,7 +229,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     # SIESTA's atom numbers to the deck's 0-based positions, through the one
     # door for engine numbering (`model/overview.md` § 2); every check below
     # is on positions.
-    lo, hi = from_engine_index(first, "siesta"), from_engine_index(last, "siesta")
+    lo, hi = convert_from_engine_numbering(first, "siesta"), convert_from_engine_numbering(last, "siesta")
     if not 0 <= lo <= hi < n:
         raise FinishError(f"{deck.name}: FC.First {first} .. FC.Last {last} "
                           f"is not a range over its {n} atoms")
@@ -298,13 +298,13 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
 
 
 def equilibrium_structure(run: ForceConstantRun) -> dict:
-    """THE STRUCTURE THE RESULT STATES, whole and in the input order
+    """THE STRUCTURE THE RESULT STATES, whole and in the user order
     (`engines/vibration.md` § 6.10.1): the force-constant reference geometry
     with the box the run had (`deck_record.box_of_run`, the run door's
     rule), the deck's labels, channels, rows and order record applied
     through the structure's one door (``Structure.apply_atom_metadata``),
     the title and the identity columns from the `vibration` block, then put
-    back in the person's order (``Structure.restored``).  **Checked**: the
+    back in the user order (``Structure.restored``).  **Checked**: the
     atoms the run did not nudge are the structure's `frozen_atoms` -- a deck
     whose two statements of the held set disagree is refused."""
     struct = Structure(
@@ -323,7 +323,7 @@ def equilibrium_structure(run: ForceConstantRun) -> dict:
             f"{struct.atoms_named(held_label) or 'no atom'}, and its "
             f"FC.First .. FC.Last leaves {struct.atoms_named(run.held) or 'no atom'} "
             f"unnudged (engines/vibration.md 6.10.1)")
-    return struct.restored().to_dict()
+    return struct.restored().to_dict(view=False)
 
 
 def result_of(run: ForceConstantRun) -> SpectraResults:
@@ -380,8 +380,8 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
             # SIESTA'S NUMBERING -- the deck's held-first order, 1-based:
             # an engine fact, not an atom's identity (`model/overview.md`
             # § 2.2a).
-            "fc_range_engine_1based": [siesta_atom_index(run.displaced[0]),
-                                siesta_atom_index(run.displaced[-1])],
+            "fc_range_engine_1based": [siesta_numbering(run.displaced[0]),
+                                siesta_numbering(run.displaced[-1])],
             # The block's own numerics, before the symmetrisation hides them
             # (`engines/vibration.md` § 5.5).
             "fc_asymmetry_max_ev_ang2": fc_block_asymmetry(run.fc,

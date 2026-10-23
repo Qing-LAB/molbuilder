@@ -33,6 +33,8 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           file reading, and how far a
                                           reading under way is
     POST /api/transport/digest            read them, on the person's word
+    GET  /api/transport/export            every result as it stands, as
+                                          the data file or its tables
     POST /api/transport/describe          writes the FINISHED description
                                           into the chosen folder -- the
                                           web spelling of `molbuilder describe
@@ -230,6 +232,10 @@ def api_transport_describe_attempt() -> Any:
     # one convention warning `warn`, a refusal `error` -- so the page
     # tells them apart instead of reading six confirmations as warnings.
     findings: list = []
+    # WHAT THE CITED PAIR'S READ SAID, first: a pair that states no atom
+    # order, taken as the user order (`model/overview.md` § 2.2b, F4).
+    if isinstance(cited, CitedPair):
+        findings.extend(cited.said)
     try:
         composed = compose_junction(citation, tree_root=root,
                                     swap_electrodes=swap)
@@ -297,7 +303,7 @@ def _describe_reused(folder: str, root) -> Any:
     picked to reuse it (`engines/transport.md` § 2a.16, *On the page*): its
     meta line -- what it computed: its junction's citation, its treatment,
     its voltages, its window, where each group stands -- the junction its
-    record holds, for the viewer, in your order; the citation the cards are
+    record holds, for the viewer, in the user order; the citation the cards are
     drawn for; ``reuses``, the folder; and its bias list and treatment.  A
     folder that is not a transport calculation's answers ``citation: null``
     with the refusal as its summary, as any path that is not citable."""
@@ -318,7 +324,15 @@ def _describe_reused(folder: str, root) -> Any:
         recorded = recorded_junction(calc.base)
     except ComposeError as exc:
         recorded, unread = None, str(exc)
-    junction = recorded.structure if recorded is not None else None
+    # THE JUNCTION IN THE USER ORDER, once -- the structure the viewer draws
+    # and the frames' rows and masses beside it, one list
+    # (`model/overview.md` § 2.2a) -- or, a junction whose order is not
+    # recorded (I9), as TranSIESTA lists it, marked and said (§ 2.2b, F4).
+    junction = (recorded.structure.restored() if recorded is not None
+                else None)
+    unstated = recorded.order_unstated if recorded is not None else None
+    if unstated:
+        junction = junction.replace(order_unstated=True)
     # THE WINDOW ITS TRANSMISSION COMPUTED: the template's, or the rung's
     # own values over it (`ladder.stage_config`).
     cfg = stage_config(task, SHARING_RUNG, calc.template_text)
@@ -335,12 +349,12 @@ def _describe_reused(folder: str, root) -> Any:
         f"{cfg.transmission_emin_ev:g}…{cfg.transmission_emax_ev:g} eV at "
         f"{cfg.transmission_n_points} points",
         stands] + ([f"its junction's record does not read: {unread}"]
-                   if unread else []))
+                   if unread else [])
+        + ([unstated] if unstated else []))
     return jsonify({
         "ok": True, "citation": task.slots["junction"], "reuses": rel,
         "concluded": True, "summary": summary, "findings": [],
-        "structure": (junction.restored().to_dict()
-                      if junction is not None else None),
+        "structure": junction.to_dict() if junction is not None else None,
         "fix": None, "swap_electrodes": task.swap_electrodes,
         "frame_set": frames_answer(junction if junction is not None
                                    and junction.n_frames > 1 else None),
@@ -426,10 +440,11 @@ def _transport_calc(raw: str):
         calc = open_calc(root if root is not None else base)
     except (NotACalculation, OSError, ValueError) as exc:
         return None, (jsonify({"ok": False, "error": str(exc)}), 400)
-    if calc.task.calculation != "transport":
-        return None, (jsonify({"ok": False, "error": (
-            f"{path.name}: {base.name} is a {calc.task.calculation} "
-            f"calculation, not a transport one")}), 400)
+    from molbuilder.transport.record import not_transport
+    other = not_transport(calc)
+    if other:
+        return None, (jsonify({"ok": False,
+                               "error": f"{path.name}: {other}"}), 400)
     return calc, None
 
 
@@ -480,6 +495,39 @@ def api_transport_digest_read() -> Any:
     return jsonify({**_readings_answer(calc), "outcomes": outcomes})
 
 
+@bp.route("/api/transport/export", methods=["GET"])
+def api_transport_export() -> Any:
+    """EVERY RESULT OF A TRANSPORT CALCULATION, AS IT STANDS
+    (`engines/transport.md` § 2a.12, *Export*) -- ``?path=`` the
+    calculation's ``task.json`` or folder, ``format=`` ``netcdf`` or
+    ``csv`` -- an attachment: its data file, or its tables and README as one
+    zip; composed on request from what is there (`transport.export`), no
+    data file read and nothing written into the calculation's folder; the
+    points it holds without their DOS by region said in the response's
+    ``X-Molbuilder-Said`` header.  400 names what is refused."""
+    import io
+    from flask import send_file
+    from molbuilder.transport.export import ExportError, export
+    calc, refusal = _transport_calc(str(request.args.get("path") or ""))
+    if refusal is not None:
+        return refusal
+    fmt = str(request.args.get("format") or "")
+    try:
+        got = export(calc, fmt)
+    except ExportError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if fmt == "netcdf":
+        body, name, mime = (got.files[got.name], got.name,
+                            "application/x-netcdf")
+    else:
+        body, name, mime = got.as_zip(), got.name + ".zip", "application/zip"
+    out = send_file(io.BytesIO(body), mimetype=mime, as_attachment=True,
+                    download_name=name)
+    if got.said:
+        out.headers["X-Molbuilder-Said"] = got.said
+    return out
+
+
 @bp.route("/api/transport/pdos", methods=["GET"])
 def api_transport_pdos() -> Any:
     """The PDOS of the atoms a person selected, at one point -- a frame
@@ -490,23 +538,12 @@ def api_transport_pdos() -> Any:
     one of `tbtnc.ORBITAL_TYPES`.  Computed on request
     (`transport.record.selection_pdos`) -> ``{ok, energy_ev, pdos, atoms,
     outside_device, orbitals}``.  400 names what is missing."""
-    from pathlib import Path
-    from molbuilder.runs import place_of
     from molbuilder.transport.record import RecordError, selection_pdos
-    from .files import _PickerError, _resolve_within_roots
-
-    raw = str(request.args.get("path") or "")
-    try:
-        path = _resolve_within_roots(raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    base = Path(path).parent if Path(path).is_file() else Path(path)
-    place = place_of(base)
-    if place.task is None:
-        return jsonify({"ok": False, "error": (
-            f"{path.name}: " + (place.problem or
-                                "no calculation of ours claims it"))}), 400
-    task = place.task
+    # THE CALCULATION, through its one door (`calculation.open`, A16), as
+    # the record, the digest and the export routes open it.
+    calc, refusal = _transport_calc(str(request.args.get("path") or ""))
+    if refusal is not None:
+        return refusal
     try:
         point = float(request.args.get("point", ""))
         raw_frame = request.args.get("frame")
@@ -517,7 +554,7 @@ def api_transport_pdos() -> Any:
         return jsonify({"ok": False, "error": (
             f"the request does not read: {exc}")}), 400
     try:
-        got = selection_pdos(place.root, task, point, atoms,
+        got = selection_pdos(calc, point, atoms,
                              str(request.args.get("orbitals") or "all"),
                              frame=frame)
     except RecordError as exc:

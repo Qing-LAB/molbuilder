@@ -97,21 +97,24 @@ def _atoms_from(lines: List[str], name: str):
         toks = raw.split()
         if len(toks) < 5:
             raise SiestaXVError(
-                f"{name}: {atom_words(i)}'s row has {len(toks)} tokens; "
+                f"{name}: the row of {atom_words(i)} (in the file's own "
+                f"order) has {len(toks)} tokens; "
                 f"expected at least 5 (ispec iza x y z [vx vy vz])."
             )
         try:
             iza = int(toks[1])
         except ValueError as exc:
             raise SiestaXVError(
-                f"{name}: {atom_words(i)}'s row has non-integer Z {toks[1]!r}."
+                f"{name}: the row of {atom_words(i)} (in the file's own "
+                f"order) has non-integer Z {toks[1]!r}."
             ) from exc
         # MOLBUILDER'S OWN TABLE, not ase's.
         try:
             elements.append(symbol_for_z(iza))
         except ValueError as exc:
             raise SiestaXVError(
-                f"{name}: {atom_words(i)}'s row has atomic number {iza} "
+                f"{name}: the row of {atom_words(i)} (in the file's own "
+                f"order) has atomic number {iza} "
                 f"outside the element table."
             ) from exc
         positions_bohr[i] = [

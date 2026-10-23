@@ -34,7 +34,7 @@ def equilibrium_structure(elements, positions_ang, sidecar) -> dict:
     struct = Structure(elements=[str(e) for e in elements],
                        positions=np.asarray(positions_ang, dtype=float))
     apply_to_structure(struct, dict(sidecar))
-    return struct.to_dict()
+    return struct.to_dict(view=False)
 
 
 #: The HOMO rule, as a REAL FUNCTION so it can be called and tested.

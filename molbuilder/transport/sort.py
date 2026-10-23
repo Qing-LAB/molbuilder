@@ -16,7 +16,8 @@ potential (`transiesta.py`) — so a junction labeled the other way
 round is not an error, it is one that biases the other end, and the
 sort says so in a note rather than refusing it (user, 2026-08-29).
 
-Pure by design: ``(Structure) -> (sorted Structure, permutation)``, no
+Pure by design: ``sort_by(structure, key) -> SortResult`` -- the sorted
+copy, carrying its order record (``atom_order``), and the sort's notes -- no
 I/O, no engine knowledge.  The physics is invariant under the
 permutation (a similarity transformation — § 4.1a records the proof
 sketch); what this module must get right is bookkeeping, so every
@@ -305,26 +306,42 @@ SORT_KEYS = {
 #: every stage, held atoms first (`engines/vibration.md` § 5.2), and a
 #: transport calculation's junction rungs, TranSIESTA's electrode blocks
 #: (`engines/transport.md` § 4).  Every other calculation's decks are in
-#: your order.  THE ONE TABLE (:func:`deck_sort_key`): prep and the composer
+#: the user order.  THE ONE TABLE (:func:`deck_sort_key`): prep and the composer
 #: sort by it, and the run door reads from it which runs' decks may be in
 #: an engine's order (I9).
 SORTED_COPY = {("siesta", "vibration"): SORT_HELD_FIRST,
                ("siesta", "transport"): SORT_TRANSPORT}
 
 
+#: What a deck whose atoms are a structure of its own is, said where its
+#: map has no user index (`model/overview.md` § 2.2b, F2).
+OWN_STRUCTURE_WORDS = "a structure of its own (the electrode cell)"
+
+
+def deck_own_structure(engine: str, kind: str,
+                       stage: Optional[str] = None) -> Optional[str]:
+    """What a deck of ``stage`` of an ``(engine, kind)`` calculation is when
+    its atoms are A STRUCTURE OF ITS OWN -- not the user's, reordered or
+    not: a transport lead rung's electrode cell (`transport.deck.
+    SHAPE_OF_RUNG`; `model/overview.md` § 2.2a, *a structure derived from
+    the user's*) -- in words; ``None`` for every other deck."""
+    if stage is not None and str(kind) == "transport":
+        from .deck import SHAPE_OF_RUNG, rung_of
+        if SHAPE_OF_RUNG.get(rung_of(stage)) == "electrode":
+            return OWN_STRUCTURE_WORDS
+    return None
+
+
 def deck_sort_key(engine: str, kind: str,
                   stage: Optional[str] = None) -> Optional[str]:
     """The key a deck of ``stage`` (its name or its token) of an
     ``(engine, kind)`` calculation is written from a sorted copy by
-    (:data:`SORTED_COPY`) -- or ``None``, a deck in your order: every
-    calculation the table does not name, and a transport lead rung, whose
-    cell is a structure of its own (`transport.deck.SHAPE_OF_RUNG`;
-    `model/overview.md` § 2.2a, *a structure derived from yours*)."""
+    (:data:`SORTED_COPY`) -- or ``None``, a deck in the user order: every
+    calculation the table does not name, and a deck of a structure of its
+    own (:func:`deck_own_structure`)."""
     key = SORTED_COPY.get((str(engine), str(kind)))
-    if key is not None and stage is not None and str(kind) == "transport":
-        from .deck import SHAPE_OF_RUNG, rung_of
-        if SHAPE_OF_RUNG.get(rung_of(stage)) == "electrode":
-            return None
+    if key is not None and deck_own_structure(engine, kind, stage):
+        return None
     return key
 
 
@@ -332,7 +349,7 @@ def sort_by(struct: Structure, key: str) -> SortResult:
     """THE ONE WAY INTO AN ENGINE'S ORDER (`model/overview.md` § 2.2a): the
     named key's order, the shared machinery, the copy carrying its order
     record.  A structure already remapped is refused -- an engine order is
-    made only from the person's, so two are never composed (I4)."""
+    made only from the user order, so two are never composed (I4)."""
     try:
         fn = SORT_KEYS[key]
     except KeyError:
@@ -347,7 +364,7 @@ def sort_by(struct: Structure, key: str) -> SortResult:
 def _held_first_order(struct: Structure
                       ) -> Tuple[List[int], Tuple[str, ...]]:
     """The second key's order: held atoms first, free atoms last, each in the
-    input's own relative order -- `model/overview.md` § 2.2 -- and nothing to
+    user order among themselves -- `model/overview.md` § 2.2 -- and nothing to
     say: ``(order, ())``, for :func:`sort_by`.
 
     SIESTA's force-constant run nudges atoms *A through B* (`FC.First` /

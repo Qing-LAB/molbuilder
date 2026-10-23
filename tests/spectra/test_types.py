@@ -251,8 +251,8 @@ class TestSpectraResults:
         force-constant range under v8's name.
         """
         r = _make_results()
-        assert r.schema_version == SCHEMA_VERSION == 9
-        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6, 7, 8, 9}
+        assert r.schema_version == SCHEMA_VERSION == 10
+        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6, 7, 8, 9, 10}
         # The additive rule, executed: a v4 payload reads whole.
         d = r.to_dict(); d["schema_version"] = 4
         for k in ("phase_relaxation", "relaxation", "thermo"):

@@ -5,7 +5,7 @@ science/normal-modes.md § 4a.6 and design § 8: SIESTA nudges the free atoms
 (`MD.TypeOfRun FC`, one contiguous range) and writes `.FC`; everything after
 that is the one path both engines share.  The held-first sort is what makes
 a scattered held set a range (`model/overview.md` § 2.2), and the copy's
-order record is what puts the answer back in the input order.  And a flat
+order record is what puts the answer back in the user order.  And a flat
 calculation's refusal of a second force-constant stage, which prep makes
 before any deck is written.
 """

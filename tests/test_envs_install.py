@@ -1053,31 +1053,41 @@ def test_bootstrap_hard_stops_on_a_wrecked_env_like_install_does(monkeypatch):
 
 
 def test_the_environment_canary_notices_a_change(monkeypatch, tmp_path):
-    """The safety net in `conftest.py` has to work, or it is worse than none.
+    """The safety net in `conftest.py` has to work, or it is worse than none
+    -- on molbuilder's own envs, and on them alone (the user, 2026-10-23:
+    "our env are the only thing we should focus on").
 
     Asked through the snapshot -- `{name: prefix}` is what the fingerprint
-    reads -- so this needs no manager and no real env: point it at a directory,
-    add a package the way pip would, and ask again.
+    reads -- so this needs no manager and no real env: point molbuilder's
+    host env and a person's other env at directories, add a package to each
+    the way pip would, and ask again.
     """
     import sys as _sys
 
-    fake_env = tmp_path / "envs" / "pretend"
-    site = fake_env / "lib" / "python3.12" / "site-packages"
-    site.mkdir(parents=True)
-    _bind(conda_envs={"pretend": str(fake_env)}, conda_binary="/fake/conda")
+    def site_of(name):
+        site = tmp_path / "envs" / name / "lib" / "python3.12" / "site-packages"
+        site.mkdir(parents=True)
+        return site
+
+    ours, other = site_of("molbuilder"), site_of("someone-else")
+    _bind(conda_envs={"molbuilder": str(tmp_path / "envs" / "molbuilder"),
+                      "someone-else": str(tmp_path / "envs" / "someone-else")},
+          conda_binary="/fake/conda")
 
     from pathlib import Path as _Path
     _sys.path.insert(0, str(_Path(__file__).resolve().parent))
     import conftest
 
     before = conftest._env_fingerprint()
-    assert "pretend" in before, before
+    assert set(before) == {"molbuilder"}, before
 
-    (site / "something-1.0.dist-info").mkdir()
-    after = conftest._env_fingerprint()
+    (other / "something-1.0.dist-info").mkdir()
+    assert conftest._env_fingerprint() == before, (
+        "a person's own env changed and the canary called it the suite's")
 
-    assert after != before, (
-        "a package appeared in an env and the canary saw nothing")
+    (ours / "something-1.0.dist-info").mkdir()
+    assert conftest._env_fingerprint() != before, (
+        "a package appeared in molbuilder's env and the canary saw nothing")
 
 
 def test_the_clean_plan_removes_the_env_before_it_creates_one():
@@ -1185,7 +1195,6 @@ def test_the_clean_run_on_a_fresh_machine_skips_the_removal_and_creates(
     conda 26.7.1, 2026-09-14) -- so `--clean` on a fresh machine, or the
     re-run after a `--clean` whose create then failed, died at step 1.  The
     removal is SKIPPED when nothing is on disk, and the create runs."""
-    from molbuilder import diagnostics as _diag
     new = "/prefix/new-pySCF"
     _bind(conda_envs={}, conda_binary="/fake/conda")
     recipe = recipe_by_name("molbuilder-pySCF")

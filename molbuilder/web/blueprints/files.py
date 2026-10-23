@@ -694,7 +694,9 @@ def _archive_plan(resolved: Path) -> dict:
                 kind[1] += size
                 continue
             entries.append((str(q), str(q.relative_to(base)), size))
-    left_out = [{"what": name, "files": n, "bytes": b}
+    from molbuilder.units import size_words
+    left_out = [{"what": name, "files": n, "bytes": b,
+                 "size_words": size_words(b)}
                 for name, (n, b) in [*left.items(),
                                      *carried_by_none.items()] if n]
     return {"entries": entries, "skipped": skipped, "left_out": left_out}
@@ -744,6 +746,7 @@ def api_files_zip_prepare():
     import time
     import uuid
 
+    from molbuilder.units import size_words
     from molbuilder.web.zip_stream import length
 
     body = request.get_json(silent=True) or {}
@@ -774,6 +777,7 @@ def api_files_zip_prepare():
         "name": name,
         "files": len(plan["entries"]),
         "bytes": length(plan["entries"]),
+        "size_words": size_words(length(plan["entries"])),
         "skipped": plan["skipped"],
         "excluded": sorted(_ARCHIVE_EXCLUDED),
         "left_out": plan["left_out"],
