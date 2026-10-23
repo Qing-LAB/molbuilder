@@ -929,7 +929,12 @@ valueless. Every reader refuses either by name, naming
 what a file holds, never by its version** *(2.28.0, plan § 1w: the template's
 reader refused a run-setting value by content while migrate moved one only
 from a `task@1` calculation, so a value in a 2.27.0 template was dropped)* —
-each change where it is found:
+each change where it is found. **A calculation holding nothing an older
+molbuilder wrote is current, and said so** — *is current -- nothing to
+migrate: …*, what was checked, no failure; its ledger records `migrate`
+`current` *(the user, 2026-10-22: "change the word of migrate so it does not
+look like an error")*. A calculation that cannot be migrated as it stands
+is refused by name, nothing written:
 
 - writes `job-request.json` from `task.json`'s `allocation`, `execution`, each
   stage's `execution` and `group`, `bench` and `notify` — a `notify` block's

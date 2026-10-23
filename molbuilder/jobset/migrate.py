@@ -81,6 +81,15 @@ if TYPE_CHECKING:                      # annotations only
     from ..template_file import TemplateFile
 
 
+#: What a calculation holding nothing an older molbuilder wrote IS -- said
+#: when a migration finds nothing to rewrite (:func:`migrate_state`).
+CURRENT = ("nothing to migrate: it holds nothing an older molbuilder wrote "
+           "-- its records are whole, its record of its machine is this "
+           "molbuilder's, its run files carry their run's number and its "
+           "leads' their own stem, and its template carries no item an older "
+           "molbuilder meant otherwise, renamed or a release retired")
+
+
 class MigrateError(ValueError):
     """The calculation cannot be migrated as it stands -- the message says
     why and what to do."""
@@ -1025,8 +1034,9 @@ def migrate_state(base) -> List[str]:
     changed, line by line.  Each old file rewritten is kept beside its new
     one, once (:func:`_kept_as`); a renamed one is its new one.
 
-    Raises :class:`MigrateError` when there is nothing to migrate or it cannot
-    be migrated as it stands.
+    Returns no line when there is nothing to migrate -- the calculation is
+    current (:data:`CURRENT`); raises :class:`MigrateError` when it cannot be
+    migrated as it stands.
     """
     base = Path(base)
     # EVERY RECORD READ ONCE, then EVERY DECISION BEFORE ANY WRITE: a
@@ -1067,13 +1077,8 @@ def migrate_state(base) -> List[str]:
                        json_text(_edited(task, decision).to_dict()),
                        decision.task_rules)
     if not writes and not moves and l_write is None:
-        raise MigrateError(
-            f"{base} holds nothing an older molbuilder wrote -- its "
-            f"records are whole, its record of its machine is this "
-            f"molbuilder's, its run files carry their run's number and its "
-            f"leads' their own stem, and its template carries no item an "
-            f"older molbuilder meant otherwise, renamed or a release "
-            f"retired.")
+        # NOTHING TO MIGRATE is an answer, not a refusal.
+        return []
     taken = [new for _old, new in moves if new.exists()]
     if taken:
         raise MigrateError(

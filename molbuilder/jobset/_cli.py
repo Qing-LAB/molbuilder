@@ -2722,16 +2722,22 @@ def migrate_cmd(bundle: str) -> None:
     alter the calculation is refused by name, writing nothing.  Each old file
     rewritten stays beside its new one as ``<name>.pre-<rule>``, the earliest
     rule it was written before; a file renamed keeps every byte."""
-    from .migrate import MigrateError, migrate_state
+    from ..calcdirs import described as _described
+    from .migrate import CURRENT, MigrateError, migrate_state
     try:
         said = migrate_state(bundle)
     except MigrateError as exc:
         # A REFUSAL IS WRITTEN DOWN, in a described calculation's own ledger
         # (`architecture.md` § 2.1, floor 7).
-        from ..calcdirs import described as _described
         if _described(bundle):
             _ledger(bundle, "migrate", "refused", reason=str(exc))
         raise click.ClickException(str(exc)) from None
+    if not said:
+        # CURRENT: said, written down, and no failure.
+        if _described(bundle):
+            _ledger(bundle, "migrate", "current", reason=CURRENT)
+        click.echo(f"{bundle} is current -- {CURRENT}.")
+        return
     click.echo(f"migrated {bundle}:")
     for line in said:
         click.echo(f"  {line}")
