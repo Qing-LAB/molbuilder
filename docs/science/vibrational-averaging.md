@@ -41,7 +41,7 @@ flowchart LR
 ```
 
 This document answers three questions: **where** the molecule is while it
-vibrates (§ 2), **what** the measurement averages and why a lopsided response
+vibrates (§ 2; under light, § 2a), **what** the measurement averages and why a lopsided response
 gives a net change (§ 3–4), and **how** few frames can compute that average and
 when they cannot (§ 5); § 6 says what one mode's frames do not answer. § 7 lists what the picture assumes; § 8 what the
 record carries.
@@ -119,6 +119,139 @@ displacement against that atom's nearest-neighbour distance
 spends as much time pushed one way as pushed the other. This is a property of
 the *distribution* of positions, for a harmonic mode — and it says nothing
 about whether the *transmission* responds symmetrically.
+
+
+## 2a. When light drives the mode — the spread out of equilibrium
+
+*(Written 2026-10-24 at the user's request: "we are looking at EM driven mode
+which means we have an external force to drive a particular mode, how to
+estimate the reasonable displace to use for that? … or we can only use
+temperature dependent value to just first estimate?")*
+
+§ 2's distribution is the mode in equilibrium at the temperature
+$T_{\mathrm K}$. Light shone on the junction — infrared at the mode's
+frequency, or a Raman laser — puts energy into the mode, and the mode spreads
+further. **The equilibrium spread $\sigma_T$ is the floor**: the mode has at
+least that spread, light or not, and the light adds to it. How much depends on
+three things:
+
+| what | where it comes from |
+|---|---|
+| how strongly the light couples to the mode, per unit local field: $\partial\boldsymbol\mu/\partial Q$ (infrared), $\partial\alpha/\partial Q$ (Raman) | the optical method, [`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md) § 2, § 3 |
+| the local field at the molecule | the field model, or the experiment — not computed here |
+| how fast the mode gives its energy back: its energy lifetime $\tau$, or its linewidth $\Gamma$ (full width at half maximum, cm⁻¹), $\gamma = 1/\tau = 2\pi c\,\Gamma$ | the measured spectrum — not computed here. A measured line also carries dephasing and the spread of environments, so $\gamma$ read from it is an upper bound on the damping, and the amplitude below a lower bound |
+
+**In every case the spread is set by the mode's mean number of quanta $n$.**
+For any state with no fixed phase — thermal, or pumped at random times —
+
+$$
+\sigma^2 = \langle Q^2\rangle = Q_{\mathrm{zp}}^2\,(2n + 1),
+$$
+
+because each level $|n\rangle$ of a harmonic mode has
+$\langle n|Q^2|n\rangle = Q_{\mathrm{zp}}^2(2n+1)$. In equilibrium
+$n = 1/(e^{\hbar\omega/k_BT_{\mathrm K}} - 1)$, and $2n+1 = \coth(\hbar\omega/2k_BT_{\mathrm K})$ —
+§ 2's formula again.
+
+### 2a.1 Pumping at random times — an effective temperature
+
+A steady laser exciting spontaneous Raman scattering adds quanta at random
+times — each Stokes event leaves one more quantum in the mode — and the mode
+gives them back to its surroundings within $\tau$ (a current through a
+biased junction does the same). In steady state
+
+$$
+n = n_{\mathrm{th}} + R\,\tau ,
+$$
+
+$R$ the rate of Stokes events on this mode: its Stokes cross section in the
+gap times the laser's photon flux, both the field model's. The spread follows
+from $n$ by the formula above. It is said as an **effective mode
+temperature** $T_{\mathrm{eff}}$, the temperature whose equilibrium holds the
+same $n$:
+
+$$
+\sigma^2 = Q_{\mathrm{zp}}^2\,\coth\!\left(\frac{\hbar\omega}{2k_BT_{\mathrm{eff}}}\right).
+$$
+
+$T_{\mathrm{eff}}$ is measured: the ratio of the line's anti-Stokes to its
+Stokes intensity goes as $n/(n+1)$, once the two lines' frequency factors and
+enhancements are divided out. Ward, Corley, Tour and Natelson measured mode
+temperatures in biased junctions this way [Ward2011]. Kneipp and co-workers
+reported pumping by surface-enhanced Raman scattering itself [Kneipp1996];
+Le Ru and Etchegoin examined when that pumping is real, against heating and
+other readings of the same data [LeRuEtchegoin2006].
+
+### 2a.2 A drive with a fixed phase — an infrared laser at the mode's frequency
+
+A field $E_{\mathrm{loc}}\cos(\omega_L t)$ along z pushes the mode's
+coordinate with the force
+
+$$
+F(t) = \hat z\cdot\frac{\partial\boldsymbol\mu}{\partial Q}\;E_{\mathrm{loc}}\cos(\omega_L t)
+\equiv F_0\cos(\omega_L t)
+$$
+
+(the dipole's energy in the field, $-\boldsymbol\mu\cdot\mathbf E$, differentiated
+along $Q$), and the mode answers as a damped, driven oscillator:
+
+$$
+\ddot Q + \gamma\,\dot Q + \omega^2 Q = F(t),
+\qquad
+Q_0 = \frac{F_0}{\sqrt{(\omega^2-\omega_L^2)^2 + \gamma^2\omega_L^2}}
+\;\xrightarrow{\;\omega_L = \omega\;}\; \frac{F_0}{\gamma\,\omega} .
+$$
+
+The oscillation adds to the thermal motion, its quanta
+$Q_0^2/4Q_{\mathrm{zp}}^2$:
+
+$$
+\sigma^2 = \sigma_T^2 + \tfrac12 Q_0^2 .
+$$
+
+The distribution is then no longer a Gaussian: an oscillation spends most of
+its time near its turning points.
+
+**How large, for one example** — a moderately strong infrared mode,
+$\partial\mu/\partial Q = 0.1\ e\ \mathrm{amu}^{-1/2}$ (0.48 D Å⁻¹ amu⁻¹ᐟ²,
+$A(\hat z)$ = 29 km/mol), at 1000 cm⁻¹ ($Q_{\mathrm{zp}}$ = 0.130 amu½ Å),
+linewidth 10 cm⁻¹ ($\tau$ = 0.53 ps), driven at resonance (computed from the
+CODATA constants; no run of ours):
+
+| local field | local intensity, $\tfrac12 c\varepsilon_0E^2$ | $Q_0/Q_{\mathrm{zp}}$ | quanta added | $\sigma/Q_{\mathrm{zp}}$ at 0 K |
+|---|---|---|---|---|
+| 0.001 V/Å | 1.3 × 10⁷ W/cm² | 0.021 | 0.0001 | 1.000 |
+| 0.01 V/Å | 1.3 × 10⁹ W/cm² | 0.21 | 0.011 | 1.011 |
+| 0.1 V/Å | 1.3 × 10¹¹ W/cm² | 2.1 | 1.1 | 1.79 |
+
+The drive spreads such a mode beyond its zero-point motion only at very high
+local fields — a pulsed laser, or a very large enhancement.
+
+### 2a.3 What the frames need — the spread alone, to second order
+
+Expanded as in § 4.2, the average is
+
+$$
+\langle T\rangle = T_0 + \tfrac12\,T''\,\langle Q^2\rangle + \tfrac1{24}\,T''''\,\langle Q^4\rangle + \dots
+$$
+
+for any distribution symmetric about equilibrium — the thermal Gaussian, a
+pumped mode, an oscillation. **To second order only the spread enters**, not
+the distribution's shape. The fourth moment does depend on the shape: a
+Gaussian's is $3\sigma^4$, a pure oscillation's $\tfrac38 Q_0^4 = 1.5\,\sigma^4$.
+So:
+
+1. **Write the frame set at the equilibrium spread** $\sigma_T$ at the
+   experiment's temperature (§ 5). Its three frames give the curvature, where
+   three and five frames agree (§ 5.3).
+2. **A driven spread rescales the result**:
+   $\langle\Delta G\rangle/G\,(\sigma_{\mathrm{eff}}) = (\sigma_{\mathrm{eff}}/\sigma_T)^2 \times \langle\Delta G\rangle/G\,(\sigma_T)$
+   — an analysis on the data file (§ 8), never a value of the record.
+3. **It holds while the transmission stays smooth over the larger range.**
+   For $\sigma_{\mathrm{eff}}$ well beyond $\sigma_T$, a set is written at
+   $\sigma_{\mathrm{eff}}$ itself; and under a strong drive with a fixed phase
+   the fourth-order term is the oscillation's, which a Gauss–Hermite set does
+   not reproduce.
 
 ---
 
@@ -289,12 +422,24 @@ the curvature's sign, read off the frames, not assumed.
 
 **The spread the frames sample is the person's** *(the user, 2026-10-24)*.
 The generator (`engines/vibration.md` § 5.10 ③) takes the maximum
-displacement `d_max` — the largest atom's move at the outermost frames — and
-sets σ from it, so the frames average over a Gaussian of that spread. § 2
-says what a given σ means: σ = `Q_zp` is the zero-point motion, and the
-thermal spread at a temperature T is `Q_zp·√coth(ħω/2k_BT)` — a person who
-wants the thermal average at T chooses the `d_max` that gives that σ; the set
-states σ beside `Q_zp`, and no temperature.
+displacement `d_max` — the move, at the outermost frames, of the atom that
+moves most in the mode: the one with the largest $\lvert\mathbf L_A\rvert$,
+often a light atom but not always — and sets σ from it,
+$\sigma = d_{\max}/(\sqrt2\,x_{\mathrm{out}}\max_A\lvert\mathbf L_A\rvert)$
+($x_{\mathrm{out}}$ the rule's outermost node, § 5.1: $\sqrt{3/2}$ for three
+frames, 2.0202 for five), so the frames average over a Gaussian of that
+spread. § 2 says what a given σ
+means: σ = `Q_zp` is the zero-point motion, and the thermal spread at a
+temperature T is `Q_zp·√coth(ħω/2k_BT)` — so the reference for `d_max` at
+the experiment's temperature is
+
+$$
+d_T = \sqrt2\,x_{\mathrm{out}}\;\sigma_T\,\max_A\lvert\mathbf L_A\rvert
+\qquad (\sqrt3\,\sigma_T\max_A\lvert\mathbf L_A\rvert \text{ for three frames}),
+$$
+
+the floor a driven mode adds to (§ 2a). The set states σ beside `Q_zp`, and
+no temperature.
 
 ### 5.1 The Gauss–Hermite rule
 
@@ -421,8 +566,8 @@ Each is stated beside the numbers it limits, never dropped:
    axes*), with the same weights at every voltage — a Gaussian of the spread
    the set states, which is the junction's equilibrium one when σ is chosen
    as the thermal spread of § 2. A finite bias can heat the modes the current
-   couples to, and then their population is not that distribution; that is not
-   modelled. At low bias the averaged $T(E_F)$ is the averaged conductance.
+   couples to, and light can pump them (§ 2a); their spread is then said by an
+   effective temperature, measured, not computed here. At low bias the averaged $T(E_F)$ is the averaged conductance.
 4. **Each frame's electrons in their ground state for that frame** (the
    Born–Oppenheimer picture): every frame runs its own self-consistent device.
 5. **The level alignment is DFT's**, frame by frame (`normal-modes.md` § 4c.6).
@@ -468,3 +613,14 @@ beside its $Q_j$ and its weight (`transport.md` § 2a.12, *the data file*).
   1964), § 25.4.46 and Table 25.10 — Gauss–Hermite nodes and weights.
 - [Frederiksen2007], [Galperin2007] — inelastic transport and the
   electron–vibration coupling (`references.bib`).
+- [Kneipp1996] K. Kneipp, Y. Wang, H. Kneipp, I. Itzkan, R. R. Dasari,
+  M. S. Feld, *Phys. Rev. Lett.* **76**, 2444–2447 (1996),
+  doi:10.1103/PhysRevLett.76.2444 — vibrational pumping by surface-enhanced
+  Raman scattering (§ 2a.1).
+- [LeRuEtchegoin2006] E. C. Le Ru, P. G. Etchegoin, *Faraday Discuss.*
+  **132**, 63–75 (2006), doi:10.1039/b505343a — when that pumping is real
+  (§ 2a.1).
+- [Ward2011] D. R. Ward, D. A. Corley, J. M. Tour, D. Natelson, *Nature
+  Nanotechnol.* **6**, 33–38 (2011), doi:10.1038/nnano.2010.240 — mode
+  temperatures in biased junctions, from the anti-Stokes/Stokes ratio
+  (§ 2a.1).

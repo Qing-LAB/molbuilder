@@ -1018,7 +1018,7 @@ the same day, with what it turned out to be.
 
 ---
 
-## 1ac. A vibration's optical activity on SIESTA, and the energy a displacement costs *(2026-10-24; proposal for discussion — nothing decided, nothing built)*
+## 1ac. A vibration's optical activity on SIESTA, and the maximum displacement for a frame set *(2026-10-24; the method written, the charge partition decided; nothing built)*
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode
 calculated have polarization or dipole strength changes that it will be IR or
@@ -1059,54 +1059,59 @@ are the metal's response.
   force-constant step; the charges in a biased run and their linear response
   (§ 9).
 
-### 1ac.2 The energy a displacement costs — a suggested maximum displacement
+### 1ac.2 The maximum displacement — the reference at a temperature, and a driven mode *(the science: [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a, § 5)*
 
-**Harmonic, from the result alone — free.** Along mode ν, displacing the
-largest atom by `d` costs
+- **The input stays the person's maximum displacement** `d_max` — the move,
+  at the outermost frames, of the atom that moves most in the mode (the
+  largest `|L_A|`; often a light atom, not always).
+- **The reference beside it**: `d_T = √2 x_out σ_T max_A |L_A|` (`√3 σ_T
+  max_A |L_A|` for three frames), the `d_max` whose frames sample the
+  thermal distribution at the experiment's temperature T — from the
+  vibration result alone, no calculation. It is the floor.
+- **A mode driven by light spreads further** (§ 2a): pumped at random times
+  (spontaneous Raman, a current), its spread is an effective temperature,
+  measured from the anti-Stokes/Stokes ratio; driven by an infrared laser at
+  its frequency, `σ² = σ_T² + Q_0²/2`, `Q_0` from the optical coupling, the
+  local field and the linewidth. To second order the transport average needs
+  the spread alone, so the set at `σ_T` gives the curvature and a driven
+  spread rescales it (§ 2a.3).
+- **The harmonic energy** `½ω²q²` is SIESTA's force-constant curvature
+  extended to `q` — an estimate, not a SIESTA energy there; the energies
+  measured at the outer frames (item B below) check the harmonic picture.
 
-```text
-    ΔE(d) = ½ ω² q²  =  (ħω / 4) · (d / d_zp)²,     q = d / max_A |L_A|
-```
+**Proposed**: the *Write frame set…* dialog and the command line show `d_T`
+at a temperature the person types, beside `d_max`; the value stays the
+person's.
 
-where `d_zp = Q_zp · max_A |L_A|` is the mode's largest zero-point atom move —
-already in every result (`zero_point_displacement_ang`). Marks a person can
-choose by:
-
-| mark | where `d` sits | ΔE |
-|---|---|---|
-| the zero-point motion's spread | `d = d_zp` | `ħω/4` (the ground state's mean potential energy) |
-| the ground state's classical turning point | `d = √2 d_zp` | `ħω/2` (its zero-point energy) |
-| the thermal energy at T | `d = 2 d_zp √(k_BT/ħω)` | `k_BT` (25.85 meV at 300 K) |
-| **the three-frame rule's outer frame at T's thermal spread — the suggested value** | `d_T = √3 · d_zp · √coth(ħω/2k_BT)` | `(3ħω/4) coth(ħω/2k_BT)` → `1.5 k_BT` in the classical limit |
-
-For a 300 cm⁻¹ mode, `ħω` = 37.2 meV. **Proposed**: the *Write frame set…*
-dialog and `molbuilder frameset from-mode` show ΔE at the chosen `d` and these
-marks, the suggestion `d_T` at a temperature the person types — the value is
-still the person's.
-
-**Measured — the harmonic range checked.** The harmonic curve holds near
-equilibrium only. Single-point SIESTA energies at the frame set's frames —
-the junction, the vibration's settings — against `(ħω/4)(d/d_zp)²` say where
-the outer frames leave the harmonic range (where § 7's assumption 1 of
-`science/vibrational-averaging.md` stops holding). Cost: about one
-force-constant step per frame (AuBDTAu: 13.6 h for 121 steps on 16 ranks
+**Measured — the harmonic range checked.** Single-point SIESTA energies at
+the frame set's frames — the junction, the vibration's settings — against
+the harmonic `(ħω/4)(d/d_zp)²` say where the outer frames leave the harmonic
+range (§ 7's assumption 1 of `science/vibrational-averaging.md`). Cost: about
+one force-constant step per frame (AuBDTAu: 13.6 h for 121 steps on 16 ranks
 here, ~7 min a frame). It needs a calculation that runs one SCF per frame of
 a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
 `electronic`, not built), whose first output this would be.
 
-### 1ac.3 Proposed order, and what is the user's
+### 1ac.3 Order
+
+**The optical work, by what each step needs:**
 
 | # | piece | size | depends on |
 |---|---|---|---|
-| 1 | **ΔE(d) and the suggested `d_T`** in the dialog and the command line (§ 1ac.2, harmonic) | small: no calculation | — |
-| 2 | **the measurements of the method's § 9** on the toy junction: the charges at every force-constant step; the charges in a biased run and their linear response | small: a few toy runs | — |
-| 3 | **infrared per unit field in the gap, every mode** (the method's § 2): the deck's `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry`, the finish reading every step's charges by both, the mode-response record and data file, the viewer's partition switch (`web/spectra.md` § 3.2) | medium | 2 |
-| 4 | **each mode's localization** (§ 4) | small | — |
+| 1 | **the charge switch** in the force-constant input: `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` (D3, `engines/vibration.md` § 5.10 ②) | small | — |
+| 2 | **the measurements of the method's § 9** on the toy junction: its vibration through jobset — both charge sets at every displaced step, each summing to zero; TranSIESTA at ±0.05 V and ±0.1 V — the charges under bias, the molecule's dipole linear in V | small: a few toy runs | 1 |
+| 3 | **infrared per unit field in the gap, every mode** (the method's § 2): the finish reading every step's charges by both partitions, the mode-response record and data file, the viewer's partition switch (`web/spectra.md` § 3.2) | medium | 2 |
+| 4 | **each mode's localization** (§ 4) | small | 3 |
 | 5 | **Raman per unit field in the gap, chosen modes** (§ 3): each mode's three-frame set, TranSIESTA at ±V with the potential written, $\alpha_{zz}$ per $V/d_{\mathrm{gap}}$ | large | 2, 3 |
-| 6 | **energies along a mode** (§ 1ac.2, measured): one SCF per frame | medium | — |
 
-**Decisions for the user:** the method document, as written; piece 1 now; the
-order above.
+**Separate items, outside the optical work:**
+
+| # | piece | size | depends on |
+|---|---|---|---|
+| A | **the reference displacement `d_T`** beside the maximum displacement, in the dialog and on the command line (§ 1ac.2) | small: no calculation | — |
+| B | **energies along a mode**, measured (§ 1ac.2): one SCF per frame | medium | the `electronic` kind (§ 5.10 ④) |
+
+**Decisions for the user:** pieces 1 and 2 now; item A as proposed.
 
 **References**: the method's own list
 ([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md),
