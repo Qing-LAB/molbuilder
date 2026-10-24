@@ -1018,46 +1018,34 @@ the same day, with what it turned out to be.
 
 ---
 
-## 1ac. A vibration's optical activity on SIESTA, and the maximum displacement for a frame set *(2026-10-24; the method written, the charge partition decided; nothing built)*
+## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the method written, the charge switch built 2.35.2)*
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode
 calculated have polarization or dipole strength changes that it will be IR or
 Raman active, and how strong (relatively) are they … what's the correct
 scientific process to get these from the siesta calculation? (2) evaluate the
 'reasonable' max displacement for suggestion — maybe this can be provided as
-deltaE vs displacement amplitude?")*
+deltaE vs displacement amplitude?"; its scope: "it is simple: siesta calculate
+correctly optical activity and evalaute the displacement"; "all i asked is a
+vibration calculation, assumed an EM in the vacuum")*
 
-### 1ac.1 Optical activity — the molecule's response in the junction *(the method: [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md), 2026-10-24)*
+### 1ac.1 The method *([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md))*
 
-Settled in discussion with the user, 2026-10-24: **SIESTA computes the
-molecule's own response, in the junction** — with the charge it exchanges
-with the metal — **per unit local field along z, the gap's axis**; the
-metal's own response is not computed, and the gap's enhancement is the field
-model's, outside molbuilder (*"here we focus for a unit EM intensity with a
-specific direction how the molecule respond"*). No PySCF, no isolated
-cluster, no field model coupled. Every sum runs over the molecule — a label
-the person names — not the whole free set, whose free metal atoms' charges
-are the metal's response.
+SIESTA alone, light in vacuum — a unit field along a direction the person
+chooses; no field applied, no other calculation:
 
-- **Infrared, every mode, no extra calculation**: the force-constant run with
-  `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry`; the molecule's
-  dipole change and its charge transfer per mode, from every displaced step's
-  partial charges; $A_\nu(\hat z)$ and its rank (§ 2 of the method).
+- **Infrared, every mode, no extra calculation**: the dipole change and the
+  charge each mode moves, from the partial charges SIESTA prints at every
+  force-constant step (§ 2 of the method).
 - **The charge partition — decided** *(user, 2026-10-24: "both on"; "default
   to hirshfeld")*: both computed, every number stated with its partition,
-  Hirshfeld shown unless the person picks Voronoi; the explanation in the
-  method's § 1a and beside the viewer's switch (`web/spectra.md` § 3.2;
-  `engines/vibration.md` § 5.10 ②).
-- **Raman, chosen modes**: each mode's three-frame set at maximum
-  displacement δ, every frame a TranSIESTA device at ±V; the molecule's
-  $\alpha_{zz}$ per the gap's field $V/d_{\mathrm{gap}}$, the written potential
-  a check; $R_\nu(\hat z) = (\partial\alpha_{zz}/\partial Q)^2$ and its rank —
-  4 device solutions a mode, the equilibrium frame's shared (§ 3).
-- **Each mode's localization**: its share of motion on the molecule and on the
-  free metal (§ 4).
-- **Measured first**, on the toy junction: the charges at every
-  force-constant step; the charges in a biased run and their linear response
-  (§ 9).
+  Hirshfeld shown unless the person picks Voronoi (the method's § 1a;
+  `web/spectra.md` § 3.2; `engines/vibration.md` § 5.10 ②).
+- **Raman, chosen modes**: SIESTA's optical calculation — its response to
+  light polarized along the chosen direction, from its own states — in one
+  run at each of the mode's two displaced geometries; the polarizability from
+  the dielectric function's real part at the laser frequency (§ 3).
+- **The displacement**: § 1ac.2.
 
 ### 1ac.2 The maximum displacement — the reference at a temperature, and a driven mode *(the science: [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a, § 5)*
 
@@ -1094,28 +1082,23 @@ a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
 
 ### 1ac.3 Order
 
-**The optical work, by what each step needs:**
-
 | # | piece | size | depends on |
 |---|---|---|---|
 | 1 | **the charge switch** in the force-constant input: `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` (D3, `engines/vibration.md` § 5.3, § 5.10 ②) — **built 2.35.2** | small | — |
-| 2 | **the measurements of the method's § 9** on the toy junction — **done 2026-10-24**: both charge sets at every force-constant step, each summing to zero; under bias, the sum is −dQ and the dipole linear in V. **Found**: the electrodes' charge for the voltage reaches the bridge's end atoms and enters its α (sign flipped on the toy) — the open decision below | small: a few toy runs | 1 |
-| 3 | **infrared per unit field in the gap, every mode** (the method's § 2): the finish reading every step's charges by both partitions, the mode-response record and data file, the viewer's partition switch (`web/spectra.md` § 3.2) | medium | 2 |
-| 4 | **each mode's localization** (§ 4) | small | 3 |
-| 5 | **Raman per unit field in the gap, chosen modes** (§ 3): each mode's three-frame set, TranSIESTA at ±V with the potential written, $\alpha_{zz}$ per $V/d_{\mathrm{gap}}$ | large | 2, 3 |
+| 2 | **the charges measured** at every force-constant step on the toy junction — **done 2026-10-24** (the method's § 7) | small | 1 |
+| 3a | **the infrared proof**: water in a box on both engines through jobset — SIESTA's infrared from its step charges against PySCF's, mode by mode and in rank (the method's § 7) | small: two vibration runs | 2 |
+| 3b | **the Raman proof**: the same water, SIESTA's optical calculation at each mode's ±δQ against PySCF's Raman — it checks the chain to the Raman strength on SIESTA's molecular formulation, not the junction's (the method's § 7) | medium | the `electronic` kind (§ 5.10 ④) |
+| 4 | **infrared, built**: the finish reading every step's charges by both partitions — § 5.10 ②'s free-set charges and the molecule's dipole — the result's rows, the viewer's partition switch (`web/spectra.md` § 3.2) | medium | 3a |
+| 5 | **Raman, built**: the `electronic` kind (§ 5.10 ④) with the optical calculation added to its input, on each chosen mode's three-frame set; the polarizability from SIESTA's optical programs and its change | large | 3b |
 
-**Separate items, outside the optical work:**
+**Separate items:**
 
 | # | piece | size | depends on |
 |---|---|---|---|
 | A | **the reference displacement `d_T`** beside the maximum displacement, in the dialog and on the command line (§ 1ac.2) | small: no calculation | — |
 | B | **energies along a mode**, measured (§ 1ac.2): one SCF per frame | medium | the `electronic` kind (§ 5.10 ④) |
 
-**Decisions for the user:**
-- **Raman (piece 5): how to keep the electrodes' own charge out of the
-  molecule's α** (the method's § 3.2, measured § 9). First measure its size on
-  AuBDTAu: the molecule's α with and without its anchor atoms, at ±V.
-- Item A as proposed.
+**Decisions for the user:** piece 3a next; item A as proposed.
 
 **References**: the method's own list
 ([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md),
