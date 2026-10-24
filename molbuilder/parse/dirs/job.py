@@ -127,6 +127,15 @@ FINISH_FAILED = "finish failed"
 #: it, which the marker's own rule already reads as failed; the words say
 #: why.  Declared here beside its sibling; the wrapper imports it.
 FINISH_CANNOT_LOAD = "finish cannot load"
+#: What a conclusion marker says when the job STOPPED BEFORE ITS ENGINE because
+#: the activation did not give it its environment's own python -- the one
+#: check every job makes once the run index is known (`runwrap.
+#: _run_index_block`, `execution/running-a-job.md` § 2): the activation left
+#: no ``CONDA_PREFIX`` naming the job's env, or that env holds no
+#: ``bin/python3``.  Written as ``rc=1 at <date>; no env python (<path>)``;
+#: the words say why.  Declared here beside its siblings; the wrapper
+#: imports it.
+NO_ENV_PYTHON = "no env python"
 
 
 #: The monitor log's closing record of a run whose process has gone

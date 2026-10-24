@@ -689,19 +689,16 @@ Four things are worth knowing before you move it.
   python needs. What the absence did cost is in the next paragraph.
 
 **It does not appear in a generated job script, and that is why every env
-needs one.** Decks launch with a bare `python` after the env is activated, and
-the run monitor probes `command -v python3 || command -v python`, so a script
-picks up whatever interpreter its env has. The variable reaches a job by
-deciding what the env *contains*, never by being written into a script.
+needs one.** Every python a job runs — its deck, its monitor, its finish — is
+the activated env's own, `$CONDA_PREFIX/bin/python3`, and a job whose env
+holds none stops before it starts (`execution/running-a-job.md` § 2). The
+variable reaches a job by deciding what the env *contains*, never by being
+written into a script.
 
-That makes an env declaring no python a hole rather than a saving: the probe
-searches `PATH`, falls through the env's empty `bin/`, and lands on the
-**compute node's** interpreter — a version nothing here declares, probes at
-prep time, or can promise is installed. Measured inside `molbuilder-siesta`
-(2026-09-17): `python3` resolved to `/usr/bin/python3`. On a node that ships
-none, the wrapper logs `monitor: not started` and the calculation runs
-unwatched. With the pin, the monitor runs on the interpreter this variable
-names, on every machine the env reaches.
+That makes an env declaring no python a job that cannot start: it stops at
+its first check, saying the env holds no python of its own. With the pin,
+every job runs on the interpreter this variable names, on every machine the
+env reaches.
 
 **CUDA target architecture.** The GPU kernels are compiled for the compute
 capability `nvidia-smi` reports on the machine you install from; with no GPU

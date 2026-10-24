@@ -18,13 +18,10 @@ any env, so ``import molbuilder`` fails on a compute node whatever
 interpreter is found.  That is why this module is stdlib-only, and it is a
 constraint rather than a preference.
 
-**WHICH python it gets is the ENV's.**  The wrapper probes ``command -v
-python3`` after the env is activated, so an env declaring no python of its
-own would hand this file to the compute node's interpreter -- whatever the
-image ships, unprobed at prep time and absent on a node that ships none,
-where the wrapper logs *"monitor: not started"* and the calculation runs
-unwatched.  Every recipe pins ``_PYTHON_SPEC``, so the version parsing this
-file is one the registry names.
+**WHICH python it gets is the ENV's**: the activated env's own,
+``$CONDA_PREFIX/bin/python3`` -- never the first ``python3`` on PATH
+(`running-a-job.md` § 2).  Every recipe pins ``_PYTHON_SPEC``, so the
+version parsing this file is one the registry names.
 
 The run-wrapper backgrounds it at low OS priority (``nice -n 19``) so it
 never competes with the compute ranks on the same node: it sleeps almost

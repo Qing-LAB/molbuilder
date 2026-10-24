@@ -87,13 +87,14 @@ def frameset_from_mode(run_folder, *, mode: int,
     outermost frames, at ``nodes`` Gauss-Hermite nodes.  ``root`` is the
     projects tree the run's folder is stated from in ``info.vibration``.
 
-    Refused, naming what to do: no run of ours, no result in it, a result
+    Refused, naming what to do: no run of ours -- or a calculation whose
+    description does not read, in its reader's words -- no result in it, a result
     stating no masses, a mode it does not hold or an imaginary one, a
     maximum displacement that is not a positive number, another rule than
     :data:`NODES`, a pair already at ``out``."""
     from .frame_average import INFO_KEY, MASS_CHANNEL
     from .runfiles import ROLE_SPECTRA
-    from .runs import run_of, view_of
+    from .runs import place_of, run_of, view_of
     from .sidecars.molstruct import sidecar_path_for
     from .sidecars.spectra import SpectraJsonError, parse_spectra_json
     from .spectra.derived import zero_point_amplitude_amu12_ang
@@ -129,7 +130,12 @@ def frameset_from_mode(run_folder, *, mode: int,
     # THE RUN, AND ITS RESULT, through the run door.
     run = run_of(Path(run_folder))
     if run is None:
+        # WHY IT IS NO RUN, in the run door's words: a calculation whose
+        # description does not read says so, naming its way out.
+        problem = place_of(Path(run_folder)).problem
         raise FrameSetError(
+            f"{run_folder}: its calculation's description does not read -- "
+            f"{problem}" if problem else
             f"{run_folder}: no run of ours -- name the folder of the "
             f"vibration run whose mode is written")
     result = run.on_label(ROLE_SPECTRA)

@@ -264,7 +264,7 @@ def _retry_record_block(names) -> str:
     )
 
 
-def _run_index_block(names, stdout_role: str) -> str:
+def _run_index_block(names, stdout_role: str, target_env: str) -> str:
     """Bash that takes THIS RUN'S NUMBER, as `launch` gave it -- ``--run N``,
     parsed by :func:`_continue_force_args_parser` -- and names the run's
     output with it (`project-layout.md` § 1.6.1).  A run started without
@@ -274,7 +274,15 @@ def _run_index_block(names, stdout_role: str) -> str:
     number is launch's, so a warm retry's run has a launch record of its own.
 
     ``names`` are the stage's (`runfiles.RunNames`); ``stdout_role`` the
-    engine's stdout role (:func:`_stdout_role_for`)."""
+    engine's stdout role (:func:`_stdout_role_for`).
+
+    **Then the one check every job makes before anything runs**
+    (`running-a-job.md` § 2): the activation gave this job its env --
+    ``CONDA_PREFIX`` names ``target_env`` -- and that env's own python,
+    ``$_mb_py``, is there.  Refused otherwise, the conclusion saying why
+    (`parse.dirs.job.NO_ENV_PYTHON`), whatever the engine."""
+    from .parse.dirs.job import NO_ENV_PYTHON
+    env_name = str(target_env).rstrip("/").rsplit("/", 1)[-1]
     out = _bash_name(names, stdout_role)
     return (
         f"# --- Run index resolution ------------------------------\n"
@@ -294,6 +302,19 @@ def _run_index_block(names, stdout_role: str) -> str:
         # below writes this one name (`project-layout.md` § 1.6.3).
         f'_concluded="{_bash_name(names, ".concluded")}"\n'
         f'echo "{RUN_INDEX_LINE} $_run_n  ->  $_out_file"\n'
+        f"# --- The job's python: its env's own (running-a-job.md 2) ---\n"
+        f'_mb_env="${{CONDA_PREFIX:-}}"\n'
+        f'if [ "${{_mb_env##*/}}" != "{env_name}" ] '
+        f'|| [ ! -x "$_mb_py" ]; then\n'
+        f'    echo "ERROR: this job has no python of its env \'{env_name}\' -- '
+        f'CONDA_PREFIX is ${{CONDA_PREFIX:-<unset>}}, and '
+        f'${{_mb_py:-<no python>}} is not there.  The activation did not '
+        f'take, or the env holds no python of its own: rebuild it on this '
+        f'machine (molbuilder envs install).  Nothing was started." >&2\n'
+        f'    printf "rc=1 at %s; {NO_ENV_PYTHON} (%s)\\n" "$(date)" '
+        f'"${{_mb_py:-${{CONDA_PREFIX:-no CONDA_PREFIX}}}}" > "$_concluded"\n'
+        f"    exit 1\n"
+        f"fi\n"
         f"\n"
     )
 
@@ -316,7 +337,8 @@ def _monitor_block(names, notify_on_scf: bool,
     these -- and ``gpu`` whether the run uses a GPU, without which none is
     sampled or judged.
 
-    It runs with the JOB's OWN python from the working dir -- no molbuilder
+    It runs with the JOB's OWN python (``$_mb_py``, the activated env's,
+    set after the activation) from the working dir -- no molbuilder
     install, no numpy, no repo on PATH -- sleeps between wakes, and runs at
     `nice -n 19` so it never competes with the compute ranks.  Opt out with
     ``MB_MONITOR=0``.  Stopped by ``_mb_stop_monitor``; it also exits when
@@ -327,11 +349,6 @@ def _monitor_block(names, notify_on_scf: bool,
         # blocks by these headers (D9, user decision 2026-08-13).
         "# --- Background job monitor ---------------------------\n"
         '_monitor_pid=""\n'
-        # The interpreter is PROBED (python3 first, python second): bare
-        # `python` does not exist on python3-only hosts, and a backgrounded
-        # launch would swallow the 127 (R9).  Probed whether or not a
-        # monitor starts: the wrapper's `_mb_ending` asks with it.
-        '_mb_py="$(command -v python3 || command -v python || true)"\n'
     )
     return head + (
         f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
@@ -448,7 +465,7 @@ def _finish_check_block(finish: Optional[str]) -> str:
         f'_mb_fin_said=""\n'
         f'if [ -z "$_mb_py" ] || [ ! -f {finish} ] '
         f'|| ! _mb_fin_said=$("$_mb_py" {finish} loads 2>&1); then\n'
-        f'    _log ERROR "finish: {finish} cannot run here -- '
+        f'    _log ERROR "finish: {finish} cannot run on the job\'s python ($_mb_py) -- '
         f'${{_mb_fin_said:-no python in the job env, or {finish} is not '
         f'beside the deck}}"\n'
         f'    echo "ERROR: this job cannot finish itself: {finish} does not '
@@ -2347,7 +2364,7 @@ def render_run_wrapper(script_path: Path, *,
             + 'fi\n'
             "\n"
             # SIESTA's stdout role, asked rather than taken from a default.
-            + _run_index_block(names, _stdout_role_for(".fdf"))
+            + _run_index_block(names, _stdout_role_for(".fdf"), target_env)
             + _cold_restart_block(basename, engine="siesta",
                                   label=names.label)
             + _runtime_status_block(basename, engine="siesta",
@@ -2815,7 +2832,7 @@ def render_run_wrapper(script_path: Path, *,
         # THE RUN'S NUMBER, handed on: the script names its own files with
         # it where the stage's names say they carry it (`engines/pyscf.md`
         # § 2; plan W57 decision 2).
-        inner = f'python {script_name} --run "$_run_n" > $_out_file 2>&1'
+        inner = f'"$_mb_py" {script_name} --run "$_run_n" > $_out_file 2>&1'
         description = "PySCF run"
         # THE THREADS ARE STATED (user, 2026-10-02; `architecture.md`
         # § 5.2) -- the run card's `threads`, or `--cpus-per-task` on the
@@ -2928,7 +2945,7 @@ def render_run_wrapper(script_path: Path, *,
             # PySCF's stdout role, from the catalogue -- it is not ``.out``
             # so the Results-tab inspector dispatcher can tell PySCF output
             # apart from SIESTA's.
-            + _run_index_block(names, _stdout_role_for(".py"))
+            + _run_index_block(names, _stdout_role_for(".py"), target_env)
             + _cold_restart_block(basename, engine="pyscf",
                                   label=names.label)
             + _runtime_status_block(basename, engine="pyscf",
@@ -2953,7 +2970,7 @@ def render_run_wrapper(script_path: Path, *,
             # banner above for the rationale). ----
             f'echo "  Mode        : $_mode"\n'
             f'echo "  Constraints : $_constraints"\n'
-            f'echo "  Command     : python {script_name} --run $_run_n '
+            f'echo "  Command     : $_mb_py {script_name} --run $_run_n '
             f'> $_out_file 2>&1"\n'
             f'echo "  Stdout      : $_out_file"\n'
             f'echo "  Logs        : see '
@@ -3205,35 +3222,19 @@ def render_run_wrapper(script_path: Path, *,
         f"fi\n"
         f"set -u\n"
         f"\n"
+        # THE JOB'S PYTHON -- the activated env's own, never the first
+        # `python3` on PATH (`running-a-job.md` § 2): a site's activation can
+        # leave its own python ahead of the env's (`source activate` under a
+        # mamba 2.x module, Sol, 2026-08-21 and 2026-10-24), which ran the
+        # job's monitor, its ending reader, its finish and a PySCF deck on an
+        # interpreter without the env's packages.  Every python this job
+        # runs is this one; checked once the run index is known
+        # (`_run_index_block`), for every engine alike.
+        f'_mb_py="${{CONDA_PREFIX:+$CONDA_PREFIX/bin/python3}}"\n'
         f'if [ "$_mb_help" = "0" ]; then\n'
         f'  _log INFO "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
         f'  _log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
-        f'  _log INFO "which python: $(command -v python 2>/dev/null || echo \'(not on PATH)\')"\n'
-        # DID THE ACTIVATION TAKE?  Same block, because it is the same
-        # concern: what the environment actually IS after the bootstrap.
-        # Logging it was only half the job -- a line a human reads
-        # afterwards, if anyone looks.
-        #
-        # This wrapper is what the scheduler runs on a compute node, in a
-        # fresh non-interactive shell that inherits nothing, with nobody
-        # watching.  A manager can return 0 and leave the system python on
-        # PATH (`source activate` under a mamba 2.x module does exactly
-        # that), and the cost of finding out later is a queue wait plus MPI
-        # start-up.  SIESTA refuses by name at the build probe (`command -v
-        # siesta`), and PySCF here -- otherwise it surfaces as
-        # `ModuleNotFoundError: pyscf` from inside the script (Sol,
-        # 2026-08-21).
-        + (f'  if ! python -c "import pyscf" >/dev/null 2>&1; then\n'
-           f'    echo "ERROR: python cannot import pyscf after activating '
-           f'\'{target_env}\' -- the environment did not take, or PySCF is '
-           f'not installed in it." >&2\n'
-           f'    echo "    CONDA_DEFAULT_ENV : ${{CONDA_DEFAULT_ENV:-<unset>}}" >&2\n'
-           f'    echo "    CONDA_PREFIX      : ${{CONDA_PREFIX:-<unset>}}" >&2\n'
-           f'    echo "    which python      : $(command -v python 2>/dev/null '
-           f'|| echo \'(none)\')" >&2\n'
-           f"    exit 1\n"
-           f"  fi\n"
-           if category == "pyscf" else "")
+        f'  _log INFO "job python: ${{_mb_py:-(none: no CONDA_PREFIX after activation)}}"\n'
         + "fi\n"
         "\n"
     )

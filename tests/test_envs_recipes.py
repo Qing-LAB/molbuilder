@@ -47,14 +47,10 @@ def test_every_recipe_has_required_fields():
 #: which is why neither can be left to "whatever that env happened to need".
 _UNIFORM_PACKAGES = (
     # `installation.md`, "Choosing the Python every env is built on": one
-    # value, no exception.  A generated wrapper backgrounds `mb_monitor.pyz`
-    # with whatever `command -v python3` finds AFTER the env is activated, so
-    # an env declaring no python falls through its own empty `bin/` to the
-    # COMPUTE NODE's interpreter -- a version nothing declares, probes at prep
-    # time, or can promise is installed.  `molbuilder-siesta` was that env
-    # until 2026-09-17; measured inside it, `python3` resolved to
-    # `/usr/bin/python3`.
-    (_PYTHON_SPEC, "the run monitor's interpreter"),
+    # value, no exception.  Every python a generated job runs is the
+    # activated env's own, `$CONDA_PREFIX/bin/python3` (`running-a-job.md`
+    # § 2), so an env declaring none is a job that cannot start.
+    (_PYTHON_SPEC, "the job's interpreter"),
     # `checkpoint.py`'s `GitNotInstalledError` tells the user to activate a
     # molbuilder env because "every molbuilder env ships git as a
     # conda_packages entry" -- a promise the registry has to keep, and HPC

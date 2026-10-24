@@ -55,7 +55,7 @@ _WRAPPER_LOG_LINES = (
     ("user",           re.compile(r"\] user:\s+(\S+)")),
     ("cwd",            re.compile(r"\] cwd:\s+(.+?)\s*$")),
     ("conda_env",      re.compile(r"\] CONDA_DEFAULT_ENV=(\S+)")),
-    ("python",         re.compile(r"\] which python:\s+(\S+)")),
+    ("python",         re.compile(r"\] job python:\s+(\S+)")),
     ("binary",         re.compile(r"^\s+(?:SIESTA|TBtrans) binary\s*:\s*(\S+)")),
     ("engine_version", re.compile(r"^\s+(?:SIESTA|TBtrans) version\s*:\s*(\S+)")),
 )

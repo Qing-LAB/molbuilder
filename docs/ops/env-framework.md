@@ -251,11 +251,10 @@ informational, and the installer gives the package its own non-fatal step.
 available at RUN time on a machine this process cannot probe, which is why
 neither can be left to "whatever that env happened to need":
 
-* **`python`** — a generated wrapper backgrounds `mb_monitor.pyz` on whatever
-  `command -v python3` finds *after* the env is activated, so an env declaring
-  none falls through its own empty `bin/` to the compute node's interpreter.
-  `molbuilder-siesta` was that env until 2026-09-17; measured inside it,
-  `python3` resolved to `/usr/bin/python3`. Its version is `host-env.txt`'s
+* **`python`** — every python a generated job runs is the activated env's
+  own, `$CONDA_PREFIX/bin/python3` (`running-a-job.md` § 2), and a job whose
+  env holds none stops before it starts. `molbuilder-siesta` was such an env
+  until 2026-09-17. Its version is `host-env.txt`'s
   `python` line (§ 3.4). See [`installation.md`](?doc=ops/installation.md)
   *"Choosing the Python every env is built on"*.
 * **`git`** — `checkpoint.py`'s `GitNotInstalledError` tells the person to

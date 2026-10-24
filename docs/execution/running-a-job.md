@@ -238,12 +238,18 @@ place for logic:
   pip-installed into any env, so `import molbuilder` fails on a compute node
   whatever interpreter is found. The wrapper is self-contained at run time by
   design (§ 2).
-- **The interpreter is the node's business, not ours.** The wrapper probes
-  `command -v python3 || command -v python` and carries on without one, because
-  the activation line is *declared for that machine*
-  (§ 5.2 below; the activation has no default) — the env a wrapper lands in
-  need not be one of ours at all. With no interpreter the run goes unwatched,
-  with no failure hint and no warm retry, and the log says so.
+- **The job's python is its env's own, for every engine.** Right after the
+  activation the wrapper sets `$_mb_py` to `$CONDA_PREFIX/bin/python3` — the
+  activated env's interpreter, never the first `python3` on `PATH`, which a
+  site's activation can leave ahead of the env's (`source activate` under a
+  mamba 2.x module, Sol) — and logs it (`job python:`). Every python the job
+  runs is that one: the monitor, the ending reader, a finish, a PySCF deck.
+  Once the run index is known, every job checks, before anything starts,
+  that `CONDA_PREFIX` names its env and that python is there; otherwise it
+  stops, saying which, its conclusion `no env python (<path>)`
+  (`parse.dirs.job.NO_ENV_PYTHON`). The activation forms are conda's
+  (`conda activate`, `source activate`, § 5.2), and every recipe pins
+  python into its env (`envs/recipes.py`).
 
   Any logic written to run there is either shell, or a shipped stdlib-only
   file, or broken. **`mb_monitor.pyz` is that one shipped file**: it holds the

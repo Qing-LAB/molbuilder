@@ -268,15 +268,11 @@ _HOST_ENV = _read_host_env()
 #: expert path and skips it, exactly as `MOLBUILDER_GCC` does.
 #:
 #: EVERY recipe carries it, `molbuilder-siesta` included, and that env is the
-#: reason the rule has no exception.  The generated wrapper backgrounds
-#: `mb_monitor.py` with whatever `command -v python3` finds AFTER the env is
-#: activated (`runwrap.py`, the "Background job monitor" block), so an env
-#: with no python of its own hands that job to the COMPUTE NODE's interpreter
-#: -- a version nothing here declares, probes at prep time, or can promise is
-#: installed at all.  Measured 2026-09-17 inside this env: `python3` resolved
-#: to `/usr/bin/python3`, the host's.  Pinning python in the env means the
-#: monitor runs on the interpreter THIS file names, on every machine the env
-#: reaches.
+#: reason the rule has no exception.  Every python a generated job runs is
+#: the activated env's own, ``$CONDA_PREFIX/bin/python3`` (`runwrap.py`,
+#: `running-a-job.md` § 2), so an env with no python of its own is a job that
+#: stops at its first check.  Pinning python in the env means every job runs
+#: on the interpreter THIS file names, on every machine the env reaches.
 #:
 #: The cost was measured before the pin was written (conda 26.7.1,
 #: 2026-09-17): the siesta solve with `python=3.12` resolves the IDENTICAL
