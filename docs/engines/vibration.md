@@ -1783,9 +1783,9 @@ so beside the table.
 
 > **The design for the next programme, decided and not yet built.** The user's
 > answers to its decisions are the table at its end (plan **W42**): D1–D5, D7
-> and D8 decided, D6 taken as recommended, E3 still owed. Of it only sisl in
+> and D8 decided, D6 taken as recommended, E3 still owed. Of it sisl in
 > every SIESTA env (D5) and the null pressure of a vibrational-only result (E2)
-> are built, with M2b‴. It is written into the contract so that the pieces it
+> are built, with M2b‴, and the frame set (③) with 2.35.0. It is written into the contract so that the pieces it
 > adds can be checked against the ones that exist; as each is built it moves
 > into the section it changes, and this banner goes with the last. The science
 > — why the ranking is by the conductance and not by the HOMO–LUMO gap — is
@@ -1859,54 +1859,80 @@ atoms, by a stated partition, is not. *(Found while drafting, fixed
 spelled the retired `WriteMullikenPop`; it names 5.4.2's `Charge.Mulliken`
 and `Charge.Mulliken.Format` now, `siesta/input.py`.)*
 
-**③ The frame set — the built-in mode rule, refined** (V1.25; D6, D7; one
-mode per set, the user 2026-10-09). One generator writes **one** multi-frame
-pair for **one** mode *(user, 2026-10-09: "i would rather let one multi-frame
-focus on one mode ... each vibration mode will have a separate prep and run as
-different task")*: frame 0 the base, then the Gauss–Hermite nodes of the
-mode's thermal distribution at the stated temperature (three by default, five
-on request, science § 4c.5):
+**③ The frame set — the generator** *(built 2.35.0)* (V1.25; D6, D7; one
+mode per set, the user 2026-10-09; its extent the user's, 2026-10-24). One generator writes
+**one** multi-frame pair for **one** mode *(user, 2026-10-09: "i would rather
+let one multi-frame focus on one mode ... each vibration mode will have a
+separate prep and run as different task")*: frame 0 the geometry the Hessian
+was taken at, then the Gauss–Hermite nodes of a Gaussian along the mode —
+three by default, five on request ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5),
+each pair of nodes nearest first and its positive side first:
 
 ```text
-    R_A(Q_j) = R_A⁰ + Q_j · L_canonical ,   Q_j = √2 σ x_j ,   σ = Q_zp · √coth(ħω / 2k_BT)
+    R_A(q_j) = R_A⁰ + q_j · L_A ,     q_j = √2 σ x_j        (x_j the rule's nodes)
+    σ = q_out / (√2 x_out) ,          q_out = d_max / max_A |L_A|
     R_F       unmoved
 ```
 
-`Q_zp`, `L_canonical` and every atom's mass are read from the result (§ 6.2,
-§ 6.3) — the canonical form only, by § 6.3's pairing rule — and the result
-must be one that states its masses (schema 7 or later, § 6.1). The generator builds the
-set through the structure's own doors
-([`model/structure.md`](?doc=model/structure.md) § 2.2d–2.2f): `with_frames`
-for the coordinates, `set_channel` for each atom's mass, `set_customized` for
-the rows, `set_info` for where the mode came from — and writes **a mode's
-frame set**, whose one home is [`model/structure.md`](?doc=model/structure.md)
-§ 2.2f: raw values beside the derived ones, every value at full precision —
-the mode as the result numbers it, its frequency, the temperature, the
-zero-point amplitude and the spread at that temperature on the structure's
-rows; each frame's plain displacement, its largest atom's, its mass-weighted
-position along the mode and that position in units of the spread, and its
-weight, on its own rows; each atom's mass on the `mass_amu` channel; the
-vibration run's folder and the sha256 of its result in `info.vibration`.
-**How many frames, and where they sit, is the generator's**: by default the
-Gauss–Hermite nodes of the mode's thermal distribution at the stated
-temperature (three, five on request, science § 4c.5), each weight the node's —
-`⅔, ⅙, ⅙` for three — and its parameters are its own rows, carried and shown (the user,
-2026-10-09: *"max displacement is a parameter we feed to generate the
-multi-frame data and is included in the meta data"*) — **which rows, and
-their names, `model/structure.md` § 2.2f states and nothing here repeats**
-*(2026-10-18: this paragraph had named `max_displacement_ang` and a
-nearest-neighbour row that § 2.2f does not hold; the generator (V1.25) is
-written to § 2.2f's vocabulary alone)*. *(How the generator's input and the
-nodes of the thermal distribution meet — the displacements derived from the
-temperature, D7 — is settled when the generator is designed, V1.25.)* The pair keeps every promise the
-transport citation door checks by construction — count, order, species and
-labels unchanged, and no electrode atom moves when every electrode atom is held, which the generator
-checks and says when it is not so. **Another mode is another set**, cited by
-its own transport calculation; how the modes' results are weighed against each
-other is the person's *(user, 2026-10-09: "it is cleaner and more focused to
-let user to post-process the results from different vibrational mode and
-decide how they can be weighed to give an overall impact")*. Two doors, one
-generator: the spectrum viewer (select a mode, write its set) and one CLI verb.
+**Its extent is the person's: the maximum displacement `d_max`**, in Å — the
+largest atom's move at the outermost frames *(the user, 2026-10-24: max
+displacement, over a temperature; and 2026-10-09: "max displacement is a
+parameter we feed to generate the multi-frame data and is included in the
+meta data")*. It sets the spread σ; each frame's weight is the rule's own —
+`⅔, ⅙, ⅙` for three — so the frames average over a Gaussian of the spread the
+person chose. **No temperature is stated**: σ sits beside the mode's
+zero-point amplitude `Q_zp`, which every result states — σ = `Q_zp` is the
+zero-point motion's spread, and the thermal one at a temperature T is
+`Q_zp·√coth(ħω/2k_BT)` (science § 2), so a person who wants the thermal
+average at T chooses the `d_max` that gives it. `d_max` is stated by the
+person every time: a value stated nowhere is refused, never defaulted.
+
+**What it reads, each from its owner:**
+
+| what | from |
+|---|---|
+| the mode — `index_1based`, its frequency, `Q_zp`, the canonical eigenvector `L` over the free atoms (§ 6.3's pairing rule) | the vibration result, through its reader (§ 6.8); one that states its masses (schema 7 or later) |
+| frame 0 — the Hessian's geometry in the user order, its labels, held atoms and box | the result's `structure` (§ 6.10.1) |
+| each atom's mass | the result's `equilibrium.masses_amu` |
+| frame 0's `info.calculation` — the settings a transport citation takes its own from (`engines/transport.md` § 3.1, § 2a.7) | the vibration run's own deck's record, through the run door's view (`runs.view_of`, `parse.contract.contract_of`): the force-constant run is taken at a stationary point of those settings (§ 5.5), the geometry frame 0 is. A PySCF deck records none, so a PySCF vibration's set is no transport citation, and the generator says so |
+
+**What it writes** — through the structure's own doors
+([`model/structure.md`](?doc=model/structure.md) § 2.2d–2.2f: `with_frames`,
+`set_channel`, `set_customized`, `set_info`), in § 2.2f's vocabulary, which
+this section does not repeat: the mode, its frequency, `Q_zp`, `d_max` and σ
+on the structure's rows; each frame's displacement, largest atom move, `q`,
+`q/σ` and weight on its own; every atom's mass on the `mass_amu` channel; the
+vibration run — its folder from the projects tree — and its result's sha256
+in `info.vibration`. One pair, `.xyz` and `.molstruct.json`, through the
+structure's one writer; **a pair already at that path is refused**, never
+written over: a transport calculation citing it is pinned to it.
+
+**It keeps what a transport citation checks**: the same atoms, order, labels
+and box in every frame, and the held atoms where frame 0 has them — `L` is
+zero on every held atom. **An electrode atom left free moves**, and its
+frames are then no transport citation (`engines/transport.md` § 2a.9): the
+set is written, and the generator says which electrode atoms move and that
+transport refuses such a set.
+
+**Two doors, one generator** (`frameset_from_mode`):
+
+- **the command line** — `molbuilder frameset from-mode RUN --mode N
+  --max-displacement D [--nodes 3|5] --out PAIR.xyz`: `RUN` the vibration
+  run's folder and `PAIR.xyz` the pair, each read from the projects tree as
+  `--bundle` is, the run read through the run door; it prints each frame's `q/σ`,
+  largest atom move and weight, and where the pair is;
+- **the spectrum viewer** ([`web/spectra.md`](?doc=web/spectra.md)) — on the
+  selected mode, *Write frame set…*: the maximum displacement (with the mode's
+  largest zero-point atom move beside it, from the result's
+  `zero_point_displacement_ang`), three or five frames, and where to save it
+  in the tree; the same generator answers, and the pair opens where a
+  structure opens.
+
+**Another mode is another set**, cited by its own transport calculation; how
+the modes' results are weighed against each other is the person's *(user,
+2026-10-09: "it is cleaner and more focused to let user to post-process the
+results from different vibrational mode and decide how they can be weighed to
+give an overall impact")*.
 
 **④ The electronic response on a frame set — a run of its own kind** (D4, D5).
 § 5.6 already says so: "each a run of its own kind on that pair". Proposed: a
@@ -2017,7 +2043,7 @@ rigid-shift estimate against the explicit curvature.
 | D4 | where the electronic frames run | **decided 2026-09-28: yes**, a calculation kind of its own, `electronic` — *"make it clear the difference between pySCF and siesta, from setup and calculation and presentation"* | what § 5.6 already says; it serves `Δρ_ν` (V1.26) too, and needs no leads |
 | D5 | sisl in the SIESTA job envs | **decided 2026-09-28: in every SIESTA env**, through the env system's recipes — *"so it is always available when we need them"* (installed with M2b‴, the milestone that retired the unit-height spectrum — § 10's sisl row) | the levels are the junction's HOMO and LUMO, and sisl is SIESTA's own reader of the file they come from |
 | D6 | one frame set for many modes | ~~yes — V1.25's "for a named mode" becomes "for named modes"~~ — **reversed by the user, 2026-10-09: one mode per set** (*"i would rather let one multi-frame focus on one mode ... each vibration mode will have a separate prep and run as different task"*); how modes are weighed against each other is the person's post-processing | ~~the base, the leads and the seed once~~ — each mode's set its own transport calculation |
-| D7 | the amplitude rule — where the displaced structures the electronic and transport runs compute on sit (not the animation) | **decided 2026-09-28**: the Gauss–Hermite nodes of the thermal distribution at a stated temperature, three by default | the same frames give the curvature and the average (science § 4c.5); V1.25's "zero-point amplitude and its thermal growth" are the two ends of it |
+| D7 | the amplitude rule — where the displaced structures the electronic and transport runs compute on sit (not the animation) | **decided 2026-09-28, its input the user's 2026-10-24**: the Gauss–Hermite nodes of a Gaussian along the mode, three by default, its spread set by the person's maximum displacement — the largest atom's move at the outermost frames — and no temperature stated (§ 5.10 ③) | the same frames give the curvature and the average (science § 4c.5); the zero-point and thermal spreads are what a person compares σ with |
 | D8 | the PySCF probe — how far its per-mode orbital check pushes the molecule (not the animation) | **decided 2026-09-28**: the same nodes; `electronic_structure.amplitude_ang` gives way to the node record | one amplitude rule on both engines, and a curvature needs frames above the noise |
 
 ---
@@ -2796,7 +2822,7 @@ nothing is in that state as of 2026-09-28.
 | ~~the PySCF deck's own `_optimized.xyz` pair records `info.relaxation`~~ | **closed 2026-09-29** by the one-source rule (V1.31): the record is the one reader's (`parse.contract.relaxation_of`, over the run's own output), which the Results tab's export writes; a copy computed in the deck would be a second writer of it | § 2.2 |
 | a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **built 2026-09-28** — V1.23: `summarize task` writes `<label>.fc-sweep.json` (modes matched by shape, the force constants compared from the raw `.FC`), the Results tab presents it, and every force-constant stage measures at the relaxed geometry | § 5.9 |
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
-| mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | V1.25 **decided, not built** (D6, D7; the frame set of § 5.10 ③, written through `with_frames` and each displaced frame's `set_customized(…, frame=i)` — the structure's doors exist since `c93da223`); V1.26 **needs a decision** (M10) | § 5.6, § 5.10 |
+| a mode's frame set — one mode as one multi-frame pair a transport calculation cites; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | V1.25 **built 2.35.0** (D6, D7: the frame set of § 5.10 ③, `mode_frames.frameset_from_mode`, `molbuilder frameset from-mode` and the spectrum viewer's *Write frame set…*); V1.26 **needs a decision** (M10) | § 5.6, § 5.10 |
 | the PySCF probe: five points, the coupling per zero-point amplitude `g_ν`, a molecule-projected window for a cluster | **decided, not built** — V1.27 (D8: the same nodes as the frame set) | § 4.8, § 5.10 |
 | the force-constant stage leaves the input's relaxation record behind; its calculation record stays | **built 2026-09-29** — V1.35 | § 5.2a |
 | what a force-constant stage says about its geometry after the ladder's relax: the relax stage's outcome and its remedy, not the describe-time box and record advice | **built 2026-09-29** — V1.36, the user's word the same day | § 5.2a, § 5.8 |

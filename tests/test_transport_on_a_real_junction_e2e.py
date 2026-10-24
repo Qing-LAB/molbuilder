@@ -125,15 +125,15 @@ _BIAS = (0.0, 0.2)
 #: template's, the cited run's (`engines/transport.md` § 2a.13, § 3.8.2a).
 _OWN_MIXING = {"seed": 0.12, "electrode_L": 0.15, "device": 0.08}
 
-#: The frame set the second calculation cites, written by a script from a
-#: real SIESTA vibration of the relaxed pair, as the frame generator writes
-#: one (`model/structure.md` § 2.2f; `engines/vibration.md` § 5.10 ③): frame 0
-#: the pair, then the Gauss-Hermite nodes of the mode's thermal distribution
-#: at +/-sqrt(3) sigma, each with its weight
-#: (`science/vibrational-averaging.md` § 5.1).
+#: The frame set the second calculation cites, written by the frame generator
+#: from a real SIESTA vibration of the relaxed pair (`molbuilder frameset
+#: from-mode`; `engines/vibration.md` § 5.10 ③): frame 0 the pair, then the
+#: three-point Gauss-Hermite nodes at +/-sqrt(3) sigma, each with its weight
+#: (`science/vibrational-averaging.md` § 5.1), the outermost frames' largest
+#: atom moving the maximum displacement.
 _NODES_SIGMA = (0.0, 3 ** 0.5, -(3 ** 0.5))
 _WEIGHTS = (2 / 3, 1 / 6, 1 / 6)
-_TEMPERATURE_K = 300.0
+_MAX_DISPLACEMENT_ANG = 0.1
 _N_FRAMES = len(_NODES_SIGMA)
 
 #: A mode's frame set's rows as `model/structure.md` § 2.2f's table states
@@ -142,11 +142,12 @@ _N_FRAMES = len(_NODES_SIGMA)
 #: wrote (§ 3.8.1).
 _SET_ROWS = (("mode_index_1based", "given", None, "Mode", None),
              ("frequency_cm1", "given", "cm-1", "Frequency", "cm⁻¹"),
-             ("temperature_k", "given", "K", "Temperature", "K"),
              ("zero_point_amplitude_amu12_ang", "given", "amu^1/2 angstrom",
               "Zero-point amplitude", "amu½·Å"),
+             ("max_displacement_ang", "given", "angstrom",
+              "Maximum displacement", "Å"),
              ("sigma_amu12_ang", "derived", "amu^1/2 angstrom",
-              "Thermal spread σ", "amu½·Å"))
+              "Spread σ", "amu½·Å"))
 _FRAME_ROWS = (("displacement_ang", "measured", "angstrom",
                 "Displacement", "Å"),
                ("max_atom_displacement_ang", "measured", "angstrom",
@@ -228,56 +229,14 @@ def _write_junction(tree: Path) -> str:
     return "P/structure/junction.xyz"
 
 
-def _mode_frame_set(tree: Path, pair: str, result: str):
-    """The frame set a script writes from the vibration run ``result`` (its
-    folder, tree-relative), through the structure's own doors
-    (`model/structure.md` § 2.2d-2.2f): its highest mode; frame 0 the pair,
-    then each node's frame, every atom displaced by ``q * L``; the
-    definition stated in full -- the mode, frequency and zero-point amplitude
-    as the result states them, the temperature, the spread from them; each
-    frame's plain displacement, largest atom's, ``q``, ``q / sigma`` and
-    weight; every atom's mass, the result's; where the mode came from."""
-    import hashlib
-    from molbuilder.frame_average import MASS_CHANNEL
+def _highest_mode(tree: Path, run: str) -> int:
+    """The highest mode of vibration run ``run`` (tree-relative), as its
+    result numbers it -- the result found through the run door."""
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import run_of
     from molbuilder.sidecars.spectra import parse_spectra_json
-    from molbuilder.spectra.derived import thermal_spread_amu12_ang
-    from molbuilder.structure import AtomChannel
-    from molbuilder.workingcopy_structure import StructureCodec
-    path = tree / result / "V.spectra.json"
-    res = parse_spectra_json(str(path))
-    mode = res.modes[-1]
-    q_zp = res.to_dict()["modes"][-1]["zero_point_amplitude_amu12_ang"]
-    sigma = thermal_spread_amu12_ang(q_zp, mode.frequency_cm1, _TEMPERATURE_K)
-    L = np.zeros((res.n_atoms_total, 3))
-    L[res.free_atom_idxs] = mode.eigenvector_canonical
-    base = StructureCodec().load(tree / pair)
-    qs = [node * sigma for node in _NODES_SIGMA]
-    built = base.with_frames(np.stack([base.positions + q * L for q in qs]))
-    built.set_channel(MASS_CHANNEL, AtomChannel(
-        "value", {i: float(m) for i, m in
-                  enumerate(res.equilibrium_masses_amu)}))
-    for name, value, unit in (
-            ("mode_index_1based", mode.index_1based, None),
-            ("frequency_cm1", mode.frequency_cm1, "cm-1"),
-            ("temperature_k", _TEMPERATURE_K, "K"),
-            ("zero_point_amplitude_amu12_ang", q_zp, "amu^1/2 angstrom"),
-            ("sigma_amu12_ang", sigma, "amu^1/2 angstrom")):
-        built.set_customized(name, value, unit=unit)
-    for f, (q, w) in enumerate(zip(qs, _WEIGHTS)):
-        moved = q * L
-        for name, value, unit in (
-                ("displacement_ang", float(np.linalg.norm(moved)),
-                 "angstrom"),
-                ("max_atom_displacement_ang",
-                 float(np.linalg.norm(moved, axis=1).max()), "angstrom"),
-                ("q_amu12_ang", q, "amu^1/2 angstrom"),
-                ("node_sigma", q / sigma, None),
-                ("weight", w, None)):
-            built.set_customized(name, value, unit=unit, frame=f)
-    built.set_info("vibration", {
-        "run": result,
-        "result_sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
-    return built
+    result = run_of(tree / run).on_label(ROLE_SPECTRA)
+    return int(parse_spectra_json(result).modes[-1].index_1based)
 
 
 def _family_of(built):
@@ -511,11 +470,14 @@ def junction(tmp_path_factory):
                "--mode", "direct", "--foreground", "--yes")
         vibration = "P/frequency/V/01_freq/run-0"
 
-        # THE FRAME SET, written from that mode by a script through the
-        # structure's own doors, the definition stated in full.
+        # THE FRAME SET, written from its highest mode by the generator on
+        # the command line (`engines/vibration.md` § 5.10 ③).
         frame_set = "P/structure/frames.xyz"
-        StructureCodec().write(_mode_frame_set(tree, pair, vibration),
-                               tree / frame_set)
+        mode = _highest_mode(tree, vibration)
+        r = molbuilder("frameset", "from-mode", vibration, "--mode",
+                       str(mode), "--max-displacement",
+                       str(_MAX_DISPLACEMENT_ANG), "--out", frame_set)
+        assert r.exit_code == 0, r.output
 
         # THE SET CITED -- a second transport calculation, its
         # pseudopotentials from the library, its spin restricted as the
@@ -664,8 +626,20 @@ def junction(tmp_path_factory):
         # curve (`model/structure.md` § 2.2f).
         run.family = "P/structure/family.xyz"
         StructureCodec().write(
-            _family_of(_mode_frame_set(tree, pair, vibration)),
+            _family_of(StructureCodec().load(tree / frame_set, frames=True)),
             tree / run.family)
+        # THE SPECTRUM VIEWER'S DOOR to the same generator
+        # (`web/spectra.md` § 4.3), asked with the paths the page sends --
+        # the result's folder and the tree picker's choice, each absolute:
+        # five frames of the same mode, then the same path again, which is
+        # refused, never written over.
+        ask = {"run": str(tree / vibration), "mode": mode,
+               "max_displacement_ang": _MAX_DISPLACEMENT_ANG, "nodes": 5,
+               "out": str(tree / "P" / "structure" / "frames5.xyz")}
+        run.frameset_said = [
+            (a.status_code, a.get_json()) for a in (
+                client.post("/api/spectra/frameset", json=ask),
+                client.post("/api/spectra/frameset", json=ask))]
 
         # THE TRANSPORT TAB'S CARD, for each kind it cites (§ 3.8.1): what
         # the describe door says each citation's frames are, and whether the
@@ -1948,7 +1922,8 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
     for name, value in fs.structure_rows().items():
         assert avg[name] == value, (name, avg[name], value)
     assert avg["rows"] == list(fs.structure) and avg["warnings"] == []
-    assert avg["weights"] == list(_WEIGHTS) and avg["tolerance"] == 1e-6
+    assert avg["weights"] == pytest.approx(list(_WEIGHTS), rel=1e-12)
+    assert avg["tolerance"] == 1e-6
     assert abs(avg["weight_sum"] - 1.0) <= avg["tolerance"]
     assert avg["why"] is None and len(avg["assumptions"]) == 6
     assert [e["bias_v"] for e in avg["at"]] == list(_BIAS)
@@ -2421,6 +2396,29 @@ def test_a_ladder_without_a_transmission_exports_what_exists(
         V["bias_v"]), V["average_why"]
 
 
+def test_the_spectrum_viewers_door_writes_the_same_generators_set(junction):
+    """`web/spectra.md` § 4.3: the viewer's door asks the one generator --
+    five frames of the same mode at the same maximum displacement, each
+    frame's position along the mode, largest atom move and weight as the
+    five-point rule gives them, the outermost the maximum displacement; the
+    same path asked again is refused, never written over.  The silent
+    failure: a door that drops the rule it was asked (three frames written
+    when five were) or writes over a pair a calculation cites."""
+    (status, said), (again, refused) = junction.frameset_said
+    assert status == 200 and said["ok"], said
+    assert said["path"] == "P/structure/frames5.xyz", said
+    frames = said["frames"]
+    assert [f["q_sigma"] for f in frames] == pytest.approx(
+        [0.0, 1.3556261799742657, -1.3556261799742657,
+         2.8569700138728056, -2.8569700138728056], rel=1e-9)
+    assert [f["weight"] for f in frames] == pytest.approx(
+        [0.5333333333333333, 0.2220759220056126, 0.2220759220056126,
+         0.011257411327720693, 0.011257411327720693], rel=1e-9)
+    assert max(f["max_atom_displacement_ang"] for f in frames) == \
+        pytest.approx(_MAX_DISPLACEMENT_ANG, rel=1e-12)
+    assert again == 400 and "already exist" in refused["error"], refused
+
+
 def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     """§ 3.8.1: the Transport tab cites either kind of § 3.1 -- and for a
     pair the describe door says what its frames are: a mode's set its rows
@@ -2452,19 +2450,23 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         "masses_amu": [float(pair.annotations[MASS_CHANNEL].data[i])
                        for i in range(pair.n_atoms)],
         "vibration": pair.info["vibration"],
-        "weights": list(_WEIGHTS),
+        "weights": [stated("weight", f) for f in range(_N_FRAMES)],
         "weight_sum": pytest.approx(1.0, abs=1e-12),
         "warnings": [],
         # THE FRAMES STATE A MODE, said by the door so the card keeps no
         # list of the rows that decide it (`transport.md` § 3.8.1).
         "mode": True,
     }
-    # ...and those rows the script's own: its weights, its nodes, its
-    # temperature.
-    assert [row[-1] for row in expect["frames"]] == list(_WEIGHTS)
+    # ...and those rows the generator's: its weights, its nodes, and the
+    # outermost frames' largest atom moving the maximum displacement.
+    assert [row[-1] for row in expect["frames"]] == pytest.approx(
+        list(_WEIGHTS), rel=1e-12)
     assert [row[3] for row in expect["frames"]] == pytest.approx(
         list(_NODES_SIGMA), rel=1e-12)
-    assert stated("temperature_k") == _TEMPERATURE_K
+    assert stated("max_displacement_ang") == _MAX_DISPLACEMENT_ANG
+    assert max(stated("max_atom_displacement_ang", f)
+               for f in range(_N_FRAMES)) == pytest.approx(
+        _MAX_DISPLACEMENT_ANG, rel=1e-12)
     fields = {}
     for kind, (described, schema) in junction.tab_said.items():
         assert described["ok"] and described["citation"], (kind, described)

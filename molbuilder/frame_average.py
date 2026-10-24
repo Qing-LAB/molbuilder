@@ -78,8 +78,10 @@ ROWS: Tuple[Row, ...] = (
         "Temperature", "K"),
     Row("zero_point_amplitude_amu12_ang", "structure", "given",
         "amu^1/2 angstrom", "Zero-point amplitude", "amu½·Å"),
+    Row("max_displacement_ang", "structure", "given", "angstrom",
+        "Maximum displacement", "Å"),
     Row("sigma_amu12_ang", "structure", "derived", "amu^1/2 angstrom",
-        "Thermal spread σ", "amu½·Å"),
+        "Spread σ", "amu½·Å"),
     Row("displacement_ang", "frame", "measured", "angstrom",
         "Displacement", "Å"),
     Row("max_atom_displacement_ang", "frame", "measured", "angstrom",
@@ -100,18 +102,17 @@ _FRAME = {r.name: r for r in FRAME_ROWS}
 #: frames state a mode (`science/vibrational-averaging.md` § 7) -- the
 #: interpretation of a mode's frame set, never transport's.
 ASSUMPTIONS = (
-    "A harmonic mode: the molecule's position along the mode follows its "
-    "Gaussian thermal distribution, the same either side of equilibrium; a "
-    "strongly anharmonic mode skews it, which a harmonic frame set does not "
-    "carry.",
+    "A harmonic mode: the molecule's position along the mode follows a "
+    "Gaussian of the spread the set states, the same either side of "
+    "equilibrium; a strongly anharmonic mode skews it, which a harmonic "
+    "frame set does not carry.",
     "Static frames: each frame is a frozen geometry, the electron crossing "
     "fast against the vibration; the inelastic steps at eV = hbar*omega and "
     "a strongly coupled level's polaron shift need the electron-vibration "
     "coupling and are not here.",
-    "The equilibrium distribution, one voltage at a time: the average is "
-    "taken over the frames at each voltage separately, with the weights of "
-    "the junction at equilibrium; a bias that heats the mode is not "
-    "modelled.",
+    "One distribution, one voltage at a time: the average is taken over "
+    "the frames at each voltage separately, with the same weights at every "
+    "voltage; a bias that heats the mode is not modelled.",
     "Each frame's electrons in their ground state for that frame: every "
     "frame runs its own self-consistent device.",
     "The level alignment is DFT's, frame by frame.",

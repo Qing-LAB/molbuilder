@@ -683,9 +683,10 @@ Any other name's unit is carried as written:
 | the `mass_amu` channel | each atom's mass | given | the masses the mode's coordinate is weighted by — the vibration result's own, `equilibrium.masses_amu`; every atom, a positive finite number | amu | — |
 | the structure's rows | `mode_index_1based` | given | which mode, counted as the vibration result counts it (`index_1based`) | — | Mode |
 | | `frequency_cm1` | given | the mode's wavenumber, as the result states it | cm⁻¹ | Frequency (cm⁻¹) |
-| | `temperature_k` | given | the temperature whose thermal distribution the weights sample | K | Temperature (K) |
+| | `temperature_k` | given | the temperature whose thermal distribution the weights sample, where the maker states one — the generator states none (`engines/vibration.md` § 5.10 ③) | K | Temperature (K) |
 | | `zero_point_amplitude_amu12_ang` | given | the mode's zero-point amplitude `Q_zp = √(ħ/2ω)`, as the result states it | amu^½·Å | Zero-point amplitude (amu½·Å) |
-| | `sigma_amu12_ang` | derived | the mode's thermal spread at that temperature, `σ = Q_zp · √coth(ħω / 2k_BT)` | amu^½·Å | Thermal spread σ (amu½·Å) |
+| | `max_displacement_ang` | given | the largest atom's move at the outermost frames — the generator's input, the person's (`engines/vibration.md` § 5.10 ③) | Å | Maximum displacement (Å) |
+| | `sigma_amu12_ang` | derived | the spread of the Gaussian the frames sample — the generator's from the maximum displacement, `σ = q_out / (√2 x_out)` with `q_out = d_max / max_A \|L_A\|`; a maker stating a temperature, its thermal spread `Q_zp · √coth(ħω / 2k_BT)` | amu^½·Å | Spread σ (amu½·Å) |
 | each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, `√(Σ_A \|ΔR_A\|²)` over every atom — no masses | Å | Displacement (Å) |
 | | `max_atom_displacement_ang` | measured | its largest single atom's, `max_A \|ΔR_A\|` | Å | Largest atom move (Å) |
 | | `q_amu12_ang` | derived | its position along the mode — ONE number for the whole mode, every atom displaced by `q · L_A`: its size `√(Σ_A m_A \|ΔR_A\|²)`, its sign the side of frame 0 it sits on | amu^½·Å | Position along the mode, q (amu½·Å) |
@@ -698,8 +699,9 @@ Any other name's unit is carried as written:
 *derived* is computed from the others by the formula shown.
 
 How many frames there are, where they sit and what they state is the maker's
-— the frame generator's default is the Gauss–Hermite nodes of the mode's
-thermal distribution (`science/vibrational-averaging.md` § 5).
+— the frame generator's are the Gauss–Hermite nodes of a Gaussian whose spread
+the person's maximum displacement sets (`engines/vibration.md` § 5.10 ③;
+`science/vibrational-averaging.md` § 5).
 
 ### 2.3 Geometry I/O
 

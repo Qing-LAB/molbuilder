@@ -1863,6 +1863,81 @@ def cmd_atom_index(path, to_engine, to_user):
                    f"{show(row['engine_index']):>12}")
 
 
+@cli.group("frameset",
+           short_help="a mode's frame set: one vibration mode as one "
+                      "multi-frame structure pair a transport calculation "
+                      "cites")
+def frameset_group():
+    """A mode's frame set (engines/vibration.md § 5.10 ③): one vibration
+    mode written as one multi-frame structure pair, its frames at the
+    Gauss-Hermite nodes and each its weight -- the pair a transport
+    calculation cites, every frame a point and their weighted average its
+    result."""
+
+
+def _in_the_tree(ctx, param, value):
+    """A path of the projects tree, as ``--bundle`` and ``--structure``
+    read one (`job-contracts.md` § 2.5b): a relative one from the tree's
+    root, and every one inside it -- the one fence, `projects.contain`."""
+    from .projects import OutsideRoot, contain, projects_root
+    root = Path(projects_root()).expanduser()
+    p = Path(str(value)).expanduser()
+    try:
+        return contain(p if p.is_absolute() else root / p, root)
+    except OutsideRoot as exc:
+        raise click.BadParameter(
+            f"{value!r} is not inside the projects tree ({exc.root}): "
+            f"{exc.reason}.  Paths are read from the tree's root.")
+
+
+@frameset_group.command("from-mode")
+@click.argument("run", callback=_in_the_tree)
+@click.option("--mode", "mode", type=int, required=True,
+              help="the mode, counted as the vibration result counts it "
+                   "(from 1, ascending frequency).")
+@click.option("--max-displacement", "max_displacement", type=float,
+              required=True, metavar="ANGSTROM",
+              help="the largest atom's move at the outermost frames, in "
+                   "Angstrom -- it sets the spread the frames sample.")
+@click.option("--nodes", type=click.Choice(["3", "5"]), default="3",
+              show_default=True,
+              help="the Gauss-Hermite rule: three frames, or five.")
+@click.option("--out", "out", required=True, callback=_in_the_tree,
+              help="the pair's .xyz to write, in the projects tree; its "
+                   ".molstruct.json beside it.")
+def cmd_frameset_from_mode(run, mode, max_displacement, nodes, out):
+    """Write vibration RUN's mode as one multi-frame pair: frame 0 the
+    geometry the Hessian was taken at, then the Gauss-Hermite nodes of a
+    Gaussian whose spread the maximum displacement sets, each frame its
+    weight (engines/vibration.md § 5.10 ③).  RUN is the vibration run's
+    folder and OUT the pair's .xyz, each read from the projects tree as
+    --bundle is.  A pair already at OUT is refused, never written over.
+
+    Example::
+
+        molbuilder frameset from-mode P/frequency/V/01_freq/run-0 \\
+            --mode 7 --max-displacement 0.05 --out P/structure/mode7.xyz
+    """
+    from .mode_frames import FrameSetError, frameset_from_mode
+    from .projects import projects_root
+    try:
+        got = frameset_from_mode(run, mode=mode,
+                                 max_displacement_ang=max_displacement,
+                                 nodes=int(nodes), out=out,
+                                 root=projects_root())
+    except FrameSetError as exc:
+        raise click.ClickException(str(exc))
+    click.echo(f"wrote {got.path} -- mode {mode}, {len(got.frames)} frames "
+               f"(and its .molstruct.json)")
+    click.echo("  frame  q/sigma   largest atom move (A)  weight")
+    for f, row in enumerate(got.frames):
+        click.echo(f"  {f:>5}  {row['q_sigma']:+8.4f}  "
+                   f"{row['max_atom_displacement_ang']:21.6f}  "
+                   f"{row['weight']:.6f}")
+    for line in got.said:
+        click.echo(f"note: {line}")
+
+
 @cli.command("runtime-info",
              short_help="dump runtime_info as JSON sidecar from a SIESTA / PySCF output")
 @click.argument("input_path", metavar="input")

@@ -443,6 +443,18 @@ name = "path"
 request = { json = { path = "{outside_file}" } }
 
 [[route]]
+rule = "/api/spectra/frameset"
+method = "POST"
+[[route.path]]
+where = "json"
+name = "run"
+request = { json = { run = "{outside_dir}", mode = 1, max_displacement_ang = 0.05, nodes = 3, out = "{inside_dir}/frames.xyz" } }
+[[route.path]]
+where = "json"
+name = "out"
+request = { json = { run = "{inside_dir}", mode = 1, max_displacement_ang = 0.05, nodes = 3, out = "{outside_dir}/frames.xyz" } }
+
+[[route]]
 rule = "/api/structure/analyze"
 method = "POST"
 takes_no_path = "A structure envelope, a calculation kind and per-engine form items, answered in memory."

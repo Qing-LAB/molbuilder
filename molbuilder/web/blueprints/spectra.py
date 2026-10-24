@@ -323,6 +323,44 @@ def _version(path) -> Optional[Tuple[int, int]]:
     return (st.st_size, st.st_mtime_ns)
 
 
+@bp.route("/api/spectra/frameset", methods=["POST"])
+def api_spectra_frameset():
+    """A MODE'S FRAME SET, written through the one generator
+    (`engines/vibration.md` § 5.10 ③; `web/spectra.md` § 4.3):
+    ``{run, mode, max_displacement_ang, nodes, out}`` -- the vibration
+    run's folder and the pair's ``.xyz``, each inside the tree (the fence,
+    `web-api.md` § 2.1).  Answers ``{ok, path, frames, said}``, or the
+    generator's refusal in its words (400)."""
+    from molbuilder.mode_frames import FrameSetError, frameset_from_mode
+    from molbuilder.projects import projects_root
+    from .files import _PickerError, _resolve_within_roots
+    body = request.get_json(silent=True) or {}
+    try:
+        run = _resolve_within_roots(str(body.get("run") or ""))
+        out = _resolve_within_roots(str(body.get("out") or ""))
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    try:
+        mode = int(body.get("mode"))
+        nodes = int(body.get("nodes") or 3)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "mode and nodes are whole "
+                                              "numbers"}), 400
+    root = projects_root()
+    try:
+        got = frameset_from_mode(
+            run, mode=mode,
+            max_displacement_ang=body.get("max_displacement_ang"),
+            nodes=nodes, out=out, root=root)
+    except FrameSetError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    try:
+        wire = got.to_wire(root)
+    except ValueError:
+        wire = got.to_wire()
+    return jsonify({"ok": True, **wire})
+
+
 def _err_load(exc: SpectraJsonError):
     """Map a parser exception class to the HTTP response shape.
 

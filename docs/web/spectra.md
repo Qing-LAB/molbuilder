@@ -457,6 +457,21 @@ that clause.
 The maths lives in `spectra/results.py :: motion_share_by_element`; the sentence
 is assembled in `lib/spectra/core.js :: _reportSwing`.
 
+### 4.3 A mode's frame set — *Write frame set…*
+
+On the selected mode, **Write frame set…** writes the mode as one
+multi-frame structure pair a transport calculation cites
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ③): the
+person states the **maximum displacement** — the largest atom's move at the
+outermost frames, in Å, with this mode's largest zero-point atom move shown
+beside the field (the result's `zero_point_displacement_ang`) — three or five
+frames, and where in the tree to save the pair. The page writes nothing
+itself: it asks the one generator through `POST /api/spectra/frameset` (§ 6),
+and shows its answer — each frame's `q/σ`, largest atom move and weight, the
+pair's path, and, where an electrode atom moves, that transport refuses the
+set. The animation's amplitude (§ 4.1) is a drawing choice and never this
+input.
+
 ## 5. The standalone tab — from a structure to a description
 
 On `/spectrum-calculation` the page is a short vertical workflow:
@@ -509,13 +524,14 @@ run, so the launch is the last step on both engines
 
 ## 6. The API door
 
-One spectra route remains — the ARTIFACT reader (full shape in
+Two spectra routes — the ARTIFACT reader and the frame generator's door (full shape in
 [`web-api.md`](?doc=web/web-api.md)); the compute half goes through the
 catalogue schema + hand-over doors (§ 5):
 
 | Route | Does | Returns |
 |---|---|---|
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data | `{ok, results}` — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
+| `POST /api/spectra/frameset` | `{run, mode, max_displacement_ang, nodes, out}` — the vibration run's folder (the loaded result's) and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the one generator (`engines/vibration.md` § 5.10 ③) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the generator's refusal in its words |
 
 Both follow the app's `{ok: …}` envelope convention. The form schema comes
 from the catalogue door (`GET /api/build/schema/<engine>?calculation=vibration`, once per engine);

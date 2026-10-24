@@ -2856,6 +2856,98 @@
      * the amplitude and the rate are whatever the animation is already using, so
      * the file cannot disagree with the screen.
      */
+    /* ── A mode's frame set (web/spectra.md § 4.3) ─────────────────────────
+     *
+     * The page writes nothing itself: it asks the person the maximum
+     * displacement, the rule and where to save, and the one generator answers
+     * (`POST /api/spectra/frameset`, engines/vibration.md § 5.10 ③).  The
+     * animation's amplitude above is a drawing choice and never this input.
+     */
+    async function onWriteFrameSet() {
+        const r = state.results;
+        const path = state.fileState && state.fileState.path;
+        const mode = r && state.selectedMode != null
+            ? (r.modes || []).find(m => m.index_1based === state.selectedMode)
+            : null;
+        if (!mode || !path) {
+            setStatus(els.framesetStatus,
+                      "select a mode of a result opened from the tree first",
+                      "muted");
+            return;
+        }
+        // THIS MODE'S LARGEST ZERO-POINT ATOM MOVE, the result's own, beside
+        // the field it is compared with.
+        const zp = Array.isArray(mode.zero_point_displacement_ang)
+            ? Math.max(...mode.zero_point_displacement_ang.map(
+                  v => Math.hypot(v[0], v[1], v[2])))
+            : null;
+        const { askFields } = await import("/static/lib/dialog.js");
+        const { chooseSavePath } = await import(
+            "/static/lib/projects/dialogs.js");
+        const asked = await askFields({
+            title: "Mode " + mode.index_1based + " as a frame set",
+            hint: "The maximum displacement is the largest atom's move at the "
+                + "outermost frames; it sets the spread the frames sample."
+                + (zp !== null ? "  This mode's largest zero-point atom move: "
+                   + zp.toFixed(4) + " Å." : ""),
+            fields: [
+                { name: "max", label: "Maximum displacement (Å)",
+                  type: "number", attrs: { min: "0", step: "any" } },
+                { name: "nodes", label: "Frames (3 or 5)", value: "3",
+                  type: "number", attrs: { min: "3", max: "5", step: "2" } },
+            ],
+            validate: (v) => !(Number(v.max) > 0)
+                ? "the maximum displacement is a positive number of Å"
+                : (v.nodes !== "3" && v.nodes !== "5")
+                ? "three frames or five" : null,
+            confirmLabel: "Next",
+        });
+        if (!asked) return;
+        let out;
+        try {
+            out = await chooseSavePath({
+                title: "Save the frame set where?",
+                nameTitle: "Save the frame set as",
+                initial: "mode" + mode.index_1based + ".xyz",
+                hint: "the pair's .xyz; its .molstruct.json is written beside it",
+            });
+        } catch (exc) {
+            setStatus(els.framesetStatus, String(exc.message || exc), "error");
+            return;
+        }
+        if (!out) return;
+        setStatus(els.framesetStatus, "writing the frame set…", "muted");
+        let body;
+        try {
+            const res = await fetch("/api/spectra/frameset", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    run: String(path).replace(/\/[^/]*$/, ""),
+                    mode: mode.index_1based,
+                    max_displacement_ang: Number(asked.max),
+                    nodes: Number(asked.nodes), out: out }),
+            });
+            body = await res.json();
+        } catch (exc) {
+            setStatus(els.framesetStatus, "Network error: " + exc.message,
+                      "error");
+            return;
+        }
+        if (!body.ok) {
+            setStatus(els.framesetStatus, body.error || "not written", "error");
+            return;
+        }
+        const lines = ["wrote " + body.path].concat(
+            body.frames.map((f, i) => "frame " + i + ": q/σ "
+                + f.q_sigma.toFixed(4) + ", largest atom move "
+                + f.max_atom_displacement_ang.toFixed(4) + " Å, weight "
+                + f.weight.toFixed(6)),
+            body.said);
+        setStatus(els.framesetStatus, lines.join("\n"),
+                  body.said.length ? "warn" : "muted");
+    }
+
     async function onExportAnimation() {
         if (state.exporting) return;
         // NOT guarded on having a viewer: a button that silently does nothing is
@@ -3487,6 +3579,8 @@
         els.animExportBtn       = $("anim-export-btn");
         els.animExportCancel    = $("anim-export-cancel");
         els.animExportStatus    = $("anim-export-status");
+        els.framesetBtn         = $("frameset-btn");
+        els.framesetStatus      = $("frameset-status");
 
         // --- Generate-side wiring (only present on /spectra) -------
         //
@@ -3554,6 +3648,7 @@
             }
             _on(els.animTemperature,   "input",  onTemperatureChange);
             _on(els.animExportBtn,      "click",  onExportAnimation);
+            _on(els.framesetBtn,        "click",  onWriteFrameSet);
             _on(els.animExportCancel,   "click",  onExportCancel);
 
             // Mode-table interactions.

@@ -332,6 +332,13 @@
             <button id="anim-export-cancel" type="button" hidden>Cancel</button>
             <span id="anim-export-status" class="status muted"></span>
           </div>
+          {#- THE MODE AS A FRAME SET a transport calculation cites
+              (docs/web/spectra.md § 4.3): the person states the maximum
+              displacement; the one generator writes the pair. -#}
+          <div class="viewer-controls">
+            <button id="frameset-btn" type="button">Write frame set…</button>
+            <span id="frameset-status" class="status muted"></span>
+          </div>
           <details class="amplitude-help">
             <summary>What do the amplitude choices mean?</summary>
             <div class="amplitude-help-body">

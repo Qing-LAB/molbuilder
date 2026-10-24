@@ -1,0 +1,240 @@
+"""A MODE'S FRAME SET -- one vibration mode written as one multi-frame
+structure pair a transport calculation cites (`engines/vibration.md`
+§ 5.10 ③; its rows `model/structure.md` § 2.2f; its rule
+`science/vibrational-averaging.md` § 5).
+
+MODULE  mode_frames (L2; the run door, the vibration result's reader, the
+        structure and its codec, numpy)
+ROLE    :func:`frameset_from_mode` -- the one generator, and
+        :class:`ModeFrames`, what it wrote and what it says
+USED-BY the command line (`molbuilder frameset from-mode`) and the spectrum
+        viewer's door (`POST /api/spectra/frameset`)
+
+**Its extent is the person's** (the user, 2026-10-24): the maximum
+displacement -- the largest atom's move at the outermost frames -- sets the
+spread of the Gaussian the frames sample, and each frame's weight is the
+Gauss-Hermite rule's own.  No temperature is stated: the spread sits beside
+the mode's zero-point amplitude, which a person compares it with.
+"""
+from __future__ import annotations
+
+import hashlib
+import math
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+
+#: The rules the generator writes -- three frames by default, five on
+#: request (`science/vibrational-averaging.md` § 5.1, § 5.3).
+NODES = (3, 5)
+
+
+class FrameSetError(ValueError):
+    """The frame set cannot be written -- the message names what is missing
+    and where it is read from."""
+
+
+@dataclass(frozen=True)
+class ModeFrames:
+    """What :func:`frameset_from_mode` wrote: the pair's ``.xyz`` (``path``),
+    each frame's position in units of the spread, largest atom move and
+    weight (``frames``), and what the generator says of the set (``said``):
+    the electrode atoms that move, a set with no settings to cite."""
+    path: Path
+    frames: Tuple[Dict[str, float], ...]
+    said: Tuple[str, ...]
+
+    def to_wire(self, root: Optional[Path] = None) -> Dict[str, Any]:
+        """As a page is answered: the pair's path from ``root`` (the tree),
+        each frame, and what is said."""
+        path = (str(self.path.relative_to(root)) if root is not None
+                else str(self.path))
+        return {"path": path, "frames": [dict(f) for f in self.frames],
+                "said": list(self.said)}
+
+
+def _ordered_nodes(n: int) -> Tuple[np.ndarray, np.ndarray]:
+    """The ``n``-point Gauss-Hermite rule's nodes ``x`` and weights
+    ``w / sqrt(pi)`` -- frame 0 the node at 0, then each pair of nodes
+    nearest first, its positive side first (`engines/vibration.md`
+    § 5.10 ③)."""
+    x, w = np.polynomial.hermite.hermgauss(n)
+    order = sorted(range(n), key=lambda i: (round(abs(x[i]), 12), -x[i]))
+    return x[order], w[order] / math.sqrt(math.pi)
+
+
+def _relative(path: Path, root: Optional[Path]) -> str:
+    """``path`` from the projects tree ``root`` where it lies in it, else
+    as it is -- where a person finds the run again."""
+    path = Path(path).resolve()
+    if root is not None:
+        try:
+            return str(path.relative_to(Path(root).resolve()))
+        except ValueError:
+            pass
+    return str(path)
+
+
+def frameset_from_mode(run_folder, *, mode: int,
+                       max_displacement_ang: float, nodes: int = 3,
+                       out, root: Optional[Path] = None) -> ModeFrames:
+    """THE ONE GENERATOR (`engines/vibration.md` § 5.10 ③): vibration run
+    ``run_folder``'s mode ``mode`` -- counted as its result counts it,
+    ``index_1based`` -- written as one multi-frame pair at ``out`` (its
+    ``.xyz``), the largest atom moving ``max_displacement_ang`` at the
+    outermost frames, at ``nodes`` Gauss-Hermite nodes.  ``root`` is the
+    projects tree the run's folder is stated from in ``info.vibration``.
+
+    Refused, naming what to do: no run of ours, no result in it, a result
+    stating no masses, a mode it does not hold or an imaginary one, a
+    maximum displacement that is not a positive number, another rule than
+    :data:`NODES`, a pair already at ``out``."""
+    from .frame_average import INFO_KEY, MASS_CHANNEL
+    from .runfiles import ROLE_SPECTRA
+    from .runs import run_of, view_of
+    from .sidecars.molstruct import sidecar_path_for
+    from .sidecars.spectra import SpectraJsonError, parse_spectra_json
+    from .spectra.derived import zero_point_amplitude_amu12_ang
+    from .structure import AtomChannel, Structure
+    from .transport.sort import ELECTRODE_LABELS
+    from .workingcopy_structure import StructureCodec
+
+    if nodes not in NODES:
+        raise FrameSetError(f"the frame set is written at "
+                            f"{' or '.join(str(n) for n in NODES)} nodes, "
+                            f"not {nodes}")
+    try:
+        d_max = float(max_displacement_ang)
+    except (TypeError, ValueError):
+        d_max = float("nan")
+    if not (math.isfinite(d_max) and d_max > 0.0):
+        raise FrameSetError(
+            f"the maximum displacement is the largest atom's move at the "
+            f"outermost frames, a positive number of Angstrom -- "
+            f"{max_displacement_ang!r} is not one")
+    out = Path(out)
+    if out.suffix != ".xyz":
+        raise FrameSetError(f"{out.name}: the pair is written as its .xyz "
+                            f"and its .molstruct.json -- name the .xyz")
+    taken = [p for p in (out, sidecar_path_for(out)) if p.exists()]
+    if taken:
+        raise FrameSetError(
+            f"{', '.join(p.name for p in taken)} already "
+            f"{'exists' if len(taken) == 1 else 'exist'} -- a pair is never "
+            f"written over, since a transport calculation citing it is "
+            f"pinned to it: choose another name")
+
+    # THE RUN, AND ITS RESULT, through the run door.
+    run = run_of(Path(run_folder))
+    if run is None:
+        raise FrameSetError(
+            f"{run_folder}: no run of ours -- name the folder of the "
+            f"vibration run whose mode is written")
+    result = run.on_label(ROLE_SPECTRA)
+    if result is None:
+        raise FrameSetError(
+            f"{run_folder}: the run holds no vibration result "
+            f"({run.label}{ROLE_SPECTRA}) -- one whose finish has written it")
+    try:
+        res = parse_spectra_json(result)
+    except SpectraJsonError as exc:
+        raise FrameSetError(f"{result.name}: {exc}") from exc
+    if res.equilibrium_masses_amu is None:
+        raise FrameSetError(
+            f"{result.name} states no masses (a result before schema 7): "
+            f"the mode's coordinate is weighted by them -- run the "
+            f"vibration again with this molbuilder")
+    found = [m for m in res.modes if int(m.index_1based) == int(mode)]
+    if not found:
+        raise FrameSetError(
+            f"{result.name} holds modes 1 to {len(res.modes)}; there is no "
+            f"mode {mode}")
+    m = found[0]
+    q_zp = zero_point_amplitude_amu12_ang(m.frequency_cm1, m.has_imag)
+    if q_zp is None:
+        raise FrameSetError(
+            f"mode {mode} is imaginary ({m.frequency_cm1:g} cm-1): it has no "
+            f"amplitude, and the geometry is no minimum along it")
+    stated = res.structure_stated()
+    if stated is None:
+        raise FrameSetError(f"{result.name} states no geometry yet")
+    base = Structure.from_dict(stated)
+
+    # THE MODE OVER EVERY ATOM: the canonical eigenvector on the free atoms,
+    # zero on every held one -- so no held atom moves.
+    n = base.n_atoms
+    L = np.zeros((n, 3))
+    L[list(res.free_atom_idxs)] = np.asarray(m.eigenvector_canonical,
+                                             dtype=float)
+    largest = float(np.linalg.norm(L, axis=1).max())
+    x, weights = _ordered_nodes(nodes)
+    x_out = float(np.abs(x).max())
+    q_out = d_max / largest
+    sigma = q_out / (math.sqrt(2.0) * x_out)
+    qs = [math.sqrt(2.0) * sigma * float(xj) for xj in x]
+    r0 = np.asarray(base.positions, dtype=float)
+    built = base.with_frames(np.stack([r0 + q * L for q in qs]))
+
+    # FRAME 0'S SETTINGS -- the vibration run's own deck's record, the one a
+    # transport citation takes its settings from (`transport.md` § 3.1).
+    said: List[str] = []
+    calculation = (view_of(run).info or {}).get("calculation")
+    if calculation is not None:
+        built.set_info("calculation", calculation)
+    else:
+        said.append(
+            f"{run.label}'s deck records no settings (a PySCF deck states "
+            f"none), so this set states no info.calculation and is no "
+            f"transport citation")
+
+    # THE ROWS, in `model/structure.md` § 2.2f's vocabulary.
+    masses = [float(v) for v in res.equilibrium_masses_amu]
+    built.set_channel(MASS_CHANNEL, AtomChannel(
+        "value", {i: v for i, v in enumerate(masses)}))
+    for name, value, unit in (
+            ("mode_index_1based", int(m.index_1based), None),
+            ("frequency_cm1", float(m.frequency_cm1), "cm-1"),
+            ("zero_point_amplitude_amu12_ang", float(q_zp),
+             "amu^1/2 angstrom"),
+            ("max_displacement_ang", d_max, "angstrom"),
+            ("sigma_amu12_ang", sigma, "amu^1/2 angstrom")):
+        built.set_customized(name, value, unit=unit)
+    frames = []
+    for f, (q, w) in enumerate(zip(qs, weights)):
+        moved = q * L
+        row = {"q_sigma": q / sigma,
+               "max_atom_displacement_ang":
+                   float(np.linalg.norm(moved, axis=1).max()),
+               "weight": float(w)}
+        for name, value, unit in (
+                ("displacement_ang", float(np.linalg.norm(moved)),
+                 "angstrom"),
+                ("max_atom_displacement_ang",
+                 row["max_atom_displacement_ang"], "angstrom"),
+                ("q_amu12_ang", q, "amu^1/2 angstrom"),
+                ("node_sigma", row["q_sigma"], None),
+                ("weight", row["weight"], None)):
+            built.set_customized(name, value, unit=unit, frame=f)
+        frames.append(row)
+    built.set_info(INFO_KEY, {
+        "run": _relative(run.folder, root),
+        "result_sha256": hashlib.sha256(result.read_bytes()).hexdigest()})
+
+    # AN ELECTRODE ATOM LEFT FREE MOVES -- written, and said.
+    regions = built.regions or {}
+    moving = sorted(i for label in ELECTRODE_LABELS
+                    for i in regions.get(label, ())
+                    if np.linalg.norm(L[int(i)]) > 0.0)
+    if moving:
+        said.append(
+            f"electrode atoms {', '.join(str(i) for i in moving)} (user "
+            f"index) are free in the vibration and move with the mode: "
+            f"every frame of a transport citation keeps the electrode atoms "
+            f"where frame 0 has them, so transport refuses this set")
+    StructureCodec().write(built, out)
+    return ModeFrames(path=out, frames=tuple(frames), said=tuple(said))
+
+
+__all__ = ["NODES", "FrameSetError", "ModeFrames", "frameset_from_mode"]

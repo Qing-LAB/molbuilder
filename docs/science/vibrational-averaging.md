@@ -287,6 +287,15 @@ the curvature's sign, read off the frames, not assumed.
 
 ## 5. Computing the average from a few frames
 
+**The spread the frames sample is the person's** *(the user, 2026-10-24)*.
+The generator (`engines/vibration.md` § 5.10 ③) takes the maximum
+displacement `d_max` — the largest atom's move at the outermost frames — and
+sets σ from it, so the frames average over a Gaussian of that spread. § 2
+says what a given σ means: σ = `Q_zp` is the zero-point motion, and the
+thermal spread at a temperature T is `Q_zp·√coth(ħω/2k_BT)` — a person who
+wants the thermal average at T chooses the `d_max` that gives that σ; the set
+states σ beside `Q_zp`, and no temperature.
+
 ### 5.1 The Gauss–Hermite rule
 
 Each frame costs a device calculation and a transmission, so the integral of
@@ -393,7 +402,8 @@ this point")*.
 
 Each is stated beside the numbers it limits, never dropped:
 
-1. **A harmonic mode.** $P(Q)$ is the Gaussian of § 2. A strongly
+1. **A harmonic mode.** $P(Q)$ is a Gaussian — § 2's at a temperature, or
+   of the spread the person set (§ 5). A strongly
    anharmonic mode — a soft contact bond, softer outward than inward — has a
    *skewed* distribution, $\langle Q\rangle \neq 0$ and $\langle Q^3\rangle\neq0$,
    and then the odd part of $T$ no longer cancels: a second source of
@@ -406,10 +416,11 @@ Each is stated beside the numbers it limits, never dropped:
    average cannot give — the inelastic steps at $eV = \hbar\omega$, a strongly
    coupled level's polaron shift — needs the electron–vibration coupling itself
    [Frederiksen2007, Galperin2007] (`vibration.md` § 5.6, level two).
-3. **The equilibrium distribution, one voltage at a time.** The average is
-   taken over the frames at each voltage separately (`transport.md` § 2a.9,
-   *Both axes*), with weights from the thermal distribution of § 2 — the
-   junction's at equilibrium. A finite bias can heat the modes the current
+3. **One distribution, one voltage at a time.** The average is taken over
+   the frames at each voltage separately (`transport.md` § 2a.9, *Both
+   axes*), with the same weights at every voltage — a Gaussian of the spread
+   the set states, which is the junction's equilibrium one when σ is chosen
+   as the thermal spread of § 2. A finite bias can heat the modes the current
    couples to, and then their population is not that distribution; that is not
    modelled. At low bias the averaged $T(E_F)$ is the averaged conductance.
 4. **Each frame's electrons in their ground state for that frame** (the
@@ -423,8 +434,9 @@ Each is stated beside the numbers it limits, never dropped:
 ## 8. What the record carries
 
 The frame set states what every frame is, raw values beside derived ones —
-the mode as the vibration result numbers it, its frequency, the temperature,
-the zero-point amplitude and the spread $\sigma$; each frame's plain
+the mode as the vibration result numbers it, its frequency, the zero-point
+amplitude, the maximum displacement the person set and the spread $\sigma$ it
+gives (a temperature where a maker states one); each frame's plain
 displacement, its mass-weighted position $Q_j$ and $Q_j/\sigma$, its weight;
 every atom's mass — the maker's rows of
 [`model/structure.md`](?doc=model/structure.md) § 2.2f, carried as written;
