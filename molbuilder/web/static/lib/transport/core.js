@@ -213,8 +213,18 @@ const WORKSPACE_TAG = "transport";
                         // (engines/transport.md \u00a7 2a.16).
                         r.name === "transmission" && _reuses
                             ? fitRow({ reuses: _reuses,
+                                       name: _extend ? _extend.name : _reuses,
                                        use: function (v) { _useWindow(v); } })
                             : null,
+                        // AN EXTENSION'S RUNG: what a change here re-runs,
+                        // or whose values it holds -- and, on the
+                        // transmission's, what a wider window re-runs
+                        // (\u00a7 2a.16; `Extension.says`, drawn as it is).
+                        _extend ? _el("p", { "class": "hint" },
+                            _extend.says[r.name]) : null,
+                        _extend && r.name === "transmission"
+                            ? _el("p", { "class": "hint" },
+                                  _extend.says.window) : null,
                         host);
                     panels.push({ rung: r.name, panel: panel, host: host });
                 });
@@ -237,6 +247,7 @@ const WORKSPACE_TAG = "transport";
                         .then(function (b) {
                             if (!b || seq !== _rungsSeq) return false;
                             _rungSchemas[p.rung] = b.schema;
+                            _rungHeld[p.rung] = b.held || {};
                             _rungHosts[p.rung] = p.host;
                             _restoreFormValues(p.host, b.schema, formSchema,
                                                p.rung, function () {
@@ -394,6 +405,13 @@ const WORKSPACE_TAG = "transport";
      * (engines/transport.md \u00a7 2a.16): picked in the junction's place,
      * its junction is the citation and its description fills the cards. */
     var _reuses = "";
+    /* WHAT AN EXTENSION OF IT MAY CHANGE, AND WHAT IS FIXED -- the describe
+     * door's `extend` for the calculation reused (`fixed`, `offered`, and
+     * `says`, each control's sentence), null for a new calculation. */
+    var _extend = null;
+    /* Each rung's own values in the calculation reused, as its tab drew
+     * them -- what a new calculation from its junction starts from. */
+    var _rungHeld = {};
 
     /* WHAT THE FORMS' NOTE AND THE PANEL'S NOTE ARE KEPT FOR -- the
      * calculation reused, or the junction cited: what a reload describes
@@ -595,6 +613,90 @@ const WORKSPACE_TAG = "transport";
      * answer for an earlier one that lands late is dropped, never adopted
      * over the person's latest choice. */
     var _citeSeq = 0;
+    /* AN EXTENSION'S LIMITS AND ITS WAY OUT (engines/transport.md
+     * \u00a7 2a.16, *Extending it*): what is computed per voltage is the
+     * person's, the rest is the finished calculation's -- drawn at its
+     * values, never a control (the schema's `locked`) -- and one action
+     * starts a new calculation from its junction with its settings. */
+    function _paintExtend() {
+        var host = _$("transport-extend");
+        var bias = _$("transport-bias-reruns");
+        if (bias) {
+            bias.hidden = !_extend;
+            bias.textContent = "";
+        }
+        if (!host) return;
+        host.textContent = "";
+        host.hidden = !_extend;
+        if (!_extend) return;
+        var name = _extend.name;
+        // WHAT IT OFFERS AND WHAT IT KEEPS, in the one door's words
+        // (`transport.reuse.Extension.offered`).
+        host.appendChild(_el("p", { "class": "hint" },
+            _el("strong", null, "Extending " + name + ". "),
+            _extend.offered));
+        var btn = _el("button", { type: "button", "class": "full-btn" },
+                      "Start a new calculation from this junction with "
+                      + "these settings");
+        btn.addEventListener("click", function () {
+            _startFromJunction(btn, name);
+        });
+        host.appendChild(btn);
+        if (bias) {
+            // THE BIAS LIST'S AND THE TREATMENT'S SENTENCES, as served.
+            bias.appendChild(_el("span", null, _extend.says.bias));
+            bias.appendChild(_el("br"));
+            bias.appendChild(_el("span", null, _extend.says.treatment));
+        }
+    }
+
+    /* THE WAY OUT: a new calculation from this junction, which reuses
+     * nothing, its cards starting from the finished calculation's settings
+     * -- written as the forms' note for the junction, which its surfaces
+     * restore when they draw (`_restoreFormValues`). */
+    function _startFromJunction(btn, name) {
+        var formSchema = (root.molbuilder || {}).formSchema;
+        var ws = root.molbuilder && root.molbuilder.workspace;
+        btn.disabled = true;
+        var shared = {};
+        // ONLY WHAT A PERSON CHOSE travels (the lock's `chosen`): a value
+        // cited from the junction is cited again, and a default stays
+        // not chosen.
+        ((_sharedSchema || {}).sections || []).forEach(function (sec) {
+            sec.fields.forEach(function (f) {
+                if (f.locked && f.locked.chosen) {
+                    shared[f.name] = f.locked.value;
+                }
+            });
+        });
+        var rungs = {};
+        Object.keys(_rungSchemas).forEach(function (r) {
+            rungs[r] = _extend.fixed.indexOf(r) !== -1
+                ? (_rungHeld[r] || {})
+                : formSchema.heldValues(_rungHosts[r], _rungSchemas[r], null);
+        });
+        var citation = _junction;
+        _reuses = "";
+        _extend = null;
+        _formNote = { v: 1, junction: citation, shared: shared,
+                      rungs: rungs };
+        if (ws && typeof ws.persist === "function") {
+            ws.persist(FORM_TAG, _formNote, _formIdentity(ws));
+        }
+        var mine = ++_citeSeq;
+        _describeAttempt(citation, _swapElectrodesChoice)
+            .then(function (d) {
+                if (mine !== _citeSeq) return;
+                _adoptCitation(d, "A new calculation from this junction, "
+                    + "starting from " + name + "'s settings \u2014 it "
+                    + "reuses nothing.  Cited ");
+            })
+            .catch(function (e) {
+                btn.disabled = false;
+                _setStatus("The junction did not cite: " + e, "error");
+            });
+    }
+
     function _describeAttempt(rel, swap) {
         return root.fetch("/api/transport/describe_attempt?path="
                           + encodeURIComponent(rel.replace(/^\/+/, ""))
@@ -713,6 +815,8 @@ const WORKSPACE_TAG = "transport";
         _junctionStructure = described.structure || null;
         _swapElectrodesChoice = !!described.swap_electrodes;
         _reuses = described.reuses || "";
+        _extend = _reuses ? (described.extend || null) : null;
+        _rungHeld = {};
         if (_reuses) {
             // ITS VOLTAGES AND THEIR TREATMENT, from its description
             // (engines/transport.md \u00a7 2a.16) -- the person's to change.
@@ -772,6 +876,7 @@ const WORKSPACE_TAG = "transport";
          * (validation.md 4.1 R2), under the one-line summary. */
         if (vf && fpanel) vf.render(described.findings || [], { panel: fpanel });
         _offerFix(described);
+        _paintExtend();
         _writePanelNote();
         _refreshSendButton();
         /* Honest state, not a gate (strict composition refuses at
@@ -902,9 +1007,22 @@ const WORKSPACE_TAG = "transport";
                                "error");
                 return;
             }
+            var manifestBox = _$("transport-send-manifest");
+            if (manifestBox) {
+                manifestBox.hidden = true;
+                manifestBox.textContent = "";
+            }
             mb.taskHandover.send({
                 projects: mb.projects,
                 say: function (kind, msg) { _setSendStatus(msg, kind); },
+                // WHAT A CALCULATION THAT REUSES A FINISHED ONE WILL COPY,
+                // AND WHAT RUNS -- Describe's answer, the manifest's words
+                // (engines/transport.md \u00a7 2a.16).
+                showManifest: function (lines) {
+                    if (!manifestBox) return;
+                    manifestBox.hidden = !(lines && lines.length);
+                    manifestBox.textContent = lines ? lines.join("\n") : "";
+                },
                 // THE DESCRIPTION CHECK'S FINDINGS, through the one
                 // renderer, in card 5's panel -- every send redraws it, so
                 // a clean one clears what the last one said.
@@ -1069,9 +1187,7 @@ const WORKSPACE_TAG = "transport";
             ? "No junction cited yet: nothing is chosen, and each blank "
               + "field shows the value that would apply."
             : src.kind === "reuses"
-            ? "Values from the calculation this one reuses (" + src.name
-              + ").  Change any of them; a change applies to every rung "
-              + "that reads it, and what it changes runs here."
+            ? (_extend ? _extend.says.shared : "")
             : src.kind === "deck"
             ? "Values from the run you cited (" + src.name + ").  Change "
               + "any of them; a change applies to every rung that reads it."

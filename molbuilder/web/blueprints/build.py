@@ -1436,19 +1436,25 @@ def api_task_setup_prep():
         if d.get("machine") == LOCAL_TARGET:
             d["machine"] = "(this machine)"
     # WHAT COMES NEXT, as the terminal's prep ends: the launch with nothing
-    # named, which sends the group that can go -- or, every group it
-    # prepared copied in, the ladder's own next step.  Launching stays at
-    # the terminal (`task-setup.md` § 1).
+    # named, which sends the group that can go -- or, the prep opening no
+    # run of its own (`prep.opened_no_run`),
+    # the ladder's own next step.  Launching stays at the terminal
+    # (`task-setup.md` § 1).
     from molbuilder.jobset.commands import launch_lines
+    from molbuilder.jobset.prep import opened_no_run
     from molbuilder.jobset.runstatus import jobset_status, render_steps
-    nxt = ([] if preview or not said else
+    ladder_next = opened_no_run(answers)
+    nxt = ([] if (preview and not ladder_next) or not said else
            render_steps(jobset_status(open_calc(dest))).splitlines()
-           if answers[-1].copied_whole else
+           if ladder_next else
            launch_lines("task", base=dest)
            if kind == "task" else
            launch_lines("bench", stages[0].strip(), base=dest))
+    # THE PLAN, the prep's own -- named on the answers it wrote; a pick
+    # with nothing to write names none.
     return jsonify({"ok": True, "answers": said, "next": nxt,
-                    "plan_id": said[0].get("plan_id") if said else None})
+                    "plan_id": next((d["plan_id"] for d in said
+                                     if d.get("plan_id")), None)})
 
 
 @bp.route("/api/task-setup/save", methods=["POST"])
@@ -1636,6 +1642,55 @@ def api_task_setup_save():
                                       for x in hit[2])):
                 return jsonify({"ok": False, "error": joined_launched(
                     after, n, *hit)}), 409
+
+    # AN EXTENSION'S LIMITS, AT THIS DOOR TOO (`engines/transport.md`
+    # § 2a.16, *Extending it*; `task-setup.md` § 3): its junction, the
+    # rungs it keeps and its voltages stay -- the one rule the Transport
+    # tab's Describe asks (`transport.reuse.Extension`), each change
+    # measured against the folder's own description, so what the command
+    # line wrote is never refused for what it holds.  A finished
+    # calculation that no longer reads leaves its groups prepared here
+    # (§ 2a.16, *At prep*), nothing to keep.
+    if getattr(task, "reuses", ""):
+        from molbuilder.issues import Issue
+        from molbuilder.projects import find_projects_root
+        from molbuilder.transport.reuse import Extension, ReuseError
+        try:
+            ext = Extension.of(task.reuses,
+                               tree_root=find_projects_root(dest))
+        except ReuseError:
+            ext = None
+        no = ext.refusal(task, against=prior) if ext is not None else None
+        if no is not None:
+            return jsonify({"ok": False, "error": no.message,
+                            "findings": _issues_to_json([Issue(
+                                "error", no.message,
+                                where=f"task.{no.where}" if no.where
+                                else "")])}), 400
+
+    # NOTHING TO SAVE (`task-setup.md` § 8; the user, 2026-10-23): the
+    # records sent, each read by its reader, are the files' own read the
+    # same way, whatever their spelling -- so a text the page holds
+    # unedited is one, as the page's own rule says (`edited`) -- no state
+    # saved, nothing written, and the page keeps what it shows.
+    from molbuilder.task import path_of as _task_path
+    _tp, _rp = _task_path(dest), _job_request.path_of(dest)
+    try:
+        _same = (_tp.is_file() and _rp.is_file()
+                 and from_text(_tp.read_text()) == task
+                 and _job_request.from_text(_rp.read_text(), task) == job_req)
+    except Exception:
+        _same = False              # a file its reader refuses is not this one
+    if _same:
+        return jsonify({
+            "ok": True, "unchanged": True, "saved": None, "wrote": [],
+            "said": (f"Nothing to save -- {TASK_FILENAME} and "
+                     f"{_job_request.FILENAME} already hold what this page "
+                     f"sends."),
+            "handover_name": TASK_HANDOVER_NAME,
+            "handover_here": (dest / TASK_HANDOVER_NAME).is_file(),
+            "stages": [st.name for st in task.stages],
+            "findings": _issues_to_json(_pf, cfg=_pf_cfg)})
 
     # THE FOLDER'S STATE, SAVED FIRST -- always, by the one function prep
     # calls (`checkpointing.md` § 9; user, 2026-10-03, B10: "make this
@@ -2528,6 +2583,11 @@ def api_task_setup_folder():
         # the reader refuses (`web/task-setup.md` § 5.3); null for every
         # other kind.
         "fixed": _folder_fixed(_task),
+        # AN EXTENSION'S LIMITS -- a transport calculation that reuses a
+        # finished one: the rungs that run once, fixed by it, and the words
+        # the page says them in (`web/task-setup.md` § 3;
+        # `engines/transport.md` § 2a.16, *Extending it*); null otherwise.
+        "extension": _folder_extension(_task, folder),
         # HOW A TRANSPORT DESCRIPTION TREATS ITS BIAS LIST, by the one rule
         # the record names it with (`Task.treatment`); null for every other
         # kind.  The "What came over" card echoes it (`task-setup.md` § 3).
@@ -2562,7 +2622,7 @@ def api_task_setup_folder():
         # (`engines/stages.md` § 2; `web/task-setup.md` § 5.3, § 11).
         **(_folder_ladder(_calc) if _calc is not None
            else {"ladder": {"stages": [], "offer": []},
-                 "groups": {"stages": [], "groups": []}}),
+                 "groups": {"stages": [], "groups": []}, "steps": []}),
     })
 
 
@@ -2591,6 +2651,24 @@ def _folder_fixed(task) -> Optional[dict]:
     return None if fixed is None else {"stages": list(fixed["stages"])}
 
 
+def _folder_extension(task, folder) -> Optional[dict]:
+    """An extension's limits, for a transport calculation that reuses a
+    finished one -- the one door's wire form (`transport.reuse.Extension`:
+    the rungs it keeps, what it offers and what each control says) -- or
+    ``None``; ``{"error"}`` when the finished calculation does not read
+    (`engines/transport.md` § 2a.16)."""
+    reuses = getattr(task, "reuses", "") or ""
+    if not reuses:
+        return None
+    from molbuilder.projects import find_projects_root
+    from molbuilder.transport.reuse import Extension, ReuseError
+    try:
+        return Extension.of(reuses, tree_root=find_projects_root(
+            pathlib.Path(folder))).to_wire()
+    except ReuseError as exc:
+        return {"error": str(exc)}
+
+
 def _folder_ladder(calc) -> dict:
     """``{"ladder": {stages, offer}, "groups": {stages, groups}}`` -- the
     ready door's answer for every stage (`ready.ladder`) and the groups
@@ -2598,15 +2676,23 @@ def _folder_ladder(calc) -> dict:
     `status` read; and the groups: each stage's number, why it may not join
     the group above, and whether it was launched (its group is then fixed);
     each group's members, where it stands, and whether its prepared jobs
-    hold its members (`web-api.md`).  Fail-soft, like the folder's other
-    parts."""
+    hold its members (`web-api.md`); and ``steps`` -- each group's next
+    step, as `jobset status` prints it under *each group, and what is next*
+    (`runstatus.jobset_status`), so the page says it whatever it last did
+    (`task-setup.md` § 11).  Fail-soft, like the folder's other parts."""
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.group import why_not_join
     from molbuilder.jobset.ready import task_state, why_group_fixed
+    from molbuilder.jobset.runstatus import jobset_status
     try:
         state = task_state(calc)
         task, text = state.task, state.template_text
         answers, gs = state.stages, state.groups
+        # THE STATUS DOOR, once: each group's next step, and each stage's
+        # run copied in from a finished calculation (`.copied-from`).
+        status = jobset_status(calc)
+        copied = {s.name: s.copied_from for s in status.stages
+                  if s.copied_from}
         # EACH STAGE'S ROW; the reader's check (`group.check_groups`)
         # refuses at Save what the rule forbids after edits.
         rows = []
@@ -2629,7 +2715,9 @@ def _folder_ladder(calc) -> dict:
         return {
             "ladder": {"stages": [{"stage": a.stage, "group": a.group,
                                    "state": a.state, "detail": a.detail,
-                                   "why": a.why} for a in answers],
+                                   "why": a.why,
+                                   "copied_from": copied.get(a.stage)}
+                                  for a in answers],
                        "offer": state.prep_offer},
             "groups": {"stages": rows, "groups": [
                 {"number": g.number, "members": g.members,
@@ -2641,12 +2729,14 @@ def _folder_ladder(calc) -> dict:
                  # A PREPARED JOB HOLDING OTHER MEMBERS: prepared again,
                  # formed anew (`job-system.md`, *The task*, step 3).
                  "matches": not (g.changed or g.members_changed),
-                 "preparable": g.preparable, "why": g.why} for g in gs]}}
+                 "preparable": g.preparable, "why": g.why} for g in gs]},
+            "steps": [s.to_dict() for s in status.steps]}
     except (OSError, ValueError, PrepError) as exc:
         # WHAT ITS READERS REFUSE, said on the card; a defect in this code
         # is not one of them.
         return {"ladder": {"error": str(exc), "stages": [], "offer": []},
-                "groups": {"error": str(exc), "stages": [], "groups": []}}
+                "groups": {"error": str(exc), "stages": [], "groups": []},
+                "steps": []}
 
 
 def _folder_frame_set(task, folder):

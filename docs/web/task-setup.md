@@ -193,13 +193,29 @@ two electrode labels in its own copy of the junction (`swap_electrodes`,
 [`engines/transport.md`](?doc=engines/transport.md) § 4), and the finished
 calculation it reuses (`reuses`), whose groups its prep copies in — what is
 copied, and its size, prep's Preview says (§ 11.1) ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — and the
-label every emitted file is stemmed on. **A calculation that extends a finished one keeps the Extend view's limits**
+label every emitted file is stemmed on. **A calculation that extends a finished one keeps the Transport tab's limits**
 (`engines/transport.md` § 2a.16, *Extending it*): the stage table's rows of
 the rungs that run once — the seed, the leads — and the shared values
 read-only, saying *fixed by <the finished calculation>*, with the same way out
 (a new calculation from the junction, on the Transport tab); the device's and
 the transmission's rows, the bias list and the treatment as on any
-calculation, each saying what it re-runs; the manifest under Preview as now. *(Contract drafted 2026-10-22, plan § 1aa.)* **A cited frame set says what its frames are**,
+calculation, each saying what it re-runs, and the window's fit what a wider
+window re-runs; what the extension will reuse is the Preview's manifest
+(§ 11.1).
+**A group copied in** — its members' runs copies of the finished
+calculation's (`.copied-from`, the ladder's `copied_from`) — says in its tab
+where each run came from, above its run card, which is what it is launched
+again with; its box is the group answer's, as every group's (§ 11). Before
+its prep the Preview's manifest says which groups will be copied in. The
+rows it keeps, the sentence they say, and what a change on the device's or
+the transmission's row re-runs, said on that row, are the folder answer's
+`extension` (`transport.reuse.Extension`), each sentence drawn as it is
+served; a Save that changes a kept row's values, the junction, its rename or
+its label, or drops a finished voltage the folder's description held, is
+refused by name, as the Transport tab's Describe refuses it — measured
+against the folder's own description, so an extension the command line
+wrote saves. *(The user, 2026-10-22, 2026-10-23; built
+2.33.0, plan § 1aa.)* **A cited frame set says what its frames are**,
 under them: its count and, for a mode's set, its mode line and a row per
 frame — the frame-set card the Transport tab's junction card draws, from the
 describe door's own door (`frame_average.answer`,
@@ -1125,6 +1141,16 @@ prepared.
 | **1 · save the folder's current state** | a first state if the folder has none, otherwise a state of what is there right now — so whatever you are about to change can be brought back |
 | **2 · write the description and its job request** | `task.json` and `job-request.json`, each whole — the template is the hand-over's, which arrives with it, and Save leaves it as it is (`/api/task-setup/save`: `task.write_task`, `job_request.write`) |
 
+**Nothing unsaved, nothing to save** *(the user, 2026-10-23: "it just
+tried to overwrite existing things with no good reason")*: Save is offered
+only when the page holds an edit, or a hand-over to write; with neither it is
+disabled, its line saying *Nothing unsaved — task.json and job-request.json
+in this folder are what this page shows*. And the route writes nothing when
+the records it is sent, each read by its reader, are the files' own read the
+same way, whatever their spelling — so a text the page holds unedited is
+one — no state saved, no file written, the folder not read again, answering
+*nothing to save*, so a Prep's answer on the page stays where it is.
+
 **The checkpoint is always taken, by the server, and said**
 ([`checkpointing.md § 9`](?doc=execution/checkpointing.md); user, 2026-10-03,
 B10: "make this consistent with B1"): the save route calls the one function
@@ -1400,7 +1426,16 @@ force-constant stage's Continue from names a `relax` run. Under them the
 command for the pick (`prep task --group … --group …`) and the Preview / Prep
 pair that does what it does. Each ticked group is one
 job (`project-layout.md` § 1.6.6). After a Prep the folder is read again, and
-the boxes start again from the new offer. Beside each prepared stage, what its
+the boxes start again from the new offer. **Each group's next step is always
+there** *(the user, 2026-10-23: "task setup does not remember the last
+state")*: under the groups, what `jobset status` prints under *each group,
+and what is next* — a group ready to launch with its launch line, one
+waiting with what it waits for, the next one marked — from the folder's
+answer (`runstatus.jobset_status`'s `steps`), so a Save, a reload or a
+reopened page shows what a Prep's answer showed. **A ticked group already
+prepared as this prep would prepare it now** has nothing to write
+([`job-system.md`](?doc=execution/job-system.md), *The task*, 2): its
+Preview says so with its next step, and Prep writes nothing for it. Beside each prepared stage, what its
 launch will take and whether it can go now — `ready to launch -- <what it
 takes>`, or `waits for: <why>` — the ready door's answer (`ready.Readiness.detail`,
 the folder answer's `ladder`); a stage another molbuilder prepared says so
@@ -1581,8 +1616,13 @@ from the same answer:
   measured it; a group's beside its fit
   ([`job-request.md`](?doc=execution/job-request.md) § 3.1a);
 * **the resources** the stage will launch with;
-* **what comes next** — after a Prep, the line that launches what it
-  prepared, as the terminal's prep ends with it: the launch with nothing
+* **nothing to write** — a group already prepared as this prep would
+  prepare it now: the group named, no state saved, no file written, and its
+  next step; one that differs is prepared again whole, its answer naming
+  each file that differs;
+* **what comes next** — on the page, the card's own list of each group's
+  next step (§ 11), read again after the Prep; at the terminal, the line
+  that launches what it prepared, as the terminal's prep ends with it: the launch with nothing
   named (`launch task`), which sends the group that can go, typed at the
   terminal — or, every group it prepared copied in from a finished
   calculation, the ladder's own next step, as `status` says it

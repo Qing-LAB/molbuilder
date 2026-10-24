@@ -185,10 +185,10 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
         "  if ((b.textContent||'').trim().startsWith('(this machine)'))"
         "    { b.click(); return; } }")
 
-    # ── SAVE IS NOT DISABLED ON ARRIVAL ────────────────────────────────
+    # ── SAVE IS HELD WITH NOTHING UNSAVED (task-setup.md § 8) ──────────
     page.wait_for_selector("#ts-save", state="attached", timeout=20000)
-    assert page.evaluate("() => !document.getElementById('ts-save').disabled"), \
-        "Save is disabled on arrival"
+    assert page.evaluate("() => document.getElementById('ts-save').disabled"), \
+        "Save is offered on arrival, with nothing unsaved"
 
     # ── add a rank count to the run card, then type it ─────────────────
     # A run needs no benchmark (stages.md § 6.8d), so this description has
@@ -208,6 +208,9 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     page.fill(sel, "8")
     page.dispatch_event(sel, "change")
     wait_for_file(page, "request", '"mpi_np"')
+    # ...and offered once the page holds an edit.
+    page.wait_for_function(
+        "() => !document.getElementById('ts-save').disabled", timeout=20000)
 
     # ── SAVE SAYS WHAT IT DID -- the state it saved first among it ─────
     page.click("#ts-save")

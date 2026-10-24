@@ -578,7 +578,10 @@ def reports():
     from ...parse.instruments.reports import read_reports
     from ...report_cards import LayoutError, load as load_layout
     _route, keys = read_notify_keys()
-    user = (request.args.get("user") or getattr(g, "user", None) or "").strip()
+    # THE SIGNED-IN PERSON is the session's user as the sign-in stores it
+    # (`auth.authenticate`: a record, its ``email`` the id a report names).
+    signed_in = getattr(g, "user", None) or {}
+    user = (request.args.get("user") or signed_in.get("email") or "").strip()
     # NO USER TO READ FOR, OR NONE THE LISTENER KNOWS, is a state the tab
     # shows, never an error: the answer says so and lists nothing.
     if not user:

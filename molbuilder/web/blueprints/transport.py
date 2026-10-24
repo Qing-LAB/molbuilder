@@ -310,7 +310,7 @@ def _describe_reused(folder: str, root) -> Any:
     from molbuilder.frame_average import answer as frames_answer
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.transport.compose import ComposeError, recorded_junction
-    from molbuilder.transport.reuse import ReuseError, reused
+    from molbuilder.transport.reuse import Extension, ReuseError, reused
     try:
         calc, rel = reused(folder, tree_root=root)
     except ReuseError as exc:
@@ -342,7 +342,7 @@ def _describe_reused(folder: str, root) -> Any:
               "; ".join(f"group {s.group} {s.words.rstrip('.')}"
                         for s in steps))
     summary = " · ".join([
-        "TRANSPORT CALCULATION", rel.rsplit("/", 1)[-1],
+        "TRANSPORT CALCULATION", Extension(rel, task).name,
         f"its junction, cited from {task.slots['junction']}",
         str(task.treatment),
         ", ".join(str(float(v)) for v in task.bias) + " V",
@@ -360,6 +360,11 @@ def _describe_reused(folder: str, root) -> Any:
                                    and junction.n_frames > 1 else None),
         "bias": [float(v) for v in task.bias],
         "low_bias_approximation": task.low_bias_approximation,
+        # WHAT AN EXTENSION OF IT MAY CHANGE, AND WHAT IS FIXED
+        # (`engines/transport.md` § 2a.16, *Extending it*): the rungs it
+        # keeps, what it offers, and what each control says -- drawn as
+        # they are.
+        "extend": Extension(rel, task).to_wire(),
     })
 
 
@@ -732,6 +737,16 @@ def api_transport_describe() -> Any:
     except (DescribeError, ComposeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
 
+    # AN EXTENSION'S KEPT RUNGS hold the finished calculation's own values
+    # where the page sent none (it never sends a locked field); what it
+    # does not take is refused once the description is built, below.
+    ext = None
+    if finished is not None:
+        from molbuilder.transport.reuse import Extension
+        ext = Extension(reuses_rel, finished.task)
+        for _r in ext.fixed:
+            bags[_r] = bags.get(_r) or ext.own(_r)
+
     # Refused HERE, not at prep on the cluster: an unknown knob names
     # itself while changing it is still free.  THE VOCABULARY IS WHAT PREP
     # CAN RESOLVE, asked rather than listed
@@ -791,6 +806,21 @@ def api_transport_describe() -> Any:
             "findings": _issues_to_json([Issue(
                 "error", str(exc), where=f"task.{where}" if where else "")]),
         }), 400
+    # AN EXTENSION KEEPS WHAT THE FINISHED CALCULATION COMPUTED ONCE FOR
+    # EVERY VOLTAGE (`engines/transport.md` § 2a.16, *Extending it*): its
+    # junction, the rungs it keeps, the shared values and its voltages --
+    # a change of any is another calculation, started from the junction
+    # (the way out the page offers), refused BESIDE THE CONTROL IT NAMES,
+    # nothing written (`transport.reuse.Extension.refusal`).
+    if ext is not None:
+        from molbuilder.issues import Issue
+        no = ext.refusal(task, shared=shared_chosen)
+        if no is not None:
+            return jsonify({"ok": False, "error": no.message,
+                            "findings": _issues_to_json([Issue(
+                                "error", no.message,
+                                where=f"task.{no.where}" if no.where
+                                else "")])}), 400
     # The template's text through the one door the schema route draws both
     # surfaces from (`_panel_template`) -- a value its field cannot take, or
     # a citation it refuses (a cited run that carried a net charge, ES7),
@@ -854,6 +884,7 @@ def api_transport_describe() -> Any:
     # (§ 3.8.3).
     from molbuilder.issues import Issue
     notes: list = []
+    manifest = None
     try:
         if finished is not None:
             from molbuilder.transport.reuse import ReuseError, write_reusing
@@ -862,6 +893,20 @@ def api_transport_describe() -> Any:
                                                tree_root=root)
             except ReuseError as exc:
                 return jsonify({"ok": False, "error": str(exc)}), 400
+            # WHAT IT WILL REUSE, AND WHAT RUNS -- the one answer prep
+            # composes (`jobset.reuse.decide`), said once it is described
+            # (§ 2a.16, *Extending it*); nothing written.
+            from molbuilder.calculation import open as _open_calc
+            from molbuilder.jobset.errors import PrepError
+            from molbuilder.jobset.reuse import decide
+            try:
+                _made = _open_calc(dest)
+                _reuse = decide(_made, _made.request.numbers)
+                manifest = (_reuse.lines(dest) if _reuse is not None
+                            else None)
+            except PrepError as exc:
+                notes = list(notes) + [f"what it will reuse is not known "
+                                       f"yet -- {exc}"]
         else:
             written = write_description(_desc, dest)
     except (DescribeError, OSError) as exc:
@@ -871,6 +916,9 @@ def api_transport_describe() -> Any:
         "ok": True,
         "label": task.label,
         "written": [p.name for p in written],
+        # A CALCULATION THAT REUSES A FINISHED ONE: what it will copy, and
+        # what runs, in the manifest's words; null otherwise.
+        "manifest": manifest,
         # WHAT THE REUSE SAYS OF ITSELF -- a finished calculation carrying
         # no composed junction -- beside the description's own notes
         # (`issues.Issue`, the one finding).
@@ -974,10 +1022,11 @@ def api_transport_schema() -> Any:
             template = _T.read_template(_reused_template(finished, shared))
         except (ReuseError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-        source = {"kind": "reuses", "name": rel.rsplit("/", 1)[-1]}
+        from molbuilder.transport.reuse import Extension
+        extension = Extension(rel, finished.task)
+        source = {"kind": "reuses", "name": extension.name}
         if rung is not None:
-            held = next((dict(st.overrides) for st in finished.task.stages
-                         if st.name == rung), {})
+            held = extension.own(rung)
     elif citation:
         try:
             _, cited = resolve_citation(citation, projects_root())
@@ -1005,6 +1054,16 @@ def api_transport_schema() -> Any:
                                       calculation="transport",
                                       surface=surface, rung=rung,
                                       template=template, asks=asks)
+    if reuses and extension.fixes(surface=surface, rung=rung):
+        # AN EXTENSION'S KEPT VALUES (`engines/transport.md` § 2a.16,
+        # *Extending it*): the shared panel and the rungs that run once,
+        # every field drawn at the value the finished calculation ran with,
+        # never a control and never collected -- the one door's lock
+        # (`transport.reuse.Extension.locked`).
+        for sec in schema["sections"]:
+            for f in sec["fields"]:
+                if not f.get("locked"):
+                    f["locked"] = extension.locked(f, rung=rung)
     response: Dict[str, Any] = {"ok": True, "surface": surface,
                                 "engine": engine, "source": source}
     if surface == "rung":

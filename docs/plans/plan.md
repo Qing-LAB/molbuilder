@@ -1122,7 +1122,7 @@ file framework doc … and add the specific case for transport"*): the door
 rule moved there from `model/parse.md` § 5e, each data file's chapter
 citing it.
 
-## 1aa. Extending a finished transport calculation — what may change, and what is fixed *(2026-10-22; the user's four answers; contract drafted — N11 in § 0a's queue)*
+## 1aa. Extending a finished transport calculation — what may change, and what is fixed *(2026-10-22; the user's four answers; release 1 shipped 2.33.0 — N11 in § 0a's queue)*
 
 *(The user, 2026-10-22, on citing a finished calculation on the Transport
 tab: "I see that all of the options are still open … Why can't we just have
@@ -1149,12 +1149,50 @@ values are fixed; what runs per point (the device, the transmission), the
 voltages, the treatment and the window are the person's.
 
 **The contract**: `engines/transport.md` § 2a.16, *Extending it*;
-`web/tabs.md` (the Extend view); `web/task-setup.md` (the same limits).
-**To build**: the Extend view (its meta line with each rung's measured time,
-the extension controls each saying what it re-runs, the fixed values
-read-only with the way out, Describe's answer carrying `reuse.decide`'s
-manifest); Task setup's limits for a calculation with `reuses`; `describe
---reuses` printing the manifest.
+`web/tabs.md` § 4 (the Transport tab's extension panel);
+`web/task-setup.md` § 3 (the same limits).
+
+**The user, 2026-10-23, after using it** (*"maybe we should make 'extension'
+citation … and 'complete calculation' citation … to have two different panel
+design so we can avoid repeating parameter setup"*; *"it is unclear to me for
+the extension of transport calculation, what is the meaning/limit on the
+computational parameter setups"*; and, from Task setup, a Save with nothing
+changed clearing the Prep panel and a Prep again rewriting every prepared
+stage): measured — Task setup on an extension is the fresh calculation's
+table, every value and every run card editable, the limits said only by the
+Preview's manifest; Save writes unchanged files and retires the Prep's
+answer; a Prep of a prepared, unchanged group writes every deck and script
+again (new stamps), appends each pipeline log and the ledger. **Three
+answers**: the Transport tab is the one editor of a transport calculation's
+physics, before and after Describe, Task setup showing it read-only; a group
+already prepared as prep would prepare it now has nothing to write, said with
+its next step; **two releases** —
+
+- **Release 1** (a middle number, shipped 2.33.0): the extension on the
+  Transport tab (its fixed surfaces locked by the schema, Describe keeping
+  them and refusing a change or a dropped voltage, its manifest, the way
+  out with the finished settings) and its limits on Task setup, a copied-in
+  group shown as its copy; Save with nothing unsaved offered nowhere and
+  writing nothing; prep's *nothing to write* (`job-system.md`, *The task*,
+  2; checkpoint 2a, 5 — the launch's own comparison, R-L15, which now
+  compares a rung of points' decks too: a window changed after its prep
+  had launched the old decks); each group's next step always on the Prep
+  card; `describe --reuses` printing the manifest. Two review rounds
+  revised it: each change measured against the description it is made
+  from (an extension the command line wrote saves), the junction's rename
+  and label kept, the way out carrying only the values a person chose,
+  every sentence served whole by `Extension.says`, Save's *nothing to save*
+  read by the records' readers, a `--one-job` with nothing to write sent
+  as one job. **Open**: each control's
+  run time — the time the finished runs of those rungs took — wants a door
+  for a run's wall time, which nothing reads yet.
+- **Release 2**: the page split — the Transport tab the physics editor of a
+  described folder (Task setup's safeguards: the state saved first, `read_as`),
+  Task setup the machine, groups, run cards and Prep, the physics read-only;
+  labels in place of item names on the run cards and the stage table; card
+  titles that say what they hold; a transport rung's help in its own words;
+  an item shown only where a rung reads it; one line per page saying what
+  is checked where (the k-point mesh check at Save too).
 
 ## 1z. TBtrans's files read by the SIESTA family's parser, a data file's reading kept *(2026-10-22; the user's yes; shipped 2.31.0 — N9 in § 0a's queue)*
 
@@ -1214,7 +1252,7 @@ below says.
 | **N8** | **built for 2.32.0** — the user's yes, 2026-10-22; revised 2026-10-23: the export reads no data file (the user: *"the export should only contain information that is already processed"*), the PDOS block as three numbered steps, the post-processing document | **Export the transport results — CSV and NetCDF** (§ 1y), contract first; its place in the order the user's | the user, 2026-10-22: *"export data for all the results in the transport data including convergence data, in format of csv and netcdf"* |
 | **AIM** | **built for 2.32.0**, with N8 — the user's yes, 2026-10-23; reviewed three times, each revised once (§ 1ab) | **Every file says which index its atoms are listed by — the atom index map** (§ 1ab, `model/overview.md` § 2.2b) | the user, 2026-10-23: *"we need to be able to differentiate or actually detect it explicitly"* |
 | **N9** | **shipped 2.31.0** | **TBtrans's files read by the SIESTA family's parser, a data file's reading kept** (§ 1z) — contract 2026-10-22 (`model/parse.md` § 5e, `engines/transport.md` § 2a.12), the user's yes (*"go ahead"*); built for 2.31.0, two review rounds, each revised once; with it, the scheduler asked after a sent run by the jobs list's rule (`running-a-job.md` § 4.2 — the user, 2026-10-22: *"you should fix that bug"*) | the user, 2026-10-22: Sol's report took four minutes; *"make this part of the parser of siesta engine"* |
-| **N11** | a middle number — contract drafted 2026-10-22, the user's four answers | **Extending a finished transport calculation — what may change, and what is fixed** (§ 1aa) | the user, 2026-10-22: *"what are the things that we could touch and what are the things that we should not touch?"* |
+| **N11** | a middle number — the user's four answers 2026-10-22; 2026-10-23: two releases, the first shipped 2.33.0 — the extension on the Transport tab, its limits on Task setup and prep's *nothing to write*; the second open (§ 1aa) | **Extending a finished transport calculation — what may change, and what is fixed** (§ 1aa) | the user, 2026-10-22: *"what are the things that we could touch and what are the things that we should not touch?"* |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 

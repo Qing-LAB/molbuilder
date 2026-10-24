@@ -1,7 +1,9 @@
 # THE PREP PROTOCOL -- `docs/execution/job-system.md` § 5.0.
 #
 # Prep prepares the groups picked (`--group N`), each one job; a group
-# prepared and never launched is prepared again, whole (user, 2026-10-11); a
+# prepared and never launched is prepared again, whole (user, 2026-10-11),
+# where what it would write differs, and has nothing to write where it does
+# not (user, 2026-10-23); a
 # launched one is prepared again for its job request alone, its runs kept,
 # on the hierarchical layout -- what it computes takes the way back, the
 # state saved before its group's first launch (user, 2026-10-21).  What a stage takes from another stage's run is its
@@ -65,13 +67,30 @@ held_edited = [1]
 refused = ["the structure has changed since this calculation was described", "structure fingerprint"]
 
 # ===================================================================== #
-#  A GROUP PREPARED AND NEVER LAUNCHED IS PREPARED AGAIN               #
+#  A GROUP PREPARED AND NEVER LAUNCHED: NOTHING TO WRITE, OR AGAIN     #
 # ===================================================================== #
 
 [[case]]
-name = "a group prepared and never launched is prepared again -- its first run reused, said"
+name = "a group prepared, never launched, and already as this prep would prepare it has nothing to write -- said with what is next, no file written again and no state saved (the user, 2026-10-23)"
 before = [["prep", "task", "--group", "1"]]
-said = ["prepared coarse: 01_coarse/run-0  (reused -- not launched yet)"]
+said = ["coarse (01_coarse): prepared, never launched, and already as this prep would prepare it now -- nothing to write (group 1)", "each group, and what is next:"]
+said_lacks = ["the folder's state was"]
+kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh", "01_coarse/run-0/H2_01_coarse.fdf", "STAGE-PLAN.md", "jobset-decisions.log"]
+
+[[case]]
+name = "...and one whose description changed since is prepared again whole -- its first run reused, and what differed named"
+before = [["prep", "task", "--group", "1"]]
+changed = { overrides = { coarse = { max_scf_iter = 200 } } }
+said = ["prepared coarse: 01_coarse/run-0  (reused -- not launched yet)", "prepared again -- differed from what was prepared: 01_coarse/H2_01_coarse.fdf"]
+
+[[case]]
+name = "...and a sequence of groups (--one-job) is one job: nothing to write when every group of it and its one header are as this prep plans them -- no state saved, nothing written again, and still sent as one job"
+before = [["prep", "task", "--group", "1", "--group", "2", "--one-job"]]
+stage = ["coarse", "medium"]
+prep = ["--one-job"]
+said = ["coarse (01_coarse): prepared, never launched, and already as this prep would prepare it now -- nothing to write", "medium (02_medium): prepared, never launched, and already as this prep would prepare it now -- nothing to write", "next -- send them as one job:"]
+said_lacks = ["the folder's state was"]
+kept = ["01_coarse/H2_01_coarse.fdf", "02_medium/H2_02_medium.fdf", "STAGE-PLAN.md", "jobset-decisions.log"]
 
 [[case]]
 name = "a later group's prep leaves an earlier stage's files as that stage's own prep wrote them -- its deck, its run script, its monitor"
@@ -182,7 +201,7 @@ name = "a stage removed after its prep leaves every later number as it was -- #2
 before = [["prep", "task", "--group", "1"], ["prep", "task", "--group", "2"]]
 removed = ["coarse"]
 stage = "#2"
-said = ["prepared medium: 02_medium/run-0  (reused -- not launched yet)"]
+said = ["medium (02_medium): prepared, never launched, and already as this prep would prepare it now -- nothing to write"]
 
 [[case]]
 name = "a stage added after production takes the next number -- the stage with files keeps its own"

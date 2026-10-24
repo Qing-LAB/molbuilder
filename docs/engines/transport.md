@@ -3649,7 +3649,7 @@ inside the finished calculation (§ 3.1, *A calculation's folder is its own*;
 `compose.refuse_inside_citation`); a new folder that holds a description, as
 every describe refuses.
 
-#### Extending it — what may change, and what is fixed *(the user, 2026-10-22; contract drafted — plan § 1aa)*
+#### Extending it — what may change, and what is fixed *(the user, 2026-10-22, 2026-10-23; built 2.33.0 — plan § 1aa)*
 
 *(The user, 2026-10-22: "why can't we just have the citation be limited to a
 few parameters that we actually allow them to change or suggest they would
@@ -3670,7 +3670,7 @@ bias-independent ground every point stands on (§ 1.2); the **device** and the
 | what | in an extension | what a change re-runs (§ 1.2) |
 |---|---|---|
 | **the voltages** — added, never removed | **yours** | each new voltage's device run (self-consistent), its transmission point; under the low-bias approximation nothing while the window reaches it |
-| **the treatment** — low-bias ↔ self-consistent | **yours** | the device and the transmission at the voltages the other treatment adds |
+| **the treatment** — low-bias ↔ self-consistent | **yours** | to self-consistent: the device and the transmission at every voltage, the 0 V ones taken over; to the low-bias approximation: the device and the transmission once, at 0 V |
 | **the energy window** and how many times finer | **yours** | the transmission at the new energies only — the finished ones shared exactly |
 | **the transmission's tab** — its k-point grid, broadenings, eigenchannels, the DOS it writes | **yours** | the whole transmission, every point |
 | **the device's tab** — its NEGF contour, its mixing, its tolerances, its iteration budget | **yours** | every device point, and the transmission on it |
@@ -3679,13 +3679,32 @@ bias-independent ground every point stands on (§ 1.2); the **device** and the
 | **the junction**, its rename, its label, its pseudopotentials | **fixed** | — another junction is another calculation |
 
 **Fixed is shown, read-only, with its way out**: every fixed value stays in
-view as the finished calculation states it, and one action — *Start a new
-calculation from this junction with these settings* — opens the full
-description, the finished calculation's values filled in, as a new
-calculation that reuses nothing: what an extension is not for is never edited
-inside one. **Every change of yours says what it re-runs** — the row above,
-and the time the finished calculation's own runs of those rungs took
-(`model/parse.md` § 5c.1).
+view as the finished calculation states it — the schema served with
+`reuses` draws the shared panel's and the seed's and leads' fields
+*locked*, each *the value <name> ran with* (`transport.reuse.Extension`,
+the one rule, its value the one the finished calculation ran with) — and
+one action, *Start a new calculation from this junction with these
+settings*, cites the junction again as a new calculation that
+reuses nothing, its cards starting from the values chosen in the finished
+one — each rung's own, and each shared value its template says is the
+person's (the lock's `chosen`); a value cited from the junction is cited
+again, and a default stays not chosen: what an extension is not for is
+never edited inside one. **The Transport tab's Describe holds the limits**:
+the fixed rungs keep the finished calculation's own values, and a changed
+fixed value, a finished voltage dropped, or the junction, its rename or its
+label changed is refused by name beside the control it names, nothing
+written (`transport.reuse.Extension.refusal`) — and so is Task setup's Save
+of one. Each change is measured against the description it is made from —
+the finished calculation's at Describe, the folder's own at Save — so an
+extension the command line wrote is never refused for what it holds.
+**Task setup keeps the same limits** ([`web/task-setup.md`](?doc=web/task-setup.md)
+§ 3): the seed's and the leads' rows and the shared values read-only, *fixed
+by* the finished calculation, and a group copied in saying in its tab where
+each run came from, above its run card — what it is launched again with.
+**Every change of yours says what it re-runs** — the row above, in the
+sentence its control says (`transport.reuse.Extension.says`, drawn as it
+is; the one door every surface draws the limits from and both describing
+doors check them by).
 
 **What the extension will reuse is one answer** (`reuse.decide`, the rule
 above): said once it is described — on the Transport tab beside Describe's
@@ -4032,15 +4051,18 @@ the size of what it copies.
   lowbias_local · its junction, cited from …/run-2 · low-bias-approximation ·
   0.0, 0.2 V · −2…2 eV at 401 points · every group finished* — its window
   the one its transmission computed, the rung's own values over the
-  template's — and the cards fill from it:
-  the shared panel and each rung's tab from its template and its rungs'
-  overrides, the bias list and the treatment from its description, the line
-  over the shared panel naming the calculation, each value keeping the
-  source its template records; the rename is its own and is not offered.
-  **Describe** writes what `molbuilder describe --reuses` writes, through the
-  same writer ([`web/tabs.md`](?doc=web/tabs.md) § 4).
-- **Task setup** echoes `reuses` with the junction it shows, not editable here
-  ([`web/task-setup.md`](?doc=web/task-setup.md) § 3). Its **Preview** is
+  template's — and the cards fill from it, with an extension's limits
+  (*Extending it*): the bias list and the treatment from its description,
+  the device's and the transmission's tabs from its rungs' overrides, each
+  saying what a change re-runs; the shared panel and the seed's and the
+  leads' tabs drawn locked at the values it ran with, the line over the
+  shared panel saying whose; the rename is its own and is not offered. Its
+  panel opens with what the extension offers and the way out. **Describe**
+  writes what `molbuilder describe --reuses` writes, through the same
+  writer ([`web/tabs.md`](?doc=web/tabs.md) § 4).
+- **Task setup** echoes `reuses` with the junction it shows, not editable
+  here, and keeps the same limits ([`web/task-setup.md`](?doc=web/task-setup.md)
+  § 3). Its **Preview** is
   prep's answer, whole: each group *copied in* with its runs and size, or
   *prepared here* and why, and for a rung of points the points its first
   launch takes over — so what is copied, and what it costs, is seen before

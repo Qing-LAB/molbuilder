@@ -279,28 +279,31 @@ B8)*.
    reads a run — or **a structure pair** — its `.xyz`, a frame set's included,
    whose frames the card's frame-set table states (§ 3.8.1 there), and whose
    pseudopotential directory the shared panel then asks — and **a
-   transport calculation's folder**, to extend it — the tab then draws the
-   **Extend** view in place of its five cards (`engines/transport.md` § 2a.16,
-   *Extending it*): a meta line of what the finished calculation computed (its
-   junction, its treatment, its voltages, its window, each rung's state and the
-   time its runs took); **What you can extend** — the bias list with the
-   finished voltages done and fixed and new ones added (the start/stop/step
-   builder), the treatment, the transmission's window and how many times finer
-   (`/api/transport/fit`, its fitted ends and count, how many energies are
-   shared and how many computed), and, folded, the **device's** and the
-   **transmission's** tabs as the engine strip draws them — each control saying
-   what its change re-runs, with the time the finished runs of those rungs took;
-   **Fixed by <the finished calculation>**, folded — the shared panel's and the
-   seed's and the leads' values, read-only, as its template states them — and
-   its one action, *Start a new calculation from this junction with these
-   settings*, which draws the five cards filled from the finished calculation,
-   named a new calculation that reuses nothing. Describe writes what
-   `molbuilder describe --reuses` writes, and its answer says what the new
-   calculation will reuse and what will run (`reuse.decide`, the manifest's
-   words).
-   *(Until the Extend view is built — plan § 1aa — every card fills from the
-   finished calculation and every field is editable; the fitted window is its
-   one help.)* Anything else
+   transport calculation's folder**, to extend it — the five cards then
+   draw an **extension** (`engines/transport.md` § 2a.16, *Extending it*;
+   the describe door's `extend`): above them, the meta line of what the
+   finished calculation computed (its junction, its treatment, its
+   voltages, its window, where each group stands), *Extending <name>* —
+   what is computed per voltage is yours to change, the rest fixed by it —
+   and its one action, *Start a new calculation from this junction with
+   these settings*, which cites the junction again as a calculation that
+   reuses nothing, every card starting from the values chosen in the
+   finished one — each rung's own and each shared value its template says
+   is the person's (the lock's `chosen`); the shared panel and the seed's
+   and the leads' tabs drawn at the finished calculation's values, each
+   field *fixed: the value <name> ran with*, never a control and never sent
+   (the schema's `locked`, served with `reuses`); the bias card saying the
+   finished voltages are kept and what a voltage added, or the other
+   treatment, re-runs; the device's and the transmission's tabs each saying
+   what a change there re-runs, the transmission's beside the window fitted
+   to the finished grid (`/api/transport/fit`) — every one of these
+   sentences the describe door's, drawn as it is (`extend.says`). Describe
+   writes what `molbuilder describe --reuses` writes, the fixed rungs
+   holding the finished calculation's own values; a changed fixed value, a
+   finished voltage dropped, or the junction, its rename or its label
+   changed, is refused by name with nothing written; and its answer lists
+   what the new calculation will copy and what it runs (`reuse.decide`,
+   the manifest's words). Anything else
    answers *not citable* with the condition named, and the citation held
    stays held. The describe door answers one
    summary line (how the run ended, what its record states) and **findings** through the one renderer

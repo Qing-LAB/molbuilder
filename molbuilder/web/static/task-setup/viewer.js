@@ -229,7 +229,11 @@ function renderStages(task) {
             const row = el("tr", null, el("td", null,
                 el("span", { class: "ts-cell-name" },
                    (at === -1 ? "" : (at + 1) + " \u00b7 ") + name),
-                ranMark(name)));
+                ranMark(name),
+                // AN EXTENSION'S RUNG: one it keeps, fixed by the finished
+                // calculation, its cells read-only -- the sentence its
+                // title; one it offers, what a change there re-runs (§ 3).
+                extensionNote(name)));
             row.appendChild(groupCell(stages, i));
             appendCells(row, st, i, name);
             tbody.appendChild(row);
@@ -302,8 +306,13 @@ function renderStages(task) {
         fitHost.hidden = !(task.calculation === "transport" && task.reuses
                            && row !== -1);
         if (!fitHost.hidden) {
+            if (extensionSays("window")) {
+                fitHost.appendChild(el("p", { class: "hint" },
+                                       extensionSays("window")));
+            }
             fitHost.appendChild(fitRow({
                 reuses: task.reuses,
+                name: (_fs.extension && _fs.extension.name) || task.reuses,
                 use: (v) => setRowValues(row, v, "the fitted window") }));
         }
     }
@@ -313,6 +322,7 @@ function renderStages(task) {
     /* One row's cells, a column each -- the same for every kind. */
     function appendCells(tr, st, i, name) {
         const ov = (st && st.overrides) || {};
+        const held = fixedByExtension(name);
         for (const col of varies) {
             const has = Object.prototype.hasOwnProperty.call(ov, col);
             // A COLUMN THIS RUNG DOES NOT READ (template.md § 6.4's `stages`,
@@ -335,6 +345,18 @@ function renderStages(task) {
                     "data-foreign": "yes",
                 });
                 tr.appendChild(el("td", { "data-foreign": "yes" }, foreign));
+                continue;
+            }
+            // FIXED BY THE FINISHED CALCULATION an extension reuses: its
+            // value shown, read-only, saying so (§ 3).
+            if (held) {
+                tr.appendChild(el("td", { "data-template": has ? null : "yes" },
+                    el("input", {
+                        class: "ts-cell", disabled: "yes",
+                        value: has ? String(ov[col]) : "",
+                        placeholder: defaultText(col) || "template",
+                        title: extensionSays(name),
+                        "aria-label": name + " " + col + " (fixed)" })));
                 continue;
             }
             // An empty cell is not blank: it says what the stage will USE,
@@ -569,6 +591,8 @@ function freshFolderState() {
         shapeFixed:   null,       // {shape, why} once fixed, or null (§ 4)
         prepared:      { bench: {} },  // stage -> prep's own sentence, a benchmark's
         ladder:       { stages: [], offer: [] },  // the ready door's answer per stage
+        steps:        [],         // each group's next step, `jobset status`'s
+        extension:    null,       // an extension's limits, or null (§ 3)
         groups:       { stages: [], groups: [] },  // each stage's group, each group's state
         prepPick:     null,       // the groups picked for the task's Prep; null = the offer
         fixed:        null,       // what the kind fixes -- shape, stages (§ 5.3)
@@ -1757,6 +1781,9 @@ async function readFolder(projects, dir, opts) {
 
     _mode = "description"; _handover = null; _task = task;
     _request = request;
+    /* AN EXTENSION'S LIMITS, before the cards that say them are drawn
+     * (§ 3; the folder answer's `extension`). */
+    _fs.extension = said.extension || null;
     renderCameOver(task, said.treatment, said.frame_set,
                    said.template && said.template.shared);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
@@ -1797,6 +1824,7 @@ async function readFolder(projects, dir, opts) {
      * each stage prepared, ready or waiting -- and the pick starts again
      * from the offer, since what is ready changes with every prep. */
     _fs.ladder = said.ladder || { stages: [], offer: [] };
+    _fs.steps = said.steps || [];
     _fs.groups = said.groups || { stages: [], groups: [] };
     _fs.prepPick = null;
     applySetMachine();
@@ -2008,11 +2036,12 @@ function renderCameOver(obj, treatment, frameSet, shared) {
             ["Junction",  (obj.slots && obj.slots.junction) || "\u2014"],
             // THE CITATION THAT DOES NOT RESOLVE, in its reader's words.
             ...(frameSet && frameSet.why ? [["The citation", frameSet.why]] : []),
-            // 0 V keeps its full spelling, as the bias list is written.
+            // 0 V keeps its full spelling, as the bias list is written;
+            // an extension's says what a change of each re-runs (§ 3).
             ["Bias list", bias.length
                 ? bias.map((v) => (v === 0 ? "0.0" : String(v))).join(", ")
-                  + " V" : "\u2014"],
-            ["Treatment", treatment || "\u2014"],
+                  + " V" : "\u2014", extensionSays("bias")],
+            ["Treatment", treatment || "\u2014", extensionSays("treatment")],
             // THE RENAME this calculation makes in its own copy of the cited
             // junction (transport.md § 4): it decides which lead is biased
             // positive, so it is said here with the junction.
@@ -2033,9 +2062,11 @@ function renderCameOver(obj, treatment, frameSet, shared) {
             ["Formula",   st.formula || "\u2014"],
             ["Atoms",     (st.atoms === undefined ? "\u2014" : String(st.atoms))]);
     }
-    for (const [k, v] of rows) {
+    for (const [k, v, note] of rows) {
         host.appendChild(el("div", null,
-            el("dt", null, k), el("dd", null, v)));
+            el("dt", null, k), el("dd", null, v,
+                note ? el("br") : null,
+                note ? el("small", { class: "ts-row-note" }, note) : null)));
     }
     card.hidden = false;
 }
@@ -2051,6 +2082,11 @@ function renderShared(rows) {
     if (!wrap || !host) return;
     host.textContent = "";
     wrap.hidden = !(rows && rows.length);
+    // AN EXTENSION'S SHARED VALUES are the finished calculation's (§ 3).
+    if (_fs.extension && rows && rows.length) {
+        host.appendChild(el("p", { class: "hint" },
+                            extensionSays("shared") || _fs.extension.error));
+    }
     for (const r of rows || []) {
         const value = renderValue(r.value, r.unit) || "\u2014";
         host.appendChild(el("div", null,
@@ -2983,6 +3019,16 @@ function renderNext(task) {
          * the prep for run button such that it's obvious that this is
          * designed for the run").  One value each, written into the
          * members' cards in the job request -- never its `bench`. */
+        /* A GROUP COPIED IN from the finished calculation this one reuses
+         * says where each member's run came from (`.copied-from`, the
+         * ladder's answer; § 3) -- launched, its card is what it is
+         * launched again with. */
+        const copies = g.members.filter((m) => copiedFrom(m));
+        if (copies.length) {
+            block.appendChild(el("p", { class: "hint" },
+                copies.map((m) => m + " copied in from " + copiedFrom(m))
+                    .join("; ") + "."));
+        }
         block.appendChild(runCard(task, g.members));
 
         block.appendChild(el("p", { class: "hint" },
@@ -3082,10 +3128,11 @@ function taskPrepCard(task) {
         (n) => groups.some((g) => g.number === n && pickable(g)));
     wrap.appendChild(el("p", { class: "hint" },
         "Prepare the task \u2014 pick the groups. Each group is one job; a "
-        + "group prepared and never launched is prepared again whole, and a "
-        + "launched one, on the hierarchical layout, is prepared again for a "
-        + "change of its job request, its runs kept. What a stage takes from "
-        + "another stage's run is taken when it is launched."));
+        + "group prepared and never launched is prepared again whole where "
+        + "what it would write differs, and has nothing to write where it "
+        + "does not; a launched one, on the hierarchical layout, is prepared "
+        + "again for a change of its job request, its runs kept. What a stage "
+        + "takes from another stage's run is taken when it is launched."));
     // THE PLAN LIST'S OWN ROWS (`ts-planlist`), a box column added.
     const list = el("ul", { class: "ts-planlist" });
     for (const g of groups) {
@@ -3124,6 +3171,8 @@ function taskPrepCard(task) {
             members));
     }
     wrap.appendChild(list);
+    const next = nextSteps();
+    if (next) wrap.appendChild(next);
     // IN THE DESCRIPTION'S ORDER, as prep prepares them.
     const picks = groups.map((g) => g.number)
         .filter((n) => _fs.prepPick.indexOf(n) !== -1);
@@ -3140,8 +3189,9 @@ function taskPrepCard(task) {
                 ? "No group to prepare \u2014 each is launched, or waits "
                   + "for what it says."
                 : ready.every((g) => g.state === "prepared" && g.matches)
-                ? "Every group is prepared as described \u2014 launch at the "
-                  + "terminal; pick a group to prepare it again."
+                ? "Every group is prepared \u2014 what is next is above, "
+                  + "launched at the terminal; pick a group to prepare it "
+                  + "again after a change."
                 : "Pick a group to prepare."));
         /* THE LAST ANSWER STAYS until a new preview replaces it. */
         const kept = _fs.answers.task;
@@ -3159,6 +3209,64 @@ function taskPrepCard(task) {
     wrap.appendChild(commandsFor("task", { groups: picks, prep: true }));
     wrap.appendChild(prepButton("task", picks));
     return wrap;
+}
+
+/** Whether ``stage`` is a rung an extension fixes -- one that runs once,
+ *  the finished calculation's (§ 3; the folder answer's `extension`). */
+function fixedByExtension(stage) {
+    const ext = _fs.extension;
+    return !!(ext && Array.isArray(ext.fixed)
+              && ext.fixed.indexOf(stage) !== -1);
+}
+
+/** What an extension says of ``control`` -- a rung, the bias list, the
+ *  treatment, the window, the shared values: the one door's sentence
+ *  (`Extension.says`), drawn as it is, or null. */
+function extensionSays(control) {
+    const says = (_fs.extension && _fs.extension.says) || {};
+    return says[control] || null;
+}
+
+/** What an extension's rung row says -- one it keeps, *fixed by <name>*
+ *  (its sentence the title); one it offers, what a change there re-runs --
+ *  or null. */
+function extensionNote(stage) {
+    if (!extensionSays(stage)) return null;
+    return fixedByExtension(stage)
+        ? el("small", { class: "ts-row-note", title: extensionSays(stage) },
+             extensionSays("fixed"))
+        : el("small", { class: "ts-row-note" }, extensionSays(stage));
+}
+
+/** The run ``stage``'s newest run is a copy of, from the finished
+ *  calculation this one reuses (`.copied-from`, the ladder's answer), or
+ *  null. */
+function copiedFrom(stage) {
+    const r = ((_fs.ladder || {}).stages || []).find((x) => x.stage === stage);
+    return (r && r.copied_from) || null;
+}
+
+/** EACH GROUP'S NEXT STEP (§ 11), as `jobset status` prints it under
+ *  *each group, and what is next* -- the folder's answer (`steps`), so the
+ *  card says it whatever the page last did: a Save, a reload, a reopened
+ *  folder.  The next one carries the lines that move it. */
+function nextSteps() {
+    const steps = _fs.steps || [];
+    if (!steps.length) return null;
+    const list = el("ul", { class: "ts-planlist" });
+    for (const s of steps) {
+        const li = el("li", {}, el("span", { class: "ts-planrow" },
+            el("span", { class: "ts-plan-stage" }, "group " + s.group),
+            el("span", { class: "ts-plan-detail" },
+               s.stages.join(", ") + " \u2014 " + s.words
+               + (s.next ? " \u2014 next" : ""))));
+        if (s.next && s.lines.length)
+            li.appendChild(el("pre", { class: "ts-cmd" }, s.lines.join("\n")));
+        list.appendChild(li);
+    }
+    return el("div", {},
+              el("p", { class: "hint" }, "Each group, and what is next:"),
+              list);
 }
 
 /** The Continue-from choice for one stage (plan W37): a select over the
@@ -3456,7 +3564,8 @@ function prepButton(kind, picks) {
                     }
                 }
 
-                btnWrite.disabled = false;
+                // NOTHING TO WRITE names no plan, and Prep has none to do.
+                btnWrite.disabled = !planned;
             } finally {
                 btnPreview.disabled = false;
             }
@@ -3636,30 +3745,28 @@ function _showPrepAnswers(wrap, say, r) {
             el("pre", { class: "ts-cmd" }, copied.lines.join("\n"))),
             wrap.querySelector(".ts-prep-answer"));
     }
-    if (all.length > 1 && say.getAttribute("data-state") === "ok") {
+    const written = all.filter((a) => !a.unchanged);
+    if (all.length && !written.length) {
+        /* EVERY GROUP PICKED ALREADY AS THIS PREP PLANS IT: nothing to
+         * write, and nothing to Prep (`job-system.md`, *The task*, 2). */
+        say.textContent = "Nothing to write \u2014 every group picked is "
+            + "already prepared as this prep would prepare it now.";
+        say.setAttribute("data-state", "ok");
+    } else if (written.length > 1 && say.getAttribute("data-state") === "ok") {
         /* EACH GROUP ONE JOB, as the saved description groups them. */
-        const named = all.map((a) => a.stage);
+        const named = written.map((a) => a.stage);
         const jobs = (_fs.groups.groups || [])
             .filter((g) => g.members.some((st) => named.indexOf(st) !== -1))
             .map((g) => "group " + g.number + " (" + g.members.join(", ")
                         + ")");
-        say.textContent = (all[0].preview ? "Previewed " : "Prepared ")
+        say.textContent = (written[0].preview ? "Previewed " : "Prepared ")
             + (jobs.length ? jobs.join(", ") + ", each one job,"
                            : named.join(", "))
-            + " for " + all[0].machine
-            + (all[0].preview ? " — nothing is written until Prep." : ".");
+            + " for " + written[0].machine
+            + (written[0].preview ? " — nothing is written until Prep." : ".");
     }
-    /* WHAT COMES NEXT, as the terminal's prep ends: the launch of what was
-     * just prepared, a group's one job by its members -- launched at the
-     * terminal (task-setup.md § 1) -- first, under the line that says what
-     * was prepared, above each member's report. */
-    if ((r.next || []).length) {
-        wrap.insertBefore(el("div", { class: "ts-prep-answer" },
-            el("div", { class: "ts-prep-answer-head" },
-               "Next, at the terminal"),
-            el("pre", { class: "ts-cmd" }, r.next.join("\n"))),
-            wrap.querySelector(".ts-prep-answer"));
-    }
+    /* WHAT COMES NEXT is the card's own list, each group's next step from
+     * the folder read again after the Prep (§ 11) -- said once. */
 }
 
 /** Show one stage's prep answer -- the command line's report, from the
@@ -3697,6 +3804,13 @@ function _showPrepAnswer(wrap, say, r, head) {
         return;
     }
     findingLines(r.deck_findings);
+    /* NOTHING TO WRITE: a stage of a group already as this prep plans it
+     * -- its sentence, nothing else (`job-system.md`, *The task*, 2). */
+    if (r.unchanged) {
+        line(r.unchanged, "ok");
+        wrap.appendChild(box);
+        return;
+    }
     /* A PREVIEW IS SAID AS ONE: what prep WOULD do, nothing yet written
      * (`job-system.md` § 5.0) -- the same lines, from the same answer. */
     const would = !!r.preview;
@@ -3711,6 +3825,12 @@ function _showPrepAnswer(wrap, say, r, head) {
           + ": " + dirs.slice(0, 3).join(", ")
           + (dirs.length > 3 ? ", …" : "");
     say.setAttribute("data-state", "ok");
+    /* PREPARED AGAIN, never launched: what of it differed from what this
+     * prep writes now (`job-system.md`, *The task*, 2). */
+    if ((r.differs || []).length) {
+        line((would ? "would prepare it again \u2014 " : "prepared again \u2014 ")
+             + "differed from what was prepared: " + r.differs.join(", "));
+    }
     /* A STAGE COPIED IN from the finished calculation this one reuses:
      * its runs are the copies (engines/transport.md \u00a7 2a.16). */
     const copies = ((r.copied || {}).groups || [])
@@ -4778,11 +4898,13 @@ function refreshSave() {
     else if (_mode === "empty")                   blocked = "Nothing to save — this folder carries no description and no hand-over.";
     else if (_mode === "refused")                 blocked = "Nothing to save — this folder could not be described; the reason is above.";
     else if (_mode === "handover" && !_shape)     blocked = "Choose how the files are kept apart, above.";
-    btn.disabled = !!blocked;
     /* EDITED, the bar's own words say so (`_setDirty`); SAVED, what the
      * save did (`saidSave`).  This line says why Save is held, and else,
-     * with neither said, that there is nothing to save. */
+     * with neither said, that there is nothing to save -- and a
+     * description's Save is offered for an edit the page holds alone
+     * (§ 8: nothing unsaved, nothing to save). */
     const changed = !!_cm && edited();
+    btn.disabled = !!blocked || (_mode !== "handover" && !changed);
     const said = $("ts-save-said");
     const confirmed = !!said && !said.hidden
         && said.getAttribute("data-state") === "ok";
@@ -4941,6 +5063,15 @@ async function _save() {
         saidSave("NOT written — the request failed.", "bad");
         setState("refuse", "Not written",
                  "Could not reach the server: " + (e && e.message ? e.message : e));
+        refreshSave();
+        return;
+    }
+    /* NOTHING TO SAVE (§ 8): the files already hold what the page sent --
+     * nothing was saved or written, so the folder is not read again and a
+     * Prep's answer stays where it is. */
+    if (body.unchanged) {
+        saidSave(body.said, "ok");
+        setState("loaded", "Nothing to save", "");
         refreshSave();
         return;
     }

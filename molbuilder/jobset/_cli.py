@@ -623,6 +623,20 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
                f"{citation}.")
     for path in written:
         click.echo(f"  {path.name}")
+    # WHAT IT WILL REUSE, AND WHAT RUNS -- the one answer prep composes
+    # (`reuse.decide`), said once it is described (`engines/transport.md`
+    # § 2a.16, *Extending it*): every group, nothing written.
+    from .reuse import decide
+    try:
+        calc_now = _calc_of(dest)
+        manifest = decide(calc_now, calc_now.request.numbers)
+    except PrepError as exc:
+        click.echo(f"note: what it will reuse is not known yet -- {exc}",
+                   err=True)
+    else:
+        if manifest is not None:
+            click.echo("")
+            click.echo("\n".join(manifest.lines(dest)))
     from .commands import prep_group_lines
     from .ready import task_state
     click.echo("")
@@ -1367,9 +1381,15 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
     except PrepError as e:
         _show(e.findings, e.notes)
         raise click.ClickException(str(e))
+    from .prep import opened_no_run
+    ladder_next = opened_no_run(answers)
+    # WHAT THE PREP DID, ONCE -- the state it saved, its config, its
+    # manifest -- with the first stage it wrote, not one it left as it stood.
+    lead = next((i for i, a in enumerate(answers) if a.unchanged is None), 0)
     for i, ans in enumerate(answers):
-        _echo_prep_answer(ans, base, first=(i == 0),
-                          last=(i == len(answers) - 1))
+        _echo_prep_answer(ans, base, first=(i == lead),
+                          last=(i == len(answers) - 1),
+                          ladder_next=ladder_next)
 
 
 def _launch_unit(calc, *, told: dict, dry_run: bool = False):
@@ -1519,7 +1539,7 @@ def _header_said(lines) -> str:
 
 
 def _echo_prep_answer(ans, base, *, first: bool = True,
-                      last: bool = True) -> None:
+                      last: bool = True, ladder_next: bool = False) -> None:
     """The prep report, from the entry's answer -- `job-system.md` § 5.3:
     *"prep prints what it resolved, which is what makes launch a plain
     yes"*.  Where the configuration came from, what was written, the run
@@ -1530,7 +1550,9 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
     reported one after another, the saved state with the ``first``, and
     after the ``last`` the launch with nothing named -- it sends the group
     that can go, asks which when several can, and says what each waits for
-    when none can (`job-system.md`, *The task*).
+    when none can (`job-system.md`, *The task*).  ``ladder_next``: the
+    prep opened no run of its own (`prep.opened_no_run`), so what comes
+    next is the ladder's own step.
     """
     def say_next(line):
         click.echo(line)
@@ -1540,6 +1562,13 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         if ans.saved:
             click.echo(ans.saved)
         click.echo(ans.recorded)
+        return
+    if ans.unchanged:
+        # A GROUP ALREADY AS THIS PREP PLANS IT: nothing written for it --
+        # said, with what comes next (`job-system.md`, *The task*, 2).
+        click.echo(ans.unchanged)
+        if last:
+            _echo_next_step(ans, base, ladder_next=ladder_next)
         return
 
     from ..runtime_config import format_provenance
@@ -1625,6 +1654,11 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
                    f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
         click.echo(f"  brought in: {', '.join(rep.brought)}")
+    # PREPARED AGAIN, never launched: what of it differed from what this
+    # prep writes now (`job-system.md`, *The task*, 2).
+    if ans.differs:
+        click.echo("  prepared again -- differed from what was prepared: "
+                   + ", ".join(ans.differs))
     # A FORCE-CONSTANT STAGE's deck is written at a `relax` run -- which,
     # and what it was (`engines/vibration.md` § 5.2a).
     if ans.continuation is not None:
@@ -1712,19 +1746,28 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
             click.echo("  " + line)
     if not last:
         return
+    _echo_next_step(ans, base, ladder_next=ladder_next)
+
+
+def _echo_next_step(ans, base, *, ladder_next: bool) -> None:
+    """What comes next, after a prep's last answer: a sequence of groups'
+    one job; the ladder's own step when the prep opened no run of its own
+    -- every group copied in, already as it plans it, or launched and
+    prepared again for its job request (`job-system.md`,
+    *The next step*); else the launch with nothing named."""
+    from .commands import block, launch_lines
+    seq = ans.sequence
     if seq is not None:
-        say_next("next -- send them as one job:\n"
-                 + block(launch_lines("task", base=base,
-                                      groups=seq["numbers"])))
+        click.echo("next -- send them as one job:\n"
+                   + block(launch_lines("task", base=base,
+                                        groups=seq["numbers"])))
         return
-    if ans.copied_whole:
-        # EVERY GROUP IT PREPARED COPIED IN, launched runs already: the
-        # ladder's own next step (`job-system.md`, *The next step*).
+    if ladder_next:
         from .runstatus import jobset_status, render_steps
-        say_next(render_steps(jobset_status(_calc_of(base))))
+        click.echo(render_steps(jobset_status(_calc_of(base))))
         return
-    say_next("next -- launch the group that can go, each group one job:\n"
-             + block(launch_lines("task", base=base)))
+    click.echo("next -- launch the group that can go, each group one job:\n"
+               + block(launch_lines("task", base=base)))
 
 
 def _echo_pipeline_log(ans, base) -> None:

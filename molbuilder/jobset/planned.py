@@ -257,6 +257,12 @@ class Plan:
                 out[op.path] = None
         return list(out)
 
+    def removes(self) -> List[Path]:
+        """Every file on disk this plan leaves gone -- removed, or moved
+        away -- in the order it was planned."""
+        return [p for p, held in self._held.items()
+                if held is None and p.is_file()]
+
     # -- carrying it out ----------------------------------------------------
 
     def carry_out(self) -> None:

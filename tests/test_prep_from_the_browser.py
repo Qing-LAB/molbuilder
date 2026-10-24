@@ -454,9 +454,32 @@ def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
                 in (d / "jobset-decisions.log").read_text()), d
 
     from support.road import read_as
+    # SAVE WRITES A CHANGE ALONE (`task-setup.md` § 8): the folder's own
+    # records sent back -- as they stand, or as the page holds them, the
+    # folder answer's written out again -- are nothing to save: no state
+    # saved and neither file written again.
+    files = [kept / "task.json", kept / "job-request.json"]
+    was = [f.stat().st_mtime_ns for f in files]
+    held = web_client.get("/api/task-setup/folder",
+                          query_string={"dir": str(kept)}).get_json()
+    for text, request_text in (
+            (files[0].read_text(), files[1].read_text()),
+            (json.dumps(held["description"], indent=2) + "\n",
+             json.dumps(held["request"], indent=2) + "\n")):
+        same = web_client.post("/api/task-setup/save", json={
+            "dest": str(kept), "text": text, "request_text": request_text,
+            "read_as": read_as(kept, web_client)}).get_json()
+        assert same["ok"] and same["unchanged"] and same["saved"] is None, \
+            same
+    assert [f.stat().st_mtime_ns for f in files] == was
+    # ...and a change is saved, the folder's state first.
+    task = json.loads(files[0].read_text())
+    task["stages"][0]["overrides"] = {
+        **task["stages"][0].get("overrides", {}), "max_scf_iter": 200}
+    task["varies"] = sorted(set(task.get("varies", [])) | {"max_scf_iter"})
     r = web_client.post("/api/task-setup/save", json={
-        "dest": str(kept), "text": (kept / "task.json").read_text(),
-        "request_text": (kept / "job-request.json").read_text(),
+        "dest": str(kept), "text": json.dumps(task),
+        "request_text": files[1].read_text(),
         "read_as": read_as(kept, web_client)})
     body = r.get_json()
     assert r.status_code == 200, body

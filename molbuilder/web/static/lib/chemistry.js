@@ -85,11 +85,25 @@
         if (!host || !schema || !fs || typeof fs.collectForm !== "function") {
             return {};
         }
+        var got;
         try {
-            return fs.collectForm(host, schema, STATE_ITEMS);
+            got = fs.collectForm(host, schema, STATE_ITEMS);
         } catch (_) {
             return null;
         }
+        /* A FIELD DRAWN AT A VALUE IT IS NOT A CONTROL FOR -- an
+         * extension's, the finished calculation's (`locked`) -- is still
+         * what the panel says, and the card speaks for it: collecting
+         * leaves it out, since no description is sent it. */
+        (schema.sections || []).forEach(function (sec) {
+            (sec.fields || []).forEach(function (f) {
+                if (f.locked && STATE_ITEMS.indexOf(f.name) !== -1
+                        && !(f.name in got)) {
+                    got[f.name] = f.locked.value;
+                }
+            });
+        });
+        return got;
     }
 
     // ------------------------------------------------------------ render

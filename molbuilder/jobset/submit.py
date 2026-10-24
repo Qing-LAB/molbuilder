@@ -68,7 +68,7 @@ from .agreement import TrialNotCold, check_trial_starts_cold
 from .model import KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources
 from .continuation import Continuation, relaunch
 from .planned import Plan, found
-from ..paths import Shape, attempt_dir
+from ..paths import attempt_dir
 from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
                           hand_over)
@@ -967,14 +967,11 @@ def _as_described(calc, job, *, described, written_at=None):
     unsaid on another stage's new files.  ``described`` gives the
     calculation as prep checks it, once for the whole launch
     (``_planned``)."""
-    from ..deck_record import without_stamps
-    from ..paths import attempt_index
-    from .naming import run_names
     from .errors import as_prep_error, step_errors
     from .planned import Plan
     from .errors import PrepError
     from .prep import plan_stage
-    base, task, jobset = Path(calc.base), calc.task, calc.jobset
+    base = Path(calc.base)
     asked = job.asked or {}
     try:
         try:
@@ -994,35 +991,19 @@ def _as_described(calc, job, *, described, written_at=None):
             f"now -- the description no longer gives what was prepared:\n  "
             f"{exc}\n  To prepare it as it is described now, "
             + _redo(calc, job)) from None
-    names = run_names(jobset, job, Shape.named(task.shape))
-    # ITS OWN FILES, and the one header of its walk of points when it has
-    # them (`prep.prep_calculation`).
-    own = {Path(job.script).name, names.name(".run.sh"),
-           names.name(".sbatch"), GroupNames.of_points(names.stem).name(
-               ".sbatch")}
-    differ = []
-    prepared_by, deck_read = None, False
-    for path in now.plan.writes():
-        rel = path.relative_to(base)
-        if path.name not in own or any(attempt_index(part) is not None
-                                       for part in rel.parts):
-            continue
-        # WHICH MOLBUILDER PREPARED IT, read off the deck's own record: a
-        # stage prepared before an upgrade is said so by name (R-L15).
-        if path.is_file() and path.name == Path(job.script).name:
-            from ..script_emit import written_by
-            prepared_by = written_by(path.read_text(errors="replace"))
-            deck_read = True
-        if not path.is_file() or without_stamps(path.read_bytes()) != \
-                without_stamps(now.plan.read_bytes(path)):
-            differ.append(str(rel))
-
-    def row(j):
-        # ITS JOB'S MEMBERS are the group's to check, by membership (R-L8).
-        return {k: v for k, v in j.to_dict().items() if k != "members"}
-    if now.job is None or row(now.job) != row(job):
-        from .model import FILENAME as JOBSET_FILENAME
-        differ.append(f"its row in {JOBSET_FILENAME}")
+    # ITS DECKS, SCRIPTS AND ROW against what prep writes now -- the one
+    # comparison (`prep.prepared_differs`).
+    from .prep import prepared_differs
+    differ = prepared_differs(calc, now.plan, job, now.job)
+    # WHICH MOLBUILDER PREPARED IT, read off the deck's own record: a stage
+    # prepared before an upgrade is said so by name (R-L15).
+    deck = next((p for p in now.plan.writes()
+                 if p.name == Path(job.script).name and p.is_file()), None)
+    deck_read = deck is not None
+    prepared_by = None
+    if deck_read:
+        from ..script_emit import written_by
+        prepared_by = written_by(deck.read_text(errors="replace"))
     if differ:
         from .. import __version__
         from ..script_emit import molbuilder_words
@@ -3128,16 +3109,14 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     if header.is_file() and any(m.first for m in members):
         # THE HEADER IS STILL WHAT PREP WOULD WRITE (R-L16): the members'
         # shared request, rendered now.
-        from ..deck_record import without_stamps
         from .errors import PrepError
-        from .prep import group_header
+        from .prep import as_written, group_header
         try:
             now = group_header(base, task, number, jobs,
                                described().environment)
         except PrepError as exc:
             raise SubmitError(str(exc)) from None
-        if now is None or without_stamps(now.text.encode("utf-8")) != \
-                without_stamps(header.read_bytes()):
+        if now is None or not as_written(header, now.text.encode("utf-8")):
             raise SubmitError(
                 f"group {number}'s header, {LAUNCH_DIR}/{header.name}, is "
                 f"not what prep would write now for its members' shared "
@@ -3317,12 +3296,11 @@ def _sequence_header_is_prep_s(calc, numbers, groups, header,
     """THE SEQUENCE'S HEADER IS STILL WHAT PREP WOULD WRITE (R-L45, as a
     group's is, R-L16): each group's own request as its rows stand now, the
     sequence's one request rendered now (`prep.sequence_header`), compared
-    with the file, its stamps masked."""
-    from ..deck_record import without_stamps
+    with the file by the one test (`prep.as_written`)."""
     from ..transport.stages import frames_of, rung_points
     from .commands import block, prep_sequence_lines
     from .errors import PrepError
-    from .prep import sequence_header
+    from .prep import as_written, sequence_header
     base, task, jobset = Path(calc.base), calc.task, calc.jobset
     jobs_of = {g["number"]: [jobset.job(st) for st in g["stages"]]
                for g in groups}
@@ -3335,8 +3313,7 @@ def _sequence_header_is_prep_s(calc, numbers, groups, header,
                                      described().environment)
     except PrepError as exc:
         raise SubmitError(str(exc)) from None
-    if now is None or without_stamps(now.text.encode("utf-8")) != \
-            without_stamps(header.read_bytes()):
+    if now is None or not as_written(header, now.text.encode("utf-8")):
         raise SubmitError(
             f"the header of groups {', '.join(map(str, numbers))} as one "
             f"job, {header.relative_to(base)}, is not what prep would write "

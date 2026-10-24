@@ -1562,6 +1562,72 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     return dirs
 
 
+def as_written(path, data: bytes) -> bool:
+    """Whether the file at ``path`` holds ``data``, the stamps of both
+    masked (when and by which build each was written,
+    `deck_record.without_stamps`) -- the one test of *what prep writes now is
+    what is there*, for a stage's own files (R-L15) and a group's header
+    (R-L16)."""
+    from ..deck_record import without_stamps
+    path = Path(path)
+    return path.is_file() and (without_stamps(path.read_bytes())
+                               == without_stamps(data))
+
+
+def prepared_differs(calc, plan, prepared, planned) -> List[str]:
+    """THE PREPARED STAGE AGAINST WHAT ``plan`` WRITES FOR IT NOW (R-L15):
+    its deck, its run script and its headers beside its runs, as written
+    (:func:`as_written`); for a stage never launched, each deck of its first
+    run -- each point's -- the same calculation as the one prep renders now
+    (`deck_record.same_calculation`: a launch that took a finished point
+    over put that point's own deck there, and filling a run anew is the
+    next launch's, R-L25), and none removed; and its row in `job-set.json`,
+    its members aside -- the run settings every script states.  Each that
+    differs, named from the calculation; none when the plan writes the
+    stage as it stands.  The one comparison a stage's launch asks
+    (`submit._as_described`) and a prep of a group prepared and never
+    launched (`job-system.md`, *The task*, 2).  ``prepared`` is the stage's
+    row on disk, ``planned`` the row the plan holds for it (``None`` when
+    it planned none)."""
+    from ..deck_record import same_calculation
+    from ..paths import attempt_index
+    from ..runfiles import GroupNames
+    from .materialize import ever_launched
+    base, task = Path(calc.base), calc.task
+    names = run_names(calc.jobset, prepared, Shape.named(task.shape))
+    deck = Path(prepared.script).name
+    own = {deck, names.name(".run.sh"), names.name(".sbatch"),
+           GroupNames.of_points(names.stem).name(".sbatch")}
+    runs = ever_launched(calc, prepared)
+
+    def in_a_run(path) -> bool:
+        return any(attempt_index(part) is not None
+                   for part in Path(path).relative_to(base).parts)
+
+    differ = []
+    for p in plan.writes():
+        if p.name not in own:
+            continue
+        rel = str(p.relative_to(base))
+        if not in_a_run(p):
+            if not as_written(p, plan.read_bytes(p)):
+                differ.append(rel)
+        elif not runs and p.name == deck and (not p.is_file() or same_calculation(
+                str(task.engine), p.read_text(errors="replace"),
+                plan.read_text(p))):
+            differ.append(rel)
+    differ += [f"{p.relative_to(base)} (removed)" for p in plan.removes()
+               if (p.name in own and not in_a_run(p))
+               or (not runs and p.name == deck)]
+
+    def row(j):
+        # ITS JOB'S MEMBERS are the group's to check, by membership (R-L8).
+        return {k: v for k, v in j.to_dict().items() if k != "members"}
+    if planned is None or row(planned) != row(prepared):
+        differ.append(f"its row in {JOBSET_FILENAME}")
+    return differ
+
+
 def _computes_else(base, engine: str, plan, answer) -> Optional[str]:
     """Every difference between what a launched stage's decks -- ``answer``'s,
     as ``plan`` writes them, the stage's and each point's -- compute and what
@@ -2009,6 +2075,16 @@ class PrepAnswer:
     #: written, in one sentence (`engines/transport.md` § 1.1, *No group left
     #: to prepare*); ``None`` for every answer about a stage.
     recorded: Optional[str] = None
+    #: A STAGE OF A GROUP ALREADY AS THIS PREP PLANS IT -- prepared, never
+    #: launched, its decks, scripts and row what prep writes now: the
+    #: sentence both doors say, nothing written for it (`job-system.md`,
+    #: *The task*, 2); ``None`` for a stage this prep prepares.
+    unchanged: Optional[str] = None
+    #: A STAGE PREPARED, NEVER LAUNCHED, AND PREPARED AGAIN: the files and
+    #: the row of its that differ from what this prep writes now, named
+    #: from the calculation (:func:`prepared_differs`) -- what made it
+    #: prepared again; empty for a stage prepared here for the first time.
+    differs: List[str] = dataclasses.field(default_factory=list)
     #: The description's preflight notes (an error refuses instead).
     findings: list = dataclasses.field(default_factory=list)
     #: What the inputs said: a bench's grid -- enumerated, left out,
@@ -2144,6 +2220,8 @@ class PrepAnswer:
         a = self.attempt
         return {
             "kind": self.kind, "stage": self.stage,
+            "unchanged": self.unchanged,
+            "differs": list(self.differs),
             # THE ONE WIRE FORM of a finding (`Issue.to_json`).
             "findings": [i.to_json() for i in self.findings],
             "deck_findings": [i.to_json() for i in self.deck_findings],
@@ -2188,6 +2266,16 @@ class PrepAnswer:
             "shelves": [dict(sh) for sh in self.shelves],
             "sources": dict(self.sources or {}),
         }
+
+
+def opened_no_run(answers) -> bool:
+    """Every group a prep was asked for copied in from a finished
+    calculation, already as it plans it, or launched and prepared again for
+    its job request -- it opened no run of its own, so what comes next is
+    the ladder's own step (`job-system.md`, *The next step*): what both
+    doors that say what comes next ask."""
+    return bool(answers) and all(a.unchanged is not None or a.copied_whole
+                                 or a.launched for a in answers)
 
 
 def _record_preflight(base, findings, **said) -> None:
@@ -3336,6 +3424,9 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     #      naming its group.
     from ..runfiles import LAUNCH_DIR
     headers: Dict[int, Optional[Path]] = {}
+    #: THE SEQUENCE'S ONE HEADER this prep writes, or one an earlier prep
+    #: wrote that it takes away -- ``None`` for neither.
+    seq_header: Optional[Path] = None
     # EACH GROUP OF SEVERAL, as its members' answers say it: the one job,
     # its header and what that header launches it with (A13).
     said: Dict[int, dict] = {}
@@ -3382,6 +3473,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             if got is not None:
                 open_container(base, base / LAUNCH_DIR, the_plan)
                 the_plan.text(got.path, got.text)
+                seq_header = got.path
             else:
                 # NO HEADER THIS TIME (a machine with no queue,
                 # `--no-sbatch`), so none an earlier prep wrote is left to be
@@ -3391,6 +3483,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                     base, task, request, sequence).name(".sbatch")
                 if _left.is_file():
                     the_plan.remove(_left)
+                    seq_header = _left
             sequence_said = {
                 "numbers": list(sequence),
                 "header": (str(got.path.relative_to(base))
@@ -3408,6 +3501,119 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                     the_plan.remove(old)
     except PrepError as exc:
         raise _refuse(str(exc)) from None
+    #      THE MEMORY EACH STAGE NEEDS at the ranks it is prepared with, its
+    #      job's the largest of its members' -- said beside the fit, refusing
+    #      nothing (`execution/job-request.md` § 3.1a).
+    from .memory import largest, need
+    for n in numbers:
+        for a in previews[n]:
+            a.need = need(description.calc, a.stage,
+                          (a.resources or {}).get("mpi_np"))
+    for n, g in said.items():
+        g["need"] = largest([a.need for a in previews[n]]).to_wire()
+    if sequence:
+        sequence_said["need"] = (largest(
+            [a.need for n in sequence for a in previews.get(n, ())]
+            + [need(description.calc, j.name, j.resources.mpi_np)
+               for n in sequence if n not in previews for j in jobs_of[n]])
+            .to_wire())
+    # 2d · NOTHING TO WRITE (`job-system.md`, *The task*, 2; checkpoint 2a):
+    #      a group prepared, never launched, and planned now as it stands --
+    #      each member's decks, scripts and row (`prepared_differs`, the
+    #      launch's own comparison), its members and the group's header, as
+    #      its first launch asks it (R-L16) -- is left out of the save, the
+    #      writing and the record, said with its next step; the groups that
+    #      differ are prepared without it, a preview's plan the same as its
+    #      Prep's.  A sequence of groups (`--one-job`) is one job: nothing to
+    #      write when every group of it stands and its one header is as
+    #      written, else every group of it is prepared.
+    from .group import same_members
+
+    #: EACH STAGE PREPARED AND NEVER LAUNCHED HERE, what of it differs from
+    #: this plan -- what makes it prepared again, said in its answer.
+    differs: Dict[str, List[str]] = {}
+
+    def _rel(path) -> str:
+        return str(Path(path).relative_to(base))
+
+    def _header_stands(path) -> bool:
+        return path is None or (as_written(path, the_plan.read_bytes(path))
+                                if the_plan.is_file(path)
+                                else not path.is_file())
+
+    def _as_it_stands(n: int) -> bool:
+        if (any(st in launched_members for st in members[n])
+                or (reuse is not None and reuse.copied(n))):
+            return False
+        same, fresh = True, False
+        for a in previews[n]:
+            was = description.calc.job(a.stage)
+            if was is None:
+                fresh = True              # prepared here for the first time
+                continue
+            differs[a.stage] = prepared_differs(description.calc, the_plan,
+                                                was, a.job)
+            if not same_members(was.members or [was.name], members[n]):
+                differs[a.stage].append("its group's members")
+            same = same and not differs[a.stage]
+        if fresh:
+            return False
+        # ITS HEADER, named too when a member differs.
+        header = headers[n] or header_of(description.calc,
+                                         description.calc.job(members[n][0]))
+        if not _header_stands(header):
+            differs.setdefault(members[n][0], []).append(_rel(header))
+            same = False
+        return same
+    stands = [n for n in numbers if _as_it_stands(n)]
+    if sequence and (len(stands) < len(numbers)
+                     or not _header_stands(seq_header)):
+        # ONE JOB, prepared whole: its header named when it is what
+        # differs, else each group that stands prepared again with the
+        # others, saying so.
+        if len(stands) == len(numbers):
+            differs.setdefault(members[numbers[0]][0], []).append(
+                _rel(seq_header))
+        for n in stands if len(stands) < len(numbers) else ():
+            differs.setdefault(members[n][0], []).append(
+                f"the one job of groups {', '.join(map(str, numbers))} it "
+                f"is sent in, prepared whole")
+        stands = []
+    for n in numbers:
+        for a in previews[n]:
+            if n not in stands:
+                a.differs = differs.get(a.stage, [])
+    if stands:
+        # ...ITS DESCRIPTION'S NOTES KEPT, as every answer carries them.
+        kept_as_is = [PrepAnswer(
+            kind="task", stage=a.stage, machine=a.machine, preview=preview,
+            findings=list(a.findings),
+            unchanged=(f"{a.stage} ({stage_home(base, task, a.stage).dir.name}"
+                       f"): prepared, never launched, and already as this "
+                       f"prep would prepare it now -- nothing to write "
+                       f"(group {n})"))
+            for n in stands for a in previews[n]]
+        rest = [n for n in numbers if n not in stands]
+        if not rest:
+            # A SEQUENCE STANDING WHOLE is still sent as one job.
+            if sequence:
+                kept_as_is[-1].sequence = sequence_said
+            return kept_as_is
+        # THE REST, prepared as any pick: `--from` goes with them only where
+        # one of them is written at a `relax` run (R-P7 asks the pick).
+        again = _prep_groups(
+            calc, rest, target=target, allocation=allocation,
+            from_attempt=(from_attempt if any(
+                force_constant_stage(task, st) for r in rest
+                for st in members[r]) else None),
+            env=env, emit_sbatch=emit_sbatch, on_found=on_found,
+            preview=preview, plan_id=plan_id, asked=asked)
+        for a in again:
+            a.differs = differs.get(a.stage, [])
+        # IN THE LADDER'S ORDER, as every answer of a prep is.
+        order = {st.name: i for i, st in enumerate(task.stages)}
+        return sorted(again + kept_as_is,
+                      key=lambda a: order.get(a.stage, len(order)))
     # 2c · EVERY RUN OF EACH GROUP COPIED IN, into the same plan
     #      (`engines/transport.md` § 2a.16): a run of a member prepared here
     #      and never launched removed first, each run's launch record last.
@@ -3425,21 +3631,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             j.members = list(members[g]) if len(members[g]) > 1 else None
     js.write(base, plan=the_plan)
     answers = [a for n in numbers for a in previews[n]]
-    #      THE MEMORY EACH STAGE NEEDS at the ranks it is prepared with, its
-    #      job's the largest of its members' -- said beside the fit, refusing
-    #      nothing (`execution/job-request.md` § 3.1a).
-    from .memory import largest, need
-    for a in answers:
-        a.need = need(description.calc, a.stage,
-                      (a.resources or {}).get("mpi_np"))
-    for n, g in said.items():
-        g["need"] = largest([a.need for a in previews[n]]).to_wire()
     if sequence:
-        sequence_said["need"] = (largest(
-            [a.need for n in sequence for a in previews.get(n, ())]
-            + [need(description.calc, j.name, j.resources.mpi_np)
-               for n in sequence if n not in previews for j in jobs_of[n]])
-            .to_wire())
         answers[-1].sequence = sequence_said
     #      THE REVIEWABLE PLAN, ONCE: the job set as this prep leaves it,
     #      and what every member's first launch takes.

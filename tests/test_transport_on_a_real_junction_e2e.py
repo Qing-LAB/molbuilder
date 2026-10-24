@@ -3427,22 +3427,113 @@ def reused(junction, tmp_path_factory):
         _taken(lowfit, "summarize", "summarize", "task")
         out["lowbias"], out["lowfit"] = lowbias, lowfit
 
+        # A RUNG OF POINTS PREPARED, ITS WINDOW CHANGED BEFORE ITS FIRST
+        # LAUNCH: the launch asks whether each point's deck is still what
+        # prep writes now (R-L15).
+        from support.road import read_request, save_both
+        edited = described("edited", "--window", "-2,2", "--finer", "3")
+        _taken(edited, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        task_now = json.loads((edited.bundle / "task.json").read_text())
+        for st in task_now["stages"]:
+            if st["name"] == "transmission":
+                st["overrides"] = {**st.get("overrides", {}),
+                                   "transmission_n_points": 7}
+        task_now["varies"] = sorted(set(task_now["varies"])
+                                    | {"transmission_n_points"})
+        r = save_both(edited.bundle, task_now, read_request(edited.bundle))
+        assert r.status_code == 200, r.get_json()
+        _typed(edited, "launch transmission", "launch", "task", "--group",
+               "3", "--mode", "direct", "--foreground", "--yes")
+        out["edited"] = edited
+
         # THE TRANSPORT TAB'S DESCRIBE of the finished calculation's folder.
         client = create_app(config={}).test_client()
         page = junction.tree / "P" / "transport" / "page"
         page.mkdir()
         a = client.get(f"/api/transport/describe_attempt?path={finished}")
-        # THE SHARED PANEL AS THE PAGE SENDS IT, nothing changed: each field
-        # as it is drawn, a blank one null (`formSchema.collectForm`).
+        # THE SHARED PANEL AS THE PAGE SENDS IT: an extension's shared
+        # values are the finished calculation's, every field locked and
+        # never collected (`formSchema.collectForm`) -- nothing.
         sch = client.get(f"/api/transport/schema?engine=siesta&surface=shared"
                          f"&reuses={finished}").get_json()["schema"]
         shared = {f["name"]: f.get("value") for sec in sch["sections"]
-                  for f in sec["fields"]}
-        d = client.post("/api/transport/describe", json=dict(
+                  for f in sec["fields"] if not f.get("locked")}
+        body = dict(
             engine="siesta", name="page", junction=a.get_json()["citation"],
             reuses=finished, bias=[0.0, 0.2], low_bias_approximation=False,
-            dest=str(page), stages={}, shared=shared))
+            dest=str(page), stages={}, shared=shared)
+        d = client.post("/api/transport/describe", json=body)
         out["page"] = (a.get_json(), d.status_code, d.get_json(), page)
+        # ...AND WHAT AN EXTENSION KEEPS: the surfaces it draws, and what
+        # its describe refuses, into a folder that stays empty.
+        locks = {}
+        for surface, rung in (("shared", None), ("rung", "seed"),
+                              ("rung", "electrode_L"), ("rung", "device"),
+                              ("rung", "transmission")):
+            got = client.get(
+                f"/api/transport/schema?engine=siesta&surface={surface}"
+                + (f"&rung={rung}" if rung else "")
+                + f"&reuses={finished}").get_json()
+            fields = [f for sec in got["schema"]["sections"]
+                      for f in sec["fields"]]
+            ours = [f for f in fields
+                    if (f.get("locked") or {}).get("of") == "T"]
+            locks[rung or surface] = {
+                "locked": sum(1 for f in fields if f.get("locked")),
+                "ours": len(ours), "fields": len(fields),
+                # A FIXED VALUE DRAWN BLANK where the run had one.
+                "blank": [f["name"] for f in ours
+                          if f["locked"]["value"] is None
+                          and f.get("default") is not None],
+                # WHAT THE WAY OUT CARRIES: each value and whose it is.
+                "chosen": {f["name"]: (f["locked"]["chosen"],
+                                       f.get("source")) for f in ours}}
+        kept = junction.tree / "P" / "transport" / "kept"
+        kept.mkdir()
+        refusals = {}
+        # EACH AS THE PAGE SENDS IT: one voltage carries no treatment
+        # (`low_bias_approximation` null, `engines/transport.md` § 2a.10).
+        for step, change in (("a finished voltage dropped", {
+                                 "bias": [0.0],
+                                 "low_bias_approximation": None}),
+                             ("a seed value", {"stages": {"seed": {
+                                 "mixing_weight": 0.31}}}),
+                             ("a shared value", {"shared": {
+                                 "mesh_cutoff": 310}})):
+            r = client.post("/api/transport/describe",
+                            json={**body, "dest": str(kept), **change})
+            refusals[step] = (r.status_code, r.get_json().get("error"),
+                              [f.get("where") for f in
+                               r.get_json().get("findings") or []])
+        # ...AND TASK SETUP'S SAVE OF THE EXTENSION holds the same limits.
+        made = json.loads((page / "task.json").read_text())
+        for st in made["stages"]:
+            if st["name"] == "seed":
+                st["overrides"] = {**st.get("overrides", {}),
+                                   "mixing_weight": 0.31}
+        made["varies"] = sorted(set(made["varies"]) | {"mixing_weight"})
+        r = save_both(page, made, read_request(page))
+        refusals["Task setup's Save of a seed value"] = (
+            r.status_code, r.get_json().get("error"), [])
+        # ...MEASURED AGAINST THE FOLDER'S OWN DESCRIPTION: the narrowed
+        # extension the command line wrote, a finished voltage dropped,
+        # saves a change of its window; a change of its rename is refused.
+        made = json.loads((narrow.bundle / "task.json").read_text())
+        for st in made["stages"]:
+            if st["name"] == "transmission":
+                st["overrides"] = {**st.get("overrides", {}),
+                                   "transmission_n_points": 7}
+        made["varies"] = sorted(set(made["varies"])
+                                | {"transmission_n_points"})
+        saves = {"its window": save_both(narrow.bundle, made,
+                                         read_request(narrow.bundle))}
+        made["swap_electrodes"] = not made.get("swap_electrodes", False)
+        saves["its rename"] = save_both(narrow.bundle, made,
+                                        read_request(narrow.bundle))
+        out["kept"] = (locks, refusals, kept,
+                       {k: (r.status_code, r.get_json().get("error"))
+                        for k, r in saves.items()})
     out["finished"] = junction
     return out
 
@@ -3667,6 +3758,78 @@ def test_a_transmission_that_runs_once_shares_as_its_one_point(reused):
     assert point["shared"] == {
         "from": "P/transport/lowbias/05_transmission/run-0", "held": 401,
         "computed": 200}
+
+
+def test_an_extension_keeps_what_its_finished_calculation_computed_once(
+        reused):
+    """§ 2a.16, *Extending it* (the user, 2026-10-22, 2026-10-23): an
+    extension changes what is computed per voltage; the shared values and
+    the rungs that run once -- the seed, the leads -- are the finished
+    calculation's, drawn at its values and never a control, and its
+    voltages are kept.  The describe door answers the limits; Describe
+    keeps the fixed rungs' own values, refuses a change of a fixed one or a
+    dropped voltage, writing nothing, and answers what will be reused.  The
+    silent failure: an extension whose seed was edited on the page, its
+    every group run again while the person thought they only added a
+    voltage."""
+    import json
+    attempt, code, answer, page = reused["page"]
+    locks, refusals, kept, saves = reused["kept"]
+    assert attempt["extend"]["fixed"] == ["seed", "electrode_L",
+                                          "electrode_R"], attempt["extend"]
+    # EVERY CONTROL'S SENTENCE, whole, from the one door.
+    assert set(attempt["extend"]["says"]) >= {
+        "bias", "treatment", "window", "shared", "fixed", "seed",
+        "electrode_L", "electrode_R", "device", "transmission"}, \
+        attempt["extend"]["says"]
+    # Every shared and seed field drawn, never a control -- the finished
+    # calculation's, or its rung's role's -- at the value the run had; the
+    # device's and the transmission's offered.
+    for name in ("shared", "seed", "electrode_L"):
+        got = locks[name]
+        assert got["locked"] == got["fields"] and got["ours"], (name, got)
+        assert not got["blank"], (name, got["blank"])
+    for name in ("device", "transmission"):
+        assert locks[name]["ours"] == 0, (name, locks[name])
+    # THE WAY OUT CARRIES WHAT A PERSON CHOSE, and nothing else: a rung's
+    # own values, and a shared value its template says is the person's --
+    # never a default, never a value cited from the junction.
+    finished = json.loads((reused["finished"].bundle / "task.json")
+                          .read_text())
+    own = {s["name"]: s.get("overrides", {}) for s in finished["stages"]}
+    for name in ("shared", "seed", "electrode_L"):
+        for field, (chosen, source) in locks[name]["chosen"].items():
+            assert chosen == (field in own.get(name, {})
+                              or source == "person"), (name, field, source)
+    for step, (status, error, where) in refusals.items():
+        assert status == 400 and "T" in error, (step, error)
+    # A dropped voltage refused beside the bias list.
+    assert refusals["a finished voltage dropped"][2] == ["task.bias"], \
+        refusals
+    assert not any(kept.iterdir()), list(kept.iterdir())
+    # A change measured against the folder's own description: an extension
+    # the command line wrote saves; its rename stays.
+    assert saves["its window"][0] == 200, saves
+    assert saves["its rename"][0] == 400 and \
+        "swap_electrodes" in saves["its rename"][1], saves
+    # The fixed rungs hold the finished calculation's own values.
+    made = json.loads((page / "task.json").read_text())
+    for st in made["stages"]:
+        if st["name"] in ("seed", "electrode_L", "electrode_R"):
+            assert st.get("overrides", {}) == own[st["name"]], st
+    assert answer["manifest"][0].startswith("reuses P/transport/T"), answer
+
+
+def test_a_rung_of_points_changed_after_its_prep_is_refused_at_launch(reused):
+    """`job-system.md` R-L15: a prepared stage is still what the
+    description gives at its first launch -- for a rung of points, each
+    point's deck too.  The silent failure: a transmission window changed on
+    Task setup after its prep, and the launch running every point on the old
+    window, the record then laying the old grid out as the new."""
+    said = reused["edited"].said["launch transmission"]
+    assert said.exit_code != 0, said.output
+    assert "prep would write" in said.output, said.output
+    assert "05_transmission/run-0/v0/" in said.output, said.output
 
 
 def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):

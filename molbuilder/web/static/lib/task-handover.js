@@ -188,8 +188,11 @@
             if (!r.ok || !out || out.ok === false) {
                 /* A refusal's findings, row by row, where the page shows its
                  * findings -- the door's own sentence in the status line. */
-                if (showFindings && out && Array.isArray(out.findings)) {
-                    showFindings(beside(out.findings));
+                // ...and a refusal that names none clears the last send's,
+                // which are not this one's.
+                if (showFindings) {
+                    showFindings(beside(out && Array.isArray(out.findings)
+                                        ? out.findings : []));
                 }
                 say("error",
                     (out && out.error) || ("render failed (" + r.status + ")"));
@@ -203,6 +206,13 @@
             say("error", "Could not reach the server: "
                 + (e && e.message ? e.message : e));
             return;
+        }
+
+        /* WHAT A CALCULATION THAT REUSES A FINISHED ONE WILL COPY, AND WHAT
+         * RUNS -- the transport describe's manifest, for the page to show
+         * (`engines/transport.md` § 2a.16); null for any other. */
+        if (isTransport && typeof o.showManifest === "function") {
+            o.showManifest(out.manifest || null);
         }
 
         /* A HAND-OVER'S BYTES go through the content-blind file layer, never

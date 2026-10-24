@@ -133,6 +133,10 @@
     {#- The one refusal with a one-click fix: inverted electrode
         labels.  Populated by core.js from the describe's `fix` word. -#}
     <div id="transport-junction-fix" hidden></div>
+    {#- AN EXTENSION OF A FINISHED TRANSPORT CALCULATION (`engines/transport.md`
+        § 2a.16, *Extending it*): what may change and what is fixed, and the
+        way out -- drawn by core.js from the describe door's `extend`. -#}
+    <div id="transport-extend" hidden></div>
     <span id="transport-status" class="status" role="status"
           aria-live="polite"></span>
     {#- Empty host -> molview.mount builds the full fused card here when
@@ -216,6 +220,9 @@
           its own transmission, each starting from the voltage before</span>
       </label>
     </div>
+    {#- AN EXTENSION'S VOLTAGES: the finished ones kept, and what adding one,
+        or another treatment, runs (§ 2a.16). -#}
+    <p id="transport-bias-reruns" class="hint" hidden></p>
     <p class="hint">
       <strong>The bias is the experiment, so it is asked first — and it
       decides whether the rest matters.</strong>  At <code>0.0</code> the
@@ -321,6 +328,9 @@
         the contents (science/validation.md § 4.1 R2): one renderer. -#}
     <ul id="transport-send-findings" class="issues-panel" hidden
         aria-live="polite"></ul>
+    {#- WHAT A CALCULATION THAT REUSES A FINISHED ONE WILL COPY, AND WHAT
+        RUNS -- Describe's answer, in the manifest's words (§ 2a.16). -#}
+    <pre id="transport-send-manifest" class="fdf-output" hidden></pre>
   </section>
 </div>{#- /.page-main -#}
 

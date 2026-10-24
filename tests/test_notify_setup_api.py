@@ -961,3 +961,32 @@ def test_the_reports_the_listener_received_are_read_back_as_the_card(client):
     assert [r["event"] for r in d["reports"]] == ["scf_converged"]
     d = c.get("/api/notify/reports?user=nobody").get_json()
     assert d["ok"] and d["total"] == 0 and "no key" in d["note"], d
+
+
+def test_the_tab_reads_the_signed_in_persons_reports(tmp_path, monkeypatch):
+    """`this-machine.md` § 4.1: the tab asks with no ``?user=`` -- the
+    signed-in person's reports, the session's user as the sign-in stores it
+    (a record, its ``email`` the id a report names).  The silent failure:
+    every signed-in visit answered a server error, the tab saying it could
+    not ask, while every test named a user."""
+    import time
+
+    from molbuilder import auth_setup
+    from molbuilder.web.blueprints.notify import SCHEMA, _logger_for
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    app = create_app(config={
+        "rate_limit": {"enabled": False},
+        "auth": auth_setup.build_auth_block(
+            [auth_setup.build_asu_cas_entry("alice")])})
+    c = app.test_client()
+    _logger_for("alice@asu.edu").info(json.dumps({
+        "run": "fine_optimization_01_fine", "job": "62238108",
+        "host": "scc010", "sent_at": time.time(), "event": "start",
+        "text": "running | step 0", "state": "running", "v": SCHEMA,
+        "user": "alice@asu.edu", "received_at": time.time()}))
+    with c.session_transaction() as s:
+        s["user"] = {"email": "alice@asu.edu", "name": "alice@asu.edu"}
+    r = c.get("/api/notify/reports")
+    assert r.status_code == 200, r.get_data(as_text=True)[:300]
+    d = r.get_json()
+    assert d["ok"] and d["user"] == "alice@asu.edu" and d["total"] == 1, d

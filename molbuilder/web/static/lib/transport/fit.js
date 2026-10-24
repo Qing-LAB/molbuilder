@@ -12,9 +12,10 @@
  * `.fdf-actions`, `.hint`; the shell's `button`).
  */
 
-/** A row offering the fit for the calculation `reuses` names; `use` takes
+/** A row offering the fit for the calculation `reuses` names -- `name`,
+ *  as the server names it (`Extension.name`); `use` takes
  *  `{transmission_emin_ev, transmission_emax_ev, transmission_n_points}`. */
-export function fitRow({ reuses, use, doc = document }) {
+export function fitRow({ reuses, name, use, doc = document }) {
     const el = (tag, attrs, ...kids) => {
         const n = doc.createElement(tag);
         for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
@@ -67,6 +68,6 @@ export function fitRow({ reuses, use, doc = document }) {
     });
     return el("div", { class: "fdf-actions" },
               el("strong", null, "The window, fitted to the grid of "
-                 + reuses.split("/").pop() + ":"),
+                 + name + ":"),
               loLabel, hiLabel, finerLabel, ask, said, take);
 }
