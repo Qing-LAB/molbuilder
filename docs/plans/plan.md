@@ -1018,6 +1018,96 @@ the same day, with what it turned out to be.
 
 ---
 
+## 1ac. A vibration's optical activity on SIESTA, and the energy a displacement costs *(2026-10-24; proposal for discussion — nothing decided, nothing built)*
+
+*(The user, 2026-10-24: "(1) optical activity — is the vibration mode
+calculated have polarization or dipole strength changes that it will be IR or
+Raman active, and how strong (relatively) are they … what's the correct
+scientific process to get these from the siesta calculation? (2) evaluate the
+'reasonable' max displacement for suggestion — maybe this can be provided as
+deltaE vs displacement amplitude?")*
+
+### 1ac.1 Optical activity — the molecule's response in the junction *(the method: [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md), 2026-10-24)*
+
+Settled in discussion with the user, 2026-10-24: **SIESTA computes the
+molecule's own response, in the junction** — with the charge it exchanges
+with the metal — **per unit local field along z, the gap's axis**; the
+metal's own response is not computed, and the gap's enhancement is the field
+model's, outside molbuilder (*"here we focus for a unit EM intensity with a
+specific direction how the molecule respond"*). No PySCF, no isolated
+cluster, no field model coupled. Every sum runs over the molecule — a label
+the person names — not the whole free set, whose free metal atoms' charges
+are the metal's response.
+
+- **Infrared, every mode, no extra calculation**: the force-constant run with
+  `Charge.Hirshfeld geometry`; the molecule's dipole change and its charge
+  transfer per mode, from every displaced step's partial charges;
+  $A_\nu(\hat z)$ and its rank (§ 2 of the method).
+- **Raman, chosen modes**: each mode's three-frame set at maximum
+  displacement δ, every frame a TranSIESTA device at ±V; the molecule's
+  $\alpha_{zz}$ per the gap's field $V/d_{\mathrm{gap}}$, the written potential
+  a check; $R_\nu(\hat z) = (\partial\alpha_{zz}/\partial Q)^2$ and its rank —
+  4 device solutions a mode, the equilibrium frame's shared (§ 3).
+- **Each mode's localization**: its share of motion on the molecule and on the
+  free metal (§ 4).
+- **Measured first**, on the toy junction: the charges at every
+  force-constant step; the charges in a biased run and their linear response
+  (§ 9).
+
+### 1ac.2 The energy a displacement costs — a suggested maximum displacement
+
+**Harmonic, from the result alone — free.** Along mode ν, displacing the
+largest atom by `d` costs
+
+```text
+    ΔE(d) = ½ ω² q²  =  (ħω / 4) · (d / d_zp)²,     q = d / max_A |L_A|
+```
+
+where `d_zp = Q_zp · max_A |L_A|` is the mode's largest zero-point atom move —
+already in every result (`zero_point_displacement_ang`). Marks a person can
+choose by:
+
+| mark | where `d` sits | ΔE |
+|---|---|---|
+| the zero-point motion's spread | `d = d_zp` | `ħω/4` (the ground state's mean potential energy) |
+| the ground state's classical turning point | `d = √2 d_zp` | `ħω/2` (its zero-point energy) |
+| the thermal energy at T | `d = 2 d_zp √(k_BT/ħω)` | `k_BT` (25.85 meV at 300 K) |
+| **the three-frame rule's outer frame at T's thermal spread — the suggested value** | `d_T = √3 · d_zp · √coth(ħω/2k_BT)` | `(3ħω/4) coth(ħω/2k_BT)` → `1.5 k_BT` in the classical limit |
+
+For a 300 cm⁻¹ mode, `ħω` = 37.2 meV. **Proposed**: the *Write frame set…*
+dialog and `molbuilder frameset from-mode` show ΔE at the chosen `d` and these
+marks, the suggestion `d_T` at a temperature the person types — the value is
+still the person's.
+
+**Measured — the harmonic range checked.** The harmonic curve holds near
+equilibrium only. Single-point SIESTA energies at the frame set's frames —
+the junction, the vibration's settings — against `(ħω/4)(d/d_zp)²` say where
+the outer frames leave the harmonic range (where § 7's assumption 1 of
+`science/vibrational-averaging.md` stops holding). Cost: about one
+force-constant step per frame (AuBDTAu: 13.6 h for 121 steps on 16 ranks
+here, ~7 min a frame). It needs a calculation that runs one SCF per frame of
+a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
+`electronic`, not built), whose first output this would be.
+
+### 1ac.3 Proposed order, and what is the user's
+
+| # | piece | size | depends on |
+|---|---|---|---|
+| 1 | **ΔE(d) and the suggested `d_T`** in the dialog and the command line (§ 1ac.2, harmonic) | small: no calculation | — |
+| 2 | **the measurements of the method's § 9** on the toy junction: the charges at every force-constant step; the charges in a biased run and their linear response | small: a few toy runs | — |
+| 3 | **infrared per unit field in the gap, every mode** (the method's § 2): the deck's `Charge.Hirshfeld geometry`, the finish reading every step's charges, the mode-response record and data file | medium | 2 |
+| 4 | **each mode's localization** (§ 4) | small | — |
+| 5 | **Raman per unit field in the gap, chosen modes** (§ 3): each mode's three-frame set, TranSIESTA at ±V with the potential written, $\alpha_{zz}$ per $V/d_{\mathrm{gap}}$ | large | 2, 3 |
+| 6 | **energies along a mode** (§ 1ac.2, measured): one SCF per frame | medium | — |
+
+**Decisions for the user:** the method document, as written; piece 1 now; the
+order above.
+
+**References**: the method's own list
+([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md),
+each checked against Crossref 2026-10-24), into `references.bib` once the
+method is agreed.
+
 ## 1ab. Every file says which index its atoms are listed by — the atom index map *(2026-10-23; the user's yes, "Agree. Go ahead."; built for 2.32.0 — AIM, with N8)*
 
 *(The user, 2026-10-23, after reading how the transport data file and a
