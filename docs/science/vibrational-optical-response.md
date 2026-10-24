@@ -98,9 +98,74 @@ infrared or Raman today:
 | $\omega_\nu$ | mode $\nu$'s frequency, as the result states it | cm$^{-1}$ |
 | $\mathbf L^{(\nu)}$ | mode $\nu$'s displacement pattern over $F$, normalised with the masses, $\sum_{k\in F} m_k\,\lvert\mathbf L_k^{(\nu)}\rvert^2 = 1$ (`engines/vibration.md` § 6.3); zero on every held atom | amu$^{-1/2}$ |
 | $Q_\nu$ | how far the structure is moved along mode $\nu$: atom $k$ moves by $Q_\nu\,\mathbf L_k^{(\nu)}$ | amu$^{1/2}$ Å |
-| $q_a$ | atom $a$'s partial charge: its valence charge less the electrons a partition gives it — positive where electrons left it. **Hirshfeld** [Hirshfeld1977] shares the density at each point among the atoms in proportion to their free-atom densities there; **Voronoi** [FonsecaGuerra2004] gives each atom the change of density on bonding in the region nearest to it | $e$ |
+| $q_a$ | atom $a$'s partial charge: its valence charge less the electrons a partition gives it — positive where electrons left it; by Hirshfeld [Hirshfeld1977] or Voronoi [FonsecaGuerra2004], both computed (§ 1a) | $e$ |
 | $\bar{\mathbf r}_M^{\,0}$ | the molecule's centre at equilibrium, $\frac{1}{N_M}\sum_{a\in M}\mathbf r_a^0$ — a fixed point | Å |
 | $\hat z$ | the gap's axis: the direction from one electrode to the other | — |
+
+### 1a. The two charge partitions — Hirshfeld and Voronoi
+
+*(Decided by the user, 2026-10-24: "both on"; "default to hirshfeld".)*
+**Both are computed in every run this method uses, every number is stated
+with the partition it came from, and Hirshfeld is the one shown unless the
+person picks Voronoi.**
+
+**What they share.** Both give each atom a charge, and both start from the
+same thing — how the electrons moved when the atoms bonded: the real electron
+density $\rho$ less the density the same atoms would have as neutral, isolated
+atoms,
+
+$$
+\Delta\rho(\mathbf r) = \rho(\mathbf r) - \sum_{b} \rho_b^{\mathrm{free}}(\mathbf r) .
+$$
+
+(SIESTA works with the valence electrons; $\rho_b^{\mathrm{free}}$ is atom
+$b$'s neutral valence density on its own basis.) A charge of $+0.1\,e$ means
+the atom ended with 0.1 electron fewer than it had alone. **The two differ
+only in how they share $\Delta\rho$ between neighbouring atoms**:
+
+$$
+q_a^{\mathrm{Hirshfeld}} = -\int w_a(\mathbf r)\,\Delta\rho(\mathbf r)\,d\mathbf r,
+\quad w_a(\mathbf r) = \frac{\rho_a^{\mathrm{free}}(\mathbf r)}{\sum_b \rho_b^{\mathrm{free}}(\mathbf r)} ;
+\qquad
+q_a^{\mathrm{Voronoi}} = -\int_{V_a} \Delta\rho(\mathbf r)\,d\mathbf r ,
+$$
+
+$V_a$ the points nearer to atom $a$'s nucleus than to any other.
+
+- **Voronoi draws a hard wall.** Every point belongs to the nearest nucleus —
+  by distance alone, whatever the atoms' sizes — so on the S–Au bond the wall
+  sits exactly halfway between the two nuclei, and each atom takes all the
+  moved charge on its side (a point exactly on the wall is shared equally).
+- **Hirshfeld shares softly.** At each point it asks how much density a lone
+  neutral S and a lone neutral Au would each have there, and splits the moved
+  charge in that ratio: near S, S takes nearly all of it; at the bond's middle
+  it is shared; near Au, Au takes it — no wall, a split that changes smoothly
+  through the bond.
+
+Both are read in SIESTA 5.4.2's source (`partial_charges.F90`: Voronoi
+subtracts the neutral-atom density at each grid point and gives the rest to
+the nearest atom; Hirshfeld weights the density by $w_a$); the Hirshfeld form
+above follows because $w_a\sum_b\rho_b^{\mathrm{free}} = \rho_a^{\mathrm{free}}$
+integrates to the atom's valence charge.
+
+**What it means for this method.**
+
+1. **Every number changes with the partition.** The molecule's charge
+   depends on where the S–Au boundary is drawn, and that boundary is a
+   convention — no partition is the true one. The dipole change, the charge
+   transfer and the polarizability are all different numbers under the two,
+   which is why each is stated with its partition. What should not change is
+   the ranking of the modes; where it does, that is a finding — the ranking is
+   then set by how the bond is split, not by the molecule.
+2. **Smoothness as atoms move.** The derivatives compare charges at
+   geometries $2\delta$ = 0.042 Å apart. Under Voronoi the wall moves with the
+   atoms and points of SIESTA's grid jump from one atom to the other; under
+   Hirshfeld the shares change gradually, so its derivatives are expected to
+   be less noisy — the reason it is shown first. This is expected, not yet
+   measured; the step-size check of § 7 shows it on a real run.
+3. **The cost is the same and small**: each is a sum over SIESTA's grid after
+   every step, with no extra self-consistent solution, and both are asked for
+   in the same run.
 
 ---
 
@@ -152,8 +217,9 @@ belongs to the metal's response and is not chosen here.
 SIESTA's force-constant run moves each free atom $k$ by $\pm\delta$ along x,
 y and z in turn (`FC.Displacement`, 0.04 bohr = 0.0212 Å by default) and
 solves the electrons self-consistently at each step. With
-`Charge.Hirshfeld geometry` (or `Charge.Voronoi geometry`) in its input,
-SIESTA also prints every atom's partial charge at each step: "at the end of
+`Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` in its input,
+SIESTA also prints every atom's partial charge, by both partitions, at each
+step: "at the end of
 every geometry step" (SIESTA 5.4.2 manual, `Charge.Hirshfeld`). In its source,
 `grdsam.F` asks for them at every geometry, and `partial_charges.F90` prints
 them to $10^{-6}\,e$, positive where electrons left the atom, the column
@@ -186,7 +252,8 @@ $$
 = \sum_{k\in F}\sum_{\beta} \frac{\partial Q_M}{\partial R_{k\beta}}\;L^{(\nu)}_{k\beta}.
 $$
 
-Every mode's values come out of the one run that gave the modes.
+Every mode's values come out of the one run that gave the modes, once for
+each partition.
 
 ### 2.3 The infrared strength per unit local field
 
@@ -339,7 +406,7 @@ $R_\nu$, it says which of the strong modes are the molecule's own.
 
 ```mermaid
 flowchart TD
-    J["relaxed junction<br/>(its structure, labels, held electrodes)"] --> FC["SIESTA force-constant run<br/>with Charge.Hirshfeld geometry"]
+    J["relaxed junction<br/>(its structure, labels, held electrodes)"] --> FC["SIESTA force-constant run<br/>Hirshfeld and Voronoi charges at every step"]
     FC --> MODES["the modes: ω_ν, L^(ν)<br/>(the vibration's finish, as today)"]
     FC --> QS["every atom's charge<br/>at every displaced step"]
     QS --> D["∂μ_M/∂R, ∂Q_M/∂R<br/>(central differences)"]
@@ -358,7 +425,7 @@ flowchart TD
 
 | step | what runs | cost |
 |---|---|---|
-| the force-constant run, with charges | the vibration as today, with `Charge.Hirshfeld geometry` in its input (`engines/vibration.md` § 5.10 ②) | the charge integration at each step; no extra self-consistent solution |
+| the force-constant run, with charges | the vibration as today, with `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` in its input (`engines/vibration.md` § 5.10 ②) | the two charge integrations at each step; no extra self-consistent solution |
 | infrared and localization, every mode | the vibration's post-processing (its *finish*) | reading only |
 | Raman, chosen modes | each mode's three-frame set as a transport calculation, every frame at $+V$ and $-V$; the electrode calculations once | per mode, **4 device solutions** (2 displaced frames × 2 biases); the equilibrium frame's 2 are the same for every mode |
 
@@ -369,7 +436,7 @@ flowchart TD
 | result | depends on | why |
 |---|---|---|
 | the modes $\omega_\nu$, $\mathbf L^{(\nu)}$ | the force-constant run: its settings, its step $\delta$, which atoms are held | they are its own |
-| $\partial\boldsymbol\mu_M/\partial Q$, $\partial Q_M/\partial Q$, $A_\nu$ | the modes; the molecule's label; the charge partition (Hirshfeld or Voronoi), stated with every number; $\delta$ | two partitions give two numbers |
+| $\partial\boldsymbol\mu_M/\partial Q$, $\partial Q_M/\partial Q$, $A_\nu$ | the modes; the molecule's label; the charge partition — both computed, Hirshfeld shown first, stated with every number (§ 1a); $\delta$ | two partitions give two numbers |
 | $f_\nu(M)$ | the modes and the masses; the molecule's label | — |
 | $\alpha^M_{zz}$ | the bias $V$; $d_{\mathrm{gap}}$; the partition; the device's settings (the transport calculation's) | the field is the bias's |
 | $\partial\alpha^M_{zz}/\partial Q$, $R_\nu$ | $\alpha^M_{zz}$ at the two displaced frames; $\delta Q$ | a difference across two frames |
@@ -421,7 +488,7 @@ On the toy junction (`claude-transport-walk`: 22 hydrogen atoms, two free):
 
 - **The charges at every force-constant step.** SIESTA's source says they are
   computed at every geometry (`grdsam.F`); the run shows it: every step's
-  charges printed, the column summing to zero.
+  charges printed by both partitions, each column summing to zero.
 - **The charges in a biased TranSIESTA run, and their linear response.** Two
   device runs at $\pm 0.05$ V and $\pm 0.1$ V with the potential written:
   the charges printed at each bias, $\Delta\bar V(z)$ flat inside the

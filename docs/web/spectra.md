@@ -220,6 +220,35 @@ phase the file's route does not have (Raman, infrared and the probe on
 SIESTA), nor for infrared in a file written before its flag (`""`, no
 record); a v4 file simply shows it empty and hides the thermo tab.
 
+### 3.2 The charge columns — Hirshfeld or Voronoi *(decided 2026-10-24; not built)*
+
+When the charge each mode moves is built
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ②), and the
+molecule's infrared response with it
+([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 2), the modes table gains columns computed from SIESTA's partial charges.
+Every one of them depends on how the charge is divided between atoms, and the
+result carries both divisions *(user, 2026-10-24: "both on"; "default to
+hirshfeld")*. So:
+
+- **one switch, *Charges: Hirshfeld | Voronoi*, above the modes table** — it
+  applies to every number on the page a partition decides and to the CSV
+  export, whose header names the partition; **Hirshfeld** unless the person
+  picks Voronoi; remembered with the other view preferences (§ 7);
+- **beside it, always visible, the explanation** — not a tooltip:
+
+  > Both divide the same thing — how the electrons moved when the atoms
+  > bonded — between neighbouring atoms. Voronoi draws a wall halfway between
+  > two nuclei; Hirshfeld shares the charge at each point in proportion to how
+  > much each lone atom would have there. Where the molecule ends and the
+  > metal begins is a convention, so the numbers differ between the two; the
+  > ranking of the modes should not. Hirshfeld is shown first because its
+  > shares change smoothly as the atoms move. *Why — the method, § 1a.*
+
+  its last words a link to
+  [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+  § 1a, where the two are explained in full.
+
 ## 4. Clicking a mode — the 3D animation
 
 Click a stick in the chart or a row in the table, open the **Mode visualisation**

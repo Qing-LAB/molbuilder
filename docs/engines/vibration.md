@@ -1842,7 +1842,13 @@ ranking (science § 4c.3, the antisymmetric stretch).
 output switch, D3). The force-constant deck asks for the population analysis at
 every step — `Charge.Hirshfeld` and `Charge.Voronoi`, the 5.4.2 spellings of
 the deprecation table; **whether SIESTA prints them at every FC step is
-measured before anything relies on it**. The finish reads the free atoms'
+measured before anything relies on it**. **Both partitions are read, every
+number carries the partition it came from, and the viewer shows Hirshfeld
+unless the person picks Voronoi** *(user, 2026-10-24: "both on"; "default to
+hirshfeld")* — how the two differ and why Hirshfeld is shown first is
+[`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 1a, and the viewer's switch is [`web/spectra.md`](?doc=web/spectra.md)
+§ 3.2. The finish reads the free atoms'
 charge — and each element's among them — at each displaced step through the
 SIESTA reader (its grammar gains the population blocks): the charge that
 moves between the held anchor and the free part. It forms

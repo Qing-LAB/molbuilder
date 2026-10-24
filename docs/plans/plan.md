@@ -1040,9 +1040,14 @@ the person names — not the whole free set, whose free metal atoms' charges
 are the metal's response.
 
 - **Infrared, every mode, no extra calculation**: the force-constant run with
-  `Charge.Hirshfeld geometry`; the molecule's dipole change and its charge
-  transfer per mode, from every displaced step's partial charges;
-  $A_\nu(\hat z)$ and its rank (§ 2 of the method).
+  `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry`; the molecule's
+  dipole change and its charge transfer per mode, from every displaced step's
+  partial charges; $A_\nu(\hat z)$ and its rank (§ 2 of the method).
+- **The charge partition — decided** *(user, 2026-10-24: "both on"; "default
+  to hirshfeld")*: both computed, every number stated with its partition,
+  Hirshfeld shown unless the person picks Voronoi; the explanation in the
+  method's § 1a and beside the viewer's switch (`web/spectra.md` § 3.2;
+  `engines/vibration.md` § 5.10 ②).
 - **Raman, chosen modes**: each mode's three-frame set at maximum
   displacement δ, every frame a TranSIESTA device at ±V; the molecule's
   $\alpha_{zz}$ per the gap's field $V/d_{\mathrm{gap}}$, the written potential
@@ -1095,7 +1100,7 @@ a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
 |---|---|---|---|
 | 1 | **ΔE(d) and the suggested `d_T`** in the dialog and the command line (§ 1ac.2, harmonic) | small: no calculation | — |
 | 2 | **the measurements of the method's § 9** on the toy junction: the charges at every force-constant step; the charges in a biased run and their linear response | small: a few toy runs | — |
-| 3 | **infrared per unit field in the gap, every mode** (the method's § 2): the deck's `Charge.Hirshfeld geometry`, the finish reading every step's charges, the mode-response record and data file | medium | 2 |
+| 3 | **infrared per unit field in the gap, every mode** (the method's § 2): the deck's `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry`, the finish reading every step's charges by both, the mode-response record and data file, the viewer's partition switch (`web/spectra.md` § 3.2) | medium | 2 |
 | 4 | **each mode's localization** (§ 4) | small | — |
 | 5 | **Raman per unit field in the gap, chosen modes** (§ 3): each mode's three-frame set, TranSIESTA at ±V with the potential written, $\alpha_{zz}$ per $V/d_{\mathrm{gap}}$ | large | 2, 3 |
 | 6 | **energies along a mode** (§ 1ac.2, measured): one SCF per frame | medium | — |
