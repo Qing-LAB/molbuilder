@@ -461,15 +461,34 @@ def bench(tmp_path_factory) -> RealRun:
     return run
 
 
+#: THE ROAD CO2'S OWN SETTINGS, set by the person: SIESTA's own mixing
+#: weight and a 150 Ry mesh -- every CO2 run 2.4 times faster than at the
+#: catalogue's (0.02, 300 Ry), its four modes and the bends' degeneracy
+#: kept (measured 2026-10-23: one force-constant run 216 s -> 89 s).  The
+#: road tests the mechanism; no test holds these frequencies to a
+#: literature value.
+CO2_SETTINGS = {"mixing_weight": 0.25, "mesh_cutoff": 150.0}
+
+
 def co2_vibration(tree: Path, where: str = "P/freq/CO2") -> Path:
     """The road's CO2 (`support.road.CO2`) described as a SIESTA vibration
     in ``tree`` at ``where``: the kind's own ladder (`relax` then `freq`), one
-    rank, one thread (:func:`_described`) -- THE ONE MAKER of it, for the
-    shared relaxation and for a test's own calculation alike."""
+    rank, one thread (:func:`_described`), its template carrying
+    :data:`CO2_SETTINGS` as the person's (`template.with_values_set`) --
+    THE ONE MAKER of it, for the shared relaxation and for a test's own
+    calculation alike."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.template import with_values_set
+    from molbuilder.template_file import template_path
     from support.road import CO2
-    return _described(tree, where, structure=CO2, name="CO2",
-                      calculation="vibration",
-                      execution={"mpi_np": 1, "omp_threads": 1})
+    bundle = _described(tree, where, structure=CO2, name="CO2",
+                        calculation="vibration",
+                        execution={"mpi_np": 1, "omp_threads": 1})
+    path = template_path(bundle, "CO2")
+    path.write_text(with_values_set(path.read_text(), SiestaConfig,
+                                    calculation="vibration",
+                                    values=CO2_SETTINGS, source="person"))
+    return bundle
 
 
 def relaxed_for_vibration(tmp_path_factory) -> RealRun:

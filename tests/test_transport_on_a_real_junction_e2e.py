@@ -481,11 +481,21 @@ def junction(tmp_path_factory):
         run.probe = _the_decks_a_person_sets(tree, cite, client)
 
         # THE MODE -- a SIESTA vibration of the relaxed pair, on the road:
-        # its free atoms the bridge's middle two, held as the relaxation held
-        # them, the box ticked (the pair IS the relaxed geometry), at the
-        # relaxation's own settings.
+        # one of the bridge's middle two atoms free, the other held with
+        # every atom the relaxation held -- a partial Hessian over fewer
+        # atoms, every one balanced, which prep says as information
+        # (`engines/vibration.md` § 2.3a) -- so its force constants displace
+        # one atom, not two; the box ticked (the pair IS the relaxed
+        # geometry), at the relaxation's own settings.  Its own copy of the
+        # pair, written through the structure's doors; the pair stays as the
+        # relaxation saved it.
         from molbuilder.workingcopy_structure import StructureCodec
-        r = molbuilder("describe", "--structure", pair, "--bundle", "P/frequency/V",
+        one_free = "P/structure/relaxed-one-free.xyz"
+        held_more = StructureCodec().load(tree / pair)
+        held_more.frozen_atoms = sorted(set(held_more.frozen_atoms)
+                                        | {_at(_LEAD + _WIRE // 2 - 1)})
+        StructureCodec().write(held_more, tree / one_free)
+        r = molbuilder("describe", "--structure", one_free, "--bundle", "P/frequency/V",
                    "--engine", "siesta", "--shape", "hierarchical",
                    "--calculation", "vibration", "--name", "V",
                    "--psml-lib", "pseudopotential")

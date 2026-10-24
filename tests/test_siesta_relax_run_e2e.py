@@ -245,8 +245,12 @@ def _ev(x: float) -> str:
 
 
 def _cfg(**over):
+    """THIS CALCULATION: the road CO2's, at the settings its relaxation ran
+    with (`support.real_runs.CO2_SETTINGS`), and ``over``."""
     from molbuilder.config.siesta import SiestaConfig
-    return SiestaConfig(system_label="co2", psml_lib="pseudopotential", **over)
+    from support.real_runs import CO2_SETTINGS
+    return SiestaConfig(system_label="co2", psml_lib="pseudopotential",
+                        **{**CO2_SETTINGS, **over})
 
 
 def test_a_matching_record_answers_the_ticked_box_with_its_numbers(relaxed):
