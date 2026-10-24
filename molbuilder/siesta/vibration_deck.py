@@ -73,11 +73,12 @@ def fc_facts(struct: Structure, cfg) -> dict:
 
 
 def fc_block(struct: Structure, cfg, derived: dict) -> str:
-    """The run type and the range -- structural text, like the electrode
-    blocks of a transport deck: derived from the structure, not a
-    parameter anybody answers.  ``FC.Displacement`` is NOT here: it is a
-    catalogue item and reaches the deck through the syntax door in its
-    own section, with its declaration, unit and note.
+    """The run type, the range and the partial charges at every step --
+    structural text, like the electrode blocks of a transport deck: fixed
+    by the kind, not a parameter anybody answers (`engines/vibration.md`
+    § 5.3).  ``FC.Displacement`` is NOT here: it is a catalogue item and
+    reaches the deck through the syntax door in its own section, with its
+    declaration, unit and note.
     """
     f = derived["fc"]
     v = bool(getattr(cfg, "verbose_comments", True))
@@ -103,6 +104,17 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
         "MD.TypeOfRun      FC",
         f"FC.First          {f['fc_first']}",
         f"FC.Last           {f['fc_last']}",
+    ]
+    if v:
+        out += [
+            "# Every atom's partial charge at the end of every step, by both",
+            "# partitions, positive where electrons left the atom -- what the",
+            "# charge each mode moves is read from (engines/vibration.md 5.3,",
+            "# 5.10).  A grid integration each per step, no extra SCF.",
+        ]
+    out += [
+        "Charge.Hirshfeld  geometry",
+        "Charge.Voronoi    geometry",
         "",
     ]
     return "\n".join(out)

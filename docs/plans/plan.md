@@ -1098,8 +1098,8 @@ a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
 
 | # | piece | size | depends on |
 |---|---|---|---|
-| 1 | **the charge switch** in the force-constant input: `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` (D3, `engines/vibration.md` § 5.10 ②) | small | — |
-| 2 | **the measurements of the method's § 9** on the toy junction: its vibration through jobset — both charge sets at every displaced step, each summing to zero; TranSIESTA at ±0.05 V and ±0.1 V — the charges under bias, the molecule's dipole linear in V | small: a few toy runs | 1 |
+| 1 | **the charge switch** in the force-constant input: `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` (D3, `engines/vibration.md` § 5.3, § 5.10 ②) — **built 2.35.2** | small | — |
+| 2 | **the measurements of the method's § 9** on the toy junction — **done 2026-10-24**: both charge sets at every force-constant step, each summing to zero; under bias, the sum is −dQ and the dipole linear in V. **Found**: the electrodes' charge for the voltage reaches the bridge's end atoms and enters its α (sign flipped on the toy) — the open decision below | small: a few toy runs | 1 |
 | 3 | **infrared per unit field in the gap, every mode** (the method's § 2): the finish reading every step's charges by both partitions, the mode-response record and data file, the viewer's partition switch (`web/spectra.md` § 3.2) | medium | 2 |
 | 4 | **each mode's localization** (§ 4) | small | 3 |
 | 5 | **Raman per unit field in the gap, chosen modes** (§ 3): each mode's three-frame set, TranSIESTA at ±V with the potential written, $\alpha_{zz}$ per $V/d_{\mathrm{gap}}$ | large | 2, 3 |
@@ -1111,7 +1111,11 @@ a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
 | A | **the reference displacement `d_T`** beside the maximum displacement, in the dialog and on the command line (§ 1ac.2) | small: no calculation | — |
 | B | **energies along a mode**, measured (§ 1ac.2): one SCF per frame | medium | the `electronic` kind (§ 5.10 ④) |
 
-**Decisions for the user:** pieces 1 and 2 now; item A as proposed.
+**Decisions for the user:**
+- **Raman (piece 5): how to keep the electrodes' own charge out of the
+  molecule's α** (the method's § 3.2, measured § 9). First measure its size on
+  AuBDTAu: the molecule's α with and without its anchor atoms, at ±V.
+- Item A as proposed.
 
 **References**: the method's own list
 ([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md),

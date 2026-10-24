@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
+from molbuilder.parse.fdf import fdf_key, read_fdf
 from molbuilder.script_emit import render_deck
 from molbuilder.siesta.input import spec_for
 from molbuilder.structure import Structure
@@ -74,6 +75,12 @@ def test_the_force_constant_deck_nudges_the_free_range_only(in_tree_psml):
     assert _lines(text, "DM.UseSaveDM") == ["DM.UseSaveDM      .true."]
     assert _lines(text, "MD.UseSaveXV") == ["MD.UseSaveXV      .false."]
     assert not _lines(text, "MD.UseSaveCG")
+    # Every atom's partial charge at every step, by both partitions, as
+    # SIESTA reads the deck -- the first occurrence of each key
+    # (`engines/vibration.md` § 5.3).
+    scalars, _ = read_fdf(text)
+    for key in ("Charge.Hirshfeld", "Charge.Voronoi"):
+        assert scalars.get(fdf_key(key)) == ["geometry"], key
 
 
 def test_every_atom_held_is_refused_by_the_gate():

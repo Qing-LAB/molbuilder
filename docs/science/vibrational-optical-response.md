@@ -303,11 +303,16 @@ Without the molecule, the bias would fall evenly across the gap between the
 two metal surfaces, a uniform field
 
 $$
-E_z = \frac{V}{d_{\mathrm{gap}}} ,
+E_z = -\frac{V}{d_{\mathrm{gap}}} ,
 $$
 
 $d_{\mathrm{gap}}$ the distance along z between the planes of the two
-surfaces' outermost metal atoms. **This is the field the molecule is placed
+surfaces' outermost metal atoms. The sign is TranSIESTA's: it sets the left
+electrode — the low-z end, `elec-pos begin` — to the chemical potential
+$+V/2$ and the right one to $-V/2$ (the device input's `TS.ChemPot.Left`,
+`mu V/2`), so at $+V$ the left electrode's electrons sit higher in energy, its
+electrostatic potential is the lower one, and the field points from the right
+electrode to the left, along −z. **This is the field the molecule is placed
 in** — the field a model of the empty gap computes — and the one every
 polarizability below is divided by. It is one number for every frame and every
 mode, so it scales every polarizability alike: it sets their absolute size,
@@ -334,7 +339,8 @@ the device region holds enough metal to screen the bias.
 At a fixed geometry, at biases $+V$ and $-V$:
 
 $$
-\alpha^{M}_{zz} = \frac{\mu_{M,z}(+V) - \mu_{M,z}(-V)}{2V/d_{\mathrm{gap}}} ,
+\alpha^{M}_{zz} = \frac{\mu_{M,z}(+V) - \mu_{M,z}(-V)}{E_z(+V) - E_z(-V)}
+= -\,d_{\mathrm{gap}}\,\frac{\mu_{M,z}(+V) - \mu_{M,z}(-V)}{2V} ,
 $$
 
 $\mu_{M,z}$ from the molecule's partial charges in the density TranSIESTA
@@ -344,6 +350,16 @@ $\bigl(Q_M(+V) - Q_M(-V)\bigr)/2V$, is reported beside it, not folded in.
 Units: a dipole of $1\ e\,\text{Å}$ per $1\ \mathrm V/\text{Å}$ is a
 polarizability volume of 14.400 Å³ (divided by $4\pi\varepsilon_0$; computed
 from the constants).
+
+**The electrodes' own charge reaches the molecule's end atoms** — measured on
+the toy junction (§ 9). To hold a voltage between them the two electrodes
+carry opposite charges at their facing surfaces; where the molecule is bonded
+to the metal, part of that charge sits on the molecule's end atoms, and a
+partition assigns it to the molecule. It then enters $\alpha^M_{zz}$ as if it
+were the molecule's polarization. On the toy, whose bridge is the same
+hydrogen chain as its electrodes, it decides the sign. **How to keep it out
+of $\alpha^M_{zz}$ is open**, decided before this section is built; its size
+on a real molecule is measured on AuBDTAu first.
 
 ### 3.3 Its change along a mode, and the Raman strength
 
@@ -416,7 +432,7 @@ flowchart TD
     MODES --> SEL["modes chosen for Raman"]
     SEL --> FR["each chosen mode's three-frame set<br/>maximum displacement δ"]
     FR --> TS["TranSIESTA, each frame at +V and −V<br/>potential written, as a check"]
-    TS --> AZ["α_zz^M at each frame<br/>dipole change / (2V / d_gap)"]
+    TS --> AZ["α_zz^M at each frame<br/>dipole change / field change, E_z = −V/d_gap"]
     AZ --> RA["per mode: ∂α_zz/∂Q, R_ν(ẑ) and its rank"]
     IR --> OUT["each mode's response<br/>per unit local field along z"]
     RA --> OUT
@@ -453,7 +469,7 @@ flowchart TD
 | $\delta Q$ for the Raman frames | the three-frame set at maximum displacement $\delta$: $\delta Q = \delta / \max_k\lvert\mathbf L_k^{(\nu)}\rvert$ — the same linear range as the force constants | the same mode at $2\delta$: $\partial\alpha^M_{zz}/\partial Q$ unchanged within a tolerance set from the measurements of § 9 |
 | $V$ | $\pm 0.05$ V | $\pm 0.1$ V: $\alpha^M_{zz}$ unchanged within that tolerance — the response is linear |
 | the self-consistent solution | the density matrix converged to $10^{-5}$ or tighter, since a Raman derivative is a small difference of differences; the junction's own mesh and k-points | — |
-| the charge sum | — | at every step, the charge column over all atoms sums to the cell's net charge: zero in the force-constant run; under bias, the excess TranSIESTA reports (dQ, `engines/transport.md` § 2a.12) |
+| the charge sum | — | at every step, the charge column over all atoms sums to the cell's net charge: zero in the force-constant run; under bias, minus the electron excess TranSIESTA reports, $-\mathrm{dQ}$ (`engines/transport.md` § 2a.12) — both measured (§ 9) |
 | the reference point | — | $\partial\boldsymbol\mu_M/\partial Q$ recomputed about another point, its transfer term removed (§ 2.1), gives the same values |
 
 ---
@@ -482,17 +498,52 @@ flowchart TD
 
 ---
 
-## 9. What is measured before anything is built
+## 9. Measured on the toy junction *(2026-10-24)*
 
-On the toy junction (`claude-transport-walk`: 22 hydrogen atoms, two free):
+The toy junction: `claude-transport-walk/structure/h-relaxed.xyz`, a chain of
+22 hydrogen atoms — electrodes of nine on each side, a bridge of four (user
+indices 9–12), its middle two (10, 11) left free in the vibration.
 
-- **The charges at every force-constant step.** SIESTA's source says they are
-  computed at every geometry (`grdsam.F`); the run shows it: every step's
-  charges printed by both partitions, each column summing to zero.
-- **The charges in a biased TranSIESTA run, and their linear response.** Two
-  device runs at $\pm 0.05$ V and $\pm 0.1$ V with the potential written:
-  the charges printed at each bias, $\Delta\bar V(z)$ flat inside the
-  electrodes, and the two free atoms' $\mu_{M,z}$ linear in $V$.
+**The charges at every force-constant step** — the vibration
+`frequency/h-vib-q`, through jobset, its input asking for both partitions
+(`engines/vibration.md` § 5.3): 13 steps, 13 Hirshfeld and 13 Voronoi
+blocks, every atom in each; each block sums to zero within
+1.2 × 10⁻⁵ e. A free atom moved across the chain leaves the charges unchanged
+both ways; moved along it, it changes them with opposite signs — as the
+chain's symmetry asks. Molbuilder's reader reads the output without a
+warning, and the modes are the earlier run's to the last digit.
+
+**The charges under bias** — the transport calculation `transport/h-bias-q`
+at 0, ±0.05 and ±0.1 V, each voltage its own self-consistent device, the two
+charge requests in each device input's own lines (`Charge.Hirshfeld end`,
+`Charge.Voronoi end`):
+
+- one Hirshfeld and one Voronoi block per voltage, after its SCF;
+- the column sums to $+0.0126\,e$ at every voltage, and TranSIESTA reports
+  $\mathrm{dQ} = -0.0126$ electrons: the sum is $-\mathrm{dQ}$;
+- the dipole is linear in $V$: for the four-atom bridge, the slopes from
+  ±0.05 V and ±0.1 V agree within 0.3 %, and a straight line through the five
+  voltages misses no point by more than $4\times10^{-7}\,e$ Å.
+
+**What the atoms' charges show.** Between $-0.1$ and $+0.1$ V the left
+electrode's last atoms gain electrons (atom 8: $-0.0023\,e$) and the right
+electrode's first atoms lose them (atom 13: $+0.0022\,e$) — the electrodes'
+charge for the voltage between them — and it reaches into the bridge: its end
+atoms follow the electrode beside them (9: $-0.00045$, 12: $+0.00044$), its
+inner atoms alternate (10: $+0.00046$, 11: $-0.00047$; Hirshfeld). With
+$E_z = -V/d_{\mathrm{gap}}$, $d_{\mathrm{gap}}$ = 5.0 Å between atoms 8 and
+13:
+
+| molecule taken as | Hirshfeld $\alpha_{zz}$ | Voronoi $\alpha_{zz}$ |
+|---|---|---|
+| the bridge, atoms 9–12 | −0.31 Å³ | −0.11 Å³ |
+| its inner pair, atoms 10–11 | +0.17 Å³ | +0.27 Å³ |
+
+The whole bridge's dipole points against the field — its end atoms carry the
+electrodes' charge — while its inner pair responds along it. This toy's
+bridge is metal like its electrodes, so the numbers are a measurement of the
+mechanism, not a molecule's polarizability; the open question is in § 3.2.
+The written potential's check of § 3.1 was not run here.
 
 ---
 

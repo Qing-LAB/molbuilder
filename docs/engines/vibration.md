@@ -1329,9 +1329,22 @@ FC.Displacement   0.04 Bohr       # the catalogue item, through the syntax door
 MD.TypeOfRun      FC              # the force-constant run: nothing relaxes here
 FC.First          n_held + 1      # the free range is the tail
 FC.Last           N
+Charge.Hirshfeld  geometry        # every atom's partial charge at every step (below)
+Charge.Voronoi    geometry
 DM.UseSaveDM      .true.          # the start state is the KIND's (below)
 MD.UseSaveXV      .false.
 ```
+
+**Every atom's partial charge at every step, by both partitions** — the
+output switch § 5.10 ② decided (D3; the user, 2026-10-24: "both on"). With
+`Charge.Hirshfeld geometry` and `Charge.Voronoi geometry`, SIESTA computes
+every atom's Hirshfeld and Voronoi charge at the end of every geometry step —
+the reference step and every displacement — and prints both to its output,
+to 10⁻⁶ e, positive where electrons left the atom (SIESTA 5.4.2 `grdsam.F`,
+`partial_charges.F90`). Fixed by the kind, like the run type: a grid
+integration each per step, no extra SCF. What reads them is § 5.10 ②, and
+what they give, [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 2.
 
 The stage header line names the range, the counts and the displacement
 (`siesta/vibration_deck.py::stage_science`); the record blocks that every deck
@@ -1423,7 +1436,7 @@ for a in FC.First .. FC.Last:
 | `<label>.FC` | one header (`n_atoms`, `δ` in Å), then `6·n_free·N` rows of three numbers in **eV/Å²**, in the order displaced atom → direction → side (−, +) → atom | the file's two sides average to 41.713 for the H₂ bond; two single points displaced by hand give −ΔF/2δ = 41.713 |
 | `<label>.FCC` | the same with the held atoms' force rows zeroed (SIESTA's "constrained" variant) | the free block is identical, so the reader takes `.FC` and slices |
 | `<label>.XV` | the **last displaced** geometry, not the input | the last free atom `FC.Displacement` off along z |
-| `<label>.DM`, the usual outputs | the reference (undisplaced) step's density (`save_density_matrix.F90` writes it at the first step only), the `.out` with the version line | |
+| `<label>.DM`, the usual outputs | the reference (undisplaced) step's density (`save_density_matrix.F90` writes it at the first step only), the `.out` with the version line and, after every step's SCF, every atom's Hirshfeld and Voronoi charges (§ 5.3) | |
 | `<label>.spectra.json` | **the result**, written by the finish (§ 5.5) after SIESTA exits cleanly | |
 
 The run script `prep` writes (the wrapper, `runwrap.py`) treats the run like
@@ -1841,8 +1854,15 @@ ranking (science § 4c.3, the antisymmetric stretch).
 **② The charge each mode moves — from the force-constant run itself** (an
 output switch, D3). The force-constant deck asks for the population analysis at
 every step — `Charge.Hirshfeld` and `Charge.Voronoi`, the 5.4.2 spellings of
-the deprecation table; **whether SIESTA prints them at every FC step is
-measured before anything relies on it**. **Both partitions are read, every
+the deprecation table — written by the deck since 2.35.2 (§ 5.3).
+**Measured on the toy junction** (`claude-transport-walk/frequency/h-vib-q`,
+22 H, two free, 2026-10-24): 13 force-constant steps, 13 Hirshfeld and 13
+Voronoi blocks — one of each per step, every atom in each — each block
+summing to zero within 1.2 × 10⁻⁵ e; a free atom moved across the chain
+leaves the charges unchanged both ways, moved along it changes them with
+opposite signs, as the chain's symmetry asks; molbuilder's reader reads the
+output without a warning, and the modes are the earlier run's to the last
+digit. **Both partitions are read, every
 number carries the partition it came from, and the viewer shows Hirshfeld
 unless the person picks Voronoi** *(user, 2026-10-24: "both on"; "default to
 hirshfeld")* — how the two differ and why Hirshfeld is shown first is
@@ -2045,7 +2065,7 @@ rigid-shift estimate against the explicit curvature.
 |---|---|---|---|
 | ~~D1~~ | which atoms every projection is over | **decided 2026-09-28**: the free atoms — the anchor is the held atoms, and nothing new is labelled *(user: "the anchor is the fixed atoms. we don't specify the anchor")*; per element within them | the structure already says which atoms are held, and the result already carries it |
 | ~~D2~~ | how the result knows the regions | **not needed**: with the projection over the free atoms, the result already carries everything ① reads — the free and held atoms, the elements, the geometry | |
-| D3 | the charge each mode moves (②) | **decided 2026-09-28: yes** — on for every force-constant run once SIESTA is measured to print the populations at every step, *"and result presentation should include the correct data and UI design to present it"* | one switch and no extra SCF |
+| D3 | the charge each mode moves (②) | **decided 2026-09-28: yes** — on for every force-constant run once SIESTA is measured to print the populations at every step, *"and result presentation should include the correct data and UI design to present it"*; **the switch on since 2.35.2, measured 2026-10-24** (②) | one switch and no extra SCF |
 | D4 | where the electronic frames run | **decided 2026-09-28: yes**, a calculation kind of its own, `electronic` — *"make it clear the difference between pySCF and siesta, from setup and calculation and presentation"* | what § 5.6 already says; it serves `Δρ_ν` (V1.26) too, and needs no leads |
 | D5 | sisl in the SIESTA job envs | **decided 2026-09-28: in every SIESTA env**, through the env system's recipes — *"so it is always available when we need them"* (installed with M2b‴, the milestone that retired the unit-height spectrum — § 10's sisl row) | the levels are the junction's HOMO and LUMO, and sisl is SIESTA's own reader of the file they come from |
 | D6 | one frame set for many modes | ~~yes — V1.25's "for a named mode" becomes "for named modes"~~ — **reversed by the user, 2026-10-09: one mode per set** (*"i would rather let one multi-frame focus on one mode ... each vibration mode will have a separate prep and run as different task"*); how modes are weighed against each other is the person's post-processing | ~~the base, the leads and the seed once~~ — each mode's set its own transport calculation |

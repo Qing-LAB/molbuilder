@@ -37,10 +37,11 @@ from .structure import Structure
 #: MOLBUILDER'S VERSION, its one home (`pyproject.toml` reads it).  Every
 #: deck and run script records it (`job-contracts.md` § 3.2), so a run
 #: prepared by an older molbuilder is named by version.  The middle number
-#: moves with every change to what molbuilder writes into a file, with its
-#: line in `docs/process/changelog.md`; the first with a release the user
-#: declares (`process/conventions.md` § 2, *Versioning*).
-__version__ = "2.35.1"
+#: moves with new functionality, the last with everything else -- a change
+#: to what a file says among it -- each version with its line in
+#: `docs/process/changelog.md`; the first with a release the user declares
+#: (`process/conventions.md` § 2, *Versioning*).
+__version__ = "2.35.2"
 
 #: THE BUILDERS ARE NOT RE-EXPORTED HERE.  Python loads this module before
 #: any module inside the package, so whatever it imports loads under every
