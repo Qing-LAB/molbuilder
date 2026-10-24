@@ -638,7 +638,7 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 │ │ one row per rung: state chip, detail (the transmission's loop at its    │ │
 │ │ running point, the points after it, a finished point's loop)            │ │
 │ │ E_F, energy, iterations,                                                │ │
-│ │ converged, the attempt it came from; the leads' E_F agreement; the      │ │
+│ │ converged, the attempt it came from; the                                │ │
 │ │ chain — relaxation → seed, leads → device → transmission, read from     │ │
 │ │ each rung's `.gathered-from`; the DFT–NEGF caveat                       │ │
 │ └─────────────────────────────────────────────────────────────────────────┘ │

@@ -73,11 +73,11 @@ def test_the_data_file_names_the_json_it_was_written_with(tmp_path):
 
 
 def test_every_axis_is_a_coordinate_a_reader_selects_by(tmp_path):
-    """`model/datafiles.md` § 2: every axis a coordinate of its own name, so
+    """`model/datafiles.md` § 2a: every axis a coordinate of its own name, so
     a reader selects by value -- a temperature of the thermochemistry's grid,
     a mode, an atom.  THE SILENT FAILURE (the 2026-10-23 review): the
     file's axes carried their values under other names (`index_1based`,
-    `temperatures_K`), so `.sel(temperature=298.15)` raised and xarray
+    `temperatures_K`), so `.sel(temperature_k=298.15)` raised and xarray
     indexed no axis of any group.
 
     MUTATION THIS MUST FAIL AGAINST: an axis's values named other than the
@@ -92,6 +92,6 @@ def test_every_axis_is_a_coordinate_a_reader_selects_by(tmp_path):
         assert set(ds.sizes) <= set(ds.indexes), (group, dict(ds.sizes),
                                                   list(ds.indexes))
     grid = xr.load_dataset(nc, group="thermo/grid")
-    assert float(grid.g_eh.sel(temperature=298.15)) == pytest.approx(0.008)
+    assert float(grid.g_eh.sel(temperature_k=298.15)) == pytest.approx(0.008)
     modes = xr.load_dataset(nc, group="modes")
     assert float(modes.frequency_cm1.sel(mode=1)) == pytest.approx(-42.0)

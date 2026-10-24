@@ -86,8 +86,7 @@ if TYPE_CHECKING:                      # annotations only
 CURRENT = ("nothing to migrate: it holds nothing an older molbuilder wrote "
            "-- its records are whole, its record of its machine is this "
            "molbuilder's, its run files carry their run's number and its "
-           "leads' their own stem, its transmission points' digests state "
-           "their atom index map, and its template carries no item an older "
+           "leads' their own stem, and its template carries no item an older "
            "molbuilder meant otherwise, renamed or a release retired")
 
 
@@ -1029,85 +1028,16 @@ def _migrate_last_run(base: Path, task, moves
             (target, best + "\n"))
 
 
-#: The release whose digests state their atom index map
-#: (`model/overview.md` § 2.2b): an older digest is kept as ``.pre-2.32.0``.
-_MAP_RULE = "2.32.0"
-
-
-def _migrate_digests(calc) -> Tuple[List[str], List[str],
-                                    Dict[Path, Tuple[bytes, Any]]]:
-    """EVERY TRANSMISSION POINT'S DIGEST WRITTEN BEFORE ITS ATOM INDEX MAP
-    (`tbt-digest@1`) -- every attempt's points, not the latest alone, their
-    `shared/` ones among them -- rewritten with its point's map, its run's
-    deck's (`tbtnc.point_atoms`), through the digest's own module
-    (`tbtrans_nc.digest_with_map`), the TBtrans data file never read again
-    (`model/overview.md` § 2.2b; `job-request.md` § 8).  ``(said, left,
-    writes)``: a point whose run states no order (I9) holding such a digest
-    is named in ``left`` and left as it is; a point holding none is not
-    named.  The runs are the stage's one lister's (`runstatus.run_folders`
-    -- each attempt's points, or the attempt itself for a rung that runs
-    once: a single bias, the low-bias approximation), never found by asking
-    a run's state.  Nothing for a calculation that is not transport."""
-    said: List[str] = []
-    left: List[str] = []
-    out: Dict[Path, Tuple[bytes, Any]] = {}
-    if calc.task.calculation != "transport":
-        return said, left, out
-    from ..parse.engines.tbtrans_nc import (digest_of, digest_states_no_map,
-                                            digest_with_map)
-    from ..transport.tbtnc import TbtError, point_atoms, point_data_files
-    from .naming import stage_home
-    from .runstatus import run_folders
-    base, task = Path(calc.base), calc.task
-    home = stage_home(base, task, "transmission").dir
-    for _n, folder, _pt in run_folders(base, task, home, "transmission"):
-        older = [p for p in point_data_files(folder, task.label)
-                 if digest_states_no_map(p)]
-        if not older:
-            continue
-        try:
-            atoms = point_atoms(folder)
-        except (TbtError, ValueError) as exc:
-            left.append(f"{Path(folder).relative_to(base)}: its digests "
-                        f"left as they are -- {exc}")
-            continue
-        for p in older:
-            try:
-                data = digest_with_map(p, atoms)
-            except (OSError, ValueError) as exc:
-                # A DIGEST THAT DISAGREES WITH ITS RUN -- another atom
-                # count -- is refused by name, nothing written.
-                raise MigrateError(
-                    f"{digest_of(p).relative_to(base)} cannot be given "
-                    f"its run's atom index map, so nothing was written: "
-                    f"{exc}") from None
-            if data is not None:
-                out[digest_of(p)] = (data, {_MAP_RULE})
-                said.append(f"{digest_of(p).relative_to(base)}: its "
-                            f"atom index map written in, from its run's "
-                            f"deck (model/overview.md 2.2b)")
-    return said, left, out
-
-
-class Migrated(NamedTuple):
-    """What a migration did (:func:`migrate_state`): ``said``, what changed
-    and what was left, line by line, and ``wrote`` -- whether anything was
-    written.  No line: the calculation is current (:data:`CURRENT`)."""
-    said: List[str]
-    wrote: bool
-
-
-def migrate_state(base) -> Migrated:
+def migrate_state(base) -> List[str]:
     """Rewrite the calculation in ``base`` -- every step in the module's
     docstring, each decided before any is written -- and return what
-    changed, line by line, and what an older molbuilder wrote that is left
-    as it is (a digest whose run states no order).  Each old file rewritten
+    changed, line by line.  Each old file rewritten
     is kept beside its new one, once (:func:`_kept_as`); a renamed one is
     its new one.
 
     No line when there is nothing to migrate -- the calculation is current
-    (:data:`CURRENT`); lines and nothing written when all it holds is left;
-    raises :class:`MigrateError` when it cannot be migrated as it stands.
+    (:data:`CURRENT`); raises :class:`MigrateError` when it cannot be
+    migrated as it stands.
     """
     base = Path(base)
     # EVERY RECORD READ ONCE, then EVERY DECISION BEFORE ANY WRITE: a
@@ -1126,8 +1056,6 @@ def migrate_state(base) -> Migrated:
     for path, (text, rules) in lead_writes.items():
         writes.add(path, text, rules)
     l_said, l_write = _migrate_last_run(base, task, moves)
-    # THE DIGESTS' MAPS -- binary, kept as every rewrite is.
-    d_said, d_left, d_writes = _migrate_digests(calc)
     try:
         decision = _migrate_template(rec, task)
     except MigrateError:
@@ -1149,10 +1077,9 @@ def migrate_state(base) -> Migrated:
             writes.add(path_of(base),
                        json_text(_edited(task, decision).to_dict()),
                        decision.task_rules)
-    if not writes and not moves and l_write is None and not d_writes:
-        # NOTHING TO MIGRATE is an answer, not a refusal -- and what is left
-        # as it is is said, never called current.
-        return Migrated(d_left, False)
+    if not writes and not moves and l_write is None:
+        # NOTHING TO MIGRATE is an answer, not a refusal.
+        return []
     taken = [new for _old, new in moves if new.exists()]
     if taken:
         raise MigrateError(
@@ -1165,7 +1092,7 @@ def migrate_state(base) -> Migrated:
     # file was before an earlier migration.
     # A NEW FILE -- the job request a split writes -- keeps nothing.
     kept = {path: path.with_name(path.name + _kept_as(rules))
-            for path, (_text, rules) in [*writes.items(), *d_writes.items()]
+            for path, (_text, rules) in writes.items()
             if path.exists()}
     held = [k for k in kept.values() if k.exists()]
     if held:
@@ -1182,21 +1109,18 @@ def migrate_state(base) -> Migrated:
         if path in kept:
             write_bytes(kept[path], path.read_bytes())
         write_bytes(path, text.encode("utf-8"))
-    for path, (data, _rules) in d_writes.items():
-        write_bytes(kept[path], path.read_bytes())
-        write_bytes(path, data)
     for old, new in moves:
         old.rename(new)
     if l_write is not None:
         write_bytes(l_write[0], l_write[1].encode("utf-8"))
     said += [f"{path.relative_to(base)} kept as {kept[path].name}"
-             for path in [*writes, *d_writes] if path in kept]
-    said += n_said + lead_said + l_said + t_said + d_said + d_left
+             for path in writes if path in kept]
+    said += n_said + lead_said + l_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
                   "wrote, rewritten -- each change with its reason",
                   changes=said)
-    return Migrated(said, True)
+    return said
 
 
 class _TemplateDecision(NamedTuple):

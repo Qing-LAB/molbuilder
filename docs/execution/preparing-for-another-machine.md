@@ -134,8 +134,9 @@ molbuilder needs it there before any record exists — and **`jobset probe
 --write` copies it into every record it writes**, this machine's or a named
 one *(user, 2026-10-02)*. Probe Sol on Sol, copy `sol.json` here, and `prep
 --target sol` bakes `module load mamba` + `source activate` — Sol's answer,
-not this workstation's. A copy that is wrong for the machine it describes is
-edited by hand, in that record.
+not this workstation's. The probe copies it as it stands and asks nothing
+([`configuration.md`](?doc=configuration.md) § 4): to change it, change that
+machine's `molbuilder.json` and probe there again.
 
 The generator reads that field and nothing else. There is **one rule for
 local and remote**: the record states it, so the record is the answer — for

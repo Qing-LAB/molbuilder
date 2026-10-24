@@ -2006,36 +2006,38 @@ does not hold a reading, is no kept reading. Whether one is current is
 read from its attributes alone, never its tables.
 
 **The digest describes itself, so a person's own script may read it alone**
-(NetCDF-4, `molbuilder/tbt-digest@2`, every variable with its units and what
-it is): the energies relative to the leads' Fermi level (eV, full precision);
-the device's DOS per orbital (1/eV) with each column's orbital and atom and
+(NetCDF-4, `molbuilder/tbt-digest@3`, every variable with its units and what
+it is, every axis a row of [`model/datafiles.md`](?doc=model/datafiles.md)
+§ 2a with its coordinate): the energies relative to the leads' Fermi level
+(`energy_ev`, eV, full precision); the device's DOS per orbital (1/eV) over
+`device_orbital`, each orbital's atom beside it (`device_orbital_atom`), and
 the geometry's first orbital of each atom; each atom's position and the cell
 (Å), the device's atoms, and each atom's element — read from the Hamiltonian
 TBtrans read beside it, `<label>.TS.HSX`, when it is there and is the data
 file's geometry (the data file states no elements); the k-points and their
-weights; each electrode's name, chemical potential and temperature (eV), the
+weights; each lead's name, chemical potential and temperature (eV), the
 device's η; TBtrans's own k-averaged T(E), eigenchannels, total DOS and the
 leads' DOS, each naming the text file it came from; and the data file's
 name, size, time and what it states of itself, with the molbuilder that read
 it. **Its atoms are listed by engine index** — TBtrans's geometry,
 TranSIESTA's order, the device run's — **and it carries its atom index map**
-([`model/overview.md`](?doc=model/overview.md) § 2.2b, *since 2.32.0*,
-`@2`): `atoms_listed_by` `engine_index`, `atom_index_base` `0`, and per atom
+([`model/overview.md`](?doc=model/overview.md) § 2.2b):
+`atoms_listed_by` `engine_index`, `atom_index_base` `0`, and per atom
 `engine_atom_index` and `user_atom_index` — **handed to the parser by the
 caller that knows the run** (`tbtnc.read_points` asks the run door for the
 point's map; a point's `shared/` files take the point's; the post-processing
 layer's `parse` asks `atom_index_map`), the parser knowing no calculation
-(floor 1); `column_atom` and `device_atom` count by engine
+(floor 1); `device_orbital_atom` and `device_atom` count by engine
 index, marked so. A data file no run of ours holds has no run to answer: its
 digest states `engine_index` and no user index, its `atom_index_why` saying
 so (F3). **A digest
 that states no user index for a file a run of ours holds reads as out of
-date** — the next reading writes it whole. The `@1` digest's prose
-`atom_order` attribute is not written at `@2`; the map says it. **What it does not hold, it says**: each orbital's type
+date** — the next reading writes it whole. **What it does not hold, it says**: each orbital's type
 is the device run's `<label>.ORB_INDX`, which the data file does not state. A
-digest `@1` (2.31.x) holds the same reading without the map: `jobset migrate`
-writes the map into it from its run's deck, the data file never read again
-(§ 2.2b); left as it is, it reads as out of date, as any other version does.
+digest of an earlier version — `@1` (2.31.x) without its map, `@2` (2.32.x)
+its axes named before [`model/datafiles.md`](?doc=model/datafiles.md) § 2a —
+reads as out of date, as any other version does, and the next reading writes
+it whole.
 
 **One reading of a data file at a time, wherever it is asked** *(the user,
 2026-10-22: "how do you avoid accidental multiple digest generator to

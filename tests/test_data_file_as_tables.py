@@ -22,7 +22,7 @@ def _a_data_file() -> bytes:
     from molbuilder.ncdata import (NC_LOCK, Var, as_bytes, empty, in_memory,
                                    write_group)
     variables = (
-        Var("frame", ("frame",), "coordinate", "", "frame", "its index",
+        Var("frame", ("frame",), "coordinate", "1", "frame", "its index",
             dtype="i4"),
         Var("energy_ev", ("energy_ev",), "coordinate", "eV", "energy",
             "relative to E_F"),
@@ -81,33 +81,34 @@ def test_each_value_sits_on_its_axes_point_and_unstated_is_empty():
 
 def test_a_groups_variables_are_tables_under_its_name():
     """A data file in groups -- the vibration's (`spectra.datafile`) --
-    lays out the same way, each group's tables under its own path, an axis
-    the file's root states read from there."""
+    lays out the same way, each group's tables under its own path, each
+    axis by its coordinate's values."""
     from molbuilder.ncdata import (NC_LOCK, Var, as_bytes, empty, in_memory,
                                    write_group)
     from molbuilder.ncdata import as_tables
-    root = (Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
-                "x, y, z", dtype=str),)
-    mode = (Var("frequency_cm1", ("mode",), "derived", "1/cm",
+    mode = (Var("mode", ("mode",), "coordinate", "1", "the mode's index",
+                "from 0", dtype="i4"),
+            Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
+                "x, y, z", dtype=str),
+            Var("frequency_cm1", ("mode",), "derived", "1/cm",
                 "a mode's frequency", "from the Hessian"),
             Var("displacement", ("mode", "xyz"), "derived", "1",
                 "the mode's direction", "normalized"))
     with NC_LOCK:
         ds = in_memory("v.nc")
-        values = {"xyz": empty(root[0], {"xyz": 3})}
-        values["xyz"][:] = ["x", "y", "z"]
-        write_group(ds, {"xyz": 3}, root, values)
         g = ds.createGroup("modes")
         values = {v.name: empty(v, {"mode": 2, "xyz": 3}) for v in mode}
+        values["mode"][:] = [0, 1]
+        values["xyz"][:] = ["x", "y", "z"]
         values["frequency_cm1"][:] = [100.0, 250.0]
         values["displacement"][:] = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
-        write_group(g, {"mode": 2}, mode, values)
+        write_group(g, {"mode": 2, "xyz": 3}, mode, values)
         data = as_bytes(ds)
     tables, readme = as_tables(data, "V.spectra.nc")
     assert sorted(tables) == ["modes/mode.csv", "modes/mode_xyz.csv"]
     assert [r["frequency_cm1 [1/cm]"] for r in
             _rows(tables["modes/mode.csv"])] == ["100.0", "250.0"]
-    # THE ROOT'S AXIS, by its values, in the group's table.
+    # EACH AXIS BY ITS COORDINATE'S VALUES, in the group's table.
     assert [(r["mode"], r["xyz"]) for r in _rows(tables["modes/mode_xyz.csv"])
             if r["displacement"] == "1.0"] == [("0", "x"), ("1", "z")]
     assert "modes/mode.csv -- over mode, 2 rows" in readme

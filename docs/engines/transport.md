@@ -260,10 +260,7 @@ number (like 100)" [`Papior2019`]. TranSIESTA's own warning comes only below 20
 a lead is a small cell. **To check it**, run the leads again at a higher count
 and compare each lead's Fermi level with the one before: settled, it stays
 put. Nothing in molbuilder compares two counts for you. The Results tab shows
-both leads' Fermi levels and says whether the left lead's and the right lead's
-agree within 0.05 eV (`transport/record.py`, `leads_agreement`) — the two
-leads of one calculation compared with each other, which says nothing of
-whether their count along z is enough.
+both leads' Fermi levels, each as its run computed it, and judges neither.
 
 #### Why one k-point along z on the device — and on the seed
 
@@ -2991,7 +2988,7 @@ structure at one voltage is a 1 × 1 grid, never a different layout.
 | `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads, as TBtrans names them (`L`, `R`; `transiesta.LEAD_NAMES`); the eigenchannels a point's files hold — those TBtrans was asked for (`TBT.T.Eig`), each spin channel's, none where no file is read |
 | `rung` | the rungs that run once — `seed`, `electrode_L`, `electrode_R`, by their stage names |
 | `scf_cycle` | an SCF row's index within its run, from 0 — every row of the run's last step, a device's periodic start and its NEGF loop alike; a run of fewer rows padded with the fill value |
-| `charge_part` | TranSIESTA's charge columns, as its `ts-q:` header names them — `D` the device, `E1` `C1` … each electrode and its coupling |
+| `charge_part` | TranSIESTA's charge columns, as its `ts-q:` header names them — `D` the bridge, `E1` `C1` … each electrode and its overlap population with the bridge (§ 2a.12, *The device's charges*) |
 
 **Every dimension is a coordinate of its own name** (a NetCDF coordinate
 variable): `frame` (0-based, MolView's index), `bias_v`, `energy_ev`, `spin`,
@@ -3038,6 +3035,7 @@ part — their rows, masses and average — is laid out by their post-process
 | `device_state` · `device_detail` · `device_scf_converged` | frame, bias_v | state | the device point's run state and the run door's sentence for it, and whether its SCF converged (1, 0) |
 | `device_energy_ev` · `device_negf_cycles` · `device_dq` | frame, bias_v | raw | the NEGF phase's last energy — never compared across points or calculations (§ 1.1) — how many NEGF cycles ran, and the last one's charge change |
 | `device_charge` | frame, bias_v, charge_part | raw | the last NEGF cycle's charges, column by column, as TranSIESTA printed them |
+| `device_d_change_from_0v` | frame, bias_v | derived | `D(V) − D(0 V)`: the bridge's net Mulliken population at this voltage less the same frame's at 0 V, both the last NEGF cycle's; the fill value where the frame has no finished 0 V point, and at 0 V itself 0 (§ 2a.12, *The device's charges*) |
 | `device_contour_poles` · `device_neq_emin_ev` · `device_neq_emax_ev` · `device_neq_points` | frame, bias_v | raw | the contour TranSIESTA echoed: its equilibrium contour's poles; under a bias, the non-equilibrium line's window and points |
 | `device_scf_cycles` | frame, bias_v | state | how many rows the device point's SCF history holds — the cycles beyond it are the fill value; −1, its own fill, where none ran (0 is a count) |
 | `device_scf_iscf` · `device_scf_energy_ev` · `device_scf_delta_e_ev` · `device_scf_ddmax` · `device_scf_dhmax_ev` · `device_scf_ef_ev` · `device_scf_dq` · `device_scf_vha_ev` · `device_scf_phase` | frame, bias_v, scf_cycle | raw | each SCF row of the device point's run, as SIESTA printed it: its own cycle number, the energy and its change, the density-matrix and Hamiltonian residuals, E_F, and on a NEGF row the charge change and the boundary potential; `phase` `periodic` or `negf` |
@@ -3051,7 +3049,7 @@ part — their rows, masses and average — is laid out by their post-process
 ångström `angstrom` and the ampere `A` — `long_name`, `definition` — how it is
 obtained, the formula for a derived one — and, for a raw one, `source`, the
 file it was read from. The file says what it is: `schema`
-(`molbuilder/transport-data@4`), the label, the treatment and what it means
+(`molbuilder/transport-data@5`), the label, the treatment and what it means
 (`treatment_note`), what each spin's current means (`current_means`, JSON),
 the calculation's own records as they read when it was written —
 `description` (its `task.json`), `template` (its `<label>.template.toml`)
@@ -3067,8 +3065,7 @@ structure states rows, the vocabulary's structure rows and `info.vibration`
 where it states them, every row as written (`structure_rows`, JSON), what is
 said of the weights (`frame_warnings`), and where every frame states a weight
 their sum, the tolerance and — where the frames state a mode — what a mode's
-average assumes; the leads' Fermi levels compared (`leads_ef_differ_ev`,
-`leads_ef_agree`, `leads_ef_tolerance_ev`), the Fermi levels each in its run's
+average assumes; the Fermi levels each in its run's
 frame (`fermi_frames`) and each run's SCF tolerances (`scf_criteria`), as JSON;
 and `Conventions` `CF-1.8`. The large arrays are compressed (zlib), which a
 reader undoes by itself.
@@ -3164,9 +3161,72 @@ records and adds the science:
 | rung | the science it reports | the symptoms it watches |
 |---|---|---|
 | seed | the converged energy and E_F of the periodic junction | as any SCF |
-| electrode_L · electrode_R | each lead's E_F — the reference for T(E), and the two must agree | as any SCF |
-| device | the **NEGF** phase's energy, E_F and iterations — never the periodic initialization's, and the energy never compared across biases or calculations (the manual: TranSIESTA's energies *"are not to be trusted"*, § 1.1); the charge distribution (device · electrodes · couplings) and the molecule's change against the periodic start; the contour and pole count TranSIESTA used | the device symptoms (`model/parse.md` § 5d.6) |
+| electrode_L · electrode_R | each lead's E_F — the reference for T(E), shown as its run computed it | as any SCF |
+| device | the **NEGF** phase's energy, E_F and iterations — never the periodic initialization's, and the energy never compared across biases or calculations (the manual: TranSIESTA's energies *"are not to be trusted"*, § 1.1); the charge distribution region by region (D · E1 · C1 · E2 · C2, below) and, at each voltage, the bridge's change against 0 V, `D(V) − D(0 V)`; the contour and pole count TranSIESTA used | the device symptoms (`model/parse.md` § 5d.6) |
 | transmission | T(E_F) and the conductance — G = G₀·T(E_F), or (e²/h)·(T↑ + T↓) per spin channel when polarized — with energies relative to E_F by TBtrans's own convention (asserted by the record, `energies_relative_to_ef`; not measured against the output — § 1.1); T(E) per spin channel; the window, points and TBT k-grid; the eigenchannels and the DOS; the I–V with its treatment named (§ 2a.10), its current **the junction's total** — see below | the run's end, and the channels it wrote |
+
+**The device's charges, region by region** *(user, 2026-10-24: "explain what
+each region contains")*. TranSIESTA prints how the device run's electrons
+divide among its regions — once as its NEGF loop begins, then a `ts-q:` row
+every NEGF cycle (`ts_charge.F90`). Its regions are molbuilder's labels:
+**the electrode blocks are exactly `L-electrode` and `R-electrode`** — each
+`TS.Elec` block's `used-atoms` is its label's atom count, at the start and the
+end of the cell — and **the device region is the `bridge`**: the molecule and
+the metal atoms relaxed with it, everything between the two blocks.
+
+*A Mulliken population* [`Mulliken1955`]: in a basis of atomic orbitals that
+overlap, the electron count is N = Σ_μν ρ_μν S_νμ — the density matrix times
+the overlap, summed over every pair of orbitals μ, ν. Each pair's term is the
+electrons that pair holds. A pair on one region counts to that region (its
+**net population**); a pair with one orbital on each side of a boundary is
+**overlap population** — electrons in the bonds across it, which belong to
+neither side alone (Mulliken's own convention gives each side half, the
+**gross population**). The split depends on the basis: a population, not an
+observable.
+
+| column | the orbital pairs it sums | in words |
+|---|---|---|
+| `D` | both on the bridge | the bridge's net population — the molecule and its gold together |
+| `E1` · `E2` | both on the left · right electrode block | each electrode's net population |
+| `C1` · `C2` | one on an electrode block, one on the bridge | the overlap population across each electrode's boundary with the bridge — the Au–Au bonds between the last fixed layer and the first bridge layer |
+| `O` | the rest — chiefly one electrode block with the other, which touch across the periodic boundary of the cell | other |
+| `B` | both on buffer atoms — the `buffer` label's, padding outside the electrode blocks (§ 4); printed only where the junction has some | taken out of the NEGF region |
+| `dQ` | the sum of all, less the neutral count (`target`) | the charge the open boundaries did not conserve |
+
+**Measured on AuBDTAu at 0 V** (Sol, 312 atoms, 5740 valence electrons —
+Au with 19; 75 gold atoms in each electrode block; the bridge 150 gold atoms
+and the 12-atom BDT): at the switch D 2883.355, E1 1418.410, C1 6.659, E2
+1418.411, C2 6.658, O 6.508; after 34 NEGF cycles D 2883.510, E1 and E2 the
+same to the last printed digit, C1 6.567, C2 6.565, O the same, dQ −0.031.
+The bridge's gross population, D + ½(C1 + C2) = 2890.0, is its atoms'
+neutral count (150 × 19 + 40).
+
+**What each number is for:**
+
+- **At 0 V the change from the switch is a check of the calculation, not a
+  process.** The electrode blocks are held at their starting density
+  (`TS.Elecs.DM.Update`, `cross-terms` by default with bulk electrodes: only
+  the bridge and the boundary terms are updated), so the only change is in
+  D and C, and their sum is dQ — the number TranSIESTA's own convergence
+  test reads (`ts_scf_dq_converge`), which the device row shows. The
+  molecule–metal charge transfer is already in the periodic start, whose SCF
+  binds the molecule to the gold; opening the boundaries should move little.
+  A large change says the metal layers in the bridge screen too little, or
+  the periodic Fermi level is a poor reference for the open system — the
+  manual's two causes (`TS.dQ`). The +0.155 on D and −0.186 on C above are
+  the population shifting across the gold–gold boundary.
+- **At a voltage, `D(V) − D(0 V)` is a result**: the electrons the bias moves
+  onto or off the bridge, the charging that shapes the potential drop — an
+  asymmetric or weakly coupled junction charges this way. The report shows it
+  beside each voltage's device facts, and the data file carries it
+  (`device_d_change_from_0v`): each the last NEGF cycle's D, less the same
+  frame's at 0 V. It is the bridge's net Mulliken population — the molecule
+  and the bridge's gold together, in this basis.
+- **Only a frame's first voltage starts from the periodic density**; each
+  later one starts from the previous voltage's NEGF density (§ 1.3, the
+  hydrogen chain's step 4), so its own starting charges are that voltage's — which is
+  why every voltage is measured against the frame's 0 V point, never its own
+  start.
 
 **The current is the junction's total, and says so** *(user, 2026-10-03, Q5:
 "make sure the result presentation, data record and the summary/comments

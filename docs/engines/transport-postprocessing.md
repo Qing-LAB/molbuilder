@@ -143,8 +143,8 @@ table; `--to-engine 0,5` (user indices to engine indices) or `--to-user 0,5`
 
 TBtrans computes the DOS of the **device region** only: an atom of a lead
 outside it has none. The digest says which atoms the device holds
-(`device_atom`) and which atom each DOS column is on (`column_atom`) — both
-by engine index.
+(`device_atom`) and which atom each device orbital — one DOS column — is on
+(`device_orbital_atom`) — both by engine index.
 
 ```python
 point = "05_transmission/run-0/v0.2/"
@@ -155,11 +155,11 @@ atoms = atom_index_map(point + "T.TBT.digest.nc")
 # the device's atoms, by user index -- the ones that have a DOS
 mine = atoms.map_to_user_index(dg.device_atom.values.tolist())
 
-# the PDOS of two of them: their engine indices, their orbitals' columns
+# the PDOS of two of them: their engine indices, their orbitals
 wanted = atoms.map_to_engine_index(mine[:2])
-columns = dg.column_atom.isin(wanted).values
-pdos = dg.DOS.isel(column=columns).sum("column")      # one value per energy
-pdos.plot(x="energy")
+theirs = dg.device_orbital_atom.isin(wanted).values
+pdos = dg.DOS.isel(device_orbital=theirs).sum("device_orbital")  # per energy
+pdos.plot(x="energy_ev")
 ```
 
 ## 6. TBtrans's own file, with sisl

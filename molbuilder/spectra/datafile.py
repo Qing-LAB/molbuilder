@@ -57,25 +57,29 @@ except ImportError:                         # beside a job, in a bundle
                         unnumber_attr, write_group)
     from persist import write_bytes
 
-DATA_SCHEMA = "molbuilder/spectra-data@3"
+DATA_SCHEMA = "molbuilder/spectra-data@4"
 #: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
 #: the same variables without its atom index map, read as it is and never
 #: rewritten -- its map made as it is read (`engines/vibration.md`
 #: § 6.10.5; `model/overview.md` § 2.2b, F3); one written before 2.33.2
-#: (``@1``, ``@2``) names four axes' values otherwise (:data:`_EARLIER`).
+#: (``@1``, ``@2``) names four axes' values otherwise, and before 2.33.3
+#: (``@3``) the temperatures' (:data:`_EARLIER`).
 READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1",
-                         "molbuilder/spectra-data@2", DATA_SCHEMA)
-#: AN AXIS'S VALUES AS AN EARLIER SCHEMA NAMED THEM -- before every axis was
-#: a coordinate of its own name (`model/datafiles.md` § 2).
-_EARLIER = {"mode": "index_1based", "free_atom": "free_atom_index",
-            "es": "mode_index_1based", "temperature": "temperatures_K"}
+                         "molbuilder/spectra-data@2",
+                         "molbuilder/spectra-data@3", DATA_SCHEMA)
+#: AN AXIS'S VALUES AS EARLIER SCHEMAS NAMED THEM, newest first -- before
+#: every axis was a coordinate of its own name, and before an axis's name
+#: carried its unit (`model/datafiles.md` § 2a, rule 5).
+_EARLIER = {"mode": ("index_1based",), "free_atom": ("free_atom_index",),
+            "es": ("mode_index_1based",),
+            "temperature_k": ("temperature", "temperatures_K")}
 
 
 def _axis(variables: Mapping[str, Any], name: str) -> Any:
     """Axis ``name``'s values among ``variables``, as this schema names
     them or an earlier one did (:data:`_EARLIER`)."""
-    return (variables[name] if name in variables
-            else variables[_EARLIER[name]])
+    return next(variables[n] for n in (name, *_EARLIER.get(name, ()))
+                if n in variables)
 
 #: The fill of an integer attribute that can be not stated.
 _INT_FILL = -1
@@ -311,9 +315,9 @@ def _es_vars() -> Tuple[Var, ...]:
 
 def _grid_vars() -> Tuple[Var, ...]:
     return (
-        Var("temperature", ("temperature",), "coordinate", "K",
+        Var("temperature_k", ("temperature_k",), "coordinate", "K",
             "the temperature", "each temperature the curves are drawn at"),
-        *(Var(name, ("temperature",), "derived", units, long_name,
+        *(Var(name, ("temperature_k",), "derived", units, long_name,
               definition)
           for name, units, long_name, definition in _GRID_CURVES),
     )
@@ -371,7 +375,6 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         if "count" in removed:
             attrs["removed_motions_count"] = int(removed["count"])
         ds.setncatts(attrs)
-        ds.createDimension("xyz", 3)
 
         # /structure -- the arrays an analysis reaches for, and the structure
         # whole as its one serialiser states it.
@@ -411,7 +414,8 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             values["held"][i] = 1
         if eq.get("masses_amu") is not None:
             values["mass_amu"][:] = np.asarray(eq["masses_amu"], dtype=float)
-        write_group(g, {"atom": atoms, "cell_vector": 3}, vars_, values)
+        write_group(g, {"atom": atoms, "cell_vector": 3, "xyz": 3}, vars_,
+                    values)
         g.setncattr("structure_json", json_attr(structure))
 
         # /equilibrium -- the energy subgroup, whole or not at all (§ 6.2).
@@ -430,9 +434,9 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         g = ds.createGroup("modes")
         n_free = len(free)
         dims = {"mode": len(modes), "free_atom": n_free,
-                "removed": len(patterns)}
+                "removed": len(patterns), "xyz": 3}
         vars_ = _mode_vars()
-        values = _fill(vars_, {**dims, "xyz": 3})
+        values = _fill(vars_, dims)
         values["free_atom"][:] = free
         values["xyz"][:] = ["x", "y", "z"]
         values["removed"][:] = np.arange(len(patterns))
@@ -488,8 +492,8 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         if grid:
             temps = [float(t) for t in grid.get("temperatures_K") or ()]
             vars_ = _grid_vars()
-            values = _fill(vars_, {"temperature": len(temps)})
-            values["temperature"][:] = temps
+            values = _fill(vars_, {"temperature_k": len(temps)})
+            values["temperature_k"][:] = temps
             unknown = sorted(k for k in grid if k != "temperatures_K"
                              and k not in {n for n, *_ in _GRID_CURVES})
             if unknown:
@@ -499,7 +503,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             for name, *_ in _GRID_CURVES:
                 if name in grid:
                     values[name][:] = np.asarray(grid[name], dtype=float)
-            write_group(gg, {"temperature": len(temps)}, vars_, values)
+            write_group(gg, {"temperature_k": len(temps)}, vars_, values)
             gg.setncattr("curves", json_attr([n for n, *_ in _GRID_CURVES
                                               if n in grid]))
         data = as_bytes(ds)
@@ -618,7 +622,7 @@ def read_spectra_data(path) -> Dict[str, Any]:
         if "curves" in gg.ncattrs():
             gv = read_variables(gg)
             grid = {"temperatures_K": [float(t) for t in
-                                       _axis(gv, "temperature")["data"]]}
+                                       _axis(gv, "temperature_k")["data"]]}
             for name in json.loads(str(gg.getncattr("curves"))):
                 grid[name] = [float(x) for x in gv[name]["data"]]
             thermo["grid"] = grid

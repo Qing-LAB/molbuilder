@@ -2689,12 +2689,19 @@ def _probe_consent_merge(before, probed, *, yes: bool):
                       probed.site.partition,
                       lambda: setattr(probed.site, "partition",
                                       before.site.partition)))
-    # THE FOUR FACTS THAT TRAVEL WITH A RECORD (`diagnostics.local_facts`:
-    # how the machine enters its environment, which envs it holds, what they
-    # were built for, whether its manager's `run` enters one) are asked
-    # about like every other difference: a record edited by hand is a
-    # person's answer.
-    for _f in ("env_init", "conda_envs", "env_arch", "manager_run"):
+    # HOW THE MACHINE ENTERS ITS ENVIRONMENT is this machine's
+    # molbuilder.json's, which molbuilder runs with here: copied as it
+    # stands, asked nothing, and said when it changed (`configuration.md`
+    # § 4, M-6).
+    entered = before.env_init != probed.env_init
+    if entered:
+        click.echo(f"\nenv_init: copied from this machine's molbuilder.json "
+                   f"-- recorded {before.env_init!r} -> {probed.env_init!r}")
+    # THE THREE MEASURED FACTS THAT TRAVEL WITH A RECORD
+    # (`diagnostics.local_facts`: which envs it holds, what they were built
+    # for, whether its manager's `run` enters one) are asked about like
+    # every other difference.
+    for _f in ("conda_envs", "env_arch", "manager_run"):
         b, pv = getattr(before, _f), getattr(probed, _f)
         if b != pv:
             diffs.append((_f, b, pv,
@@ -2709,7 +2716,9 @@ def _probe_consent_merge(before, probed, *, yes: bool):
             lambda: setattr(probed, "domains", list(before.domains))))
 
     if not diffs:
-        click.echo("\nthe record already says this -- refreshing "
+        click.echo("\nnothing else differs -- refreshing detected_at."
+                   if entered else
+                   "\nthe record already says this -- refreshing "
                    "detected_at only.")
         return probed
 
@@ -2770,7 +2779,7 @@ def migrate_cmd(bundle: str) -> None:
     from ..calcdirs import described as _described
     from .migrate import CURRENT, MigrateError, migrate_state
     try:
-        said, wrote = migrate_state(bundle)
+        said = migrate_state(bundle)
     except MigrateError as exc:
         # A REFUSAL IS WRITTEN DOWN, in a described calculation's own ledger
         # (`architecture.md` § 2.1, floor 7).
@@ -2782,15 +2791,6 @@ def migrate_cmd(bundle: str) -> None:
         if _described(bundle):
             _ledger(bundle, "migrate", "current", reason=CURRENT)
         click.echo(f"{bundle} is current -- {CURRENT}.")
-        return
-    if not wrote:
-        # WHAT IS LEFT AS IT IS, said and written down -- never current.
-        if _described(bundle):
-            _ledger(bundle, "migrate", "left", reason="; ".join(said))
-        click.echo(f"{bundle}: nothing written -- what an older molbuilder "
-                   f"wrote and this one leaves as it is:")
-        for line in said:
-            click.echo(f"  {line}")
         return
     click.echo(f"migrated {bundle}:")
     for line in said:

@@ -897,9 +897,11 @@ names and copied to where you prep — and every prep reads it from the TARGET's
 record. **It is required** *(user, 2026-10-03: "this is required explicitly")*:
 `jobset probe --write` refuses on a machine whose `molbuilder.json` states no
 `env_init.activation`, naming `molbuilder envs init-config`, so a record is
-never written without the copy and never keeps one from an earlier probe. A
-copy that is wrong for the machine it describes is edited by hand, in that
-record.
+never written without the copy and never keeps one from an earlier probe.
+**A probe copies it as it stands, and asks nothing** *(user, 2026-10-24)*:
+it is what molbuilder itself runs with on that machine, so it is right there
+by construction; the probe says when the copy changed. To change it, change
+that machine's `molbuilder.json` and probe again.
 
 **Every key the file may hold.** A key not in this table is refused, never
 ignored — inside a section as at the top level, one sentence naming what the
@@ -1172,8 +1174,8 @@ second read returning a plain `dict`.
 
 § 3's rule is *TOML when a person reads and edits it* — the reason
 `<label>.template.toml` and `warm-files.toml` are TOML. Under M-1 no person
-edits `environment.json` but to correct a copied `env_init` (§ 4): a probe
-writes it and a person re-probes. A
+edits `environment.json`: a probe writes it — `env_init` copied from that
+machine's `molbuilder.json` (§ 4) — and a person re-probes. A
 machine-written, machine-read file stays JSON.
 
 The cost of doing otherwise is concrete rather than aesthetic. `tomllib` reads
@@ -1200,7 +1202,9 @@ recorded `4` is one keystroke. EOF keeps everything — a scripted probe
 without `--yes` changes nothing (silence is no, the standing doctrine) —
 and `--yes` takes every probed value. The reachable-domain **set** is one
 question, not one per row; so is the scheduler — its kind and where its
-commands are, one fact. `detected_at`/`source` follow the new probe: the
+commands are, one fact. **`env_init` is not asked about**: it is copied from
+this machine's `molbuilder.json` as it stands (§ 4), the change said.
+`detected_at`/`source` follow the new probe: the
 kept values were re-confirmed now, and the stamp says when the record was last
 looked at — but **a declared fact kept stays declared** *(user, 2026-10-03)*:
 `source` is noted per section, and a section whose kept value was declared

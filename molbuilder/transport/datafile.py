@@ -44,7 +44,7 @@ from .stages import same_volts
 #: provenance (`engines/transport.md` § 2a.12, *Export*; the user,
 #: 2026-10-23).  An older file is refused by its version, and `summarize
 #: task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@4"
+DATA_SCHEMA = "molbuilder/transport-data@5"
 
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
@@ -330,6 +330,12 @@ def _variables() -> Tuple[Var, ...]:
             "the last NEGF cycle's charges", "column by column, as "
             "TranSIESTA printed them", source="the device point's SIESTA "
             "output"),
+        Var("device_d_change_from_0v", ("frame", "bias_v"), "derived", "e",
+            "the bridge's charge change from 0 V",
+            "D(V) - D(0 V): the bridge's net Mulliken population (the D "
+            "column of device_charge) at this voltage less the same "
+            "frame's at 0 V; not stated where the frame has no finished "
+            "0 V point (engines/transport.md 2a.12)"),
         Var("device_contour_poles", ("frame", "bias_v"), "raw", "1",
             "the equilibrium contour's poles", "as TranSIESTA echoed it",
             source="the device point's SIESTA output", dtype="i4", fill=-1),
@@ -683,14 +689,7 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     attrs["iv_notes"] = json_attr([
         {**n, "frame": 0 if n["frame"] is None else int(n["frame"])}
         for n in iv_notes_placed(iv)])
-    # THE LEADS COMPARED, THE FERMI FRAMES, EACH RUN'S TOLERANCES (§ 2a.12).
-    leads_agree = record.get("leads") or {}
-    for key, name in (("differ_ev", "leads_ef_differ_ev"),
-                      ("agree", "leads_ef_agree"),
-                      ("tolerance_ev", "leads_ef_tolerance_ev")):
-        if leads_agree.get(key) is not None:
-            attrs[name] = (int(leads_agree[key]) if key == "agree"
-                           else float(leads_agree[key]))
+    # THE FERMI FRAMES, EACH RUN'S TOLERANCES (§ 2a.12).
     attrs["fermi_frames"] = json_attr(record.get("fermi_frames") or {})
     attrs["scf_criteria"] = json_attr(
         {name: by_stage[name]["scf_criteria"] for name in TRANSPORT_STAGES
@@ -744,6 +743,8 @@ def _device_facts(device: Dict, runs: Sequence[Dict],
                             (negf.get("energy"), "device_energy_ev"),
                             (negf.get("cycles"), "device_negf_cycles"),
                             (negf.get("dq"), "device_dq"),
+                            (negf.get("d_change_from_0v_e"),
+                             "device_d_change_from_0v"),
                             (contour.get("poles"), "device_contour_poles"),
                             (line.get("emin_ev"), "device_neq_emin_ev"),
                             (line.get("emax_ev"), "device_neq_emax_ev"),

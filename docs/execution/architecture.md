@@ -1201,8 +1201,9 @@ init-config` asks for it at install —
 ```
 
 and `jobset probe --write` copies it into the record it writes. A record without
-one is refused at prep, saying where to declare it; a copy that is wrong for its
-machine is edited by hand, in that record.
+one is refused at prep, saying where to declare it; to change a copy, change that
+machine's `molbuilder.json` and probe again — the probe copies it as it stands,
+asking nothing ([`configuration.md`](?doc=configuration.md) § 4).
 
 **Why no default:** the wrapper runs in a non-interactive shell that never reads
 your `~/.bashrc`, so `conda activate` is an undefined function unless something

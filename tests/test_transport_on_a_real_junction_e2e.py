@@ -2085,6 +2085,14 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
             for k, q in (r.get("charges") or {}).items():
                 assert V["device_scf_charge"][cell][c][parts.index(k)] == q
         assert json.loads(V["device_scf_phases"][cell]) == p["scf_phases"]
+    # THE BRIDGE'S CHARGE FROM 0 V -- each frame against its own 0 V point,
+    # the D column (engines/transport.md § 2a.12, *The device's charges*).
+    d = list(V["charge_part"]).index("D")
+    for f in range(V["device_charge"].shape[0]):
+        for b in range(len(_BIAS)):
+            assert V["device_d_change_from_0v"][f, b] == pytest.approx(
+                V["device_charge"][f, b, d] - V["device_charge"][f, 0, d],
+                abs=1e-9), (f, b)
     assert list(V["rung"]) == ["seed", "electrode_L", "electrode_R"]
     for r, name in enumerate(V["rung"]):
         rows = by[name]["scf"]
@@ -2096,7 +2104,6 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
     for p in rec["points"]:
         cell = (p["frame"], list(_BIAS).index(p["bias_v"]))
         assert V["point_state"][cell] == p["state"] == "finished", cell
-    assert got["attrs"]["leads_ef_differ_ev"] == rec["leads"]["differ_ev"]
     assert got["attrs"]["Conventions"] == "CF-1.8"
 
 
@@ -2550,11 +2557,12 @@ def test_summarize_keeps_each_points_reading_and_its_digest_reads_alone(
             assert ds.schema == DIGEST_SCHEMA
             assert ds.data_file == data.name
             assert int(ds.data_file_size) == data.stat().st_size
-            assert list(ds["energy"][:]) == p["dos"]["energy_ev"]
+            assert list(ds["energy_ev"][:]) == p["dos"]["energy_ev"]
             dos = np.asarray(ds["DOS"][:], dtype=float)
             assert np.allclose(dos.sum(axis=1), p["dos"]["total"],
                                rtol=_PRINTED_AND_SINGLE_RTOL, atol=0)
-            assert set(ds["column_atom"][:]) <= set(ds["device_atom"][:])
+            assert (set(ds["device_orbital_atom"][:])
+                    <= set(ds["device_atom"][:]))
             assert list(ds["element"][:]) == ["H"] * len(_LISTED)
             assert ds["position"].shape == (len(_LISTED), 3)
             assert list(ds["transmission"][:]) == p["transmission"]

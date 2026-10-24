@@ -128,16 +128,6 @@
  * and the row reads quieter than a point with a result. */
 .transport-pending td { color: var(--text-muted); font-style: italic; }
 
-/* Two leads are bulk runs of the same metal; their Fermi levels disagreeing
- * is a real defect, so it wears the warning vocabulary rather than prose. */
-.transport-warn {
-    margin: 0;
-    padding: var(--space-sm);
-    border-left: 3px solid var(--warning);
-    background: var(--surface-recessed);
-    font-size: var(--text-sm);
-}
-
 /* The DFT–NEGF caveat travels with every result. */
 .transport-caveat {
     margin: 0;

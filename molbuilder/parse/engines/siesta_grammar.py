@@ -357,13 +357,11 @@ SCF_COLUMN_KEYS = {
     # matters.  An electrode
     # is a periodic BULK run and `engines/transport.md` says what it is for:
     # *"its E_F is the reference energy"*, the thing T(E) is measured
-    # relative to and `G = G0 * T(E_F)` is evaluated at.  `electrode_kz`
-    # defaults to 40 precisely because that is "the Fermi-level resolution",
-    # and changing it invalidates both lead stages and everything downstream
+    # relative to and `G = G0 * T(E_F)` is evaluated at.  Changing
+    # `electrode_kz` invalidates both lead stages and everything downstream
     # "because the lead's Fermi level moved".  A lead that converged tells a
     # reader almost nothing; its E_F tells them what the junction is
-    # referenced to -- and two leads that disagree is a defect nothing else
-    # on the Results tab would show.
+    # referenced to.
     #
     # They land in `Frame.scf_history` like every other column; the last
     # cycle's value is the converged one.

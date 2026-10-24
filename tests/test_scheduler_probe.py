@@ -78,22 +78,13 @@ def test_set_refuses_unknown_keys_and_mistyped_values_by_name(tmp_path):
     assert r.exit_code != 0 and "KEY=VALUE" in r.output
 
 
-#: How each machine enters its environment -- a fact the record carries,
-#: asked about like the rest (W52: replaced unasked, so a probe over Sol's
-#: record from a workstation put the workstation's hook into it).
-_SOL_ENTERS = {"activation": "source activate"}
-_DESK_ENTERS = {"activation": "conda activate"}
-
-
 def _two_envs():
     from molbuilder.scheduler import Environment, Topology
     before = Environment(scheduler=WORKSTATION,
                          topology=Topology(gpus_per_node=4, gpu_type="a100"),
-                         env_init=dict(_SOL_ENTERS),
                          detected_at="2026-08-01T00:00:00+00:00")
     probed = Environment(scheduler=WORKSTATION,
                          topology=Topology(gpus_per_node=1, gpu_type="rtx"),
-                         env_init=dict(_DESK_ENTERS),
                          detected_at="2026-08-19T00:00:00+00:00")
     return before, probed
 
@@ -115,7 +106,6 @@ def test_domains_diff_as_one_fact(monkeypatch, capsys):
     from molbuilder.jobset._cli import _probe_consent_merge
     before, probed = _two_envs()
     probed.topology = before.topology            # isolate the domains diff
-    probed.env_init = before.env_init
     probed.domains = [Domain(name="short", partition="p", qos="q",
                              max_time="1:00:00")]
     asked = []

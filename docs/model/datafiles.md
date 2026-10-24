@@ -45,9 +45,9 @@ by a second reader: it is that composition on its grid, for analysis.
 
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
-| `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same bytes | `molbuilder/transport-data@4` | `engines/transport.md` § 2a.12 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@3` (`@1`, `@2` read as they are) | `engines/vibration.md` § 6.10.5 |
-| `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@2` | `model/parse.md` § 5e |
+| `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same bytes | `molbuilder/transport-data@5` | `engines/transport.md` § 2a.12 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@4` (`@1`–`@3` read as they are) | `engines/vibration.md` § 6.10.5 |
+| `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@3` | `model/parse.md` § 5e |
 
 **An engine's NetCDF files molbuilder reads** come through the same door
 (§ 4): TBtrans's `<label>.TBT.nc` (through sisl, `sile=True`) and SIESTA's
@@ -63,12 +63,12 @@ named once, read by the writer and the reader alike:
 
 | field | what it says |
 |---|---|
-| name, dimensions | the variable, over its axes — every axis a coordinate of its own name, so a reader selects by value (`transmission.sel(bias_v=0.2)`) |
+| name, dimensions | the variable, over its axes — every axis a row of § 2a and a coordinate of its own name, so a reader selects by value (`transmission.sel(bias_v=0.2)`) |
 | `kind` | `given` (an input as stated), `raw` (as the engine printed it), `measured` (read off the structures — a frame set's rows, [`structure.md`](?doc=model/structure.md) § 2.2f), `derived` (molbuilder's computation), `state` (what happened: a run's state, why a value is missing), `coordinate` |
 | `units` · `long_name` · `definition` | one spelling a unit (`angstrom`, `A`, `eV`); what it is; how it is obtained — the formula for a derived one |
 | `source` | for a raw one, the file it was read from |
 | `auxiliary` | a label beside an axis (CF auxiliary coordinate, named in each variable's `coordinates`): an atom's element, a frame's folder |
-| `atom_index` | its values are atom indices, counting by the file's atom index map (`free_atom_index`, a digest's `column_atom`) |
+| `atom_index` | its values are atom indices, counting by the file's atom index map (`free_atom`, a digest's `device_orbital_atom`) |
 
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill (`empty`); a boolean an `int8`
@@ -77,11 +77,87 @@ nested record JSON text (`json_attr`). **The file says what it is**: its
 `schema`, and each chapter's attributes. A result with parts is written in
 groups (the vibration result's `/structure`, `/equilibrium`, `/modes`).
 
+## 2a. The axes — one name for one concept, in every file
+
+*(The user, 2026-10-24: "i need a document/contract with existing known axis
+and what to do in the future when more axis that is not in the document
+appears. name consistency should be explicit and documented.")*
+
+**Every axis of every data file is a row of the table below** — its name,
+what its points are, the values its coordinate holds, its units and the
+files that use it. The table is the one source: `ncdata.AXES` holds the same
+rows, and the one writer (§ 3) refuses a dimension that is not one of them,
+naming this section — in every file, every group, the root's included.
+
+**The rules:**
+
+1. **One concept, one name; one name, one concept** — in every file. The
+   energy relative to the leads' Fermi level is `energy_ev` in the transport
+   data file and in the digest alike; `xyz` is a Cartesian component wherever
+   it appears, and never a cell vector's.
+2. **How a name is made**: lowercase, words joined by `_`, singular. The
+   axis of a physical quantity names its unit, as a variable does
+   (`energy_ev`, `bias_v`, `temperature_k`); the axis of counted things names
+   the thing (`atom`, `mode`, `frame`); a subset of a counted thing is
+   `<subset>_<thing>` (`free_atom`, `device_atom`, `device_orbital`), its
+   coordinate the thing's own index.
+3. **Every axis has a coordinate of its own name**, so a reader selects by
+   value (`ds.sel(bias_v=0.2)`, `ds.sel(mode=7)`): a quantity's values; a
+   counted thing's index, its base said in the coordinate's `definition`;
+   labels as text (`x`, `y`, `z`). A second label of the same points (an
+   atom's element, a frame's folder) is an auxiliary coordinate beside it.
+   An atom index counts by the file's atom index map (§ 3; `atom_index`).
+4. **A new axis**: in the same change that first writes it, its row is added
+   here and to `ncdata.AXES` — its name made by rule 2 and checked against
+   every row for a concept already named. Until then the writer refuses it.
+5. **A row is never renamed in place.** Renaming an axis is a new `schema`
+   of every file that uses it; each file's reader keeps reading the old name
+   as the new one (the vibration data file's `_EARLIER`), so a file written
+   before still reads — but for a kept reading, which is out of date at
+   another version and made again from its source (the digest,
+   `model/parse.md` § 5e).
+
+| axis | its points | its coordinate's values | units (— labels) | files |
+|---|---|---|---|---|
+| `atom` | the atoms | each atom's index by the file's atom index map — the user index in the transport and vibration files, the engine index in the digest (`atoms_listed_by`), from 0 | 1 | transport, vibration (`/structure`), digest |
+| `free_atom` | the atoms a vibration moves | their atom indices, from 0 | 1 | vibration |
+| `device_atom` | the atoms of TranSIESTA's device region | their atom indices, from 0 | 1 | digest |
+| `atom_bound` | each atom's first orbital, and one past the last | from 0 to the atom count | 1 | digest |
+| `device_orbital` | the device region's orbitals, one DOS column each | each orbital's index in the geometry, from 0; its atom beside it (`device_orbital_atom`) | 1 | digest |
+| `xyz` | a Cartesian component | `x`, `y`, `z` | — | transport, vibration, digest |
+| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | vibration, digest |
+| `reciprocal_vector` | the reciprocal cell's three vectors — a k-point's reduced components | `b1`, `b2`, `b3` | — | digest |
+| `kpoint` | the k-points a reading averaged over | from 0 | 1 | digest |
+| `frame` | a frame set's frames | from 0, as MolView's API counts | 1 | transport |
+| `bias_v` | the voltages computed | each voltage | V | transport |
+| `iv_bias_v` | the I–V's voltages | each voltage | V | transport |
+| `energy_ev` | energy relative to the leads' Fermi level | each energy, ascending | eV | transport, digest |
+| `spin` | spin channels | `up` and `down` — or, unpolarized, the one channel by the spin its deck states | — | transport |
+| `lead` | the two leads | their names as TBtrans names them | — | transport, digest |
+| `region` | molbuilder's regions of the junction | `L-electrode`, `bridge`, `R-electrode` | — | transport |
+| `eigenchannel` | transmission eigenchannels | from 0, as TBtrans orders them | 1 | transport, digest |
+| `rung` | the rungs that run once | their stage names | — | transport |
+| `scf_cycle` | a run's SCF rows | from 0 | 1 | transport |
+| `charge_part` | TranSIESTA's charge columns | `D`, `E1`, `C1`, … as its `ts-q:` header names them | — | transport |
+| `mode` | vibrational modes | 1-based, ascending frequency | 1 | vibration |
+| `removed` | the rigid motions removed | from 0 | 1 | vibration |
+| `mo` | molecular orbitals | from 0, ascending energy | 1 | vibration |
+| `es` | the modes the electronic-structure probe ran on | each mode's 1-based index | 1 | vibration |
+| `window` | an orbital's place in the probe's window | from 0, ascending energy | 1 | vibration |
+| `temperature_k` | the thermochemistry's temperatures | each temperature | K | vibration |
+
+**Files written before these names** read as rule 5 says: the vibration
+data file's reader takes `@1`–`@3`'s names for the new ones; a digest before
+`@3` is out of date, read again from its `.TBT.nc`.
+
 ## 3. Writing — one writer
 
 `ncdata.write_group(group, dims, variables, values)` writes a group's
 dimensions and variables from the table, each with its attributes and its
-`coordinates`. **The atom axis is given as its atom index map, never a
+`coordinates`. **Every axis it creates or its variables use is a row of
+§ 2a** (`ncdata.AXES`), with a coordinate of its own name in the row's units
+— else it refuses, naming § 2a (`ncdata.check_axes`); a group states its own
+axes, never one its parent created. **The atom axis is given as its atom index map, never a
 count** (`dims={"atom": atoms, …}`, an `AtomIndexMap`): the writer states
 `atoms_listed_by`, `atom_index_base` and, where a column is missing,
 `atom_index_why` as the group's attributes, and `user_atom_index` /
@@ -159,7 +235,7 @@ same atoms.
 | file | where | holds | written / read | the framework at work |
 |---|---|---|---|---|
 | `T.TBT.nc` | each transmission point's folder | TBtrans's own data: everything per k-point, energy and orbital — gigabytes on a large junction | written by TBtrans; read **on a person's word only**, through the door with `sile=True`, **one k-point an access** (113 opens on Sol's AuBDTAu point: 1.4 s held, 5.6 s reopened), its version checked each step | the one door (§ 4); its atoms are its run's engine order, answered by the run's deck (`model/overview.md` § 2.2b, F3) |
-| `T.TBT.digest.nc` | beside it | the DOS per orbital, k-averaged once, and the facts the report needs (energies, the device's atoms, each column's atom) | written by that reading through `write_group`, **listed by engine index** with each atom's user index (the point's run's map, handed to the parser by the caller that knows the run); read by the report's DOS by region and a selection's PDOS, its map **checked against the composed junction's record** (F7) | the one writer, the atom axis as its map, `column_atom` / `device_atom` marked `atom_index` (§ 2, § 3) |
+| `T.TBT.digest.nc` | beside it | the DOS per orbital, k-averaged once, and the facts the report needs (energies, the device's atoms, each column's atom) | written by that reading through `write_group`, **listed by engine index** with each atom's user index (the point's run's map, handed to the parser by the caller that knows the run); read by the report's DOS by region and a selection's PDOS, its map **checked against the composed junction's record** (F7) | the one writer, the atom axis as its map, `device_orbital_atom` / `device_atom` marked `atom_index` (§ 2, § 3) |
 | `T.transport.nc` | the calculation's folder | every result on one grid — `frame` × `bias_v` × `energy_ev` (× `spin`, `region`, `lead`, `eigenchannel`, `scf_cycle`, `charge_part`), each run's state and SCF history, the calculation's own records — one shape for one structure at one voltage too | written by `summarize task` from the record's one composition (`record.collect_record`), the atom axis **listed by user index** with each atom's engine index from the junction's order record; read by `read_data_file`, `postprocess.read_transport_data`, and the export | the variable record (§ 2), the one writer (§ 3), the one door (§ 4) |
 | `T.transport-csv/` | where an export is asked to write it | the same as long tables, `atom.csv` with both index columns, `README.txt` | `ncdata.as_tables` of the data file's bytes, composed on request — the export reads no data file (`engines/transport.md` § 2a.12, *Export*) | the tables (§ 5) |
 
@@ -187,7 +263,9 @@ whole, written atomically.
 
 A new kind of result is a data file when a reader outside molbuilder needs
 its values on a grid. It is added as the three above were: a `Var` table in
-its own module, every variable with its units and words; one writer through
+its own module, every variable with its units and words, every axis a row of
+§ 2a — an axis already named there used by its name, a new one added there
+first; one writer through
 `write_group`, its atom axis — if it holds atoms — given as the map from the
 door that knows the atoms' columns (`model/overview.md` § 2.2b, F2); a
 `schema` string, versioned when a variable changes; its reader through

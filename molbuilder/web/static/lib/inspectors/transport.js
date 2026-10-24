@@ -713,6 +713,12 @@ const WORKSPACE_TAG = "results:transport";
                     bits.push("E_F " + _fmt(src.negf.ef, 3, false) + " eV");
                 if (src.negf.dq !== undefined)
                     bits.push("dQ " + _fmt(src.negf.dq, 2, true));
+                /* THE BRIDGE'S CHARGE FROM 0 V -- D(V) - D(0 V), the
+                 * record's (engines/transport.md § 2a.12). */
+                if (src.negf.d_change_from_0v_e !== undefined)
+                    bits.push("D − D(0 V) "
+                              + _fmt(src.negf.d_change_from_0v_e, 3, false)
+                              + " e");
             }
             line.appendChild(_el("span", "transport-stage-detail",
                                  " " + bits.join(" · ")));
@@ -780,18 +786,6 @@ const WORKSPACE_TAG = "results:transport";
          * never read as a mismatch (§ 2a.12). */
         if (rec.fermi_frames && rec.fermi_frames.note) {
             card.appendChild(_el("p", "transport-note", rec.fermi_frames.note));
-        }
-
-        /* TWO LEADS THAT DISAGREE is a defect nothing else shows -- the
-         * record's comparison (`record.leads_agreement`). */
-        const leads = rec.leads;
-        if (leads && !leads.agree) {
-            card.appendChild(_el("p", "transport-warn",
-                "The two electrodes' Fermi levels differ by "
-                + _fmt(leads.differ_ev, 3, false) + " eV (more than "
-                + leads.tolerance_ev + " eV). They are bulk runs of the "
-                + "same lead, so they should agree — T(E) is measured "
-                + "relative to this."));
         }
 
         /* THE CHAIN -- what each rung's attempt was gathered from

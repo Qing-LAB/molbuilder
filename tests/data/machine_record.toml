@@ -137,10 +137,9 @@ probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100"],
          ["--set", "gpus_per_node=1", "--set", "gpu_type=rtx"]]
 record_says = { topology = { gpus_per_node = 1, gpu_type = "rtx" } }
 
-# HOW A SHELL ENTERS AN ENVIRONMENT is asked about like every other
-# difference: the probe copies it from this machine's molbuilder.json, and a
-# record whose copy was corrected by hand (`configuration.md` § 4) holds a
-# person's answer.
+# HOW A SHELL ENTERS AN ENVIRONMENT is this machine's molbuilder.json's: the
+# probe copies it as it stands, asking nothing, and says when it changed
+# (`configuration.md` § 4, M-6).
 [[case]]
 name = "with no env_init in this machine's molbuilder.json the probe writes nothing -- it is required, and a record never keeps one from before"
 ends_at = "probe"
@@ -150,21 +149,14 @@ probe = [["--scheduler", "workstation"]]
 probe_refused = ["states no `env_init.activation`", "molbuilder envs init-config"]
 
 [[case]]
-name = "a record's env_init corrected by hand survives a probe nobody answers -- and the stamp follows the probe"
+name = "a probe nobody answers copies this machine's env_init over the record's, asking nothing, and says so -- and the stamp follows the probe"
 ends_at = "probe"
 machine_config = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }
 record = { env_init = { activation = "source activate", preamble = "module load mamba" }, detected_at = "2026-08-01T00:00:00+00:00" }
 probe = [{ flags = [], answers = "" }]
-record_says = { env_init = { activation = "source activate", preamble = "module load mamba" } }
-record_stamped = true
-
-[[case]]
-name = "...and --yes takes molbuilder.json's copy over it"
-ends_at = "probe"
-machine_config = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }
-record = { env_init = { activation = "source activate", preamble = "module load mamba" } }
-probe = [[]]
 record_says = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }
+probe_said = ["env_init: copied from this machine's molbuilder.json"]
+record_stamped = true
 
 [[case]]
 name = "a record that already says what the probe found is told so, and asked nothing"

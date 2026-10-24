@@ -60,7 +60,7 @@ from . import siesta_grammar as _G
 from .tbtrans import PRINTED_HALF_DECIMAL_EV, averaged_files, read_averaged
 
 #: The digest's schema, stated in it.
-DIGEST_SCHEMA = "molbuilder/tbt-digest@2"
+DIGEST_SCHEMA = "molbuilder/tbt-digest@3"
 #: The claims THIS PROCESS holds -- the readings its threads run, each by
 #: its claim's path and when it began: a claim naming this process and
 #: absent here is no reading of ours (a copy, a restored state).
@@ -311,8 +311,8 @@ def kept(path, *, need_user: bool = False) -> Optional[TransmissionResult]:
 #: What a kept reading is read back from: the digest's variables -- those
 #: every reading holds, then the rest (a data file with no device DOS has
 #: no columns).
-_HELD = ("energy", "firsto")
-_READING = _HELD + ("DOS", "column_orbital", "column_atom")
+_HELD = ("energy_ev", "firsto")
+_READING = _HELD + ("DOS", "device_orbital", "device_orbital_atom")
 
 
 def _digest(path: Path, part: Tuple[str, ...], *, need_user: bool = False
@@ -356,10 +356,10 @@ def _from_digest(path: Path, *, need_user: bool = False
     return TransmissionResult(
         **ParseResult.envelope(TBTransNcFileParser.name, path),
         channel=got["channel"],
-        energy_ev=tuple(float(e) for e in got["energy"]),
+        energy_ev=tuple(float(e) for e in got["energy_ev"]),
         dos=got["DOS"].astype(float) if "DOS" in got else None,
-        orbital=tuple(int(o) for o in got.get("column_orbital", ())),
-        atom=tuple(int(a) for a in got.get("column_atom", ())),
+        orbital=tuple(int(o) for o in got.get("device_orbital", ())),
+        atom=tuple(int(a) for a in got.get("device_orbital_atom", ())),
         firsto=tuple(int(o) for o in got["firsto"]),
         version=got["version"], kept=True,
         atom_index_map=got["atom_index_map"])
@@ -476,56 +476,81 @@ def _digest_variables(path: Path, result: TransmissionResult,
     if atoms.n_atoms != n_atoms:
         raise ValueError(f"{data}: its geometry holds {n_atoms} atoms; the "
                          f"map of its run states {atoms.n_atoms}")
-    dims = {"energy": len(result.energy_ev), "column": len(result.orbital),
-            "atom": atoms, "atom_bound": len(result.firsto), "axis": 3,
-            "cell_vector": 3, "kpoint": len(meta["wkpt"]),
-            "electrode": len(meta["electrodes"]),
+    # EVERY AXIS A ROW OF `ncdata.AXES`, its coordinate beside it
+    # (`model/datafiles.md` § 2a).
+    dims = {"energy_ev": len(result.energy_ev),
+            "device_orbital": len(result.orbital), "atom": atoms,
+            "atom_bound": len(result.firsto), "xyz": 3, "cell_vector": 3,
+            "reciprocal_vector": 3, "kpoint": len(meta["wkpt"]),
+            "lead": len(meta["electrodes"]),
             "device_atom": len(meta["device"])}
     rows = [
-        (Var("energy", ("energy",), "coordinate", "eV", "energy",
+        (Var("energy_ev", ("energy_ev",), "coordinate", "eV", "energy",
              "relative to the leads' Fermi level (TBtrans's E - E_F), at the "
              "data file's full precision, ascending", source=data),
          np.asarray(result.energy_ev, dtype=float)),
-        (Var("column_orbital", ("column",), "coordinate", "",
-             "each column's orbital", "0-based in the geometry",
-             dtype="i4", auxiliary=True),
+        (Var("device_orbital", ("device_orbital",), "coordinate", "1",
+             "the device orbital", "its index in the geometry, from 0 -- "
+             "one DOS column each, in sisl's sorted order", dtype="i4"),
          np.asarray(result.orbital, dtype="i4")),
-        (Var("column_atom", ("column",), "coordinate", "",
-             "each column's atom", "its engine index, 0-based in the "
-             "geometry", dtype="i4", auxiliary=True, atom_index=True),
+        (Var("device_orbital_atom", ("device_orbital",), "coordinate", "1",
+             "each device orbital's atom", "its engine index, from 0",
+             dtype="i4", auxiliary=True, atom_index=True),
          np.asarray(result.atom, dtype="i4")),
+        (Var("atom", ("atom",), "coordinate", "1", "atom index",
+             "the atom's engine index, from 0 -- the digest is listed by "
+             "engine index (atoms_listed_by); user_atom_index beside it "
+             "(model/overview.md 2.2b)", dtype="i4"),
+         np.arange(n_atoms, dtype="i4")),
+        (Var("atom_bound", ("atom_bound",), "coordinate", "1",
+             "an atom's orbital bound", "from 0 to the atom count: bound i "
+             "is atom i's first orbital, the last one past the last "
+             "orbital", dtype="i4"),
+         np.arange(n_atoms + 1, dtype="i4")),
         (Var("firsto", ("atom_bound",), "raw", "",
              "the geometry's first orbital of each atom",
              "0-based, and one past the last orbital", source=data,
              dtype="i4"),
          np.asarray(result.firsto, dtype="i4")),
-        (Var("position", ("atom", "axis"), "raw", "Angstrom",
+        (Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
+             "x, y, z", dtype=str),
+         np.asarray(["x", "y", "z"], dtype=object)),
+        (Var("cell_vector", ("cell_vector",), "coordinate", "",
+             "lattice vector", "a, b, c", dtype=str),
+         np.asarray(["a", "b", "c"], dtype=object)),
+        (Var("reciprocal_vector", ("reciprocal_vector",), "coordinate", "",
+             "reciprocal lattice vector", "b1, b2, b3", dtype=str),
+         np.asarray(["b1", "b2", "b3"], dtype=object)),
+        (Var("position", ("atom", "xyz"), "raw", "Angstrom",
              "each atom's position", "x, y, z", source=data),
          np.asarray(meta["xyz"], dtype=float)),
-        (Var("cell", ("cell_vector", "axis"), "raw", "Angstrom",
+        (Var("cell", ("cell_vector", "xyz"), "raw", "Angstrom",
              "the cell's three vectors", "one a row", source=data),
          np.asarray(meta["cell"], dtype=float)),
-        (Var("device_atom", ("device_atom",), "coordinate", "",
+        (Var("device_atom", ("device_atom",), "coordinate", "1",
              "the atoms of the device region", "their engine indices, "
              "0-based in the geometry", source=data, dtype="i4",
              atom_index=True),
          np.asarray(meta["device"], dtype="i4")),
-        (Var("kpt", ("kpoint", "axis"), "raw", "reduced",
+        (Var("kpoint", ("kpoint",), "coordinate", "1", "k-point index",
+             "from 0, in the data file's order", dtype="i4"),
+         np.arange(len(meta["wkpt"]), dtype="i4")),
+        (Var("kpt", ("kpoint", "reciprocal_vector"), "raw", "reduced",
              "the k-points averaged over", "in the cell's reciprocal "
              "vectors", source=data),
          np.asarray(meta["kpt"], dtype=float)),
         (Var("wkpt", ("kpoint",), "raw", "", "each k-point's weight",
              "the data file's own; they sum to 1", source=data),
          np.asarray(meta["wkpt"], dtype=float)),
-        (Var("electrode", ("electrode",), "coordinate", "",
-             "each electrode's name", "as its TS.Elecs block names it",
+        (Var("lead", ("lead",), "coordinate", "",
+             "each lead's name", "as its TS.Elecs block names it",
              source=data, dtype=str),
          np.asarray(meta["electrodes"], dtype=object)),
-        (Var("electrode_mu", ("electrode",), "raw", "eV",
-             "each electrode's chemical potential", "", source=data),
+        (Var("lead_mu", ("lead",), "raw", "eV",
+             "each lead's chemical potential", "", source=data),
          np.asarray(meta["mu_ev"], dtype=float)),
-        (Var("electrode_kT", ("electrode",), "raw", "eV",
-             "each electrode's electronic temperature", "", source=data),
+        (Var("lead_kT", ("lead",), "raw", "eV",
+             "each lead's electronic temperature", "", source=data),
          np.asarray(meta["kT_ev"], dtype=float)),
     ]
     if meta["elements"]:
@@ -536,7 +561,8 @@ def _digest_variables(path: Path, result: TransmissionResult,
                          auxiliary=True),
                      np.asarray(meta["elements"], dtype=object)))
     if result.dos is not None:
-        rows.append((Var("DOS", ("energy", "column"), "derived", "1/eV",
+        rows.append((Var("DOS", ("energy_ev", "device_orbital"), "derived",
+                         "1/eV",
                          "the device's DOS per device orbital",
                          "averaged over the k-points: each k-point's DOS "
                          "times its weight (wkpt), summed in double "
@@ -549,15 +575,19 @@ def _digest_variables(path: Path, result: TransmissionResult,
             ("transmission", "transmission", "the k-averaged transmission"),
             ("dos", "dos_total", "the device's k-averaged DOS")):
         if key in av:
-            rows.append((Var(name, ("energy",), "raw",
+            rows.append((Var(name, ("energy_ev",), "raw",
                              "1/eV" if key == "dos" else "", what,
                              "TBtrans's own average, as it printed it",
                              source=files[key]),
                          np.asarray(av[key], dtype=float)))
     if "eigenchannels" in av:
         dims["eigenchannel"] = len(av["eigenchannels"])
+        rows.append((Var("eigenchannel", ("eigenchannel",), "coordinate",
+                         "1", "eigenchannel", "counted from 0, as TBtrans "
+                         "orders them", dtype="i4"),
+                     np.arange(len(av["eigenchannels"]), dtype="i4")))
         rows.append((Var("eigenchannel_transmission",
-                         ("eigenchannel", "energy"), "raw", "",
+                         ("eigenchannel", "energy_ev"), "raw", "",
                          "each eigenchannel's k-averaged transmission",
                          "TBtrans's own average, as it printed it",
                          source=files["eigenchannels"]),
@@ -565,9 +595,9 @@ def _digest_variables(path: Path, result: TransmissionResult,
     for key, what in (("lead_spectral", "spectral DOS"),
                       ("lead_bulk", "bulk DOS")):
         for lead, values in av.get(key, {}).items():
-            rows.append((Var(f"{key}_dos_{lead}", ("energy",), "raw",
+            rows.append((Var(f"{key}_dos_{lead}", ("energy_ev",), "raw",
                              "1/eV",
-                             f"the {lead} electrode's k-averaged {what}",
+                             f"the {lead} lead's k-averaged {what}",
                              "TBtrans's own average, as it printed it",
                              source=files[key][lead]),
                          np.asarray(values, dtype=float)))
@@ -618,82 +648,6 @@ def _write_digest(path: Path, result: TransmissionResult,
         ds.setncatts(attrs)
         data = as_bytes(ds)
     write_bytes(digest_of(path), data)
-
-
-#: The digest schema written before its atom index map (2.31.x).
-DIGEST_SCHEMA_BEFORE_MAP = "molbuilder/tbt-digest@1"
-
-
-def digest_states_no_map(path) -> bool:
-    """Whether data file ``path``'s digest was written before its atom index
-    map (``tbt-digest@1``) -- what `jobset migrate` rewrites; ``False`` for
-    no digest or another schema's.  A digest that does not open answers
-    ``False`` too: it is no kept reading, and the next reading writes it
-    whole (`model/parse.md` § 5e)."""
-    from molbuilder.ncdata import reading
-    digest = digest_of(path)
-    if not digest.is_file():
-        return False
-    try:
-        with reading(digest) as ds:
-            return getattr(ds, "schema", "") == DIGEST_SCHEMA_BEFORE_MAP
-    except OSError:
-        return False
-
-
-def digest_with_map(path, atoms) -> Optional[bytes]:
-    """THE DIGEST OF DATA FILE ``path`` WRITTEN BEFORE ITS ATOM INDEX MAP
-    (``tbt-digest@1``, a reading of the file as it is), as ``@2`` bytes with
-    ``atoms`` -- its run's map -- stated (`model/overview.md` § 2.2b): every
-    variable and attribute as it holds them, through the one writer
-    (`ncdata.write_group`), the indices it counts marked; the data file never
-    read.  ``None`` where there is nothing to rewrite: no digest, another
-    schema's, or one not of the file as it is (read again)."""
-    import numpy as np
-    from molbuilder.ncdata import (NC_LOCK, Var, as_bytes, in_memory,
-                                   reading, write_group)
-    path = Path(path)
-    digest = digest_of(path)
-    if not digest.is_file():
-        return None
-    with reading(digest) as ds:
-        if (getattr(ds, "schema", "") != DIGEST_SCHEMA_BEFORE_MAP
-                or (int(ds.data_file_size), int(ds.data_file_mtime_ns))
-                != _version(path)
-                or not all(v in ds.variables for v in _HELD)):
-            return None
-        ds.set_auto_mask(False)
-        labels = {name for v in ds.variables.values()
-                  if "coordinates" in v.ncattrs()
-                  for name in str(v.getncattr("coordinates")).split()}
-        dims = {name: len(d) for name, d in ds.dimensions.items()}
-        variables, values = [], {}
-        for name, v in ds.variables.items():
-            said = {k: v.getncattr(k) for k in v.ncattrs()}
-            dtype = str if v.dtype is str else np.dtype(v.dtype).str[1:]
-            variables.append(Var(
-                name, tuple(v.dimensions), str(said.get("kind", "")),
-                str(said.get("units", "")), str(said.get("long_name", "")),
-                str(said.get("definition", "")),
-                source=str(said.get("source", "")), dtype=dtype,
-                auxiliary=name in labels,
-                fill=(said["_FillValue"] if "_FillValue" in said
-                      and dtype in ("i1", "i2", "i4", "i8") else None),
-                flag="flag_values" in said,
-                atom_index=name in ("column_atom", "device_atom")))
-            values[name] = np.asarray(v[...])
-        attrs = {k: ds.getncattr(k) for k in ds.ncattrs()
-                 if k != "atom_order"}
-    if atoms.n_atoms != dims.get("atom"):
-        raise ValueError(f"{digest.name}: its geometry holds "
-                         f"{dims.get('atom')} atoms; its run's map states "
-                         f"{atoms.n_atoms}")
-    attrs["schema"] = DIGEST_SCHEMA
-    with NC_LOCK:
-        out = in_memory(digest.name)
-        write_group(out, {**dims, "atom": atoms}, variables, values)
-        out.setncatts(attrs)
-        return as_bytes(out)
 
 
 class TBTransNcFileParser(FileParser):
@@ -820,6 +774,5 @@ def point_averages(folder, label: str, *, pair: str,
 
 
 __all__ = ["TBTransNcFileParser", "ReadingClaimed", "Kept", "DIGEST_SCHEMA",
-           "DIGEST_SCHEMA_BEFORE_MAP", "digest_with_map",
            "channel_of", "digest_of", "data_files", "kept_state", "kept",
            "claim_words", "energies", "point_averages"]

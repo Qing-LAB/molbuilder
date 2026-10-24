@@ -2423,16 +2423,16 @@ The NetCDF is for analysis and for loading a large result fast —
 so a molbuilder read of the same file in the same kernel is never refused
 (one handle at a time, [`model/datafiles.md`](?doc=model/datafiles.md) § 4).
 
-Every axis is a coordinate of its own name, so a reader selects by value —
-`.sel(mode=7)`, `.sel(temperature=298.15)` ([`model/datafiles.md`](?doc=model/datafiles.md)
-§ 2).
+Every axis is a coordinate of its own name, each a row of
+[`model/datafiles.md`](?doc=model/datafiles.md) § 2a, so a reader selects by
+value — `.sel(mode=7)`, `.sel(temperature_k=298.15)`.
 
 ```text
-/                     dim xyz(3); each group its own dims -- atom and
-                      cell_vector in /structure, free_atom, mode, removed in
-                      /modes, mo in /equilibrium, es and window in
-                      /modes/electronic_structure, temperature in /thermo/grid
-                      attributes: schema "molbuilder/spectra-data@3", json_sha256,
+/                     each group its own dims -- atom, cell_vector and xyz in
+                      /structure, free_atom, mode, removed and xyz in /modes,
+                      mo in /equilibrium, es and window in
+                      /modes/electronic_structure, temperature_k in /thermo/grid
+                      attributes: schema "molbuilder/spectra-data@4", json_sha256,
                       spectra_schema_version 10, engine, engine_version,
                       molbuilder_version, timestamp, label, methods_text,
                       bibliography_keys; the scalar blocks -- phase_*, ir_route,
@@ -2463,12 +2463,12 @@ Every axis is a coordinate of its own name, so a reader selects by value —
                       es(es) -- the mode's 1-based index  window(window)
 /thermo               regime, temperature_K, pressure_atm, zpe_eh, h_eh, s_eh_k,
                       g_eh, ... (attributes)
-    /thermo/grid      temperature(temperature) in K: every curve of § 4.7
+    /thermo/grid      temperature_k(temperature_k) in K: every curve of § 4.7
 ```
 
-A file written before 2.33.2 (`spectra-data@1`, `@2`) names four axes' values
-otherwise — `index_1based`, `free_atom_index`, `mode_index_1based`,
-`temperatures_K` — and is read as it is.
+A file of an earlier version is read as it is: `spectra-data@1` and `@2`
+name four axes' values `index_1based`, `free_atom_index`, `mode_index_1based`
+and `temperatures_K`; `@3` names the temperatures `temperature`.
 
 **The atoms are listed by user index, and the file says so** *(since
 2.32.0 — [`model/overview.md`](?doc=model/overview.md) § 2.2b)*: `/structure`

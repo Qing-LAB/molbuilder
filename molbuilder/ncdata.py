@@ -6,7 +6,10 @@ and the tables every NetCDF file molbuilder writes or opens shares
 
 MODULE  ncdata (L1; numpy, netCDF4 and persist)
 ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
-        derived, state, coordinate), its units, its words; :func:`empty` --
+        derived, state, coordinate), its units, its words; :data:`AXES` --
+        every axis of every data file, one name for one concept, which
+        :func:`check_axes` holds every group to (`model/datafiles.md` § 2a);
+        :func:`empty` --
         the array a variable starts as, its fill stated; :func:`write_group`
         -- a group's dimensions and variables written from a table of
         :class:`Var`, each with its attributes and its CF ``coordinates``,
@@ -112,6 +115,81 @@ _MAP_VARS = (
 )
 
 
+@dataclass(frozen=True)
+class Axis:
+    """One axis of the data files (`model/datafiles.md` § 2a): its name,
+    what its points are, and its coordinate's units -- ``1`` an index, the
+    empty string labels."""
+    name: str
+    points: str
+    units: str
+
+
+#: EVERY AXIS OF EVERY DATA FILE, one name for one concept
+#: (`model/datafiles.md` § 2a, its rows in its order): the one writer
+#: refuses a dimension that is not one of them, and one without its
+#: coordinate.  A new axis is a row here and there, in the change that first
+#: writes it.
+AXES: Dict[str, Axis] = {a.name: a for a in (
+    Axis(ATOM_AXIS, "the atoms", "1"),
+    Axis("free_atom", "the atoms a vibration moves", "1"),
+    Axis("device_atom", "the atoms of TranSIESTA's device region", "1"),
+    Axis("atom_bound", "each atom's first orbital, and one past the last",
+         "1"),
+    Axis("device_orbital", "the device region's orbitals", "1"),
+    Axis("xyz", "a Cartesian component", ""),
+    Axis("cell_vector", "the cell's three vectors", ""),
+    Axis("reciprocal_vector", "the reciprocal cell's three vectors", ""),
+    Axis("kpoint", "the k-points a reading averaged over", "1"),
+    Axis("frame", "a frame set's frames", "1"),
+    Axis("bias_v", "the voltages computed", "V"),
+    Axis("iv_bias_v", "the I-V's voltages", "V"),
+    Axis("energy_ev", "energy relative to the leads' Fermi level", "eV"),
+    Axis("spin", "spin channels", ""),
+    Axis("lead", "the two leads", ""),
+    Axis("region", "molbuilder's regions of the junction", ""),
+    Axis("eigenchannel", "transmission eigenchannels", "1"),
+    Axis("rung", "the rungs that run once", ""),
+    Axis("scf_cycle", "a run's SCF rows", "1"),
+    Axis("charge_part", "TranSIESTA's charge columns", ""),
+    Axis("mode", "vibrational modes", "1"),
+    Axis("removed", "the rigid motions removed", "1"),
+    Axis("mo", "molecular orbitals", "1"),
+    Axis("es", "the modes the electronic-structure probe ran on", "1"),
+    Axis("window", "an orbital's place in the probe's window", "1"),
+    Axis("temperature_k", "the thermochemistry's temperatures", "K"),
+)}
+
+
+def check_axes(dims: Mapping[str, Any], variables: Sequence[Var]) -> None:
+    """EVERY AXIS A ROW OF :data:`AXES`, WITH ITS COORDINATE
+    (`model/datafiles.md` § 2a): each dimension a group creates or its
+    variables use is one of them, and has a coordinate of its own name among
+    the group's variables, in its axis's units -- else refused, naming the
+    section where a new axis is added."""
+    used = list(dict.fromkeys([*dims, *(d for v in variables
+                                         for d in v.dims)]))
+    unknown = [d for d in used if d not in AXES]
+    if unknown:
+        raise ValueError(
+            f"axis {', '.join(unknown)} is not an axis of the data files: "
+            f"its row is added to model/datafiles.md § 2a and ncdata.AXES "
+            f"first")
+    coordinate = {v.name: v for v in variables
+                  if v.kind == "coordinate" and v.dims == (v.name,)}
+    for d in used:
+        if d not in coordinate:
+            raise ValueError(
+                f"axis {d} has no coordinate of its own name: every axis "
+                f"has one, so a reader selects by value "
+                f"(model/datafiles.md § 2a, rule 3)")
+        if coordinate[d].units != AXES[d].units:
+            raise ValueError(
+                f"axis {d}'s coordinate states units "
+                f"{coordinate[d].units!r}; the axis is in "
+                f"{AXES[d].units!r} (model/datafiles.md § 2a)")
+
+
 #: The fill an integer flag takes where a cell is not stated.
 FLAG_FILL = -1
 
@@ -193,7 +271,9 @@ def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
     ``atoms_listed_by`` and ``atom_index_base`` as the group's attributes,
     each column it knows as a variable on the axis -- and an axis given as
     a bare number is refused, as is a map whose atom count is not the
-    axis's."""
+    axis's.  **Every axis is a row of** :data:`AXES` **with its coordinate**
+    (:func:`check_axes`)."""
+    check_axes(dims, variables)
     atoms = dims.get(ATOM_AXIS)
     if atoms is not None and not isinstance(atoms, AtomIndexMap):
         raise ValueError(
@@ -471,7 +551,7 @@ def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
     return tables, "\n".join(lines) + "\n"
 
 
-__all__ = ["Var", "ATOM_AXIS", "FLAG_FILL", "NC_LOCK", "as_tables", "empty",
+__all__ = ["Var", "Axis", "AXES", "check_axes", "ATOM_AXIS", "FLAG_FILL", "NC_LOCK", "as_tables", "empty",
            "read_atom_index_map", "size_of", "flag", "unflag", "number_attr",
            "reading", "OpenedTwice",
            "unnumber_attr", "json_attr", "write_group", "in_memory",

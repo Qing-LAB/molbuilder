@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@10``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@11``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@10"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@11"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -459,8 +459,7 @@ def _stage_facts(calc, label: str) -> List[Dict]:
     * *electrode_L* / *electrode_R* -- **the lead's Fermi level**, and this is
       the number the whole junction is referenced to: a lead is a periodic
       BULK run whose *"E_F is the reference energy"* (§ 2a.13), T(E) is
-      measured relative to it, and `G = G0 * T(E_F)` is evaluated at it.  Two
-      leads that disagree is a defect nothing else on the Results tab shows.
+      measured relative to it, and `G = G0 * T(E_F)` is evaluated at it.
     * *transmission* -- has its own `points` / `pending` / `failed` blocks.
     """
     from ..jobset.naming import ladder_homes
@@ -545,6 +544,7 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             # § 2.5); the rung's own facts are its first point's.
             fact["by_point"] = _rung_points(base, task, name, token, answers,
                                             run=run)
+            _bridge_charge_from_0v(fact["by_point"])
             # WHAT EACH POINT STARTED FROM AND TOOK -- the status door's own
             # reading of the point's `.continued-from` and `.gathered-from`
             # (`StageStatus.points`; § 2a.12: the provenance of a sweep's
@@ -651,7 +651,7 @@ def _science(out: Path, answers: str) -> Dict:
     # loop apart -- with what each phase had to reach and how it ended.
     # AN ENGINE'S UNREADABLE NUMBER IS NOT STATED (`persist.json_safe`): a
     # field SIESTA overflowed reads as NaN, and every figure below -- E_F,
-    # the leads' agreement, the frames' note -- is reasoned on, so it
+    # the frames' note -- is reasoned on, so it
     # enters the record as None, never as a NaN that compares and prints.
     hist = json_safe(frames[-1].scf_history or []) if frames else []
     fact["scf"] = [{k: c[k] for k in _SCF_FIELDS if k in c} for c in hist]
@@ -695,6 +695,23 @@ def _science(out: Path, answers: str) -> Dict:
                 fact["fermi_ev"] = cyc["ef"]
                 break
     return fact
+
+
+def _bridge_charge_from_0v(points: List[Dict]) -> None:
+    """Each device point's ``negf.d_change_from_0v_e``: ``D(V) - D(0 V)``,
+    the bridge's net Mulliken population at its voltage less its frame's at
+    0 V, both the last NEGF cycle's (`engines/transport.md` § 2a.12, *The
+    device's charges*) -- set where both are stated, never otherwise.  A
+    frame's later voltages start from the previous voltage's density, so 0 V
+    is the one reference every voltage of a frame shares."""
+    at_0v = {p.get("frame"): ((p.get("negf") or {}).get("charges") or {})
+             .get("D") for p in points
+             if p.get("bias_v") is not None and float(p["bias_v"]) == 0.0}
+    for p in points:
+        d = ((p.get("negf") or {}).get("charges") or {}).get("D")
+        d0 = at_0v.get(p.get("frame"))
+        if d is not None and d0 is not None:
+            p["negf"]["d_change_from_0v_e"] = float(d) - float(d0)
 
 
 def _contour_facts(contours: Dict) -> Dict:
@@ -1070,9 +1087,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # two kinds of I-V are different claims and look identical on a plot".
         "treatment": treatment,
         "treatment_note": TREATMENT_NOTE[treatment],
-        # THE TWO LEADS' FERMI LEVELS, compared here once -- and every
-        # rung's E_F said in its frame (`fermi_frames`).
-        "leads": leads_agreement(stages),
+        # EVERY RUNG'S E_F, said in its frame (`fermi_frames`).
         "fermi_frames": fermi_frames(stages),
         # THE COMPOSED JUNCTION the device was built from, by its catalogue
         # name (`runfiles.JUNCTION_FILE`) -- what the report draws.
@@ -1358,26 +1373,6 @@ def write_record(base_dir, record: Dict) -> Path:
     out = record_path(base_dir, record["label"])
     write_json(out, record)
     return out
-
-
-#: HOW FAR THE TWO LEADS' FERMI LEVELS MAY DIFFER, in eV, before the record
-#: says they disagree: both are bulk runs of the same lead, and T(E) is
-#: measured relative to E_F (`engines/transport.md` § 2a.12).
-LEAD_EF_TOLERANCE_EV = 0.05
-
-
-def leads_agreement(stages: List[Dict]) -> Optional[Dict]:
-    """``{fermi_ev: {lead: E_F}, differ_ev, agree, tolerance_ev}`` once both
-    leads have said their Fermi level, else ``None``."""
-    efs = {st["stage"]: st["fermi_ev"] for st in stages
-           if st.get("stage") in ("electrode_L", "electrode_R")
-           and st.get("fermi_ev") is not None}
-    if len(efs) != 2:
-        return None
-    differ = abs(efs["electrode_L"] - efs["electrode_R"])
-    return {"fermi_ev": efs, "differ_ev": differ,
-            "agree": differ <= LEAD_EF_TOLERANCE_EV,
-            "tolerance_ev": LEAD_EF_TOLERANCE_EV}
 
 
 def fermi_frames(stages: List[Dict]) -> Optional[Dict]:

@@ -350,7 +350,7 @@ from**, by the door that knows which columns are known (F2):
   `engine_atom_index` as variables on that axis, each where it is known —
   and **refuses** an atom axis given as a bare number, and a map whose atom
   count is not the axis's. A variable whose *values* are atom indices
-  (`free_atom_index`, a digest's `column_atom` and `device_atom`) is marked
+  (`free_atom`, a digest's `device_orbital_atom` and `device_atom`) is marked
   in the variable record (`Var(…, atom_index=True)`): its values count by the
   file's map, and the reader translates them with it.
 - **JSON** — a record that holds atoms (a vibration result, `runtime-info`'s
@@ -438,10 +438,9 @@ gives it:
 
 **A folder written before this rule** reads as it did, each file by F3 and
 F4; the transport data file is composed again by `summarize task` and the
-export, an older one refused by its version. **`jobset migrate` writes the
-map into an older digest** — from its run's deck, the `.TBT.nc` never read
-again — and names what it cannot establish, leaving it as it is
-([`execution/job-request.md`](?doc=execution/job-request.md) § 8). An older
+export, an older one refused by its version. **An older digest is out of
+date** and read again from its `.TBT.nc`, on the person's word or by
+`summarize task` ([`model/parse.md`](?doc=model/parse.md) § 5e). An older
 vibration result is not rewritten: its map is made as it is read (F3), and
 its JSON's hash, which its data file and the frame sets made from it name,
 stays as it was.
