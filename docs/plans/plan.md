@@ -1042,9 +1042,9 @@ chooses; no field applied, no other calculation:
   Hirshfeld shown unless the person picks Voronoi (the method's § 1a;
   `web/spectra.md` § 3.2; `engines/vibration.md` § 5.10 ②).
 - **Raman, chosen modes**: SIESTA's optical calculation — its response to
-  light polarized along the chosen direction, from its own states — in one
-  run at each of the mode's two displaced geometries; the polarizability from
-  the dielectric function's real part at the laser frequency (§ 3).
+  light polarized along the chosen direction, from its own states — one run
+  per frame of the mode's three-frame set (the `electronic` kind, § 5.10 ④);
+  the static polarizability from the dielectric function (§ 3).
 - **The displacement**: § 1ac.2.
 
 ### 1ac.2 The maximum displacement — the reference at a temperature, and a driven mode *(the science: [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a, § 5)*
