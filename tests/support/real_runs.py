@@ -32,10 +32,11 @@ Each is the session fixture of its name in `tests/conftest.py`:
   carbon held, so its decks are in the engine's held-first order
   (`support.road.CO2`; plan T-CO2);
 * :func:`gpu` (``real_h2_gpu``) -- the same H2 asking this machine's GPU,
-  one rank: its run script's dry runs, then the run, waited on.
+  one rank: its run script's dry runs, then the run, waited on;
+* :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF, flat,
+  stretched so it moves: `coarse` launched and waited on.
 
-A run with one thing changed is a copy of it beside it (:func:`copy_of`):
-its next stage prepared and launched (:func:`freq_launched_on`).
+A run with one thing changed is a copy of it beside it (:func:`copy_of`).
 """
 from __future__ import annotations
 
@@ -87,36 +88,43 @@ class RealRun:
         return attempt_dir(stage_home(self.bundle, task, stage).dir, n)
 
 
-def _engine_here() -> bool:
+#: Each engine's environment, and the road a run of it is made on.
+_ENGINES = {"siesta": "molbuilder-siesta", "pyscf": "molbuilder-pySCF"}
+
+
+def _engine_here(engine: str = "siesta") -> bool:
     from _road import conda_hook, env_available
-    return conda_hook().is_file() and env_available("molbuilder-siesta")
+    return conda_hook().is_file() and env_available(_ENGINES[engine])
 
 
 @contextmanager
-def _on_the_road(tmp_path_factory, name: str):
+def _on_the_road(tmp_path_factory, name: str, *, engine: str = "siesta"):
     """A projects tree of its own, the one door pointed at it, and the real
-    SIESTA on the road -- while the runs are made; the process environment
-    as it was, after."""
-    with _road_at(tmp_path_factory.mktemp(name), tmp_path_factory) as tree:
+    ``engine`` on the road -- while the runs are made; the process
+    environment as it was, after."""
+    with _road_at(tmp_path_factory.mktemp(name), tmp_path_factory,
+                  engine=engine) as tree:
         yield tree
 
 
 @contextmanager
-def _road_at(where: Path, tmp_path_factory):
+def _road_at(where: Path, tmp_path_factory, *, engine: str = "siesta"):
     """The projects tree under ``where`` -- a new one, or the one a run was
     made in, for a command typed on a copy of it -- the one door pointed at
-    it, and the real SIESTA on the road; the process environment as it was,
-    after."""
+    it, and the real ``engine`` on the road (`_road.live_siesta`,
+    `_road.live_pyscf`); the process environment as it was, after."""
     from _pytest.monkeypatch import MonkeyPatch
 
-    from _road import live_siesta
+    from _road import live_pyscf, live_siesta
     from conftest import _point_the_one_door_at
-    if not _engine_here():
-        pytest.skip("needs the molbuilder-siesta env + a detectable conda hook")
+    if not _engine_here(engine):
+        pytest.skip(f"needs the {_ENGINES[engine]} env + a detectable conda "
+                    f"hook")
     mp = MonkeyPatch()
     try:
         tree = _point_the_one_door_at(where, mp.setenv)
-        with live_siesta(tree, tmp_path_factory):
+        live = live_siesta if engine == "siesta" else live_pyscf
+        with live(tree, tmp_path_factory):
             yield tree
     finally:
         mp.undo()
@@ -238,9 +246,10 @@ def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
 
 def _described(tree: Path, where: str, *, structure: dict, name: str,
                calculation: str, stage_strategy: str = "",
+               engine: str = "siesta", shape: str = "hierarchical",
                **blocks) -> Path:
     """`molbuilder describe` of the road's ``structure`` (`support.road`,
-    written where `describe` takes it), SIESTA, layered folders, the
+    written where `describe` takes it), on ``engine`` in ``shape``, the
     ``calculation``'s own ladder or ``stage_strategy``; then the job
     request's blocks as given -- its run card, its allocation, its
     benchmark: each stated, or left out.  THE ONE MAKER of a calculation on
@@ -251,9 +260,10 @@ def _described(tree: Path, where: str, *, structure: dict, name: str,
     source = f"P/structure/{name.lower()}.xyz"
     StructureCodec().write(road_structure(structure), tree / source)
     r = molbuilder("describe", "--structure", source, "--bundle", where,
-               "--engine", "siesta", "--calculation", calculation,
-               "--shape", "hierarchical", "--name", name,
-               "--psml-lib", "pseudopotential",
+               "--engine", engine, "--calculation", calculation,
+               "--shape", shape, "--name", name,
+               *(("--psml-lib", "pseudopotential") if engine == "siesta"
+                 else ()),
                *(("--stage-strategy", stage_strategy) if stage_strategy
                  else ()))
     assert r.exit_code == 0, r.output
@@ -501,19 +511,20 @@ def copy_of(run: RealRun, name: str, alter) -> RealRun:
     return _MADE[bundle]
 
 
-def freq_launched_on(run: RealRun, tmp_path_factory) -> RealRun:
-    """A copy of the calculation (:func:`copy_of`) with its `freq` stage
-    prepared and launched on the road, `summarize` asked of it, and `freq`
-    launched again -- what each answered written down, ``said["prep freq"]``,
-    ``said["launch freq"]``, ``said["summarize"]``,
-    ``said["launch freq again"]``."""
-    def launched(copy):
-        with _road_at(copy.tree.parent, tmp_path_factory):
-            _taken(copy, "prep freq", "prep", "task", "--group", "2",
-                   "--target", "this")
-            _taken(copy, "launch freq", "launch", "task", "--stage", "freq",
-                   "--mode", "direct", "--foreground", "--yes")
-            _typed(copy, "summarize", "summarize", "task")
-            _taken(copy, "launch freq again", "launch", "task", "--stage",
-                   "freq", "--mode", "direct", "--foreground", "--yes")
-    return copy_of(run, "freq-launched", launched)
+def pyscf(tmp_path_factory) -> RealRun:
+    """An H2 optimization on PySCF, flat -- the run is the calculation's own
+    folder -- one thread, the bond stretched to 0.80 A so the optimization
+    takes steps: `coarse` prepared, launched and waited on.  Each module that
+    reads a finished PySCF run reads this one (`process/testing.md` tier 3)."""
+    from support.road import H2
+    stretched = {**H2, "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 5.80]]}
+    with _on_the_road(tmp_path_factory, "pyscf", engine="pyscf") as tree:
+        bundle = _described(tree, "P/opt/H2", structure=stretched, name="H2",
+                            calculation="optimization", engine="pyscf",
+                            shape="flat", execution={"threads": 1})
+        run = RealRun(tree=tree, bundle=bundle)
+        _taken(run, "prep coarse", "prep", "task", "--group", "1",
+               "--target", "this")
+        _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+               "--mode", "direct", "--foreground", "--yes")
+    return run

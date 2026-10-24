@@ -28,14 +28,15 @@ The roads: one per state of the person's one box (`engines/vibration.md`
 § 2.2) -- unticked, the ladder `init` writes relaxes first (the shared
 relaxation, `support.real_runs.relaxed_for_vibration`), and `freq` is written
 at the geometry `relax` reached (§ 5.2a); ticked, `freq` alone measures at
-the geometry as given -- then a displacement sweep (§ 5.9).  A flat
-calculation's refusal of a sweep needs no engine: `test_siesta_vibration_deck`.
-The ticked road's result is then opened on the Results tab, in a browser.
+the geometry as given -- then a displacement sweep (§ 5.9), on the unticked
+calculation.  A flat calculation's refusal of a sweep needs no engine:
+`test_siesta_vibration_deck`.  The ticked road's result is then opened on the
+Results tab, in a browser.
 
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
 cleanly anywhere else.  Each force-constant run is thirteen single points of
-CO2 on one rank, about a minute here, and the module launches five, with one
-relaxation of its own.
+CO2 on one rank, about a minute here, and the module launches four, on the
+shared relaxation (`process/testing.md` tier 3: each run made once a pass).
 """
 from __future__ import annotations
 
@@ -63,12 +64,47 @@ _ZERO_POINT = 1.054571817e-34 / (4 * np.pi * 2.99792458e10
 
 
 @pytest.fixture(scope="module")
-def ladder(real_relaxed_for_vibration, tmp_path_factory):
-    """The box unticked: the shared relaxation's calculation with its `freq`
-    stage prepared and launched, `summarize` asked, and `freq` launched again
-    (`support.real_runs.freq_launched_on`)."""
-    from support.real_runs import freq_launched_on
-    return freq_launched_on(real_relaxed_for_vibration, tmp_path_factory)
+def unticked(real_relaxed_for_vibration, tmp_path_factory):
+    """The box unticked: a copy of the shared relaxation's calculation
+    (`support.real_runs.copy_of`), on which, in order -- `freq` prepared and
+    launched, and `summarize` asked of one force-constant stage; the ladder
+    as it then stands kept (``stages_before_the_sweep``); a displacement
+    sweep, `freq_half` at 0.02 Bohr added beside `freq` in a group of its
+    own (a launched group is fixed, `engines/stages.md` § 2), prepared, the
+    sweep summarized (``early``), `freq_half` launched and summarized
+    (``record``), and summarized again under a tolerance (``flagged``); then
+    `freq` launched again.  What each step answered is written down by its
+    name."""
+    from support.real_runs import _road_at, _taken, _typed, copy_of
+
+    def on_the_relaxation(run):
+        record = run.bundle / "CO2.fc-sweep.json"
+        with _road_at(run.tree.parent, tmp_path_factory):
+            _taken(run, "prep freq", "prep", "task",
+                   *group_words(run.bundle, "freq"), "--target", "this")
+            _taken(run, "launch freq", "launch", "task", "--stage", "freq",
+                   "--mode", "direct", "--foreground", "--yes")
+            _typed(run, "summarize", "summarize", "task")
+            run.stages_before_the_sweep = [
+                st["name"] for st in
+                json.loads((run.bundle / "task.json").read_text())["stages"]]
+            ladder_edited({"added": [{"name": "freq_half",
+                                      "overrides": {"fc_displacement": 0.02}}]},
+                          run.bundle)
+            _taken(run, "prep freq_half", "prep", "task",
+                   *group_words(run.bundle, "freq_half"), "--target", "this")
+            _taken(run, "summarize early", "summarize", "task")
+            run.early = json.loads(record.read_text())
+            _taken(run, "launch freq_half", "launch", "task", "--stage",
+                   "freq_half", "--mode", "direct", "--foreground", "--yes")
+            _taken(run, "summarize the sweep", "summarize", "task")
+            run.record = json.loads(record.read_text())
+            _taken(run, "summarize with a tolerance", "summarize", "task",
+                   "--tolerance-cm1", "1e-6")
+            run.flagged = json.loads(record.read_text())
+            _taken(run, "launch freq again", "launch", "task", "--stage",
+                   "freq", "--mode", "direct", "--foreground", "--yes")
+    return copy_of(real_relaxed_for_vibration, "unticked", on_the_relaxation)
 
 
 @pytest.fixture(scope="module")
@@ -93,40 +129,6 @@ def ticked(tmp_path_factory):
                *group_words(run.bundle, "freq"), "--target", "this")
         _taken(run, "launch freq", "launch", "task", "--stage", "freq",
                "--mode", "direct", "--foreground", "--yes")
-    return run
-
-
-@pytest.fixture(scope="module")
-def sweep(tmp_path_factory):
-    """A displacement sweep on the road: `freq_half` at 0.02 Bohr beside
-    `freq`, in a group of its own -- `freq` is launched before it is
-    prepared, and a launched group is fixed (`engines/stages.md` § 2);
-    `relax` and `freq` launched, `freq_half` prepared and the sweep
-    summarized (``early``), `freq_half` launched and summarized
-    (``record``), and summarized again under a tolerance (``flagged``)."""
-    from support.real_runs import RealRun, _on_the_road, _taken, co2_vibration
-    with _on_the_road(tmp_path_factory, "sweep") as tree:
-        run = RealRun(tree=tree, bundle=co2_vibration(tree))
-        ladder_edited({"added": [{"name": "freq_half",
-                                  "overrides": {"fc_displacement": 0.02}}]},
-                      run.bundle)
-        record = run.bundle / "CO2.fc-sweep.json"
-        for stage in ("relax", "freq"):
-            _taken(run, f"prep {stage}", "prep", "task",
-                   *group_words(run.bundle, stage), "--target", "this")
-            _taken(run, f"launch {stage}", "launch", "task", "--stage",
-                   stage, "--mode", "direct", "--foreground", "--yes")
-        _taken(run, "prep freq_half", "prep", "task",
-               *group_words(run.bundle, "freq_half"), "--target", "this")
-        _taken(run, "summarize early", "summarize", "task")
-        run.early = json.loads(record.read_text())
-        _taken(run, "launch freq_half", "launch", "task", "--stage",
-               "freq_half", "--mode", "direct", "--foreground", "--yes")
-        _taken(run, "summarize", "summarize", "task")
-        run.record = json.loads(record.read_text())
-        _taken(run, "summarize with a tolerance", "summarize", "task",
-               "--tolerance-cm1", "1e-6")
-        run.flagged = json.loads(record.read_text())
     return run
 
 
@@ -243,7 +245,7 @@ def _relaxed_geometry(attempt):
 
 
 def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geometry(
-        ladder):
+        unticked):
     """The box unticked (the default `init` writes): the ladder is `relax`
     then `freq`; after `relax`, `freq` is written at the geometry `relax`
     reached, in the held-first order its deck states, and the modes come out
@@ -254,9 +256,8 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geom
     *A stage launched again*)."""
     from molbuilder.parse.fdf import fdf_key
     from molbuilder.runs import declared
-    run = ladder
-    task = json.loads((run.bundle / "task.json").read_text())
-    assert [s["name"] for s in task["stages"]] == ["relax", "freq"]
+    run = unticked
+    assert run.stages_before_the_sweep == ["relax", "freq"]
     # the ordinary relaxation deck, from the same held-first copy: Broyden
     # to the kind's recommended 0.01 eV/A, the held carbon -- SIESTA's atom 1
     # after the sort -- constrained
@@ -514,7 +515,7 @@ def _deck_coordinates(deck):
 
 
 def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
-        sweep):
+        unticked):
     """A displacement sweep (`engines/vibration.md` § 5.9): after `relax`,
     two force-constant stages -- `freq` at the template's 0.04 Bohr and
     `freq_half` at 0.02 -- BOTH measure at the relaxed geometry, whatever
@@ -527,23 +528,23 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
     MUTATION THIS MUST FAIL AGAINST: only the stage named `freq` taking the
     relaxed geometry -- `freq_half` then measures the unrelaxed input.
     """
-    bundle, early, rec, rec2 = (sweep.bundle, sweep.early, sweep.record,
-                                sweep.flagged)
+    bundle, early, rec, rec2 = (unticked.bundle, unticked.early,
+                                unticked.record, unticked.flagged)
     assert [s["name"] for s in early["stages"]] == ["freq"], early["stages"]
     (waiting,) = early["pending"]
     assert (waiting["stage"], waiting["state"]) == ("freq_half", "pending"), \
         waiting
     assert early["failed"] == []
 
-    decks = {stage: _deck_of(sweep.attempt(stage))
+    decks = {stage: _deck_of(unticked.attempt(stage))
              for stage in ("freq", "freq_half")}
     # I24: one geometry for every force-constant stage -- the relaxed one.
     assert np.allclose(_deck_coordinates(decks["freq"]),
                        _deck_coordinates(decks["freq_half"]), atol=1e-8), \
         "the second force-constant stage was not written at the relaxed geometry"
     assert _said(decks["freq_half"], "FC.Displacement")[:1] == ["0.02"]
-    a1, a2 = (_the_result(sweep.attempt("freq")),
-              _the_result(sweep.attempt("freq_half")))
+    a1, a2 = (_the_result(unticked.attempt("freq")),
+              _the_result(unticked.attempt("freq_half")))
     for d in (a1, a2):
         assert d["phase_relaxation"] == "complete" and \
             d["relaxation"]["converged"] is True
@@ -563,7 +564,7 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
         for key in ("spectrum", "fc_file"):
             assert (bundle / s[key]).is_file(), (key, s)
     for s in rec["stages"]:
-        where = sweep.attempt(s["name"]).relative_to(bundle)
+        where = unticked.attempt(s["name"]).relative_to(bundle)
         assert Path(s["spectrum"]).parent == where, (s["spectrum"], where)
     assert not list(bundle.glob("*.FC")) and not list(
         bundle.glob("*.spectra.json")), "the summary copied a stage's files"

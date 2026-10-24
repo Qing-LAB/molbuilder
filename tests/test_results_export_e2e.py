@@ -11,9 +11,9 @@ its deck recorded -- and the STRUCTURE preview, which opens an engine's own
 geometry file (SIESTA's ``<label>.xyz``, written with no sidecar) through the
 codec.  One case per route.
 
-The runs are made on the road -- ``molbuilder describe`` -> ``prep task`` -> ``launch
-run --mode direct`` -- and saved as a person saves them
-(`support/results_export.py`).  Each saved pair is read back through the
+The runs are the pass's own, made once on the road -- ``molbuilder describe``
+-> ``prep task`` -> ``launch task --mode direct`` (`support/real_runs.py`) --
+and saved as a person saves them (`support/results_export.py`).  Each saved pair is read back through the
 codec every load goes through and compared with the engine's own statement of
 its frame: the output as the Results door parses it (``parse.detect``), or
 the record in the deck it ran.
@@ -21,126 +21,29 @@ the record in the deck it ran.
 from __future__ import annotations
 
 import json
-import os
-import shutil
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available, env_bin
-from support.road import group_words
 from support.results_export import save_to_project, wait_for_viewer
-from support.road import molbuilder, read_request, write_request
-
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-CONDA_SH = conda_hook()
 
 pytestmark = pytest.mark.engine
 
 
-def _jobset(*args):
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [str(a) for a in args])
-
-
-def _described(tree, name, engine, shape):
-    """``molbuilder describe`` of an H2 optimisation, activated through the conda
-    hook; the bundle it made."""
-    r = molbuilder("describe", "--structure", f"P/structure/{name}.xyz",
-                "--bundle", f"P/opt/{name}", "--engine", engine,
-                "--shape", shape, "--calculation", "optimization",
-                "--name", "H2", *(("--psml-lib", "pseudopotential")
-                                  if engine == "siesta" else ()))
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "opt" / name
-    # How a shell enters conda HERE is this machine's record's to say -- and
-    # the run states its shape (`architecture.md` § 5.2).
-    from conftest import write_machine_record
-    write_machine_record(env_init={
-        "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    request = read_request(bundle)
-    request["execution"] = {**request.get("execution", {}),
-                            **({"mpi_np": 1, "omp_threads": 1}
-                               if engine == "siesta" else {"threads": 1})}
-    write_request(bundle, request)
-    return bundle
-
-
-def _ran(bundle, run_dir, *prep_args):
-    """``prep task`` then ``launch task --mode direct``, and the run FINISHED --
-    asked of the run's own door, because a direct launch whose job failed
-    still exits 0 (plan W40)."""
-    from molbuilder.parse.dirs import run_status
-    r = _jobset("prep", "task", *group_words(bundle, "coarse"),
-                "--bundle", bundle,
-                "--target", "this", *prep_args)
-    assert r.exit_code == 0, r.output
-    r = _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-                "--mode", "direct", "--foreground", "--yes")
-    st = run_status(run_dir, "H2_01_coarse")    # the run's stem
-    assert st.state == "finished", (st.state, st.detail, r.output[-2000:])
+@pytest.fixture(scope="module")
+def siesta_run(real_h2_layered):
+    """The attempt directory of a finished SIESTA H2 relaxation -- the
+    shared one's first `coarse` run (`support.real_runs.layered`), made once
+    a pass (`process/testing.md` tier 3)."""
+    return real_h2_layered.attempt("coarse")
 
 
 @pytest.fixture(scope="module")
-def road(isolated_projects_root_module, tmp_path_factory):
-    """The projects tree, this module's config and machine record, and the
-    folder a person runs ``jobset`` from."""
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    tree = isolated_projects_root_module
-    mp = pytest.MonkeyPatch()
-    try:
-        from conftest import outside_the_developers_folders
-        outside_the_developers_folders(mp.setenv, mp.delenv,
-                                       tmp_path_factory)
-        from conftest import write_machine_record
-        write_machine_record()
-        mp.chdir(tree.parent)
-        for name, bond in (("siesta", 0.741), ("pyscf", 0.80)):
-            StructureCodec().write(
-                Structure(elements=["H", "H"],
-                          positions=np.array([[5.0, 5.0, 5.0],
-                                              [5.0, 5.0, 5.0 + bond]])),
-                tree / "P" / "structure" / f"{name}.xyz")
-        yield tree, mp
-    finally:
-        mp.undo()
-
-
-@pytest.fixture(scope="module")
-def siesta_run(road):
-    """The attempt directory of a finished SIESTA H2 relaxation."""
-    if not (CONDA_SH.is_file() and env_available("molbuilder-siesta")):
-        pytest.skip("needs the molbuilder-siesta env + a detectable conda hook")
-    tree, _mp = road
-    (tree / "pseudopotential").mkdir()
-    shutil.copy(FIXTURES / "psml" / "H.psml",
-                tree / "pseudopotential" / "H.psml")
-    bundle = _described(tree, "siesta", "siesta", "hierarchical")
-    run_dir = bundle / "01_coarse" / "run-0"
-    # The SIESTA binary on PATH for THIS run only: left in place it reaches
-    # the next run too, whose wrapper then finds this env's python.
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("PATH", f"{env_bin('molbuilder-siesta')}{os.pathsep}"
-                          f"{os.environ['PATH']}")
-        _ran(bundle, run_dir, "--np", 1)
-    return run_dir
-
-
-@pytest.fixture(scope="module")
-def pyscf_run(road):
+def pyscf_run(real_h2_pyscf):
     """The folder of a finished PySCF H2 optimisation -- flat, so the run is
-    the calculation's own folder."""
-    if not (CONDA_SH.is_file() and env_available("molbuilder-pySCF")):
-        pytest.skip("needs the molbuilder-pySCF env + a detectable conda hook")
-    tree, _mp = road
-    bundle = _described(tree, "pyscf", "pyscf", "flat")
-    _ran(bundle, bundle)
-    return bundle
+    the calculation's own folder (`support.real_runs.pyscf`)."""
+    return real_h2_pyscf.bundle
 
 
 @pytest.fixture(scope="module")

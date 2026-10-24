@@ -13,10 +13,11 @@ once and the wrapper says the ending cannot be read (`job-contracts.md`
 § 2.6).
 
 Driven through ``molbuilder describe`` -> ``prep task`` -> ``launch task --mode
-direct``: an H2 PySCF run once as prepared and once with one of the bundle's
-own member files replaced after prep by one that fails at import, as a file
-the job's python cannot load does; and an H2 SIESTA relaxation broken the same
-way, because only the SIESTA wrapper asks how its run ended.
+direct``: the pass's H2 PySCF run, as prepared (`support.real_runs.pyscf`);
+an H2 PySCF run with one of the bundle's own member files replaced after prep
+by one that fails at import, as a file the job's python cannot load does; and
+an H2 SIESTA relaxation broken the same way, because only the SIESTA wrapper
+asks how its run ended.
 """
 from __future__ import annotations
 
@@ -124,15 +125,18 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
 
 
 @_needs["molbuilder-pySCF"]
-def test_a_monitor_that_loads_says_so(tmp_path, monkeypatch):
+def test_a_monitor_that_loads_says_so(real_h2_pyscf):
     """``starting`` and then ``started``, and the monitor went on to open its
-    own log.
+    own log -- on the pass's PySCF run, its bundle as prepared
+    (`support.real_runs.pyscf`).
 
     MUTATION THIS MUST FAIL AGAINST: the bundle's entry importing the
     monitor with nothing said (`runwrap._BUNDLE_MAIN` before 2026-09-27).
     """
     from molbuilder.runwrap import MONITOR_BUNDLE
-    bundle, said = _launched(tmp_path, monkeypatch)
+    bundle = real_h2_pyscf.bundle
+    said = "\n".join(p.read_text(errors="replace")
+                     for p in sorted(bundle.glob("*.runwrap-*.log")))
     starting = said.find(f"[INFO ] monitor: starting {MONITOR_BUNDLE} on python ")
     started = said.find(f"[INFO ] monitor: {MONITOR_BUNDLE} started")
     assert starting != -1 and started != -1, said[-3000:]

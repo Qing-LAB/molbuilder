@@ -69,18 +69,13 @@ def set_template_value(template: Path, name: str, value: str) -> None:
 
 
 @contextmanager
-def live_siesta(tree: Path, tmp_path_factory):
-    """A module's road with the real SIESTA: no read of the developer's
+def _live(tree: Path, tmp_path_factory):
+    """A module's road with a real engine: no read of the developer's
     config directory, nor a write into their state folder
     (`conftest.config_root_is_never_the_developers`, which a module fixture
-    does not get), this box probed with the conda the
-    wrapper sources (`configuration.md` § 4), the env's own ``bin`` ahead of
-    the suite's stub toolchain, the working folder beside the tree, and the
-    checked-in pseudopotentials -- H, C, O -- in the tree's library.  Yields
-    the monkeypatch, undone on exit."""
-    import os
-    import shutil
-
+    does not get), this box probed with the conda the wrapper sources
+    (`configuration.md` § 4), and the working folder beside the tree.
+    Yields the monkeypatch, undone on exit."""
     import pytest
 
     from conftest import write_machine_record
@@ -93,6 +88,20 @@ def live_siesta(tree: Path, tmp_path_factory):
             "activation": "conda activate",
             "preamble": f"source {conda_hook()}"})
         mp.chdir(tree.parent)
+        yield mp
+    finally:
+        mp.undo()
+
+
+@contextmanager
+def live_siesta(tree: Path, tmp_path_factory):
+    """The road with the real SIESTA (:func:`_live`): the env's own ``bin``
+    ahead of the suite's stub toolchain -- a run script finds SIESTA by
+    name -- and the checked-in pseudopotentials -- H, C, O -- in the tree's
+    library.  Yields the monkeypatch, undone on exit."""
+    import os
+    import shutil
+    with _live(tree, tmp_path_factory) as mp:
         bin_ = env_bin("molbuilder-siesta")
         assert (bin_ / "siesta").is_file(), bin_
         mp.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
@@ -100,5 +109,14 @@ def live_siesta(tree: Path, tmp_path_factory):
         for psml in sorted(PSML_DIR.glob("*.psml")):
             shutil.copy(psml, tree / "pseudopotential" / psml.name)
         yield mp
-    finally:
-        mp.undo()
+
+
+@contextmanager
+def live_pyscf(tree: Path, tmp_path_factory):
+    """The road with the real PySCF (:func:`_live`): its run script enters
+    ``molbuilder-pySCF`` through the record's activation alone, so nothing
+    is put on ``PATH`` -- SIESTA's ``bin`` there would stand ahead of the
+    activated env, and the run would find SIESTA's python.  Yields the
+    monkeypatch, undone on exit."""
+    with _live(tree, tmp_path_factory) as mp:
+        yield mp

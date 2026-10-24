@@ -11,7 +11,8 @@ NOT-VALIDATED flag at the band level (pattern + magnitudes; an external
 cross-code digit match can harden it later, and the item's help says so).
 
 Needs the ``molbuilder-pySCF`` env + conda hook on this machine; skipped
-cleanly anywhere else.  Wall cost ~1 min total (water is 17 s a run).
+cleanly anywhere else.  Wall cost ~1 min total (water is 17 s a run); a plain water run is made once
+for every test that reads one (:func:`water`).
 """
 from __future__ import annotations
 
@@ -112,18 +113,35 @@ def _prep_and_run(bundle):
     return json.loads(art.read_text())
 
 
-def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
-        tmp_path, monkeypatch):
-    bundle = _describe(tmp_path, monkeypatch)
-    # A converged SCF is worth a message (`stages.md` § 6.9's neighbour,
-    # `notify.on_scf_converged`): asked for here the way a person asks, in
-    # the job request, so the monitor beside the run is told to send them.
-    from support.road import read_request, write_request
-    request = read_request(bundle)
-    request["notify"] = {"on_scf_converged": True, "every_hours": None,
-                         "channels": ["*"], "report": ["*"]}
-    write_request(bundle, request)
-    d = _prep_and_run(bundle)
+@pytest.fixture(scope="module")
+def water(tmp_path_factory):
+    """Free water's vibration, described, prepared and launched once for
+    every test that reads a plain water run (`process/testing.md` tier 3:
+    each run made once a pass) -- a converged SCF asked to be told, as a
+    person asks it in the job request.  The bundle and its result; the
+    process environment as it was, after."""
+    from conftest import outside_the_developers_folders
+    mp = pytest.MonkeyPatch()
+    try:
+        outside_the_developers_folders(mp.setenv, mp.delenv,
+                                       tmp_path_factory)
+        bundle = _describe(tmp_path_factory.mktemp("water"), mp)
+        # A converged SCF is worth a message (`stages.md` § 6.9's
+        # neighbour, `notify.on_scf_converged`): asked for the way a person
+        # asks, so the monitor beside the run is told to send them.
+        from support.road import read_request, write_request
+        request = read_request(bundle)
+        request["notify"] = {"on_scf_converged": True, "every_hours": None,
+                             "channels": ["*"], "report": ["*"]}
+        write_request(bundle, request)
+        d = _prep_and_run(bundle)
+    finally:
+        mp.undo()
+    return bundle, d
+
+
+def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
+    bundle, d = water
 
     from molbuilder.spectra.results import SCHEMA_VERSION
     assert d["schema_version"] == SCHEMA_VERSION
@@ -227,7 +245,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
 
 
 def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(
-        tmp_path, monkeypatch):
+        water):
     """A displacement sweep's question that needs modes over atoms of
     UNEQUAL mass (`engines/vibration.md` § 5.9): which mode of one stage is
     which mode of another.  Free water from the road -- three modes over an
@@ -252,8 +270,7 @@ def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(
     from molbuilder.chemistry import atomic_mass
     from molbuilder.sidecars.spectra import parse_spectra_json
     from molbuilder.spectra.displacement_sweep import match_modes
-    bundle = _describe(tmp_path, monkeypatch)
-    _prep_and_run(bundle)
+    bundle, _d = water
     ref = parse_spectra_json(str(bundle / "01_freq" / "run-0"
                                  / "W.spectra.json"))
     m = ref.modes
