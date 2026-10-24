@@ -1576,49 +1576,56 @@ def as_written(path, data: bytes) -> bool:
 
 def prepared_differs(calc, plan, prepared, planned) -> List[str]:
     """THE PREPARED STAGE AGAINST WHAT ``plan`` WRITES FOR IT NOW (R-L15):
-    its deck, its run script and its headers beside its runs, as written
-    (:func:`as_written`); for a stage never launched, each deck of its first
-    run -- each point's -- the same calculation as the one prep renders now
-    (`deck_record.same_calculation`: a launch that took a finished point
-    over put that point's own deck there, and filling a run anew is the
-    next launch's, R-L25), and none removed; and its row in `job-set.json`,
-    its members aside -- the run settings every script states.  Each that
-    differs, named from the calculation; none when the plan writes the
-    stage as it stands.  The one comparison a stage's launch asks
-    (`submit._as_described`) and a prep of a group prepared and never
-    launched (`job-system.md`, *The task*, 2).  ``prepared`` is the stage's
-    row on disk, ``planned`` the row the plan holds for it (``None`` when
-    it planned none)."""
+    every file its run takes, as written (:func:`as_written`) -- by the
+    catalogue, an input its run reads or a file derived for the stage or
+    its run: its deck, its scripts and headers, the bundles beside them
+    (:func:`_taken_by_its_run`); for a stage never launched, each deck of
+    its first run -- each point's -- the same calculation as the one prep
+    renders now (`deck_record.same_calculation`: a launch that took a
+    finished point over put that point's own deck there, and filling a run
+    anew is the next launch's, R-L25), and none removed; and its row in
+    `job-set.json`, its members aside -- the run settings every script
+    states.  Each that differs, named from the calculation; none when the
+    plan writes the stage as it stands.  The one comparison a stage's
+    launch asks (`submit._as_described`) and a prep of a group prepared and
+    never launched (`job-system.md`, *The task*, 2).  ``prepared`` is the
+    stage's row on disk, ``planned`` the row the plan holds for it
+    (``None`` when it planned none)."""
     from ..deck_record import same_calculation
     from ..paths import attempt_index
-    from ..runfiles import GroupNames
     from .materialize import ever_launched
     base, task = Path(calc.base), calc.task
     names = run_names(calc.jobset, prepared, Shape.named(task.shape))
     deck = Path(prepared.script).name
-    own = {deck, names.name(".run.sh"), names.name(".sbatch"),
-           GroupNames.of_points(names.stem).name(".sbatch")}
+    home = stage_home(base, task, prepared.name).dir
     runs = ever_launched(calc, prepared)
 
     def in_a_run(path) -> bool:
         return any(attempt_index(part) is not None
                    for part in Path(path).relative_to(base).parts)
 
+    def taken(path) -> bool:
+        return _taken_by_its_run(path, names, home)
+
     differ = []
     for p in plan.writes():
-        if p.name not in own:
+        if not taken(p):
             continue
         rel = str(p.relative_to(base))
         if not in_a_run(p):
             if not as_written(p, plan.read_bytes(p)):
                 differ.append(rel)
-        elif not runs and p.name == deck and (not p.is_file() or same_calculation(
-                str(task.engine), p.read_text(errors="replace"),
-                plan.read_text(p))):
+        elif runs:
+            continue                  # a launched stage's runs are its own
+        elif p.name == deck:
+            if not p.is_file() or same_calculation(
+                    str(task.engine), p.read_text(errors="replace"),
+                    plan.read_text(p)):
+                differ.append(rel)
+        elif not as_written(p, plan.read_bytes(p)):
             differ.append(rel)
     differ += [f"{p.relative_to(base)} (removed)" for p in plan.removes()
-               if (p.name in own and not in_a_run(p))
-               or (not runs and p.name == deck)]
+               if taken(p) and (not in_a_run(p) or not runs)]
 
     def row(j):
         # ITS JOB'S MEMBERS are the group's to check, by membership (R-L8).
@@ -1626,6 +1633,33 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
     if planned is None or row(planned) != row(prepared):
         differ.append(f"its row in {JOBSET_FILENAME}")
     return differ
+
+
+def _taken_by_its_run(path, names, home) -> bool:
+    """Whether ``path``, a file a plan writes, is one the run of the stage
+    ``names`` names TAKES: in the stage's home, named for it or for no
+    stage, and by the catalogue (`runfiles.WRITTEN`'s ``kind``, what losing
+    it costs) an input its run reads, or a file derived for the stage or
+    its run -- its deck, its scripts and headers, the bundles beside them --
+    or the walk header of its points; never a record, nor a file of the
+    calculation's own (its plan, its job set), which a prep writes for every
+    stage.  In a calculation whose stages share one folder, the name is what
+    tells one stage's file from another's (`runfiles.parse`)."""
+    from ..runfiles import GroupNames, parse, row_for
+    p = Path(path)
+    try:
+        p.relative_to(home)
+    except ValueError:
+        return False
+    rec = parse(p.name, names.label)
+    if rec is not None and rec.stage not in (None, names.stage):
+        return False
+    if p.name == GroupNames.of_points(names.stem).name(".sbatch"):
+        return True
+    row = row_for(p, names.label)
+    return row is not None and (
+        row.kind == "input"
+        or (row.kind == "derived" and row.level in ("stage", "run")))
 
 
 def _computes_else(base, engine: str, plan, answer) -> Optional[str]:

@@ -203,12 +203,19 @@ function renderStages(task) {
                                + "stages with one number are one job "
                                + "(engines/stages.md \u00a7 2)" }, "Group"));
     for (const col of varies) {
+        // A COLUMN A KEPT RUNG STATES stays: removing it drops that rung's
+        // value, which an extension keeps (§ 3) -- held, in the one door's
+        // sentence for that rung, as its cells are.
+        const kept = stages.find((st) => st && fixedByExtension(st.name)
+                                         && st.overrides
+                                         && col in st.overrides);
         const x = el("button", {
             type: "button",
             class: "ts-rowbtn ts-rowbtn-drop"
                    + (_fs.pendingDrop === col ? " is-pending" : ""),
-            title: "Remove this column",
+            title: kept ? extensionSays(kept.name) : "Remove this column",
             "aria-label": "Remove column " + col,
+            disabled: kept ? "disabled" : null,
         }, "\u00d7");
         x.addEventListener("click", () => removeColumn(col));
         const th = el("th", { title: helpText(col) }, col, x);
@@ -1321,9 +1328,30 @@ function bufferText(which) {
     return _docs ? _docs[which].getValue() : "";
 }
 
-/** Whether either buffer differs from its file on disk. */
+/** A record's text as its VALUE: its JSON, every object's keys in one
+ *  order -- so two texts holding the same record are one value however
+ *  their keys were written, as the server reads "the same" (`task-setup.md`
+ *  § 8: the records, each read by its reader).  A text that does not parse
+ *  is its own text. */
+function recordValue(text) {
+    const ordered = (v) => Array.isArray(v) ? v.map(ordered)
+        : (v && typeof v === "object")
+        ? Object.fromEntries(Object.keys(v).sort()
+                                   .map((k) => [k, ordered(v[k])]))
+        : v;
+    try {
+        return JSON.stringify(ordered(JSON.parse(text)));
+    } catch (_) {
+        return "\u0000" + text;
+    }
+}
+
+/** Whether either buffer holds another record than its file -- by value
+ *  (:func:`recordValue`), so a card writing the same values in another
+ *  order edits nothing. */
 function edited() {
-    return RECORDS.some((which) => bufferText(which) !== _disk[which]);
+    return RECORDS.some((which) =>
+        recordValue(bufferText(which)) !== recordValue(_disk[which]));
 }
 
 /** A change of record ``which``'s buffer -- ``change`` CodeMirror's.
@@ -4460,10 +4488,16 @@ function commitEdit(reason) {
 function applyBlockToDoc(key, read) {
     return pageBusy.run("Writing " + key + "\u2026", [], async () => patchDoc((request) => {
         const want = read();
-        const had = JSON.stringify(request[key] || null);
-        if (Object.keys(want).length) request[key] = want;
+        const next = Object.keys(want).length ? want : null;
+        // A CARD WRITES A CHANGE OF VALUE ONLY (`recordValue`): the same
+        // block in its own key order is the block the record holds.
+        if (recordValue(JSON.stringify(next))
+            === recordValue(JSON.stringify(request[key] || null))) {
+            return false;
+        }
+        if (next) request[key] = next;
         else delete request[key];
-        return JSON.stringify(request[key] || null) !== had;
+        return true;
     }));
 }
 
@@ -5070,6 +5104,11 @@ async function _save() {
      * nothing was saved or written, so the folder is not read again and a
      * Prep's answer stays where it is. */
     if (body.unchanged) {
+        // ...AND WHAT THE PAGE HOLDS IS WHAT THE FOLDER HOLDS: the server,
+        // the one reader of these records, read them as the files' own, so
+        // the page holds no edit (§ 8).
+        _disk = { task: bufferText("task"), request: bufferText("request") };
+        _setDirty(edited());
         saidSave(body.said, "ok");
         setState("loaded", "Nothing to save", "");
         refreshSave();

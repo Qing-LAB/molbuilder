@@ -308,13 +308,16 @@ def test_the_tab_saves_the_folder_first_and_says_so(
             arg=f"{box} .ts-prep button", timeout=30000)
 
     # AN UNSAVED EDIT IS NOT IN THE FILES PREP READS, so Prep refuses it
-    # and nothing renders.
+    # and nothing renders -- an edit of value (§ 8: a column added), its
+    # spelling aside.
     ready()
     original = page.evaluate(
         "() => document.querySelector('.CodeMirror').CodeMirror.getValue()")
     page.evaluate(
         "() => { const cm = document.querySelector('.CodeMirror').CodeMirror;"
-        " cm.setValue(cm.getValue() + ' '); }")
+        " const o = JSON.parse(cm.getValue());"
+        " o.varies = [...(o.varies || []), 'mesh_cutoff'];"
+        " cm.setValue(JSON.stringify(o, null, 2) + '\\n'); }")
     page.locator(prep_sel).first.click()
     page.wait_for_function(
         "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
@@ -601,6 +604,36 @@ def test_the_queue_the_request_names_stays_through_a_machine_and_an_ask(
     alloc = _saved_allocation(d, lambda a: a.get("mem") == "16G")
     assert alloc == {"domain": "public", "time": "0-04:00:00",
                      "mem": "16G"}, alloc
+
+
+def test_a_value_put_back_on_a_card_is_no_edit(page, flask_server,
+                                                filled_dir):
+    """`task-setup.md` § 8: an edit is a change of value -- a value changed
+    on a card and put back leaves the page holding no edit, Save held.
+
+    THE SILENT FAILURE (the 2.33.0 review): the card wrote its block back in
+    its own key order, the page counted the text as an edit, Save answered
+    *nothing to save*, and Preview refused with *Save first* until the page
+    was loaded again.
+
+    MUTATION THIS MUST FAIL AGAINST: `edited()` comparing the buffers'
+    text."""
+    _open(page, flask_server, filled_dir)
+    mem = "#ts-ask-mem"
+    page.wait_for_selector("#ts-target-choice .opt", timeout=20000)
+    if not page.is_visible(mem):
+        page.click("#ts-target-choice .opt")     # the machine, as a person picks it
+    page.wait_for_selector(mem, state="visible", timeout=20000)
+    held = "() => document.getElementById('ts-save').disabled"
+    assert page.evaluate(held), "the folder as it lies holds no edit"
+    for value in ("32G", "16G"):                 # changed, and put back
+        page.fill(mem, value)
+        page.dispatch_event(mem, "change")
+        _page_free(page)
+    page.wait_for_function(held, timeout=20000)
+    assert page.evaluate(
+        "() => document.getElementById('ts-dirty').hidden"), (
+        "the page still says edited with the folder's own values on it")
 
 
 def _rows(page):

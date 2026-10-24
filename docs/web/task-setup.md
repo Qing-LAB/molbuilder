@@ -196,7 +196,8 @@ copied, and its size, prep's Preview says (§ 11.1) ([`engines/transport.md`](?d
 label every emitted file is stemmed on. **A calculation that extends a finished one keeps the Transport tab's limits**
 (`engines/transport.md` § 2a.16, *Extending it*): the stage table's rows of
 the rungs that run once — the seed, the leads — and the shared values
-read-only, saying *fixed by <the finished calculation>*, with the same way out
+read-only, saying *fixed by <the finished calculation>* (a column a kept rung
+states a value in is not removed: its × held, saying the same), with the same way out
 (a new calculation from the junction, on the Transport tab); the device's and
 the transmission's rows, the bias list and the treatment as on any
 calculation, each saying what it re-runs, and the window's fit what a wider
@@ -1145,11 +1146,15 @@ prepared.
 tried to overwrite existing things with no good reason")*: Save is offered
 only when the page holds an edit, or a hand-over to write; with neither it is
 disabled, its line saying *Nothing unsaved — task.json and job-request.json
-in this folder are what this page shows*. And the route writes nothing when
-the records it is sent, each read by its reader, are the files' own read the
-same way, whatever their spelling — so a text the page holds unedited is
-one — no state saved, no file written, the folder not read again, answering
-*nothing to save*, so a Prep's answer on the page stays where it is.
+in this folder are what this page shows*. **An edit is a change of value**:
+a record whose value differs from the folder's, however its keys are
+written — a card that writes the same values in its own order changes
+nothing. And the route writes nothing when the records it is sent, each read
+by its reader, are the files' own read the same way, whatever their
+spelling — no state saved, no file written, the folder not read again,
+answering *nothing to save*: what the page holds is then what the folder
+holds, it holds no edit, and a Prep's answer on the page stays where it
+is.
 
 **The checkpoint is always taken, by the server, and said**
 ([`checkpointing.md § 9`](?doc=execution/checkpointing.md); user, 2026-10-03,

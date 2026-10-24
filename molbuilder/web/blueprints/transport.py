@@ -1027,6 +1027,17 @@ def api_transport_schema() -> Any:
         source = {"kind": "reuses", "name": extension.name}
         if rung is not None:
             held = extension.own(rung)
+        # ...AND WHAT ITS CITATION ASKS OF THE PERSON, by the one rule the
+        # citation's own panel asks (`asked_of_the_person`): a pair's
+        # pseudopotential directory is drawn, kept as its value, and
+        # carried by the way out as the person's.  A citation that no
+        # longer resolves asks nothing here; its describe says why.
+        try:
+            _, cited = resolve_citation(finished.task.slots["junction"],
+                                        projects_root())
+            asks = asked_of_the_person(cited)
+        except ComposeError:
+            asks = ()
     elif citation:
         try:
             _, cited = resolve_citation(citation, projects_root())

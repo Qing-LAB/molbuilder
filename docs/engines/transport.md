@@ -3687,8 +3687,10 @@ one action, *Start a new calculation from this junction with these
 settings*, cites the junction again as a new calculation that
 reuses nothing, its cards starting from the values chosen in the finished
 one — each rung's own, and each shared value its template says is the
-person's (the lock's `chosen`); a value cited from the junction is cited
-again, and a default stays not chosen: what an extension is not for is
+person's (the lock's `chosen`), among them what its citation asks of the
+person, drawn as the citation's own panel draws it (a pair's
+pseudopotential directory, `asked_of_the_person`); a value cited from the
+junction is cited again, and a default stays not chosen: what an extension is not for is
 never edited inside one. **The Transport tab's Describe holds the limits**:
 the fixed rungs keep the finished calculation's own values, and a changed
 fixed value, a finished voltage dropped, or the junction, its rename or its
