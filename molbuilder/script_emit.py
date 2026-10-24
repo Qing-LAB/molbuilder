@@ -497,8 +497,8 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
 def emit_vibration_record(payload: Mapping[str, Any]) -> str:
     """The VIBRATION block: the facts a SIESTA force-constant run's finish
     reads that no SIESTA keyword states (`engines/vibration.md` § 5.3,
-    § 5.5) -- ``force_criterion_ev_ang`` (this stage's resolved
-    ``relax_force_tol``), ``temperature_K`` (the thermochemistry's, from the
+    § 5.5) -- ``force_criterion_ev_ang`` (the tolerance the
+    reference geometry was relaxed to, `prep`'s), ``temperature_K`` (the thermochemistry's, from the
     template), ``already_relaxed`` (the person's statement, as made) and
     ``relaxation`` (the `relax` stage's relaxation record,
     `parse.contract.relaxation_of`, or ``None``) and ``masses_amu`` (every

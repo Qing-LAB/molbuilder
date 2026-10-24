@@ -111,8 +111,9 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
 def start_state_lines(cfg) -> List[str]:
     """What the force-constant run reads from its directory -- fixed by
     the kind, not by the description's ``restart`` (the catalogue offers
-    that item to optimizations only, and a force-constant run has no
-    optimizer history to resume).
+    that item to the relaxation rungs only -- an optimization's and a
+    vibration's -- and a force-constant run has no optimizer history to
+    resume).
 
     THE DENSITY IS READ WHEN PRESENT.  The reference step's SCF starts
     from it, and SIESTA saves that step's converged density and reloads it

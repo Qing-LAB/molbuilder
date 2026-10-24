@@ -318,6 +318,12 @@ closed, and each run-output role (§ 5.5) states it its own way:
 | `out_of_memory` | the kernel or scheduler killed it for memory | an out-of-memory marker | — | — |
 | `unknown` | no evidence either way — a format with no ending markers at all, such as `.MD.nc` | — | — | — |
 
+**A run's verdict is its own files'** — the speaking output's word first,
+then each other output of the same run's (`RunStatus.verdict`): a PySCF
+relaxation's stdout states no geometry verdict, its progress log's footer
+does, and the two are one run's, so `status`, the Results ladder and the
+monitor say *geometry yes* or *NO* for it as for a SIESTA run's.
+
 **A file with no ending is `running` — not finished — however long it has been
 quiet** (user, 2026-09-26: *"It shows what it is"*). Nothing in the FILE tells
 running from died quietly. The `-runN.concluded` beside it says the process

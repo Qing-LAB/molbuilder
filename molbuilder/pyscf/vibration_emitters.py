@@ -957,10 +957,7 @@ def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
     # THE WALL (`engines/pyscf.md` § 3.9): past the deadline, no displaced
     # SCF starts -- a spectrum half computed is no result, so the run ends
     # with the reason and a launch runs it again.
-    out.append("    if _MB_WALL_DEADLINE is not None and time.time() > _MB_WALL_DEADLINE:")
-    out.append("        raise RuntimeError('stopped before the wall (the job\\'s '")
-    out.append("                           'wall less its slack) before the spectrum was '")
-    out.append("                           'written: launch this stage again')")
+    out.append("    _mb_stop_if_past_wall(_MB_WALL_DEADLINE)")
     out.append("    _mol_new = mol.copy()")
     out.append("    # displacements leave the point group; re-symmetrization")
     out.append("    # would reorient the frame under the derivative (probed:")

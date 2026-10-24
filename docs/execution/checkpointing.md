@@ -801,8 +801,11 @@ changes anything, and **saying so** — it knows what it is about to change, so
 the note names it, after the time the state was taken. A state is then found
 by when and by what.
 
-**Every `prep`, a group's first `launch` and Task setup's Save is a change,
-and each saves first, always** *(user, 2026-10-03: "always save through
+**Every `prep`, a group's first `launch` and Task setup's Save that writes
+is a change, and each saves first, always** — a prep with nothing to write
+and a Save with nothing to save change nothing and save nothing
+([`job-system.md`](?doc=execution/job-system.md), *The task*, 2;
+[`web/task-setup.md`](?doc=web/task-setup.md) § 8) *(user, 2026-10-03: "always save through
 checkpoint, notify user, and make sure name of the checkpoint clearly shows
 timestamp. the checkpoint save is notified after the build is decided and
 checked")* — where each saves, and the note it writes, are the table below.

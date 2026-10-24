@@ -57,6 +57,26 @@ def wall_deadline(environ=None):
     return started + wall - slack
 
 
+def past_wall(deadline) -> bool:
+    """Whether ``deadline`` (:func:`wall_deadline`) has passed -- asked
+    before each piece of work a deck must not start past it: a relaxation's
+    next step, the optimization's last SCF, a vibration's next displaced SCF
+    and its spectrum (`engines/pyscf.md` § 3.9)."""
+    import time
+    return deadline is not None and time.time() > deadline
+
+
+def stop_if_past_wall(deadline) -> None:
+    """THE WALL BEFORE A SPECTRUM (`engines/pyscf.md` § 3.9): past
+    ``deadline`` the vibration deck starts no more work -- a spectrum half
+    computed is no result -- and the run ends with this reason, failed; a
+    launch runs it again."""
+    if past_wall(deadline):
+        raise RuntimeError(
+            "stopped before the wall (the job's wall less its slack) before "
+            "the spectrum was written: launch this stage again")
+
+
 class WallReached(Exception):
     """The deadline passed between two steps (`wall_deadline`)."""
 
@@ -106,7 +126,6 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
     shows it twice and counts it; the trajectory under ``prefix`` holds the
     last batch's steps.
     """
-    import time
     from pyscf.geomopt.geometric_solver import kernel
     last = {}
     if keep is not None or deadline is not None:
@@ -120,7 +139,7 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
                 last["mol"] = reached
                 if keep is not None:
                     keep(reached)
-            if deadline is not None and time.time() > deadline:
+            if past_wall(deadline):
                 raise WallReached()
 
         geometric_kw = {**geometric_kw, "callback": _each_step}
@@ -167,4 +186,5 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
            f"Nothing continues from it: {back}."))
 
 
-__all__ = ["policy_of", "relax", "wall_deadline", "WallReached"]
+__all__ = ["past_wall", "policy_of", "relax", "stop_if_past_wall",
+           "wall_deadline", "WallReached"]

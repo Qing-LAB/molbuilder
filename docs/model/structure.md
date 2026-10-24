@@ -672,7 +672,8 @@ ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`, and `1` for a name with
 none (—), the dimensionless unit the data file writes — and one of these names
 written with another unit is refused by name when the rows are read for a
 record, a data file or a page (`frame_average.check_units`, asked by
-`average_block`, `fill_data_file` and `answer`): the one check made on a
+`average_block`, `fill_data_file` and `answer`; a page draws the refusal in
+the frames' place and opens, `answer_said`): the one check made on a
 maker's rows, because the name itself is a claim about the unit.
 Any other name's unit is carried as written:
 

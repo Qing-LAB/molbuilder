@@ -339,9 +339,12 @@ Two rules keep this from hiding anything:
 > - `absorbs` is asked *"does this master subsume that sibling?"* — a question
 >   about one folder. It has no way to say *"these five folders are one run."*
 >
-> **The first is closed** (2026-09-17): `lib/inspectors/transport.js` is the
-> presenter and `parse/sidecars/transport.py` the reader, so the record is
-> parsed on the server like every other result. **The second and third are
+> **The first is closed**: `lib/inspectors/transport.js` is the presenter,
+> opened through the calculation's `task.json` (the registry's
+> `transport-task` parser, `task_reader.py`) and fed by
+> `/api/transport/record`, composed on read from the rungs; the copy
+> `<label>.transport.json` that `summarize task` writes has its own reader
+> (`parse/sidecars/transport.py`) and opens as a file. **The second and third are
 > not a presenter's to fix**, and the reason they looked unfixable was that
 > the picker had nothing to ask. It does now.
 

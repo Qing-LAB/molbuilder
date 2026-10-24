@@ -354,10 +354,14 @@ record's largest force over the relaxation's free atoms bounds the largest
 over this calculation's fewer free atoms. A structure with no relaxation
 record has nothing to compare, and nothing is said.
 
-**The result states both** (schema 9, § 6.10): its structure's `frozen_atoms`
-is the set the Hessian held, and its `info.relaxation` the record of what the
-relaxation held. A transport calculation built from it needs only every
-electrode atom among the held ([`engines/transport.md`](?doc=engines/transport.md)
+**The result states what this calculation held** (§ 6.10.1): its
+structure's `frozen_atoms` is the set the Hessian held. The record of what
+the earlier relaxation held stays with the structure it came in on — the
+result's `info` keeps none of the input's run records — so the comparison is
+said at the gate, above, and only there. A SIESTA ladder's own `relax` stage
+rides the result whole (`relaxation.record`, § 6.2), and it held this
+calculation's set (below). A transport calculation built from the result
+needs only every electrode atom among the held ([`engines/transport.md`](?doc=engines/transport.md)
 § 1.1, Step 0, *what transport asks of the held set*).
 
 **Within one calculation the held set is one.** Every stage of a ladder is
@@ -557,7 +561,7 @@ phase.
 
 mol = gto.M(atoms = EVERY atom, held ones included; basis, charge, spin, ...)
 _mb_configure_scf / _mb_configure_theory   # the generated dressers (§ 4.3)
-state = {schema_version: 9, engine: 'pyscf', phases: empty, ...}; write the artifact
+state = {schema_version: 10, engine: 'pyscf', phases: empty, ...}; write the artifact
 
 # Phase 0 — relaxation (§ 4.2)
 if not ALREADY_RELAXED:
@@ -1340,7 +1344,7 @@ states:
 # format: molbuilder-vibration/v3
 # {
 #   "stage":"freq",                   # the stage's name -> the result's config.stage
-#   "force_criterion_ev_ang":0.01,    # relax_force_tol, resolved for this stage
+#   "force_criterion_ev_ang":0.01,    # the tolerance the relaxation ran to (§ 5.5)
 #   "already_relaxed":false,          # the person's statement, as made
 #   "relaxation":{...},               # the relax stage's relaxation record, or null
 #   "relaxation_stage":"relax",       # the stage that record is of, or null
@@ -1467,9 +1471,9 @@ is guessed at on the node:
 
 | input | read from | through |
 |---|---|---|
-| `SystemLabel`; the species (atomic number per label); the atoms in the deck's order (held first, § 5.2); the lattice; `FC.First` / `FC.Last` — the atoms the run nudged, read through the one door for engine numbering (`engine_atom_index`); the held atoms are the rest, which in the held-first copy is exactly the set `Geometry.Constraints` names (I6), and a range that is not the trailing run is refused | the deck | the fdf reader, `parse/fdf.py` |
-| the axis kinds — which whole-body turns survive (R3) | the deck's `engine-offset` block | the block's one reader, `deck_record.extract_engine_offset` — the grammar of every molbuilder block and its one JSON reader, below `script_emit`, which writes them |
-| the stationarity criterion (`relax_force_tol`, resolved for the stage), the person's statement (`already_relaxed`), the ladder's relaxation — the `relax` stage's relaxation record (`parse/contract.relaxation_of`), read by `prep` with the coordinates, from the output they came from (`runs.steps_of`), and that stage's name — the thermochemistry's temperature (`temperature_K`), the stage's name, and the molbuilder that prepared the deck | the deck's `vibration` block, written by `prep` | its reader beside that one, `deck_record.extract_vibration_record` |
+| `SystemLabel`; the species (atomic number per label); the atoms in the deck's order (held first, § 5.2); `FC.First` / `FC.Last` — the atoms the run nudged, read through the one door for engine numbering (`engine_atom_index`); the held atoms are the rest, which in the held-first copy is exactly the set `Geometry.Constraints` names (I6), and a range that is not the trailing run is refused | the deck | the fdf reader, `parse/fdf.py` |
+| the axis kinds — which whole-body turns survive (R3) — and the box the run had, its cell | the deck's `engine-offset` block | the block's one reader, `deck_record.extract_engine_offset` — the grammar of every molbuilder block and its one JSON reader, below `script_emit`, which writes them; the box through `deck_record.box_of_run`, the one rule the structure the result states is built with |
+| the stationarity criterion (the tolerance the reference geometry was relaxed to, § 5.5), the person's statement (`already_relaxed`), the ladder's relaxation — the `relax` stage's relaxation record (`parse/contract.relaxation_of`), read by `prep` with the coordinates, from the output they came from (`runs.steps_of`), and that stage's name — the thermochemistry's temperature (`temperature_K`), the stage's name, and the molbuilder that prepared the deck | the deck's `vibration` block, written by `prep` | its reader beside that one, `deck_record.extract_vibration_record` |
 | the force constants | `<label>.FC` | `parse/engines/siesta_fc.py` |
 | the reference geometry and its forces (FC step 0); SIESTA's version | the run's output | SIESTA's one reading pass, `siesta_reader` |
 | the order back to the user order | the deck's ATOM-METADATA block, its `atom_order` (none for a deck in the user order — [`model/overview.md`](?doc=model/overview.md) § 2.2a, I2, I5) | the block's reader and the order record's, `deck_record.extract_atom_metadata` and `order_record_of` |
@@ -1564,12 +1568,14 @@ output — printed because every SIESTA deck writes `WriteForces` and
 default, and a finish without them failed after the whole force-constant run). The finish reads them (SIESTA's one reading pass, `siesta_reader`, one pass over the run's output for the version, the geometry and the forces)
 and writes `relaxation.max_force_eh_bohr` — the largest over the **free**
 atoms (R5) — beside `max_force_all_atoms_eh_bohr`, and `converged` judged
-against **this description's own `relax_force_tol`** — the item is on the
-vibration template (§ 3.1), so the yardstick is the tolerance the person set
-or left at the kind's recommendation — **the relaxation rung's own**, the force
-the reference geometry was relaxed to, and the template's when the structure is
-stated relaxed — resolved by `prep` and recorded in the deck's `vibration` block
-*(the force-constant stage's own copy was read until 2026-09-30, plan § 5w K4)*; `engine_metadata.reference_force_criterion_ev_ang` records the
+against **the force the reference geometry was relaxed to**: the `relax`
+stage's own tolerance, as its relaxation record states it
+(`relaxation_of`'s `force_tolerance_ev_ang`, the record `prep` reads with the
+coordinates) — that rung's `relax_force_tol` where its record states none,
+and the template's when the structure is stated relaxed — resolved by `prep`
+and recorded in the deck's `vibration` block; the force-constant stage's
+checks at prep judge the `relax` stage's outcome by the same tolerance, so
+`prep` and the finish say one thing; `engine_metadata.reference_force_criterion_ev_ang` records the
 number used. *(Until 2026-09-24 the catalogue's general default stood in for
 it.)* The positions the projection and the artifact use are the run's own
 reference geometry, its FC step 0 (§ 5.2a). The judged
@@ -2104,9 +2110,9 @@ tests can meaningfully guard:
 | `modes[].ir_intensity_km_mol` | `dμ/dR` (analytic response, or dipoles at displaced geometries) | **derived** — `dμ/dQ = Σ (dμ/dR)·L_canonical` (`einsum('kai,ka->i', DMU_DR, L_canonical)`), then `42.2561·\|dμ/dQ\|²` | km/mol |
 | `modes[].raman_activity_a4_amu` | polarizabilities at displaced geometries, in Bohr³ | **derived** — central differences, the Placzek scalar, one global `(Bohr/Å)⁶ ≈ 0.02197` | Å⁴/amu |
 | `modes[].zero_point_amplitude_amu12_ang` · `zero_point_displacement_ang` | the mode's frequency and canonical vector | **derived** by the one function both writers call (§ 6.6) — `√(16.858 / ν̃)`, times `L_canonical` per free atom (§ 6.3) | amu^½·Å · Å |
-| `relaxation.max_force_eh_bohr` (SIESTA) | the first `siesta: Atomic forces` block of the run's output, its FC step 0 | **read** by the finish (§ 5.5) — the largest over the free atoms, eV/Å → Eh/Bohr; `converged` against the description's own `relax_force_tol` (§ 5.5) | Eh/Bohr |
+| `relaxation.max_force_eh_bohr` (SIESTA) | the first `siesta: Atomic forces` block of the run's output, its FC step 0 | **read** by the finish (§ 5.5) — the largest over the free atoms, eV/Å → Eh/Bohr; `converged` against the tolerance the reference geometry was relaxed to (§ 5.5) | Eh/Bohr |
 | `engine_metadata.fc_asymmetry_max_ev_ang2` (SIESTA) | the `.FC` file | **derived** — `max \|H_ij − H_ji\|` over the free block before symmetrisation (§ 5.5) | eV/Å² |
-| `engine_metadata.reference_force_criterion_ev_ang` (SIESTA) | the description's `relax_force_tol`, resolved for the stage | **read** by the finish from the deck's `vibration` block — the criterion the verdict used, so the verdict carries its provenance (§ 5.5) | eV/Å |
+| `engine_metadata.reference_force_criterion_ev_ang` (SIESTA) | the tolerance the reference geometry was relaxed to (§ 5.5) | **read** by the finish from the deck's `vibration` block — the criterion the verdict used, so the verdict carries its provenance (§ 5.5) | eV/Å |
 | `modes[].electronic_structure.amplitude_ang` | — | the push `A` of § 4.8, molbuilder's own choice (`displacement_amplitude_ang`), recorded with the probe it produced | Å |
 | `modes[].electronic_structure.mo_energies_*_eh`, `scf_energy_*_eh` | `mf.mo_energy`, `E` at ±A | a non-finite entry written as null (`sidecars.spectra.finite_or_none`); the shift and the coupling `ΔE/(2A)` are the viewer's arithmetic | Hartree |
 | `removed_motions` | — | **derived** by the one rule (§ 4.5), on both engines | count · (count, n_free, 3) |
@@ -2417,11 +2423,16 @@ The NetCDF is for analysis and for loading a large result fast —
 so a molbuilder read of the same file in the same kernel is never refused
 (one handle at a time, [`model/datafiles.md`](?doc=model/datafiles.md) § 4).
 
+Every axis is a coordinate of its own name, so a reader selects by value —
+`.sel(mode=7)`, `.sel(temperature=298.15)` ([`model/datafiles.md`](?doc=model/datafiles.md)
+§ 2).
+
 ```text
-/                     dim xyz(3); each group its own dims -- atom in
-                      /structure, free_atom, mode, removed in /modes, mo in
-                      /equilibrium
-                      attributes: schema "molbuilder/spectra-data@2", json_sha256,
+/                     dim xyz(3); each group its own dims -- atom and
+                      cell_vector in /structure, free_atom, mode, removed in
+                      /modes, mo in /equilibrium, es and window in
+                      /modes/electronic_structure, temperature in /thermo/grid
+                      attributes: schema "molbuilder/spectra-data@3", json_sha256,
                       spectra_schema_version 10, engine, engine_version,
                       molbuilder_version, timestamp, label, methods_text,
                       bibliography_keys; the scalar blocks -- phase_*, ir_route,
@@ -2429,16 +2440,18 @@ so a molbuilder read of the same file in the same kernel is never refused
                       n_atoms_in_hessian, hessian_density_fit, relaxation.* --
                       as attributes; config, engine_metadata, runtime_info and
                       relaxation.record as JSON-text attributes
-/structure            element(atom)  position_ang(atom, xyz)  mass_amu(atom)
-                      held(atom)  cell_ang(xyz, xyz)  axis_kind(xyz)
+/structure            atom(atom) -- the user index  xyz(xyz)  cell_vector(cell_vector)
+                      element(atom)  position_ang(atom, xyz)  mass_amu(atom)
+                      held(atom)  cell_ang(cell_vector, xyz)  axis_kind(xyz)
                       user_atom_index(atom)  engine_atom_index(atom)
                       attributes atoms_listed_by "user_index",
                       atom_index_base 0 -- the atom index map
                       attribute structure_json: Structure.to_dict(), whole
-/equilibrium          scf_energy_eh, homo_idx (attributes)  mo_energy_eh(mo)
-/modes                index_1based(mode)  frequency_cm1(mode)
-                      free_atom_index(free_atom)     -- which atom each row is,
-                                                        by user index
+/equilibrium          scf_energy_eh, homo_idx (attributes)  mo(mo)  mo_energy_eh(mo)
+/modes                mode(mode) -- 1-based, the JSON's index_1based
+                      xyz(xyz)  removed(removed)  frequency_cm1(mode)
+                      free_atom(free_atom)     -- which atom each row is,
+                                                  by user index
                       eigenvector_canonical(mode, free_atom, xyz)
                       eigenvector_display(mode, free_atom, xyz)
                       zero_point_amplitude_amu12_ang(mode)
@@ -2446,18 +2459,23 @@ so a molbuilder read of the same file in the same kernel is never refused
                       ir_intensity_km_mol(mode)  raman_activity_a4_amu(mode)
                       ir_active(mode)  raman_active(mode)  activity_class(mode)
                       removed_motion(removed, free_atom, xyz)
-    /modes/electronic_structure   the probe of § 4.8, one row per selected mode
-/thermo               regime, temperature_k, pressure, zpe_eh, h_eh, s_eh_k, g_eh,
-                      ... (attributes)
-    /thermo/grid      dims temperature: every curve of § 4.7
+    /modes/electronic_structure   the probe of § 4.8, one row per selected mode:
+                      es(es) -- the mode's 1-based index  window(window)
+/thermo               regime, temperature_K, pressure_atm, zpe_eh, h_eh, s_eh_k,
+                      g_eh, ... (attributes)
+    /thermo/grid      temperature(temperature) in K: every curve of § 4.7
 ```
+
+A file written before 2.33.2 (`spectra-data@1`, `@2`) names four axes' values
+otherwise — `index_1based`, `free_atom_index`, `mode_index_1based`,
+`temperatures_K` — and is read as it is.
 
 **The atoms are listed by user index, and the file says so** *(since
 2.32.0 — [`model/overview.md`](?doc=model/overview.md) § 2.2b)*: `/structure`
 carries the atom index map — each atom's user and engine index, the engine's
 the stages' deck order (held atoms first for SIESTA's, the user order for
 PySCF's, which sorts nothing) — made by the finish from the deck's order
-record and handed to the one writer with the atoms; `free_atom_index` counts
+record and handed to the one writer with the atoms; `free_atom` counts
 by user index, marked so. The JSON — schema 10 — states the same map,
 `atom_index_map`, at its top. A result written before 2.32.0 (schema 4–9,
 `spectra-data@1`) is read as it is, its map made as it is read — the user

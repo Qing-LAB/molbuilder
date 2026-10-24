@@ -1000,7 +1000,7 @@ temperature, the shared k-point grid) re-runs everything.
 | **a device point's H(V)** | the converged Hamiltonian at that bias, in real space | the same point — `.TS.HSX` | as its density | as its density |
 | **T(E, V)** | the transmission at energy E — the probability an electron crosses | tbtrans, at one bias point — `.TBT.nc`, `.TBT.AVTRANS_L-R` | that point's H(V); both leads' H, S, E_F at μ = ±V/2; the transmission k-point grid (`tbt_k_grid`); the broadenings (`tbt_elecs_eta_ev`, `tbt_contours_eta_ev`) | **any other energy**: tbtrans builds H(k) and S(k) once per k-point, then each energy from its own self-energies alone (`m_tbt_trik.F90`, the energy loop inside the k-point loop) — so T at an energy is the same whatever window it is sampled in; **the electronic temperature**, which enters only the current's Fermi functions (`m_tbt_save.F90:2015–2035`) |
 | the device DOS, the leads' spectral DOS, the eigenchannels | what tbtrans was asked for beside T (§ 6.1c) | the same `.TBT.nc` | as T(E, V) | as T(E, V) |
-| **I(V)** | the current at one bias: T integrated over the bias window with both leads' Fermi functions (§ 1.1, step 5) | tbtrans's own integral at a self-consistent point; the record's from T(E, 0) under the low-bias approximation (§ 2a.10) | T(E, V) inside the bias window and its Fermi tails, ±(\|V\|/2 + 5 kT); the electronic temperature | energies beyond those tails: they add nothing (§ 2a.10, P2) |
+| **I(V)** | the current at one bias: T integrated over the bias window with both leads' Fermi functions (§ 1.1, step 5) | tbtrans's own integral at a self-consistent point — the record's by tbtrans's rule over the joined grid at a point that shares energies (§ 2a.16); the record's from T(E, 0) under the low-bias approximation (§ 2a.10) | T(E, V) inside the bias window and its Fermi tails, ±(\|V\|/2 + 5 kT); the electronic temperature | energies beyond those tails: they add nothing (§ 2a.10, P2) |
 | **G = G₀·T(E_F)** | the zero-bias conductance | the record, from T at E − E_F = 0 | T(E, 0) | — |
 
 #### What a change re-runs
@@ -1061,7 +1061,10 @@ finished calculation is the record of what it computed, and stays so.
 **Asking a finished calculation a wider question** — the same junction, the
 same leads and device, a wider window or more voltages — is a new
 calculation in a folder of its own, and what it may take from the finished
-one is what the tables above say stands — copied in by the rule of § 2a.16.
+one is what the tables above say stands, a group at a time — copied in by
+the rule of § 2a.16, which copies a group only when every member of it
+stands: the seed, in the leads' group, runs again with them when
+`electrode_kz` changes.
 
 ### 1.3 A junction by hand — every matrix, every file *(user, 2026-10-22)*
 
@@ -1304,7 +1307,8 @@ below is read from its files with `sisl`, as the notebook's last cells do.
 ```
 molbuilder describe --calculation optimization … --name J --psml-lib pseudopotential   # basis SZ, 150 Ry
 molbuilder jobset prep task --group 1 --target this;  launch task --stage coarse      # 6 s, geometry converged
-molbuilder describe --calculation transport --slot junction=claude-transport-by-hand/opt/J/01_coarse/run-0 \
+molbuilder describe --calculation transport --engine siesta --shape hierarchical \
+                    --slot junction=claude-transport-by-hand/opt/J/01_coarse/run-0 \
                     --bias 0,0.2 --no-low-bias-approximation --bundle claude-transport-by-hand/transport/T
 molbuilder jobset prep task --group 1; launch task --group 1      # seed, both leads: one job
 molbuilder jobset prep task --group 2; launch task --stage device # the 0 V and 0.2 V points: one walk
@@ -2040,7 +2044,9 @@ made on the rows is a vocabulary name's unit —
 a row of the mode's vocabulary written with another unit is refused by name
 wherever the rows are read for a record, a data file or a page
 (`frame_average.check_units`, [`model/structure.md`](?doc=model/structure.md)
-§ 2.2f). Transport never asks what made the frames,
+§ 2.2f) — a page draws the refusal where the frames would be and still
+opens, the Transport tab's citation saying it beside the junction as every
+refusal there is (`frame_average.answer_said`). Transport never asks what made the frames,
 nor how many there are — that is the maker's. Another mode is
 another frame set and another transport calculation; how the modes' results
 are weighed against each other is the person's *(user, 2026-10-09: "it is
@@ -2141,7 +2147,7 @@ here is how many slices you pay for.
 | | what runs | what you get |
 |---|---|---|
 | **`low_bias_approximation: true`** | the device SCF converges **once, at 0 V**, and the transmission runs **once**, on it | **T(E, 0)** — one slice, a full energy curve; the I–V computed from it by the record for every listed voltage, **I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE**, μ_L,R = E_F ± eV/2 with V signed (`record.linear_response_iv`) — the **linear-response approximation**. A negative voltage carries a negative current, as TBtrans's own does, and I(−V) = −I(V): the one slice serves both signs |
-| **`low_bias_approximation: false`** | **every voltage gets its own device SCF** and its own transmission — a sweep (§ 2a.11) | **T(E, V)** — one slice per point; each point's current TBtrans's own integral over its window, with no approximation beyond the method itself; I(−V) is its own point's, and differs from −I(V) where T(E, −V) differs from T(E, V) inside the bias window — an asymmetric junction's rectification |
+| **`low_bias_approximation: false`** | **every voltage gets its own device SCF** and its own transmission — a sweep (§ 2a.11) | **T(E, V)** — one slice per point; each point's current TBtrans's own integral over its window — a point that shares energies the record's, by TBtrans's rule over its joined grid (§ 2a.16) — with no approximation beyond the method itself; I(−V) is its own point's, and differs from −I(V) where T(E, −V) differs from T(E, V) inside the bias window — an asymmetric junction's rectification |
 
 The mechanism is the same in both cases; the difference is how many device SCFs
 are paid for, and therefore **what the result is entitled to be called**.
@@ -3101,10 +3107,13 @@ when asked**, through the one composition the record and the data file read
 the data file's own writer (`datafile.data_file_bytes`): a ladder in progress
 exports too, each point not done at the fill value (`done` 0) — before any
 point is done, the rungs' facts and every SCF history, the transmission's
-tables empty. **An export reads no data file and writes nothing into the
-calculation's folder**: it holds what is already there — TBtrans's
+tables empty. **An export reads no data file whole and writes nothing into
+the calculation's folder**: it holds what is already there — TBtrans's
 k-averaged text files and each point's kept reading
-([`model/parse.md`](?doc=model/parse.md) § 5e). A finished point whose DOS per
+([`model/parse.md`](?doc=model/parse.md) § 5e), and, for a point whose
+reading is not kept, the energy list alone of its `.TBT.nc` (§ 5e's small
+read); what a status read of a run records of how it ended (`runs.concluded`,
+§ 2a.16) is the run's, not the export's. A finished point whose DOS per
 orbital is not kept exports without its DOS by region, `dos_per_orbital_reading`
 saying why in its words, and the export **says how many points that is and
 how to read them** — the DOS tab's *Read the DOS per orbital*, or `jobset
@@ -3112,7 +3121,9 @@ summarize task`. The data file `summarize task` writes stays its
 deliverable.
 
 - **NetCDF** — `<label>.transport.nc`, the data file above as `summarize
-  task` would write it now: every variable with its units, definition and
+  task` composes it from what is kept now — without reading a point's data
+  file first, so a point whose DOS per orbital is not kept is without its DOS
+  by region, as said above: every variable with its units, definition and
   source, the calculation's specifics as its attributes.
 - **CSV** — the same variables as tables, never a second reader of the
   calculation: **one long table per set of axes**, every variable over the
@@ -3628,7 +3639,10 @@ by the composition's one reader and written by its one writer
 junction is the finished one's, atom for atom, and is not composed again; and
 its **pseudopotentials**, `pseudos/`, which prep takes before any other
 source, so every deck reads the files the finished runs read. A flag beside
-`--reuses` sets what it sets on any describe. You then change what the new
+`--reuses` sets what it sets on any describe — the voltages, the treatment,
+the window — and one naming what the extension keeps is refused by name:
+`--slot` (the junction), `--name` (the label), `--psml-lib` (the
+pseudopotentials). You then change what the new
 question asks, on the Transport tab before Describe or on Task setup after,
 as for any calculation. The describe copies no run.
 
@@ -3713,7 +3727,7 @@ above): said once it is described — on the Transport tab beside Describe's
 answer, by `molbuilder describe --reuses`, on Task setup's Preview and by
 `prep task` — every group copied in, every point taken over, every point's
 energies shared, and what runs here, each in the manifest's words. The
-command line limits nothing: a fixed value typed into the template is the
+command line limits no value: a fixed value typed into the template is the
 person's, and the manifest names what it makes run again.
 
 #### At prep — a group copied in, or prepared here

@@ -134,7 +134,7 @@ that is not an abstraction:**
 *Rewritten 2026-08-27 against the probe's own record. What stood here is kept
 below, because how it was wrong is the useful part.*
 
-`generator.md` § 4.4a says `choice` (the mechanism) carries to another cluster
+`generator.md` § 4.4a says `choice` (the mechanism) carries to another domain
 **"provided the node type is comparable"**. **A Sol partition cannot tell you
 whether that holds**, because a partition is a queue and draws from many
 machines (`scheduler.md` **R0**). The probe, run 2026-08-27:

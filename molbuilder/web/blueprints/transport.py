@@ -124,7 +124,7 @@ def api_transport_describe_attempt() -> Any:
                                               classify_citation,
                                               compose_junction,
                                               labeled_citation_structure)
-    from molbuilder.frame_average import answer as frames_answer
+    from molbuilder.frame_average import answer_said
     from molbuilder.issues import Issue
     from molbuilder.transport.sort import (ORDER_INVERTED,
                                            electrode_orientation)
@@ -280,6 +280,14 @@ def api_transport_describe_attempt() -> Any:
             # empty card.
             pass
 
+    # WHAT ITS FRAMES ARE (§ 3.8.1): a cited pair's count and its rows, the
+    # frames' post-process's answer; a cited run is one structure.  Rows the
+    # vocabulary refuses are said where the frames would be, and as a
+    # refusal beside the junction, as every refusal here is (§ 2a.9).
+    frame_set = answer_said(
+        cited.structure if isinstance(cited, CitedPair) else None)
+    if frame_set.get("why"):
+        findings.append(Issue("error", str(frame_set["why"])))
     return jsonify({
         "ok": True,
         "citation": citation,
@@ -291,10 +299,7 @@ def api_transport_describe_attempt() -> Any:
         # THE RENAME THIS ANSWER WAS COMPOSED WITH, so the tab shows the
         # choice it holds and offers to withdraw it (§ 4).
         "swap_electrodes": swap,
-        # WHAT ITS FRAMES ARE (§ 3.8.1): a cited pair's count and its rows,
-        # the frames' post-process's answer; a cited run is one structure.
-        "frame_set": frames_answer(
-            cited.structure if isinstance(cited, CitedPair) else None),
+        "frame_set": frame_set,
     })
 
 
@@ -307,7 +312,8 @@ def _describe_reused(folder: str, root) -> Any:
     drawn for; ``reuses``, the folder; and its bias list and treatment.  A
     folder that is not a transport calculation's answers ``citation: null``
     with the refusal as its summary, as any path that is not citable."""
-    from molbuilder.frame_average import answer as frames_answer
+    from molbuilder.frame_average import answer_said
+    from molbuilder.issues import Issue
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.transport.compose import ComposeError, recorded_junction
     from molbuilder.transport.reuse import Extension, ReuseError, reused
@@ -351,13 +357,18 @@ def _describe_reused(folder: str, root) -> Any:
         stands] + ([f"its junction's record does not read: {unread}"]
                    if unread else [])
         + ([unstated] if unstated else []))
+    # ITS FRAMES, as any citation's are said (§ 3.8.1, § 2a.9).
+    frame_set = answer_said(junction if junction is not None
+                            and junction.n_frames > 1 else None)
     return jsonify({
         "ok": True, "citation": task.slots["junction"], "reuses": rel,
-        "concluded": True, "summary": summary, "findings": [],
+        "concluded": True, "summary": summary,
+        "findings": _issues_to_json(
+            [Issue("error", str(frame_set["why"]))]
+            if frame_set.get("why") else []),
         "structure": junction.to_dict() if junction is not None else None,
         "fix": None, "swap_electrodes": task.swap_electrodes,
-        "frame_set": frames_answer(junction if junction is not None
-                                   and junction.n_frames > 1 else None),
+        "frame_set": frame_set,
         "bias": [float(v) for v in task.bias],
         "low_bias_approximation": task.low_bias_approximation,
         # WHAT AN EXTENSION OF IT MAY CHANGE, AND WHAT IS FIXED

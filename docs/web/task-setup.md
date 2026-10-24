@@ -1108,7 +1108,7 @@ prepared.
 
 | step | reads | must say, when it fails |
 |---|---|---|
-| **1 checkpoint** | — the server's, always (§ 8) | *"No state was saved, so nothing was written"* — and it **stops**: the state is the one a redo restores |
+| **1 checkpoint** | — the server's, always, for a Save that writes (§ 8) | *"No state was saved, so nothing was written"* — and it **stops**: the state is the one a redo restores |
 | **2 write** | the **buffer**, not the model | *"NOT written — ⟨the server's words⟩"* |
 | **3 confirm** | — | **always**, in the bar beside the button, naming the file. A clean save is the ordinary one, and it is the one that used to say nothing |
 | **4 re-open** | the folder, again | its own message. The file **is** written; a reload that throws must not swallow step 3 |

@@ -57,12 +57,25 @@ except ImportError:                         # beside a job, in a bundle
                         unnumber_attr, write_group)
     from persist import write_bytes
 
-DATA_SCHEMA = "molbuilder/spectra-data@2"
+DATA_SCHEMA = "molbuilder/spectra-data@3"
 #: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
 #: the same variables without its atom index map, read as it is and never
 #: rewritten -- its map made as it is read (`engines/vibration.md`
-#: § 6.10.5; `model/overview.md` § 2.2b, F3).
-READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1", DATA_SCHEMA)
+#: § 6.10.5; `model/overview.md` § 2.2b, F3); one written before 2.33.2
+#: (``@1``, ``@2``) names four axes' values otherwise (:data:`_EARLIER`).
+READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1",
+                         "molbuilder/spectra-data@2", DATA_SCHEMA)
+#: AN AXIS'S VALUES AS AN EARLIER SCHEMA NAMED THEM -- before every axis was
+#: a coordinate of its own name (`model/datafiles.md` § 2).
+_EARLIER = {"mode": "index_1based", "free_atom": "free_atom_index",
+            "es": "mode_index_1based", "temperature": "temperatures_K"}
+
+
+def _axis(variables: Mapping[str, Any], name: str) -> Any:
+    """Axis ``name``'s values among ``variables``, as this schema names
+    them or an earlier one did (:data:`_EARLIER`)."""
+    return (variables[name] if name in variables
+            else variables[_EARLIER[name]])
 
 #: The fill of an integer attribute that can be not stated.
 _INT_FILL = -1
@@ -188,6 +201,14 @@ def _block_back(attrs: Mapping[str, Any], table: Mapping[str, str],
 
 def _structure_vars() -> Tuple[Var, ...]:
     return (
+        Var("atom", ("atom",), "coordinate", "1", "atom index",
+            "the atom's user index, from 0 -- the file is listed by user "
+            "index (atoms_listed_by); engine_atom_index beside it "
+            "(model/overview.md 2.2b)", dtype="i4"),
+        Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
+            "x, y, z", dtype=str),
+        Var("cell_vector", ("cell_vector",), "coordinate", "",
+            "lattice vector", "a, b, c", dtype=str),
         Var("element", ("atom",), "given", "", "the atom's element",
             "the chemical symbol, in the user order", dtype=str,
             auxiliary=True),
@@ -199,7 +220,8 @@ def _structure_vars() -> Tuple[Var, ...]:
         Var("held", ("atom",), "given", "1", "whether the atom was held",
             "the structure's frozen_atoms label: 1 held, 0 free",
             dtype="i1", flag=True),
-        Var("cell_ang", ("xyz", "xyz"), "given", "Angstrom", "the cell",
+        Var("cell_ang", ("cell_vector", "xyz"), "given", "Angstrom",
+            "the cell",
             "the box the run had, a row per lattice vector; NaN for none"),
         Var("axis_kind", ("xyz",), "given", "", "each axis's kind",
             "periodic or isolated, as the run was given it", dtype=str),
@@ -207,23 +229,30 @@ def _structure_vars() -> Tuple[Var, ...]:
 
 
 def _equilibrium_vars() -> Tuple[Var, ...]:
-    return (Var("mo_energy_eh", ("mo",), "raw", "Eh", "the orbital energies",
+    return (Var("mo", ("mo",), "coordinate", "1", "the orbital's index",
+                "from 0, ascending energy", dtype="i4"),
+            Var("mo_energy_eh", ("mo",), "raw", "Eh", "the orbital energies",
                 "every MO energy at the equilibrium SCF, ascending",
                 source="the equilibrium SCF"),)
 
 
 def _mode_vars() -> Tuple[Var, ...]:
     return (
-        Var("index_1based", ("mode",), "coordinate", "1", "the mode's index",
-            "1-based, ascending frequency", dtype="i4"),
+        Var("mode", ("mode",), "coordinate", "1", "the mode's index",
+            "1-based, ascending frequency (the JSON's index_1based)",
+            dtype="i4"),
+        Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
+            "x, y, z", dtype=str),
+        Var("removed", ("removed",), "coordinate", "1",
+            "the removed motion's index", "from 0", dtype="i4"),
         Var("frequency_cm1", ("mode",), "derived", "cm-1", "the frequency",
             "the harmonic frequency; negative for an imaginary mode"),
-        Var("free_atom_index", ("free_atom",), "given", "1",
+        Var("free_atom", ("free_atom",), "coordinate", "1",
             "which atom each row is",
             "the 0-based atom index, in the user order, of each free-atom "
             "row of the eigenvectors (free_atom_idxs) -- counting by the "
             "file's atom index map, in /structure", dtype="i4",
-            auxiliary=True, atom_index=True),
+            atom_index=True),
         Var("eigenvector_canonical", ("mode", "free_atom", "xyz"), "derived",
             "1", "the mass-weighted eigenvector",
             "sum over atoms of m |L|^2 = 1 (§ 6.3)"),
@@ -260,8 +289,11 @@ def _mode_vars() -> Tuple[Var, ...]:
 
 def _es_vars() -> Tuple[Var, ...]:
     return (
-        Var("mode_index_1based", ("es",), "coordinate", "1",
-            "the probed mode", "index_1based of the mode this row is of",
+        Var("es", ("es",), "coordinate", "1",
+            "the probed mode", "the 1-based index of the mode this row is of",
+            dtype="i4"),
+        Var("window", ("window",), "coordinate", "1",
+            "the orbital's place in the window", "from 0, ascending energy",
             dtype="i4"),
         Var("homo_index_in_window", ("es",), "given", "1",
             "the HOMO's index in the window",
@@ -279,7 +311,7 @@ def _es_vars() -> Tuple[Var, ...]:
 
 def _grid_vars() -> Tuple[Var, ...]:
     return (
-        Var("temperatures_K", ("temperature",), "coordinate", "K",
+        Var("temperature", ("temperature",), "coordinate", "K",
             "the temperature", "each temperature the curves are drawn at"),
         *(Var(name, ("temperature",), "derived", units, long_name,
               definition)
@@ -355,7 +387,10 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         atoms = AtomIndexMap.from_dict(payload[MAP_KEY],
                                        n_atoms=n_atoms,
                                        source="the result's atom_index_map")
-        values = _fill(vars_, {"atom": atoms, "xyz": 3})
+        values = _fill(vars_, {"atom": atoms, "xyz": 3, "cell_vector": 3})
+        values["atom"][:] = np.arange(n_atoms)
+        values["xyz"][:] = ["x", "y", "z"]
+        values["cell_vector"][:] = ["a", "b", "c"]
         held: List[int]
         if structure is not None:
             # THROUGH THE STRUCTURE'S OWN DOOR (`model/structure.md` § 2.1):
@@ -376,7 +411,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             values["held"][i] = 1
         if eq.get("masses_amu") is not None:
             values["mass_amu"][:] = np.asarray(eq["masses_amu"], dtype=float)
-        write_group(g, {"atom": atoms}, vars_, values)
+        write_group(g, {"atom": atoms, "cell_vector": 3}, vars_, values)
         g.setncattr("structure_json", json_attr(structure))
 
         # /equilibrium -- the energy subgroup, whole or not at all (§ 6.2).
@@ -386,6 +421,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
                      "homo_idx": _encode("int?", eq.get("homo_idx"))})
         vars_ = _equilibrium_vars()
         values = _fill(vars_, {"mo": len(mo or ())})
+        values["mo"][:] = np.arange(len(mo or ()))
         if mo:
             values["mo_energy_eh"][:] = np.asarray(mo, dtype=float)
         write_group(g, {"mo": len(mo or ())}, vars_, values)
@@ -397,9 +433,11 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
                 "removed": len(patterns)}
         vars_ = _mode_vars()
         values = _fill(vars_, {**dims, "xyz": 3})
-        values["free_atom_index"][:] = free
+        values["free_atom"][:] = free
+        values["xyz"][:] = ["x", "y", "z"]
+        values["removed"][:] = np.arange(len(patterns))
         for k, m in enumerate(modes):
-            values["index_1based"][k] = int(m["index_1based"])
+            values["mode"][k] = int(m["index_1based"])
             values["frequency_cm1"][k] = float(m["frequency_cm1"])
             values["eigenvector_canonical"][k] = np.asarray(
                 m["eigenvector_canonical"], dtype=float)
@@ -432,9 +470,10 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         ge = g.createGroup("electronic_structure")
         vars_ = _es_vars()
         values = _fill(vars_, {"es": len(probed), "window": window})
+        values["window"][:] = np.arange(window)
         for k, m in enumerate(probed):
             es = m["electronic_structure"]
-            values["mode_index_1based"][k] = int(m["index_1based"])
+            values["es"][k] = int(m["index_1based"])
             values["homo_index_in_window"][k] = int(es["homo_index_in_window"])
             for name, *_ in _ES_SCALARS:
                 values[name][k] = float(es[name])
@@ -450,7 +489,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             temps = [float(t) for t in grid.get("temperatures_K") or ()]
             vars_ = _grid_vars()
             values = _fill(vars_, {"temperature": len(temps)})
-            values["temperatures_K"][:] = temps
+            values["temperature"][:] = temps
             unknown = sorted(k for k in grid if k != "temperatures_K"
                              and k not in {n for n, *_ in _GRID_CURVES})
             if unknown:
@@ -520,12 +559,13 @@ def read_spectra_data(path) -> Dict[str, Any]:
         # /modes
         g = ds["modes"]
         mv = read_variables(g)
-        out["free_atom_idxs"] = [int(i) for i in mv["free_atom_index"]["data"]]
-        n_modes = int(mv["index_1based"]["data"].shape[0])
+        out["free_atom_idxs"] = [int(i) for i in
+                                 _axis(mv, "free_atom")["data"]]
+        n_modes = int(_axis(mv, "mode")["data"].shape[0])
         es_rows: Dict[int, Dict[str, Any]] = {}
         ge = g["electronic_structure"]
         ev = read_variables(ge)
-        for k, idx in enumerate(ev["mode_index_1based"]["data"]):
+        for k, idx in enumerate(_axis(ev, "es")["data"]):
             es_rows[int(idx)] = {
                 "amplitude_ang": float(ev["amplitude_ang"]["data"][k]),
                 **{name: [float(x) for x in ev[name]["data"][k]]
@@ -537,7 +577,7 @@ def read_spectra_data(path) -> Dict[str, Any]:
             }
         modes = []
         for k in range(n_modes):
-            idx = int(mv["index_1based"]["data"][k])
+            idx = int(_axis(mv, "mode")["data"][k])
             # THE DERIVATION'S RULE (`spectra.derived`): an imaginary mode
             # has no zero-point amplitude and no displacement.
             amplitude = unnumber_attr(
@@ -578,7 +618,7 @@ def read_spectra_data(path) -> Dict[str, Any]:
         if "curves" in gg.ncattrs():
             gv = read_variables(gg)
             grid = {"temperatures_K": [float(t) for t in
-                                       gv["temperatures_K"]["data"]]}
+                                       _axis(gv, "temperature")["data"]]}
             for name in json.loads(str(gg.getncattr("curves"))):
                 grid[name] = [float(x) for x in gv[name]["data"]]
             thermo["grid"] = grid

@@ -2747,7 +2747,7 @@ def _folder_frame_set(task, folder):
     if getattr(task, "calculation", None) != "transport":
         return None
     from molbuilder.projects import find_projects_root
-    from molbuilder.frame_average import answer as frames_answer
+    from molbuilder.frame_average import answer_said
     from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               resolve_citation)
     cited_at = ((getattr(task, "slots", None) or {}).get("junction"))
@@ -2764,7 +2764,7 @@ def _folder_frame_set(task, folder):
         _, cited = resolve_citation(str(cited_at), tree)
     except ComposeError as exc:
         return {"n_frames": None, "definition": None, "why": str(exc)}
-    return frames_answer(
+    return answer_said(
         cited.structure if isinstance(cited, CitedPair) else None)
 
 

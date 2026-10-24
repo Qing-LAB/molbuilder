@@ -344,6 +344,19 @@ def answer(structure) -> Dict[str, object]:
             else None}
 
 
+def answer_said(structure) -> Dict[str, object]:
+    """:func:`answer` as every page draws it: the frames, or -- their rows
+    refused (:func:`check_units`) -- the refusal in the form a citation that
+    does not read takes, ``{n_frames, definition: None, why}``, its words
+    the refusal's (`engines/transport.md` § 3.8.1, `web/task-setup.md`
+    § 3): the page names it and still opens."""
+    try:
+        return answer(structure)
+    except AverageError as exc:
+        return {"n_frames": getattr(structure, "n_frames", None),
+                "definition": None, "why": str(exc)}
+
+
 def check_units(rows) -> None:
     """THE NAME CARRIES ITS UNIT (`model/structure.md` § 2.2f): a row of the
     vocabulary -- the structure's or a frame's -- written with another unit

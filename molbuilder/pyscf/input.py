@@ -390,10 +390,10 @@ def spec_for(struct: Structure,
         from ..runtime_info import to_gpu
         from ..trajectory_log.emitter import MolwatchEmitter
         from ..workingcopy_structure import StructureCodec
-        from .relax_policy import relax, wall_deadline
+        from .relax_policy import past_wall, relax, wall_deadline
         out += emit_bundle_imports(StructureCodec, MolwatchEmitter, relax,
-                                   wall_deadline, Structure, to_gpu,
-                                   AtomIndexMap)
+                                   wall_deadline, past_wall, Structure,
+                                   to_gpu, AtomIndexMap)
 
         # ---- _save_structure helper (the PAIR writer), defined EARLY
         #      so the initial-geometry snapshot can be
@@ -1126,11 +1126,13 @@ def _emit_optimization(cfg: PySCFConfig,
             out += _sc.parameter("geom_continue_retries", "pyscf").note()
     out.append(f"_ON_NONCONVERGENCE = {policy!r}")
     out.append(f"_GEOM_CONTINUE_RETRIES = {retries}")
+    # THE WALL (`engines/pyscf.md` § 3.9): the deadline the run script's
+    # environment states, or none -- read once, kept by the relaxation and
+    # by the SCF after it.
+    out.append("_MB_WALL_DEADLINE = _mb_wall_deadline()")
     out.append("mol_eq, _GEOM_CONVERGED = _mb_relax(")
     out.append("        mf, _ON_NONCONVERGENCE, _GEOM_CONTINUE_RETRIES,")
-    # THE WALL (`engines/pyscf.md` § 3.9): the deadline the run script's
-    # environment states, or none.
-    out.append("        deadline = _mb_wall_deadline(),")
+    out.append("        deadline = _MB_WALL_DEADLINE,")
     if cfg.save_optimized_xyz:
         # EVERY STEP'S GEOMETRY, KEPT, as SIESTA keeps its `.XV` (user,
         # 2026-10-06): a rung stopped at its step limit or its wall leaves
@@ -1176,12 +1178,15 @@ def _emit_optimization(cfg: PySCFConfig,
         out.append("# check leaves one, at the input geometry -- else from the")
         out.append("# initial guess, and it is the state the answer below is")
         out.append("# read from.")
-    out.append("dm_prev = (mf.make_rdm1()")
-    out.append("           if mf.mo_coeff is not None and mf.mo_occ is not None")
-    out.append("           else None)")
-    out.append("mf.reset(mol_eq)")
-    out.append("mf.kernel(dm0=dm_prev)")
-    out.append('print(f"\\nFinal energy: {mf.e_tot:.8f} Hartree")')
+    # ...NONE PAST THE WALL (`engines/pyscf.md` § 3.9): a relaxation the
+    # wall stopped ends normally, its geometry kept, no SCF after it.
+    out.append("if not _mb_past_wall(_MB_WALL_DEADLINE):")
+    out.append("    dm_prev = (mf.make_rdm1()")
+    out.append("               if mf.mo_coeff is not None and mf.mo_occ is not None")
+    out.append("               else None)")
+    out.append("    mf.reset(mol_eq)")
+    out.append("    mf.kernel(dm0=dm_prev)")
+    out.append('    print(f"\\nFinal energy: {mf.e_tot:.8f} Hartree")')
     return out
 
 

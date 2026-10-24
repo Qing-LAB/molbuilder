@@ -70,3 +70,28 @@ def test_the_data_file_names_the_json_it_was_written_with(tmp_path):
     with netCDF4.Dataset(str(tmp_path / "job.spectra.nc")) as ds:
         said = ds.getncattr("json_sha256")
     assert said == hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def test_every_axis_is_a_coordinate_a_reader_selects_by(tmp_path):
+    """`model/datafiles.md` § 2: every axis a coordinate of its own name, so
+    a reader selects by value -- a temperature of the thermochemistry's grid,
+    a mode, an atom.  THE SILENT FAILURE (the 2026-10-23 review): the
+    file's axes carried their values under other names (`index_1based`,
+    `temperatures_K`), so `.sel(temperature=298.15)` raised and xarray
+    indexed no axis of any group.
+
+    MUTATION THIS MUST FAIL AGAINST: an axis's values named other than the
+    axis."""
+    import xarray as xr
+    p = tmp_path / "job.spectra.json"
+    dump_spectra_json(_with_everything(), p)
+    nc = tmp_path / "job.spectra.nc"
+    for group in ("structure", "equilibrium", "modes",
+                  "modes/electronic_structure", "thermo/grid"):
+        ds = xr.load_dataset(nc, group=group)
+        assert set(ds.sizes) <= set(ds.indexes), (group, dict(ds.sizes),
+                                                  list(ds.indexes))
+    grid = xr.load_dataset(nc, group="thermo/grid")
+    assert float(grid.g_eh.sel(temperature=298.15)) == pytest.approx(0.008)
+    modes = xr.load_dataset(nc, group="modes")
+    assert float(modes.frequency_cm1.sel(mode=1)) == pytest.approx(-42.0)

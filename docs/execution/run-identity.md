@@ -417,8 +417,9 @@ previous stage's state without being told where it is (§ 4). SIESTA looks for
 instruction passes between them.
 
 **In the hierarchical shape the same separation exists, expressed differently.**
-The warm files a stage resumes from are the ones `prep` copied into its attempt
-(`project-layout.md § 2.3.4`), rather than the ones the previous stage happened
+The warm files a stage resumes from are the ones its first launch copied into
+its attempt (`project-layout.md § 2.3.4`; prep copies nothing from another
+stage's run, `engines/stages.md` § 7.1), rather than the ones the previous stage happened
 to leave in a shared directory. Same outcome, and it is the flat shape that makes
 the label's role visible, which is why the example above is flat.
 

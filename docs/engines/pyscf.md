@@ -133,7 +133,7 @@ by the config flag in column 2):
 | `<job>.chk` | `chkfile` (default on) | PySCF checkpoint (density matrix, mol, energies) |
 | `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization — in the engine's frame, as a pair carrying no run record of the input's either: its coordinates are the engine's, so the input's record's fingerprint does not describe them |
 | `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry, as a pair — its `.molstruct.json` carries the structure's own facts (cell, kinds, regions, the engine's origin 0) and **no run record of the input's**: `info.relaxation` and `info.calculation` describe the run the input came out of, not this one, so they stay behind; this run's relaxation record (`info.relaxation`) is read from its own output by the one reader when the run is exported from the Results tab ([`model/parse.md`](?doc=model/parse.md) § 5b) — the deck writes no copy of it (V1.31, closed 2026-09-29: one reader, one record). **Its level of theory is recorded by no door yet**: `info.calculation` (the charge, spin, basis and functional a run carried) is read from a SIESTA deck only (`parse.contract.contract_of`), so neither this pair nor the Results tab's export of a PySCF run carries one, and a later calculation with a blank charge or spin works them out from the structure (`science/chemistry-correctness.md` § 2a) — state them when the molecule is charged or open-shell. The PySCF half of that reader is planned ([`plan.md`](?doc=plans/plan.md) § 5w K18). *(They were copied onto every pair until 2026-09-29, so a PySCF-relaxed geometry carried a SIESTA run's tolerance, force and level of theory — the M11 review, PS-C10.)* |
-| `<job>_<stage>_geom_optim.xyz` | `optimize` + `write_trajectory` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
+| `<job>_<NN>_<stage>-run<N>_geom_optim.xyz` | `optimize` + `write_trajectory` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
 | `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
 
 > **The stage token sits immediately after the label, never inside the role**
@@ -516,15 +516,17 @@ any of them absent, no deadline, and the deck runs until it is done.
   does, the deck prints `WARNING: stopped before the wall (the job's wall
   less its slack): the geometry reached is kept` (and `; launch this stage
   again to continue from it` where its `restart` is `continue`), writes
-  `# relaxed: no` in its trajectory log and ends normally — the next launch
-  continues from that geometry, `restart` permitting.
-- **A vibration deck** checks it before each displaced SCF; past it before
-  the spectrum is written, it raises `RuntimeError: stopped before the wall
-  (the job's wall less its slack) before the spectrum was written: launch
-  this stage again` — the log's footer carries the error and the run reads
-  `failed` with that
-  reason, since a spectrum half computed is no result; a launch runs it
-  again, its relaxation phase resuming as above.
+  `# relaxed: no` in its trajectory log and ends normally, no SCF after it —
+  the next launch continues from that geometry, `restart` permitting.
+- **A vibration deck** checks it before each SCF it builds and after its
+  relaxation (`relax_policy.stop_if_past_wall`, the one door); past it
+  before the spectrum is written, it raises `RuntimeError: stopped before
+  the wall (the job's wall less its slack) before the spectrum was written:
+  launch this stage again` — the log's footer carries the error and the run
+  reads `failed` with that reason, since a spectrum half computed is no
+  result; a launch runs it again from its start, the vibration deck keeping
+  no geometry between runs ([`engines/vibration.md`](?doc=engines/vibration.md)
+  § 3.1).
 
 ## 4. The unified molwatch-log format
 

@@ -707,17 +707,21 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
              f"atoms; the deck states its order record")
     render_kind = _rung_kind(task, pset.stage)
     finishes = render_kind == "vibration"
-    # THE FINISH'S FORCE CRITERION IS THE RELAXATION'S OWN (plan § 5w K4,
-    # M11 SS-C6): `relax_force_tol` is read by the relaxation rung alone, so
-    # it is that rung's value -- the criterion the reference geometry was
-    # relaxed to -- and the template's when the structure is stated relaxed.
+    # THE FINISH'S FORCE CRITERION IS THE ONE THE REFERENCE GEOMETRY WAS
+    # RELAXED TO (`engines/vibration.md` § 5.5; plan § 5w K4, M11 SS-C6):
+    # the `relax` stage's own, as its record states it -- the one yardstick
+    # this stage's checks judge that outcome by too -- else that rung's
+    # value, and the template's when the structure is stated relaxed.
     from ..resolve import resolved_ladder
     from ..template import stage_role
-    criterion = next(
-        (getattr(c, "relax_force_tol", None) for n, c in resolved_ladder(
-            template_text, task, seam.config_cls)
-         if stage_role(str(task.engine), "vibration", n) == "relaxation"),
-        getattr(pset[0].render_config(), "relax_force_tol", None))
+    criterion = (relaxed_by or {}).get("force_tolerance_ev_ang")
+    if criterion is None:
+        criterion = next(
+            (getattr(c, "relax_force_tol", None) for n, c in resolved_ladder(
+                template_text, task, seam.config_cls)
+             if stage_role(str(task.engine), "vibration", n)
+             == "relaxation"),
+            getattr(pset[0].render_config(), "relax_force_tol", None))
 
     def spec_extra(element, cfg, point):
         return {**({"cell": cell} if cell is not None else {}),

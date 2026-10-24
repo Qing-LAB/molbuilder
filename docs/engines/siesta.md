@@ -700,11 +700,10 @@ verb names its stage, on a one-rung ladder exactly as on three
 - **Validation.** A stage is validated as a **resolved whole, never as a
   diff** (§ 4 R2): the caller resolves it and runs the ordinary single-config
   validator on the result, so there is no parallel copy of the knob rules to
-  drift. The two checks that are about the *ladder* rather than a member of it
-  — nothing enabled, and duplicate names (a collision would silently overwrite
-  a per-stage `.fdf`) — moved to the layers that own them when `_enabled_stages`
-  died with its producers, and are asserted by
-  `tests/test_stage_resolution.py`.
+  drift. The check that is about the *ladder* rather than a member of it —
+  duplicate names, a collision that would silently overwrite a per-stage
+  `.fdf` — is the description's own (`task.py`), and a stage has no
+  `enabled` switch ([`stages.md`](?doc=engines/stages.md) § 2).
 - **How a ladder is asked for.** At `describe`: `--stage-strategy publishable`
   picks one of the shipped ladders, and omitting it describes a calculation
   with a **single parameter set** — one stage named `coarse`, named and tokened

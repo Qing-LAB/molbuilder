@@ -310,6 +310,41 @@ def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(tmp_path,
     assert list(bundle.glob("*_optimized.xyz")), sorted(
         p.name for p in bundle.iterdir())
     # THE LOG'S FOOTER, read by the ending reader: the geometry verdict is
-    # the deck's own word (`# relaxed: no`).
+    # the deck's own word (`# relaxed: no`) -- and the run's, through the
+    # status door every surface asks (`model/parse.md` § 2b).
     log = next(bundle.glob("*.molwatch.log"))
     assert ending_of(log).relaxed is False, log.read_text()[-600:]
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.runstatus import jobset_status
+    row = next(iter(jobset_status(open_calculation(bundle)).stages))
+    assert row.converged == "geometry NO", row
+    # ...AND NO SCF PAST THE WALL: the run ends with the geometry reached.
+    assert "Final energy" not in said, said[-3000:]
+
+
+def test_the_wall_stops_a_vibration_before_its_spectrum(tmp_path,
+                                                        monkeypatch):
+    """`engines/pyscf.md` § 3.9: a vibration past its wall computes no
+    spectrum -- the run ends failed, saying it stopped before the wall
+    before the spectrum was written, and a launch runs it again.  The
+    deadline here is past when the deck starts, frequencies alone (an
+    analytic Hessian, no displaced SCF), so the deck's first SCF is where it
+    stops; the check after its relaxation (the wall passing during it) is
+    the same door, `relax_policy.stop_if_past_wall`.
+
+    THE SILENT FAILURE: a spectrum written at a geometry the wall stopped,
+    the run reading finished (the 2026-10-23 review).
+
+    MUTATION THIS MUST FAIL AGAINST: the vibration deck asking the wall
+    nowhere (`stop_if_past_wall` answering nothing)."""
+    import time
+    monkeypatch.setenv("MB_WALL_S", "1")
+    monkeypatch.setenv("MB_JOB_STARTED", str(int(time.time()) - 100))
+    monkeypatch.setenv("MB_WALL_SLACK_S", "0")
+    bundle, state, said = _run(
+        tmp_path, monkeypatch, calculation="vibration",
+        overrides={"geom_max_steps": 50, "on_nonconvergence": "halt"},
+        template={"compute_raman": False, "compute_ir": False})
+    assert state == "failed", said[-3000:]
+    assert ("stopped before the wall (the job's wall less its slack) "
+            "before the spectrum was written") in said, said[-3000:]

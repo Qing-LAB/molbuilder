@@ -21,13 +21,13 @@ python -- there is no step after the launch.
 
 EVERY INPUT IS A RECORD THE ATTEMPT HOLDS, and each is read by its owner:
 
-  * the deck (``SystemLabel``, the species, the FC range, the lattice) --
-    the fdf reader, `parse.fdf`;
+  * the deck (``SystemLabel``, the species, the FC range) -- the fdf
+    reader, `parse.fdf`;
   * the deck's molbuilder blocks -- their one reader, `deck_record`:
     ``atom-metadata``'s order record (the deck's atoms in held-first order,
     the way back to the user order; none for a deck the sort left in the
     user order -- `model/overview.md` § 2.2a, I5), ``engine-offset`` (the axis
-    kinds, R3) and ``vibration`` (the stationarity criterion, the
+    kinds, R3, and the box the run had, `box_of_run`) and ``vibration`` (the stationarity criterion, the
     thermochemistry's temperature, the person's statement, the ladder's
     relaxation record, the stage, the molbuilder that prepared it);
   * ``<label>.FC`` -- `parse.engines.siesta_fc`;

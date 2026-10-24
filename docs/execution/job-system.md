@@ -266,7 +266,7 @@ stateDiagram-v2
 | **prepared, prepare its group again** | a SIESTA force-constant stage prepared before 2.7.0, whose row records no `relax` run (`written_at`) | *pending* — *prepare its group again:* | `prep task --group N` |
 | **launched** | a run of it has a `run.json`; its runs' states are the run doors' (*A run*, below) | the newest run's state, and *converged* in its own column | launched again — alone, or its group whole: warm, `--cold`, `--from` a run, `--gather` anew; prepared again for its job request, what it computes kept — on the hierarchical layout, its row then what its next launch sends, its runs' states unchanged ([`job-request.md`](?doc=execution/job-request.md) § 5); a change to what it computes goes back to the state saved before its group's first launch (*How the checkpoint supports you*) |
 | **its launch record does not read** | a `run.json` there that is not one molbuilder wrote | *unreadable* — the record's own words | what the words say; nothing launches it, and no prep prepares it, until it reads (R-L21) |
-| **removed** | no longer in `task.json`; its folder and runs untouched, its number taken; a launched one keeps its row in `job-set.json`, a never-launched one until the next prep drops it | not listed | described again, it is what its files say — launched, prepared while its row stands, else described |
+| **removed** | no longer in `task.json`; its folder and runs untouched, its number taken; a launched one keeps its row in `job-set.json`, a never-launched one until the next prep that writes drops it | not listed | described again, it is what its files say — launched, prepared while its row stands, else described |
 
 *Ready to launch* says that what the stage takes is there. It does not compare
 the prepared files with the description as it reads now — that is the
@@ -798,8 +798,9 @@ and sends it cold; `run-0` stays what it was.
 
 ### What molbuilder does for you
 
-1. **Before every prep, and before a group's first launch, it saves the
-   folder's state**, and tells you which — the moments and the note's form
+1. **Before every prep that writes, and before a group's first launch, it
+   saves the folder's state**, and tells you which — a prep with nothing to
+   write changes nothing and saves nothing (*The task*, 2) — the moments and the note's form
    are [`checkpointing.md`](?doc=execution/checkpointing.md) § 9's
    (`2026-10-03 14:05:12 · before launch task group 2 (medium, tight)`). So whatever a prep or the runs after it do,
    the state before it is one `checkpoint restore` away — and the state before
@@ -3322,7 +3323,7 @@ flowchart TB
         CD["continuation<br/>continuation_answer · relaunch"]
         GD["gather<br/>gather_sources · transport_inputs"]
         RU["the run doors<br/>materialize.ever_launched · parse.dirs.run_status"]
-        GR["group<br/>number_of · members_of · envelope · names_for"]
+        GR["group<br/>group_of · members_of · envelope · names_for"]
         CM["commands<br/>every printed line · way_back"]
     end
     CLI --> PE & LE
@@ -3365,7 +3366,7 @@ the Results tab and Task setup, so no two readers can disagree:
 | `continuation` | which run a stage continues from — by default, named, or launched again (`relaunch`) | the ready door, both planners |
 | `gather` | a transport rung's inputs, under three gates | `first_launch_takes`, `_launch_again --gather` |
 | `materialize.ever_launched`, `rundir.run_state_of` (`parse.dirs.run_status`), `materialize.latest_attempt`, `runrecord.newest_run` | was a stage launched; how a run stands; a stage's newest run folder; the newest run in a folder — where a stage's runs share it, its newest launched; in a run's own folder, its newest try | every layer |
-| `group` | a stage's group (`number_of`), a job's members (`members_of`), what members share (`envelope`), a job's file names (`names_for`) | both verbs, the ready door |
+| `group` | a stage's group (`JobRequest.group_of`), a job's members (`members_of`), what members share (`envelope`), a job's file names (`names_for`) | both verbs, the ready door |
 | `commands` | every line a person types, and the one way back (`way_back`, `redo_launched`) | every refusal and answer |
 
 **One `prep task`, through the layers** — two groups picked, the second of
@@ -3462,7 +3463,7 @@ For someone extending the framework:
 | The launch verb's one entry — the plan (`plan_launch` → `LaunchPlan`: the calculation's copy of its machine's record, read once, first, `_machine_of`; the work, `_the_group`; the submission builders, `_plan_stage`, `_plan_group`, `_points_walk`, a benchmark's `_plan_shelves` and `_plan_bench_here`; the one member planner, `_plan_member` — `_first_launch`, `_launch_again` — and a trial's, `_plan_trial`; placements; the exact lines), then the send (`send_launch`): the one sender, the one launch request (`_sbatch_request`); a sweep sent to a scheduler goes one job per shelf, never one per trial (§ 6.0) | `molbuilder/jobset/submit.py` |
 | Per-stage status roll-up (reuses `run_status`), and each group's next step (`render_steps`); each member of a job as `molbuilder jobs` shows it (`job_members`); which of a calculation's scratch a run still going keeps, and why (`scratch_answer` → `ScratchAnswer`), what `jobset scratch` shows and removes | `molbuilder/jobset/runstatus.py` |
 | What a run continues from — the default, a named run, or why it is refused — as one `Continuation`, the files it carries included; a stage launched again (`relaunch`); the one rule for a run to build on (§ 5.4) | `molbuilder/jobset/continuation.py` |
-| A group — its number in `job-request.json` (`number_of`, `named`): what a stage builds on (`upstream_of`), the defaults (`default_groups`), the check (`check_groups`), what the members share (`SHARED`, `envelope`), a prepared job's members (`members_of`) matched by membership (`same_members`) and the groups a prep forms again (`formed_again`), the job's files' names (`names_for`; a job already written, `header_of`) | `molbuilder/jobset/group.py` |
+| A group — its number in `job-request.json` (`JobRequest.group_of`, `named`): what a stage builds on (`upstream_of`), the defaults (`default_groups`), the check (`check_groups`), what the members share (`SHARED`, `envelope`), a prepared job's members (`members_of`) matched by membership (`same_members`) and the groups a prep forms again (`formed_again`), the job's files' names (`names_for`; a job already written, `header_of`) | `molbuilder/jobset/group.py` |
 | The ready door — the task read once (`task_state` → `TaskState`); each stage's answer (`readiness`: described / prepared — ready to launch, or why not — / launched); a launched group's members fixed (`launched_without`, `joined_launched`) and a prepared job's members changed (`regrouped`); what a first launch takes, every kind's refusal with it (`first_launch_takes`); the groups and the offers `prep task` and `launch task` make (*The task*) | `molbuilder/jobset/ready.py` |
 | Every command a verb or a refusal prints for a person to type, and the one way back (`way_back`, `redo_launched`); a launch and the way back as a text read later says them (a deck's header, a run script's banner, a result's remedy) | `molbuilder/jobset/commands.py`; `molbuilder/identity.py::launch_as_typed`, `deck_launch`, `way_back_words` |
 | The sweep's reader — trials' artifacts → `bench-result.json` (the pure timing parsers are `molbuilder/bench/result.py`) | `molbuilder/jobset/summarize.py` |

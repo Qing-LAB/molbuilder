@@ -441,8 +441,9 @@ sources recommend, and how to design a benchmark matrix around it — is
   each rank to cores of its own (`--bind-to core --map-by
   package:PE=<cores per rank>`), the ranks spread over the sockets, and the
   **whole-job** `numactl` wrap of a single-GPU job (from a GPU→NUMA answer
-  probed at **generation** time, NVML + sysfs, baked as a literal and
-  overridable with `MOLBUILDER_GPU_NUMA`) sets its memory on the GPU's node
+  looked up **at run time**, on the machine the job runs on, from GPU 0's PCI
+  bus id and sysfs — the per-rank helper's own lookup — and overridable with
+  `MOLBUILDER_GPU_NUMA`) sets its memory on the GPU's node
   but does not hold its ranks there: OpenMPI's map overrides it (measured
   with OpenMPI 5.0.10), so a single GPU's second rank runs on the far socket.
   **Under a scheduler** the wrap and that binding are cleared, and OpenMPI
@@ -489,8 +490,9 @@ its own comment prints — still reaches the inner wrapper.
 
 A SIESTA wrapper **re-runs itself warm**, with `--continue` and the next
 run's number (`--run N+1`), when its run ended in one of two ways a warm
-restart can fix. The budget is the template's
-`continue_retries` (*Warm-retry budget*, 0–5, default 1), carried on
+restart can fix. The budget is the run card's
+`continue_retries` (*Warm-retry budget*, 0–5, default 1; a run setting, in
+`job-request.json`, never the template's — `engines/stages.md` § 3), carried on
 `Resources` (`job-contracts.md` § 6.2) and bounded by the exported
 `MB_RETRY_N`; a benchmark trial's is `0`, one run whatever happens. **A
 TBtrans run is never retried**: it runs no SCF and no relaxation, so neither

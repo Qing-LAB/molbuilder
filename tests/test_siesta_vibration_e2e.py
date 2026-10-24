@@ -188,8 +188,9 @@ def _common_assertions(d):
     assert d["phase_frequencies"] == "complete"
     assert (d["phase_raman"], d["phase_es"]) == ("not requested",) * 2
     assert "Head1997" in d["bibliography_keys"]
-    # R5 on this route: the reference-step forces judged by the template's
-    # own tolerance -- the kind's recommended 0.01 eV/A
+    # R5 on this route: the reference-step forces judged by the tolerance
+    # the geometry was relaxed to (vibration.md § 5.5) -- the ladder's relax
+    # record's, the template's when ticked: the kind's recommended 0.01 eV/A
     assert d["engine_metadata"]["reference_force_criterion_ev_ang"] == 0.01
     # the mass-calibrated displacement a transport step displaces along
     for m in d["modes"]:

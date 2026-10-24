@@ -573,15 +573,16 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     if relaxed_by is not None:
         # THE LADDER RELAXED THESE COORDINATES: its `relax` stage's outcome
         # is this stage's fact, said in place of the box's describe-time
-        # advice and of the input's own record (`sidecar.
-        # _ladder_relaxation_findings`).
+        # advice and of the input's own record, and judged by the tolerance
+        # it relaxed to, as its record states it -- the finish's yardstick
+        # (`sidecar._ladder_relaxation_findings`, `engines/vibration.md`
+        # § 5.5).
         from ..config.stages import VIBRATION_RELAX_STAGE
         from .sidecar import check_relaxation_record
         issues.extend(check_relaxation_record(
             design if design is not None else struct, engine="siesta",
             already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
-            force_tolerance_ev_ang=(float(_tol) if _tol is not None
-                                    else None),
+            force_tolerance_ev_ang=None,
             relaxed_by=relaxed_by, relax_stage=VIBRATION_RELAX_STAGE))
         return issues
     if not bool(getattr(cfg, "already_relaxed", False)):

@@ -421,6 +421,11 @@ class RunStatus:
     #: verdict and its earlier runs (`model/parse.md` § 5d.6), and the
     #: monitor's closing report -- so none of them scans the files again.
     endings:        "Dict[str, Any]" = field(default_factory=dict)
+    #: THE RUN'S OWN OUTPUTS that may speak, by filename -- its stdout, and
+    #: its progress log once its footer concludes (`runfiles.Artifact.
+    #: output`): one run, its files aspects of it, whose statements
+    #: :attr:`verdict` reads together.
+    speakers:       "Tuple[str, ...]" = ()
 
     def __post_init__(self) -> None:
         if self.state not in RUN_STATES:
@@ -430,18 +435,24 @@ class RunStatus:
 
     @property
     def verdict(self) -> "Optional[Tuple[str, bool]]":
-        """What the speaking output says the run converged -- ``("geometry",
-        ok)`` for a relaxation, else ``("SCF", ok)`` -- or ``None`` when it
-        says neither yet: the one scan's answer (:attr:`endings`), which a
-        reader decides on (:attr:`converged_words` says it)."""
-        end = (self.endings or {}).get(self.active_source) \
-            if self.active_source else None
-        if end is None:
+        """What the run says it converged -- ``("geometry", ok)`` for a
+        relaxation, else ``("SCF", ok)`` -- or ``None`` when it says neither
+        yet: the one scan's answer (:attr:`endings`), which a reader decides
+        on (:attr:`converged_words` says it).  The speaking output's word
+        first, then each other output of the same run's (:attr:`speakers`):
+        a PySCF relaxation states its verdict in its progress log's footer,
+        `# relaxed:`, beside a stdout that states none (`model/parse.md`
+        § 2b, P-S1)."""
+        if not self.active_source:
             return None
-        if end.relaxed is not None:
-            return ("geometry", bool(end.relaxed))
-        if end.scf_converged is not None:
-            return ("SCF", bool(end.scf_converged))
+        ends = self.endings or {}
+        said = [ends[n] for n in (self.active_source, *self.speakers)
+                if n in ends]
+        for key, words in (("relaxed", "geometry"), ("scf_converged", "SCF")):
+            ok = next((getattr(e, key) for e in said
+                       if getattr(e, key) is not None), None)
+            if ok is not None:
+                return (words, bool(ok))
         return None
 
     @property
@@ -509,11 +520,12 @@ def run_status(run_dir, basename: str, *,
     # the stage reached -- an earlier run's output beside a newer run's
     # launch record is that earlier run's, and says nothing of the one now
     # queued (`running-a-job.md` § 4.2).
+    speakers = _rf.at_run(
+        run_dir, [p for role in _rf.run_output_roles() for p in files[role]
+                  if role in speaks or states.get(p.name) in _re.CONCLUDED],
+        basename, run)
     return replace(_build_status(
-        _rf.at_run(run_dir,
-                   [p for role in _rf.run_output_roles() for p in files[role]
-                    if role in speaks or states.get(p.name) in _re.CONCLUDED],
-                   basename, run),
+        speakers,
         states,
         _rr.ending(run_dir, basename, run),
         launch=launch,
@@ -527,7 +539,7 @@ def run_status(run_dir, basename: str, *,
         out_doing=doings,
         finish_started=lambda p: _finish_started(run_dir, p, basename),
         run_index=lambda p: _run_index(p, basename)),
-        endings=endings)
+        endings=endings, speakers=tuple(p.name for p in speakers))
 
 
 

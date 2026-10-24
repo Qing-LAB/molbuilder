@@ -159,7 +159,8 @@ def _vib_constants(cfg, names) -> List[str]:
     from ..spectra.selection import select_modes
     from ..trajectory_log.emitter import MolwatchEmitter
     from ..workingcopy_structure import StructureCodec
-    from .relax_policy import policy_of, relax, wall_deadline
+    from .relax_policy import (policy_of, relax, stop_if_past_wall,
+                               wall_deadline)
     out = ["",
            "# ---- vibration-kind constants (framework deck) ----",
            f"ALREADY_RELAXED = {bool(cfg.already_relaxed)}",
@@ -188,6 +189,7 @@ def _vib_constants(cfg, names) -> List[str]:
            # states (`model/overview.md` § 2.2b).
            *emit_bundle_imports(
                StructureCodec, MolwatchEmitter, relax, wall_deadline,
+               stop_if_past_wall,
                homo_index, mo_window,
                dipole_derivatives, as_numpy, vibrational_modes,
                signed_omega, frequencies_cm1, display_form,
@@ -353,6 +355,10 @@ def _vib_relax_block(cfg, names) -> List[str]:
         "        _mf_relax, ON_NONCONVERGENCE, GEOM_CONTINUE_RETRIES,",
         "        deadline=_MB_WALL_DEADLINE,",
         f"        {_opt_kw}, **_conv)",
+        # THE WALL STOPPED IT (`engines/pyscf.md` § 3.9): no spectrum is
+        # computed past it -- the run ends failed, and a launch runs it
+        # again; an unconverged relaxation below is `proceed`'s alone.
+        "    _mb_stop_if_past_wall(_MB_WALL_DEADLINE)",
         "    _judged = state['relaxation']['max_force_eh_bohr']",
         "    state['relaxation']['converged'] = (",
         "        None if _judged is None else bool(_judged <= GEOM_GMAX))",

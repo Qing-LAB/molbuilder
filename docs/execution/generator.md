@@ -518,7 +518,7 @@ framework rule, not a script patch)*:
   coordinate — so the deck's answer and the point's family agree by
   construction, and the shelves (below) need no new declaration.
   The GPU family's device count is the target's GPUs per node: the probed
-  queue it measures on — the one its prep names, else the most a node of any of the record's GPU queues holds — and the probed node's own only where the record lists no queue (2026-10-19; the sample was asked first before) — the **domain menu's
+  queue it measures on — the one its prep names, else the most a node of any of the record's GPU queues holds — and the probed node's own only where the benchmark measures on no queue — a record that lists none, or a prep with `--no-sbatch`, which runs where it is launched (below) (2026-10-19; the sample was asked first before) — the **domain menu's
   GPU inventory** (`jobset probe` records each partition's `gres` on its
   domain row) — so a login node can enumerate the GPU family for the cluster
   behind it.  A trial asks `gpu:G`, a count, and no card: which card a node
@@ -644,9 +644,13 @@ the maximum?* — is § 4.1's priority trade, and no measurement settles it:
 > **The person picks the point between them**, which is why `summarize` writes a
 > recommendation and not a decision (`project-layout.md` § 2.3.2).
 
-#### 4.4a The benchmark normally runs on a *different* cluster
+#### 4.4a The benchmark normally runs on a *different* domain
 
-**This is the ordinary workflow, not an edge case:**
+**This is the ordinary workflow, not an edge case.** The benchmark and the
+real run are preps of one calculation, so both run on its machine — the
+machine of its first prep, which does not change
+([`configuration.md`](?doc=configuration.md) § 5, M-3); what differs is the
+domain each asks for:
 
 | | typically runs on | why |
 |---|---|---|
@@ -657,7 +661,7 @@ the maximum?* — is § 4.1's priority trade, and no measurement settles it:
 record holds no sizing at all — no wall, no memory (`project-layout.md`
 § 2.3.2):
 
-| part | what it is | crosses to another cluster? |
+| part | what it is | crosses to another domain? |
 |---|---|---|
 | **`choice`** | the **mechanism** — which engine build, ranks per GPU, block size | **yes, unchanged** — provided the node type is comparable |
 | **`points`** | each trial's measurement — its timings and what the monitor sampled, on the node it landed on | **no.** It is a measurement of specific nodes, which is why each trial records the machine it ran on (§ 4.4b) |
