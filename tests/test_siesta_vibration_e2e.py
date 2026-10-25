@@ -308,14 +308,23 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geom
     then `freq`; after `relax`, `freq` is written at the geometry `relax`
     reached, in the held-first order its deck states, and the modes come out
     in the user order with the reference forces within the template's own
-    tolerance (vibration.md § 2.2, § 5.2a, § 5.5).  And a force-constant
-    stage launched again starts over: its kind's rerun carries nothing of
-    its own (`warm-files.toml` [vibration] `resumes`, `job-system.md` § 5.4,
-    *A stage launched again*)."""
+    tolerance (vibration.md § 2.2, § 5.2a, § 5.5); its first run records
+    the relaxation it was measured at -- `relax`'s run, as its
+    `.continued-from` (§ 5.2a).  And a force-constant stage launched again
+    starts over: its kind's rerun carries nothing of its own
+    (`warm-files.toml` [vibration] `resumes`, `job-system.md` § 5.4, *A
+    stage launched again*)."""
     from molbuilder.parse.fdf import fdf_key
-    from molbuilder.runs import declared
+    from molbuilder.runs import declared, folder_answer
     run = unticked
     assert run.stages_before_the_sweep == ["relax", "freq"]
+    # THE RELAXATION IT WAS MEASURED AT, recorded by its first launch -- as
+    # the Results tab opens that run (it is not the newest: `freq` is
+    # launched again below).
+    launch = folder_answer(run.attempt("freq"))["record"]["computation"][
+        "launch"]
+    assert launch["continued_from"] == (
+        run.attempt("relax").relative_to(run.bundle).as_posix()), launch
     # the ordinary relaxation deck, from the same held-first copy: Broyden
     # to the kind's recommended 0.01 eV/A, the held carbon -- SIESTA's atom 1
     # after the sort -- constrained

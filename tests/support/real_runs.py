@@ -82,7 +82,6 @@ class RealRun:
         rest (`runs.run_of`)."""
         from molbuilder.jobset.naming import stage_home
         from molbuilder.paths import attempt_dir
-        from molbuilder.runfiles import TASK_FILE
         from molbuilder.task import of as task_of
         task = task_of(self.bundle)
         return attempt_dir(stage_home(self.bundle, task, stage).dir, n)
@@ -90,6 +89,30 @@ class RealRun:
 
 #: Each engine's environment, and the road a run of it is made on.
 _ENGINES = {"siesta": "molbuilder-siesta", "pyscf": "molbuilder-pySCF"}
+
+
+def stage_status(bundle, stage: str):
+    """THE STAGE AS `jobset status` READS IT -- the one status door every
+    surface asks (`jobset.runstatus.jobset_status`: the status verb, Task
+    setup's ladder), asked of the calculation's folder: its newest run
+    (``attempt``) and every run (``attempts``), its launch record, what the
+    run gathered (``gathered``, ``<file> <- <run>`` each) and what it is a
+    copy of (``copied_from``), and each point -- ``frame``, ``bias_v``,
+    ``folder`` below the stage, ``state``, ``done``, ``started_from``,
+    ``took``, ``copied_from``.  A test reads a run's records here, or, for a
+    run older than the newest, through the Results tab's folder door
+    (`runs.folder_answer`) -- never from its marker files."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.runstatus import jobset_status
+    return next(s for s in jobset_status(open_calculation(bundle)).stages
+                if s.ref.name == stage)
+
+
+def point_row(status, bias_v: float, frame=None) -> dict:
+    """``status``'s point at ``bias_v`` on ``frame`` -- the frame matched as
+    the status door states it, ``None`` for one structure."""
+    return next(p for p in status.points
+                if p["bias_v"] == bias_v and p["frame"] == frame)
 
 
 def _engine_here(engine: str = "siesta") -> bool:

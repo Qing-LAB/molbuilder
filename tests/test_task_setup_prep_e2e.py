@@ -48,12 +48,61 @@ from support.machines import SLURM, WORKSTATION
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def this_machine_is_a_cluster():
+    """THIS MACHINE'S RECORD, where `jobset probe --write` puts it -- a SLURM
+    cluster listing its `public` queue, its shell entering an environment by
+    `conda activate` -- written for EVERY test: the suite gives each test a
+    config directory of its own (`conftest.config_root_is_never_the_
+    developers`), and only a prep writes a calculation's copy of the record
+    (`configuration.md` M-3), so every calculation of this module, prepared
+    or not, reads its machine here.  A test that asks for another machine
+    writes its own over it (`_two_stages`)."""
+    from conftest import write_machine_record
+    from molbuilder.scheduler import Domain, Topology
+    write_machine_record(
+        scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=32),
+        domains=[Domain(name="public", partition="public", qos="public",
+                        max_time="1-00:00:00")],
+        env_init={"preamble": "true", "activation": "conda activate"})
+
+
+def _described_h2(root, name, stages, *, shape="hierarchical"):
+    """An H2 optimization on SIESTA, ``name``, its ``stages``, under
+    ``root`` -- described by the production door (`describe.
+    write_description`; a hand-built `StructureRef` carries the default
+    witness, which prep refuses as a structure changed since it was
+    described), its pseudopotentials beside it.  Its folder."""
+    import numpy as np
+
+    from conftest import write_pseudos
+    from molbuilder import describe as D
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.structure import Structure
+    src_dir = root / "structure"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    d = root / "optimization" / name
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    src = src_dir / f"{name}.xyz"
+    src.write_text(struct.to_xyz(), encoding="utf-8")
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label=name),
+                            list(stages), engine="siesta",
+                            calculation="optimization", shape=shape,
+                            name=name, source=str(src)),
+        d, struct=struct)
+    write_pseudos(d, ["H"])
+    return d
+
+
 @pytest.fixture(scope="module")
 def calc_dir(isolated_projects_root_module):
-    """A described calculation, with a probed machine record beside it.
-
-    The record is not scenery: a rank count is read from one and nowhere
-    else, so a folder without it cannot be prepared at all
+    """A described calculation, on the cluster this machine's record
+    names.  The record is not scenery: a rank count is read from one and
+    nowhere else, so a folder without it cannot be prepared at all
     (`running-a-job.md` § 3.1)."""
     yield _a_described_probe(isolated_projects_root_module / "prep_e2e")
 
@@ -69,75 +118,19 @@ def unprepped_dir(isolated_projects_root_module):
 
 
 def _a_described_probe(root, execution=None):
-    """The calculation `calc_dir` describes, under ``root``."""
-    import numpy as np
-
-    from conftest import write_pseudos
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.scheduler import Domain, Environment, Topology
-    from molbuilder.structure import Structure
+    """The calculation `calc_dir` describes, under ``root``: one stage, and
+    a run on the cluster's `public` queue that STATES its queue, wall,
+    memory and cores per rank (`architecture.md` § 5.2) -- the job request
+    says them, and the card adds the rank count the test types."""
     from molbuilder.task import Stage
-
-    src_dir = root / "structure"
-    src_dir.mkdir(parents=True)
-    d = root / "optimization" / "probe"
-    try:
-        struct = Structure(elements=["H", "H"],
-                           positions=np.array([[0.0, 0.0, 0.0],
-                                               [0.0, 0.0, 0.74]]),
-                           vacuum=(10.0, 10.0, 10.0))
-        src = src_dir / "probe.xyz"
-        src.write_text(struct.to_xyz(), encoding="utf-8")
-
-        # THE DESCRIPTION IS BUILT BY THE PRODUCTION DOOR, not assembled by
-        # hand.  A hand-built `StructureRef` carries the DEFAULT witness --
-        # formula "" and 0 atoms -- and prep refuses a description whose
-        # witness disagrees with the file beside it ("the structure has
-        # changed since this calculation was described").
-        D.write_description(
-            D.build_description(struct,
-                                SiestaConfig(system_label="probe"),
-                                [Stage(name="coarse",
-                                       overrides={"mesh_cutoff": 200})],
-                                engine="siesta",
-                                calculation="optimization",
-                                shape="hierarchical",
-                                name="probe", source=str(src)),
-            d, struct=struct)
-        write_pseudos(d, ["H"])
-
-        # The probe's answer, pre-seeded: a rank count is read from a machine
-        # record and nowhere else, so a folder without one
-        # cannot be prepared at all (`running-a-job.md` § 3.1).
-        # `env_init` rides ON THE RECORD -- the probe's copy of it:
-        # a wrapper generated here would otherwise carry THIS machine's way
-        # into its environment -- a path that need not exist on the target
-        # (the refusal names it, and prep is right to refuse).
-        # A SCHEDULER, or there is no `.sbatch` to read -- and the whole point
-        # of this test is the header that comes out.  A cluster is its RECORD:
-        # a scheduler and the queues it lists.
-        (d / "environment.json").write_text(
-            Environment(scheduler=SLURM,
-                        topology=Topology(sockets=2, cores_per_socket=32),
-                        domains=[Domain(name="public", partition="public",
-                                        qos="public", max_time="1-00:00:00")],
-                        env_init={"preamble": "true",
-                                           "activation": "conda activate"},
-                        ).to_json() + "\n", encoding="utf-8")
-        # ...and a run on it STATES its queue, wall, memory and cores per
-        # rank (`architecture.md` § 5.2): the job request says them, and the
-        # card adds the rank count the test types.
-        req = read_request(d)
-        req["execution"] = execution or {"omp_threads": 1}
-        req["allocation"] = {"domain": "public", "time": "0-04:00:00",
-                             "mem": "8G"}
-        write_request(d, req)
-        return d
-    finally:
-        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.
-        pass
+    d = _described_h2(root, "probe",
+                      [Stage(name="coarse", overrides={"mesh_cutoff": 200})])
+    req = read_request(d)
+    req["execution"] = execution or {"omp_threads": 1}
+    req["allocation"] = {"domain": "public", "time": "0-04:00:00",
+                         "mem": "8G"}
+    write_request(d, req)
+    return d
 
 
 @pytest.fixture(scope="module")
@@ -427,102 +420,34 @@ def filled_dir(isolated_projects_root_module):
     values are on disk before the page opens, which is the state a person is
     in every time they come back to a folder.
     """
-    import numpy as np
-
-    from conftest import write_pseudos
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.scheduler import Environment, Topology
-    from molbuilder.structure import Structure
     from molbuilder.task import Stage
-
-    root = isolated_projects_root_module / "prep_filled"
-    src_dir = root / "structure"
-    src_dir.mkdir(parents=True)
-    d = root / "optimization" / "filled"
-    try:
-        struct = Structure(elements=["H", "H"],
-                           positions=np.array([[0.0, 0.0, 0.0],
-                                               [0.0, 0.0, 0.74]]),
-                           vacuum=(10.0, 10.0, 10.0))
-        src = src_dir / "filled.xyz"
-        src.write_text(struct.to_xyz(), encoding="utf-8")
-        D.write_description(
-            D.build_description(struct,
-                                SiestaConfig(system_label="filled"),
-                                [Stage(name="coarse",
-                                       overrides={"mesh_cutoff": 200})],
-                                engine="siesta",
-                                calculation="optimization",
-                                shape="hierarchical",
-                                name="filled", source=str(src)),
-            d, struct=struct)
-        write_pseudos(d, ["H"])
-        (d / "environment.json").write_text(
-            Environment(scheduler=SLURM,
-                        topology=Topology(sockets=2, cores_per_socket=32),
-                        env_init={"preamble": "true",
-                                           "activation": "conda activate"},
-                        ).to_json() + "\n", encoding="utf-8")
-
-        # THE THREE ROW STATES, one of each, arranged on purpose
-        # (`task-setup.md` § 6.2b):
-        #   `omp_threads`  chosen    -- this rung says 4
-        #   `mpi_np`       inherited -- only the calculation-wide block says 16
-        #   `time`         chosen    -- a LANE ASK, this run's own (§ 6.8e)
-        # and `allocation` beside them, which is a different block for a
-        # different question (§ 7).
-        req = read_request(d)
-        req["execution"] = {"mpi_np": 16}
-        req["allocation"] = {"time": "0-04:00:00", "mem": "16G",
-                             "domain": "debug"}
-        req["stages"] = {"coarse": {"group": 1, "execution": {
-            "omp_threads": 4, "time": "2-00:00:00"}}}
-        write_request(d, req)
-        yield d
-    finally:
-        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.
-        pass
+    d = _described_h2(isolated_projects_root_module / "prep_filled",
+                      "filled",
+                      [Stage(name="coarse", overrides={"mesh_cutoff": 200})])
+    # THE THREE ROW STATES, one of each, arranged on purpose
+    # (`task-setup.md` § 6.2b):
+    #   `omp_threads`  chosen    -- this rung says 4
+    #   `mpi_np`       inherited -- only the calculation-wide block says 16
+    #   `time`         chosen    -- a LANE ASK, this run's own (§ 6.8e)
+    # and `allocation` beside them, which is a different block for a
+    # different question (§ 7).
+    req = read_request(d)
+    req["execution"] = {"mpi_np": 16}
+    req["allocation"] = {"time": "0-04:00:00", "mem": "16G",
+                         "domain": "debug"}
+    req["stages"] = {"coarse": {"group": 1, "execution": {
+        "omp_threads": 4, "time": "2-00:00:00"}}}
+    write_request(d, req)
+    yield d
 
 
 @pytest.fixture(scope="module")
 def binding_dir(isolated_projects_root_module):
     """A described calculation that says nothing about the GPU binding --
     its own folder, so what the test saves reaches no other test."""
-    import numpy as np
-
-    from conftest import write_pseudos
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.scheduler import Environment, Topology
-    from molbuilder.structure import Structure
     from molbuilder.task import Stage
-
-    root = isolated_projects_root_module / "prep_binding"
-    (root / "structure").mkdir(parents=True)
-    d = root / "optimization" / "binding"
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    src = root / "structure" / "binding.xyz"
-    src.write_text(struct.to_xyz(), encoding="utf-8")
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="binding"),
-                            [Stage(name="coarse")], engine="siesta",
-                            calculation="optimization",
-                            shape="hierarchical", name="binding",
-                            source=str(src)),
-        d, struct=struct)
-    write_pseudos(d, ["H"])
-    (d / "environment.json").write_text(
-        Environment(scheduler=SLURM,
-                    topology=Topology(sockets=2, cores_per_socket=32),
-                    env_init={"preamble": "true",
-                                       "activation": "conda activate"},
-                    ).to_json() + "\n", encoding="utf-8")
-    return d
+    return _described_h2(isolated_projects_root_module / "prep_binding",
+                         "binding", [Stage(name="coarse")])
 
 
 def _saved_allocation(where, ok, timeout=20.0):
@@ -753,15 +678,30 @@ def test_the_every_stage_card_writes_the_calculations_own_card(
 
 
 def test_what_you_typed_is_still_there_when_you_come_back(
-        page, flask_server, filled_dir):
+        page, flask_server, filled_dir, calc_dir):
     """**Persistency is the files, and nothing else** (§ 7a).
 
     There is no page-level store to remember a form: the value is written to
     the file by Save, and the file is what the page reads on the way back in.
-    So this walks all three ways of coming back -- another tab, a full
-    reload, and re-opening the folder -- and the value has to survive every
-    one of them.
+    So the file is changed under the page once it is saved -- as a person's
+    editor changes it -- and each of the three ways of coming back --
+    another tab, a full reload, and re-opening the folder -- shows the
+    file's value, never the one the page last held.
+
+    MUTATION THIS MUST FAIL AGAINST: the card restored from a store of the
+    page's own (it would show 6).
     """
+    kept = read_request(filled_dir)
+    try:
+        _came_back_to_the_files_value(page, flask_server, filled_dir,
+                                      calc_dir)
+    finally:
+        write_request(filled_dir, kept)
+
+
+def _came_back_to_the_files_value(page, flask_server, filled_dir, calc_dir):
+    """:func:`test_what_you_typed_is_still_there_when_you_come_back`'s
+    walk."""
     _open(page, flask_server, filled_dir)
     sel = '.ts-runcard input[aria-label="value for omp_threads"]'
     page.wait_for_selector(sel, timeout=20000)
@@ -777,21 +717,32 @@ def test_what_you_typed_is_still_there_when_you_come_back(
     on_disk = read_request(filled_dir)
     assert on_disk["stages"]["coarse"]["execution"]["omp_threads"] == 6, \
         on_disk
+    # THE FILE CHANGED UNDER THE PAGE, as a person's editor changes it.
+    on_disk["stages"]["coarse"]["execution"]["omp_threads"] = 7
+    write_request(filled_dir, on_disk)
 
     # 1 -- away to another tab, and back.
     page.goto(f"{flask_server}/molbuilder")
     page.wait_for_load_state("domcontentloaded")
     _open(page, flask_server, filled_dir)
     page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
-    assert _rows(page)["omp_threads"]["value"] == "6", (
-        "the value did not survive leaving the tab and coming back")
+    assert _rows(page)["omp_threads"]["value"] == "7", (
+        "leaving the tab and coming back did not read the file")
 
     # 2 -- a full reload of this tab.
     page.reload()
     unfold(page, "ts-groups-card")     # a page loaded anew folds its cards
     page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
-    assert _rows(page)["omp_threads"]["value"] == "6", (
-        "the value did not survive a page reload")
+    assert _rows(page)["omp_threads"]["value"] == "7", (
+        "a page reload did not read the file")
+
+    # 3 -- another folder opened, then this one again.
+    _open(page, flask_server, calc_dir)
+    page.wait_for_selector(".ts-runcard", timeout=20000)
+    _open(page, flask_server, filled_dir)
+    page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
+    assert _rows(page)["omp_threads"]["value"] == "7", (
+        "re-opening the folder did not read the file")
 
 
 def test_a_row_has_a_remove_button_only_where_its_blank_cannot_remove_it(
@@ -1070,26 +1021,25 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
     bench grid card's panel: whether a run fits is the preview's to say
     (W55 B3).
 
-    Driven by making the door fail, which is the only honest way to reach
-    the branch: the server is what decides it cannot answer.
+    Reached as a person reaches it: a folder on a machine that has no
+    record -- nothing probed here -- so the server itself decides it cannot
+    answer, and says why.
     """
+    from molbuilder.scheduler import machine_scope_path
+    # NOTHING PROBED HERE.
+    Path(machine_scope_path()).unlink()
     # A GRID TO CHECK: two points to measure, stated for this test and put
     # back after it -- the module's other tests share the folder.
-    tj = Path(filled_dir) / "job-request.json"
-    kept = tj.read_text()
-    d = json.loads(kept)
-    d["bench"] = {"mpi_np": [2, 4], "omp_threads": [1]}
-    tj.write_text(json.dumps(d, indent=2))
+    kept = read_request(filled_dir)
+    write_request(filled_dir, {**kept, "bench": {"mpi_np": [2, 4],
+                                                 "omp_threads": [1]}})
     try:
-        # The door refuses, as it does on a folder whose machine has no
-        # record.
-        page.route("**/api/task-setup/bench-grid",
-                   lambda route: route.fulfill(
-                       status=400, content_type="application/json",
-                       body=json.dumps({"ok": False,
-                                        "error": "no machine record for "
-                                                 "'sol'"})))
-        _open(page, flask_server, filled_dir)
+        with page.expect_response(
+                lambda r: "/api/task-setup/bench-grid" in r.url,
+                timeout=20000) as asked:
+            _open(page, flask_server, filled_dir)
+        answer = asked.value.json()
+        assert not answer.get("ok") and answer.get("error"), answer
         page.wait_for_function(
             "() => { const n = document.getElementById('ts-machine-fit');"
             " return n && !n.hidden && /Cannot say/.test(n.textContent); }",
@@ -1098,10 +1048,10 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
             "() => document.getElementById('ts-machine-fit').textContent")
         assert "Cannot say whether this fits" in said, said
         # AND IT CARRIES THE SERVER'S REASON, not a paraphrase of our own.
-        assert "no machine record" in said, (
+        assert answer["error"] in said, (
             "the panel said it could not answer but not why: " + said)
     finally:
-        tj.write_text(kept)
+        write_request(filled_dir, kept)
 
 
 # ---------------------------------------------------------------------------
@@ -1109,15 +1059,10 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
-def two_stage_dir(isolated_projects_root):
-    """A described calculation with TWO stages and a declared bench axis.
-
-    **Built under a TMP projects root, not the developer's real tree.**
-    `isolated_projects_root` points `$MOLBUILDER_PROJECTS` at
-    `tmp_path/projects`, and `file_picker_roots()` calls `projects_root()` at
-    CALL time -- nothing caches it -- so the live server serves the tmp tree
-    and the page opens a folder inside it. Measured, not assumed.
+def _two_stages(root, *, shape="hierarchical"):
+    """A described calculation with TWO stages and a declared bench axis,
+    on a workstation's record -- this machine's, where `jobset probe
+    --write` puts it, written over the module's cluster.
 
     Two, because the claim under test is *per stage, not only the first* --
     the card once offered `prep bench` for `enabled[0]` alone, which a
@@ -1126,62 +1071,34 @@ def two_stage_dir(isolated_projects_root):
     (`viewer.js`: `benchVarying`) -- the half itself renders on every stage
     of a description `prep bench` takes (`if (!_fs.benchRefusal)`).
     """
-
-    import numpy as np
-
-    from conftest import write_pseudos
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.scheduler import (Environment, Topology,
-                                      machine_scope_path, write_environment)
-    from molbuilder.structure import Structure
+    from conftest import write_machine_record
+    from molbuilder.scheduler import Topology
     from molbuilder.task import Stage
+    d = _described_h2(root, "ladder",
+                      [Stage(name="coarse", overrides={"mesh_cutoff": 200}),
+                       Stage(name="tight", overrides={"mesh_cutoff": 400})],
+                      shape=shape)
+    # The axes to measure, declared once for the calculation -- which is
+    # exactly why every enabled stage can be measured.
+    req = read_request(d)
+    req["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
+    # ...and the run's shape, stated -- a run states it or is refused.
+    req["execution"] = {"mpi_np": 2, "omp_threads": 1}
+    write_request(d, req)
+    write_machine_record(
+        scheduler=WORKSTATION, topology=Topology(sockets=2,
+                                                 cores_per_socket=32),
+        env_init={"preamble": "true", "activation": "conda activate"})
+    return d
 
-    root = isolated_projects_root
-    src_dir = root / "structure"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    d = root / "optimization" / "ladder"
-    try:
-        struct = Structure(elements=["H", "H"],
-                           positions=np.array([[0.0, 0.0, 0.0],
-                                               [0.0, 0.0, 0.74]]),
-                           vacuum=(10.0, 10.0, 10.0))
-        src = src_dir / "ladder.xyz"
-        src.write_text(struct.to_xyz(), encoding="utf-8")
-        D.write_description(
-            D.build_description(struct, SiestaConfig(system_label="ladder"),
-                                [Stage(name="coarse",
-                                       overrides={"mesh_cutoff": 200}),
-                                 Stage(name="tight",
-                                       overrides={"mesh_cutoff": 400})],
-                                engine="siesta",
-                                calculation="optimization",
-                                shape="hierarchical",
-                                name="ladder", source=str(src)),
-            d, struct=struct)
-        write_pseudos(d, ["H"])
 
-        # The axes to measure, declared once for the calculation -- which is
-        # exactly why every enabled stage can be measured.
-        req = read_request(d)
-        req["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
-        # ...and the run's shape, stated -- a run states it or is refused.
-        req["execution"] = {"mpi_np": 2, "omp_threads": 1}
-        write_request(d, req)
-
-        # THIS MACHINE'S record, where `jobset probe --write` puts it -- not
-        # a copy in the calculation, which only its first prep writes
-        # (`configuration.md` M-3): a copy here reads as a calculation
-        # already set to its machine, and the choice below would be none.
-        write_environment(
-            Environment(scheduler=WORKSTATION,
-                        topology=Topology(sockets=2, cores_per_socket=32),
-                        env_init={"preamble": "true",
-                                           "activation": "conda activate"}),
-            machine_scope_path())
-        yield d
-    finally:
-        pass          # tmp_path is removed by pytest
+@pytest.fixture()
+def two_stage_dir(isolated_projects_root):
+    """:func:`_two_stages`, under the test's own projects tree --
+    `isolated_projects_root` points `$MOLBUILDER_PROJECTS` at it, and
+    `file_picker_roots()` calls `projects_root()` at CALL time, so the live
+    server serves it and the page opens a folder inside it."""
+    return _two_stages(isolated_projects_root)
 
 
 def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
@@ -1393,56 +1310,37 @@ def test_the_notify_card_offers_this_machines_channels(
 
 def test_a_bench_grid_answer_that_arrives_late_is_dropped(
         page, flask_server, two_stage_dir):
-    """Two edits, replies out of order; the card keeps the LATER answer.
+    """`task-setup.md` § 6.2a, *a stale answer is dropped*: two edits, their
+    replies out of order; the card keeps the LATER answer.
 
     Typing outruns the network.  An earlier reply landing after a later one
     would leave the card showing a grid for axes that no longer exist -- and
     it would look authoritative, because the panel says how many
     combinations fit.
 
-    The claim is about ORDER, so this test controls the order.
-
-    `window.fetch` is stubbed rather than the responses routed, because the
-    ordering has to be exact: the first call is parked on a promise this
-    test resolves by hand, after the second has already painted.
+    The claim is about ORDER, so this test controls the order, with the
+    server's own answers: the first edit's reply is held back by the page's
+    routing, and let through only once the second's has painted.
     """
     _open(page, flask_server, two_stage_dir)
     page.wait_for_selector(".ts-pt-add", timeout=20000)
+    held = []
 
-    page.evaluate("""() => {
-        const orig = window.fetch;
-        window.__grid = {calls: 0, release: null};
-        window.fetch = function (url, opts) {
-            // THE REQUESTS THIS TEST'S EDITS MAKE -- an axis of several
-            // points.  Any other passes through untouched, so the order
-            // counted is the edits'.  (The run card's fit panel asked the
-            // same door with a point each until 2026-10-05.)
-            let bench = {};
-            try { bench = JSON.parse((opts && opts.body) || "{}").bench || {}; }
-            catch (e) { bench = {}; }
-            const several = Object.values(bench).some(
-                (v) => Array.isArray(v) && v.length > 1);
-            if (several && String(url).includes("/api/task-setup/bench-grid")) {
-                const idx = ++window.__grid.calls;
-                // Each answer is self-identifying, and the LATER one is
-                // deliberately the SMALLER grid: an off-by-one guard that
-                // merely kept the longer list would pass otherwise.
-                const cells = [];
-                for (let i = 0; i < (idx === 1 ? 3 : 1); i += 1) {
-                    cells.push({label: "CALL" + idx + "-" + i,
-                                shape: "1x1", where: "", why: []});
-                }
-                const resp = {json: async () => ({ok: true, cells: cells})};
-                if (idx === 1) {
-                    return new Promise((r) => {
-                        window.__grid.release = () => r(resp);
-                    });
-                }
-                return Promise.resolve(resp);
-            }
-            return orig.apply(this, arguments);
-        };
-    }""")
+    def hold_the_first(route):
+        # THE REQUESTS THIS TEST'S EDITS MAKE -- an axis of several points;
+        # any other passes through, so the order held is the edits'.
+        try:
+            bench = json.loads(route.request.post_data or "{}").get(
+                "bench") or {}
+        except ValueError:
+            bench = {}
+        several = any(isinstance(v, list) and len(v) > 1
+                      for v in bench.values())
+        if several and not held:
+            held.append(route)
+        else:
+            route.continue_()
+    page.route("**/api/task-setup/bench-grid", hold_the_first)
 
     def add_a_point(value):
         page.evaluate("""(v) => {
@@ -1452,26 +1350,42 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
             a.dispatchEvent(new Event("change", {bubbles: true}));
         }""", value)
 
+    def labels():
+        return page.eval_on_selector_all(
+            "#ts-machine-fit .ts-fit-label",
+            "els => els.map(e => e.textContent)")
+
     add_a_point("111")
-    page.wait_for_function("() => window.__grid.calls === 1", timeout=10_000)
-    # The refresh is debounced at 300 ms, so the second edit has to be a
-    # separate pause or it replaces the first request instead of racing it.
-    page.wait_for_timeout(500)
-    add_a_point("222")
+    # THE FIRST EDIT'S REQUEST, held.
+    for _ in range(100):
+        if held:
+            break
+        page.wait_for_timeout(100)
+    assert held, "the first edit asked the server nothing"
+    with page.expect_response(
+            lambda r: "/api/task-setup/bench-grid" in r.url,
+            timeout=20000) as second:
+        add_a_point("222")
+    want = [c["label"] for c in second.value.json()["cells"]]
+    assert want, second.value.json()
     page.wait_for_function(
-        "() => document.querySelector('#ts-machine-fit .ts-fit-label')"
-        "        ?.textContent.startsWith('CALL2')", timeout=10_000)
+        "(want) => { const got = Array.from(document.querySelectorAll("
+        "'#ts-machine-fit .ts-fit-label')).map(e => e.textContent);"
+        " return JSON.stringify(got) === JSON.stringify(want); }",
+        arg=want, timeout=20000)
 
-    # Now the FIRST answer finally arrives.
-    page.evaluate("() => window.__grid.release()")
-    page.wait_for_timeout(400)
-
-    labels = page.eval_on_selector_all(
-        "#ts-machine-fit .ts-fit-label",
-        "els => els.map(e => e.textContent)")
-    assert labels and all(t.startswith("CALL2") for t in labels), (
+    # NOW THE FIRST ANSWER ARRIVES -- another grid than the second's.
+    with page.expect_response(
+            lambda r: "/api/task-setup/bench-grid" in r.url,
+            timeout=20000) as first:
+        held[0].continue_()
+    stale = [c["label"] for c in first.value.json()["cells"]]
+    assert stale != want, (stale, want)
+    # The page has it; its handler runs in the page's next turns.
+    page.evaluate("() => new Promise(r => setTimeout(r, 300))")
+    assert labels() == want, (
         f"a reply for the axes the user has already moved past repainted "
-        f"the card: it shows {labels!r}.  The grid now describes a bench "
+        f"the card: it shows {labels()!r}.  The grid now describes a bench "
         f"nobody asked for, and says how many combinations fit it")
 
 
@@ -1485,10 +1399,13 @@ def test_no_rung_is_taught_a_from_by_default(
     `--from` is taken as said, so it appears only when a person chooses a
     run.
 
-    MUTATION THIS MUST FAIL AGAINST: the page composing a `--from` again.
+    MUTATION THIS MUST FAIL AGAINST: the page composing a `--from` again --
+    here, the stage before the second prepared, its run opened.
     """
-    for n in (0, 1):
-        (two_stage_dir / "01_coarse" / f"run-{n}").mkdir(parents=True)
+    from support.road import group_words, jobset
+    r = jobset("prep", "task", *group_words(two_stage_dir, "coarse"),
+               "--bundle", two_stage_dir, "--target", "this")
+    assert r.exit_code == 0, r.output
     _open(page, flask_server, two_stage_dir)
     cmds = _commands_shown(page)
     assert cmds, "the page taught no commands at all"
@@ -1498,7 +1415,7 @@ def test_no_rung_is_taught_a_from_by_default(
 
 
 def test_a_FLAT_bundle_is_taught_no_from_at_all(
-        page, flask_server, two_stage_dir):
+        page, flask_server, isolated_projects_root):
     """The other half, so the rule is not "always emit a tail".
 
     Flat keeps no attempt directories (`project-layout.md` § 1.5a): the warm
@@ -1508,13 +1425,8 @@ def test_a_FLAT_bundle_is_taught_no_from_at_all(
     shape until 2026-09-02 -- a command that cannot run, naming a directory a
     flat bundle does not have.
     """
-    import json as _json
-    tj = two_stage_dir / "task.json"
-    doc = _json.loads(tj.read_text())
-    doc["shape"] = "flat"
-    tj.write_text(_json.dumps(doc, indent=2))
-
-    _open(page, flask_server, two_stage_dir)
+    flat = _two_stages(isolated_projects_root, shape="flat")
+    _open(page, flask_server, flat)
     cmds = _commands_shown(page)
     assert cmds, "the page taught no commands at all"
     assert not any("--from" in c for c in cmds), (

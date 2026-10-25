@@ -249,9 +249,11 @@ def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(
     """A displacement sweep's question that needs modes over atoms of
     UNEQUAL mass (`engines/vibration.md` § 5.9): which mode of one stage is
     which mode of another.  Free water from the road -- three modes over an
-    oxygen and two hydrogens; the SIESTA road's sweep runs H2, whose one mode
-    can neither swap nor mix.  Two things a second stage can do to the
-    reference's modes, and the answer each must get:
+    oxygen and two hydrogens; the SIESTA road's sweep runs CO2 with its
+    carbon held, whose two free atoms are oxygens of one mass, so it cannot
+    show the weighting.  A pure function asked of the real modes, changed in
+    memory -- no record is written.  Two things a second stage can do to
+    the reference's modes, and the answer each must get:
 
     * **swap rank** -- the same motions listed in another order: each
       reference mode finds its own motion, overlap 1;
@@ -332,8 +334,17 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
     # test passes identically whether the analytic path fired or
     # silently never did -- and "silently never did" is a 6N-SCF
     # regression that looks like success.
-    assert d["ir_route"] in ("analytic", "finite-difference"), (
-        f"IR ran but recorded no route: {d.get('ir_route')!r}")
+    # § 4.6: analytic when infrared alone is asked and no atom is held --
+    # here -- wherever the env holds `pyscf.prop.infrared`; the env's fact
+    # read from the env itself, never from the deck.
+    import subprocess
+    from _road import env_bin
+    analytic = subprocess.run(
+        [str(env_bin("molbuilder-pySCF") / "python"), "-c",
+         "import pyscf.prop.infrared"], capture_output=True).returncode == 0
+    assert d["ir_route"] == ("analytic" if analytic
+                             else "finite-difference"), (d["ir_route"],
+                                                         analytic)
     # THE VECTOR IS THE ONE THE INTENSITY CAME FROM (`engines/vibration.md`
     # § 4.6, schema 12): every direction's strength is read from it, so a
     # vector kept in another unit or another projection would put every
@@ -802,9 +813,12 @@ def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
 
 def test_the_listed_modes_get_the_probe_and_no_other(tmp_path, monkeypatch):
     """`engines/vibration.md` § 4.8: `explicit` gives the per-mode probe to
-    the modes its list names -- TEXT, "1, 3", read by the one index-list
-    reader (`PySCFConfig.explicit_modes`).  A list the reader cannot take -- "0, 2", the
-    modes count from 1 -- is refused at prep, before a deck exists.
+    the modes its list names -- TEXT, "1, 3, 9", read by the one index-list
+    reader (`PySCFConfig.explicit_modes`); water has three modes, so 9 names
+    none: dropped from the selection and said in the run's output, the
+    count known only once the Hessian is done.  A list the reader cannot
+    take -- "0, 2", the modes count from 1 -- is refused at prep, before a
+    deck exists.
 
     MUTATION THIS MUST FAIL AGAINST: the deck's constant written as
     `list(cfg.es_explicit_indices)`.
@@ -837,8 +851,12 @@ def test_the_listed_modes_get_the_probe_and_no_other(tmp_path, monkeypatch):
     assert "can't be read: 0 is below 1" in r.output, r.output
     assert not list((bundle / "01_freq").glob("*.py")), "a deck was written"
 
-    _answer("1, 3")
+    _answer("1, 3, 9")
     d = _prep_and_run(bundle)
+    from molbuilder.runs import run_of
+    out = run_of(bundle / "01_freq" / "run-0").stdout
+    said = out.read_text(errors="replace")
+    assert "no mode numbered [9]" in said, said[-3000:]
     assert d["phase_es"] == "complete", d["phase_es"]
     assert d["phase_raman"] == "not requested"
     probed = sorted(m["index_1based"] for m in d["modes"]

@@ -285,25 +285,26 @@ def test_each_run_is_paired_with_its_own_session_log(stopped):
 
 
 def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):
-    """`engine_only` names what the engine read and nobody wrote
-    (`model/parse.md` § 5d.3).  SIESTA reads some keys twice, each time its
-    own default -- `MD.FinalTimeStep` and `DM.NumberPulay` in this run's fdf
-    log -- and such a key is not the deck's; `MeshCutoff`, which the deck
-    sets, is.
+    """`engine_only` names what the engine read and no catalogue item
+    writes (`model/parse.md` § 5d.3), as the Results tab's folder door
+    answers it.  SIESTA reads some keys twice, each time its own default --
+    `DM.NumberPulay` in this run's fdf log -- and such a key is not the
+    deck's.  A key a catalogue item writes is a row of the setup, never one
+    of these: `MeshCutoff` (`mesh_cutoff`), and `MD.FinalTimeStep`, which
+    SIESTA reads twice too (`relax_steps`, its keys `MD.Steps` and
+    `MD.FinalTimeStep`).
 
     MUTATION THIS MUST FAIL AGAINST: `in_deck` from a top-level `default`
     alone -- a key read several times has none.
     """
-    from molbuilder.parse import detect
-    from molbuilder.parse.dirs.setup import _engine_only
-
-    log = sorted(stopped.glob("fdf.*.log"))[0]
-    res = detect(log).parse(log)
-    rows = {r["key"].lower(): r for r in _engine_only(res.params, set())}
-    for key in ("md.finaltimestep", "dm.numberpulay"):
-        assert len(rows[key]["readings"]) == 2, rows[key]
-        assert rows[key]["in_deck"] is False, rows[key]
-    assert rows["meshcutoff"]["in_deck"] is True, rows["meshcutoff"]
+    from molbuilder.runs import folder_answer
+    setup = folder_answer(stopped)["record"]["setup"]
+    rows = {r["key"].lower(): r for r in setup["engine_only"]}
+    pulay = rows["dm.numberpulay"]
+    assert len(pulay["readings"]) == 2 and pulay["in_deck"] is False, pulay
+    written = {k.lower() for r in setup["rows"] for k in r.get("keys", [])}
+    for key in ("meshcutoff", "md.finaltimestep"):
+        assert key in written and key not in rows, key
 
 
 @pytest.fixture(scope="module")
@@ -407,7 +408,6 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     # ...WITH THE NEXT STEP under its rows (`web/results.md` § 2.4): the
     # ladder door's own answer, the next group's words and lines, and when it
     # was read.
-    from molbuilder.jobset.model import FILENAME as _PLAN, JobSet
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import jobset_status
     step = next(g for g in jobset_status(open_calculation(bundle)).steps

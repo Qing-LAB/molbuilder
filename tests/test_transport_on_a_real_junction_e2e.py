@@ -117,6 +117,12 @@ RELAXED_WITH = dict(mesh_cutoff=150.0, basis_size="SZ",
                     spin_treatment="unrestricted", unpaired_electrons=2,
                     mixing_weight=0.1, pulay_history=6)
 
+#: THE VIBRATION'S ONE SETTING THE RELAXATION DID NOT USE -- its SCF history,
+#: which moves no converged result -- so a frame set stamped with the
+#: vibration's settings, not the relaxation's it was saved from, is told
+#: apart (the 2026-10-24 measurement on AuBDTAu).
+_VIBRATED_HISTORY = 7
+
 _BIAS = (0.0, 0.2)
 
 #: Each SCF stage's own mixing weight, set on its tab -- every one distinct
@@ -428,6 +434,9 @@ def junction(tmp_path_factory):
         _taken(run, "status device", "status", "device")
         _typed(run, "launch device again", "launch", "task", "--stage",
                "device", "--mode", "direct", "--foreground", "--yes")
+        from support.real_runs import stage_status
+        run.device_runs_after_refusal = stage_status(run.bundle,
+                                                     "device").attempts
         _taken(run, "launch device cold", "launch", "task", "--stage",
                "device", "--mode", "direct", "--foreground", "--yes", "--cold")
         _taken(run, "status device after cold", "status", "device")
@@ -445,9 +454,9 @@ def junction(tmp_path_factory):
         # atoms, every one balanced, which prep says as information
         # (`engines/vibration.md` § 2.3a) -- so its force constants displace
         # one atom, not two; the box ticked (the pair IS the relaxed
-        # geometry), at the relaxation's own settings.  Its own copy of the
-        # pair, written through the structure's doors; the pair stays as the
-        # relaxation saved it.
+        # geometry), at the relaxation's settings but its SCF history
+        # (`_VIBRATED_HISTORY`).  Its own copy of the pair, written through
+        # the structure's doors; the pair stays as the relaxation saved it.
         from molbuilder.workingcopy_structure import StructureCodec
         one_free = "P/structure/relaxed-one-free.xyz"
         held_more = StructureCodec().load(tree / pair)
@@ -462,7 +471,9 @@ def junction(tmp_path_factory):
         vib = RealRun(tree=tree, bundle=tree / "P" / "frequency" / "V")
         _run_card(vib.bundle)
         ladder_edited({"removed": ["relax"]}, vib.bundle)
-        for name, value in {**RELAXED_WITH, "already_relaxed": True}.items():
+        for name, value in {**RELAXED_WITH,
+                            "pulay_history": _VIBRATED_HISTORY,
+                            "already_relaxed": True}.items():
             _set_by_the_person(vib.bundle / "V.template.toml", name, value)
         _taken(vib, "prep freq", "prep", "task",
                *group_words(vib.bundle, "freq"), "--target", "this")
@@ -503,11 +514,20 @@ def junction(tmp_path_factory):
         _taken(from_pair, "launch device", "launch", "task", "--stage",
                "device", "--mode", "direct", "--foreground", "--yes")
         _taken(from_pair, "status device", "status", "device")
+        # ITS RECORD WHILE NO TRANSMISSION HAS RUN, where the Results tab
+        # asks it (`engines/transport.md` § 2a.12).
+        run.average_waiting = client.get(
+            f"/api/transport/record?path={from_pair.bundle}").get_json()
         _taken(from_pair, "prep transmission", "prep", "task",
                *group_words(from_pair.bundle, "transmission"),
                "--target", "this")
         _taken(from_pair, "launch transmission", "launch", "task", "--stage",
                "transmission", "--mode", "direct", "--foreground", "--yes")
+        # A SELECTION'S PDOS BEFORE ANY READING IS KEPT (`web/web-api.md`,
+        # `/api/transport/pdos`).
+        got = client.get(f"/api/transport/pdos?path={from_pair.bundle}"
+                         f"&atoms=0&frame=1&point=0.2&orbitals=all")
+        run.pdos_before = (got.status_code, got.get_json())
         _taken(from_pair, "summarize", "summarize", "task")
 
         # ONE VOLTAGE -- a device that runs once, no points: launched, then
@@ -578,10 +598,12 @@ def junction(tmp_path_factory):
                                       request_changed)
 
         def point_added(c):
-            described = c.bundle / "task.json"
-            t = json.loads(described.read_text())
+            # A VOLTAGE ADDED ON TASK SETUP -- its Save, the page's door.
+            from support.road import save_both
+            t = json.loads((c.bundle / "task.json").read_text())
             t["bias"]["voltages_v"] = [*t["bias"]["voltages_v"], 0.4]
-            described.write_text(json.dumps(t, indent=2))
+            saved = save_both(c.bundle, t, read_request(c.bundle), client)
+            assert saved.status_code == 200, saved.get_json()
             _typed(c, "prep device with a point added", "prep", "task",
                    *group_words(c.bundle, "device"), "--target", "this")
         run.point_added = copy_of(run, "point-added", point_added)
@@ -621,6 +643,28 @@ def junction(tmp_path_factory):
             c.jobs["again"] = molbuilder("jobs", "status")
         run.stopped = copy_of(single, "stopped-in-its-loop",
                               stopped_in_its_loop)
+
+        # A DEVICE WALK STOPPED AFTER ITS FIRST POINT (§ 2a.11, *Launched
+        # again*): a copy of the voltage list, its device launched again
+        # cold in the background, stopped with the line its launch printed
+        # once its 0 V point is done -- a point takes some 15 s, so the next
+        # is not -- then launched again warm.
+        def walk_stopped(c):
+            from molbuilder.runs import folder_answer
+            launched = _taken(c, "launch device cold", "launch", "task",
+                              "--stage", "device", "--mode", "direct",
+                              "--yes", "--cold")
+            stopped = _runs_of(c, "device")[-1]
+
+            def first_point_done():
+                # ITS 0 V POINT, as the Results tab opens its folder.
+                return (folder_answer(stopped / f"v{_BIAS[0]:g}")["status"]
+                        or {}).get("state") == "finished"
+            _until(first_point_done, within=600, what="its first point done")
+            _stopped_by_its_line(c, "stop as its launch said", launched)
+            _taken(c, "launch device warm", "launch", "task", "--stage",
+                   "device", "--mode", "direct", "--foreground", "--yes")
+        run.walk_stopped = copy_of(run, "walk-stopped", walk_stopped)
 
         # THE SAME FRAMES STATING NO ROWS -- a family, each frame its own
         # curve (`model/structure.md` § 2.2f).
@@ -772,17 +816,21 @@ def _record(run):
 # --------------------------------------------------------------------- #
 
 def test_a_finished_relaxation_composes_and_says_how_it_ended(junction):
-    """The citation is a relaxation run of molbuilder's own that finished;
-    the composed copy carries how it ended, and its leads are the labelled
-    blocks."""
-    from molbuilder.transport.compose import classify_citation, compose_junction
-    cited = classify_citation(junction.tree / junction.cite)
-    assert cited.concluded and cited.exit_code == 0
-    out = compose_junction(junction.cite, tree_root=junction.tree)
-    assert out.provenance["evidence"] == cited.concluded
-    assert out.provenance["relaxation"]["exit_code"] == 0
-    assert len(out.electrode_left.elements) == _LEAD
-    assert out.provenance["swap_electrodes"] is False
+    """§ 3.1, *What is said about how it ended*: the citation is a relaxation
+    run of molbuilder's own that finished; the composed copy the
+    calculation recorded at its prep carries the run's conclusion line and
+    what its output says it converged -- *geometry yes*, the status verb's
+    words -- and its leads are the labelled blocks."""
+    from molbuilder.transport.compose import load_compose_record
+    record = load_compose_record(junction.bundle, citation=junction.cite,
+                                 tree_root=junction.tree)
+    assert record is not None
+    said = record.provenance
+    assert said["evidence"].startswith("rc=0 at "), said
+    assert said["relaxation"] == {"converged": "geometry yes",
+                                  "exit_code": 0}, said
+    assert len(record.electrode_left.elements) == _LEAD
+    assert said["swap_electrodes"] is False
 
 
 def test_a_run_that_relaxed_no_geometry_is_not_cited(junction):
@@ -813,30 +861,6 @@ def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
         zs[regions[REGION_RIGHT_ELECTRODE]])
     assert out.provenance["swap_electrodes"] is True
     assert _files(junction.tree / junction.cite) == junction.cited_before
-
-
-def test_the_record_answers_for_the_citation_it_was_composed_from(
-        junction, tmp_path, monkeypatch):
-    """`load_compose_record`'s "no record" is said in words: nothing
-    composed here, or a record composed from another citation."""
-    from molbuilder.transport.compose import (compose_junction,
-                                              load_compose_record,
-                                              write_compose_record)
-    rec = tmp_path / "calc"
-    rec.mkdir()
-    why: list = []
-    assert load_compose_record(rec, citation=junction.cite,
-                               tree_root=junction.tree, why=why) is None
-    assert "no slot-provenance.json" in why[0]
-    write_compose_record(rec, compose_junction(junction.cite,
-                                               tree_root=junction.tree))
-    other = junction.cite.replace("run-0", "run-1")
-    why = []
-    assert load_compose_record(rec, citation=other, tree_root=junction.tree,
-                               why=why) is None
-    assert junction.cite in why[0] and other in why[0]
-    assert load_compose_record(rec, citation=junction.cite,
-                               tree_root=junction.tree) is not None
 
 
 def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
@@ -992,6 +1016,9 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
                 if it.source == "cited" and it.name != "psml_lib"}
     assert "mixing_weight" in cited(by_run) and "mesh_cutoff" in cited(by_run)
     assert cited(by_pair) == cited(by_run)
+    # ...THE RELAXATION'S, never the vibration's that wrote the set.
+    assert cited(by_pair)["pulay_history"] == RELAXED_WITH["pulay_history"] \
+        != _VIBRATED_HISTORY, cited(by_pair)
     psml = one(by_pair, "psml_lib")
     assert (psml.value, psml.source) == ("pseudopotential", "person")
     record = load_compose_record(junction.from_pair.bundle,
@@ -1345,6 +1372,7 @@ def test_preparing_again_with_nothing_set_changes_no_deck(junction):
     from molbuilder.siesta.engine_input import engine_input_differences
     probe = junction.probe
     for rung in _RUNGS:
+        assert len(probe.unset[rung]) == len(probe.again[rung]) > 0, rung
         for before, again in zip(probe.unset[rung], probe.again[rung]):
             assert engine_input_differences(before, again) == [], rung
 
@@ -1426,6 +1454,10 @@ def test_a_point_added_to_a_launched_rung_is_refused(junction):
     assert "its points now are not the ones its runs ran" in said.output, \
         said.output
     assert "added: v0.4" in said.output, said.output
+    # THE WAY BACK, named: the folder's saved states.
+    assert "molbuilder checkpoint list" in said.output, said.output
+    # NOTHING WRITTEN: no deck for the voltage added.
+    assert not (junction.point_added.bundle / "04_device" / "v0.4").exists()
 
 
 @pytest.mark.parametrize("row", _ANOTHER_INPUT, ids=lambda r: r["name"])
@@ -1653,7 +1685,8 @@ def test_launched_again_warm_with_every_point_done_it_is_refused(junction):
     r = junction.said["launch device again"]
     assert r.exit_code != 0, r.output
     assert "--cold" in r.output, r.output
-    assert not (junction.bundle / "04_device" / "run-2").exists()
+    # THE DEVICE'S RUNS RIGHT AFTER IT: still the one that ran.
+    assert junction.device_runs_after_refusal == [0]
 
 
 def test_launched_cold_every_point_runs_again(junction):
@@ -1662,14 +1695,15 @@ def test_launched_cold_every_point_runs_again(junction):
     what its run gathered (its `.gathered-from`, and no `.continued-from`,
     which a point taken over would carry), and the next from the point
     before it in this walk (its `.continued-from`)."""
-    from molbuilder.runrecord import read_gathered_from
-    zero = _point(junction, "04_device", 1, _BIAS[0])
-    assert not (zero / ".continued-from").exists()
-    assert any(str(src) == "01_seed/run-0"
-               for src, _fn in read_gathered_from(zero)), zero
-    start = (_point(junction, "04_device", 1, _BIAS[1])
-             / ".continued-from").read_text()
-    assert "run-1" in start and f"v{_BIAS[0]:g}" in start, start
+    from molbuilder.task import of as task_of
+    from support.real_runs import point_row, stage_status
+    label = task_of(junction.bundle).label
+    device = stage_status(junction.bundle, "device")
+    assert device.attempt == "run-1", device.attempt
+    zero, then = (point_row(device, v) for v in _BIAS)
+    assert zero["started_from"] is None and zero["done"], zero
+    assert f"{label}.DM <- 01_seed/run-0" in device.gathered, device.gathered
+    assert then["started_from"] == f"04_device/run-1/v{_BIAS[0]:g}", then
 
 
 def test_a_device_launched_warm_then_cold_keeps_the_seeds_density(junction):
@@ -1680,21 +1714,106 @@ def test_a_device_launched_warm_then_cold_keeps_the_seeds_density(junction):
     Hamiltonian, each from the run that made it (`job-system.md` § 5.4,
     *either way a transport rung keeps the inputs its first launch
     gathered*)."""
-    from molbuilder.runrecord import read_gathered_from
+    from molbuilder.runs import folder_answer
     device = junction.single.bundle / "04_device"
-    first = {fn: str(src) for src, fn in read_gathered_from(device / "run-0")}
-    cold = {fn: str(src) for src, fn in read_gathered_from(device / "run-2")}
+
+    def record(n):
+        """Run ``n``'s record, as the Results tab opens its folder."""
+        return folder_answer(device / f"run-{n}")["record"]
+
+    def given(n):
+        return {g["file"]: g["from"]
+                for g in record(n)["deck"].get("gathered_from", [])}
+    first = given(0)
+    # WARM: it continues from run 0, its density run 0's own, and records
+    # only what the gather gave it beside that -- the leads' Hamiltonians.
+    warm = given(1)
+    assert record(1)["computation"]["launch"]["continued_from"] == (
+        "04_device/run-0")
+    assert warm and not any(fn.endswith(".DM") for fn in warm), warm
+    assert all(warm[fn] == first[fn] for fn in warm), (first, warm)
+    cold = given(2)
     assert cold == first, (first, cold)
     assert any(fn.endswith(".DM") and src == "01_seed/run-0"
                for fn, src in cold.items()), cold
 
 
+def test_launched_again_warm_it_takes_the_done_points_over(junction):
+    """§ 2a.11, *Launched again*: a device walk stopped after its first
+    point, launched again warm -- the point done in the stopped run is taken
+    over into the new run's point folder, whole but the engine's scratch,
+    its `.continued-from` naming the run that computed it; the point not
+    done is walked in the new run, starting from the point before it in
+    this walk; the stopped run is kept as it ended.  The silent failure: a
+    done point run again, a point not done copied as done, or the leads'
+    Green's functions carried into the new run.
+
+    MUTATION THIS MUST FAIL AGAINST: the warm launch taking nothing over
+    (the 0 V point recomputed, its start the seed's density)."""
+    from molbuilder.runs import folder_answer
+    from molbuilder.warmfiles import is_scratch
+    from support.real_runs import point_row, stage_status
+    c = junction.walk_stopped
+    device = stage_status(c.bundle, "device")
+    *_, stopped, new = device.attempts
+    assert device.attempt == f"run-{new}", device.attempt
+    # THE NEW RUN: both points done -- the first taken over, naming the run
+    # that computed it; the second walked from it.
+    zero, then = (point_row(device, v) for v in _BIAS)
+    assert zero["done"] and then["done"], device.points
+    assert zero["started_from"] == f"04_device/run-{stopped}/v{_BIAS[0]:g}"
+    assert then["started_from"] == f"04_device/run-{new}/v{_BIAS[0]:g}"
+    # ...THE ENGINE'S SCRATCH LEFT BEHIND, as the Results tab lists it.
+    taken = folder_answer(c.bundle / device.dir / zero["folder"])
+    assert not any(is_scratch(f["name"]) for f in taken["files"]), taken
+    # THE STOPPED RUN, kept as it ended: its first point finished, its
+    # second not.
+    old = c.bundle / device.dir / f"run-{stopped}"
+    state = {v: (folder_answer(old / f"v{v:g}")["status"] or {}).get("state")
+             for v in _BIAS}
+    assert state[_BIAS[0]] == "finished" and state[_BIAS[1]] != "finished", \
+        state
+
+
+def test_a_frame_sets_average_waits_for_every_frame(junction):
+    """§ 2a.12: a point not done is a gap in the family, and the average at
+    that voltage waits for it -- never computed from the frames that happen
+    to be there.  The record asked where the Results tab asks it, the
+    frame set's device run and no transmission yet: at each voltage the
+    average names every frame it waits for, holds no value, and says why.
+    The silent failure: an average drawn from the frames that are done."""
+    answer = junction.average_waiting
+    assert answer["ok"], answer
+    at = answer["record"]["average"]["at"]
+    assert [e["bias_v"] for e in at] == list(_BIAS), at
+    for e in at:
+        assert e["waits_for"] == list(range(_N_FRAMES)), e
+        assert e["transmission"] is None and e["conductance_g0"] is None, e
+        assert "the average waits for every frame" in e["why"], e
+
+
+def test_a_selections_pdos_is_refused_before_its_reading_is_kept(junction):
+    """`web/web-api.md`, `/api/transport/pdos` (`web/results.md` § 2.5):
+    the transmission launched and nothing summarized, so no point's reading
+    of its data file is kept -- the PDOS of a selection is refused by name,
+    saying so.  The silent failure: a curve computed from no reading."""
+    status, body = junction.pdos_before
+    assert status == 400 and "not read yet" in body["error"], body
+
+
 def test_the_transmission_takes_the_devices_newest_run_whole(junction):
     """Its first launch gathers from the device's newest run, and says
     which (`job-system.md` § 6.0, step 1)."""
+    from molbuilder.task import of as task_of
+    from support.real_runs import point_row, stage_status
+    label = task_of(junction.bundle).label
     _said(junction, "launch transmission", "04_device/run-1")
+    # EACH POINT'S DEVICE INPUT, from that run at its own voltage -- never
+    # 0 V from one run and 0.2 V from another.
+    transmission = stage_status(junction.bundle, "transmission")
     for v in _BIAS:
-        assert (_point(junction, "05_transmission", 0, v)).is_dir(), v
+        took = point_row(transmission, v)["took"]
+        assert f"{label}.TS.HSX <- 04_device/run-1/v{v:g}" in took, (v, took)
 
 
 # --------------------------------------------------------------------- #
@@ -2213,13 +2332,13 @@ def test_the_files_say_which_index_their_atoms_are_listed_by(junction):
     run = junction
     label = task_of(run.bundle).label
     composed = recorded_junction(run.bundle).structure
-    n, record = composed.n_atoms, composed.atom_order
-    # THE RECORD'S OWN LISTS, as its sidecar states them -- the expectation,
-    # never the map's code.
-    engine_of_user = (list(record.original_to_sorted) if record is not None
-                      else list(range(n)))
-    user_of_engine = (list(record.sorted_to_original) if record is not None
-                      else list(range(n)))
+    n = composed.n_atoms
+    # THE CHAIN'S ORDER, as the junction is built (`_CHAIN`) -- the
+    # expectation, never the map's code nor a record that may be missing.
+    engine_of_user = list(_CHAIN["original_to_sorted"])
+    user_of_engine = list(_CHAIN["sorted_to_original"])
+    assert composed.atom_order is not None
+    assert list(composed.atom_order.original_to_sorted) == engine_of_user
     data = atom_index_map(data_file_path(run.bundle, label))
     assert (data.listed_by, list(data.user), list(data.engine)) == (
         "user_index", list(range(n)), engine_of_user)
@@ -2247,44 +2366,6 @@ def test_the_files_say_which_index_their_atoms_are_listed_by(junction):
     own = atom_index_map(run.bundle / "02_electrode_L" / "run-0"
                          / f"{rung_label(label, 'electrode_L')}.XV")
     assert (own.listed_by, own.user) == ("engine_index", None), own
-
-
-def test_an_older_junction_is_refused_to_an_editor_and_marked_for_a_viewer(
-        junction, tmp_path):
-    """`model/overview.md` § 2.2a, I8, I9; § 2.2b, F4: the composed junction
-    whose sidecar states no order record -- written before the field --
-    is refused to an editor's read and a builder's, and opened for a viewer
-    marked `order_unstated` and said; a save from that view states
-    `not_stated`.  On a copy of the calculation's records and its junction,
-    the sidecar as a molbuilder before v14 wrote it.  The silent failure:
-    TranSIESTA's order opened and saved as the user's."""
-    import json
-    import shutil
-    from molbuilder.runfiles import JUNCTION_FILE, JUNCTION_SIDECAR_FILE
-    from molbuilder.workingcopy_structure import (ORDER_UNSTATED,
-                                                  StructureCodec)
-    run = junction.single
-    calc = tmp_path / "P" / "transport" / run.bundle.name
-    calc.mkdir(parents=True)
-    for f in run.bundle.iterdir():
-        if f.is_file():
-            shutil.copy(f, calc / f.name)
-    side = calc / JUNCTION_SIDECAR_FILE
-    payload = json.loads(side.read_text())
-    del payload["atom_order"], payload["atom_index_map"]
-    side.write_text(json.dumps({**payload, "schema_version": 13}))
-    with pytest.raises(ValueError, match="states no order record"):
-        StructureCodec().load(calc / JUNCTION_FILE, frames=True,
-                              in_user_order=True, said_out=[])
-    said: list = []
-    seen = StructureCodec().load(calc / JUNCTION_FILE, frames=True,
-                                 said_out=said, opened=(ORDER_UNSTATED,))
-    assert seen.order_unstated and [n.where for n in said] == [
-        ORDER_UNSTATED], said
-    out = tmp_path / "saved.xyz"
-    StructureCodec().write(seen.frame_at(0), out)
-    written = json.loads(out.with_suffix(".molstruct.json").read_text())
-    assert written["atom_index_map"]["atoms_listed_by"] == "not_stated"
 
 
 def test_a_scripts_parse_keeps_a_reading_that_states_both_indices(
@@ -3653,11 +3734,17 @@ def _copied_in(plan: str) -> list:
 
 
 def _runs_of(made, stage):
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.paths import attempt_dir, attempts_in
-    from molbuilder.task import of as task_of
-    home = stage_home(made.bundle, task_of(made.bundle), stage)
-    return [attempt_dir(home.dir, n) for n in attempts_in(home.dir)]
+    """Every run of ``stage``, oldest first, as the status door lists them."""
+    from support.real_runs import stage_status
+    s = stage_status(made.bundle, stage)
+    return [made.bundle / s.dir / f"run-{n}" for n in s.attempts]
+
+
+def _resolves(bundle, said) -> bool:
+    """A ``<file> <- <run>`` line the status door states: the file is in
+    that run's folder of this calculation."""
+    fn, _, ref = said.partition(" <- ")
+    return (Path(bundle) / ref / fn).is_file()
 
 
 def test_a_folder_that_cannot_be_reused_is_refused_before_anything_is_written(
@@ -3716,12 +3803,10 @@ def test_a_question_the_finished_results_answer_is_copied_in(
     silent failure: a copy whose record of its inputs is lost -- a launch
     again sends the engine without the leads' files, a later calculation
     reusing it takes nothing over."""
-    from molbuilder import calcdirs
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.runrecord import carried_gather, read_copied_from
+    from molbuilder.runs import folder_answer
     from molbuilder.task import of as task_of
-    from molbuilder.transport.stages import (TRANSPORT_STAGES, frames_of,
-                                             rung_points)
+    from molbuilder.transport.stages import TRANSPORT_STAGES
+    from support.real_runs import stage_status
     made, theirs = reused[name], reused[finished]
     bare = made.said["prep bare"].output
     assert _copied_in(bare) == [1, 2, 3], bare
@@ -3733,46 +3818,51 @@ def test_a_question_the_finished_results_answer_is_copied_in(
         assert (": not asked here -- left behind)" if at
                 else ": not asked here -- copied with it, never read)") \
             in bare, bare
-    task = task_of(made.bundle)
+    label = task_of(made.bundle).label
     where = theirs.bundle.relative_to(theirs.tree).as_posix()
 
-    def one_hop(there):
-        return (read_copied_from(there)
-                or f"{where}/{there.relative_to(theirs.bundle).as_posix()}")
-    results = {}
-    for stage in TRANSPORT_STAGES:
-        mine, ran = _runs_of(made, stage), _runs_of(theirs, stage)
-        points = rung_points(task, stage, frames=frames_of(made.bundle))
+    def one_hop(status, folder):
+        """What a copy of the finished result in ``folder`` names: its own
+        copy's origin where the finished calculation took it over, else
+        the result itself."""
+        row = next((p for p in status.points if p["folder"] == folder), {})
+        return row.get("copied_from") or f"{where}/{status.dir}/{folder}"
+    # EACH STAGE AS `jobset status` READS IT, here and in the finished one.
+    mine = {st: stage_status(made.bundle, st) for st in TRANSPORT_STAGES}
+    for stage, here in mine.items():
+        ran = stage_status(theirs.bundle, stage)
         if at and stage in ("device", "transmission"):
-            (run,) = mine
-            assert calcdirs.read(run).role == (
-                calcdirs.CONTAINER if points else calcdirs.RUN), run
-            source = ran[-1] / at
-            for pt in points or [None]:
-                here = run / pt.rel if pt is not None else run
-                there = source / pt.rel if pt is not None else source
-                assert read_copied_from(here) == one_hop(there), here
-                results[stage, pt.rel if pt is not None else None] = here
+            # RE-LAID as this calculation's run 0, opened by the Results tab
+            # as its layout says: a run of points a container.
+            assert here.attempts == [0], here.attempts
+            role = folder_answer(made.bundle / here.dir / here.attempt)[
+                "place"]["role"]
+            assert role == ("container" if here.points else "run"), role
+            if not here.points:
+                assert here.copied_from == one_hop(
+                    ran, f"{ran.attempt}/{at}"), here.copied_from
+            for p in here.points:
+                theirs_at = f"{ran.attempt}/{at}/{p['folder'].split('/', 1)[1]}"
+                assert p["copied_from"] == one_hop(ran, theirs_at), p
         else:
-            assert [r.name for r in mine] == [r.name for r in ran], stage
-            for here, there in zip(mine, ran):
-                assert read_copied_from(here) == one_hop(there), here
-            for pt in points or [None]:
-                results[stage, pt.rel if pt is not None else None] = (
-                    mine[-1] / pt.rel if pt is not None else mine[-1])
-    # WHAT EACH WAS GIVEN, a file of this calculation.
-    given = {}
-    for (stage, rel), here in results.items():
-        names = stage_home(made.bundle, task, stage).names(task.shape)
-        took = carried_gather(made.bundle, here, names)
-        assert all((src.path(made.bundle) / fn).is_file()
-                   for src, fn in took), (here, took)
-        given[stage, rel] = {fn: src.path(made.bundle) for src, fn in took}
-    assert given["device", next(r for s, r in given if s == "device")], given
-    for (stage, rel), took in given.items():
-        if stage == "transmission":
-            assert took[f"{task.label}.TS.HSX"] == results["device", rel], (
-                rel, took)
+            # COPIED WHOLE, every run under its own name, one hop.
+            assert here.attempts == ran.attempts, (here.attempts,
+                                                   ran.attempts)
+            assert here.copied_from == (ran.copied_from or (
+                f"{where}/{ran.dir}/{ran.attempt}")), here.copied_from
+        # WHAT IT WAS GIVEN, each a file of this calculation.
+        lines = here.gathered + [t for p in here.points for t in p["took"]]
+        assert all(_resolves(made.bundle, ln) for ln in lines), (stage, lines)
+    assert mine["device"].gathered, mine["device"].gathered
+    # THE TRANSMISSION GIVEN THE DEVICE'S RESULT AT ITS OWN POINT.
+    device, transmission = mine["device"], mine["transmission"]
+    if transmission.points:
+        for p, d in zip(transmission.points, device.points):
+            assert (f"{label}.TS.HSX <- {device.dir}/{d['folder']}"
+                    in p["took"]), (p, d)
+    else:
+        assert (f"{label}.TS.HSX <- {device.dir}/{device.attempt}"
+                in transmission.gathered), transmission.gathered
     # THE RECORD: the voltages asked, each the finished result, copied.
     def by_point(run):
         return {((p.get("frame") or 0), p["bias_v"]): p

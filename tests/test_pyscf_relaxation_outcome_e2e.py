@@ -54,7 +54,6 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     and is the template's -- prepared and launched directly: the bundle, the
     stage's state as the ladder reads it, and what the run itself printed."""
     from conftest import write_machine_record
-    from molbuilder.jobset.model import FILENAME, JobSet
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.projects import PROJECTS_ROOT_ENV
@@ -290,21 +289,19 @@ def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(tmp_path,
     deck says why, the log's footer says ``relaxed: no`` and the run ends
     normally, so the run door reads `finished`, not converged.
 
-    The deadline here is already past when the deck starts (a wall of 1 s,
-    started 100 s ago), so the first step is the last.
+    The wall is the run card's (`running-a-job.md` § 3.6, *one run, here*),
+    1 s, less than its slack: the deadline is past when the deck starts, so
+    the first step is the last.
 
-    MUTATION THIS MUST FAIL AGAINST: the deadline not read from the
-    environment, or the relaxation running to its step budget (H2 from
-    0.95 Å converges in a few steps, and the run would read converged)."""
-    import time
-
+    MUTATION THIS MUST FAIL AGAINST: the card's wall not told to a run here
+    (`submit._go`), the deadline not read from the environment, or the
+    relaxation running to its step budget (H2 from 0.95 Å converges in a few
+    steps, and the run would read converged)."""
     from molbuilder.parse.engines._run_ending import ending_of
-    monkeypatch.setenv("MB_WALL_S", "1")
-    monkeypatch.setenv("MB_JOB_STARTED", str(int(time.time()) - 100))
-    monkeypatch.setenv("MB_WALL_SLACK_S", "0")
     bundle, state, said = _run(
         tmp_path, monkeypatch, calculation="optimization",
-        overrides={"geom_max_steps": 50, "on_nonconvergence": "proceed"})
+        overrides={"geom_max_steps": 50, "on_nonconvergence": "proceed"},
+        execution={"time": "00:00:01"})
     assert state == "finished", said[-3000:]
     assert "stopped before the wall" in said, said[-3000:]
     assert list(bundle.glob("*_optimized.xyz")), sorted(
@@ -330,21 +327,19 @@ def test_the_wall_stops_a_vibration_before_its_spectrum(tmp_path,
     deadline here is past when the deck starts, frequencies alone (an
     analytic Hessian, no displaced SCF), so the deck's first SCF is where it
     stops; the check after its relaxation (the wall passing during it) is
-    the same door, `relax_policy.stop_if_past_wall`.
+    the same door, `relax_policy.stop_if_past_wall`.  The wall is the run
+    card's, 1 s, less than its slack: past when the deck starts.
 
     THE SILENT FAILURE: a spectrum written at a geometry the wall stopped,
     the run reading finished (the 2026-10-23 review).
 
     MUTATION THIS MUST FAIL AGAINST: the vibration deck asking the wall
     nowhere (`stop_if_past_wall` answering nothing)."""
-    import time
-    monkeypatch.setenv("MB_WALL_S", "1")
-    monkeypatch.setenv("MB_JOB_STARTED", str(int(time.time()) - 100))
-    monkeypatch.setenv("MB_WALL_SLACK_S", "0")
     bundle, state, said = _run(
         tmp_path, monkeypatch, calculation="vibration",
         overrides={"geom_max_steps": 50, "on_nonconvergence": "halt"},
-        template={"compute_raman": False, "compute_ir": False})
+        template={"compute_raman": False, "compute_ir": False},
+        execution={"time": "00:00:01"})
     assert state == "failed", said[-3000:]
     assert ("stopped before the wall (the job's wall less its slack) "
             "before the spectrum was written") in said, said[-3000:]
