@@ -2693,9 +2693,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     if not walked and across is not None:
         raise SubmitError(
             f"{stage}: every point is one {across.run} computed the same, "
-            f"so its first launch has nothing to run -- a calculation that "
-            f"reuses a finished one answers a wider question "
-            f"(engines/transport.md § 2a.16).  To run them all here, launch "
+            f"so its first launch has nothing to run -- prepare it again, "
+            f"and it is copied in (engines/transport.md § 2a.16, *A "
+            f"narrower question*).  To run them all here instead, launch "
             f"it cold:\n"
             + block(launch_lines("task", stage, base=base, flags=("--cold",))))
     if not walked:

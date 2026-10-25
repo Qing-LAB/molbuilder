@@ -284,6 +284,12 @@
     scrollbar-color: var(--border-strong) transparent;
     scrollbar-width: thin;
 }
+/* An output written in sentences -- a plan of what is copied and what
+ * runs -- wraps its lines instead of scrolling them out of view. */
+.fdf-output--wrap {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
 
 /* ---- Full-width primary action button (shared: Modify + Transport) ----
  * ONE shared class per repeated pattern. */

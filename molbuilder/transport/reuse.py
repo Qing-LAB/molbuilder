@@ -277,17 +277,6 @@ class Extension:
                 f"on the Transport tab")
 
     @property
-    def offered(self) -> str:
-        """What it offers, in the words the extension's panel opens with."""
-        from .stages import per_point_rungs, TRANSPORT_STAGES
-        rungs = [s for s in TRANSPORT_STAGES if s in per_point_rungs()]
-        return (f"What is computed per voltage is yours to change: the "
-                f"voltages, added to {self.name}'s own, the treatment, the "
-                f"transmission window and how many times finer, and the "
-                f"values of {' and '.join(rungs)}.  The shared values and "
-                f"the values of {', '.join(self.fixed)} are {self.said}.")
-
-    @property
     def says(self) -> Dict[str, str]:
         """WHAT EACH CONTROL SAYS, whole sentences every surface draws as
         they are (`engines/transport.md` § 2a.16, *Extending it*, its
@@ -298,9 +287,10 @@ class Extension:
         volts = ", ".join(f"{float(v)} V" for v in self.finished.bias)
         treatment = {
             "self-consistent": (
-                "The low-bias approximation instead runs the device and the "
-                "transmission once, at 0 V -- every voltage's current taken "
-                "from that T(E)."),
+                f"The low-bias approximation instead runs the device and the "
+                f"transmission once, at 0 V -- {self.name}'s 0 V results on "
+                f"its first frame, copied in -- every voltage's current "
+                f"taken from that T(E)."),
             "low-bias-approximation": (
                 "Self-consistent instead runs the device and the "
                 "transmission at every voltage, each its own "
@@ -311,12 +301,11 @@ class Extension:
             f"and its transmission point; the low-bias approximation, "
             f"nothing while the window reaches it."))
         out = {
-            "bias": (f"The voltages {self.name} computed -- {volts} -- are "
-                     f"kept; add voltages to the list.  A voltage added "
-                     f"runs its device point (self-consistent) and its "
-                     f"transmission point; under the low-bias "
-                     f"approximation, nothing while the window reaches "
-                     f"it."),
+            "bias": (f"{self.name} computed {volts}.  A voltage you keep is "
+                     f"copied from it; one you add runs its device point "
+                     f"(self-consistent) and its transmission point -- "
+                     f"under the low-bias approximation, nothing while the "
+                     f"window reaches it; one you remove is left behind."),
             "treatment": treatment,
             "window": ("A wider or finer window re-runs the transmission at "
                        "the new energies only -- the finished ones are "
@@ -345,10 +334,12 @@ class Extension:
                rung: Optional[str]) -> Dict[str, object]:
         """A KEPT FIELD, DRAWN AT THE VALUE THE FINISHED CALCULATION RAN
         WITH (the form's ``locked``): ``rung``'s own value, else the
-        template's stated one, else the default it runs; whose; and
-        ``chosen`` -- whether a person chose it (the rung's own value, or
-        one the template says is the person's), which a new calculation
-        from the junction starts from, and nothing else."""
+        template's stated one, else the default it runs; whose; ``chosen``
+        -- whether a person chose it (the rung's own value, or one the
+        template says is the person's), which a new calculation from the
+        junction starts from; and ``blank`` -- nobody gave it a value (a
+        default, or a cited value the person emptied), which that new
+        calculation keeps blank, not cited anew."""
         own = self.own(rung) if rung else {}
         name = field["name"]
         if name in own:
@@ -358,7 +349,8 @@ class Extension:
         else:
             value, chosen = field.get("default"), False
         return {"value": value, "why": f"the value {self.name} ran with",
-                "of": self.name, "chosen": chosen}
+                "of": self.name, "chosen": chosen,
+                "blank": name not in own and "value" not in field}
 
     def refusal(self, task, *, against=None,
                 shared: Optional[Dict[str, object]] = None
@@ -368,10 +360,10 @@ class Extension:
         made from: the finished calculation's at the Transport tab's
         Describe, the folder's own at Task setup's Save -- so what the
         command line wrote, which limits nothing, is never refused for
-        what it holds.  Refused: its rename or its label changed; a voltage
-        both computed by the finished calculation and held by ``against``
-        dropped; a kept rung's values changed; a shared value chosen
-        (``shared``, the panel's).  The junction -- the finished one, or a
+        what it holds.  Refused: its rename or its label changed; a kept
+        rung's values changed; a shared value chosen (``shared``, the
+        panel's).  The voltages are the person's to add or remove (§ 2a.16,
+        *A narrower question*).  The junction -- the finished one, or a
         frame set of it -- is the writer's to check (:func:`frame_set_of`,
         § 2a.16), and Task setup's Save of another is another calculation,
         refused by its id."""
@@ -382,17 +374,6 @@ class Extension:
                 ("the label", task.label, ref.label)):
             if now != was:
                 return Refused(f"{what} is {self.said}")
-        kept = sorted((set(float(v) for v in self.finished.bias)
-                       & set(float(v) for v in ref.bias))
-                      - set(float(v) for v in task.bias))
-        if kept:
-            one = len(kept) == 1
-            return Refused(
-                f"an extension adds voltages and keeps {self.name}'s: "
-                f"{', '.join(f'{v:g}' for v in kept)} V "
-                f"{'is' if one else 'are'} not in the list -- a list "
-                f"without {'it' if one else 'them'} is another calculation, "
-                f"started from this junction", where="bias")
         for rung in self.fixed:
             if _own(task, rung) != _own(ref, rung):
                 return Refused(f"{rung}'s values are {self.said}")
@@ -402,11 +383,10 @@ class Extension:
 
     def to_wire(self) -> Dict[str, object]:
         """Its wire form -- what the describe door and the folder answer
-        serve: the rungs it keeps, what it offers, and what each control
-        says (:attr:`says`)."""
+        serve: the rungs it keeps, and what each control says
+        (:attr:`says`)."""
         return {"reuses": self.reuses, "name": self.name,
-                "fixed": self.fixed, "offered": self.offered,
-                "says": self.says}
+                "fixed": self.fixed, "says": self.says}
 
 
 def _own(task, rung: str) -> Dict[str, object]:

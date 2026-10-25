@@ -271,7 +271,8 @@ rule by rule, lives in [`engines/transport.md`](?doc=engines/transport.md)
 § 3.8; this section is the map of the page as built *(rewritten 2026-10-08,
 B8)*.
 
-**Five cards, driven by ONE fact — the citation:**
+**Five cards, driven by ONE fact — the citation** (an extension draws them
+as its five parts, below):
 
 1. **The junction** — the shared tree-picker cites either kind of
    [`engines/transport.md`](?doc=engines/transport.md) § 3.1: **a finished
@@ -279,40 +280,8 @@ B8)*.
    reads a run — or **a structure pair** — its `.xyz`, a frame set's included,
    whose frames the card's frame-set table states (§ 3.8.1 there), and whose
    pseudopotential directory the shared panel then asks — and **a
-   transport calculation's folder**, to extend it — the five cards then
-   draw an **extension** (`engines/transport.md` § 2a.16, *Extending it*;
-   the describe door's `extend`): above them, the meta line of what the
-   finished calculation computed (its junction, its treatment, its
-   voltages, its window, where each group stands), *Extending <name>* —
-   what is computed per voltage is yours to change, the rest fixed by it —
-   and its one action, *Start a new calculation from this junction with
-   these settings*, which cites the junction again as a calculation that
-   reuses nothing, every card starting from the values chosen in the
-   finished one — each rung's own and each shared value its template says
-   is the person's (the lock's `chosen`); the shared panel and the seed's
-   and the leads' tabs drawn at the finished calculation's values, each
-   field *fixed: the value <name> ran with*, never a control and never sent
-   (the schema's `locked`, served with `reuses`); the bias card saying the
-   finished voltages are kept and what a voltage added, or the other
-   treatment, re-runs; the device's and the transmission's tabs each saying
-   what a change there re-runs, the transmission's beside the window fitted
-   to the finished grid (`/api/transport/fit`) — every one of these
-   sentences the describe door's, drawn as it is (`extend.says`). Describe
-   writes what `molbuilder describe --reuses` writes, the fixed rungs
-   holding the finished calculation's own values; a changed fixed value, a
-   finished voltage dropped, or its rename or its label changed, is refused
-   by name with nothing written. The panel shows which junction the extension
-   uses: the finished calculation's, with its number of frames. *Cite a frame
-   set of this junction…* opens the picker. A frame set whose first frame is
-   that junction can be cited in its place — a relaxation run's folder with
-   that geometry is accepted too — and one whose first frame is another
-   junction is refused when it is picked, the junction you had staying.
-   *Use <name>'s junction* goes back. *Start a new calculation from this
-   junction with these settings* starts from the junction shown — the
-   finished one, or the frame set cited (`engines/transport.md` § 2a.16, *A
-   frame set of the same junction*). Describe's answer lists
-   what the new calculation will copy and what it runs (`reuse.decide`,
-   the manifest's words). Anything else
+   transport calculation's folder**, to extend it (*An extension*, below).
+   Anything else
    answers *not citable* with the condition named, and the citation held
    stays held. The describe door answers one
    summary line (how the run ended, what its record states) and **findings** through the one renderer
@@ -366,6 +335,34 @@ B8)*.
    echoes the junction — a frame set's card included — the bias list, the
    treatment and the rename.
 
+**An extension** (`engines/transport.md` § 2a.16, *Extending it* and *On
+the page*; the describe door's `extend`) draws the five parts in order,
+each card headed as its part and the prose about citing not shown:
+1. *EXTENDING <name>* — the voltages, frames and window it describes, its
+   finished results copied wherever nothing changed — and its way out, *Start
+   a new calculation from this junction with these settings*, which cites
+   the junction shown again as a calculation that reuses nothing, every card
+   starting from the values chosen in the finished one (the lock's `chosen`;
+   a value nobody chose blank, the lock's `blank`); 2. the junction — a
+   choice of <name>'s junction as it ran or a frame set of it, whose *Choose
+   a frame set…* opens the picker, which refuses a set whose first frame is
+   another junction where it is picked, the junction held staying; 3. what
+   you can change — the voltages, added or removed, their treatment, and
+   the device's and the transmission's tabs alone, the transmission's beside
+   the window fitted to the finished grid (`/api/transport/fit`), each
+   saying what a change re-runs (`extend.says`, drawn as it is), and above
+   the tabs a value typed for <name> before, restored, with *Use <name>'s
+   own values*; 4. *Fixed by <name>*, folded — the shared values and the
+   seed's and the leads', from the schema's `locked`, served with `reuses`;
+   the shared panel, the charge-and-spin card and those stages' tabs are not
+   drawn, and nothing of them is sent; 5. the plan — what is copied and what
+   is computed — worked out again a moment after every change (`plan: true`),
+   then Describe, which writes what `molbuilder describe --reuses` writes,
+   the fixed rungs holding the finished calculation's own values; a changed
+   fixed value, or its rename or its label changed, is refused by name with
+   nothing written. Citing anything else leaves the extension: *NEW
+   CALCULATION from <citation>*, every card back, the voltages 0.0.
+
 **A reload keeps the citation and what the forms hold**, through the
 workspace's one door, each under the tab's own tag
 ([`workspace.md`](?doc=web/workspace.md) § 4): the citation
@@ -376,7 +373,8 @@ and put back after each surface draws, for the junction it was typed for --
 or the finished calculation reused, its folder: the last one edited)
 *(2026-10-11; the rung tabs kept theirs in a browser slot of
 their own, and the shared panel kept nothing, until then)*. The bias list, its
-treatment and the electrode rename are not kept: a reload starts them over.
+treatment and the electrode rename are not kept: a reload starts them over —
+an extension's at the finished calculation's voltages and treatment.
 
 **Beside the five cards, a rail** — the shared two-column page
 (`form-components.css` `.page-cols` / `.page-aside`, as Task setup's) with

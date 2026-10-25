@@ -230,6 +230,23 @@ const WORKSPACE_TAG = "transport";
                 });
                 formContainer.appendChild(strip);
                 panels.forEach(function (p) { formContainer.appendChild(p.panel); });
+                // AN EXTENSION OFFERS ITS PER-VOLTAGE STAGES ALONE: the
+                // fixed ones' tabs are drawn, their values sent as the
+                // finished calculation's, but not shown (§ 2a.16,
+                // *On the page*).
+                if (_extend) {
+                    var offered = rungs.filter(function (r) {
+                        return _extend.fixed.indexOf(r.name) === -1;
+                    });
+                    _extend.fixed.forEach(function (name) {
+                        var b = strip.querySelector(
+                            '.tab-btn[data-tab="' + name + '"]');
+                        if (b) b.hidden = true;
+                    });
+                    if (_extend.fixed.indexOf(keep) !== -1 && offered[0]) {
+                        keep = offered[0].name;
+                    }
+                }
                 var ts = root.molbuilder && root.molbuilder.tabStrip;
                 if (ts && rungs.length) {
                     var api = ts.mount(strip, {});
@@ -264,6 +281,7 @@ const WORKSPACE_TAG = "transport";
                     _panelsDrawn = drew.every(Boolean);
                     _echoBias();
                     _refreshSendButton();
+                    _schedulePlan();
                     return _panelsDrawn;
                 });
             })
@@ -337,8 +355,37 @@ const WORKSPACE_TAG = "transport";
             if (isCurrent && !isCurrent()) return;
             var mine = note && note.junction === _noteKey();
             var saved = mine ? _heldIn(note, surface) : null;
-            if (!saved || typeof saved !== "object") saved = held || null;
+            var typed = !!(saved && typeof saved === "object");
+            if (!typed) saved = held || null;
             if (!saved || typeof saved !== "object") return;
+            // TYPED FOR THE FINISHED CALCULATION BEFORE, on a stage it
+            // offers, and not its own value: said (`_paintRestored`).  A
+            // field left blank is no value typed: blank against a value it
+            // never set is the same (`_sameValue`).
+            if (_extend && surface !== "shared") {
+                var own = held || {};
+                var names = typed ? Object.keys(saved).filter(function (k) {
+                    return !_sameValue(saved[k], own[k]);
+                }) : [];
+                if (names.length) {
+                    _restored[surface] = {
+                        container: container, schema: schema, held: own,
+                        values: saved, names: names,
+                        label: function (n) {
+                            var found = null;
+                            (schema.sections || []).forEach(function (sec) {
+                                (sec.fields || []).forEach(function (f) {
+                                    if (f.name === n) found = f.label || n;
+                                });
+                            });
+                            return found || n;
+                        },
+                    };
+                } else {
+                    delete _restored[surface];
+                }
+                _paintRestored();
+            }
             // WRITING BACK IS NOT AN EDIT: the fields' input and change
             // events would each save the note it came from (`_saveSurface`).
             _restoring = true;
@@ -351,6 +398,15 @@ const WORKSPACE_TAG = "transport";
                 _restoring = false;
             }
         });
+    }
+
+    /* Two values of one field the same -- a blank (`null`, `undefined`,
+     * "") the same as a blank, whatever spells it (`form-schema.md`
+     * § 1.1: a blank is not chosen). */
+    function _sameValue(a, b) {
+        function blank(v) { return v === null || v === undefined || v === ""; }
+        if (blank(a) || blank(b)) return blank(a) && blank(b);
+        return String(a) === String(b);
     }
 
     /* What one surface holds, into the note -- field by field
@@ -388,6 +444,7 @@ const WORKSPACE_TAG = "transport";
     function _wirePersistence(container, schema, formSchema, surface) {
         function persist() {
             _saveSurface(container, schema, formSchema, surface);
+            _schedulePlan();
         }
         container.addEventListener("input", persist);
         container.addEventListener("change", persist);
@@ -652,78 +709,277 @@ const WORKSPACE_TAG = "transport";
      * answer for an earlier one that lands late is dropped, never adopted
      * over the person's latest choice. */
     var _citeSeq = 0;
-    /* AN EXTENSION'S LIMITS AND ITS WAY OUT (engines/transport.md
-     * \u00a7 2a.16, *Extending it*): what is computed per voltage is the
-     * person's, the rest is the finished calculation's -- drawn at its
-     * values, never a control (the schema's `locked`) -- and one action
-     * starts a new calculation from its junction with its settings. */
+    /* AN EXTENSION HAS ITS OWN LAYOUT (engines/transport.md § 2a.16,
+     * *On the page*), five parts in order, each card headed as its part
+     * (`data-extending`) and the prose a new calculation reads not shown
+     * (`data-new-only`): 1. what you are doing (`_paintMode`) and the way
+     * out on a row of its own; 2. the junction -- the finished one as it
+     * ran, or a frame set of it; 3. what you can change (the voltages, the
+     * treatment, the window, the device's and the transmission's tabs);
+     * 4. the values fixed by the finished calculation, folded and view
+     * only; 5. the plan, then Describe.  The shared panel, the chemistry
+     * card and the fixed stages' tabs are the finished calculation's, and
+     * are not drawn as controls. */
+    var RUNG_WORDS = { seed: "The seed", electrode_L: "The left lead",
+                       electrode_R: "The right lead" };
     function _paintExtend() {
         var host = _$("transport-extend");
         var bias = _$("transport-bias-reruns");
-        if (bias) {
-            bias.hidden = !_extend;
-            bias.textContent = "";
-        }
+        var out = _$("transport-extend-out");
+        var fixedCard = _$("transport-fixed-card");
+        var fixedHost = _$("transport-extend-fixed-host");
+        ["shared-card", "chemistry-card"].forEach(function (id) {
+            var card = _$(id);
+            if (card) card.hidden = !!_extend;
+        });
+        root.document.querySelectorAll("[data-extending]").forEach(
+            function (h) {
+                if (h.dataset.newTitle === undefined) {
+                    h.dataset.newTitle = h.textContent;
+                }
+                h.textContent = _extend ? h.dataset.extending
+                                        : h.dataset.newTitle;
+            });
+        root.document.querySelectorAll("[data-new-only]").forEach(
+            function (el) { el.hidden = !!_extend; });
+        [bias, out, fixedHost].forEach(function (el) {
+            if (el) el.textContent = "";
+        });
+        if (bias) bias.hidden = !_extend;
+        if (out) out.hidden = !_extend;
+        if (fixedCard) fixedCard.hidden = !_extend;
+        // VALUES TYPED FOR IT BEFORE, which the forms' note brought back
+        // -- said above the stages' tabs, with the way back to its own.
+        _paintRestored();
         if (!host) return;
         host.textContent = "";
         host.hidden = !_extend;
         if (!_extend) return;
         var name = _extend.name;
-        // WHAT IT OFFERS AND WHAT IT KEEPS, in the one door's words
-        // (`transport.reuse.Extension.offered`).
-        host.appendChild(_el("p", { "class": "hint" },
-            _el("strong", null, "Extending " + name + ". "),
-            _extend.offered));
         // THE JUNCTION IT DESCRIBES WITH: the finished one as it ran, its
         // frames counted -- or a frame set of it (engines/transport.md
-        // \u00a7 2a.16, *A frame set of the same junction*).
+        // § 2a.16, *A frame set of the same junction*).
         var own = _reusedAnswer ? _reusedAnswer.citation : _junction;
         var set = _citesFrameSet();
         var ran = ((_reusedAnswer || {}).frame_set || {}).n_frames || 1;
-        host.appendChild(_el("p", { "class": "hint",
-                                    id: "transport-extend-junction" },
-            set ? "Junction: " + _junction + " \u2014 a frame set whose "
+        // ...AND THE ONE CITED IN ITS PLACE: a frame set, or one geometry.
+        var cited = ((_shownAnswer || {}).frame_set || {}).n_frames || 1;
+        var choice = _el("div", { "class": "choice-list",
+                                  id: "transport-extend-junction-choice" },
+            _el("strong", null, "2. The junction"));
+        function radio(value, id, words) {
+            var input = _el("input", { type: "radio", id: id, value: value,
+                                       name: "transport-extend-junction" });
+            input.checked = (value === "set") === set;
+            choice.appendChild(_el("label", null, input, " " + words));
+            return input;
+        }
+        var ownRadio = radio("own", "transport-extend-own-btn",
+            name + "'s junction, as " + name + " ran it — "
+            + (ran === 1 ? "one frame" : ran + " frames"));
+        var setRadio = radio("set", "transport-extend-set",
+            "a frame set of it, its first frame " + name + "'s junction");
+        var pick = _el("button", { type: "button", "class": "btn",
+                                   id: "transport-extend-frameset-btn" },
+                       set ? "Choose another frame set…"
+                           : "Choose a frame set…");
+        pick.addEventListener("click", function () { _citeFrameSet(name); });
+        choice.appendChild(pick);
+        ownRadio.addEventListener("change", function () {
+            // THE LATEST CHOICE STANDS: a frame set still being described
+            // is superseded (`_citeSeq`).
+            ++_citeSeq;
+            if (_reusedAnswer && _citesFrameSet()) {
+                _showJunction(_reusedAnswer,
+                              "Back to " + name + "'s junction: ");
+            }
+        });
+        setRadio.addEventListener("change", function () {
+            if (_lastFrameSet && _lastFrameSet.reuses === _reuses) {
+                ++_citeSeq;
+                _showJunction(_lastFrameSet.answer,
+                              "Cited a frame set of " + name
+                              + "'s junction: ");
+            } else {
+                _citeFrameSet(name);
+            }
+        });
+        choice.appendChild(_el("p", { "class": "hint",
+                                      id: "transport-extend-junction" },
+            set && cited === 1
+                ? "Junction: " + _junction + " — one geometry, the "
+                  + "junction " + name + " ran at its first frame.  The "
+                  + "plan below says which of " + name
+                  + "'s results are reused."
+            : set ? "Junction: " + _junction + " — a frame set whose "
                   + "first frame is the junction " + name + " ran.  The "
                   + "device and the transmission run once per frame; the "
-                  + "plan Describe shows says which of " + name
+                  + "plan below says which of " + name
                   + "'s results are reused."
-                : "Junction: " + own + " \u2014 the one " + name
+                : "Junction: " + own + " — the one " + name
                   + " ran, " + (ran === 1 ? "one frame" : ran + " frames")
                   + ".  Without a frame set, the extension describes with "
                   + "it."));
-        var cite = _el("button", { type: "button", "class": "full-btn",
-                                   id: "transport-extend-frameset-btn" },
-                       set ? "Cite another frame set of this junction\u2026"
-                           : "Cite a frame set of this junction\u2026");
-        cite.addEventListener("click", function () { _citeFrameSet(name); });
-        host.appendChild(cite);
-        if (set) {
-            var back = _el("button", { type: "button", "class": "full-btn",
-                                       id: "transport-extend-own-btn" },
-                           "Use " + name + "'s junction");
-            back.addEventListener("click", function () {
-                // THE LATEST CHOICE STANDS: a frame set still being
-                // described is superseded (`_citeSeq`).
-                ++_citeSeq;
-                if (_reusedAnswer) {
-                    _showJunction(_reusedAnswer,
-                                  "Back to " + name + "'s junction: ");
-                }
-            });
-            host.appendChild(back);
-        }
-        var btn = _el("button", { type: "button", "class": "full-btn" },
-                      "Start a new calculation from this junction with "
-                      + "these settings");
-        btn.addEventListener("click", function () {
-            _startFromJunction(btn, name);
+        host.appendChild(choice);
+        // PART 4, FIXED BY IT: folded, view only -- drawn when opened, from
+        // the panels' locked fields (`_paintFixed`).
+        var title = _$("transport-fixed-title");
+        if (title) title.textContent = "4. Fixed by " + name;
+        var fixed = _el("details", { id: "transport-extend-fixed" },
+            _el("summary", null, "The shared values, and the seed's and "
+                + "both leads', as " + name + " ran them (view only) — "
+                + "changing one is a new calculation: the way out above"),
+            _el("div", { "class": "hint",
+                         id: "transport-extend-fixed-list" }));
+        fixed.addEventListener("toggle", function () {
+            if (fixed.open) _paintFixed(name);
         });
-        host.appendChild(btn);
+        if (fixedHost) fixedHost.appendChild(fixed);
+        // PART 1'S WAY OUT, on a row of its own and styled apart from what
+        // stays, naming what it starts from.
+        var leave = _el("button", { type: "button", "class": "btn",
+                                    id: "transport-extend-leave-btn" },
+                        "Start a new calculation from "
+                        + (set ? _junction : name + "'s junction")
+                        + " with these settings");
+        leave.addEventListener("click", function () {
+            _startFromJunction(leave, name);
+        });
+        if (out) out.appendChild(leave);
         if (bias) {
             // THE BIAS LIST'S AND THE TREATMENT'S SENTENCES, as served.
             bias.appendChild(_el("span", null, _extend.says.bias));
             bias.appendChild(_el("br"));
             bias.appendChild(_el("span", null, _extend.says.treatment));
+        }
+    }
+
+    /* The last frame set cited while extending, kept so choosing "a frame
+     * set" again brings it back without the picker. */
+    var _lastFrameSet = null;
+    /* The describe door's answer for the junction shown -- the finished
+     * one, or what is cited in its place. */
+    var _shownAnswer = null;
+
+    /* WHAT THE FINISHED CALCULATION FIXES, view only: each locked field of
+     * the shared panel and of the fixed stages' tabs, as it ran. */
+    function _paintFixed(name) {
+        var list = _$("transport-extend-fixed-list");
+        if (!list || !_extend) return;
+        list.textContent = "";
+        function said(value) {
+            if (value === null || value === undefined || value === "") {
+                return "—";
+            }
+            return Array.isArray(value) ? value.join(" ") : String(value);
+        }
+        var parts = [["Shared by every stage", _sharedSchema]].concat(
+            _extend.fixed.map(function (r) {
+                return [RUNG_WORDS[r] || r, _rungSchemas[r]];
+            }));
+        parts.forEach(function (part) {
+            var items = [];
+            ((part[1] || {}).sections || []).forEach(function (sec) {
+                (sec.fields || []).forEach(function (f) {
+                    if (f.locked) {
+                        var v = said(f.locked.value);
+                        items.push((f.label || f.name) + ": " + v
+                                   + (f.unit && v !== "\u2014"
+                                      ? " " + f.unit : ""));
+                    }
+                });
+            });
+            if (items.length) {
+                list.appendChild(_el("p", null,
+                    _el("strong", null, part[0] + " — "),
+                    items.join(" · ")));
+            }
+        });
+        if (!list.firstChild) {
+            list.appendChild(_el("p", null, "Still drawing " + name
+                                 + "'s values…"));
+        }
+    }
+
+    /* VALUES TYPED FOR THE FINISHED CALCULATION BEFORE, brought back by the
+     * forms' note onto a stage it offers, which differ from its own: said
+     * where they land, with *Use <name>'s own values* -- a value restored
+     * unseen re-runs what it changes (engines/transport.md § 2a.16,
+     * *On the page*). */
+    var _restored = {};
+    function _paintRestored() {
+        var host = _$("transport-extend-restored");
+        if (!host) return;
+        host.textContent = "";
+        var surfaces = Object.keys(_restored);
+        host.hidden = !(_extend && surfaces.length);
+        if (host.hidden) return;
+        var said = [];
+        surfaces.forEach(function (surface) {
+            var r = _restored[surface];
+            r.names.forEach(function (n) {
+                said.push((RUNG_WORDS[surface] || surface) + " " + r.label(n)
+                          + " " + String(r.values[n]));
+            });
+        });
+        host.appendChild(document.createTextNode(
+            "Restored values you typed for " + _extend.name + " before: "
+            + said.join(", ") + ".  "));
+        var back = _el("button", { type: "button", "class": "btn",
+                                   id: "transport-extend-own-values-btn" },
+                       "Use " + _extend.name + "'s own values");
+        back.addEventListener("click", function () {
+            var fs = (root.molbuilder || {}).formSchema;
+            Object.keys(_restored).forEach(function (surface) {
+                var r = _restored[surface];
+                var values = {};
+                // ITS OWN VALUE, or BLANK -- `null`, the renderer's blank
+                // for every field kind -- where it set none.
+                r.names.forEach(function (n) {
+                    values[n] = Object.prototype.hasOwnProperty.call(
+                        r.held, n) ? r.held[n] : null;
+                });
+                if (fs) {
+                    fs.setValues(r.container, r.schema, values);
+                    _saveSurface(r.container, r.schema, fs, surface);
+                }
+            });
+            _restored = {};
+            _paintRestored();
+            _schedulePlan();
+        });
+        host.appendChild(back);
+    }
+
+    /* WHAT YOU ARE DOING, in one line (engines/transport.md § 2a.16,
+     * *On the page*): EXTENDING a finished calculation, or a NEW
+     * CALCULATION from the junction cited. */
+    function _paintMode() {
+        var line = _$("transport-mode");
+        if (!line) return;
+        line.textContent = "";
+        line.hidden = !_junction;
+        if (!_junction) return;
+        if (_extend) {
+            var name = _extend.name;
+            var answer = _reusedAnswer || {};
+            var ran = (answer.frame_set || {}).n_frames || 1;
+            var volts = (answer.bias || [0]).map(function (v) {
+                return v === 0 ? "0.0" : String(v);
+            }).join(", ");
+            line.appendChild(_el("strong", null, "EXTENDING " + name));
+            line.appendChild(document.createTextNode(
+                " — it describes " + volts + " V, "
+                + (ran === 1 ? "one frame" : ran + " frames")
+                + (answer.window ? ", " + answer.window : "") + ".  Its "
+                + "finished results are copied wherever nothing changed "
+                + "— the plan below names each; only what you change "
+                + "below is computed, and " + name + " is never "
+                + "modified."));
+        } else {
+            line.appendChild(_el("strong", null, "NEW CALCULATION"));
+            line.appendChild(document.createTextNode(
+                " from " + _junction + "."));
         }
     }
 
@@ -743,6 +999,10 @@ const WORKSPACE_TAG = "transport";
             sec.fields.forEach(function (f) {
                 if (f.locked && f.locked.chosen) {
                     shared[f.name] = f.locked.value;
+                } else if (f.locked && f.locked.blank) {
+                    // A VALUE NOBODY CHOSE -- a default, or a cited value
+                    // the person emptied -- stays blank, not cited anew.
+                    shared[f.name] = null;
                 }
             });
         });
@@ -911,6 +1171,8 @@ const WORKSPACE_TAG = "transport";
         _extend = _reuses ? (described.extend || null) : null;
         _reusedAnswer = _reuses ? described : null;
         _rungHeld = {};
+        _restored = {};
+        _lastFrameSet = null;
         if (_reuses) {
             // ITS VOLTAGES AND THEIR TREATMENT, from its description
             // (engines/transport.md \u00a7 2a.16) -- the person's to change.
@@ -966,6 +1228,13 @@ const WORKSPACE_TAG = "transport";
         var fpanel = _$("transport-junction-findings");
         _junction = described.citation;
         _junctionStructure = described.structure || null;
+        _shownAnswer = described;
+        // A FRAME SET CITED IN AN EXTENSION'S JUNCTION'S PLACE, kept --
+        // picked or brought back by a reload -- so choosing a frame set
+        // again brings it back without the picker.
+        if (_citesFrameSet()) {
+            _lastFrameSet = { reuses: _reuses, answer: described };
+        }
         // DESCRIBE'S CARD SPEAKS OF WHAT THE PAGE HOLDS: what it said of
         // another junction -- its message, its findings, its plan -- goes.
         _setSendStatus("");
@@ -994,8 +1263,10 @@ const WORKSPACE_TAG = "transport";
         if (vf && fpanel) vf.render(described.findings || [], { panel: fpanel });
         _offerFix(described);
         _paintExtend();
+        _paintMode();
         _writePanelNote();
         _refreshSendButton();
+        _schedulePlan();
         /* Honest state, not a gate (strict composition refuses at
          * PREP; describing ahead is legal).  The summary already says
          * CONCLUDED / not / no-record; add the road note only when
@@ -1051,12 +1322,16 @@ const WORKSPACE_TAG = "transport";
                 confirmLabel: "Cite this",
             });
         }).then(function (picked) {
-            if (!picked) return;
+            if (!picked) {
+                _paintExtend();             // the choice as the page holds it
+                return;
+            }
             var mine = ++_citeSeq;
             return _describeAttempt(toRel(picked), false, reuses)
                     .then(function (b) {
                 if (mine !== _citeSeq || reuses !== _reuses) return;
                 if (!b || !b.citation) {
+                    _paintExtend();
                     _setStatus((b && b.summary)
                         || "That is not a frame set of " + name
                            + "'s junction.", "warn");
@@ -1104,12 +1379,19 @@ const WORKSPACE_TAG = "transport";
                 if (!picked) return;
                 var rel = toRel(picked);
                 var dropped = _swapElectrodesChoice;
+                var extending = !!_reuses;
                 var mine = ++_citeSeq;
                 return _describeAttempt(rel, false).then(function (b) {
                     if (mine !== _citeSeq) return; // a citation made since
                     _adoptCitation(b, dropped && b && b.citation
                         ? "The electrode rename stayed with the last "
                           + "citation.  Cited " : null);
+                    // LEAVING AN EXTENSION for an unrelated citation: its
+                    // voltages were the finished calculation's -- started
+                    // over, as a reload does (§ 2a.16, *On the page*).
+                    if (extending && b && b.citation && !_reuses) {
+                        _resetBias();
+                    }
                 });
             }).catch(function (e) {
                 _setStatus("Picker failed: "
@@ -1154,30 +1436,17 @@ const WORKSPACE_TAG = "transport";
                 _setSendStatus("lib/task-handover.js is not loaded.", "error");
                 return;
             }
-            var bias = _biasList();
-            if (bias.some(isNaN)) {
-                _refuseBias("Bias must be comma-separated volts, "
-                    + "e.g. 0.0,0.2");
-                return;
-            }
-            // THE LOW-BIAS APPROXIMATION, for several voltages -- the
-            // person's choice, true or false; the description's check
-            // refuses a list without it.
-            var picked = root.document.querySelector(
-                'input[name="transport-bias-treatment"]:checked');
-            var approx = bias.length > 1 && picked
-                ? picked.value === "true" : null;
-            // A VALUE THAT WILL NOT READ AS ITS TYPE is refused here, naming
-            // its field -- beside which its caption already says why.
-            var bags, shared;
+            var body;
             try {
-                bags = _bagsByRung();
-                shared = _sharedValues();
+                body = _describeBody();
             } catch (e) {
-                _setSendStatus(e && e.message ? e.message : String(e),
-                               "error");
+                if (e && e.bias) _refuseBias(e.message);
+                else _setSendStatus(e && e.message ? e.message : String(e),
+                                    "error");
                 return;
             }
+            // DESCRIBE'S ANSWER STANDS in the plan's place.
+            _cancelPlan();
             var manifestBox = _$("transport-send-manifest");
             if (manifestBox) {
                 manifestBox.hidden = true;
@@ -1218,19 +1487,146 @@ const WORKSPACE_TAG = "transport";
                         reveal: true,
                     });
                 },
-                engine: _engine(),
-                calculation: "transport",
-                junction: _junction,
+                engine: body.engine,
+                calculation: body.calculation,
+                junction: body.junction,
                 // THE CALCULATION IT REUSES, written as `reuses`
                 // (engines/transport.md \u00a7 2a.16).
-                reuses: _reuses,
-                swap_electrodes: _swapElectrodesChoice,
-                bias: bias,
-                low_bias_approximation: approx,
-                stages: bags,
-                shared: shared,
+                reuses: body.reuses,
+                swap_electrodes: body.swap_electrodes,
+                bias: body.bias,
+                low_bias_approximation: body.low_bias_approximation,
+                stages: body.stages,
+                shared: body.shared,
             });
         });
+    }
+
+    /* WHAT DESCRIBE SENDS, and what the plan is asked with
+     * (engines/transport.md \u00a7 2a.16, *On the page*): the citation, the
+     * calculation reused, the rename, the voltages and -- for several --
+     * their treatment, each rung's own values and the shared panel's.  A
+     * list that does not read throws with `bias` set; a value that will
+     * not read as its type, naming its field. */
+    function _describeBody() {
+        var bias = _biasList();
+        if (bias.some(isNaN)) {
+            var e = new Error("Bias must be comma-separated volts, "
+                              + "e.g. 0.0,0.2");
+            e.bias = true;
+            throw e;
+        }
+        // THE LOW-BIAS APPROXIMATION, for several voltages -- the person's
+        // choice, true or false; the description's check refuses a list
+        // without it.
+        var picked = root.document.querySelector(
+            'input[name="transport-bias-treatment"]:checked');
+        return {
+            engine: _engine(),
+            calculation: "transport",
+            junction: _junction,
+            reuses: _reuses,
+            swap_electrodes: _swapElectrodesChoice,
+            bias: bias,
+            low_bias_approximation: bias.length > 1 && picked
+                ? picked.value === "true" : null,
+            stages: _bagsByRung(),
+            shared: _sharedValues(),
+        };
+    }
+
+    /* THE PLAN, BEFORE ANYTHING IS WRITTEN (engines/transport.md
+     * \u00a7 2a.16, *On the page*): an extension's -- what is copied from the
+     * finished calculation and what is computed -- asked of the describe
+     * door with `plan: true` whenever anything that changes it changes, a
+     * moment after the last change; a newer answer supersedes an older
+     * one (`_planSeq`).  A new calculation copies nothing: no plan. */
+    var _planSeq = 0;
+    var _planTimer = null;
+    /* NO PLAN ON ITS WAY: one asked is superseded, one waiting dropped, its
+     * line gone -- at every change, and when Describe answers instead. */
+    function _cancelPlan() {
+        if (_planTimer) {
+            root.clearTimeout(_planTimer);
+            _planTimer = null;
+        }
+        ++_planSeq;
+        var status = _$("transport-plan-status");
+        if (status) {
+            status.hidden = true;
+            status.textContent = "";
+        }
+    }
+
+    function _schedulePlan() {
+        _cancelPlan();
+        if (!_reuses) return;
+        var status = _$("transport-plan-status");
+        if (status) {
+            status.hidden = false;
+            status.textContent = "Working out the plan\u2026";
+        }
+        _planTimer = root.setTimeout(_askPlan, 600);
+    }
+
+    function _askPlan() {
+        _planTimer = null;
+        var status = _$("transport-plan-status");
+        var box = _$("transport-send-manifest");
+        if (!_reuses || !_panelsDrawn || !status || !box) return;
+        var body;
+        try {
+            body = _describeBody();
+        } catch (e) {
+            status.hidden = false;
+            status.textContent = "The plan waits for the values above to "
+                + "read: " + (e && e.message ? e.message : String(e));
+            return;
+        }
+        body.plan = true;
+        var mine = ++_planSeq;
+        var name = _extend ? _extend.name : _reuses;
+        status.hidden = false;
+        status.textContent = "Working out the plan\u2026";
+        root.fetch("/api/transport/describe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }).then(function (r) { return r.json(); })
+            .then(function (a) {
+                if (mine !== _planSeq) return;
+                if (!a || !a.ok) {
+                    box.hidden = true;
+                    box.textContent = "";
+                    status.textContent = "The plan could not be worked "
+                        + "out: " + ((a && a.error) || "no answer");
+                    return;
+                }
+                var lines = a.manifest || [];
+                box.hidden = !lines.length;
+                box.textContent = lines.join("\n");
+                status.textContent = "The plan \u2014 what is copied from "
+                    + name + ", and what is computed.  Nothing is copied "
+                    + "until prep; Describe writes the description.";
+            })
+            .catch(function (e) {
+                if (mine !== _planSeq) return;
+                status.textContent = "The plan could not be worked out: "
+                    + (e && e.message ? e.message : String(e));
+            });
+    }
+
+    /* THE VOLTAGES STARTED OVER -- 0.0, no treatment -- as a reload starts
+     * them: an extension left for an unrelated citation (\u00a7 2a.16, *On
+     * the page*). */
+    function _resetBias() {
+        var list = _$("transport-bias");
+        if (list) list.value = "0.0";
+        root.document.querySelectorAll(
+            'input[name="transport-bias-treatment"]').forEach(function (b) {
+                b.checked = false;
+            });
+        _syncTreatment();
     }
 
     // Each rung's schema and panel host, populated by _fetchAndRender, so
@@ -1413,6 +1809,7 @@ const WORKSPACE_TAG = "transport";
         if (!fs || !host || !schema) return;
         fs.setValues(host, schema, values);
         _saveSurface(host, schema, fs, "transmission");
+        _schedulePlan();
         _setStatus("The transmission window is the fitted one -- "
                    + values.transmission_emin_ev.toFixed(5) + "\u2026"
                    + values.transmission_emax_ev.toFixed(5) + " eV at "
@@ -1432,6 +1829,7 @@ const WORKSPACE_TAG = "transport";
         var box = _$("transport-bias-treatment");
         if (box) box.hidden = _biasList().length <= 1;
         _echoBias();
+        _schedulePlan();
     }
 
     /* THE BIAS ON EACH RUNG'S TAB IS THE LIST'S POINTS: the device and the
@@ -1454,6 +1852,10 @@ const WORKSPACE_TAG = "transport";
         var fill = _$("transport-bias-fill");
         if (!list || !fill) return;
         list.addEventListener("input", _syncTreatment);
+        root.document.querySelectorAll(
+            'input[name="transport-bias-treatment"]').forEach(function (b) {
+                b.addEventListener("change", _schedulePlan);
+            });
         fill.addEventListener("click", function () {
             var a = Number(_$("transport-bias-start").value);
             var b = Number(_$("transport-bias-stop").value);

@@ -211,9 +211,8 @@ its prep the Preview's manifest says which groups will be copied in. The
 rows it keeps, the sentence they say, and what a change on the device's or
 the transmission's row re-runs, said on that row, are the folder answer's
 `extension` (`transport.reuse.Extension`), each sentence drawn as it is
-served; a Save that changes a kept row's values, its rename or its label,
-or drops a finished voltage the folder's description held, is refused by
-name, as the Transport tab's Describe refuses it — measured against the
+served; a Save that changes a kept row's values, its rename or its label
+is refused by name, as the Transport tab's Describe refuses it — measured against the
 folder's own description, so an extension the command line wrote saves; a
 Save of another junction is another calculation, refused by its id (§ 2). *(The user, 2026-10-22, 2026-10-23; built
 2.33.0, plan § 1aa.)* **A cited frame set says what its frames are**,

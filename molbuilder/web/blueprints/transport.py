@@ -379,6 +379,8 @@ def _describe_reused(folder: str, root) -> Any:
     # THE WINDOW ITS TRANSMISSION COMPUTED: the template's, or the rung's
     # own values over it (`ladder.stage_config`).
     cfg = stage_config(task, SHARING_RUNG, calc.template_text)
+    window = (f"{cfg.transmission_emin_ev:g}…{cfg.transmission_emax_ev:g} "
+              f"eV at {cfg.transmission_n_points} points")
     steps = jobset_status(calc).steps
     stands = ("every group finished"
               if steps and all(s.state == "finished" for s in steps) else
@@ -388,9 +390,7 @@ def _describe_reused(folder: str, root) -> Any:
         "TRANSPORT CALCULATION", Extension(rel, task).name,
         f"its junction, cited from {task.slots['junction']}",
         str(task.treatment),
-        ", ".join(str(float(v)) for v in task.bias) + " V",
-        f"{cfg.transmission_emin_ev:g}…{cfg.transmission_emax_ev:g} eV at "
-        f"{cfg.transmission_n_points} points",
+        ", ".join(str(float(v)) for v in task.bias) + " V", window,
         stands] + ([f"its junction's record does not read: {unread}"]
                    if unread else [])
         + ([unstated] if unstated else []))
@@ -408,6 +408,9 @@ def _describe_reused(folder: str, root) -> Any:
         "frame_set": frame_set,
         "bias": [float(v) for v in task.bias],
         "low_bias_approximation": task.low_bias_approximation,
+        # THE WINDOW ITS TRANSMISSION COMPUTED, in the meta line's words --
+        # what the page's EXTENDING line says it describes.
+        "window": window,
         # WHAT AN EXTENSION OF IT MAY CHANGE, AND WHAT IS FIXED
         # (`engines/transport.md` § 2a.16, *Extending it*): the rungs it
         # keeps, what it offers, and what each control says -- drawn as
@@ -718,21 +721,29 @@ def api_transport_describe() -> Any:
         return jsonify({"ok": False,
                         "error": "shared must be an object"}), 400
     typed = str(body.get("name") or "") or "transport"
+    # THE PLAN ALONE (`engines/transport.md` § 2a.16, *On the page*): the
+    # same checks, then what the description would copy and run, written
+    # nowhere the person sees -- no folder needed.
+    plan_only = body.get("plan", False)
+    if not isinstance(plan_only, bool):
+        return jsonify({"ok": False, "error": "plan is true or false"}), 400
 
     # THE FOLDER, fenced before anything else (`web/web-api.md` § 2.1).
     from molbuilder.projects import OutsideRoot, contain
     from pathlib import Path
     root = Path(projects_root()).resolve()
     dest_raw = str(body.get("dest") or "")
-    if not dest_raw:
-        return jsonify({"ok": False,
-                        "error": "no folder to describe into -- select the "
-                                 "calculation's folder in the projects "
-                                 "sidebar"}), 400
-    try:
-        dest = contain(Path(dest_raw), root)
-    except OutsideRoot as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    dest = None
+    if not plan_only:
+        if not dest_raw:
+            return jsonify({"ok": False,
+                            "error": "no folder to describe into -- select "
+                                     "the calculation's folder in the "
+                                     "projects sidebar"}), 400
+        try:
+            dest = contain(Path(dest_raw), root)
+        except OutsideRoot as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
     # THE CALCULATION IT REUSES, or THE CITATION -- what the description
     # starts from (`engines/transport.md` § 2a.16, § 3.1).
@@ -772,17 +783,18 @@ def api_transport_describe() -> Any:
     from molbuilder.describe import (Description, DescribeError,
                                      refuse_described, write_description)
     from molbuilder.transport.compose import refuse_inside_citation
-    if not dest.is_dir():
+    if dest is not None and not dest.is_dir():
         return jsonify({"ok": False,
                         "error": f"{dest_raw} is not a folder"}), 400
-    shown = str(dest.relative_to(root))
     try:
-        refuse_described(dest, shown=shown)
-        refuse_inside_citation(dest, finished.base if finished is not None
-                               else cited.path, shown=shown,
-                               what=("the finished calculation"
-                                     if finished is not None
-                                     else "the cited junction"))
+        if dest is not None:
+            shown = str(dest.relative_to(root))
+            refuse_described(dest, shown=shown)
+            refuse_inside_citation(
+                dest, finished.base if finished is not None else cited.path,
+                shown=shown, what=("the finished calculation"
+                                   if finished is not None
+                                   else "the cited junction"))
     except (DescribeError, ComposeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
 
@@ -937,6 +949,9 @@ def api_transport_describe() -> Any:
     # afterwards; a `citation` row nobody answered stays VALUELESS
     # (§ 3.8.3).
     from molbuilder.issues import Issue
+    if plan_only:
+        return _plan_of(_desc, finished, root=root, task=task,
+                        notices=list(_pf), cfg=_cfg_cls_for(task))
     notes: list = []
     manifest = None
     try:
@@ -980,6 +995,55 @@ def api_transport_describe() -> Any:
         "notices": _issues_to_json(list(_pf) + list(notes),
                                    cfg=_cfg_cls_for(task)),
     })
+
+
+def _plan_of(desc, finished, *, root, task, notices, cfg) -> Any:
+    """THE PLAN ALONE (`engines/transport.md` § 2a.16, *On the page*): what
+    the description ``desc`` would copy from ``finished`` and run -- the one
+    answer prep composes (`jobset.reuse.decide`) -- worked out in a hidden
+    folder of its own under the projects tree's root, which the reuse needs
+    to find the finished calculation by its path, removed whatever happens.
+    A new calculation copies nothing: no plan."""
+    import shutil
+    import tempfile
+    from pathlib import Path
+    from molbuilder.issues import Issue
+    if finished is None:
+        return jsonify({"ok": True, "plan": True, "manifest": None,
+                        "notices": _issues_to_json(notices, cfg=cfg)})
+    from molbuilder.calculation import open as _open_calc
+    from molbuilder.describe import DescribeError
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.reuse import decide
+    from molbuilder.transport.reuse import ReuseError, write_reusing
+    staging = None
+    try:
+        staging = Path(tempfile.mkdtemp(dir=root, prefix=".molbuilder-plan-"))
+        where = staging / task.label
+        try:
+            _written, notes = write_reusing(desc, where, finished,
+                                            tree_root=root)
+        except (ReuseError, DescribeError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        try:
+            made = _open_calc(where)
+            reuse = decide(made, made.request.numbers)
+            manifest = reuse.lines(where) if reuse is not None else None
+        except PrepError as exc:
+            manifest = None
+            notes = list(notes) + [Issue(
+                "warn", f"what it will reuse is not known yet -- {exc}")]
+    except OSError as exc:
+        # THE TREE REFUSING THE HIDDEN FOLDER, said as Describe says it.
+        return jsonify({"ok": False,
+                        "error": f"the plan could not be worked out: "
+                                 f"{exc}"}), 500
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+    return jsonify({"ok": True, "plan": True, "manifest": manifest,
+                    "notices": _issues_to_json(notices + list(notes),
+                                               cfg=cfg)})
 
 
 # ===================================================================== #

@@ -46,7 +46,19 @@
 
   {#- ===================== 1. The junction ===================== -#}
   <section class="card" id="junction-card">
-    <h2>1. The junction</h2>
+    {#- AN EXTENSION'S FIVE PARTS (`engines/transport.md` § 2a.16, *On the
+        page*): each card's heading while extending is its
+        `data-extending`, and the prose a new calculation reads
+        (`data-new-only`) is not shown -- drawn by core.js. -#}
+    <h2 data-extending="1. What you are doing">1. The junction</h2>
+    {#- WHAT YOU ARE DOING, in one line: a new calculation from the junction
+        cited, or EXTENDING a finished one (`engines/transport.md` § 2a.16,
+        *On the page*) -- drawn by core.js from the citation it holds. -#}
+    <p id="transport-mode" class="hint" hidden aria-live="polite"></p>
+    {#- THE WAY OUT OF AN EXTENSION, on its own row under what you are
+        doing (§ 2a.16, *On the page*, part 1). -#}
+    <div id="transport-extend-out" class="action-row" hidden></div>
+    <div id="transport-junction-intro" data-new-only>
     <p class="hint">
       <strong>Point the calculation at one relaxed junction.</strong>
       Every later stage is derived from it: the sorted copy, both
@@ -109,6 +121,7 @@
       § 3.1 what you can cite, § 4 how region labels drive the five
       stages.
     </p>
+    </div>{#- /#transport-junction-intro -#}
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
               title="Walk the projects tree and pick the junction: a finished relaxation run of molbuilder's own (its folder), or a structure pair saved from one, or a frame set written onto such a pair (its .xyz) -- or a transport calculation's folder, to reuse it.">
@@ -182,7 +195,7 @@
 
   {#- ===================== 4. The physics ===================== -#}
   <section class="card" id="parameters-card">
-    <h2>4. The physics, stage by stage</h2>
+    <h2 data-extending="3. What you can change">4. The physics, stage by stage</h2>
     {#- THE BIAS LEADS, because it is the experiment and it GOVERNS the
         fields under it: at zero bias the whole non-equilibrium half of
         the density contour is inert, and more than one value asks how
@@ -223,6 +236,10 @@
     {#- AN EXTENSION'S VOLTAGES: the finished ones kept, and what adding one,
         or another treatment, runs (§ 2a.16). -#}
     <p id="transport-bias-reruns" class="hint" hidden></p>
+    {#- VALUES TYPED FOR THE FINISHED CALCULATION BEFORE, brought back by
+        the forms' note: said above the tabs they land on, with the way
+        back to its own (§ 2a.16, *On the page*). -#}
+    <p id="transport-extend-restored" class="hint" hidden></p>
     <p class="hint">
       <strong>The bias is the experiment, so it is asked first — and it
       decides whether the rest matters.</strong>  At <code>0.0</code> the
@@ -235,7 +252,7 @@
       voltage gets its own device SCF and its own transmission, one job
       walking the points, each starting from the one before it.
     </p>
-    <p class="hint">
+    <p class="hint" data-new-only>
       <strong>One tab per stage, in the order they run.</strong>  Pick a
       stage; its tab opens with what that stage computes and hands on, then
       its cards, each named with the stage (<em>seed · Convergence
@@ -287,10 +304,18 @@
     {%- endfor %}
   </section>
 
+  {#- ============ An extension's part 4: fixed by it ============ -#}
+  {#- WHAT THE FINISHED CALCULATION FIXES, folded and view only (§ 2a.16,
+      *On the page*, part 4) -- drawn by core.js while extending. -#}
+  <section class="card" id="transport-fixed-card" hidden>
+    <h2 id="transport-fixed-title">4. Fixed</h2>
+    <div id="transport-extend-fixed-host"></div>
+  </section>
+
   {#- ===================== 5. Describe ===================== -#}
   <section class="card" id="composite-card">
-    <h2>5. Describe</h2>
-    <p class="hint">
+    <h2 data-extending="5. The plan, then Describe">5. Describe</h2>
+    <p class="hint" data-new-only>
       <strong>Write the calculation down.</strong>  This produces
       <code>task.json</code> — the citation, the bias list and your
       per-stage settings from step 4 — and the template that carries the
@@ -310,6 +335,14 @@
       § 1 one citation → five derived stages, § 1.1 the workflow end to
       end.
     </p>
+    {#- THE PLAN, BEFORE ANYTHING IS WRITTEN: for an extension, what is
+        copied from the finished calculation and what is computed, worked
+        out again whenever anything above changes (`engines/transport.md`
+        § 2a.16, *On the page*) -- and Describe's own answer after. -#}
+    <p id="transport-plan-status" class="hint" hidden
+       aria-live="polite"></p>
+    <pre id="transport-send-manifest" class="fdf-output fdf-output--wrap"
+         hidden></pre>
     <div class="action-row">
       {#- A disabled button shows no tooltip; the wrapper does
           (form-schema.css `.disabled-tip`). -#}
@@ -328,9 +361,6 @@
         the contents (science/validation.md § 4.1 R2): one renderer. -#}
     <ul id="transport-send-findings" class="issues-panel" hidden
         aria-live="polite"></ul>
-    {#- WHAT A CALCULATION THAT REUSES A FINISHED ONE WILL COPY, AND WHAT
-        RUNS -- Describe's answer, in the manifest's words (§ 2a.16). -#}
-    <pre id="transport-send-manifest" class="fdf-output" hidden></pre>
   </section>
 </div>{#- /.page-main -#}
 

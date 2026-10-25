@@ -758,10 +758,13 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
 
 
 def _record(run):
+    """The calculation's transport record, through its parser."""
+    from molbuilder.parse.sidecars.transport import TransportRecordFileParser
     from molbuilder.transport.record import record_path
     from molbuilder.task import of as task_of
     task = task_of(run.bundle)
-    return json.loads(record_path(run.bundle, task.label).read_text())
+    return TransportRecordFileParser.parse(
+        record_path(run.bundle, task.label)).payload
 
 
 # --------------------------------------------------------------------- #
@@ -3329,16 +3332,17 @@ def reused(junction, tmp_path_factory):
     same question, every group copied in; the voltage list widened, the
     device's and the transmission's done points taken over and the new one
     walked -- the transmission prepared while the device, prepared before
-    it, has not launched; then that list narrowed, refused; the window
-    fitted wider, each transmission point computing the energies the
-    finished one did not; the same window three times finer; the low-bias
-    approximation, and its window fitted
-    wider, the transmission that runs once sharing as its one point; the
-    mode's frame set cited in place of the junction a calculation of one
-    voltage ran, its device launched twice, the second warm; and the
-    Transport tab's describe of a calculation reused.  And
-    what a folder that cannot be reused is refused with, a set whose frame
-    0 is another junction among them."""
+    it, has not launched; then that list narrowed, every group copied in;
+    the window fitted wider, each transmission point computing the energies
+    the finished one did not; the same window three times finer; the
+    low-bias approximation, its 0 V results copied in, and its window
+    fitted wider, the transmission that runs once sharing as its one point;
+    the mode's frame set cited in place of the junction a calculation of
+    one voltage ran, its device launched twice, the second warm; one
+    geometry where a frame set ran, copied in; a calculation whose
+    transmission was stopped, reused; and the Transport tab's describe of a
+    calculation reused.  And what a folder that cannot be reused is refused
+    with, a set whose frame 0 is another junction among them."""
     from molbuilder.web.app import create_app
     from support.real_runs import RealRun, Said, _road_at, _taken, _typed
     from support.road import molbuilder
@@ -3433,6 +3437,28 @@ def reused(junction, tmp_path_factory):
         _taken(framed, "summarize", "summarize", "task")
         out["framed"] = framed
 
+        # ONE GEOMETRY WHERE THE FINISHED CALCULATION RAN A FRAME SET: the
+        # set's first frame -- the junction itself -- its results copied
+        # in, re-laid, and nothing runs (§ 2a.16, *A narrower question*).
+        first = described("first", "--slot", f"junction={junction.cite}",
+                          "--bias", "0.0", reuses="P/transport/framed")
+        _typed(first, "prep bare", "prep", "task")
+        _taken(first, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        _taken(first, "summarize", "summarize", "task")
+        out["first"] = first
+        # ...AND WHERE IT RAN A FRAME SET AT EACH OF TWO VOLTAGES: the first
+        # frame's points copied in, re-laid as this calculation's points.
+        fone = described("fone", "--slot", f"junction={junction.cite}",
+                         reuses="P/transport/F")
+        _typed(fone, "prep bare", "prep", "task")
+        _taken(fone, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        _taken(fone, "summarize", "summarize", "task")
+        out["fone"] = fone
+        out["F"] = RealRun(tree=junction.tree,
+                           bundle=junction.tree / "P" / "transport" / "F")
+
         # MORE VOLTAGES, SELF-CONSISTENT: the done points taken over.
         wider = described("wider", "--bias", "0.0,0.2,0.4",
                           "--no-low-bias-approximation")
@@ -3448,18 +3474,19 @@ def reused(junction, tmp_path_factory):
         _taken(wider, "summarize", "summarize", "task")
         out["wider"] = wider
 
-        # ...THAT LIST NARROWED AGAIN, reusing the wider one: nothing left
-        # to walk.
+        # ...THAT LIST NARROWED AGAIN, reusing the wider one: a narrower
+        # question, answered from the finished results -- every group
+        # copied in at prep, nothing runs (§ 2a.16, *A narrower question*).
         r = molbuilder("describe", "--calculation", "transport", "--reuses",
                        "P/transport/wider", "--bundle", "P/transport/narrow",
                        "--bias", "0.0,0.2", "--no-low-bias-approximation")
         assert r.exit_code == 0, r.output
         narrow = RealRun(tree=junction.tree,
                          bundle=junction.tree / "P" / "transport" / "narrow")
+        _typed(narrow, "prep bare", "prep", "task")
         _taken(narrow, "prep", "prep", "task", *every_group,
                "--target", "this")
-        _typed(narrow, "launch device", "launch", "task", "--group", "2",
-               "--mode", "direct", "--foreground", "--yes")
+        _taken(narrow, "summarize", "summarize", "task")
         out["narrow"] = narrow
 
         # THE WINDOW FITTED WIDER: each point computes what the finished
@@ -3485,15 +3512,14 @@ def reused(junction, tmp_path_factory):
         out["finer"] = finer
 
         # THE LOW-BIAS APPROXIMATION -- the device and the transmission run
-        # once -- then its window fitted wider: the transmission that runs
+        # once, at 0 V: the finished 0 V results, copied in, and nothing
+        # runs -- then its window fitted wider: the transmission that runs
         # once shares as its one point.
         lowbias = described("lowbias", "--low-bias-approximation")
         _typed(lowbias, "prep bare", "prep", "task")
         _taken(lowbias, "prep", "prep", "task", *every_group,
                "--target", "this")
-        for g in ("2", "3"):
-            _taken(lowbias, f"launch group {g}", "launch", "task", "--group",
-                   g, "--mode", "direct", "--foreground", "--yes")
+        _taken(lowbias, "summarize", "summarize", "task")
         lowfit = described("lowfit", "--window",
                            f"{_WIDER[0]:g},{_WIDER[1]:g}",
                            reuses="P/transport/lowbias")
@@ -3504,6 +3530,16 @@ def reused(junction, tmp_path_factory):
                "3", "--mode", "direct", "--foreground", "--yes")
         _taken(lowfit, "summarize", "summarize", "task")
         out["lowbias"], out["lowfit"] = lowbias, lowfit
+
+        # A CALCULATION WHOSE TRANSMISSION WAS STOPPED IN ITS LOOP, reused:
+        # what finished copied in, the transmission computed here, its
+        # newest run's state named (§ 2a.16, *Which of O's results*).
+        again = described(
+            "again",
+            reuses=junction.stopped.bundle.relative_to(junction.tree)
+            .as_posix())
+        _typed(again, "prep bare", "prep", "task")
+        out["again"] = again
 
         # A RUNG OF POINTS PREPARED, ITS WINDOW CHANGED BEFORE ITS FIRST
         # LAUNCH: the launch asks whether each point's deck is still what
@@ -3564,18 +3600,17 @@ def reused(junction, tmp_path_factory):
                 "blank": [f["name"] for f in ours
                           if f["locked"]["value"] is None
                           and f.get("default") is not None],
-                # WHAT THE WAY OUT CARRIES: each value and whose it is.
+                # WHAT THE WAY OUT CARRIES: each value, whose it is, and
+                # whether anybody gave it one.
                 "chosen": {f["name"]: (f["locked"]["chosen"],
-                                       f.get("source")) for f in ours}}
+                                       f["locked"]["blank"], f.get("source"),
+                                       "value" in f) for f in ours}}
         kept = junction.tree / "P" / "transport" / "kept"
         kept.mkdir()
         refusals = {}
         # EACH AS THE PAGE SENDS IT: one voltage carries no treatment
         # (`low_bias_approximation` null, `engines/transport.md` § 2a.10).
-        for step, change in (("a finished voltage dropped", {
-                                 "bias": [0.0],
-                                 "low_bias_approximation": None}),
-                             ("a seed value", {"stages": {"seed": {
+        for step, change in (("a seed value", {"stages": {"seed": {
                                  "mixing_weight": 0.31}}}),
                              ("a shared value", {"shared": {
                                  "mesh_cutoff": 310}})):
@@ -3594,26 +3629,27 @@ def reused(junction, tmp_path_factory):
         r = save_both(page, made, read_request(page))
         refusals["Task setup's Save of a seed value"] = (
             r.status_code, r.get_json().get("error"), [])
-        # ...MEASURED AGAINST THE FOLDER'S OWN DESCRIPTION: the narrowed
-        # extension the command line wrote, a finished voltage dropped,
-        # saves a change of its window; a change of its rename is refused.
+        # ...AND OF AN EXTENSION THE COMMAND LINE WROTE: a change of its
+        # rename is refused.
         made = json.loads((narrow.bundle / "task.json").read_text())
-        for st in made["stages"]:
-            if st["name"] == "transmission":
-                st["overrides"] = {**st.get("overrides", {}),
-                                   "transmission_n_points": 7}
-        made["varies"] = sorted(set(made["varies"])
-                                | {"transmission_n_points"})
-        saves = {"its window": save_both(narrow.bundle, made,
-                                         read_request(narrow.bundle))}
         made["swap_electrodes"] = not made.get("swap_electrodes", False)
-        saves["its rename"] = save_both(narrow.bundle, made,
-                                        read_request(narrow.bundle))
+        saves = {"its rename": save_both(narrow.bundle, made,
+                                         read_request(narrow.bundle))}
         out["kept"] = (locks, refusals, kept,
                        {k: (r.status_code, r.get_json().get("error"))
                         for k, r in saves.items()})
     out["finished"] = junction
     return out
+
+
+def _copied_in(plan: str) -> list:
+    """The groups a plan says are copied in, each by its own line --
+    `group N  <members>  copied in` (`engines/transport.md` § 2a.16, *The
+    manifest*) -- never a count of the words, which a group prepared here
+    may say of a stage it takes inputs from."""
+    import re
+    return [int(m.group(1)) for m in re.finditer(
+        r"^\s*group (\d+)  .*  copied in$", plan, re.M)]
 
 
 def _runs_of(made, stage):
@@ -3643,36 +3679,138 @@ def test_a_folder_that_cannot_be_reused_is_refused_before_anything_is_written(
         assert not written, step
 
 
-def test_the_same_question_copies_every_group_in(reused):
-    """§ 2a.16, *At prep*: every member's newest run finished and the same
-    calculation as the deck rendered now -- every group copied in, each run
-    under its own name with its `.copied-from` naming the finished run and
-    its launch record; the manifest said with the groups bare `prep task`
-    offers; the runs read as finished runs of this calculation, *copied
-    from*; and the record is the finished one's."""
-    import json
-    from molbuilder.runrecord import read_copied_from
-    from molbuilder.transport.stages import TRANSPORT_STAGES
-    same, finished = reused["same"], reused["finished"]
-    bare = same.said["prep bare"].output
+#: A QUESTION THE FINISHED RESULTS ANSWER (§ 2a.16, *A group copied in*,
+#: *A narrower question*): the calculation, the one it reuses, the voltages
+#: it asks, where the finished calculation's newest run holds the first
+#: result it takes ("" -- the same folders, every run copied whole), and
+#: what that run holds that it does not ask.
+_ANSWERED = [
+    ("same", "finished", [0.0, 0.2], "", ()),
+    ("narrow", "wider", [0.0, 0.2], "", ("0.4 V",)),
+    ("first", "framed", [0.0], "f000",
+     ("frame index 1 (of 3) · 0 V", "frame index 2 (of 3) · 0 V")),
+    ("fone", "F", [0.0, 0.2], "f000",
+     ("frame index 1 (of 3) · 0 V", "frame index 2 (of 3) · 0.2 V")),
+    ("lowbias", "finished", [0.0], "v0", ("0.2 V",)),
+]
+
+
+@pytest.mark.parametrize("name, finished, bias, at, unasked", _ANSWERED,
+                         ids=[row[0] for row in _ANSWERED])
+def test_a_question_the_finished_results_answer_is_copied_in(
+        reused, name, finished, bias, at, unasked):
+    """§ 2a.16, *A group copied in* and *A narrower question* (the user,
+    2026-10-25: "One rule: reuse completes"; "when citing a multi frame
+    calculation, first frame result is used ... same checking for validate
+    if this reuse is correct should still be in place"): the same question,
+    fewer voltages, one geometry where a frame set ran -- at one voltage and
+    at two -- and the low-bias approximation where the finished calculation
+    ran voltages self-consistently.  The plan says every group is copied in
+    and names what the copy holds that is not asked; nothing runs.  In the
+    same folders every run is copied whole under its own name; otherwise
+    the asked results are re-laid where this calculation keeps them, a run
+    of points stamped a container.  Each result names the one it is a copy
+    of, one hop; what each was given is a file of this calculation -- the
+    transmission's device the device's result at its own point -- and the
+    record holds the voltages asked, each the finished result, copied.  The
+    silent failure: a copy whose record of its inputs is lost -- a launch
+    again sends the engine without the leads' files, a later calculation
+    reusing it takes nothing over."""
+    from molbuilder import calcdirs
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.runrecord import carried_gather, read_copied_from
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.stages import (TRANSPORT_STAGES, frames_of,
+                                             rung_points)
+    made, theirs = reused[name], reused[finished]
+    bare = made.said["prep bare"].output
+    assert _copied_in(bare) == [1, 2, 3], bare
+    # EVERY RESULT OF THE RUNS IT TAKES FINISHED: nothing to warn of.
+    assert "warning:" not in bare, bare
+    for words in unasked:
+        assert words in bare, bare
+    if unasked:
+        assert (": not asked here -- left behind)" if at
+                else ": not asked here -- copied with it, never read)") \
+            in bare, bare
+    task = task_of(made.bundle)
+    where = theirs.bundle.relative_to(theirs.tree).as_posix()
+
+    def one_hop(there):
+        return (read_copied_from(there)
+                or f"{where}/{there.relative_to(theirs.bundle).as_posix()}")
+    results = {}
     for stage in TRANSPORT_STAGES:
-        assert f"{stage}" in bare
-    assert bare.count("copied in") == 3, bare
-    for stage in TRANSPORT_STAGES:
-        mine, theirs = _runs_of(same, stage), _runs_of(finished, stage)
-        assert [r.name for r in mine] == [r.name for r in theirs], stage
-        for r in mine:
-            assert read_copied_from(r) == (
-                f"P/transport/T/{r.parent.name}/{r.name}"), r
-            assert (r / "run.json").is_file(), r
-    status = same.said["status"].output
-    assert status.count("copied from P/transport/T/") == 5, status
-    a = json.loads((finished.bundle / "T.transport.json").read_text())
-    b = json.loads((same.bundle / "T.transport.json").read_text())
-    for pa, pb in zip(a["points"], b["points"]):
-        assert pb["transmission"] == pa["transmission"]
-        assert pb["current_a"] == pa["current_a"]
-        assert pb["current_from"] == "tbtrans"
+        mine, ran = _runs_of(made, stage), _runs_of(theirs, stage)
+        points = rung_points(task, stage, frames=frames_of(made.bundle))
+        if at and stage in ("device", "transmission"):
+            (run,) = mine
+            assert calcdirs.read(run).role == (
+                calcdirs.CONTAINER if points else calcdirs.RUN), run
+            source = ran[-1] / at
+            for pt in points or [None]:
+                here = run / pt.rel if pt is not None else run
+                there = source / pt.rel if pt is not None else source
+                assert read_copied_from(here) == one_hop(there), here
+                results[stage, pt.rel if pt is not None else None] = here
+        else:
+            assert [r.name for r in mine] == [r.name for r in ran], stage
+            for here, there in zip(mine, ran):
+                assert read_copied_from(here) == one_hop(there), here
+            for pt in points or [None]:
+                results[stage, pt.rel if pt is not None else None] = (
+                    mine[-1] / pt.rel if pt is not None else mine[-1])
+    # WHAT EACH WAS GIVEN, a file of this calculation.
+    given = {}
+    for (stage, rel), here in results.items():
+        names = stage_home(made.bundle, task, stage).names(task.shape)
+        took = carried_gather(made.bundle, here, names)
+        assert all((src.path(made.bundle) / fn).is_file()
+                   for src, fn in took), (here, took)
+        given[stage, rel] = {fn: src.path(made.bundle) for src, fn in took}
+    assert given["device", next(r for s, r in given if s == "device")], given
+    for (stage, rel), took in given.items():
+        if stage == "transmission":
+            assert took[f"{task.label}.TS.HSX"] == results["device", rel], (
+                rel, took)
+    # THE RECORD: the voltages asked, each the finished result, copied.
+    def by_point(run):
+        return {((p.get("frame") or 0), p["bias_v"]): p
+                for p in _record(run)["points"]}
+    here, there = by_point(made), by_point(theirs)
+    assert sorted(v for _f, v in here) == bias, here.keys()
+    for key, point in here.items():
+        assert point.get("copied_from"), point
+        assert point["transmission"] == there[key]["transmission"], key
+        assert point["current_a"] == there[key]["current_a"], key
+
+
+def test_a_result_that_did_not_finish_is_computed_here_and_named(reused):
+    """§ 2a.16, *Which of O's results can be used* and *What is never
+    copied* (the user, 2026-10-25: "newest, must be finished ... only
+    finished ones will guarantee the correct result"): a calculation
+    reusing one whose transmission was stopped in its loop -- the seed, the
+    leads and the device copied in; the transmission prepared here, the
+    plan naming its newest run and that it failed; no older run stands in;
+    and the plan warns of the result that did not finish, how it ended, and
+    that it can mean a problem in the physics or in the parameter choices
+    (*The manifest*; the user, 2026-10-25).  The silent failure: a result
+    that never finished copied in as if it had."""
+    bare = reused["again"].said["prep bare"].output
+    assert _copied_in(bare) == [1, 2], bare
+    # THE PLAN'S LINE for group 3 -- not the list of the groups it offers.
+    (line,) = [ln for ln in bare.splitlines()
+               if ln.lstrip().startswith("group 3  ")
+               and "  prepared here -- " in ln]
+    assert "failed" in line \
+        and "S-stopped-in-its-loop/05_transmission/run-0" in line, line
+    (warned,) = [ln.strip() for ln in bare.splitlines()
+                 if ln.strip().startswith("warning:")]
+    assert warned.startswith("warning: S-stopped-in-its-loop/"
+                             "05_transmission/run-0 did not finish") \
+        and "stopped before its end" in warned \
+        and "a problem in the physics or in the parameter choices" \
+        in warned, warned
 
 
 def test_a_frame_set_of_the_same_junction_takes_over_frame_0(reused):
@@ -3775,14 +3913,6 @@ def test_more_voltages_take_the_finished_points_over(reused):
         True, True, False]
 
 
-def test_a_narrower_list_is_refused_naming_the_cold_launch(reused):
-    """§ 2a.16: every point the finished run holds and fewer, so nothing is
-    left to walk -- refused at the launch, naming the cold launch."""
-    said = reused["narrow"].said["launch device"]
-    assert said.exit_code != 0
-    assert "nothing to run" in said.output and "--cold" in said.output
-
-
 def test_a_fitted_window_computes_only_the_energies_the_finished_point_did_not(
         reused):
     """§ 2a.16, *A transmission point's energies* and *A wider window,
@@ -3874,24 +4004,21 @@ def test_a_finer_grid_keeps_every_finished_energy_and_reads_its_data_file(
 def test_a_transmission_that_runs_once_shares_as_its_one_point(reused):
     """§ 2a.16, *A transmission point's energies*: under the low-bias
     approximation the transmission runs once -- its one point, the run
-    itself -- and shares the energies the finished run computed, its
-    `shared/` in its run's folder, its result its grid joined; and a rung
-    the finished calculation ran at points, run once here, is prepared here,
-    said so."""
-    import json
+    itself -- and, its window fitted wider, shares the energies the
+    finished run holds -- here a copy of the finished 0 V point -- its
+    `shared/` in its run's folder, its result its grid joined."""
     from molbuilder.runrecord import read_copied_from
-    lowbias, lowfit = reused["lowbias"], reused["lowfit"]
-    bare = lowbias.said["prep bare"].output
-    assert ("T runs it at the points 0 V, 0.2 V; this calculation runs it "
-            "once, at 0 V") in bare, bare
+    lowfit = reused["lowfit"]
     bare = lowfit.said["prep bare"].output
     assert ("0 V    shares 401 of 601 energies with "
             "lowbias/05_transmission/run-0 -- computes 200 here") in bare, bare
+    # ONE HOP (*A group copied in*): the shared files' `.copied-from` names
+    # the result that computed them -- T's 0 V point, of which lowbias holds
+    # a copy; the record, the run they are shared from.
     run = _runs_of(lowfit, "transmission")[0]
     assert read_copied_from(run / "shared") == (
-        "P/transport/lowbias/05_transmission/run-0")
-    (point,) = json.loads((lowfit.bundle / "T.transport.json").read_text()
-                          )["points"]
+        "P/transport/T/05_transmission/run-0/v0")
+    (point,) = _record(lowfit)["points"]
     assert point["n_energies"] == 601 and point["current_from"] == "joined"
     assert point["shared"] == {
         "from": "P/transport/lowbias/05_transmission/run-0", "held": 401,
@@ -3903,10 +4030,10 @@ def test_an_extension_keeps_what_its_finished_calculation_computed_once(
     """§ 2a.16, *Extending it* (the user, 2026-10-22, 2026-10-23): an
     extension changes what is computed per voltage; the shared values and
     the rungs that run once -- the seed, the leads -- are the finished
-    calculation's, drawn at its values and never a control, and its
-    voltages are kept.  The describe door answers the limits; Describe
-    keeps the fixed rungs' own values, refuses a change of a fixed one or a
-    dropped voltage, writing nothing, and answers what will be reused.  The
+    calculation's, drawn at its values and never a control; its voltages
+    are the person's to add or remove.  The describe door answers the
+    limits; Describe keeps the fixed rungs' own values, refuses a change of
+    a fixed one, writing nothing, and answers what will be reused.  The
     silent failure: an extension whose seed was edited on the page, its
     every group run again while the person thought they only added a
     voltage."""
@@ -3936,18 +4063,22 @@ def test_an_extension_keeps_what_its_finished_calculation_computed_once(
                           .read_text())
     own = {s["name"]: s.get("overrides", {}) for s in finished["stages"]}
     for name in ("shared", "seed", "electrode_L"):
-        for field, (chosen, source) in locks[name]["chosen"].items():
-            assert chosen == (field in own.get(name, {})
-                              or source == "person"), (name, field, source)
-    for step, (status, error, where) in refusals.items():
-        assert status == 400 and "T" in error, (step, error)
-    # A dropped voltage refused beside the bias list.
-    assert refusals["a finished voltage dropped"][2] == ["task.bias"], \
-        refusals
+        for field, (chosen, blank, source, stated) in (
+                locks[name]["chosen"].items()):
+            mine = field in own.get(name, {})
+            assert chosen == (mine or source == "person"), (name, field,
+                                                            source)
+            # ...AND A VALUE NOBODY GAVE STAYS BLANK, never cited anew.
+            assert blank == (not mine and not stated), (name, field)
+    # EACH REFUSED BY NAME, saying whose the value is.
+    for step, said in (("a seed value", "seed's values are fixed by T"),
+                       ("a shared value", "the shared values are fixed by T"),
+                       ("Task setup's Save of a seed value",
+                        "seed's values are fixed by T")):
+        status, error, _where = refusals[step]
+        assert status == 400 and said in error, (step, error)
     assert not any(kept.iterdir()), list(kept.iterdir())
-    # A change measured against the folder's own description: an extension
-    # the command line wrote saves; its rename stays.
-    assert saves["its window"][0] == 200, saves
+    # An extension the command line wrote: its rename stays.
     assert saves["its rename"][0] == 400 and \
         "swap_electrodes" in saves["its rename"][1], saves
     # The fixed rungs hold the finished calculation's own values.
@@ -3994,19 +4125,24 @@ def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):
 
 def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
         reused, page, monkeypatch):
-    """§ 2a.16, *A frame set of the same junction*, on the Transport tab
-    (`web/tabs.md` § 4), driven by its clicks: extending O, the panel names
-    O's junction, one frame; *Cite a frame set of this junction…* opens the
-    picker, whose line for the mode's set says its frame 0 is the junction
-    O ran, and citing it moves the readout and the junction line to the
-    set; a set whose frame 0 is another junction is refused where it is
-    picked, the set held staying held; a reload keeps the set; *Use O's
-    junction* goes back; and the set cited again, Describe writes it as the
-    junction of a calculation reusing O, its label O's.
+    """§ 2a.16, *A frame set of the same junction* and *On the page*, on the
+    Transport tab (`web/tabs.md` § 4), driven by its clicks: extending O,
+    the page says EXTENDING O, draws neither the shared panel, the
+    chemistry card nor the seed's and the leads' tabs, folds what O fixes
+    into a view-only list, and shows the plan before anything is written;
+    the junction choice names O's junction, one frame; *Choose a frame
+    set…* opens the picker, whose line for the mode's set says its frame 0
+    is the junction O ran, and citing it moves the readout, the junction
+    line and the plan to the set; a set whose frame 0 is another junction
+    is refused where it is picked, the set held staying held; a reload
+    keeps the set; choosing O's junction goes back; and the set cited
+    again, Describe writes it as the junction of a calculation reusing O,
+    its label O's.
 
     MUTATIONS THIS MUST FAIL AGAINST: the page sending O's junction while
     showing the set; the reload dropping the set; the picker asking without
-    `reuses`, so the moved set cites."""
+    `reuses`, so the moved set cites; a plan not asked again when the
+    junction changes."""
     import json
     from playwright.sync_api import expect
     from molbuilder.projects import PROJECTS_ROOT_ENV
@@ -4045,23 +4181,77 @@ def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
         dialog.get_by_role("button", name="Cite this").click()
         return said
 
+    plan = page.locator("#transport-send-manifest")
     with serve() as base:
         _cited_on_the_tab(page, base, junction, cite="P/transport/O")
         assert "the one O ran, one frame" in line(), line()
+        # AN EXTENSION'S OWN LAYOUT: what you are doing; O's fixed values
+        # not drawn as controls, but listed, folded; the plan before
+        # Describe -- O's own junction, every group copied in.
+        expect(page.locator("#transport-mode")).to_contain_text(
+            "EXTENDING O")
+        # ...ITS FIVE PARTS, in order, the way out in the first.
+        for card, part in (("#junction-card", "1. What you are doing"),
+                           ("#parameters-card", "3. What you can change"),
+                           ("#transport-fixed-card", "4. Fixed by O"),
+                           ("#composite-card", "5. The plan, then Describe")):
+            expect(page.locator(f"{card} > h2")).to_have_text(part)
+        expect(page.locator("#transport-extend-out "
+                            "#transport-extend-leave-btn")).to_be_visible()
+        for card in ("#shared-card", "#chemistry-card"):
+            expect(page.locator(card)).to_be_hidden()
+        for rung in ("seed", "electrode_L", "electrode_R"):
+            expect(page.locator(f'.tab-btn[data-tab="{rung}"]')).to_be_hidden()
+        expect(page.locator('.tab-btn[data-tab="device"]')).to_be_visible()
+        page.locator("#transport-extend-fixed > summary").click()
+        expect(page.locator("#transport-extend-fixed-list")).to_contain_text(
+            "Shared by every stage")
+        expect(plan).to_contain_text("group 2  device", timeout=120000)
+        assert _copied_in(plan.inner_text()) == [1, 2, 3], plan.inner_text()
+        # A CHANGE ASKS THE PLAN AGAIN: the device's mixing weight typed --
+        # the device then computed here, its difference named -- and a
+        # reload brings the value back, said, with the way back to O's own.
+        page.locator('.tab-btn[data-tab="device"]').click()
+        weight = page.locator("#t-device-mixing-weight")
+        weight.fill("0.07")
+        weight.dispatch_event("change")
+        expect(plan).to_contain_text("ran another calculation",
+                                     timeout=120000)
+        page.reload(wait_until="domcontentloaded")
+        notice = page.locator("#transport-extend-restored")
+        expect(notice).to_contain_text(
+            "Restored values you typed for O before", timeout=60000)
+        # THE VALUE TYPED, and no field left blank (a blank is no value).
+        assert "0.07" in notice.inner_text(), notice.inner_text()
+        assert "null" not in notice.inner_text(), notice.inner_text()
+        page.locator("#transport-extend-own-values-btn").click()
+        expect(notice).to_be_hidden()
+        # THE PLAN ASKED AGAIN for O's own values -- its answer waited for,
+        # never read off a box a reload left empty.
+        expect(plan).to_contain_text("group 3  transmission", timeout=120000)
+        expect(plan).not_to_contain_text("ran another calculation",
+                                         timeout=120000)
+        assert _copied_in(plan.inner_text()) == [1, 2, 3], plan.inner_text()
         said = pick(junction.frame_set)
         assert "FRAME 0 IS THE JUNCTION O RAN" in said, said
         expect(readout).to_have_text(junction.frame_set, timeout=30000)
         assert "a frame set whose first frame is the junction O ran" in line(), \
             line()
+        # ...THE PLAN FOLLOWS THE SET: frame 0's results taken over.
+        expect(plan).to_contain_text("takes over frame index 0",
+                                     timeout=120000)
         # ANOTHER JUNCTION, refused where it is picked.
         said = pick("P/structure/moved.xyz")
         assert "its frame 0 is not the junction O ran" in said, said
         expect(status).to_contain_text("its frame 0 is not the junction O "
                                        "ran", timeout=30000)
         expect(readout).to_have_text(junction.frame_set)
-        # A RELOAD KEEPS THE SET.
+        # A RELOAD KEEPS THE SET -- and O's own values put back stay put:
+        # nothing restored to say.
         page.reload(wait_until="domcontentloaded")
         expect(readout).to_have_text(junction.frame_set, timeout=60000)
+        expect(plan).to_contain_text("group 3  transmission", timeout=120000)
+        expect(notice).to_be_hidden()
         assert "a frame set whose first frame is the junction O ran" in line(), \
             line()
         # BACK TO O'S JUNCTION, and the set cited again.

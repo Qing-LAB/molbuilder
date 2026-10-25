@@ -3660,10 +3660,13 @@ does. The finished calculation is never written by it. § 1.2 says what each
 change re-runs; this section says how the new calculation reuses the rest.
 
 > **The rule.** A group is **copied in** when, for each of its members, the
-> finished calculation's newest run of it finished — a rung of points: holds
-> exactly the points this calculation describes, every one done — ran **the
-> same calculation** as the deck this calculation renders for it now, and
-> every stage it takes inputs from is copied in too. A point of a rung
+> finished calculation's newest run of it has ended and holds every result
+> this calculation describes, each done — a rung of points: every point it
+> describes, a run holding more leaving the rest behind; a rung this
+> calculation runs once, where the finished one ran points: its point at the
+> first frame and 0 V — ran **the same calculation** as the deck this
+> calculation renders for it now, and every stage it takes inputs from is
+> copied in too. A point of a rung
 > prepared here is **taken over** from the finished calculation on the same
 > terms, one point at a time. The question is the gather's own (§ 6.1: the
 > newest run, finished or done; the same engine input as the deck rendered
@@ -3708,10 +3711,13 @@ only read, never changed.
  |
  2  PREP the new calculation          (the folder's state is saved first)
       molbuilder jobset prep task --group 1 --group 2 --group 3 --target <machine>
-      -> each stage O computed exactly as this calculation would is copied
-         from O whole -- the seed and both leads, and more when only the
-         window or the voltages under the low-bias approximation change;
-         the plan names each
+      -> each stage O already computed as this calculation would is copied
+         from O, and the plan names each: the seed and both leads; the
+         device and the transmission too when you only removed voltages,
+         took one geometry where O ran a frame set (O's first frame is
+         used), or chose the low-bias approximation; with a new energy
+         window the device is copied and the transmission is computed at
+         the new energies
  |
  3  LAUNCH the stages that were not copied, in order (usually the device,
     then the transmission)            (each one's first launch saves the
@@ -3724,12 +3730,20 @@ only read, never changed.
                  saying whether it was copied from O or computed here
 ```
 
-**Which of O's results can be used.** Only O's newest run of each stage. A
-whole stage is copied when that newest run finished; one result — one voltage
-at one frame — is used when it finished in that newest run, even if another
-result of the same run did not. An older run never stands in for a newer one
-that failed, is still running, or was never started: launch that stage of O
-again first. The plan names, for every result, the run it comes from, or
+**Which of O's results can be used.** Only O's newest run of each stage,
+and only a result — one voltage at one frame — that finished in it. A stage
+is copied when every result you ask of it finished there, even if the run
+failed on a result you no longer ask for; otherwise the results that did
+finish are used one by one, and the rest are computed. **The plan warns of
+every result of that run that did not finish** — asked or not — naming it
+and how it ended: a voltage that does not converge can mean a problem in the
+physics or in the parameter choices, which the results that did finish were
+computed with too *(the user, 2026-10-25: "A, keep it as built, but with
+warning of unfinished points because this could indicate problems in
+physics or parameter choices")*. A run still going is
+never copied from: wait for it to end. An older run never stands in for a
+newer one that failed, is still running, or was never started: launch that
+stage of O again first. The plan names, for every result, the run it comes from, or
 why it is computed again: the run failed, is still running or was never
 started; a setting differs, each named; or what it was computed from is not
 the same.
@@ -3818,8 +3832,8 @@ bias-independent ground every point stands on (§ 1.2); the **device** and the
 
 | what | in an extension | what a change re-runs (§ 1.2) |
 |---|---|---|
-| **the voltages** — added, never removed | **yours** | each new voltage's device run (self-consistent), its transmission point; under the low-bias approximation nothing while the window reaches it |
-| **the treatment** — low-bias ↔ self-consistent | **yours** | to self-consistent: the device and the transmission at every voltage, the 0 V ones taken over; to the low-bias approximation: the device and the transmission once, at 0 V |
+| **the voltages** — added or removed | **yours** | each new voltage's device run (self-consistent), its transmission point; under the low-bias approximation nothing while the window reaches it; a voltage removed, nothing — the ones kept are copied (*A narrower question*) |
+| **the treatment** — low-bias ↔ self-consistent | **yours** | to self-consistent: the device and the transmission at every voltage, the 0 V ones taken over; to the low-bias approximation: nothing — the device and the transmission run once, at 0 V, which is O's 0 V result on its first frame, copied in |
 | **the energy window** and how many times finer | **yours** | the transmission at the new energies only — the finished ones shared exactly |
 | **the transmission's tab** — its k-point grid, broadenings, eigenchannels, the DOS it writes | **yours** | the whole transmission, every point |
 | **the device's tab** — its NEGF contour, its mixing, its tolerances, its iteration budget | **yours** | every device point, and the transmission on it |
@@ -3829,9 +3843,10 @@ bias-independent ground every point stands on (§ 1.2); the **device** and the
 
 **Fixed is shown, read-only, with its way out**: every fixed value stays in
 view as the finished calculation states it — the schema served with
-`reuses` draws the shared panel's and the seed's and leads' fields
+`reuses` marks the shared panel's and the seed's and leads' fields
 *locked*, each *the value <name> ran with* (`transport.reuse.Extension`,
-the one rule, its value the one the finished calculation ran with) — and
+the one rule, its value the one the finished calculation ran with), and
+the page lists them, folded, under *Fixed by <name>* (*On the page*) — and
 one action, *Start a new calculation from this junction with these
 settings*, cites the junction again as a new calculation that
 reuses nothing, its cards starting from the values chosen in the finished
@@ -3839,11 +3854,13 @@ one — each rung's own, and each shared value its template says is the
 person's (the lock's `chosen`), among them what its citation asks of the
 person, drawn as the citation's own panel draws it (a pair's
 pseudopotential directory, `asked_of_the_person`); a value cited from the
-junction is cited again, and a default stays not chosen: what an extension is not for is
+junction is cited again, and a value nobody chose — a default, or a cited
+value the person emptied — stays not chosen, blank (the lock's `blank`):
+what an extension is not for is
 never edited inside one. **The Transport tab's Describe holds the limits**:
 the fixed rungs keep the finished calculation's own values, and a changed
-fixed value, a finished voltage dropped, or its rename or its label changed
-is refused by name beside the control it names, nothing written
+fixed value, or its rename or its label changed is refused by name beside
+the control it names, nothing written
 (`transport.reuse.Extension.refusal`) — and so is Task setup's Save of one.
 The junction is the finished one or a frame set whose first frame is it:
 Describe refuses any other, nothing written (`transport.reuse.write_reusing`,
@@ -3927,9 +3944,9 @@ frame where the finished calculation holds the same voltage, computed the
 same way from the same inputs; a calculation of one geometry holds its
 results at the first frame (`point_key`), so **only the first frame** can be
 reused, and every other frame is computed. The other way round — a finished
-calculation that ran a frame set, extended with one geometry — the device
-and the transmission run once instead of once per frame, another shape of
-run, so none of their results is reused; the plan says so. A transmission whose energies
+calculation that ran a frame set, extended with one geometry — is a narrower
+question: the first frame's device and transmission results are copied in,
+and nothing runs (*A narrower question*, below). A transmission whose energies
 differ is computed too, sharing only the energies that are exactly the same
 (below). *(Measured on AuBDTAu, 2026-10-24, a scratch copy, nothing
 launched: the seed and both leads copied, the first frame's device and
@@ -3947,9 +3964,9 @@ by (`transport.reuse.write_reusing`), which checks the set
   junction=<the set's .xyz>`. Its answer says the junction is the set's,
   how many frames it has, and that its first frame is the first frame the
   finished calculation ran.
-- **The Transport tab**: the extension panel says which junction it
-  describes with — the one the finished calculation ran, with its number of
-  frames — and offers *Cite a frame set of this junction…*. The picker checks
+- **The Transport tab**: the extension's junction is a choice of two —
+  the one the finished calculation ran, with its number of frames, or *a
+  frame set of it*, whose *Choose a frame set…* opens the picker. The picker checks
   each citation you select — a frame set's `.xyz`, or any other whose first
   frame is that junction, a relaxation run's folder among them — and shows
   the answer before you confirm (`describe_attempt` with `reuses`): one
@@ -3959,7 +3976,8 @@ by (`transport.reuse.write_reusing`), which checks the set
   junction you had stays. Once a set is cited, the panel names it, says the
   device and the transmission run once per frame and that the plan
   Describe shows says which results are reused, and the viewer and the
-  frame card show it; *Use <name>'s junction* goes back; reloading the page
+  frame card show it; choosing <name>'s junction goes back, and choosing
+  the frame set again brings back the one last cited; reloading the page
   keeps the set. *Start a new calculation from this junction with these
   settings* starts from the junction shown — the finished one, or the set
   cited. **Not citing a set is describing with the finished junction**, as
@@ -3977,8 +3995,8 @@ one:
 
 | each member's newest run in the finished calculation | the group |
 |---|---|
-| finished — a rung of points: exactly the points this calculation describes, every one done; the same calculation as the deck rendered now; every stage it takes inputs from copied in | **copied in**, when every member's is |
-| another calculation, other points, an input from a stage this calculation does not copy in — each difference named; not finished, a point not done, not there — its state named | **prepared here**, as in any calculation |
+| holds every result this calculation describes, each done — a rung of points: every point it describes, more being left behind; a rung run once here, from points there: its point at the first frame and 0 V — the same calculation as the deck rendered now; every stage it takes inputs from copied in | **copied in**, when every member's is |
+| another calculation, a result it does not hold, an input from a stage this calculation does not copy in — each difference named; not finished, a result not done, not there — its state named | **prepared here**, as in any calculation |
 
 The run asked is the **newest**, as every hand-over asks (`job-system.md`,
 *The task*, D5). A folder `reuses` names that is not there answers every
@@ -3998,6 +4016,32 @@ finished calculation copied in itself names the run its own `.copied-from`
 names, one hop. A run of the stage prepared here and never launched is
 removed first. The launch folder that sent the finished runs — its walk
 scripts and their logs — stays in the finished calculation.
+
+**When the newest run holds more results than this calculation describes**,
+in the same folders — fewer voltages — every run is still copied whole, and
+a result this calculation does not describe stays in its copy, unread: every
+reader finds a run's results by the description. **When this calculation
+keeps them in other folders** — one geometry where the finished calculation
+ran a frame set, or a rung run once here where it ran points — only the
+newest run's results this calculation describes are copied, as `run-0`, each
+where this calculation keeps it (a point's folder, or the run's own folder
+for a rung run once), its folder stamped as this calculation's — a run of
+points a container, a result a run. Each carries its own `.copied-from`,
+naming the result it is a copy of, and its records of what it was given and
+what it continued from, **each folder they name moved to where this
+calculation keeps it** — the seed's and the leads' runs, copied whole, keep
+their names — so a launch again takes the inputs the result was computed
+from, and a calculation that later reuses this one compares them; a result
+it continued from that this calculation does not hold is not named. A run of
+points brings its own files too — what its gather gave it — and its record
+of them; its scratch folder (`tsgf/`) is made, empty, the engine's files
+left behind; the results this calculation does not describe are left
+behind, and the manifest names them. The newest run's launch record is
+copied last. *(The
+user, 2026-10-25: "when citing a multi frame calculation, first frame result
+is used ... same checking for validate if this reuse is correct should still
+be in place"; "One rule: reuse completes".)* The first frame of a vibration
+mode's frame set is the undisplaced, equilibrium geometry (§ 2a.9).
 
 **A run copied in is a launched run of this calculation**, its launch record
 the one it was launched with: `status`, the gather, the ladder, the record and
@@ -4036,9 +4080,13 @@ matched as such; a rung the finished calculation ran once is its 0 V point on
 its first frame — so a calculation that leaves the low-bias approximation takes over
 the 0 V device and transmission points the finished one computed.
 
-**A narrower list** — every point the finished run holds and fewer, so
-nothing is left to walk — is refused at the launch as a warm launch with every
-point done is (R-L18), naming the cold launch: reuse answers a wider question.
+**A narrower question** — fewer voltages, or one geometry where the
+finished calculation ran a frame set (its first frame is used) — is answered
+from the finished results: every stage that holds them is copied in at
+prep, and nothing of it runs. The manifest names what the copy holds that
+this calculation does not ask — a voltage removed, copied with its run and
+never read; a frame left behind. A stage copied in is computed here only
+when you launch it again.
 
 #### The manifest — what is copied, and what runs with the new request, before anything is written *(the user, 2026-10-22: "the user get a manifest of what will be copied over to continue as a new task with the new parameter request")*
 
@@ -4048,12 +4096,19 @@ in — each run, where it comes from, how it ended and its size, and what of it
 is left behind — or prepared here, with what decided it: each difference of
 the new request as it reaches that rung, in the words of § 6.1's comparison,
 or the finished run's state — a change of shape, a rung run once against a
-rung of points, said by what each calculation runs. For a rung of points
+rung of points, said by what each calculation runs. A run copied in names
+the results it holds that this calculation does not describe: copied and
+unread, or left behind. **A result that did not finish is warned of**: for each stage, when the
+finished calculation's newest run of it has ended holding a result that did
+not finish — asked or not, copied in or prepared here — the manifest says,
+under the group, `warning:` that run, each such result and how it ended (the
+done door's words), and that a result that does not finish can mean a problem
+in the physics or in the parameter choices. It decides nothing: the results
+that finished are reused all the same. *(The user, 2026-10-25.)* For a rung of points
 prepared here, the points its first launch will take over, from which run,
 and the points it will walk, and why each point the finished calculation
 holds is walked: its newest run never launched, the point not done there —
-in the done door's words — another calculation, or other inputs; and, a
-narrower list with nothing left to walk, that its first launch is refused.
+in the done door's words — another calculation, or other inputs.
 Then the totals: what is copied now, what the transmission's first launch
 will copy into its points' `shared/`, and what the next save stores again.
 
@@ -4281,13 +4336,16 @@ in the totals:
 #### What is never copied
 
 - **The leads' surface Green's functions** (`tsgf/`): one bias, one run
-  (§ 2a.11) — a device point that runs here computes its own.
-- **A whole stage whose newest run did not finish**: it is not copied, and a
-  result that did not finish is computed here — to reuse it, let it finish
-  in the finished calculation and prepare again. The results that did finish
-  in that newest run are still reused one by one (*At prep*). A stage that is
-  copied carries all its runs, the older ones too, because the newest
-  continues from them (`.continued-from`).
+  (§ 2a.11) — a device point that runs here computes its own; the folder is
+  made, empty.
+- **A result that did not finish, or a run still going**: a stage is copied
+  only when its newest run has ended and every result this calculation asks
+  of it finished there; otherwise it is prepared here, and the results that
+  did finish are taken over one by one (*At prep*) — to reuse the rest, let
+  them finish in the finished calculation and prepare again. A stage copied
+  in the same folders carries all its runs, the older ones too, because the
+  newest continues from them (`.continued-from`); re-laid, the newest run's
+  asked results alone.
 - **The launch folder** that sent the finished runs: their walk scripts and
   logs stay where they ran.
 
@@ -4300,7 +4358,8 @@ in the totals:
 | more voltages, self-consistent | the seed, both leads | the device's and the transmission's points already converged | each new voltage's device and transmission points |
 | more voltages, the low-bias approximation — while the window reaches ±(\|V\|/2 + 5 kT) of each (§ 1.2) | every rung: the bias list reaches no deck (§ 2a.10) | — | nothing: `summarize task` computes the new voltages' currents from T(E, 0) |
 | the low-bias approximation left for the self-consistent treatment | the seed, both leads | the 0 V device and transmission points | every other voltage's device and transmission points |
-| the self-consistent treatment left for the low-bias approximation | the seed, both leads | — | the device and the transmission, once, at 0 V: a run that runs once is not a run of points, so neither is copied in, and no rung that runs once takes a point over |
+| the self-consistent treatment left for the low-bias approximation | every rung: the device's and the transmission's 0 V results on the first frame, as the run that runs once here | — | nothing |
+| fewer voltages, or one geometry where the finished calculation ran a frame set | every rung: the results asked | — | nothing |
 | `electrode_kz`, or a value every stage shares | — | — | every rung |
 
 **The new calculation is whole**: its saved states, its download and its
@@ -4324,17 +4383,55 @@ the size of what it copies.
   lowbias_local · its junction, cited from …/run-2 · low-bias-approximation ·
   0.0, 0.2 V · −2…2 eV at 401 points · every group finished* — its window
   the one its transmission computed, the rung's own values over the
-  template's — and the cards fill from it, with an extension's limits
+  template's — and the page draws an extension, with its limits
   (*Extending it*): the bias list and the treatment from its description,
   the device's and the transmission's tabs from its rungs' overrides, each
-  saying what a change re-runs; the shared panel and the seed's and the
-  leads' tabs drawn locked at the values it ran with, the line over the
-  shared panel saying whose; the rename is its own and is not offered. Its
-  panel opens with what the extension offers, the way out, and the junction
-  it describes with — the finished one, or a frame set of it (*A frame set
-  of the same junction*). **Describe**
+  saying what a change re-runs; the shared panel, the charge-and-spin card
+  and the seed's and the leads' tabs not drawn, their values listed under
+  *Fixed by <name>*; the rename is its own and is not offered. **Describe**
   writes what `molbuilder describe --reuses` writes, through the same
   writer ([`web/tabs.md`](?doc=web/tabs.md) § 4).
+  **An extension has its own layout** *(the user, 2026-10-25: "when you
+  decide to extend a calculation, a lot of the parameters should no longer
+  be changed, only a handful of things can be further changed, this is not
+  clear in the UI design"; "build the layout, live plan before describe")*.
+  Picking a finished calculation's folder turns the page into five parts,
+  in this order:
+
+  1. **What you are doing** — *EXTENDING <name>*, with what it describes:
+     its voltages, its frames, its energy window. One sentence says the
+     rest: its finished results are copied where nothing changed — the
+     plan below names each — only what you change is computed, and <name>
+     is never modified. The card's prose about citing is not shown. The way out — *Start a new
+     calculation from this junction with these settings* — sits on its own
+     row, styled apart from the actions that stay, and names what it starts
+     from: <name>'s junction, or the frame set cited.
+  2. **The junction** — two choices: <name>'s junction as it ran, its frames
+     counted, or a frame set of it (*A frame set of the same junction*); the
+     choice held is the one Describe writes.
+  3. **What you can change** — the voltages (add or remove), the treatment,
+     the energy window and its finer grid, and the device's and the
+     transmission's settings — those two stages' tabs alone — each saying
+     what a change re-runs.
+  4. **Fixed by <name>** — folded, view only: the shared values and the
+     seed's and the leads' values, each as <name> ran it. Changing one is a
+     new calculation: the way out above.
+  5. **The plan, then Describe** — the plan of what is copied from <name>
+     and what is computed, worked out again whenever anything above
+     changes, before anything is written (`/api/transport/describe` with
+     `plan: true`), and the sentence *nothing is copied until prep*; then
+     Describe writes the description into the folder chosen in the
+     sidebar.
+
+  The cards are numbered as these five parts. A value you typed for <name>
+  before, which the forms' note brings back, is said above the stages' tabs
+  — *Restored values you typed for <name> before: device SCF mixing weight
+  0.07* — with *Use <name>'s own values* beside it, which puts back each
+  value as <name> ran it, a value it never set blank. A field left blank is
+  no value typed, never said.
+  Citing anything that is not a transport calculation's folder leaves the
+  extension: the page reads *NEW CALCULATION from <citation>*, every card
+  as for a new calculation, and the voltages back to 0.0.
 - **Task setup** echoes `reuses` with the junction it shows, not editable
   here, and keeps the same limits ([`web/task-setup.md`](?doc=web/task-setup.md)
   § 3). Its **Preview** is

@@ -134,12 +134,13 @@ kind decides when it is taken:
 **Which run, by default, is one rule for every kind**: the **newest** run of
 what it builds on, which **must have finished** — an older one never stands
 in, because a run launched again to tighten is the one you mean. A
-calculation that reuses a finished one asks the same of it: a stage is copied
-whole only when its newest run there finished, and one result — one voltage
-at one frame — is reused only when it finished in that newest run; its
-manifest names the run each comes from *(the user, 2026-10-25: "newest, must
-be finished, the manifest will name the run it took, only finished ones will
-guarantee the correct result")*. For an
+calculation that reuses a finished one asks the same of it, result by
+result: one result — one voltage at one frame — is reused only when it
+finished in that newest run, and a stage is copied when every result asked
+of it did, in a run that has ended; its manifest names the run each comes
+from *(the user, 2026-10-25: "newest, must be finished, the manifest will
+name the run it took, only finished ones will guarantee the correct
+result"; "One rule: reuse completes")*. For an
 independent ladder's stage, `--from` names any other run of this calculation
 (`<NN>_<stage>/run-<n>`), taken as said (§ 5.4); a force-constant stage's `relax` run is named at its prep, and a
 transport rung's inputs are its kind's, never named. A transport rung's gather
