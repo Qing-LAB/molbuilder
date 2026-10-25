@@ -181,13 +181,13 @@ def test_an_OPTIONAL_float_is_widened_like_any_other():
 
     Under ``from __future__ import annotations`` a field's ``type`` is the
     source text, so ``Optional[float]`` is not ``"float"`` and a string match
-    on the annotation never widens ``md_target_temperature``.  The catalogue
+    on the annotation never widens ``negf_neq_eta_ev``.  The catalogue
     declares it ``float``, because a declared type is exactly *"what a parser
     cannot know"* (`template.md` § 5).
     """
     cfg = _template()
     assert isinstance(effective_config(cfg, {"mesh_cutoff": 300}).mesh_cutoff, float)
-    for name in ("md_target_temperature",):
+    for name in ("negf_neq_eta_ev",):
         got = getattr(effective_config(cfg, {name: 2}), name)
         assert isinstance(got, float), (
             f"{name} is declared float in the catalogue but an int override "

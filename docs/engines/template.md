@@ -366,7 +366,13 @@ dropped** — with why it was retired (`template.RETIRED_ITEMS`): `copy_psml`,
 the pseudopotential staging switch, retired at 2.10.0 — nothing read it, and
 prep always copies a calculation's pseudopotentials beside its decks, without
 which SIESTA cannot run *(user, 2026-10-16)*; PySCF's `es_top_n`,
-`es_threshold` and `optimizer`, retired 2026-09-28/29. A blank one,
+`es_threshold` and `optimizer`, retired 2026-09-28/29; and SIESTA's
+molecular-dynamics settings, `md_initial_temperature`,
+`md_target_temperature` and `md_length_timestep`, retired at 2.40.2 with
+the dynamics run types `Verlet` and `Nose` — no calculation kind of
+molbuilder runs molecular dynamics, and no relaxation's deck ever wrote
+them *(the user, 2026-10-25: "yes, remove MD from the optimization
+kind")*. A blank one,
 retired or renamed, asks nothing and is read as absent. **An item a release
 renamed** is refused under its old name, naming the new and `jobset migrate`
 (`template.RENAMED_ITEMS`). Every door that
@@ -374,8 +380,9 @@ reads a name — the template reader, the description's check, a stage's
 overrides — says it in one sentence (`template.why_not_an_item`).
 **`molbuilder jobset migrate` takes a retired item out** — of the template,
 of a stage's own values and of `varies`, blank or set — **when its value
-runs as before without it** (each item's `runs`: any value of `copy_psml`,
-`optimizer = "geometric"`), and **renames a renamed one** in the same three
+runs as before without it** (each item's `runs`: any value of `copy_psml`
+and of the three dynamics settings, `optimizer = "geometric"`), and
+**renames a renamed one** in the same three
 places, keeping its value or its blank; it says each, and keeps the old file
 as `<name>.pre-<rule>`, once — the earliest rule it was written before
 (a plan's code, a day or a release; `migrate._kept_as`), whichever steps of
@@ -1056,14 +1063,14 @@ shapes, and the `kind` each calls for:
 |---|---|---|---|
 | **a bare keyword** | `MeshCutoff` | `MeshCutoff` | `engine`, with `anchor = "MeshCutoff"` |
 | **a conjunction** `A + B` | `Spin.Fix + Spin.Total (SIESTA) \| gto.M(spin=...) (PySCF)` (`unpaired_electrons`) | `Spin.Fix` | `deck` — and list every keyword in `expands` |
-| **an alternation** `A \| B` | `MD.Steps (CG / Broyden / FIRE) \| MD.FinalTimeStep (Verlet / Nose)` (`relax_steps`) | `MD.Steps` | `deck` — `expands` lists every keyword it *may* write |
+| **an alternation** `A \| B` | `Diag.ELPA.GPU (SIESTA) \| mf = mf.to_gpu() (PySCF)` (`use_gpu`) | `Diag.ELPA.GPU` | `deck` — `expands` lists every keyword it *may* write |
 | **a note** `(molbuilder: …)` | `(molbuilder: .run.sh mpirun -np N only; not in .fdf)` (`mpi_np`) | none | anything but `engine` — `deck`, `wrapper`, `produce` or `monitor` |
 
 > **Why a conjunction and an alternation are both `deck`.** The difference is
 > whether the item writes *all* of them or *one* of them, and neither is a
 > single keyword the deck writer can look up — which is exactly what `deck`
-> means. A pinned `unpaired_electrons` writes both of SIESTA's keywords, always; `relax_steps` writes
-> whichever the run mode calls for, never both.
+> means. A pinned `unpaired_electrons` writes both of SIESTA's keywords, always; `use_gpu` writes
+> the one of the engine the deck is for, never both.
 
 **The refusals, and what each is telling you.** The reader refuses an item whose
 declaration cannot reach a deck, naming it:
@@ -1513,8 +1520,8 @@ cannot drift.
 `recommended` says where a kind's value **starts**; `offered` says which
 values the kind **can take at all** — the sibling on the other side of the
 same question. Every choice an item declares used to be offered to every
-kind, so a SIESTA vibration's relaxation offered `Verlet`, `Nose` and `none`
-(dynamics, or no relaxation at all), an optimization offered `transiesta`
+kind, so a SIESTA vibration's relaxation offered `none` (no relaxation at
+all), an optimization offered `transiesta`
 (which dies after the queue wait), and the spin's narrowing lived in code
 (`electronic_state.CAPABILITY`, retired with this), granting TranSIESTA four
 treatments where it runs two.
@@ -1524,7 +1531,7 @@ treatments where it runs two.
 kind = "engine"
 category = ["procedure"]
 type = "enum"
-choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
+choices = ["CG", "Broyden", "FIRE", "none"]
 offered = { vibration = ["CG", "Broyden", "FIRE"] }   # a relaxation relaxes
 help = "How the atoms are moved between steps."
 ```
@@ -1980,7 +1987,7 @@ second and third on 2026-10-11 (plan § 5u.1, step 10):
 | the choice | proposed |
 |---|---|
 | the source key on a template item, and its vocabulary | `source`, one of `cited` · `person` · `default` — **ruled 2026-09-29, built (K7); `record` retired with decision 7, 2026-10-08**. The one writer (`template_with_values`) writes it from what its caller knows: a cited run's answers are `cited`, what the person's form sent `person`, and everything else `default` — *not chosen* (its value is what the writer wrote before: the documented default, or none for transport's unanswered `citation` rows, § 3.8.3). The one reader (`read_template`) reads it, and every form field carries it (`form-schema.md` § 1.1). A template written before has no `source`: it reads as *not recorded*, said so and never guessed, until the next describe writes one |
-| where a deck carries its per-parameter table | the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck. **Its shape** *(2026-10-11)*: `parameters:`, one row per item the rung's deck is rendered from — the kind's `engine` and `deck` items the rung reads (`reads`), the scheduler's excepted — each by its name — the template's own word for it — and **who set its value**, in the words of `resolve`'s layers (*a pin · a sweep point · this stage's override · the rung · the stage's run card · the calculation's run card · the catalogue's default · not chosen*, [`execution/job-request.md`](?doc=execution/job-request.md) § 4) and, for the template's, the template's own (*the template · from the junction you cited · you set this · not chosen · not recorded*), an optional item nobody set with who answers it — the electronic state, the k-point mesh (the k-point split, and a transmission's mesh, three times the shared one), a Nosé run's initial temperature, or the engine's own default (`resolve.BLANK_ANSWERED_BY`) — and a `SystemLabel` prep spells as the rung's or the trial's (`resolve.SET_AFTER`); the rows a rung decided first, as the pipeline log orders them (`pipeline_log.config_rows`). `resolve` puts them on each element (`ResolvedConfig.deck_sources`), and every road that renders a deck hands them over — prep's, and the re-render the gather compares with (`job-contracts.md` § 3.2) |
+| where a deck carries its per-parameter table | the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck. **Its shape** *(2026-10-11)*: `parameters:`, one row per item the rung's deck is rendered from — the kind's `engine` and `deck` items the rung reads (`reads`), the scheduler's excepted — each by its name — the template's own word for it — and **who set its value**, in the words of `resolve`'s layers (*a pin · a sweep point · this stage's override · the rung · the stage's run card · the calculation's run card · the catalogue's default · not chosen*, [`execution/job-request.md`](?doc=execution/job-request.md) § 4) and, for the template's, the template's own (*the template · from the junction you cited · you set this · not chosen · not recorded*), an optional item nobody set with who answers it — the electronic state, the k-point mesh (the k-point split, and a transmission's mesh, three times the shared one), or the engine's own default (`resolve.BLANK_ANSWERED_BY`) — and a `SystemLabel` prep spells as the rung's or the trial's (`resolve.SET_AFTER`); the rows a rung decided first, as the pipeline log orders them (`pipeline_log.config_rows`). `resolve` puts them on each element (`ResolvedConfig.deck_sources`), and every road that renders a deck hands them over — prep's, and the re-render the gather compares with (`job-contracts.md` § 3.2) |
 | the deck's *not set* line for an `optional` item at `None` | a comment where the line would be, `# <keyword> not written: <not_set>` — the item's `not_set` (§ 5), written by whatever writes the item: the engine's line door, which alone knows whether an item it writes nothing for is not set or does not apply to this run (a target temperature in a CG relaxation), or the block that writes it (PySCF's solvent decoration and the vibration deck's density-fitting keywords). One helper words it for both engines (`script_emit.not_set_line`) *(2026-10-11)* |
 
 ---
@@ -2130,7 +2137,7 @@ a fact about the engine, not about our code:
 
 | the shape | the example | why splicing fails |
 |---|---|---|
-| **one parameter decides where another lands** | a stage moving `relax_type` from `CG` to `Verlet` moves the step budget from `MD.Steps` to `MD.FinalTimeStep` | the site itself is chosen by another value, so there is no fixed place to aim at |
+| **one parameter decides where another lands** | a stage moving `relax_type` from `CG` to `none` takes the step budget's `MD.Steps` line away with the whole relaxation block | the site itself is decided by another value, so there is no fixed place to aim at |
 | **one parameter writes two keywords** | a pinned `unpaired_electrons` writes `Spin.Fix` *and* `Spin.Total`, and the first is required or the second is silently ignored | substituting one keyword writes one line |
 | **a parameter writes no line at all** | ten SIESTA fields emit nothing at their defaults | there is nothing to substitute into — it would have to *insert*, and where to insert is the emitter's knowledge |
 
@@ -2693,11 +2700,10 @@ advice of *"around 6 or above"* — with no rationale anywhere in this project.
 **A scientific default cites the source that justifies it, in `help`, where the
 form shows it.**
 
-**A silent fallback is worse than a refusal.** The step-count map defaulted an
-unrecognised `relax_type` to `MD.Steps`; SIESTA bounds MD runs on
-`MD.FinalTimeStep` instead, whose default is 1. Adding an ensemble without
-touching that map would have given a one-step MD that reports success.
-**Where guessing wrong is invisible, refuse.**
+**A silent fallback is worse than a refusal.** **Where guessing wrong is
+invisible, refuse** — a run type the deck writer does not map to its step
+keyword is refused by name, never written as `MD.Steps` by default
+(`siesta/input.py`).
 
 **A `help` string is a claim about the engine, and it decays silently.** The
 deviation sweep (§ 5.2) set out to add missing *why* notes and found three help
@@ -2779,9 +2785,9 @@ anew — prepared again before its launch, or from the state saved before its
 group's first launch — get the same deck.
 
 > **This is also why D4 matters.** A stage overriding `relax_type` from `CG` to
-> `Verlet` moves the step budget from `MD.Steps` to `MD.FinalTimeStep` —
-> the *site itself* is chosen by another value. Rebuilding and rendering handles
-> that; splicing at anchors has nothing to aim at.
+> `none` takes the step budget's `MD.Steps` line away with the relaxation
+> block — the *site itself* is decided by another value. Rebuilding and
+> rendering handles that; splicing at anchors has nothing to aim at.
 
 ### 11.3 The wrapper needs to know the eigensolver
 

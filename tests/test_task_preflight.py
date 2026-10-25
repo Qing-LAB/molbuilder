@@ -316,15 +316,15 @@ def test_a_float_triple_takes_ints_per_component():
 
 
 def test_an_optional_field_still_checks_the_type_inside_it():
-    """The other half of the source-text bug.  ``Optional[float]`` is not
-    the string ``"float"``, so an optional field accepted anything at all."""
-    assert _errors(preflight(_staged({"md_target_temperature": "300"})))
+    """The other half of the source-text bug.  ``Optional[bool]`` is not
+    the string ``"bool"``, so an optional field accepted anything at all."""
+    assert _errors(preflight(_staged({"scf_must_converge": "300"})))
 
 
 def test_none_is_a_legal_value_for_an_optional_field():
     """An optional field unset is a real state the config declares.
     Checking the inner type must not cost it."""
-    assert preflight(_staged({"md_target_temperature": None})) == []
+    assert preflight(_staged({"scf_must_converge": None})) == []
 
 
 # --------------------------------------------------------------------- #

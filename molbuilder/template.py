@@ -2125,9 +2125,6 @@ def why_not_offered(name: str, value: Any, engine: str, kind: str) -> str:
                     "is not possible in TranSiesta', m_ts_options.F90): under "
                     "unrestricted the count floats")
     if name == "relax_type" and kind == "vibration":
-        if value in ("Verlet", "Nose"):
-            return ("Verlet and Nose integrate molecular dynamics, and the "
-                    "relax stage exists to reach a stationary point")
         if value == "none":
             return ("none relaxes nothing: relax_type names the relaxer a "
                     "vibration's relax stage uses, and whether that stage "
@@ -2768,8 +2765,14 @@ class Retired(NamedTuple):
     at: str
     #: The values that run as before without it: `jobset migrate` removes
     #: the item holding one of these (or none), and refuses any other by
-    #: name -- what the calculation was is kept, never rounded.
-    runs: Tuple[Any, ...] = ()
+    #: name -- what the calculation was is kept, never rounded.  ``None``:
+    #: every value -- nothing a calculation ran ever read it.
+    runs: Optional[Tuple[Any, ...]] = ()
+
+    def runs_without(self, value: Any) -> bool:
+        """Whether a calculation holding ``value`` runs as before without
+        the item (:attr:`runs`)."""
+        return self.runs is None or value in self.runs
 
 
 #: Items a schema once declared and no longer does -- read by the refusal
@@ -2792,6 +2795,16 @@ RETIRED_ITEMS: Dict[str, Retired] = {
         "it, and prep always copies the calculation's pseudopotentials "
         "beside its decks -- engines/template.md § 3", "2.10.0",
         runs=(True, False)),
+    **{name: Retired(
+        f"SIESTA's molecular dynamics ({what}) left the optimization kind "
+        f"at 2.40.2 with the Verlet and Nose run types: no calculation of "
+        f"molbuilder runs dynamics, and no relaxation's deck ever wrote it "
+        f"-- engines/template.md § 3", "2.40.2", runs=None)
+       for name, what in (("md_initial_temperature", "its initial "
+                           "temperature"),
+                          ("md_target_temperature", "its thermostat's "
+                           "target"),
+                          ("md_length_timestep", "its time step"))},
 }
 
 
@@ -2820,7 +2833,7 @@ def why_not_an_item(name: str, *, value: Any = None,
     ``value`` the one the name was given (``is_set``)."""
     if name in RETIRED_ITEMS:
         r = RETIRED_ITEMS[name]
-        if is_set and value not in r.runs:
+        if is_set and not r.runs_without(value):
             return (f"{name} = {value!r} was retired from the schema "
                     f"({r.why}) at a value that no longer runs -- delete it "
                     f"to accept what runs now; the calculation it described "

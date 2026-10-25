@@ -356,15 +356,13 @@ SET_AFTER = {
 #: chosen*.  For these the deck writes a value molbuilder works out: the
 #: electronic state's (ES1, `science/chemistry-correctness.md` § 2a; the
 #: deck's own note says from what), the k-point split from the mesh, the
-#: transmission's mesh from the SCF's (`kmesh.mesh_for`) and a Nosé run's
-#: target from its initial temperature (`siesta/input.py`).
+#: transmission's mesh from the SCF's (`kmesh.mesh_for`).
 #: Every other is the engine's own default, which the deck's not-set line
 #: names (`engines/template.md` § 6.6 obligation 4).
 BLANK_ANSWERED_BY = {
     **{name: "the electronic state decides it" for name in STATE_ITEMS},
     "parallel_over_k": "worked out from the k-point grid",
     "tbt_k_grid": "three times the shared k-point grid in the electrode plane",
-    "md_target_temperature": "the initial temperature, on a Nose run",
 }
 BLANK_ENGINE = "the engine's own default"
 
@@ -423,7 +421,7 @@ def _refuse_what_cannot_stand(values, provenance: Mapping[str, str],
     gives (`engines/template.md` § 5.3, ``template.why_not``): a component
     the kind fixes -- a transport calculation's third k component -- a
     choice the kind does not offer -- a vibration's relaxation set to
-    ``Verlet`` -- or a value at or below its hard limit -- ``fc_displacement
+    ``none`` -- or a value at or below its hard limit -- ``fc_displacement
     = 0``.  One pass and one door, so one value draws one refusal."""
     from .template import SAID, catalogue, select, shown, why_not
     for it in select(catalogue(), engine=engine, calculation=kind):

@@ -251,11 +251,10 @@ class SiestaConfig:
         metadata={"validate": (lambda value, cfg:
                                _validate_kgrid_displacement(value))})
 
-    # Relaxation; relax_type="none" disables the MD block entirely.
+    # Relaxation; relax_type="none" disables the relaxation block entirely.
     # SIESTA 5.4.2 step-count + max-displacement mapping (see
     # siesta/input.py:_relaxation_facts for the full emission code):
     #   CG / Broyden / FIRE -> MD.Steps + MD.MaxDispl, one pair for all three
-    #   Verlet / Nose -> MD.FinalTimeStep + MD.InitialTemperature
     # The labels below are generic; per-engine help text lives in the
     # FDF's verbose comments.
     relax_type: str = "CG"
@@ -298,24 +297,6 @@ class SiestaConfig:
     #: Rides to the wrapper as ``continue_retries`` does; SIESTA takes it
     #: on its command line (``MaxWalltime.Slack``), never in the deck.
     wall_slack: int = 600
-
-    # ---- Verlet / Nose dynamics (only emitted when relax_type is in
-    # ("Verlet", "Nose"); ignored otherwise).  Defaults are chosen to
-    # match SIESTA's room-temperature biomolecular MD convention.
-    # md_target_temperature defaults to None -> "use the same value as
-    # md_initial_temperature" so the Nose-Hoover thermostat has a
-    # sensible target without forcing the user to set both fields.
-    # The three MD knobs below are MEANINGFUL ONLY for Verlet / Nose
-    # dynamics (NOT for CG / Broyden / FIRE geometry relaxation), but
-    # SIESTA SILENTLY uses these defaults when the user picks Verlet
-    # or Nose from the form -- so the user gets a 300 K / 1 fs / 0 K
-    # target-temperature run with no UI hint that they could change
-    # them.  They are on the form so the user at least SEES them on
-    # the page; their help text marks
-    # them as ignored-for-CG so the form doesn't mislead non-MD users.
-    md_initial_temperature: float = 300.0
-    md_target_temperature: Optional[float] = None
-    md_length_timestep: float = 1.0
 
     # SCF / MD continuation
     # ``restart`` is the ONE field a user sets; it expands into the keys of

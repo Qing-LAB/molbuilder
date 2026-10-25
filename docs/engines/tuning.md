@@ -102,8 +102,8 @@ oscillation dominates the cost — don't switch back to CG).
 **Engine keyword:**
 
 - **SIESTA** `MD.TypeOfRun` — `CG` / `Broyden` / `FIRE` (`none` = single-point, skip
-  the MD block; `Verlet` / `Nose` also exist for finite-temperature MD, not geometry
-  optimization). The staged ladder uses CG for stage 1, Broyden for 2 + 3.
+  the relaxation block; molbuilder runs no molecular dynamics). The staged ladder
+  uses CG for stage 1, Broyden for 2 + 3.
 - **PySCF** — geomeTRIC, the one optimizer (translation-rotation-invariant internal
   coordinates, BFGS internally); [`pyscf.md` § 3](?doc=engines/pyscf.md) says why
   `berny` was retired.

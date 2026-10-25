@@ -367,8 +367,10 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geom
     # LAUNCHED AGAIN, the force constants start over -- nothing handed on.
     assert ("launched again into run-1: it starts over -- nothing is handed "
             "on from a run of its own") in run.said["launch freq again"].output
-    again = run.attempt("freq", 1)
-    assert again.is_dir() and not (again / ".continued-from").exists()
+    from molbuilder.runs import folder_answer
+    launch = folder_answer(run.attempt("freq", 1))["record"]["computation"][
+        "launch"]
+    assert launch["continued_from"] is None, launch
 
 
 def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):

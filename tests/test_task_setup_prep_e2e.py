@@ -514,14 +514,25 @@ def test_the_queue_the_request_names_stays_through_a_machine_and_an_ask(
     saved, and refused at prep on the cluster as a queue stated nowhere.
 
     MUTATION THIS MUST FAIL AGAINST: the queue cleared where the chosen
-    machine lists none (`renderQueues`)."""
+    machine does not list it (`renderQueues`)."""
+    from conftest import write_machine_record
+    from molbuilder.scheduler import Domain, Topology
     d = _a_described_probe(isolated_projects_root_module / "prep_queue")
+    # THIS MACHINE LISTS ANOTHER QUEUE: the request's `public` is not one.
+    write_machine_record(
+        scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=32),
+        domains=[Domain(name="general", partition="general", qos="public",
+                        max_time="1-00:00:00")],
+        env_init={"preamble": "true", "activation": "conda activate"})
     _open(page, flask_server, d)
     mem = "#ts-ask-mem"
     page.wait_for_selector("#ts-target-choice .opt", timeout=20000)
     if not page.is_visible(mem):
         page.click("#ts-target-choice .opt")     # the machine, as a person picks it
     page.wait_for_selector(mem, state="visible", timeout=20000)
+    said = page.text_content("#ts-queue-needs")
+    assert ("The job request names the queue public, which" in said
+            and "does not list; it stays as stated" in said), said
     page.fill(mem, "16G")
     page.dispatch_event(mem, "change")
     _page_free(page)

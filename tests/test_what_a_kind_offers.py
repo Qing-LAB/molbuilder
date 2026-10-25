@@ -10,8 +10,8 @@ gives); ``docs/engines/vibration.md`` § 4.6 (PCM reaches one route);
 
 PREVENTS, each read in the code before 2026-09-30:
 
-* a SIESTA vibration's relaxation run as dynamics (`Verlet`, `Nose`) or not
-  at all (`none`) -- offered on the form and the stage table (SS-C4);
+* a SIESTA vibration's relaxation not run at all (`none`) -- offered on the
+  form and the stage table (SS-C4);
 * an optimization asked to solve with `transiesta`, which dies after the
   queue wait (SO-C13);
 * a PySCF vibration run unrestricted, whose spectrum record carries one spin
@@ -59,19 +59,19 @@ def test_a_vibration_relaxes_with_a_relaxer(isolated_projects_root, door):
     Each says why a vibration does not take it, and what it does take.
 
     MUTATION THIS MUST FAIL AGAINST: the vibration's set undeclared (the
-    deck is written with `MD.TypeOfRun Verlet`)."""
+    relax rung's deck is written with no relaxation)."""
     def put(dest):
         if door == "template":
-            _template_says(dest, "relax_type", "Verlet")
+            _template_says(dest, "relax_type", "none")
         else:
-            _first_rung_overrides(dest, "relax_type", "Verlet")
+            _first_rung_overrides(dest, "relax_type", "none")
     _d, _s, said = _siesta(isolated_projects_root, "vibration",
                            before_prep=put, refused=True)
     assert "a vibration does not offer" in said, said
-    assert "molecular dynamics" in said, said
+    assert "none relaxes nothing" in said, said
     assert "CG, Broyden, FIRE" in said, said
-    assert ("the template sets relax_type = 'Verlet'" if door == "template"
-            else "stage 'relax' sets relax_type = 'Verlet'") in said, said
+    assert ("the template sets relax_type = 'none'" if door == "template"
+            else "stage 'relax' sets relax_type = 'none'") in said, said
 
 
 def test_an_optimization_offers_no_transport_solver(isolated_projects_root):
@@ -168,13 +168,13 @@ def test_the_form_and_the_stage_table_offer_the_kinds_set():
     setup columns route, as the browser asks them.
 
     MUTATION THIS MUST FAIL AGAINST: either surface reading the item's whole
-    `choices` (a vibration's relaxation cell offering `Verlet`)."""
+    `choices` (a vibration's relaxation cell offering `none`)."""
     with _client() as c:
         for choices in (_form_choices(c, "siesta", "vibration", "relax_type"),
                         _cell_choices(c, "siesta", "vibration", "relax_type")):
             assert choices == ["CG", "Broyden", "FIRE"], choices
-        assert "Verlet" in _cell_choices(c, "siesta", "optimization",
-                                         "relax_type")
+        assert "none" in _cell_choices(c, "siesta", "optimization",
+                                       "relax_type")
         assert _form_choices(c, "pyscf", "vibration",
                              "spin_treatment") == ["restricted"]
         assert "transiesta" not in _form_choices(c, "siesta", "optimization",
@@ -204,12 +204,12 @@ def test_a_description_refuses_what_its_kind_does_not_offer():
     ladder = vibration_stages("siesta", already_relaxed=False)
     relax = ladder[0]
     ladder = (Stage(name=relax.name, overrides={**dict(relax.overrides or {}),
-                               "relax_type": "Verlet"}),) + tuple(ladder[1:])
+                               "relax_type": "none"}),) + tuple(ladder[1:])
     with pytest.raises(D.DescribeError) as refused:
         D.build_description(WATER(), SiestaConfig(system_label="JOB"), ladder,
                             engine="siesta", shape="hierarchical", name="JOB",
                             calculation="vibration", source="water.xyz")
     said = str(refused.value)
-    assert "relax_type = 'Verlet'" in said, said
+    assert "relax_type = 'none'" in said, said
     assert "a vibration does not offer" in said, said
     assert "CG, Broyden, FIRE" in said, said

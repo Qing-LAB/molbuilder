@@ -248,7 +248,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` — the rung's mesh, counts and offset, from `kmesh.write` | § 6.1 |
 | 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | the ScaLAPACK/ELPA orbital-distribution block. **Tunable, and omitted entirely by default**, which is how SIESTA's own automatic is requested — the two states and the guidance are [`tuning.md § 2.11`](?doc=engines/tuning.md) |
 | 13 | Diagonalizer | `Diag.Algorithm` / `Diag.ELPA.GPU` | § 7 |
-| 14 | Geometry opt / dynamics | relax: `MD.TypeOfRun` + `MD.Steps` + `MD.MaxForceTol`; dynamics (Verlet/Nose): `MD.LengthTimeStep`, `MD.InitialTemperature`, `MD.TargetTemperature` (Nosé) | skipped if `relax_type == "none"` |
+| 14 | Geometry optimisation | `MD.TypeOfRun` (CG / Broyden / FIRE) + `MD.Steps` + `MD.MaxForceTol` + `MD.MaxDispl`. molbuilder runs no molecular dynamics *(the user, 2026-10-25)*: `MD.FinalTimeStep`, which bounds SIESTA's dynamics and which SIESTA reads at its own default on every run, is not written, and the section's note says so | skipped if `relax_type == "none"` |
 | 15 | Output flags | `WriteForces`, `WriteCoorStep`, `WriteCoorXmol`, `SaveHS`, … | `WriteForces` and `WriteCoorStep` always `true`, on every kind: molbuilder reads each step's forces and coordinates back, so the rung fixes them (`role`, [`template.md` § 6.4](?doc=engines/template.md)) |
 | 16 | Troubleshooting block | inline tuning hints | only if `verbose_comments` |
 

@@ -1272,10 +1272,11 @@ def _decide_template(rec: "_Records", task):
                       if k in _T.RETIRED_ITEMS]
     stuck = ([(f"the template says {it.name} = {it.value!r}", it.name)
               for it in retired
-              if it.is_set and it.value not in _T.RETIRED_ITEMS[it.name].runs]
+              if it.is_set
+              and not _T.RETIRED_ITEMS[it.name].runs_without(it.value)]
              + [(f"stage {st!r} overrides {k} = {v!r}", k)
                 for st, k, v in stage_retired
-                if v not in _T.RETIRED_ITEMS[k].runs])
+                if not _T.RETIRED_ITEMS[k].runs_without(v)])
     if stuck:
         said_of, name = stuck[0]
         raise MigrateError(

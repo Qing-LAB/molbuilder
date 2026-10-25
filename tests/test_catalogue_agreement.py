@@ -87,7 +87,7 @@ def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
 
     That is not hypothetical: until 2026-08-14 the operator string-matched the
     annotation, and ``Optional[float]`` is not ``"float"``, so ``spin_total``
-    and ``md_target_temperature`` were silently never widened (audit § 25.3).
+    and the optional floats were silently never widened (audit § 25.3).
     """
     import typing
     from molbuilder import template as _T

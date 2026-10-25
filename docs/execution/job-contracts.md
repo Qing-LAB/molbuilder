@@ -1286,8 +1286,8 @@ generation time:
   recorded*). *Not chosen* marks a value nobody chose — obligation 4's mark:
   the documented default, written; and for an optional item nobody set, the
   row says who answers it instead (`resolve.BLANK_ANSWERED_BY`): the
-  electronic state, the k-point mesh (`Diag.ParallelOverK`), a Nosé run's
-  initial temperature, or the engine's own default, which the deck's not-set
+  electronic state, the k-point mesh (`Diag.ParallelOverK`), or the
+  engine's own default, which the deck's not-set
   line names. A value a step after `resolve` sets is said as that step's
   (`resolve.SET_AFTER`): a transport rung's `SystemLabel`, spelt from the
   calculation's, and a bench trial's, with its coordinate. The rows a rung decided come first, each

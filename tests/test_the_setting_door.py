@@ -84,7 +84,7 @@ ACCEPTS = [
     ("kgrid", "override", "optimization", "tight", [4.0, 4, 1], None),
     # ...§ 5.3's door: a choice the kind does not offer, a component it
     # fixes.
-    ("relax_type", "override", "vibration", "relax", "Verlet",
+    ("relax_type", "override", "vibration", "relax", "none",
      ", which a vibration does not offer"),
     # A PREP FLAG: the launch shape alone; no cap is the row left blank.
     ("max_memory_mb", "flag", "optimization", None, 0,

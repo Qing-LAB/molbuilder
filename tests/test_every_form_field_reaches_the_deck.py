@@ -10,9 +10,8 @@ setting nobody wired up is exactly the one nobody writes a test for.
 **So this asks it of every field the form offers**, from the catalogue, with no
 list of names here — a parameter added tomorrow is covered the day it appears.
 
-**Why some fields need an enabling context.** `MD.LengthTimeStep` is not in a
-CG relaxation's deck and should not be; `Spin.Total` is not in a spin-restricted
-one. A field is honoured if it changes the deck under *some* legal
+**Why some fields need an enabling context.** `Spin.Total` is not in a
+spin-restricted deck and should not be. A field is honoured if it changes the deck under *some* legal
 configuration, so each such field names the context that switches it on. A
 field that changes nothing under any of them is either dead or exempt, and
 exempt means named below with a reason.
@@ -49,10 +48,6 @@ def _struct() -> Structure:
 
 #: Contexts that switch a conditional field on.  Tried in order.
 _ENABLING = {
-    "md_initial_temperature": [{"relax_type": "Nose"}],
-    "md_target_temperature":  [{"relax_type": "Nose"}],
-    "md_length_timestep":     [{"relax_type": "Nose"}],
-    "md_max_cg_displ":        [{"relax_type": "Nose"}],
     "diag_algorithm":         [{"diag_algorithm": "ELPA-2STAGE"}],
     "use_gpu":             [{"diag_algorithm": "ELPA-2STAGE"}],
     "auxbasis":               [{"density_fit": True}],

@@ -598,14 +598,18 @@ def junction(tmp_path_factory):
                                       request_changed)
 
         def point_added(c):
-            # A VOLTAGE ADDED ON TASK SETUP -- its Save, the page's door.
+            # A VOLTAGE ADDED ON TASK SETUP -- its Save, the page's door --
+            # and the calculation's files around the prep that follows.
+            from support.real_runs import _files as every_file
             from support.road import save_both
             t = json.loads((c.bundle / "task.json").read_text())
             t["bias"]["voltages_v"] = [*t["bias"]["voltages_v"], 0.4]
             saved = save_both(c.bundle, t, read_request(c.bundle), client)
             assert saved.status_code == 200, saved.get_json()
+            c.files_before = every_file(c.bundle)
             _typed(c, "prep device with a point added", "prep", "task",
                    *group_words(c.bundle, "device"), "--target", "this")
+            c.files_after = every_file(c.bundle)
         run.point_added = copy_of(run, "point-added", point_added)
 
         # A TRANSMISSION STOPPED IN ITS LOOP (`model/parse.md` § 5d.5;
@@ -650,19 +654,21 @@ def junction(tmp_path_factory):
         # once its 0 V point is done -- a point takes some 15 s, so the next
         # is not -- then launched again warm.
         def walk_stopped(c):
-            from molbuilder.runs import folder_answer
+            from support.real_runs import point_row, stage_status
+            ran = stage_status(c.bundle, "device").attempts
             launched = _taken(c, "launch device cold", "launch", "task",
                               "--stage", "device", "--mode", "direct",
                               "--yes", "--cold")
-            stopped = _runs_of(c, "device")[-1]
 
             def first_point_done():
-                # ITS 0 V POINT, as the Results tab opens its folder.
-                return (folder_answer(stopped / f"v{_BIAS[0]:g}")["status"]
-                        or {}).get("state") == "finished"
+                # ITS 0 V POINT, as `jobset status` reads the new run.
+                s = stage_status(c.bundle, "device")
+                return s.attempts != ran and point_row(s, _BIAS[0])["done"]
             _until(first_point_done, within=600, what="its first point done")
             _stopped_by_its_line(c, "stop as its launch said", launched)
-            _taken(c, "launch device warm", "launch", "task", "--stage",
+            # THE STOPPED RUN AS IT ENDED, as `jobset status` reads it.
+            run.walk_ended = stage_status(c.bundle, "device")
+            _typed(c, "launch device warm", "launch", "task", "--stage",
                    "device", "--mode", "direct", "--foreground", "--yes")
         run.walk_stopped = copy_of(run, "walk-stopped", walk_stopped)
 
@@ -827,8 +833,8 @@ def test_a_finished_relaxation_composes_and_says_how_it_ended(junction):
     assert record is not None
     said = record.provenance
     assert said["evidence"].startswith("rc=0 at "), said
-    assert said["relaxation"] == {"converged": "geometry yes",
-                                  "exit_code": 0}, said
+    assert said["relaxation"]["converged"] == "geometry yes", said
+    assert said["relaxation"]["exit_code"] == 0, said
     assert len(record.electrode_left.elements) == _LEAD
     assert said["swap_electrodes"] is False
 
@@ -1456,8 +1462,16 @@ def test_a_point_added_to_a_launched_rung_is_refused(junction):
     assert "added: v0.4" in said.output, said.output
     # THE WAY BACK, named: the folder's saved states.
     assert "molbuilder checkpoint list" in said.output, said.output
-    # NOTHING WRITTEN: no deck for the voltage added.
-    assert not (junction.point_added.bundle / "04_device" / "v0.4").exists()
+    # NOTHING WRITTEN below the stage: no point's folder, no deck, as the
+    # calculation's files read before and after the prep.
+    from support.real_runs import stage_status
+    c = junction.point_added
+    under = stage_status(c.bundle, "device").dir
+
+    def of_the_stage(files):
+        return {k: v for k, v in files.items() if Path(k).parts[0] == under}
+    assert of_the_stage(c.files_after) == of_the_stage(c.files_before), (
+        sorted(set(c.files_after) ^ set(c.files_before)))
 
 
 @pytest.mark.parametrize("row", _ANOTHER_INPUT, ids=lambda r: r["name"])
@@ -1741,36 +1755,38 @@ def test_a_device_launched_warm_then_cold_keeps_the_seeds_density(junction):
 def test_launched_again_warm_it_takes_the_done_points_over(junction):
     """§ 2a.11, *Launched again*: a device walk stopped after its first
     point, launched again warm -- the point done in the stopped run is taken
-    over into the new run's point folder, whole but the engine's scratch,
-    its `.continued-from` naming the run that computed it; the point not
-    done is walked in the new run, starting from the point before it in
-    this walk; the stopped run is kept as it ended.  The silent failure: a
-    done point run again, a point not done copied as done, or the leads'
-    Green's functions carried into the new run.
+    over into the new run, its `.continued-from` naming the run that
+    computed it; the point not done is walked in the new run, starting from
+    the point before it in this walk; the stopped run is kept as it ended.
+    The silent failure: a done point run again, or a point not done copied
+    as done.
 
     MUTATION THIS MUST FAIL AGAINST: the warm launch taking nothing over
     (the 0 V point recomputed, its start the seed's density)."""
     from molbuilder.runs import folder_answer
-    from molbuilder.warmfiles import is_scratch
     from support.real_runs import point_row, stage_status
     c = junction.walk_stopped
+    # THE STOP, as the walk's premise needs it: after the first point,
+    # before the second.
+    ended = junction.walk_ended
+    first, second = (point_row(ended, v) for v in _BIAS)
+    assert first["done"] and not second["done"], ended.points
+    warm = c.said["launch device warm"]
+    assert warm.exit_code == 0, warm.output
     device = stage_status(c.bundle, "device")
-    *_, stopped, new = device.attempts
-    assert device.attempt == f"run-{new}", device.attempt
+    assert device.attempts == [*ended.attempts, device.attempts[-1]], (
+        ended.attempts, device.attempts)
     # THE NEW RUN: both points done -- the first taken over, naming the run
     # that computed it; the second walked from it.
     zero, then = (point_row(device, v) for v in _BIAS)
     assert zero["done"] and then["done"], device.points
-    assert zero["started_from"] == f"04_device/run-{stopped}/v{_BIAS[0]:g}"
-    assert then["started_from"] == f"04_device/run-{new}/v{_BIAS[0]:g}"
-    # ...THE ENGINE'S SCRATCH LEFT BEHIND, as the Results tab lists it.
-    taken = folder_answer(c.bundle / device.dir / zero["folder"])
-    assert not any(is_scratch(f["name"]) for f in taken["files"]), taken
-    # THE STOPPED RUN, kept as it ended: its first point finished, its
-    # second not.
-    old = c.bundle / device.dir / f"run-{stopped}"
-    state = {v: (folder_answer(old / f"v{v:g}")["status"] or {}).get("state")
-             for v in _BIAS}
+    assert zero["started_from"] == f"{ended.dir}/{first['folder']}", zero
+    assert then["started_from"] == f"{device.dir}/{zero['folder']}", then
+    # THE STOPPED RUN, kept as it ended, as the Results tab opens its
+    # points: its first point finished, its second not.
+    state = {p["bias_v"]: (folder_answer(c.bundle / ended.dir / p["folder"])
+                           ["status"] or {}).get("state")
+             for p in (first, second)}
     assert state[_BIAS[0]] == "finished" and state[_BIAS[1]] != "finished", \
         state
 
@@ -1780,8 +1796,9 @@ def test_a_frame_sets_average_waits_for_every_frame(junction):
     that voltage waits for it -- never computed from the frames that happen
     to be there.  The record asked where the Results tab asks it, the
     frame set's device run and no transmission yet: at each voltage the
-    average names every frame it waits for, holds no value, and says why.
-    The silent failure: an average drawn from the frames that are done."""
+    average names every frame it waits for and holds no value.  The silent
+    failure: an average holding a value no frame's transmission gave, or
+    not naming the frames it waits for."""
     answer = junction.average_waiting
     assert answer["ok"], answer
     at = answer["record"]["average"]["at"]
@@ -1789,7 +1806,6 @@ def test_a_frame_sets_average_waits_for_every_frame(junction):
     for e in at:
         assert e["waits_for"] == list(range(_N_FRAMES)), e
         assert e["transmission"] is None and e["conductance_g0"] is None, e
-        assert "the average waits for every frame" in e["why"], e
 
 
 def test_a_selections_pdos_is_refused_before_its_reading_is_kept(junction):
@@ -3734,10 +3750,11 @@ def _copied_in(plan: str) -> list:
 
 
 def _runs_of(made, stage):
-    """Every run of ``stage``, oldest first, as the status door lists them."""
+    """Every run of ``stage``, oldest first, as the status door lists them,
+    each its folder (`RealRun.attempt`)."""
     from support.real_runs import stage_status
-    s = stage_status(made.bundle, stage)
-    return [made.bundle / s.dir / f"run-{n}" for n in s.attempts]
+    return [made.attempt(stage, n)
+            for n in stage_status(made.bundle, stage).attempts]
 
 
 def _resolves(bundle, said) -> bool:

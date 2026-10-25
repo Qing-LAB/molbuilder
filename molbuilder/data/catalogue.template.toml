@@ -411,7 +411,7 @@ label = "Electronic temperature (smearing)"
 tier = "advanced"
 help = """
 How sharply the electronic states fill at the Fermi level -- the width of the Fermi-Dirac smearing.
-This is not the temperature of your simulation. It is a property of the electrons and it applies to every run type, including a 0 K geometry relaxation with no atomic motion at all. Do not confuse it with 'Initial temperature' / 'Target temperature', which are about how fast the atoms move and are read only by Verlet / Nose molecular dynamics. The two are independent: a metal needs smearing whether or not its atoms are moving.
+This is not the temperature of your simulation. It is a property of the electrons and it applies to every run type, including a 0 K geometry relaxation with no atomic motion at all: a metal needs smearing whether or not its atoms are moving.
 Why it exists: in a metal, states sit right at the Fermi level and swap occupancy between SCF cycles, so the density oscillates and never settles. Smearing lets states be partially occupied, which damps that. A molecule with a clear HOMO-LUMO gap does not need it, and for such a system the value barely matters.
 Raise it to 1000-2000 K for a metal or a metal-molecule junction whose SCF will not converge -- after lowering the mixing weight, which is the first thing to try. Lower it toward 0 only for an insulator where you want strictly integer occupations.
 A raised smearing temperature adds an entropy term to the free energy (F = E - TS), which is what makes the free-energy convergence criterion worth turning on for exactly these systems -- see 'Also require the free energy to settle'. 300 K is SIESTA's own default.
@@ -486,23 +486,22 @@ manual = "SIESTA 5.4.2 §7 'STRUCTURAL RELAXATION, PHONONS, AND MOLECULAR DYNAMI
 calculations = ["optimization", "vibration"]
 stages = ["relaxation"]
 type = "enum"
-choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
+choices = ["CG", "Broyden", "FIRE", "none"]
 value = "CG"
 default = "CG"
 engine_default = { value = "CG", source = "SIESTA 5.4.2 read_options.F90:1281: dyntyp = fdf_get('MD.TypeOfRun', 'cg') -- compat-pre-v4-dynamics unset" }
 recommended = { vibration = "Broyden" }
-# a vibration's `relax` stage relaxes: dynamics or no relaxation is not one (SS-C4)
+# a vibration's `relax` stage relaxes: no relaxation is not one
 offered = { vibration = ["CG", "Broyden", "FIRE"] }
 group = "stage"
-label = "Relaxation / MD algorithm"
+label = "Relaxation algorithm"
 help = """
-How the atoms are moved between steps: either an optimiser walking downhill to a minimum, or a molecular-dynamics integrator following the atoms in time.
+How the atoms are moved between steps: an optimiser walking downhill to a minimum.  molbuilder runs no molecular dynamics (SIESTA's Verlet and Nose).
 
   - CG       -- robust for loose warm-up stages (far from minimum, large forces).  No memory cost.  Oscillates near a minimum on stiff / coupled systems (metals, interfaces, vdW stacks).
   - Broyden  -- quasi-Newton; best for publishable / tight stages on organic-on-metal interfaces, surfaces, anything where CG oscillates.
   - FIRE     -- MD-inspired; robust on rough landscapes (random builder guesses).
-  - Verlet / Nose -- not geometry relax; finite-T MD only.
-  - none     -- single-point (skip MD block entirely).
+  - none     -- single-point (skip the relaxation block entirely).
 
 Recommended workflow: stage 1 CG (warm-up), then stage 2 Broyden (refine).
 """
@@ -511,9 +510,9 @@ Recommended workflow: stage 1 CG (warm-up), then stage 2 Broyden (refine).
 kind = "deck"
 category = ["procedure"]
 engines = ["siesta"]
-expands = ["MD.Steps", "MD.FinalTimeStep"]
-engine_key = "MD.Steps (CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)"
-manual = "SIESTA 5.4.2 §7.2 'Structural relaxation' + §7.4 'Molecular dynamics'"
+expands = ["MD.Steps"]
+engine_key = "MD.Steps"
+manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
 calculations = ["optimization", "vibration"]
 stages = ["relaxation"]
 type = "int"
@@ -525,10 +524,9 @@ group = "budget"
 label = "Max geometry-optimisation steps"
 tier = "advanced"
 help = """
-Outer loop: the most geometry steps the optimiser is allowed, each step being a full SCF plus forces plus one move of the atoms.
-Which keyword carries it is decided by MD.TypeOfRun: CG / Broyden / FIRE relax and bound the loop with ``MD.Steps``; Verlet / Nose integrate and bound it with ``MD.FinalTimeStep`` instead (SIESTA 5.4.2, siesta_init.F -- idyn 0 uses MD.Steps, idyn 1-5 use MD.InitialTimeStep..MD.FinalTimeStep).
+Outer loop: the most geometry steps the optimiser is allowed, each step being a full SCF plus forces plus one move of the atoms -- SIESTA's ``MD.Steps``.
 The shipped ladder: coarse 600, medium 200, tight 100 -- a small displacement cap is slow per step but needs few steps from a publishable-converged starting geometry.
-A well-behaved relaxation converges in 30-150 steps, so 200 is a safety cap, not a target. For molecular dynamics it is a duration instead: steps x timestep is the timescale you sample, so pick it from the physics you want to see.
+A well-behaved relaxation converges in 30-150 steps, so 200 is a safety cap, not a target.
 """
 
 [item.relax_force_tol]
@@ -552,7 +550,7 @@ group = "stage"
 label = "Force convergence threshold"
 tier = "advanced"
 help = """
-The relaxation declares success when the largest force on any unconstrained atom falls below this, in eV/Å. Ignored by Verlet/Nose, which are MD, not relax.
+The relaxation declares success when the largest force on any unconstrained atom falls below this, in eV/Å.
 Per-tier (eV/Å): screening 0.10, loose preopt 0.05, publishable 0.04 (SIESTA's own default), tight (vib/IR) 0.01, very-tight (NEB barrier) 0.001.
 SIESTA's own default is 0.04 eV/Å -- the 'publishable' row above. This catalogue starts at 0.02, twice as tight, because a relaxation that stops at the loose end leaves residual forces big enough to contaminate a frequency calculation run on top of it, and re-relaxing afterwards costs more than the extra steps did. For a single-point or a screening pass, 0.04 is the engine's own answer.
 SIESTA checks max force only, unlike the 5-criteria geomeTRIC/Gaussian convention.
@@ -650,78 +648,6 @@ tier = "advanced"
 help = """
 How long before the job's wall the engine stops itself, with its restart state saved whole (running-a-job.md 3.6). The launch tells the job the wall it was sent with; the run script hands the engine what is left and this slack, and the engine stops once less than the slack is left -- SIESTA told on its command line, a PySCF deck by the deadline it computes.
 SIESTA checks the clock after every SCF iteration and every geometry step; a PySCF deck after every geometry step, and before every displaced SCF of a spectrum. Set it longer than the longest of those plus the write, or the kill is the scheduler's, mid-write. A step cut by the wall is then re-done from the state saved before it.
-"""
-
-[item.md_initial_temperature]
-kind = "engine"
-category = ["procedure"]
-engines = ["siesta"]
-anchor = "MD.InitialTemperature"
-engine_key = "MD.InitialTemperature"
-manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
-calculations = ["optimization"]
-type = "float"
-value = 300.0
-default = 300.0
-engine_default = { value = 0.0, source = "SIESTA 5.4.2 read_options.F90:1535: tempinit = fdf_get('MD.InitialTemperature', 0.0_dp, 'K')" }
-unit = "K"
-range = [0.0, 5000.0]
-group = "profile"
-label = "Initial temperature"
-tier = "advanced"
-help = """
-The temperature the initial atomic velocities are drawn for, in Verlet and Nose molecular dynamics.  CG, Broyden and FIRE geometry relaxation ignore it -- they have no velocities to seed.
-This is about the ATOMS, not the electrons.  It is a different quantity from 'Electronic temperature (smearing)', which shares the word and the unit and nothing else: that one sets how sharply electronic states fill at the Fermi level and applies to every run type, including this one.  Setting them to match means nothing -- an MD at 0 K still needs electronic smearing if the system is metallic.
-SIESTA's own default is 0 K, a start from rest.  This catalogue starts at 300 K because a run seeded at 0 K spends its opening picoseconds simply acquiring thermal motion, and 300 K is both room temperature and the condition most reported simulations are run at.  Set it to 0 deliberately if you want the cold start.
-"""
-
-[item.md_target_temperature]
-kind = "engine"
-category = ["procedure"]
-engines = ["siesta"]
-anchor = "MD.TargetTemperature"
-engine_key = "MD.TargetTemperature"
-manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
-calculations = ["optimization"]
-type = "float"
-engine_default = { value = 0.0, source = "SIESTA 5.4.2 read_options.F90:1588: tt = fdf_get('MD.TargetTemperature', 0.0_dp, 'K')" }
-unit = "K"
-range = [0.0, 5000.0]
-group = "profile"
-label = "Target temperature (NVT)"
-null_label = "(use MD.InitialTemperature)"
-optional = true
-tier = "advanced"
-not_set = "SIESTA's own default is 0 K (read_options.F90); a Nose run never meets it, because a blank target is written as the initial temperature"
-help = """
-The temperature a Nose-Hoover thermostat holds the system at during NVT dynamics (K).
-
-Only Nose dynamics reads it; CG, Broyden, FIRE and Verlet ignore it.  Left unset it falls back to md_initial_temperature.
-
-Set it for any thermostatted run: without a target SIESTA aims at 0 K and the run quenches instead of equilibrating.
-"""
-
-[item.md_length_timestep]
-kind = "engine"
-category = ["procedure"]
-engines = ["siesta"]
-anchor = "MD.LengthTimeStep"
-engine_key = "MD.LengthTimeStep"
-manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
-calculations = ["optimization"]
-type = "float"
-value = 1.0
-default = 1.0
-engine_default = { value = 1.0, source = "SIESTA 5.4.2 read_options.F90:1511: dt = fdf_get('MD.LengthTimeStep', 1._dp, 'fs')" }
-unit = "fs"
-range = [0.1, 5.0]
-group = "profile"
-label = "MD timestep"
-tier = "advanced"
-help = """
-How much simulated time one step of Verlet/Nose dynamics advances, in fs.
-1.0 fs is SIESTA's default and works for systems without H; bonded H vibrates fast enough that it typically needs 0.5 fs for stable energy conservation. Too long a step and the total energy drifts instead of being conserved.
-Ignored by CG / Broyden / FIRE geometry relaxation, which do not integrate time.
 """
 
 [item.restart]

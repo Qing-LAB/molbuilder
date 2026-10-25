@@ -288,11 +288,11 @@ def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):
     """`engine_only` names what the engine read and no catalogue item
     writes (`model/parse.md` § 5d.3), as the Results tab's folder door
     answers it.  SIESTA reads some keys twice, each time its own default --
-    `DM.NumberPulay` in this run's fdf log -- and such a key is not the
-    deck's.  A key a catalogue item writes is a row of the setup, never one
-    of these: `MeshCutoff` (`mesh_cutoff`), and `MD.FinalTimeStep`, which
-    SIESTA reads twice too (`relax_steps`, its keys `MD.Steps` and
-    `MD.FinalTimeStep`).
+    `DM.NumberPulay` and `MD.FinalTimeStep` in this run's fdf log -- and
+    such a key is not the deck's: no item writes `MD.FinalTimeStep`, which
+    bounds the molecular dynamics molbuilder does not run (`engines/siesta.md`
+    § 3, row 14).  A key a catalogue item writes is a row of the setup, never
+    one of these: `MeshCutoff` (`mesh_cutoff`).
 
     MUTATION THIS MUST FAIL AGAINST: `in_deck` from a top-level `default`
     alone -- a key read several times has none.
@@ -300,11 +300,11 @@ def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):
     from molbuilder.runs import folder_answer
     setup = folder_answer(stopped)["record"]["setup"]
     rows = {r["key"].lower(): r for r in setup["engine_only"]}
-    pulay = rows["dm.numberpulay"]
-    assert len(pulay["readings"]) == 2 and pulay["in_deck"] is False, pulay
+    for key in ("dm.numberpulay", "md.finaltimestep"):
+        row = rows[key]
+        assert len(row["readings"]) == 2 and row["in_deck"] is False, row
     written = {k.lower() for r in setup["rows"] for k in r.get("keys", [])}
-    for key in ("meshcutoff", "md.finaltimestep"):
-        assert key in written and key not in rows, key
+    assert "meshcutoff" in written and "meshcutoff" not in rows, written
 
 
 @pytest.fixture(scope="module")

@@ -105,7 +105,7 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
 
     MUTATION THIS MUST FAIL AGAINST: the card's wall not exported to a run
     here (`submit._go`; SIESTA relaxes H2 to its end, converged); the wall
-    written into the deck at prep; the wall read as an SCF failure (the
+    read as an SCF failure (the
     grammar without `OUT_OF_TIME`); a warm retry after it, its run 1."""
     from molbuilder.parse.dirs.rundir import run_state_of
     from molbuilder.runfiles import RunNames

@@ -31,7 +31,6 @@ seven months nothing had ever typed into it.
 from __future__ import annotations
 
 import json
-import shutil
 
 import pytest
 
@@ -300,7 +299,7 @@ def out_of_set_dir(isolated_projects_root_module):
         run=derive_run("probe", stage_names=("relax", "freq")),
         structure=StructureRef(source="probe.source.xyz"),
         calculation="vibration", varies=("relax_type",),
-        stages=(Stage(name="relax", overrides={"relax_type": "Verlet"}),
+        stages=(Stage(name="relax", overrides={"relax_type": "none"}),
                 Stage(name="freq", overrides={}))))
     _request_beside(d)
     yield d
@@ -324,7 +323,6 @@ def test_a_stored_value_the_kind_does_not_offer_is_shown_as_itself(
         "  return {value: n.value, text: n.selectedIndex < 0 ? null"
         "          : n.options[n.selectedIndex].text,"
         "          options: [...n.options].map(o => o.value)}; }")
-    assert cell and cell["value"] == "Verlet", cell
-    assert cell["text"] == "Verlet (not offered here)", cell
+    assert cell and cell["value"] == "none", cell
+    assert cell["text"] == "none (not offered here)", cell
     assert {"CG", "Broyden", "FIRE"} <= set(cell["options"]), cell
-    assert "Nose" not in cell["options"], cell

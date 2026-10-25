@@ -364,9 +364,9 @@ def _bench_marks_for(struct, cfg, block_size, bs_range) -> dict:
             **({"BlockSize": block_size} if block_size is not None else {}),
             "MaxSCFIterations":  cfg.max_scf_iter,
             # only when the DECK carries the line (CG/Broyden/FIRE): relax
-            # "none" and the Verlet/Nose dynamics emit no MD.Steps, and a
-            # defaults row for an absent keyword is the block lying -- the same
-            # rule as BlockSize's state three one entry up (R11, 2026-08-12).
+            # "none" emits no MD.Steps, and a defaults row for an absent
+            # keyword is the block lying -- the same rule as BlockSize's state
+            # three one entry up (R11, 2026-08-12).
             **({"MD.Steps": cfg.relax_steps}
                if (cfg.relax_type
                    and cfg.relax_type.strip().upper()
@@ -487,7 +487,7 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     (`script-preparation.md` § 4.1).  Every value here is a function of
     ``cfg`` alone, so there was never anything to wait for.
     """
-    # Relaxation / dynamics.  In SIESTA 5.4.2 one step count and one
+    # Relaxation.  In SIESTA 5.4.2 one step count and one
     # displacement cap serve every relaxation -- ``MD.Steps`` and
     # ``MD.MaxDispl`` are read for CG, Broyden and FIRE alike.  Measured
     # on H2 with ``MD.TypeOfRun Broyden`` + ``MD.Steps 5`` +
@@ -495,53 +495,25 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     #   redata: Dynamics option        = Broyden coord. optimization
     #   redata: Maximum number of optimization moves = 5
     #
-    # Verlet / Nose (NVE / NVT dynamics, not relaxation) bound their loop
-    # by time instead -- ``MD.FinalTimeStep`` and the temperature block --
-    # and are written no ``MD.Steps``.
+    # molbuilder runs no molecular dynamics (Verlet / Nose; the user,
+    # 2026-10-25): every run type it offers relaxes.
     if not (cfg.relax_type and cfg.relax_type.lower() != "none"):
         return None
     relax_kind = cfg.relax_type.strip().upper()
-    is_md = relax_kind in ("VERLET", "NOSE")
-    # Universal step-count keyword for CG / Broyden / FIRE.
-    # Verlet / Nose use MD.FinalTimeStep instead (the loop is
-    # time-based, not step-count-based) -- handled below.
-    _STEP_KW = {
-        "CG":      "MD.Steps",
-        "BROYDEN": "MD.Steps",
-        "FIRE":    "MD.Steps",
-        "VERLET":  "MD.FinalTimeStep",
-        "NOSE":    "MD.FinalTimeStep",
-    }
-    # REFUSED, never defaulted: SIESTA's geometry loop is bounded by a
-    # DIFFERENT keyword depending on the run type (siesta_init.F: idyn 0
-    # bounds on MD.Steps, idyn 1-5 on MD.InitialTimeStep..FinalTimeStep).
+    # REFUSED, never defaulted: SIESTA bounds its geometry loop by a
+    # keyword the run type decides (siesta_init.F: idyn 0 bounds on
+    # MD.Steps, the dynamics run types on MD.FinalTimeStep), and guessing
+    # wrong gives a run that reports success.
+    _STEP_KW = {"CG": "MD.Steps", "BROYDEN": "MD.Steps", "FIRE": "MD.Steps"}
     if relax_kind not in _STEP_KW:
         raise ValueError(
-            f"relax_type {cfg.relax_type!r} has no step-count keyword "
-            f"mapping. SIESTA bounds a relaxation with MD.Steps and an MD "
-            f"run with MD.FinalTimeStep, and guessing wrong gives a "
-            f"one-step run that reports success. Add it to _STEP_KW in "
-            f"siesta/input.py with the keyword its MD.TypeOfRun family "
-            f"uses (known: {', '.join(sorted(_STEP_KW))}).")
-    step_kw = _STEP_KW[relax_kind]
-    # Universal displacement-cap keyword for CG / Broyden / FIRE;
-    # Verlet / Nose have no per-step displacement cap (forces +
-    # masses drive the timestep instead).
-    displ_kw = "MD.MaxDispl" if not is_md else None
-
-    # A Nose thermostat with no target temperature set holds the run at
-    # the temperature it started from.  The fallback is the ENGINE's rule,
-    # so it is resolved here and handed to the door rather than left for
-    # the door to guess.
-    target_T = (cfg.md_target_temperature
-                if cfg.md_target_temperature is not None
-                else cfg.md_initial_temperature)
+            f"relax_type {cfg.relax_type!r} is not a relaxation molbuilder "
+            f"runs -- its step keyword is not known here (known: "
+            f"{', '.join(sorted(_STEP_KW))}).")
     return {
         "relax_kind": relax_kind,
-        "is_md":      is_md,
-        "step_kw":    step_kw,
-        "displ_kw":   displ_kw,
-        "target_t":   target_T if is_md else None,
+        "step_kw":    _STEP_KW[relax_kind],
+        "displ_kw":   "MD.MaxDispl",
     }
 
 
@@ -836,8 +808,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # works each value out and read by everything downstream of it: the ONE
     # syntax door when a section is rendered, and the RECORD blocks when the
     # framework writes them afterwards.  The block size, the k-parallel
-    # default, the algorithm, the step and displacement keywords and the Nosé
-    # target are none of them a config field read straight through.
+    # default, the algorithm, the step and displacement keywords are none of
+    # them a config field read straight through.
     v = cfg.verbose_comments
     from . import layout as _layout
     # WHAT THIS DECK DERIVED -- filled here, before the layout is built,
@@ -903,9 +875,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             _sc.Block("spin notes, net charge and k-points",
                       lambda s, c: _after_spin(s, c)),
             _layout.mpi_section(algorithm=_derived["algorithm"]),
-            *((_layout.geometry_section(
-                   is_md=_derived["is_md"],
-                   is_nose=_derived["relax_kind"] == "NOSE"),)
+            *((_layout.GEOMETRY_SECTION,)
               if _derived.get("relax_kind") else ()),
             *((_layout.FC_SECTION,
                _sc.Block("the force-constant run",

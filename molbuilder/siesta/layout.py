@@ -151,25 +151,20 @@ def mpi_section(*, algorithm) -> Section:
 
 
 
-def geometry_section(*, is_md: bool, is_nose: bool) -> Section:
-    """What the run DOES to the geometry — built **per render**.
-
-    A relaxation and a molecular-dynamics run are different calculations and
-    carry different keywords, so there is no one table: a relaxation caps the
-    force and the step displacement, while dynamics sets temperatures and a
-    timestep. Choosing the table from the answer already resolved is the same
-    shape :func:`mpi_section` uses, and it keeps the ``if`` in the engine --
-    which is the only place that knows what these words mean.
-    """
-    items = ["relax_type", "relax_steps"]
-    if is_md:
-        items.append("md_initial_temperature")
-        if is_nose:
-            items.append("md_target_temperature")
-        items.append("md_length_timestep")
-    else:
-        items += ["relax_force_tol", "relax_max_displ"]
-    return Section("Geometry optimisation / dynamics", tuple(items))
+#: WHAT THE RUN DOES TO THE GEOMETRY: a relaxation -- molbuilder runs no
+#: molecular dynamics (the user, 2026-10-25).  SIESTA reads
+#: ``MD.FinalTimeStep`` on every run, at its own default; the note says why
+#: the deck does not write it.
+GEOMETRY_SECTION = Section(
+    "Geometry optimisation",
+    ("relax_type", "relax_steps", "relax_force_tol", "relax_max_displ"),
+    note=(
+        "# MD.Steps bounds the relaxation.  SIESTA also reads",
+        "# MD.FinalTimeStep, at its own default: it bounds molecular",
+        "# dynamics (Verlet, Nose), which molbuilder does not run, so it is",
+        "# not written here.",
+        "",
+    ))
 
 
 
@@ -211,7 +206,6 @@ _PAD = {
     "dm_energy_tolerance": 19, "scf_energy_converge": 19,
     "block_size": 19, "parallel_over_k": 19, "diag_algorithm": 19,
     "use_gpu": 19,
-    "md_target_temperature": 22,
     "max_scf_iter": 18, "spin_treatment": 18,
     # The NEGF and transmission settings read as one column.
     "bias_voltage_v": 23, "electrodes_bulk": 23, "negf_eq_pole_ev": 23,
@@ -285,11 +279,9 @@ def line(derived: dict):
       whether the k-mesh is more than Gamma, the algorithm normalised.  They reach the door through
       ``parameter(..., value=)``, so a computed number still arrives with its
       declaration, its range and its note;
-    * **two geometry keywords are chosen by the run mode** -- SIESTA spells the
-      step count differently per algorithm and the displacement cap exists only
-      for a relaxation -- and a Nosé run with no target temperature holds it at
-      the initial one, which is why that value is resolved before the
-      is-it-set guard rather than after;
+    * **two geometry keywords are the run type's** -- the step count's and
+      the displacement cap's, which `_relaxation_facts` maps from the run
+      type, refusing a type it does not map;
     * **the spin comes from the electronic state** (`_spin_facts`), not
       from the config: a blank item is decided by the class, so the field
       holds ``None`` where the deck must write the answer.  A pinned count
@@ -310,7 +302,6 @@ def line(derived: dict):
                 "use_gpu":     derived.get("gpu")}
     override = {"relax_steps":     derived.get("step_kw"),
                 "relax_max_displ": derived.get("displ_kw")}
-    target_t = derived.get("target_t")
 
     def _mpi(param):
         value = computed.get(param.name)
@@ -330,8 +321,7 @@ def line(derived: dict):
     def _geometry(param):
         if not param.known:
             return None
-        value = (target_t if param.name == "md_target_temperature"
-                 else param.value)
+        value = param.value
         if value is None:
             return None
         key = override.get(param.name)
@@ -413,7 +403,6 @@ def line(derived: dict):
         if param.name in beside and (
                 param.name in ("spin_treatment", "unpaired_electrons")
                 or param.name in computed or param.name in override
-                or param.name == "md_target_temperature"
                 or len(param.writes) == 2):
             # One line, one value, one statement: a keyword this door writes
             # as a pair or computes has no single line to say it beside, and
@@ -425,7 +414,7 @@ def line(derived: dict):
             return _spin(param)
         if param.name in computed:
             return _mpi(param)
-        if param.name in override or param.name == "md_target_temperature":
+        if param.name in override:
             return _geometry(param)
         if not param.known:
             return None

@@ -1018,6 +1018,109 @@ the same day, with what it turned out to be.
 
 ---
 
+## 1ad. The six-dimension review of 2.40 — what it found, and what waits on the user *(2026-10-25; molecular dynamics removed 2.40.2, the user's yes; the rest open)*
+
+Six fresh reviewers (science, back end, workflow, front end, documents, test
+design) read 2.40.1 whole against the contract, each claim reproduced on a
+scratch copy or re-derived; every finding below was cross-validated by a
+second reader before it was kept. **Done in 2.40.2:** SIESTA's molecular
+dynamics left the optimization kind *(the user, 2026-10-25: "yes, remove MD
+from the optimization kind, and put a note on MD.FinalTimeStep in generated
+script")* — `Verlet` and `Nose` and their three settings, retired; the
+relaxation section's note says why `MD.FinalTimeStep` is not written — and
+the 2.40.1 tests' own findings TS1–TS4, TS6, TS7.
+
+### 1ad.1 Decisions for the user — each with the recommendation
+
+| # | the question | recommended |
+|---|---|---|
+| D1 | a warm-started device run has no periodic step, so its Fermi level has no frame to be moved to | print the value only, with no frame sum |
+| D2 | `G₀·T(E_F)` is shown at every bias; conductance is defined at zero bias | call it *T(E_F) at V*; conductance at 0 V only |
+| D3 | "linear-response approximation" names a current that is not linear in V | rename it the *low-bias approximation* (words, and the data file's attribute value) |
+| D4 | `TBT.Spin` 1 or 2 is offered, but the done check and the record take both channels only (BE1) | fix it at 0 for transport |
+| D5 | an unconverged seed or lead can be copied in by a reuse (BE4) | never: one rule, `done`, for every stage |
+| D6 | describing a transport calculation that cites a failed relaxation succeeds, and prep refuses with no way on (WF2) | describe refuses, naming the way on |
+| D7 | prepared for another machine, the closing lines print `launch … # here` (WF4) | label them *on sol, once the folder is there* |
+| D8 | `describe --reuses --bias …` with no treatment flag is refused (WF7) | keep the finished calculation's treatment, as the Transport tab does |
+| D9 | old-release clauses in 31 places (*prepared before 2.7.0* …) | one refusal naming `jobset migrate` |
+| D10 | *Choose junction…* while extending leaves the extension quietly (UI3) | label it as leaving |
+| D11 | the Transport tab's rail while extending speaks of the steps of a new calculation (UI2) | sentences for an extension |
+| D12 | the frame-average test asks before any frame is done; a frame set with some frames done needs another engine run | restated in 2.40.2 with no extra run; the partial case only if you want it |
+| D13 | `err()` with no callers | delete it; state the reply shape |
+| D14 | a calculation's machine-record copy naming no machine passes any target (`scheduler/record.py`) | an explicit error naming `jobset migrate` |
+| D15 | launch compares and refuses a changed calculation (R-L15, R-L16, R-L45) against the 2026-10-17 rule | keep it |
+
+### 1ad.2 Verified findings — fixed after the decisions, last-number moves
+
+**Science.** SCI1 — the device's Fermi level is moved to the seed's frame
+with the last NEGF step's `ts-Vha`; the periodic step's is the right one
+(on the e2e chain: 1 µeV apart, the record says 31 meV); the 0.01 eV *equal*
+cut is a tolerance of ours, removed (`transport/record.py` `fermi_frames`,
+`_science`). SCI3 — the bias sign's text is reversed (`transport.md` ~5814).
+SCI4 — IETS described as elastic near zero bias; it is inelastic at eV = ħω.
+SCI6 — *Fermi tails beyond 5 kT add nothing*: state the bound. SCI7 — the
+frame step is the person's maximum displacement, not the thermal amplitude
+(`normal-modes.md`, `vibrational-averaging.md`). SCI8 — Raman without
+(Bohr/Å)⁶ is 45.5× too large, not 50× too small. SCI9 — a wire's rigid-motion
+count with held atoms is 1 when a free atom is off their line (the doc; the
+code is right). SCI10 — the charged-molecule infrared caveat holds only with
+held atoms; PySCF's dipole origin is (0,0,0). SCI11 — the electronic
+temperature help's *raise to 1000–2000 K* has no source, and above ~1847 K
+the 10 eV pole default gives TranSIESTA fewer than 20 poles. SCI12 — *the
+step Gaussian and ORCA use* unsupported. SCI13 — seven references cited and
+missing from `references.bib`. SCI14 — minor wording.
+
+**Back end.** BE2 — a point's Run panel lacks the launch details
+(`runs.record_of` never passes `launched_in`). BE3 — a warm launch again of a
+transport rung names the leads' gathered files as continued from its own
+run; the ledger's `gathers` is written only without a continuation. BE5 —
+`about()` calls the leads' prep logs not ours. BE7 — a frame row in a wrong
+unit loses the whole record; the contract keeps the page with the refusal
+where the frames would be. BE8 — the read-only `status` prints the deck
+check's `info [lead.seam]`. BE9 — an edited cited pair that no longer
+classifies is used as *moved*. BE10 — prep decides the reuse before
+`checked()`. BE11 — the gather takes a run of points with no launch record.
+BE12 — the ledger records a kept relaxation as *named*. Smells, for the next
+touch: STAGE-PLAN.md written twice, two doors opening the finished
+calculation, the header check written five times, the current integrated two
+ways, a second fdf reader in `gf_files`.
+
+**Workflow.** WF1 — the way back after changing a launched stage prints
+no command. WF3 — a voltage added after launch: status calls the finished
+run failed, a dry-run launch plans a point never prepared. WF5 — `summarize`
+writes its own next step. WF6 — a bare `prep task` on an unchanged launched
+calculation offers every group. WF8 — `checkpoint` takes `-p`, the docs say
+`--bundle`. WF9 — the copy-in refusal prints only the `--cold` line. WF10,
+WF11 — one state in different words across verbs; internal paths and old
+clauses printed. WF12 — `worked-example.md` stale.
+
+**Front end.** UI1 — Task setup's stage table on a transport folder is
+2,400–2,800 px wide in a 708 px box (`task-setup/style.css` ~208: `nowrap` on
+every cell). UI4 — the restored-values line prints `null`. UI5 — the fit
+refusal's sentence (`window.py` ~63). UI6 — Results' file dropdown after a
+ladder pick. UI7–UI9 — doc drift. UI10 — a stale comment in `core.js`.
+UI11 — a copied-in group's tab names the newest run only. UI12 —
+`#transport-extend-out` shows while `[hidden]`. UI13–UI16 — polish.
+
+**Documents.** DOC1 — *a run still going is never copied from* against the
+take-over of finished points. DOC2 — *every run copied under its own name*,
+stale since 2.40.0's re-laid copies. DOC3 — `web-api.md`'s Transport rows.
+DOC4 — a lead continues from its own density (it starts over). DOC5 — a first
+launch's check of *the same calculation*. DOC6 — *nothing is ever saved
+without you saying so* against the automatic saves. DOC7 — one Python per job
+not stated everywhere. DOC8 — the vibration result's schema number. DOC9 —
+the mode frame set described as future work. DOC10–DOC12 — stale names and
+references in `transport.md`, `tabs.md`, `workflow.md`, `task-setup.md`,
+`parse.md`. DOC13 — this plan's HANDOVER and done rows. DOC14, DOC15 — stale
+lines and broken references. DOC16 — correction stories and unexplained codes
+the writing rules forbid.
+
+**Tests** (older files, as each is next touched — TEST-AUDIT (5)–(9)): the
+walk script called with invented arguments; hand-built `task.json` and
+`run.json`; private-step tests; reads by name in the road, flat and launch
+e2e files; support helpers duplicated.
+
+
 ## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; Raman designed, R1 open)*
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode
@@ -1414,6 +1517,7 @@ below says.
 | **N11** | a middle number — the user's four answers 2026-10-22; 2026-10-23: two releases, the first shipped 2.33.0 — the extension on the Transport tab, its limits on Task setup and prep's *nothing to write*; the second open (§ 1aa) | **Extending a finished transport calculation — what may change, and what is fixed** (§ 1aa) | the user, 2026-10-22: *"what are the things that we could touch and what are the things that we should not touch?"* |
 | **N12** | group 1 **shipped 2.33.1**; groups 2 and 3 **2.33.2**; the four decisions **2.34.0**; group 4 open | **The six-agent review** (2026-10-23/24) — every calculation kind and Task setup, the whole contract against the production code, each finding verified before a fix: group 1, the four errors 2.33.0 shipped (2.33.1); groups 2 and 3, the older road errors and the contract's contradictions with the code (2.33.2), with BENCH-SHELF (§ 2) left for a real shelf to confirm; the four decisions, the user's answers (2.34.0): the device's charges explained region by region and `D(V) − D(0 V)` shown, a re-probe copying `env_init`, every data-file axis a row of `model/datafiles.md` § 2a, no verdict on the leads' Fermi levels. **Group 4, to bring for approval**: messages in the wrong words, unit spellings, a node's two core counts, dead whole-node code, the sweep presenter's columns, `read_data_file`'s atom map, a copied device's provenance, PySCF's two convergence doors, `--one-job`'s nothing-to-write | the user, 2026-10-23: a review of every calculation kind; *"make sure issues detected are first validated and investigated with fact and real code before fixing"* |
 | **N13** | **shipped 2.35.0** — the user, 2026-10-24: *"we need 6 to be built first"* | **A mode's frame set — the generator** (step 6's first piece; V1.25, `engines/vibration.md` § 5.10 ③): one vibration mode written as one multi-frame pair a transport calculation cites — frame 0 the Hessian's geometry, the frames at the Gauss–Hermite nodes, each frame's weight, the rows of `model/structure.md` § 2.2f; a command-line verb and the spectrum viewer's button, one generator; the transport side (each frame a point, the weighted average) was built before it. **The frames' extent is set by a maximum displacement** (the user's answer, 2026-10-24: the largest atom's move at the outermost frame, in Å). Not yet clicked on the running server: *Write frame set…* is proven through its route in the real-junction e2e | the user, 2026-10-24: *"integrate vibration mode to a multiframe structure for transport calculation with weight integrated"* |
+| **N14** | molecular dynamics removed **2.40.2**; the rest open | **The six-dimension review of 2.40** (§ 1ad) — fifteen decisions for the user, then the verified findings as last-number moves | the user, 2026-10-25: *"yes, remove MD from the optimization kind"*; the review's findings look for wrong results on the transport road |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 
@@ -1501,7 +1605,7 @@ listed — stays here as step 3's detail:
 
 | # | area | item | from | state |
 |---|---|---|---|---|
-| **TEST-AUDIT** | tests / calculations | **The calculation e2e tests, audited against the contract** (the user, 2026-10-25: "check all your tests on calculation, e2e particularly, against contract/design document to see if they are doing meaningful and correct job"; five agents, every test of 14 e2e files read beside the section it cites, the high-impact claims re-read at their lines). 2.40.0's own reuse tests were fixed in the release (one table for a question the finished results answer, the plan's groups read by their own lines, the record through its parser, a stopped result's reuse, a relaunch's engine run dropped for the record it reads). **Open, by weight:** **(1) a road no test reaches** — a run here told its wall from its card (`test_wall_reaches_the_engine_e2e` and the PySCF wall tests set `MB_WALL_S` in the test's own environment); a warm launch again of a sweep with points not done (`submit._points_walk`'s take-over branch); `freq`'s first launch recording its `relax` hand-over; a frame set's average waiting for points not done; a selection's PDOS refused before the digest is kept; a failed run here printing FAILED; § 4.8's listed mode that names no mode. **(2) checks that cannot fail** — the transmission taking the device's newest run (`is_dir` of a folder prep made); a refused warm launch (no `run-2`, where it would reuse `run-1`); a citation's evidence compared with the value the code copied; the atom-index test falling back to identity when its record is missing; `_mb_warm_retry not in …` (never printed); the infrared route accepting the fallback it names; Task setup's typed value equal to the saved one; refusals checked by one letter. **(3) a regression a fixture hides** — the vibration runs at the relaxation's settings, so a frame set stamped with the vibration's (2026-10-24) passes. **(4) state no road makes** — Task setup's fixtures writing a SLURM `environment.json` into the calculation (`_a_described_probe`, `filled_dir`, `binding_dir`), two browser tests answering the page with made-up server replies, `mkdir`'d run folders, a hand-built pre-v14 sidecar (`an_older_junction…`, retire), a compose record no describe made (`record_answers_for_the_citation…`, retire), a hand-built second vibration stage, `_engine_only(…, set())`, a raw edit of `task.json`'s shape. **(5) reads around the doors** — the transport record (`_record`, fixed 2.40.0), the spectrum and sweep JSON, `task.json`, the ledger (seven `json.loads`; the product has no ledger reader), `.out` and deck text split by hand, `_optimized.xyz` by lines, files by glob or composed name. **(6) expectations from the code** — `pct_words`, `scf_words`, `Point.rel`, `atom_index_map`, `collect_record`, the export's own composition, `toPrecision(4)`, whole-dict equality on undocumented keys. **(7) category and cost** — prep-only checks in engine files never run in the fast batch (PySCF prep tests, the listed-modes refusal, two ticked refusals duplicating `hand_overs.toml`, four reuse API tests); engine runs no test needs (a SIESTA force-constant run for words `--dry-run` prints, two PySCF runs that merge, a third SIESTA group, ten SIESTA starts probing SIESTA's own unit reading, which no doc states). **(8) copies → table rows** — the seven record-gate tests, the dry-run triplet, the card-names and history tests across two files, describe refusals, the two ×8 Results-tab tests, the PDOS-style rows elsewhere. **(9) stale words** — "design §15", "§7.5", "the sweep runs H2", a per-trial bound "5 s" that is 5 minutes. | the test audit, 2026-10-25 | **(1)–(4) done 2.40.1** (the user's yes, 2026-10-25: "yes, go with that order after 2.40.0 ships"); **open**: (5)–(9) as each file is next touched; Task setup's late-answer test still waits a bounded 300 ms after the stale reply is delivered (no page signal says it was dropped); and a product question for the user — a calculation's machine-record copy that names no machine passes any target (`scheduler/record.py`, `env.machine is None`), a state only an older release or a hand writes: an explicit error, or kept |
+| **TEST-AUDIT** | tests / calculations | **The calculation e2e tests, audited against the contract** (the user, 2026-10-25: "check all your tests on calculation, e2e particularly, against contract/design document to see if they are doing meaningful and correct job"; five agents, every test of 14 e2e files read beside the section it cites, the high-impact claims re-read at their lines). 2.40.0's own reuse tests were fixed in the release (one table for a question the finished results answer, the plan's groups read by their own lines, the record through its parser, a stopped result's reuse, a relaunch's engine run dropped for the record it reads). **Open, by weight:** **(1) a road no test reaches** — a run here told its wall from its card (`test_wall_reaches_the_engine_e2e` and the PySCF wall tests set `MB_WALL_S` in the test's own environment); a warm launch again of a sweep with points not done (`submit._points_walk`'s take-over branch); `freq`'s first launch recording its `relax` hand-over; a frame set's average waiting for points not done; a selection's PDOS refused before the digest is kept; a failed run here printing FAILED; § 4.8's listed mode that names no mode. **(2) checks that cannot fail** — the transmission taking the device's newest run (`is_dir` of a folder prep made); a refused warm launch (no `run-2`, where it would reuse `run-1`); a citation's evidence compared with the value the code copied; the atom-index test falling back to identity when its record is missing; `_mb_warm_retry not in …` (never printed); the infrared route accepting the fallback it names; Task setup's typed value equal to the saved one; refusals checked by one letter. **(3) a regression a fixture hides** — the vibration runs at the relaxation's settings, so a frame set stamped with the vibration's (2026-10-24) passes. **(4) state no road makes** — Task setup's fixtures writing a SLURM `environment.json` into the calculation (`_a_described_probe`, `filled_dir`, `binding_dir`), two browser tests answering the page with made-up server replies, `mkdir`'d run folders, a hand-built pre-v14 sidecar (`an_older_junction…`, retire), a compose record no describe made (`record_answers_for_the_citation…`, retire), a hand-built second vibration stage, `_engine_only(…, set())`, a raw edit of `task.json`'s shape. **(5) reads around the doors** — the transport record (`_record`, fixed 2.40.0), the spectrum and sweep JSON, `task.json`, the ledger (seven `json.loads`; the product has no ledger reader), `.out` and deck text split by hand, `_optimized.xyz` by lines, files by glob or composed name. **(6) expectations from the code** — `pct_words`, `scf_words`, `Point.rel`, `atom_index_map`, `collect_record`, the export's own composition, `toPrecision(4)`, whole-dict equality on undocumented keys. **(7) category and cost** — prep-only checks in engine files never run in the fast batch (PySCF prep tests, the listed-modes refusal, two ticked refusals duplicating `hand_overs.toml`, four reuse API tests); engine runs no test needs (a SIESTA force-constant run for words `--dry-run` prints, two PySCF runs that merge, a third SIESTA group, ten SIESTA starts probing SIESTA's own unit reading, which no doc states). **(8) copies → table rows** — the seven record-gate tests, the dry-run triplet, the card-names and history tests across two files, describe refusals, the two ×8 Results-tab tests, the PDOS-style rows elsewhere. **(9) stale words** — "design §15", "§7.5", "the sweep runs H2", a per-trial bound "5 s" that is 5 minutes. | the test audit, 2026-10-25 | **(1)–(4) done 2.40.1** (the user's yes, 2026-10-25: "yes, go with that order after 2.40.0 ships"); the review's findings on the 2.40.1 tests themselves (§ 1ad: the queue test reaching the unlisted queue, the walk stopped judged in its test, reads through the doors) **done 2.40.2**; **open**: (5)–(9) as each file is next touched; Task setup's late-answer test still waits a bounded 300 ms after the stale reply is delivered (no page signal says it was dropped); the machine-record copy naming no machine is § 1ad's D14 |
 | **SCR-UI** | web / transport | **Two pages do not say the device's scratch as the contract does** (found by the 2.24.0 documents' verifiers, 2026-10-20): Task setup's stage row appends `r.tsgf` (`task-setup/viewer.js` ~2703) but the folder answer never sends it (`build._folder_ladder` sends stage, group, state, detail, why), so the `tsgf/` line `transport.md` § 2a.11 puts on the Task setup row never shows; the Results sidebar's place note has no `scratch` entry (`results/viewer.js` `PLACE_NOTE`), so *the engine's scratch of the run above* is not said | 2.24.0 review | open — the UI's, when the user takes it |
 | **TPL-L1** | engines / template | **`template.md` § 2.2's import rule** (stdlib and `persist` only) is broken by `template.py`, which imports `identity`, `paths`, `runfiles`, `pyscf.stages`, `kmesh` — part of § 1t's layering, or the rule restated | 2.24.0 docs sweep | **done 2.26.2** — `template.py` imports the ground floor alone, the rule restated in `template.md` |
 | **A4-SR** | jobset | **`StageRef` is built at three sites beside its resolver** -- `jobset/prep.py`, `jobset/_cli.py`, `jobset/runstatus.py` construct it directly, where A4 (`execution/architecture.md` § 3, § 7) names `stage_refs` and the resolver its builders | the 2.26.2 review (older than it) | open |
