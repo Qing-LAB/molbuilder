@@ -340,6 +340,48 @@ def _resolve_bundle_may_be_new(ctx, param, value):
     return _resolve_bundle(ctx, param, value, must_exist=False)
 
 
+def _junction_slot(slots_opt, root):
+    """``(citation, its path, the citation classified)`` -- the one slot a
+    transport calculation takes, ``--slot junction=<path>`` (spelled
+    NAME=PATH, from the projects root or absolute inside it), fenced to the
+    tree and classified through the door prep composes through
+    (`compose.resolve_citation`): a citation that cannot compose is refused
+    at describe, naming what is missing (strict composition, Q2)."""
+    from pathlib import Path as _P
+
+    from ..transport.compose import ComposeError, resolve_citation
+    slots = {}
+    for entry in slots_opt:
+        name_, sep, cite = entry.partition("=")
+        if not sep or not name_ or not cite:
+            raise click.ClickException(
+                f"--slot {entry!r}: spell it NAME=PATH, e.g. "
+                f"--slot junction=<project>/<topic>/<calc>/<stage>/run-N "
+                f"-- a finished relaxation run's folder, or a structure "
+                f"pair's .xyz (engines/transport.md § 3.1).")
+        slots[name_] = cite
+    if set(slots) != {"junction"}:
+        raise click.ClickException(
+            "a transport calculation takes exactly one slot, `junction` "
+            "-- the relaxed junction it composes from: a finished "
+            "relaxation run of molbuilder's own, or a structure pair that "
+            "records its optimization (engines/transport.md § 3.1).")
+    raw = _P(slots["junction"]).expanduser()
+    if raw.is_absolute():
+        try:
+            raw = raw.resolve().relative_to(root)
+        except ValueError:
+            raise click.ClickException(
+                f"--slot junction={slots['junction']}: {raw} is not inside "
+                f"the projects tree ({root}); give its path from the tree's "
+                f"root.")
+    try:
+        resolved, cited = resolve_citation(str(raw), root)
+    except ComposeError as exc:
+        raise click.ClickException(str(exc))
+    return str(resolved.relative_to(root)), resolved, cited
+
+
 def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                     bias_opt, structure, psml_lib, vacuum,
                     low_bias_approximation=None,
@@ -382,44 +424,11 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # shape: the codec owns the transport==hierarchical pairing (task.py
     # __post_init__); the Task construction below surfaces it by name.
 
-    slots = {}
-    for entry in slots_opt:
-        name_, sep, cite = entry.partition("=")
-        if not sep or not name_ or not cite:
-            raise click.ClickException(
-                f"--slot {entry!r}: spell it NAME=PATH, e.g. "
-                f"--slot junction=<project>/<topic>/<calc>/<stage>/run-N "
-                f"-- a finished relaxation run's folder, or a structure "
-                f"pair's .xyz (engines/transport.md § 3.1).")
-        slots[name_] = cite
-    if set(slots) != {"junction"}:
-        raise click.ClickException(
-            "a transport calculation takes exactly one slot, `junction` "
-            "-- the relaxed junction it composes from: a finished "
-            "relaxation run of molbuilder's own, or a structure pair that "
-            "records its optimization (engines/transport.md § 3.1).")
-
-    # THE CITATION DOOR prep composes through (`compose.resolve_citation`):
-    # the tree fence, then § 3.1's condition by what the path is -- a
-    # citation that cannot compose is refused at init, naming what is
-    # missing (strict composition, Q2).
+    # THE CITATION DOOR prep composes through (`_junction_slot`).
     from ..projects import projects_root
-    from ..transport.compose import CitedPair, ComposeError, resolve_citation
+    from ..transport.compose import CitedPair, ComposeError
     root = _P(projects_root()).expanduser().resolve()
-    raw = _P(slots["junction"]).expanduser()
-    if raw.is_absolute():
-        try:
-            raw = raw.resolve().relative_to(root)
-        except ValueError:
-            raise click.ClickException(
-                f"--slot junction={slots['junction']}: {raw} is not inside "
-                f"the projects tree ({root}); give its path from the tree's "
-                f"root.")
-    try:
-        resolved, cited = resolve_citation(str(raw), root)
-    except ComposeError as exc:
-        raise click.ClickException(str(exc))
-    citation = str(resolved.relative_to(root))
+    citation, resolved, cited = _junction_slot(slots_opt, root)
     pair = isinstance(cited, CitedPair)
     dest = (out_dir if out_dir.is_absolute()
             else _P(_resolve_bundle(None, None, str(out_dir),
@@ -527,7 +536,7 @@ def _bias_of(bias_opt: str) -> tuple:
 
 
 def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
-                  low_bias_approximation, window_opt, finer,
+                  low_bias_approximation, window_opt, finer, slots_opt,
                   refused) -> None:
     """`describe --calculation transport --reuses <finished>` -- the new
     calculation written from the finished one's records as they read now
@@ -535,9 +544,12 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
     with ``reuses`` naming it, its template and its job request, its
     composed junction and its pseudopotentials.  ``--bias`` and
     ``--low-bias-approximation`` set what they set on any describe; a flag
-    naming what the finished calculation fixes -- its junction, its label,
-    its pseudopotentials -- is refused, naming why.  ``--window a,b``
-    (``--finer n``) fits the transmission's window to the finished grid
+    naming what the finished calculation fixes -- its label, its
+    pseudopotentials -- is refused, naming why.  ``--slot junction=<set>``
+    cites a frame set whose frame 0 is the finished junction in its place
+    (*A frame set of the same junction*), its run id the label and that
+    citation (`run-identity.md` § 2).  ``--window a,b`` (``--finer n``)
+    fits the transmission's window to the finished grid
     (`transport.window.fitted`), written as the transmission's own values
     and said where it is fitted."""
     import dataclasses
@@ -570,6 +582,17 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
     no = why_no_transport(engine)
     if no:
         raise click.ClickException(f"engine {engine!r}: {no}.")
+    # A FRAME SET OF THE SAME JUNCTION, cited in its place (§ 2a.16): the
+    # run's id is its label and its citation, derived again; whether its
+    # frame 0 is the finished junction is the writer's question
+    # (`write_reusing`).
+    if slots_opt:
+        from ..task import derive_run
+        junction, _path, _cited = _junction_slot(slots_opt, root)
+        run = finished.task.run
+        said.update(slots={"junction": junction}, run=derive_run(
+            run.name, junction, created=run.created,
+            stage_names=tuple(st.name for st in finished.task.stages)))
     try:
         task = dataclasses.replace(
             finished.task, reuses=citation, engine=engine,
@@ -702,7 +725,9 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
                    "--slot junction=<path> -- a finished relaxation run's "
                    "folder, or a structure pair's .xyz that records its "
                    "optimization (engines/transport.md § 3.1).  Named "
-                   "explicitly, never picked.")
+                   "explicitly, never picked.  Beside --reuses, a frame "
+                   "set whose frame 0 is the finished calculation's "
+                   "junction, cited in its place (2a.16).")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
               help="transport only: the bias points in volts, starting at "
                    "0.0 (engines/transport.md 2a.10).  Several state "
@@ -779,10 +804,8 @@ def describe_cmd(structure, bundle: str, shape: str,
         _init_reusing(
             out_dir=out_dir, reuses=reuses, engine=engine, shape=shape,
             bias_opt=bias_opt, low_bias_approximation=low_bias_approximation,
-            window_opt=window_opt, finer=finer,
+            window_opt=window_opt, finer=finer, slots_opt=slots_opt,
             refused={flag: why for flag, given, why in (
-                ("--slot", slots_opt, "the junction is the finished "
-                 "calculation's, carried with its record"),
                 ("--name", name, "the label is the finished calculation's: "
                  "SystemLabel names every file a deck reads and writes, and "
                  "decks under two labels are never the same calculation"),

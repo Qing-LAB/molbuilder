@@ -271,11 +271,12 @@ def write_description(desc: Description, dest, *,
     § 2.1).
 
     *junction*, for a transport calculation that reuses a finished one, is
-    that calculation's composed junction as its record holds it
-    (`compose.load_compose_record`), written beside the description by the
-    composition's one writer (`compose.write_compose_record`) -- so the
-    junction is the finished one's, atom for atom, and prep does not compose
-    it again (`engines/transport.md` § 2a.16).
+    the junction it is described with (`transport.reuse.write_reusing`):
+    the finished calculation's, as its record holds it
+    (`compose.load_compose_record`), or a frame set of it, composed
+    (`engines/transport.md` § 2a.16, *A frame set of the same junction*) --
+    written beside the description by the composition's one writer
+    (`compose.write_compose_record`), so prep does not compose it again.
     """
     out_dir = Path(dest)
     out_dir.mkdir(parents=True, exist_ok=True)

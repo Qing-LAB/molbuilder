@@ -3330,9 +3330,12 @@ def reused(junction, tmp_path_factory):
     fitted wider, each transmission point computing the energies the
     finished one did not; the same window three times finer; the low-bias
     approximation, and its window fitted
-    wider, the transmission that runs once sharing as its one point; and
-    the Transport tab's describe of a calculation reused.  And what a folder
-    that cannot be reused is refused with."""
+    wider, the transmission that runs once sharing as its one point; the
+    mode's frame set cited in place of the junction a calculation of one
+    voltage ran, its device launched twice, the second warm; and the
+    Transport tab's describe of a calculation reused.  And
+    what a folder that cannot be reused is refused with, a set whose frame
+    0 is another junction among them."""
     from molbuilder.web.app import create_app
     from support.real_runs import RealRun, Said, _road_at, _taken, _typed
     from support.road import molbuilder
@@ -3354,13 +3357,22 @@ def reused(junction, tmp_path_factory):
     every_group = ("--group", "1", "--group", "2", "--group", "3")
 
     with _road_at(junction.tree.parent, tmp_path_factory):
+        # A SET WHOSE FRAME 0 IS ANOTHER JUNCTION: the mode's outer frame
+        # taken out as a pair of its own, through the structure's doors.
+        from molbuilder.workingcopy_structure import StructureCodec
+        moved = "P/structure/moved.xyz"
+        StructureCodec().write(_the_set(junction).frame_at(1),
+                               junction.tree / moved)
         # REFUSED BEFORE ANYTHING IS WRITTEN.
         out["refused"] = {}
         for step, flags, folder in (
                 ("not transport", ("--reuses", "P/opt/J"), "P/transport/R1"),
                 ("inside", ("--reuses", finished), f"{finished}/inner"),
                 ("its label", ("--reuses", finished, "--name", "R"),
-                 "P/transport/R3")):
+                 "P/transport/R3"),
+                ("another junction", ("--reuses", finished, "--slot",
+                                      f"junction={moved}"),
+                 "P/transport/R4")):
             r = molbuilder("describe", "--calculation", "transport",
                            *flags, "--bundle", folder)
             out["refused"][step] = (Said(r.exit_code, r.output),
@@ -3374,6 +3386,49 @@ def reused(junction, tmp_path_factory):
         _taken(same, "status", "status")
         _taken(same, "summarize", "summarize", "task")
         out["same"] = same
+
+        # A CALCULATION OF ONE VOLTAGE, ITS DEVICE LAUNCHED TWICE, THE
+        # SECOND WARM -- its newest device run's own record names the leads
+        # alone, what it carries the seed's density too (§ 2a.16, *At
+        # prep*) -- then THE MODE'S FRAME SET IN PLACE OF ITS JUNCTION
+        # (*A frame set of the same junction*): its frame 0 that junction,
+        # one atom more held -- the seed and the leads copied in, frame 0's
+        # points taken over at the first launch, the other frames walked.
+        from support.road import group_words
+        r = molbuilder("describe", "--calculation", "transport",
+                       "--engine", "siesta", "--shape", "hierarchical",
+                       "--bundle", "P/transport/O",
+                       "--slot", f"junction={junction.cite}", "--bias", "0.0")
+        assert r.exit_code == 0, r.output
+        once = RealRun(tree=junction.tree,
+                       bundle=junction.tree / "P" / "transport" / "O")
+        _run_card(once.bundle)
+        _set_by_the_person(once.bundle / "O.template.toml",
+                           "spin_treatment", "restricted")
+        leads = group_words(once.bundle, "seed", "electrode_L", "electrode_R")
+        _taken(once, "prep seed and leads", "prep", "task", *leads,
+               "--target", "this")
+        _taken(once, "launch seed and leads", "launch", "task", *leads,
+               "--mode", "direct", "--foreground", "--yes")
+        for rung in ("device", "transmission"):
+            _taken(once, f"prep {rung}", "prep", "task",
+                   *group_words(once.bundle, rung), "--target", "this")
+            for step in ((f"launch {rung}", f"launch {rung} again")
+                         if rung == "device" else (f"launch {rung}",)):
+                _taken(once, step, "launch", "task", "--stage", rung,
+                       "--mode", "direct", "--foreground", "--yes")
+        out["once"] = once
+        framed = described("framed", "--slot",
+                           f"junction={junction.frame_set}",
+                           reuses="P/transport/O")
+        _typed(framed, "prep bare", "prep", "task")
+        _taken(framed, "prep", "prep", "task", *every_group,
+               "--target", "this")
+        for g in ("2", "3"):
+            _taken(framed, f"launch group {g}", "launch", "task", "--group",
+                   g, "--mode", "direct", "--foreground", "--yes")
+        _taken(framed, "summarize", "summarize", "task")
+        out["framed"] = framed
 
         # MORE VOLTAGES, SELF-CONSISTENT: the done points taken over.
         wider = described("wider", "--bias", "0.0,0.2,0.4",
@@ -3570,12 +3625,16 @@ def test_a_folder_that_cannot_be_reused_is_refused_before_anything_is_written(
         reused):
     """`engines/transport.md` § 2a.16, *Describing it*: refused before
     anything is written -- a folder that is not a transport calculation's, a
-    new folder inside the finished calculation -- and a flag naming what the
-    finished calculation fixes, its label."""
+    new folder inside the finished calculation -- a flag naming what the
+    finished calculation fixes, its label -- and, *A frame set of the same
+    junction*, a set whose frame 0 is not the junction it ran."""
     for step, words in (("not transport", "is not a transport calculation"),
                         ("inside", "is inside the finished calculation"),
                         ("its label", "the label is the finished "
-                                      "calculation's")):
+                                      "calculation's"),
+                        ("another junction", "P/structure/moved.xyz: its "
+                                             "frame 0 is not the junction T "
+                                             "ran")):
         said, written = reused["refused"][step]
         assert said.exit_code != 0 and words in said.output, (step, said)
         assert not written, step
@@ -3611,6 +3670,62 @@ def test_the_same_question_copies_every_group_in(reused):
         assert pb["transmission"] == pa["transmission"]
         assert pb["current_a"] == pa["current_a"]
         assert pb["current_from"] == "tbtrans"
+
+
+def test_a_frame_set_of_the_same_junction_takes_over_frame_0(reused):
+    """§ 2a.16, *A frame set of the same junction*: the mode's set cited in
+    place of the junction O ran -- its frame 0 that junction, its held set
+    larger -- is the calculation's junction, every frame, its label O's; the
+    seed and both leads are copied in; at their first launch the device and
+    the transmission take over O's point on frame 0 and walk every other
+    frame's -- O's device launched twice, the second warm, so what its
+    newest run carries, not its own record alone, is what the point was
+    given (*At prep*); the record holds a point per frame, frame 0's copied
+    from O."""
+    from molbuilder.parse.sidecars.transport import TransportRecordFileParser
+    from molbuilder.runrecord import read_copied_from, read_gathered_from
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.compose import read_provenance, recorded_junction
+    from molbuilder.transport.stages import frames_of, rung_points
+    framed, once, junction = (reused["framed"], reused["once"],
+                              reused["finished"])
+    label = task_of(once.bundle).label
+    # WHAT THE CASE IS: the set holds more atoms than the junction O ran,
+    # and O's newest device run gathered the leads alone, its first the
+    # seed's density with them.
+    ran = recorded_junction(once.bundle).structure.restored()
+    assert set(_the_set(junction).frozen_atoms) > set(ran.frozen_atoms)
+    first, newest = _runs_of(once, "device")
+    assert f"{label}.DM" in [fn for _r, fn in read_gathered_from(first)]
+    assert f"{label}.DM" not in [fn for _r, fn in read_gathered_from(newest)]
+    assert ("the junction is P/structure/frames.xyz, its "
+            f"{_N_FRAMES} frame(s); its frame 0 is the junction O ran"
+            ) in framed.said["describe"].output
+    task = task_of(framed.bundle)
+    assert task.slots["junction"] == junction.frame_set
+    assert task.label == label
+    assert read_provenance(framed.bundle)["citation"] == junction.frame_set
+    assert recorded_junction(framed.bundle).structure.n_frames == _N_FRAMES
+    for stage in ("seed", "electrode_L", "electrode_R"):
+        for r in _runs_of(framed, stage):
+            assert read_copied_from(r) == (
+                f"P/transport/O/{r.parent.name}/{r.name}"), r
+    for stage in ("device", "transmission"):
+        theirs = _runs_of(once, stage)[-1]
+        run = _runs_of(framed, stage)[0]
+        assert read_copied_from(run) is None, run
+        points = rung_points(task, stage, frames=frames_of(framed.bundle))
+        assert len(points) == _N_FRAMES, points
+        for pt in points:
+            got = read_copied_from(run / pt.rel)
+            assert got == (f"P/transport/O/{theirs.parent.name}/"
+                           f"{theirs.name}" if pt.frame == 0 else None), (
+                stage, pt, got)
+    rec = TransportRecordFileParser.parse(
+        framed.bundle / f"{label}.transport.json").payload
+    assert sorted(p["frame"] for p in rec["points"]) == list(range(_N_FRAMES))
+    for p in rec["points"]:
+        assert bool(p.get("copied_from")) == (p["frame"] == 0), p
 
 
 def test_more_voltages_take_the_finished_points_over(reused):

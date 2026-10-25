@@ -564,7 +564,7 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
         return None, (f"{words} shares none -- the finished calculation "
                       f"holds no {_words(pt)} point done")
     shown = f"{fbase.name}/{src.relative_to(fbase)}"
-    if not _given_the_same(fbase, newest, src, mine):
+    if not _given_the_same(finished, SHARING_RUNG, newest, src, mine):
         return None, (f"{words} shares none -- it is not given what "
                       f"{shown} was given")
     now = once.deck_now(SHARING_RUNG, pt)
@@ -839,7 +839,8 @@ def takes_over(calc, finished, stage: str, points, *, once,
                       if newest is not None else "")
         if (src is None
                 or ran_otherwise(once, stage, src, token=token, point=pt)
-                or not _given_the_same(fbase, newest, src, inputs(pt))):
+                or not _given_the_same(finished, stage, newest, src,
+                                       inputs(pt))):
             walked.append(pt)
             continue
         taken.append(Take(pt, src, f"{fbase.name}/{src.relative_to(fbase)}",
@@ -847,14 +848,20 @@ def takes_over(calc, finished, stage: str, points, *, once,
     return Takes(stage, run, tuple(taken), tuple(walked))
 
 
-def _given_the_same(fbase: Path, run: Path, src: Path,
+def _given_the_same(finished, stage: str, run: Path, src: Path,
                     mine: Dict[str, Optional[str]]) -> bool:
     """Whether each file this rung's point is given has the origin of what
-    the finished point ``src`` of ``run`` gathered -- its run's record and
-    its own (`runrecord.read_gathered_from`)."""
-    from ..runrecord import read_gathered_from
+    the finished point ``src`` of ``stage``'s ``run`` was given -- what its
+    run carries, its own record and, through `.continued-from`, what the
+    runs it continues from gathered (`runrecord.carried_gather`: a device
+    launched warm carries the seed's density its first launch gathered),
+    and the point's own record (`runrecord.read_gathered_from`)."""
+    from ..runrecord import carried_gather, read_gathered_from
+    from .naming import stage_home
+    fbase, ftask = Path(finished.base), finished.task
+    names = stage_home(fbase, ftask, stage).names(ftask.shape)
     try:
-        theirs = {fn: ref for ref, fn in read_gathered_from(run)}
+        theirs = {fn: ref for ref, fn in carried_gather(fbase, run, names)}
         if src != run:
             theirs.update({fn: ref for ref, fn in read_gathered_from(src)})
     except LaunchRecordError:

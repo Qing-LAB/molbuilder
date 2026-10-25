@@ -922,7 +922,9 @@ def recorded_junction(base_dir) -> Optional[RecordedJunction]:
 def junction_difference(recorded: Structure,
                         composed: Structure) -> Optional[str]:
     """``None`` when ``composed`` is the junction ``recorded`` holds, both
-    in TranSIESTA's order -- the same number of atoms and frames; atom *i*
+    in one order -- TranSIESTA's for a record read back, the user order for
+    a frame set's frame 0 (`transport.reuse.frame_set_refusal`) -- the same
+    number of atoms and frames; atom *i*
     the same element at the same place in every frame, and the same cell
     vectors, by the one rule two geometries are compared by
     (`structure.farthest_apart`, `structure.SAME_PLACE_ANG`); the same kind

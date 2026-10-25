@@ -642,6 +642,42 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
     return out
 
 
+def carried_gather(base, source, names: "_rf.RunNames"
+                   ) -> "List[Tuple[RunRef, str]]":
+    """WHAT A RUN CARRIES -- ``[(the run it came from, filename), ...]``:
+    ``source``'s own `.gathered-from` (:func:`read_gathered_from`), then, for
+    each input it kept from the run before it (warm, so its record does not
+    list it), what that run gathered, one hop at a time through
+    `.continued-from` (:func:`read_continued_from`), each run named from
+    ``base``.  A device launched warm still carries the seed's density its
+    first launch gathered (`job-system.md` § 5.4).  A point of a run of
+    points carries its own record alone.  The one answer the launch takes
+    again (`submit._carry_the_gather`) and a reuse compares a finished run
+    by (`jobset.reuse.takes_over`)."""
+    from .paths import attempt_index
+    base = Path(base)
+    took = list(read_gathered_from(source))
+    have = {fn for _src, fn in took}
+    seen = {Path(source)}
+    here = Path(source)
+    while True:
+        n = attempt_index(here.name)
+        if n is None:
+            break
+        prev = read_continued_from(here, names, n)
+        if prev is None:
+            break
+        here = prev.path(base)
+        if here in seen:
+            break
+        seen.add(here)
+        for src, fn in read_gathered_from(here):
+            if fn not in have:
+                took.append((src, fn))
+                have.add(fn)
+    return took
+
+
 #: The finished calculation's run a run is a copy of, tree-relative -- one
 #: line, written by the prep that copies a group in from the finished
 #: calculation a transport calculation reuses (`jobset.reuse.copy_in`,
@@ -717,4 +753,4 @@ def copied_in(stage_dir) -> Optional[str]:
 
 
 __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run",
-           "launched_runs", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "sent_wall_s", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from", "COPIED_FROM_FILE", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]
+           "launched_runs", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "sent_wall_s", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from", "carried_gather", "COPIED_FROM_FILE", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]

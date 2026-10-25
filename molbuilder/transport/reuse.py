@@ -4,7 +4,9 @@ opened through the calculation door, and the new one written from its
 records as they read now -- its description, template and job request, its
 composed junction, read by the composition's one reader and written by its
 one writer, and its pseudopotentials -- through the one writer every
-describe takes (`describe.write_description`).
+describe takes (`describe.write_description`); or, in place of its junction,
+a frame set whose frame 0 is that junction (*A frame set of the same
+junction*, :func:`frame_set_refusal`), composed here.
 
 Asked by `molbuilder describe --reuses`; the Transport tab's describe door
 writes through :func:`write_reusing` too.
@@ -54,6 +56,39 @@ def reused(raw, *, tree_root):
     return calc, str(calc.base.relative_to(root))
 
 
+def frame_set_refusal(junction, frame_set, *, name: str,
+                      citation: str) -> Optional[str]:
+    """WHETHER ``frame_set``'S FRAME 0 IS ``junction`` (`engines/transport.md`
+    § 2a.16, *A frame set of the same junction*) -- ``None`` when it is,
+    else the refusal, in words: ``junction`` the finished calculation's
+    composed junction, ``name`` its folder's name; ``frame_set`` the one
+    ``citation`` composes.  Each in the user order, its frame 0, its labels
+    the transport partition alone (`sort.PARTITION_LABELS`): the same atoms
+    at the same places, the same cell and axes, the same partition, by the
+    one rule two junctions are compared by (`compose.junction_difference`).
+    The held set and every other label are not compared: no transport deck
+    states them."""
+    from .compose import junction_difference
+    from .sort import PARTITION_LABELS
+
+    def frame_0(struct):
+        s = struct.restored().frame_at(0)
+        return s.replace(regions={k: list(v)
+                                  for k, v in (s.regions or {}).items()
+                                  if k in PARTITION_LABELS})
+    differs = junction_difference(frame_0(junction), frame_0(frame_set))
+    if differs is None:
+        return None
+    return (f"{citation}: its frame 0 is not the junction {name} ran -- "
+            f"{differs}.  A calculation that reuses {name} cites its "
+            f"junction, or a frame set whose frame 0 is that junction: the "
+            f"same atoms in the user order at the same places, the same "
+            f"cell and axes, the same L-electrode, R-electrode, bridge and "
+            f"buffer (engines/transport.md 2a.16).  A frame set of another "
+            f"junction is another calculation: describe it with --slot "
+            f"junction={citation}, without --reuses.")
+
+
 def write_reusing(desc, dest, finished, *, tree_root
                   ) -> Tuple[List[Path], List[str]]:
     """``desc`` -- a transport description whose ``reuses`` names
@@ -64,34 +99,69 @@ def write_reusing(desc, dest, finished, *, tree_root
     does not read -- prep then composes it from its citation, as for any
     calculation.
 
+    A ``desc`` citing another junction than the finished calculation's
+    cites a frame set of it (`engines/transport.md` § 2a.16, *A frame set
+    of the same junction*): composed here, every frame, checked against the
+    finished calculation's junction as its record holds it
+    (:func:`frame_set_refusal`), and written in its place.
+
     Refused before anything is written: ``dest`` inside the finished
-    calculation, or inside its junction's citation, as every describe
+    calculation, or inside a junction's citation, as every describe
     refuses it (`compose.refuse_inside_citation`); a cited pair edited since
     the finished calculation was composed from it, by name
-    (`compose.load_compose_record`)."""
+    (`compose.load_compose_record`); a frame set whose frame 0 is not the
+    finished junction, or compared with a finished junction whose record
+    does not read, by name."""
     import dataclasses
 
     from ..chemistry import species_order
     from ..describe import write_description
     from ..pseudos import PSEUDO_DIRNAME
-    from .compose import load_compose_record, refuse_inside_citation
+    from .compose import (compose_junction, load_compose_record,
+                          refuse_inside_citation)
+    from .sort import SortError
+    citation = desc.task.slots["junction"]
+    ran = finished.task.slots["junction"]
     try:
         for cited, what in (
                 (finished.base, "the finished calculation"),
-                (Path(tree_root) / finished.task.slots["junction"],
-                 "the cited junction")):
+                *((Path(tree_root) / c, "the cited junction")
+                  for c in dict.fromkeys((ran, citation)))):
             refuse_inside_citation(dest, cited, what=what)
     except ComposeError as exc:
         raise ReuseError(str(exc)) from exc
     why: List[str] = []
     try:
         composed = load_compose_record(
-            finished.base, citation=finished.task.slots["junction"],
-            tree_root=tree_root, why=why,
+            finished.base, citation=ran, tree_root=tree_root, why=why,
             swap_electrodes=finished.task.swap_electrodes)
     except ComposeError as exc:
         raise ReuseError(str(exc)) from exc
     notes: List[str] = []
+    if citation != ran:
+        # A FRAME SET OF THE SAME JUNCTION, cited in its place (§ 2a.16):
+        # its frame 0 measured against the junction the finished
+        # calculation ran, as its record holds it.
+        if composed is None:
+            raise ReuseError(
+                f"{citation} is compared with the junction "
+                f"{finished.base.name} ran, as its record holds it -- "
+                f"{'; '.join(why)} (engines/transport.md 2a.16)")
+        try:
+            frame_set = compose_junction(
+                citation, tree_root=tree_root,
+                swap_electrodes=desc.task.swap_electrodes)
+        except (ComposeError, SortError) as exc:
+            raise ReuseError(str(exc)) from exc
+        refused = frame_set_refusal(composed.junction, frame_set.junction,
+                                    name=finished.base.name,
+                                    citation=citation)
+        if refused:
+            raise ReuseError(refused)
+        composed = frame_set
+        notes.append(f"the junction is {citation}, its "
+                     f"{frame_set.junction.n_frames} frame(s); its frame 0 "
+                     f"is the junction {finished.base.name} ran")
     if composed is None:
         notes.append(f"{finished.base.name} carries no composed junction -- "
                      f"{'; '.join(why)}; prep composes it from its citation")
@@ -297,5 +367,5 @@ def _own(task, rung: str) -> Dict[str, object]:
                  if st.name == rung), {})
 
 
-__all__ = ["Extension", "Refused", "ReuseError", "fixed_rungs", "reused",
-           "write_reusing"]
+__all__ = ["Extension", "Refused", "ReuseError", "fixed_rungs",
+           "frame_set_refusal", "reused", "write_reusing"]

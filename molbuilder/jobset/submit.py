@@ -1381,35 +1381,6 @@ def _launch_again(calc, job, *, member, names: RunNames, container: Path,
                   hands=_hands(opened.hand, gathered), took=took)
 
 
-def _carried_gather(base: Path, source: Path, names: RunNames):
-    """``[(the run it came from, filename), ...]`` -- the inputs ``source``
-    carries: its `.gathered-from`, then, for each file not in it, the record
-    of the run it continues from, one hop at a time (:func:`_carry_the_gather`).
-    A point of a run of points carries its own record alone."""
-    from ..paths import attempt_index
-    from ..runrecord import read_continued_from, read_gathered_from
-    took = list(read_gathered_from(source))
-    have = {fn for _src, fn in took}
-    seen = {Path(source)}
-    here = Path(source)
-    while True:
-        n = attempt_index(here.name)
-        if n is None:
-            break
-        prev = read_continued_from(here, names, n)
-        if prev is None:
-            break
-        here = prev.path(base)
-        if here in seen:
-            break
-        seen.add(here)
-        for src, fn in read_gathered_from(here):
-            if fn not in have:
-                took.append((src, fn))
-                have.add(fn)
-    return took
-
-
 def _carry_the_gather(source: Path, target: Path, writes: Plan, *,
                       base: Path, stage: str, names: RunNames, run: int,
                       keep=()) -> Optional[HandOver]:
@@ -1430,7 +1401,8 @@ def _carry_the_gather(source: Path, target: Path, writes: Plan, *,
     launched warm, then cold, still takes the seed's density its first
     launch gathered (`job-system.md` § 5.4, *either way a transport rung
     keeps the inputs its first launch gathered*)."""
-    took = tuple((src, fn) for src, fn in _carried_gather(base, source, names)
+    from ..runrecord import carried_gather
+    took = tuple((src, fn) for src, fn in carried_gather(base, source, names)
                  if fn not in keep)
     for src, fn in took:
         # FROM THE RUN THE RECORD NAMES, never from the source run's own

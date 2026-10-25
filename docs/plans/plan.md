@@ -1135,13 +1135,14 @@ arguments")*:
 | L1, L5, L7 | the frame-set dialog's frame numbers; the relaxation tolerance's provenance; the polish | fixed | 2.37.0 |
 | L4 | the charge switch shown in Task setup and the deck's provenance | with the Raman inputs, when they are declared | with Raman |
 | L2, L3, L6, L8 | — | closed, as recommended | — |
+| D-n (R6) | a frame set whose frame 0 is a finished transport calculation's junction | a calculation that reuses the finished one may cite the set in its place: checked at describe — the same atoms in the user order at the same places, the same cell and axes, the same transport partition; the held set and other labels may differ — and reused deck by deck, as every reuse is, so the seed, the leads and frame 0's points are taken — a finished run launched warm read through what it carries (`runrecord.carried_gather`); on the command line, `describe --reuses <finished> --slot junction=<set>` (`engines/transport.md` § 2a.16, *A frame set of the same junction*) *(the user, 2026-10-24: "yes to R6", "go ahead, contract first")* | 2.38.0 |
 
 **Open, each the user's:**
 
 | # | decision | the choice |
 |---|---|---|
 | R1 | Raman's numbers, measured first | on the toy junction, before anything is built: whether the whole cell's change, at a laser frequency and static, is stable against the optical calculation's k-point mesh and broadening; and what the optical calculation costs per frame (the method's § 3.1, § 5.1) |
-| R6 | a frame set whose frame 0 is a finished transport calculation's junction | may it reuse that calculation's seed, leads and 0 V point (`engines/transport.md` § 2a.16 keeps the junction fixed today) — on AuBDTAu about 7 h of seed and leads and 6 h + 45 h for the 0 V point |
+| R8 | the Transport tab's extension panel and a frame set | the panel draws the finished junction and describes with it; citing a frame set of it there needs a control the panel does not have — or the command line stays the road for it (D-n) |
 
 **Found, not fixed — each with why** (to fix, or to close):
 
@@ -1166,7 +1167,7 @@ each walk's wall is its points' summed — 5 × the 2-day card = 10 days, over
 `public`'s 7 — and at the measured 45 h a transmission point the walk needs
 about 9.4 days; the set's σ is 2.1 times mode 56's thermal spread at 300 K
 (the reference for five frames at 300 K is 0.047 Å, the set used 0.1 Å).
-R5 and R6 above are the two decisions it raised.
+R5 and R6 above are the two decisions it raised, both built (D-l, D-n).
 
 Then: R1's measurement on the toy junction, the `electronic` kind for Raman
 (pieces 3b and 5, contract first), or the water comparison of 3a.

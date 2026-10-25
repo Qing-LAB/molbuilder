@@ -3701,8 +3701,9 @@ its **pseudopotentials**, `pseudos/`, which prep takes before any other
 source, so every deck reads the files the finished runs read. A flag beside
 `--reuses` sets what it sets on any describe — the voltages, the treatment,
 the window — and one naming what the extension keeps is refused by name:
-`--slot` (the junction), `--name` (the label), `--psml-lib` (the
-pseudopotentials). You then change what the new
+`--name` (the label), `--psml-lib` (the pseudopotentials); `--slot
+junction=` names a frame set of the same junction or is refused by name
+(*A frame set of the same junction*, below). You then change what the new
 question asks, on the Transport tab before Describe or on Task setup after,
 as for any calculation. The describe copies no run.
 
@@ -3750,7 +3751,7 @@ bias-independent ground every point stands on (§ 1.2); the **device** and the
 | **the device's tab** — its NEGF contour, its mixing, its tolerances, its iteration budget | **yours** | every device point, and the transmission on it |
 | **the shared panel** — basis, functional, mesh, temperature, spin, the shared k-point grid | **fixed** | everything |
 | **the seed's and the leads' tabs** — `electrode_kz` among them | **fixed** | everything |
-| **the junction**, its rename, its label, its pseudopotentials | **fixed** | — another junction is another calculation |
+| **the junction**, its rename, its label, its pseudopotentials | **fixed** — but a frame set whose frame 0 is that junction may be cited in its place (*A frame set of the same junction*, below) | — another junction is another calculation |
 
 **Fixed is shown, read-only, with its way out**: every fixed value stays in
 view as the finished calculation states it — the schema served with
@@ -3789,6 +3790,76 @@ answer, by `molbuilder describe --reuses`, on Task setup's Preview and by
 energies shared, and what runs here, each in the manifest's words. The
 command line limits no value: a fixed value typed into the template is the
 person's, and the manifest names what it makes run again.
+
+#### A frame set of the same junction *(the user, 2026-10-24: "yes to R6", "go ahead, contract first"; built 2.38.0)*
+
+A mode's frame set (§ 2a.9) is often written from the very junction a finished
+calculation already ran: its frame 0 is that junction, atom for atom — on
+AuBDTAu, the mode-56 set and `AuBDTAu_singlebias_equilibrium`. Its seed, its
+leads and its frame-0 points are then the same calculations the finished one
+ran, and recomputing them costs hours. **So a calculation that reuses a
+finished one may cite a frame set in place of the finished junction, when the
+frame set's frame 0 is that junction.**
+
+**What "is that junction" means — checked at describe against the junction
+the finished calculation ran, as its record holds it (a record that does not
+read is refused, its reader's words said), by the one rule two junctions are
+compared by (`compose.junction_difference`), each in the user order at its
+frame 0; refused by name otherwise (`transport.reuse.frame_set_refusal`):**
+
+| | must be the same | why |
+|---|---|---|
+| the atoms | the same count, species and order, in the user order | the decks are indexed by them |
+| the positions | each atom of frame 0 within `structure.SAME_PLACE_ANG` of where the finished junction has it | the seed, the leads and frame 0's points were computed at those positions |
+| the cell, and each axis's kind | the same three vectors; x and y each periodic or isolated as the finished junction's, z the transport axis in both (§ 6.1c) | the leads tile the cell (I6), and the vacuum and k-point grid each rung writes follow the kinds |
+| the transport partition | the atoms of `L-electrode`, `R-electrode`, `bridge` and `buffer` (`sort.PARTITION_LABELS`) | they decide the leads, the device's regions and the deck's order (§ 4) |
+
+**What may differ — the held set, and every other label.** A vibration holds
+far more of the junction than transport's electrodes — everything but the
+molecule in the gap and a few surface metal atoms (`engines/vibration.md`
+§ 2.3a). Transport reads the held set for one thing — that it holds every
+electrode atom (§ 1.1, Step 0, *What transport asks of the held set*) — and
+no transport deck states it as engine input: the
+rungs solve the electrons at fixed positions, with no `Geometry.Constraints`,
+and the deck's order is the partition's (`sort.deck_sort_key`), never the held
+set's. *(Measured on AuBDTAu, 2026-10-24: the finished junction held its 150
+electrode atoms, the mode-56 set 292 — the electrodes and 142 bridge gold; the
+seed, both leads and device `f000` rendered from the set read as SIESTA reads
+them differ in nothing from the decks the finished runs ran,
+`engine_input_differences`.)* The set's other labels — `VIB_CALC`, any of the
+person's — travel with it and are read by nothing here.
+
+**What it keeps, and what it composes.** As every reuse: the finished
+calculation's label, template, job request and pseudopotentials. The junction
+is the frame set's — composed from it at describe, every frame, its record
+written by the composition's one writer (`compose.write_compose_record`) — so
+its device and transmission run a point per frame (§ 2a.11).
+
+**What is reused is the rule above, deck by deck** — nothing new decides it:
+a group whose members' decks are the same calculation as the finished runs is
+copied in (the seed and the leads, rendered at frame 0); a point is taken over
+where the finished calculation holds the same point, the same calculation —
+and a finished calculation of one geometry holds its points on frame 0, a
+rung it ran once its 0 V point there (`point_key`), so the points of
+**frame 0 alone** can be; every other frame runs. A transmission point whose
+energies differ runs too, sharing only energies exactly the same (below).
+*(Measured on AuBDTAu, 2026-10-24, the manifest of the mode-56 set reusing
+`AuBDTAu_singlebias_equilibrium` — a scratch copy, nothing launched: the seed
+and both leads copied in, the device's and the transmission's `f000` taken
+over — about 7 h, 6 h and 45 h on Sol — and frames 1 to 4 run. Its device ran
+twice, the second launch warm, so its newest run's own record names only the
+leads; what it carries names the seed's density too, below.)*
+
+**Asked on the command line**: `molbuilder describe --reuses <finished>
+--slot junction=<the set's .xyz>`, through the writer every reuse is
+described by (`transport.reuse.write_reusing`); its answer says the junction
+is the set's — the set, its frame count — and that its frame 0 is the
+junction the finished calculation ran. The new description's run id
+is its label and this citation (`run-identity.md` § 2), so once described the
+frame set is the calculation's junction, as any citation is: Task setup's
+Save of another junction is another calculation, refused by its id. The
+Transport tab's extension panel draws the finished junction, and describes
+with it.
 
 #### At prep — a group copied in, or prepared here
 
@@ -3839,7 +3910,13 @@ point the finished calculation's newest run of the rung holds done, that ran
 the same calculation as this rung's deck at that point, and whose inputs this
 calculation copied in or took over from the same finished point — a
 transmission point's device point, taken over by this calculation's device
-run from the point that point gathered — is copied into the point's folder:
+run from the point that point gathered — is copied into the point's folder.
+A point's inputs are what its run carries: its own record and, for an input
+a warm launch kept from the run before it, what that run gathered, one hop at
+a time through `.continued-from` — the one answer a launch again takes its
+inputs by (`runrecord.carried_gather`, `job-system.md` § 5.4) — so a device
+launched twice, the second warm, carries the seed's density its first launch
+gathered. What is copied:
 the engine's files and the run's own account (its output, its ending, its
 monitor's records), but never its records of runs (`.continued-from`,
 `.gathered-from`), its folder's stamp or a launch record. Its records are this
@@ -4212,7 +4289,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 | Command | Does | Code |
 |---|---|---|
 | `molbuilder describe --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
-| `molbuilder describe --calculation transport --reuses <finished> [--window LO,HI [--finer N]]` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole — `--bias` and `--low-bias-approximation` set what they set; `--window` fits the transmission window to the finished grid, written as the transmission's own values (§ 2a.16) | `jobset/_cli.py::_init_reusing`, `transport/reuse.py`, `transport/window.py` |
+| `molbuilder describe --calculation transport --reuses <finished> [--slot junction=<set>] [--window LO,HI [--finer N]]` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole — `--bias` and `--low-bias-approximation` set what they set; `--slot junction=` cites a frame set whose frame 0 is the finished junction in its place (§ 2a.16, *A frame set of the same junction*); `--window` fits the transmission window to the finished grid, written as the transmission's own values (§ 2a.16) | `jobset/_cli.py::_init_reusing`, `transport/reuse.py`, `transport/window.py` |
 | `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points; several `--group` as one job launching each in turn, each rung gathering from the runs the groups before it just finished (`job-system.md` § 6.0, *A sequence of groups*) | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
