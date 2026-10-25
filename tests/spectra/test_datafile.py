@@ -48,12 +48,34 @@ def _with_everything():
     return r
 
 
-@pytest.mark.parametrize("make", [_make_results, _with_everything],
-                         ids=["an in-progress result", "a complete one"])
+def _with_charges():
+    """A complete result stating the force-constant run's charges (v11,
+    `engines/vibration.md` § 5.10 ②): the reference step and each free
+    atom's six displacements, both partitions, every atom."""
+    r = _with_everything()
+    steps = [{"atom": None, "axis": None, "side": 0}] + [
+        {"atom": a, "axis": axis, "side": side}
+        for a in (0, 1) for axis in "xyz" for side in (-1, 1)]
+    r.partial_charges = {
+        "displacement_ang": 0.021167,
+        "steps": steps,
+        "charges_e": {
+            name: [[sign * (0.1 + 1e-4 * i), -sign * (0.1 + 1e-4 * i)]
+                   for i in range(len(steps))]
+            for name, sign in (("hirshfeld", 1.0), ("voronoi", -1.0))}}
+    r.__post_init__()
+    return r
+
+
+@pytest.mark.parametrize("make", [_make_results, _with_everything,
+                                  _with_charges],
+                         ids=["an in-progress result", "a complete one",
+                              "one stating its charges"])
 def test_the_data_file_gives_back_the_payload_the_json_holds(tmp_path, make):
     """MUTATION THIS MUST FAIL AGAINST: a key of `_ROOT`, `_RELAXATION` or
-    `_THERMO` removed, or the reader's null rule for the zero-point
-    displacement."""
+    `_THERMO` removed, the reader's null rule for the zero-point
+    displacement, or `/partial_charges`' step-0 rule (its atom read back
+    as -1)."""
     p = tmp_path / "job.spectra.json"
     dump_spectra_json(make(), p)
     nc = tmp_path / "job.spectra.nc"

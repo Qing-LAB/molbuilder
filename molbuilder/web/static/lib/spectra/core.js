@@ -201,6 +201,13 @@
             // persists.
             animAmplitudeMode: "display",   // or "zero-point" / "thermal"
             animTemperature:   298,         // K
+            // WHAT IS ASKED OF A SIESTA RESULT'S CHARGES (web/spectra.md
+            // § 3.2): the atoms by a label of its structure -- none until the
+            // person names one -- the light's direction, the partition
+            // (Hirshfeld, the user's default).
+            irAtoms:           "",
+            irDirection:       "z",
+            irPartition:       "hirshfeld",
         },
 
         lifecycle: {
@@ -315,6 +322,8 @@
         put(els.animSpeed,        u.animSpeed);
         put(els.animAmplitudeMode, u.animAmplitudeMode);
         put(els.animTemperature,  u.animTemperature);
+        put(els.irDirection,      u.irDirection);
+        put(els.irPartition,      u.irPartition);
         // The mode pairing owns more than its own value: it decides whether the
         // temperature box or the size slider is the one on screen.  Re-run the
         // handler init() runs, for the same reason init() runs it.
@@ -406,6 +415,9 @@
         prefAlias("animSpeed");
         prefAlias("animAmplitudeMode");
         prefAlias("animTemperature");
+        prefAlias("irAtoms");
+        prefAlias("irDirection");
+        prefAlias("irPartition");
         alias("watchTimer",     "lifecycle");
         alias("watchInFlight",  "lifecycle");
         alias("watchAbort",     "lifecycle");
@@ -1076,8 +1088,12 @@
             headers: { "Content-Type": "application/json" },
             // THE TEMPERATURE RIDES WITH THE ASK: each mode comes back with
             // its thermal spread at it (web/spectra.md § 4.1).
-            body:    JSON.stringify({ path: path,
-                                      temperature_k: state.animTemperature }),
+            // AND WHAT IS ASKED OF THE CHARGES, when the person named the
+            // atoms (web/spectra.md § 3.2): a result that cannot answer says
+            // why in `infrared_said` and loads all the same.
+            body:    JSON.stringify(Object.assign(
+                         { path: path, temperature_k: state.animTemperature },
+                         _infraredAsk())),
             signal:  signal,
         });
         return { path: path, body: await r.json() };
@@ -1445,7 +1461,35 @@
     function _anyStrength(r) {
         return ((r && r.modes) || []).some(m => !m.has_imag
             && (Number.isFinite(m.raman_activity_a4_amu)
-                || Number.isFinite(m.ir_intensity_km_mol)));
+                || Number.isFinite(_irOf(m, r))));
+    }
+
+    /* A MODE'S INFRARED, ONE ACCESSOR (web/spectra.md § 3.2): the infrared
+     * the load door derived from a SIESTA result's charges for the atoms,
+     * direction and partition the person asked, where it answered one;
+     * otherwise the strength the file states (PySCF's).  The page computes
+     * neither. */
+    function _irModeOf(m, r) {
+        const view = r && r.infrared;
+        if (!view || !Array.isArray(view.modes)) return null;
+        return view.modes.find(x => x.index_1based === m.index_1based) || null;
+    }
+    function _irOf(m, r) {
+        r = r || state.results;
+        const v = _irModeOf(m, r);
+        if (v) return v.intensity_km_mol;
+        return (r && r.infrared) ? null : m.ir_intensity_km_mol;
+    }
+    function _chargeMovedOf(m, r) {
+        const v = _irModeOf(m, r || state.results);
+        return v ? v.charge_moved_e_per_amu12 : null;
+    }
+    function _infraredAsk() {
+        return state.irAtoms
+            ? { infrared: { atoms: state.irAtoms,
+                            direction: state.irDirection,
+                            partition: state.irPartition } }
+            : {};
     }
 
     /* The one sentence under the mode positions, saying why there are no
@@ -1474,6 +1518,127 @@
         return "Each line marks where a mode is -- the run asked for "
              + "intensities and recorded none, so there are no heights; its "
              + "log says why.";
+    }
+
+    /* The run summary's infrared line -- module scope, so a change of the
+     * infrared view rewrites it without rebuilding the page. */
+    function _irRouteLabel(r) {
+        const asked = r.config && ("compute_ir" in r.config);
+        // A SIESTA RESULT'S INFRARED is its charges', for the atoms the
+        // person names (web/spectra.md § 3.2, § 9b.3).
+        if (!asked && r.partial_charges) {
+            return r.infrared
+                ? "from the run's charges — " + r.infrared.atoms_label
+                  + ", along " + (r.infrared.direction_name || "a vector")
+                  + ", " + r.infrared.partition
+                : "from the run's charges — name the atoms above "
+                  + "the modes table";
+        }
+        if (!asked && r.ir_route === "none") return "not computed on this route";
+        if (!r.config || !r.config.compute_ir) return "not requested";
+        switch (r.ir_route) {
+            case "analytic":
+                return "computed — analytic \u2202\u03bc/\u2202R "
+                     + "(no extra SCFs)";
+            case "finite-difference":
+                return "computed — finite-difference dipoles";
+            case "none":
+            case "":
+            case undefined:
+                return "computed — route not recorded";
+            default:
+                return "computed — " + r.ir_route;
+        }
+    }
+
+    /* THE INFRARED CONTROLS (web/spectra.md § 3.2): shown for a result that
+     * states its charges, the labels the door served as the atoms' choices,
+     * the door's reason when it could not answer, and the infrared column
+     * titled by what was asked. */
+    function _renderInfraredControls(results) {
+        const has = !!(results && results.partial_charges);
+        if (els.irControls) els.irControls.hidden = !has;
+        if (els.irAbsent) els.irAbsent.hidden = has
+            || !(results && results.engine === "siesta");
+        if (has && els.irAtoms) {
+            const labels = results.infrared_atoms_labels || [];
+            const keep = [els.irAtoms.options[0]];
+            els.irAtoms.replaceChildren(...keep, ...labels.map(name => {
+                const o = document.createElement("option");
+                o.value = name;
+                o.textContent = name;
+                return o;
+            }));
+            els.irAtoms.value = labels.includes(state.irAtoms)
+                ? state.irAtoms : "";
+        }
+        if (els.irStatus) setStatus(els.irStatus,
+            (results && results.infrared_said) || "",
+            results && results.infrared_said ? "warn" : "muted");
+        const view = results && results.infrared;
+        if (els.irColHead) els.irColHead.textContent = view
+            ? "IR along " + (view.direction_name || "("
+                             + view.direction.join(", ") + ")")
+              + " — " + view.atoms_label + ", "
+              + (view.partition === "voronoi" ? "Voronoi" : "Hirshfeld")
+              + " (km/mol)"
+            : "IR (km/mol)";
+    }
+
+    function onInfraredChange() {
+        state.irAtoms = els.irAtoms ? els.irAtoms.value : "";
+        state.irDirection = els.irDirection ? els.irDirection.value : "z";
+        state.irPartition = els.irPartition ? els.irPartition.value
+                                            : "hirshfeld";
+        _refreshInfrared();
+    }
+
+    /* THE VIEW ASKED AGAIN (web/spectra.md § 3.2): the door answers with the
+     * new choices, and what it says of the infrared replaces what the page
+     * holds -- the file has not changed, so the chart and the table are
+     * drawn again and nothing else. */
+    let _infraredAbort = null;
+    async function _refreshInfrared() {
+        const path = state.fileState.path, held = state.fileState.results;
+        if (!path || !held) return;
+        if (_infraredAbort) _infraredAbort.abort();
+        _infraredAbort = new AbortController();
+        let body;
+        try {
+            body = (await fetchResults(path, _infraredAbort.signal)).body;
+        } catch (exc) {
+            return;
+        }
+        if (path !== state.fileState.path || !body.ok || !body.results) return;
+        held.infrared = body.results.infrared || null;
+        held.infrared_said = body.results.infrared_said || null;
+        _renderInfraredControls(held);
+        _renderStrengths(held);
+    }
+
+    /* What a change of infrared redraws: the heading and its sentence, the
+     * chart and the table -- the same lines `renderResults` draws them
+     * with. */
+    function _renderStrengths(results) {
+        const drawn = _anyStrength(results);
+        if (els.spectrumHeading) {
+            els.spectrumHeading.textContent = drawn ? "Spectrum" : "Mode positions";
+        }
+        if (els.spectrumControls) els.spectrumControls.hidden = !drawn;
+        if (els.spectrumAbsent) {
+            els.spectrumAbsent.hidden = drawn;
+            els.spectrumAbsent.textContent = drawn ? ""
+                : _noSpectrumSentence(results);
+        }
+        if ((results.modes || []).length) renderSpectrumChart(results.modes);
+        renderModesTable();
+        // THE SUMMARY'S INFRARED LINE says what the view now is.
+        if (els.resultsMeta) {
+            const dt = [...els.resultsMeta.querySelectorAll("dt")]
+                .find(x => x.textContent === "IR intensities");
+            if (dt && dt.nextElementSibling)
+                dt.nextElementSibling.textContent = _irRouteLabel(results);
+        }
     }
 
     function renderResults(results, path) {
@@ -1584,24 +1749,6 @@
                     return "computed \u2014 " + r.raman_route;
             }
         }
-        function _irRouteLabel(r) {
-            const asked = r.config && ("compute_ir" in r.config);
-            if (!asked && r.ir_route === "none") return "not computed on this route";
-            if (!r.config || !r.config.compute_ir) return "not requested";
-            switch (r.ir_route) {
-                case "analytic":
-                    return "computed — analytic \u2202\u03bc/\u2202R "
-                         + "(no extra SCFs)";
-                case "finite-difference":
-                    return "computed — finite-difference dipoles";
-                case "none":
-                case "":
-                case undefined:
-                    return "computed — route not recorded";
-                default:
-                    return "computed — " + r.ir_route;
-            }
-        }
         /* The per-mode orbital energies by the same rule as the two
          * strengths: a route with no switch for the probe computed nothing
          * there, and names nothing it could not have asked for. */
@@ -1701,11 +1848,17 @@
             els.spectrumAbsent.textContent = drawn ? ""
                 : _noSpectrumSentence(results);
         }
+        _renderInfraredControls(results);
         if (els.modesTable) {
             els.modesTable.classList.toggle("route-no-raman",
                                             !_routeHas(results, "compute_raman"));
+            // A SIESTA RESULT'S INFRARED is its charges' (web/spectra.md
+            // § 3.2): the column stands where the result states them.
             els.modesTable.classList.toggle("route-no-ir",
-                                            !_routeHas(results, "compute_ir"));
+                                            !_routeHas(results, "compute_ir")
+                                            && !results.partial_charges);
+            els.modesTable.classList.toggle("route-no-charge",
+                                            !results.partial_charges);
             els.modesTable.classList.toggle("route-no-es",
                                             !_routeHas(results, "es_mode_selection"));
         }
@@ -1802,6 +1955,12 @@
             _freqSum(),
             _actSum("raman_activity_a4_amu"),
             _actSum("ir_intensity_km_mol"),
+            // WHAT WAS ASKED OF THE CHARGES, and the door's answer
+            // (web/spectra.md § 3.2): another view is another picture.
+            results.infrared
+                ? [results.infrared.atoms_label, results.infrared.direction,
+                   results.infrared.partition].join("/") : "",
+            results.infrared_said || "",
             results.phase_frequencies || "",
             results.phase_raman || "",
             results.phase_ir || "",
@@ -1907,8 +2066,7 @@
             Number(m.frequency_cm1).toFixed(1),
             m.raman_activity_a4_amu != null
                 ? Number(m.raman_activity_a4_amu).toFixed(2) : "",
-            m.ir_intensity_km_mol != null
-                ? Number(m.ir_intensity_km_mol).toFixed(2) : "",
+            _irOf(m) != null ? Number(_irOf(m)).toFixed(2) : "",
             m.has_imag ? "imag" : "",
             es ? "es" : "",
         ];
@@ -1928,7 +2086,8 @@
             case "index_1based":          return m.index_1based;
             case "frequency_cm1":         return m.frequency_cm1;
             case "raman_activity_a4_amu": return m.raman_activity_a4_amu;
-            case "ir_intensity_km_mol":   return m.ir_intensity_km_mol;
+            case "ir_intensity_km_mol":   return _irOf(m);
+            case "charge_moved":          return _chargeMovedOf(m);
             case "has_imag":              return m.has_imag ? 1 : 0;
             case "has_es":                return m.electronic_structure ? 1 : 0;
             case "homo_eq_ev":            return _homoEq(m);
@@ -1984,9 +2143,9 @@
          * mode is silent there.  CO2 needs both readings in one table: its
          * symmetric stretch is 0.00 km/mol by symmetry, while a Raman-only
          * run leaves every IR cell "—". */
-        const ir = (m.ir_intensity_km_mol == null)
-            ? "—"
-            : Number(m.ir_intensity_km_mol).toFixed(2);
+        const ir = (_irOf(m) == null) ? "—" : Number(_irOf(m)).toFixed(2);
+        const moved = (_chargeMovedOf(m) == null) ? "—"
+            : Number(_chargeMovedOf(m)).toFixed(4);
         const tr = document.createElement("tr");
         tr.dataset.mode = String(m.index_1based);
         if (m.has_imag) tr.className = "mode-imag";
@@ -2000,6 +2159,7 @@
         addCell(Number(m.frequency_cm1).toFixed(1));
         addCell(raman, "raman-col");
         addCell(ir, "ir-col");
+        addCell(moved, "charge-col");
         addCell(m.has_imag ? "✓" : "");
         addCell(m.electronic_structure ? "✓" : "", "es-col");
         /* ALWAYS THE FOUR ES VALUE CELLS, because the header always has
@@ -2118,11 +2278,21 @@
         // THE EXPORT FOLLOWS THE TABLE: a column the route cannot compute
         // is left out of both (web/spectra.md § 9b.3).
         const hasRaman = _routeHas(state.results, "compute_raman");
-        const hasIr = _routeHas(state.results, "compute_ir");
+        const hasIr = _routeHas(state.results, "compute_ir")
+            || !!state.results.partial_charges;
+        const view = state.results.infrared;
         const hasEs = _routeHas(state.results, "es_mode_selection");
+        // THE HEADER NAMES WHAT A VIEW IS (web/spectra.md § 3.2): the atoms,
+        // the direction and the partition the infrared was asked for.
+        const irHead = view ? "ir_km_mol_along_" + (view.direction_name
+                                  || view.direction.join("_"))
+                              + "_" + view.atoms_label + "_" + view.partition
+                            : "ir_intensity_km_mol";
         const headers = ["index_1based", "frequency_cm1"]
             .concat(hasRaman ? ["raman_activity_a4_amu"] : [])
-            .concat(hasIr ? ["ir_intensity_km_mol"] : [])
+            .concat(hasIr ? [irHead] : [])
+            .concat(view ? ["charge_moved_e_per_amu12_" + view.atoms_label
+                            + "_" + view.partition] : [])
             .concat(["has_imag"])
             .concat(hasEs ? ["has_es"] : []);
         if (anyES) headers.push("homo_eq_ev", "lumo_eq_ev",
@@ -2132,8 +2302,10 @@
             const row = [m.index_1based, Number(m.frequency_cm1).toFixed(4)];
             if (hasRaman) row.push(m.raman_activity_a4_amu == null ? ""
                 : Number(m.raman_activity_a4_amu).toFixed(4));
-            if (hasIr) row.push(m.ir_intensity_km_mol == null ? ""
-                : Number(m.ir_intensity_km_mol).toFixed(4));
+            if (hasIr) row.push(_irOf(m) == null ? ""
+                : Number(_irOf(m)).toFixed(4));
+            if (view) row.push(_chargeMovedOf(m) == null ? ""
+                : Number(_chargeMovedOf(m)).toFixed(6));
             row.push(m.has_imag ? "1" : "0");
             if (hasEs) row.push(m.electronic_structure ? "1" : "0");
             if (anyES) {
@@ -2881,6 +3053,15 @@
             ? Math.max(...mode.zero_point_displacement_ang.map(
                   v => Math.hypot(v[0], v[1], v[2])))
             : null;
+        // THE REFERENCE AT THE PAGE'S TEMPERATURE, the door's (web/spectra.md
+        // § 4.3): the maximum displacement whose frames sample the mode's
+        // thermal spread, for three frames and five.
+        const ref = mode.reference_max_displacement_ang || null;
+        const refSaid = (ref && ref["3"] != null)
+            ? "  Reference at " + state.animTemperature + " K -- frames "
+              + "sampling the mode's thermal spread: " + ref["3"].toFixed(4)
+              + " Å for 3 frames, " + ref["5"].toFixed(4) + " Å for 5."
+            : "";
         const { askFields } = await import("/static/lib/dialog.js");
         const { chooseSavePath } = await import(
             "/static/lib/projects/dialogs.js");
@@ -2889,7 +3070,7 @@
             hint: "The maximum displacement is the largest atom's move at the "
                 + "outermost frames; it sets the spread the frames sample."
                 + (zp !== null ? "  This mode's largest zero-point atom move: "
-                   + zp.toFixed(4) + " Å." : ""),
+                   + zp.toFixed(4) + " Å." : "") + refSaid,
             fields: [
                 { name: "max", label: "Maximum displacement (Å)",
                   type: "number", attrs: { min: "0", step: "any" } },
@@ -3207,8 +3388,11 @@
         if (path !== state.fileState.path || !body.ok
             || !body.results || !Array.isArray(body.results.modes)) return;
         body.results.modes.forEach((m, i) => {
-            if (held.modes[i])
+            if (held.modes[i]) {
                 held.modes[i].thermal_spread_amu12_ang = m.thermal_spread_amu12_ang;
+                held.modes[i].reference_max_displacement_ang =
+                    m.reference_max_displacement_ang;
+            }
         });
         const inputs = _animationInputs();
         if (!inputs.ready || !state.vib) return;
@@ -3312,8 +3496,7 @@
             values: {
                 raman: Number.isFinite(m.raman_activity_a4_amu)
                     ? m.raman_activity_a4_amu : null,
-                ir: Number.isFinite(m.ir_intensity_km_mol)
-                    ? m.ir_intensity_km_mol : null,
+                ir: Number.isFinite(_irOf(m)) ? _irOf(m) : null,
             },
             cls:       m.activity_class || "partial",
             imaginary: !!m.has_imag,
@@ -3581,6 +3764,13 @@
         els.animExportStatus    = $("anim-export-status");
         els.framesetBtn         = $("frameset-btn");
         els.framesetStatus      = $("frameset-status");
+        els.irControls          = $("ir-controls");
+        els.irAtoms             = $("ir-atoms");
+        els.irDirection         = $("ir-direction");
+        els.irPartition         = $("ir-partition");
+        els.irStatus            = $("ir-status");
+        els.irAbsent            = $("ir-absent");
+        els.irColHead           = $("ir-col-head");
 
         // --- Generate-side wiring (only present on /spectra) -------
         //
@@ -3661,6 +3851,9 @@
             _on(els.modesTbody,    "click", onTableRowClick);
             _on(els.modesFilter,   "input", onFilterInput);
             _on(els.modesCsvBtn,   "click", exportCSV);
+            _on(els.irAtoms,       "change", onInfraredChange);
+            _on(els.irDirection,   "change", onInfraredChange);
+            _on(els.irPartition,   "change", onInfraredChange);
         }
 
         if (hasGenerateSide) {

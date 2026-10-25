@@ -1046,7 +1046,10 @@ def _emit_ir_projection() -> List[str]:
     out.append("# anyway (any IR code has this caveat), so we don't try to fix it")
     out.append("# here -- but a user computing IR on a cation/anion should treat")
     out.append("# absolute values with extra suspicion.")
-    out.append("_IR_PREFACTOR_KM_MOL_PER_D2_PER_A2_PER_AMU = 42.2561")
+    # THE CONSTANT'S ONE HOME is `constants` -- the script states its value.
+    from ..constants import IR_KM_MOL_PER_D2_A2_AMU
+    out.append(f"_IR_PREFACTOR_KM_MOL_PER_D2_PER_A2_PER_AMU = "
+               f"{IR_KM_MOL_PER_D2_A2_AMU!r}")
     out.append("for _n in range(len(modes_payload)):")
     out.append("    _L_canonical = NORM_MODES_CANONICAL[_n]")
     out.append("    # dμ/dQ_n is a 3-vector; einsum sums DMU_DR over its k (atom)")

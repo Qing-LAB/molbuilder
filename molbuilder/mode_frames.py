@@ -6,9 +6,13 @@ structure pair a transport calculation cites (`engines/vibration.md`
 MODULE  mode_frames (L2; the run door, the vibration result's reader, the
         structure and its codec, numpy)
 ROLE    :func:`frameset_from_mode` -- the one generator, and
-        :class:`ModeFrames`, what it wrote and what it says
+        :class:`ModeFrames`, what it wrote and what it says;
+        :func:`reference_max_displacement` -- the maximum displacement whose
+        frames sample a mode's spread at a temperature, beside the
+        person's own (`science/vibrational-averaging.md` § 5)
 USED-BY the command line (`molbuilder frameset from-mode`) and the spectrum
-        viewer's door (`POST /api/spectra/frameset`)
+        viewer's doors (`POST /api/spectra/frameset`; the reference, at
+        `POST /api/spectra/load`)
 
 **Its extent is the person's** (the user, 2026-10-24): the maximum
 displacement -- the largest atom's move at the outermost frames -- sets the
@@ -63,6 +67,29 @@ def _ordered_nodes(n: int) -> Tuple[np.ndarray, np.ndarray]:
     x, w = np.polynomial.hermite.hermgauss(n)
     order = sorted(range(n), key=lambda i: (round(abs(x[i]), 12), -x[i]))
     return x[order], w[order] / math.sqrt(math.pi)
+
+
+def reference_max_displacement(mode: Dict[str, Any], temperature_k: float,
+                               nodes: int) -> Optional[float]:
+    """THE REFERENCE MAXIMUM DISPLACEMENT of a mode row at ``temperature_k``
+    for the ``nodes``-point rule, in Angstrom: the ``d_max`` whose frames
+    sample the mode's thermal spread, ``√2 · x_out · σ_T · max_k |L_k|``
+    (`science/vibrational-averaging.md` § 5) -- the inverse of
+    :func:`frameset_from_mode`'s ``σ = d_max / (√2 x_out max |L|)``, by the
+    same node rule.  ``None`` for a mode with no zero-point amplitude (an
+    imaginary one).  What the person types stays the person's."""
+    from .spectra.derived import thermal_spread_of
+    if nodes not in NODES:
+        raise FrameSetError(f"the frame set is written at "
+                            f"{' or '.join(str(n) for n in NODES)} nodes, "
+                            f"not {nodes}")
+    sigma = thermal_spread_of(mode, temperature_k)
+    if sigma is None:
+        return None
+    largest = float(np.linalg.norm(
+        np.asarray(mode["eigenvector_canonical"], dtype=float), axis=1).max())
+    x_out = float(np.abs(_ordered_nodes(nodes)[0]).max())
+    return math.sqrt(2.0) * x_out * float(sigma) * largest
 
 
 def _relative(path: Path, root: Optional[Path]) -> str:
@@ -243,4 +270,5 @@ def frameset_from_mode(run_folder, *, mode: int,
     return ModeFrames(path=out, frames=tuple(frames), said=tuple(said))
 
 
-__all__ = ["NODES", "FrameSetError", "ModeFrames", "frameset_from_mode"]
+__all__ = ["NODES", "FrameSetError", "ModeFrames", "frameset_from_mode",
+           "reference_max_displacement"]

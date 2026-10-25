@@ -197,7 +197,17 @@
  * headers.  Within a route an absent value stays a "—" in its cell. */
 .modes-table.route-no-raman .raman-col,
 .modes-table.route-no-ir .ir-col,
+.modes-table.route-no-charge .charge-col,
 .modes-table.route-no-es .es-col { display: none; }
+
+/* The infrared controls of a SIESTA result (web/spectra.md § 3.2): the
+ * table-controls row, its explanation on a line of its own beneath. */
+.ir-controls[hidden] { display: none; }
+.ir-explain {
+    flex-basis: 100%;
+    margin: 0;
+    color: var(--text-muted);
+}
 
 /* The sentence under the mode positions when no strength was computed --
  * which of the four cases it is (web/spectra.md § 2). */

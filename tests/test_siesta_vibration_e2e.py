@@ -201,6 +201,63 @@ def _common_assertions(d):
     # no strength is computed on this route, so no mode can be placed in a
     # channel (`engines/vibration.md` § 6.5)
     assert {m["activity_class"] for m in d["modes"]} == {"partial"}
+    _states_its_charges_and_their_infrared(d)
+
+
+def _states_its_charges_and_their_infrared(d):
+    """`engines/vibration.md` § 5.10 ②, § 6.2: the result states every
+    atom's charge at every force-constant step, by both partitions -- the
+    reference, then each oxygen along x, y, z, side -1 before +1, by user
+    index (the deck is a 3-cycle of the input) -- each step's charges
+    summing to zero, the cell being neutral, and at the reference the
+    oxygens negative and the carbon positive under both.  The infrared
+    derived from them (`science/vibrational-optical-response.md` § 2) reads
+    what holds exactly for any geometry along the axis, relaxed or not: a
+    field along z sees no bend, a field along x no stretch; each stretch's
+    dipole change along z opposes the oxygens' net motion along it --
+    negative charge moved; and the whole molecule, neutral, moves no charge.
+    (How silent the stretch whose oxygens move apart reads depends on the
+    mesh, which tells the two oxygens apart -- 0.5 % of the other at this
+    test's 150 Ry, 6.5e-8 at 500 Ry, the method's § 7 -- so it is not
+    asserted.)
+
+    MUTATIONS THIS MUST FAIL AGAINST: the finish's steps out of SIESTA's
+    order -- an axis swapped lights a forbidden band, a side swapped turns
+    each stretch's sign -- or a step's charges left in the deck's order,
+    which puts the carbon's charge on an oxygen."""
+    from molbuilder.spectra.infrared import infrared_view
+    from molbuilder.spectra.results import SpectraResults
+    pc = d["partial_charges"]
+    assert pc is not None and sorted(pc["charges_e"]) == ["hirshfeld",
+                                                          "voronoi"]
+    assert [(s["atom"], s["axis"], s["side"]) for s in pc["steps"]] == (
+        [(None, None, 0)] + [(a, axis, side) for a in (0, 1)
+                             for axis in "xyz" for side in (-1, 1)])
+    for name, rows in pc["charges_e"].items():
+        assert len(rows) == 13 and all(len(r) == 3 for r in rows), name
+        assert max(abs(sum(r)) for r in rows) < 1e-3, name
+        assert rows[0][0] < 0 and rows[0][1] < 0 and rows[0][2] > 0, \
+            (name, rows[0])
+    result = SpectraResults.from_dict(d)
+    oxygens_z = [float(np.asarray(m["eigenvector_canonical"])[:, 2].sum())
+                 for m in d["modes"]]
+    for partition in ("hirshfeld", "voronoi"):
+        along_z = infrared_view(result, atoms=[0, 1, 2], direction="z",
+                                partition=partition).modes
+        along_x = infrared_view(result, atoms=[0, 1, 2], direction="x",
+                                partition=partition).modes
+        stretch = max(m.intensity_km_mol for m in along_z[2:])
+        bend = max(m.intensity_km_mol for m in along_x[:2])
+        assert stretch > 0 and bend > 0, (partition, along_z, along_x)
+        assert all(m.intensity_km_mol < 1e-6 * stretch
+                   for m in along_z[:2]), (partition, along_z)
+        assert all(m.intensity_km_mol < 1e-6 * bend
+                   for m in along_x[2:]), (partition, along_x)
+        for k in (2, 3):
+            assert along_z[k].dmu_dq_e_per_amu12[2] * oxygens_z[k] < 0, \
+                (partition, k, along_z[k], oxygens_z[k])
+        assert all(abs(m.charge_moved_e_per_amu12) < 1e-3
+                   for m in along_z), (partition, along_z)
 
 
 def _a_bend_pair_and_two_stretches(modes):
@@ -447,21 +504,48 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
         assert drawn["ticks"] is False, drawn
 
         # THE TABLE AND THE SUMMARY BY ROUTE (§ 9b.3): what SIESTA cannot
-        # compute has no column, and the summary says so for each.
-        for col in ("raman_activity_a4_amu", "ir_intensity_km_mol",
-                    "has_es", "gap_eq_ev"):
+        # compute has no column, and the summary says so for each -- and
+        # its infrared, the run's charges', has its column and the charge
+        # moved beside it, empty until the atoms are named (§ 3.2).
+        for col in ("raman_activity_a4_amu", "has_es", "gap_eq_ev"):
             assert not _shown(page, f'#modes-table th[data-col="{col}"]'), col
         assert _shown(page, '#modes-table th[data-col="frequency_cm1"]')
+        assert _shown(page, '#modes-table th[data-col="ir_intensity_km_mol"]')
+        assert _shown(page, '#modes-table th[data-col="charge_moved"]')
+        assert _shown(page, "#ir-controls") and not _shown(page, "#ir-absent")
+        offered = page.eval_on_selector_all(
+            "#ir-atoms option", "os => os.map(o => o.value)")
+        assert offered == ["", "frozen_atoms"], offered
         summary = page.evaluate("""() => {
             const dl = document.getElementById("results-summary-list");
             const out = {};
             dl.querySelectorAll("dt").forEach(dt => {
                 out[dt.textContent] = dt.nextElementSibling.textContent; });
             return out; }""")
-        for line in ("IR intensities", "Raman activities",
-                     "Per-mode orbital energies"):
+        for line in ("Raman activities", "Per-mode orbital energies"):
             assert summary[line].startswith("not computed on this route"), \
                 (line, summary[line])
+        assert summary["IR intensities"] == (
+            "from the run's charges \u2014 name the atoms above the modes "
+            "table"), summary["IR intensities"]
+
+        # THE ATOMS NAMED, the door answers (§ 3.2): the column titled by
+        # what was asked, a number in every cell, the summary saying so.
+        page.select_option("#ir-atoms", value="frozen_atoms")
+        page.wait_for_function(
+            "() => document.getElementById('ir-col-head').textContent"
+            "  === 'IR along z \u2014 frozen_atoms, Hirshfeld (km/mol)'",
+            timeout=20000)
+        cells = page.eval_on_selector_all(
+            "#modes-tbody td.ir-col", "ts => ts.map(t => t.textContent)")
+        assert len(cells) == len(d["modes"]) and "—" not in cells, cells
+        said = page.evaluate("""() => {
+            const dt = [...document.querySelectorAll(
+                "#results-summary-list dt")].find(
+                x => x.textContent === "IR intensities");
+            return dt.nextElementSibling.textContent; }""")
+        assert said == ("from the run's charges \u2014 frozen_atoms, along "
+                        "z, hirshfeld"), said
 
         # NO DOT FOR A PHASE THE ROUTE DOES NOT HAVE (§ 3).
         assert _shown(page, '.spectra-phase-dot[data-phase="frequencies"]')

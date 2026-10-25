@@ -128,3 +128,12 @@ CM1_EV: float = HARTREE_EV / HARTREE_CM1
 #: the thermal spread of a mode (`spectra.derived.thermal_spread_amu12_ang`)
 #: and anything else asking the question read one number.
 CM1_KELVIN: float = CM1_EV / BOLTZMANN_EV_K
+
+#: The infrared intensity of a mode, in km/mol, per squared dipole
+#: derivative in (D/Å)²/amu -- ``N_A / (12 ε₀ c²)``, the orientation average
+#: of a freely tumbling molecule: the literature constant Gaussian, ORCA and
+#: psi4 use (CODATA 2018 gives 42.25606).  The PySCF deck writes it into its
+#: script (`pyscf.vibration_emitters`); a molecule held in one orientation,
+#: its field along one direction, takes three times it
+#: (`spectra.infrared`, `science/vibrational-optical-response.md` § 2.3).
+IR_KM_MOL_PER_D2_A2_AMU: float = 42.2561

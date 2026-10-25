@@ -1018,7 +1018,7 @@ the same day, with what it turned out to be.
 
 ---
 
-## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the method written, the charge switch built 2.35.2)*
+## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; Raman open)*
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode
 calculated have polarization or dipole strength changes that it will be IR or
@@ -1086,24 +1086,23 @@ a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
 |---|---|---|---|
 | 1 | **the charge switch** in the force-constant input: `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` (D3, `engines/vibration.md` § 5.3, § 5.10 ②) — **built 2.35.2** | small | — |
 | 2 | **the charges measured** at every force-constant step on the toy junction — **done 2026-10-24** (the method's § 7) | small | 1 |
-| 3a | **the infrared proof**: water in a box on both engines through jobset — SIESTA's infrared from its step charges against PySCF's, mode by mode and in rank (the method's § 7) | small: two vibration runs | 2 |
+| 3a | **the infrared proof** — **on CO₂ through the SIESTA e2e, 2.36.0**: what the molecule's symmetry demands, under both partitions, on the relaxed and the unrelaxed molecule; the forbidden stretch's 0.5 % residue at `MeshCutoff` 150 Ry falls to 6.5·10⁻⁸ at 500 Ry (the method's § 7). **Still owed**: water in a box on both engines, SIESTA's infrared against PySCF's, mode by mode and in rank | small: two vibration runs | 2 |
 | 3b | **the Raman proof**: the same water, SIESTA's optical calculation at each mode's ±δQ against PySCF's Raman — it checks the chain to the Raman strength on SIESTA's molecular formulation, not the junction's (the method's § 7) | medium | the `electronic` kind (§ 5.10 ④) |
-| 4 | **infrared, built**: the finish reading every step's charges by both partitions — § 5.10 ②'s free-set charges and the molecule's dipole — the result's rows, the viewer's partition switch (`web/spectra.md` § 3.2) | medium | 3a |
+| 4 | **infrared, built 2.36.0**: the finish stores every step's charges (schema 11, `partial_charges`); one function derives the infrared of a set of atoms along a direction by a partition (`spectra.infrared`), served by the load door and `molbuilder.postprocess`; the viewer's atoms, direction and partition controls, its columns and chart (`web/spectra.md` § 3.2) | medium | 3a |
 | 5 | **Raman, built**: the `electronic` kind (§ 5.10 ④) with the optical calculation added to its input, on each chosen mode's three-frame set; the polarizability from SIESTA's optical programs and its change | large | 3b |
 
 **Separate items:**
 
 | # | piece | size | depends on |
 |---|---|---|---|
-| A | **the reference displacement `d_T`** beside the maximum displacement, in the dialog and on the command line (§ 1ac.2) | small: no calculation | — |
+| A | **the reference displacement `d_T`** beside the maximum displacement — **built 2.36.0**: the load door serves it per mode at the page's temperature, the *Write frame set…* dialog shows it, `molbuilder.postprocess.reference_max_displacement` for a script (§ 1ac.2) | small: no calculation | — |
 | B | **energies along a mode**, measured (§ 1ac.2): one SCF per frame | medium | the `electronic` kind (§ 5.10 ④) |
 
-**Decisions for the user:** piece 3a next; item A as proposed.
+**Decisions for the user:** next, the `electronic` kind for Raman (pieces 3b and 5, contract first), or the water comparison of 3a.
 
 **References**: the method's own list
-([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md),
-each checked against Crossref 2026-10-24), into `references.bib` once the
-method is agreed.
+([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)),
+each checked against Crossref 2026-10-24, in `references.bib`.
 
 ## 1ab. Every file says which index its atoms are listed by — the atom index map *(2026-10-23; the user's yes, "Agree. Go ahead."; built for 2.32.0 — AIM, with N8)*
 

@@ -55,7 +55,8 @@ import numpy as np
 
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
-    from ..atom_permutation import Permutation
+    from ..atom_permutation import (Permutation, map_rows_to_user_order,
+                                    map_to_user_index)
     from ..constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..parse.engines.siesta_fc import (ForceConstantFile,
                                            fc_block_asymmetry,
@@ -77,7 +78,8 @@ try:                                        # inside molbuilder
     from .results import SpectraResults
     from .vibrational_analysis import vibrational_analysis
 except ImportError:                         # beside a job, in mb_vibration.pyz
-    from atom_permutation import Permutation
+    from atom_permutation import (Permutation,  # type: ignore[no-redef]
+                                  map_rows_to_user_order, map_to_user_index)
     from constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
@@ -189,6 +191,11 @@ class ForceConstantRun:
     siesta_version: str
     #: the deck's ``vibration`` block (`script_emit.emit_vibration_record`)
     record: Mapping[str, Any]
+    #: each step's partial charges as the run's output printed them -- one
+    #: ``{partition: every atom's charge}`` per step, the deck's order,
+    #: ``None`` for a step that printed none (`engines/vibration.md`
+    #: § 5.10 ②)
+    step_charges: Tuple[Optional[Mapping[str, Sequence[float]]], ...] = ()
 
     @property
     def held(self) -> Tuple[int, ...]:
@@ -294,7 +301,8 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
         identity=dict(record.get("identity") or {}),
         fc=read_fc(fc_path),
         siesta_version=str(build.get("version") or ""),
-        record=record)
+        record=record,
+        step_charges=tuple(s.get("charges") for s in reading["steps"]))
 
 
 def equilibrium_structure(run: ForceConstantRun) -> dict:
@@ -324,6 +332,50 @@ def equilibrium_structure(run: ForceConstantRun) -> dict:
             f"FC.First .. FC.Last leaves {struct.atoms_named(run.held) or 'no atom'} "
             f"unnudged (engines/vibration.md 6.10.1)")
     return struct.restored().to_dict(view=False)
+
+
+def partial_charges_of(run: ForceConstantRun) -> Optional[dict]:
+    """THE FORCE-CONSTANT RUN'S CHARGES, as the result states them
+    (`engines/vibration.md` § 5.10 ②, § 6.2): every atom's charge at every
+    step, by partition, in the user order, beside each step's displaced
+    atom (its user index), axis and side -- the steps SIESTA's own order
+    (§ 5.4: the reference, then each nudged atom along x, y, z, side -1
+    before +1).  ``None`` when the output printed none -- a deck that asked
+    for none.  A partition the output printed at some steps and not at
+    every one is refused: the run and its charges disagree."""
+    printed = sorted({p for s in run.step_charges if s for p in s})
+    if not printed:
+        return None
+    n = len(run.elements)
+    expected = 1 + 6 * len(run.displaced)
+    if len(run.step_charges) != expected:
+        raise FinishError(
+            f"{run.output.name} reads {len(run.step_charges)} steps; the "
+            f"force-constant run over {len(run.displaced)} free atom(s) "
+            f"takes {expected}")
+    every_atom = list(range(n))
+    charges = {}
+    for p in printed:
+        rows = []
+        for i, s in enumerate(run.step_charges):
+            row = (s or {}).get(p)
+            if row is None or len(row) != n:
+                raise FinishError(
+                    f"{run.output.name}: step {i} prints no {p} charges for "
+                    f"its {n} atoms, which other steps print -- the run and "
+                    f"its charges disagree")
+            rows.append([float(q) for q in map_rows_to_user_order(
+                run.permutation, row, every_atom, n)[0]])
+        charges[p] = rows
+    steps = [{"atom": None, "axis": None, "side": 0}]
+    for k in run.displaced:
+        user = map_to_user_index(run.permutation, [k], n)[0]
+        for axis in "xyz":
+            for side in (-1, 1):
+                steps.append({"atom": int(user), "axis": axis,
+                              "side": side})
+    return {"displacement_ang": float(run.fc.displacement_ang),
+            "steps": steps, "charges_e": charges}
 
 
 def result_of(run: ForceConstantRun) -> SpectraResults:
@@ -396,7 +448,8 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
         n_rigid=int(res.removed_motions["count"]),
         siesta_version=run.siesta_version)
     return replace(res, methods_text=methods,
-                   bibliography_keys=extract_citation_keys(methods))
+                   bibliography_keys=extract_citation_keys(methods),
+                   partial_charges=partial_charges_of(run))
 
 
 def finish(deck, output) -> Path:

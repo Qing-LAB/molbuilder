@@ -145,6 +145,7 @@ naming this section — in every file, every group, the root's included.
 | `es` | the modes the electronic-structure probe ran on | each mode's 1-based index | 1 | vibration |
 | `window` | an orbital's place in the probe's window | from 0, ascending energy | 1 | vibration |
 | `temperature_k` | the thermochemistry's temperatures | each temperature | K | vibration |
+| `fc_step` | a SIESTA force-constant run's steps | from 0, step 0 the reference geometry, then each displacement in SIESTA's order | 1 | vibration (`/partial_charges`) |
 
 **Files written before these names** read as rule 5 says: the vibration
 data file's reader takes `@1`–`@3`'s names for the new ones; a digest before

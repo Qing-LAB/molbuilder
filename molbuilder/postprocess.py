@@ -8,7 +8,11 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         order; ``atom_index_map`` -- which index a file's
         atoms are listed by, and both indices of each (`atom_index`);
         ``read_transport_data`` / ``read_spectra_data`` -- the two data files
-        molbuilder writes, each with its atom index map
+        molbuilder writes, each with its atom index map;
+        ``infrared_view`` -- the infrared of a set of atoms from a SIESTA
+        vibration result's charges (`spectra.infrared`), and
+        ``reference_max_displacement`` -- a mode's reference displacement
+        at a temperature (`mode_frames`)
 USED-BY a notebook's kernel, which imports the molbuilder its server runs
         (`web/jupyter.md` § 7), and the post-processing documents' examples
 
@@ -86,5 +90,31 @@ def read_spectra_data(path) -> Dict[str, Any]:
     return {**_read(path), MAP_KEY: atom_index_map(path)}
 
 
-__all__ = ["AtomIndexMap", "AtomIndexUnknown", "atom_index_map", "parse",
-           "read_spectra_data", "read_structure", "read_transport_data"]
+def infrared_view(path, *, atoms, direction, partition: str = "hirshfeld"):
+    """THE INFRARED OF A SET OF ATOMS from a SIESTA vibration result
+    ``<label>.spectra.json`` (`engines/vibration.md` § 5.10 ②): ``atoms`` a
+    label of its structure by name, or user indices; ``direction`` ``x``,
+    ``y``, ``z`` or a vector; ``partition`` ``hirshfeld`` or ``voronoi`` --
+    the one derivation the spectrum viewer asks
+    (`spectra.infrared.infrared_view`), read through the result's own
+    reader."""
+    from .sidecars.spectra import parse_spectra_json
+    from .spectra.infrared import infrared_view as _view, labelled_atoms
+    result = parse_spectra_json(path)
+    label = atoms if isinstance(atoms, str) else ""
+    chosen = labelled_atoms(result, atoms) if label else list(atoms)
+    return _view(result, atoms=chosen, direction=direction,
+                 partition=partition, atoms_label=label)
+
+
+def reference_max_displacement(mode, temperature_k: float, nodes: int = 3):
+    """A mode row's reference maximum displacement at ``temperature_k`` for
+    ``nodes`` frames -- the frames sampling its thermal spread
+    (`mode_frames.reference_max_displacement`)."""
+    from .mode_frames import reference_max_displacement as _ref
+    return _ref(mode, temperature_k, nodes)
+
+
+__all__ = ["AtomIndexMap", "AtomIndexUnknown", "atom_index_map",
+           "infrared_view", "parse", "read_spectra_data", "read_structure",
+           "read_transport_data", "reference_max_displacement"]

@@ -44,7 +44,8 @@ Schema version: :data:`SCHEMA_VERSION`; the reader accepts
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+import math
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
 
@@ -80,7 +81,13 @@ except ImportError:                         # beside a job, in a bundle
 #          `spectra.derived` and checked on read (engines/vibration.md
 #          § 6.6).  A v4-v6 file reads as before: no masses, its derived
 #          values computed on read.
-SCHEMA_VERSION = 10  # 10: the result states its ATOM INDEX MAP
+SCHEMA_VERSION = 11  # 11: the SIESTA force-constant run's CHARGES,
+#                    `partial_charges` -- every atom's Hirshfeld and Voronoi
+#                    charge at every step, in the user order, beside each
+#                    step's displaced atom, axis and side (engines/
+#                    vibration.md § 5.10 ②); null on PySCF and from a deck
+#                    that asked for none; a v4-v10 file reads, null.
+#                    10: the result states its ATOM INDEX MAP
 #                    (model/overview.md § 2.2b): listed by user index,
 #                    each atom's engine index its stages' deck order; a
 #                    v4-v9 file reads, its map made on read
@@ -97,7 +104,7 @@ SCHEMA_VERSION = 10  # 10: the result states its ATOM INDEX MAP
 #                    v4-v7 file reads as before, its range read under v8's
 #                    name (`from_dict`).
 #: Every version the reader serves as the v9 shape.
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10})
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -200,8 +207,76 @@ _RESULTS_KEYS = frozenset({
     "hessian_scope", "n_atoms_in_hessian", "hessian_density_fit", "ir_route",
     "ir_fd_step_ang", "raman_route", "raman_fd_step_ang", "phase_raman",
     "phase_ir", "phase_es", "engine_metadata", "runtime_info",
-    MAP_KEY,
+    MAP_KEY, "partial_charges",
 })
+
+#: THE PARTITIONS a result's charges may state (`engines/vibration.md`
+#: § 5.10 ②, `science/vibrational-optical-response.md` § 1a).
+PARTITIONS = ("hirshfeld", "voronoi")
+#: The order SIESTA displaces each free atom in, after the reference step
+#: (`engines/vibration.md` § 5.4): along x, y, z, side -1 before +1.
+FC_STEP_PATTERN = (("x", -1), ("x", 1), ("y", -1), ("y", 1),
+                   ("z", -1), ("z", 1))
+
+
+def checked_partial_charges(block: Mapping[str, Any], n_atoms: int,
+                            free_atom_idxs: Sequence[int]) -> Dict[str, Any]:
+    """A result's ``partial_charges`` (v11), checked and in its one shape:
+    ``{displacement_ang, steps, charges_e}`` -- the steps the force-constant
+    run's own (``1 + 6·n_free``: the reference, then each free atom along x,
+    y, z, side -1 before +1, :data:`FC_STEP_PATTERN`), every partition one
+    of :data:`PARTITIONS` with one finite charge per atom at every step.
+    Refused by name otherwise (`engines/vibration.md` § 6.7)."""
+    where = "SpectraResults.partial_charges"
+    _refuse_unknown_keys(block, {"displacement_ang", "steps", "charges_e"},
+                         where)
+    delta = float(block.get("displacement_ang", "nan"))
+    if not (math.isfinite(delta) and delta > 0):
+        raise ValueError(f"{where}: displacement_ang must be a positive "
+                         f"number of Angstrom, not {block.get('displacement_ang')!r}")
+    steps = [dict(s) for s in block.get("steps") or ()]
+    free = sorted(int(i) for i in free_atom_idxs)
+    if len(steps) != 1 + 6 * len(free):
+        raise ValueError(f"{where}: {len(steps)} steps; the force-constant "
+                         f"run over {len(free)} free atom(s) takes "
+                         f"{1 + 6 * len(free)}")
+    for s in steps:
+        _refuse_unknown_keys(s, {"atom", "axis", "side"}, f"{where}.steps")
+    if (steps[0].get("atom"), steps[0].get("axis"),
+            steps[0].get("side")) != (None, None, 0):
+        raise ValueError(f"{where}: step 0 is the reference geometry "
+                         f"{{atom: null, axis: null, side: 0}}, not {steps[0]}")
+    moved = []
+    for k in range(len(free)):
+        group = steps[1 + 6 * k: 7 + 6 * k]
+        atoms = {s.get("atom") for s in group}
+        pattern = tuple((s.get("axis"), s.get("side")) for s in group)
+        if len(atoms) != 1 or pattern != FC_STEP_PATTERN:
+            raise ValueError(f"{where}: steps {1 + 6 * k}..{6 + 6 * k} are "
+                             f"not one atom along x, y, z, side -1 before "
+                             f"+1: {group}")
+        moved.append(int(group[0]["atom"]))
+    if sorted(moved) != free:
+        raise ValueError(f"{where}: the steps move atoms {sorted(moved)}; "
+                         f"the free atoms are {free}")
+    charges = dict(block.get("charges_e") or {})
+    if not charges or any(p not in PARTITIONS for p in charges):
+        raise ValueError(f"{where}: charges_e names {sorted(charges)}; "
+                         f"a partition is one of {list(PARTITIONS)}")
+    out = {}
+    for name, rows in charges.items():
+        arr = np.asarray(rows, dtype=float)
+        if arr.shape != (len(steps), int(n_atoms)) or not np.all(
+                np.isfinite(arr)):
+            raise ValueError(f"{where}: charges_e.{name} must be one finite "
+                             f"charge per atom ({n_atoms}) at every step "
+                             f"({len(steps)}); it is {arr.shape}")
+        out[name] = arr.tolist()
+    return {"displacement_ang": delta,
+            "steps": [{"atom": (None if s["atom"] is None else int(s["atom"])),
+                       "axis": s["axis"], "side": int(s["side"])}
+                      for s in steps],
+            "charges_e": {p: out[p] for p in PARTITIONS if p in out}}
 
 
 def _refuse_unknown_keys(d, known, where: str) -> None:
@@ -764,6 +839,11 @@ class SpectraResults:
     #: (:meth:`atom_index_map_stated`).
     atom_index_map:            Optional[Dict[str, Any]] = None
 
+    #: v11: THE FORCE-CONSTANT RUN'S CHARGES (engines/vibration.md § 5.10
+    #: ②) -- :func:`checked_partial_charges`'s shape; ``None`` on PySCF,
+    #: before v11, and from a deck that asked for none.
+    partial_charges:           Optional[Dict[str, Any]] = None
+
     __eq__ = _no_equality
 
     def __post_init__(self):
@@ -1001,6 +1081,11 @@ class SpectraResults:
         # (`model/overview.md` § 2.2b) -- after the atom count is.
         if self.atom_index_map is not None:
             self.atom_index_map_stated()
+        # THE CHARGES, checked against the free atoms they were taken over.
+        if self.partial_charges is not None:
+            self.partial_charges = checked_partial_charges(
+                self.partial_charges, int(self.n_atoms_total),
+                self.free_atom_idxs)
 
     def _modes_with_derived(self) -> List[Dict[str, Any]]:
         """Mode dicts, each with its DERIVED values stated beside the rest --
@@ -1113,6 +1198,7 @@ class SpectraResults:
             # THE ATOM INDEX MAP, always stated (§ 2.2b, F1): the result's
             # own, or -- one written before v10 -- the user column alone.
             MAP_KEY:                self.atom_index_map_stated().to_dict(),
+            "partial_charges":      self.partial_charges,
         }
 
     @classmethod
@@ -1240,6 +1326,8 @@ class SpectraResults:
             runtime_info         = dict(d.get("runtime_info", {})),
             atom_index_map       = (dict(d[MAP_KEY])
                                     if MAP_KEY in d else None),
+            partial_charges      = (dict(d["partial_charges"])
+                                    if d.get("partial_charges") else None),
         )
 
 

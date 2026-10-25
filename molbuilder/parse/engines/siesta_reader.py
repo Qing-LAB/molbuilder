@@ -102,8 +102,11 @@ class SiestaReader:
         self._warn_to = warn
         self.warnings: List[Dict[str, Any]] = []
         #: Committed steps, oldest first: ``{coords, forces, energy,
-        #: max_force, max_force_constrained, scf_history, elapsed_s,
-        #: in_progress}`` -- coordinates as ``[element, x, y, z]`` rows.
+        #: max_force, max_force_constrained, charges, scf_history,
+        #: elapsed_s, in_progress}`` -- coordinates as ``[element, x, y,
+        #: z]`` rows; ``charges`` each partition's every-atom charges the
+        #: step printed (`siesta_grammar.PARTIAL_CHARGES_BEGIN`), ``None``
+        #: where it printed none.
         self.steps: List[Dict[str, Any]] = []
         self.lattice: Optional[List[List[float]]] = None
         self._pending_lattice: Optional[List[List[float]]] = None
@@ -184,6 +187,10 @@ class SiestaReader:
         self._step_forces: List[List[float]] = []
         # The step's stress, ``Stress tensor Voigt[...] (kbar)``, as printed.
         self._step_stress: Optional[List[float]] = None
+        # The step's partial charges, by partition, every atom in the
+        # deck's order -- and the block being read now.
+        self._step_charges: Dict[str, List[float]] = {}
+        self._charges_partition: Optional[str] = None
         # TRANSIESTA COMPUTING NO FORCES (`siesta_grammar.TS_FORCES_WRONG`):
         # the sentence every surface says in their place; then no step keeps
         # a force or a stress.
@@ -318,6 +325,7 @@ class SiestaReader:
             self._step_max_force_constrained = None
             self._step_forces = []
             self._step_stress = None
+            self._step_charges = {}
             return
         energy = self._step_energy
         if energy is None and self._current_scf:
@@ -352,6 +360,7 @@ class SiestaReader:
             "max_force": self._step_max_force if computed else None,
             "max_force_constrained": (self._step_max_force_constrained
                                       if computed else None),
+            "charges": dict(self._step_charges) or None,
             "stress_voigt_kbar": self._step_stress if computed else None,
             "scf_history": list(self._current_scf) or None,
             "elapsed_s": elapsed_s,
@@ -369,6 +378,7 @@ class SiestaReader:
         self._step_max_force_constrained = None
         self._step_forces = []
         self._step_stress = None
+        self._step_charges = {}
         self._step_initial_etot = None
         self._current_scf = []
         self._prev_E_KS = None
@@ -553,6 +563,35 @@ class SiestaReader:
         except ValueError:
             return END_BUBBLE
         self._step_forces.append([fx, fy, fz])
+        return CONTINUE
+
+    def _on_charges_start(self, line: str, line_no: int) -> None:
+        """``<Partition> Atomic Populations:`` -- a step's partial charges
+        begin (`siesta_grammar.PARTIAL_CHARGES_BEGIN`)."""
+        word = _G.PARTIAL_CHARGES_BEGIN.match(line).group(1).lower()
+        self._charges_partition = _G.PARTITIONS[word]
+        self._step_charges[self._charges_partition] = []
+
+    def _consume_charges(self, line: str, line_no: int) -> str:
+        """One row of the block: the atom's number, then its charge -- the
+        first number after it (`partial_charges.F90`'s ``charge [q]``
+        column); the header row is read past, and the dashed rule and the
+        total end the block."""
+        parts = line.split()
+        if parts and parts[0].lower() == "atom":
+            return CONTINUE
+        if parts and parts[0].startswith("---"):
+            return CONTINUE
+        if parts and parts[0].lower() == "total":
+            self._charges_partition = None
+            return END_SECTION
+        try:
+            int(parts[0])
+            q = _G.fortran_float(parts[1])
+        except (ValueError, IndexError):
+            self._charges_partition = None
+            return END_BUBBLE
+        self._step_charges[self._charges_partition].append(q)
         return CONTINUE
 
     def _on_stress(self, line: str, line_no: int) -> None:
@@ -1100,6 +1139,14 @@ class SiestaReader:
                         start=contains_ci(_G.FORCES_BEGIN),
                         on_start=self._on_forces_start,
                         consume=self._consume_forces),
+            # A STEP'S PARTIAL CHARGES, each partition's block (`model/
+            # parse.md` § 4a; `engines/vibration.md` § 5.10 ②).
+            SectionRule(name="partial_charges",
+                        aliases=["Hirshfeld|Voronoi Atomic Populations:"],
+                        start=matches_regex_ci(
+                            _G.PARTIAL_CHARGES_BEGIN.pattern),
+                        on_start=self._on_charges_start,
+                        consume=self._consume_charges),
             # THE SETUP LINES: the SystemLabel the run read, and each held
             # block -- the constraint line, then its ranges line (the one
             # reader of both, `model/parse.md` § 4a).

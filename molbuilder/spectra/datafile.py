@@ -57,16 +57,18 @@ except ImportError:                         # beside a job, in a bundle
                         unnumber_attr, write_group)
     from persist import write_bytes
 
-DATA_SCHEMA = "molbuilder/spectra-data@4"
+DATA_SCHEMA = "molbuilder/spectra-data@5"
 #: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
 #: the same variables without its atom index map, read as it is and never
 #: rewritten -- its map made as it is read (`engines/vibration.md`
 #: § 6.10.5; `model/overview.md` § 2.2b, F3); one written before 2.33.2
 #: (``@1``, ``@2``) names four axes' values otherwise, and before 2.33.3
-#: (``@3``) the temperatures' (:data:`_EARLIER`).
+#: (``@3``) the temperatures' (:data:`_EARLIER`); one before 2.36.0
+#: (``@1``-``@4``) holds no ``/partial_charges``.
 READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1",
                          "molbuilder/spectra-data@2",
-                         "molbuilder/spectra-data@3", DATA_SCHEMA)
+                         "molbuilder/spectra-data@3",
+                         "molbuilder/spectra-data@4", DATA_SCHEMA)
 #: AN AXIS'S VALUES AS EARLIER SCHEMAS NAMED THEM, newest first -- before
 #: every axis was a coordinate of its own name, and before an axis's name
 #: carried its unit (`model/datafiles.md` § 2a, rule 5).
@@ -232,6 +234,39 @@ def _structure_vars() -> Tuple[Var, ...]:
     )
 
 
+def _partial_charge_vars(partitions: Sequence[str]) -> Tuple[Var, ...]:
+    """``/partial_charges`` -- the force-constant run's charges
+    (`engines/vibration.md` § 5.10 ②): the steps, and every atom's charge at
+    each, one variable per partition the result states."""
+    return (
+        Var("fc_step", ("fc_step",), "coordinate", "1",
+            "the force-constant step",
+            "from 0: 0 the reference geometry, then each displacement in "
+            "SIESTA's order (engines/vibration.md 5.4)", dtype="i4"),
+        Var("atom", ("atom",), "coordinate", "1", "atom index",
+            "the atom's user index, from 0 -- the file is listed by user "
+            "index (atoms_listed_by)", dtype="i4"),
+        Var("displaced_atom", ("fc_step",), "given", "1",
+            "the atom the step displaces",
+            "its user index, from 0; -1 at step 0, which displaces none",
+            dtype="i4", fill=-1, atom_index=True),
+        Var("displaced_axis", ("fc_step",), "given", "",
+            "the axis the step displaces along",
+            "x, y or z; empty at step 0", dtype=str),
+        Var("displaced_side", ("fc_step",), "given", "1",
+            "the side of the displacement",
+            "-1 or +1, the step displacement_ang along the axis; 0 at step 0",
+            dtype="i4"),
+        *(Var(f"{name}_charge_e", ("fc_step", "atom"), "raw", "e",
+              f"the atom's {name.capitalize()} charge",
+              "its valence charge less the electrons the partition gives "
+              "it -- positive where electrons left it -- at each step",
+              source=f"the run's output, its {name.capitalize()} Atomic "
+                     f"Populations blocks")
+          for name in partitions),
+    )
+
+
 def _equilibrium_vars() -> Tuple[Var, ...]:
     return (Var("mo", ("mo",), "coordinate", "1", "the orbital's index",
                 "from 0, ascending energy", dtype="i4"),
@@ -344,7 +379,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
                          "schema_version", "free_atom_idxs",
                          "frozen_atom_idxs", "structure", "equilibrium",
                          "modes", "relaxation", "thermo", "removed_motions",
-                         MAP_KEY))
+                         MAP_KEY, "partial_charges"))
     if unknown:
         raise SpectraDataError(
             f"the result carries {unknown}, which this data file does not "
@@ -506,6 +541,30 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             write_group(gg, {"temperature_k": len(temps)}, vars_, values)
             gg.setncattr("curves", json_attr([n for n, *_ in _GRID_CURVES
                                               if n in grid]))
+
+        # /partial_charges -- the force-constant run's, when the result
+        # states them (`engines/vibration.md` § 5.10 ②).
+        charges = payload.get("partial_charges")
+        if charges is not None:
+            g = ds.createGroup("partial_charges")
+            steps = list(charges["steps"])
+            partitions = list(charges["charges_e"])
+            vars_ = _partial_charge_vars(partitions)
+            dims = {"fc_step": len(steps), "atom": atoms}
+            values = _fill(vars_, {"fc_step": len(steps), "atom": n_atoms})
+            values["fc_step"][:] = np.arange(len(steps))
+            values["atom"][:] = np.arange(n_atoms)
+            for i, s in enumerate(steps):
+                values["displaced_atom"][i] = (-1 if s["atom"] is None
+                                               else int(s["atom"]))
+                values["displaced_axis"][i] = str(s["axis"] or "")
+                values["displaced_side"][i] = int(s["side"])
+            for name in partitions:
+                values[f"{name}_charge_e"][:] = np.asarray(
+                    charges["charges_e"][name], dtype=float)
+            write_group(g, dims, vars_, values)
+            g.setncatts({"displacement_ang": float(charges["displacement_ang"]),
+                         "partitions": json_attr(partitions)})
         data = as_bytes(ds)
     write_bytes(p, data)
     return p
@@ -627,6 +686,24 @@ def read_spectra_data(path) -> Dict[str, Any]:
                 grid[name] = [float(x) for x in gv[name]["data"]]
             thermo["grid"] = grid
         out["thermo"] = thermo
+        # /partial_charges, where the file holds them (from @5).
+        out["partial_charges"] = None
+        if "partial_charges" in ds.groups:
+            g = ds["partial_charges"]
+            pv = read_variables(g)
+            partitions = json.loads(str(g.getncattr("partitions")))
+            steps = []
+            for i in range(int(pv["fc_step"]["data"].shape[0])):
+                atom = int(pv["displaced_atom"]["data"][i])
+                steps.append({"atom": None if atom < 0 else atom,
+                              "axis": str(pv["displaced_axis"]["data"][i])
+                              or None,
+                              "side": int(pv["displaced_side"]["data"][i])})
+            out["partial_charges"] = {
+                "displacement_ang": float(g.getncattr("displacement_ang")),
+                "steps": steps,
+                "charges_e": {name: pv[f"{name}_charge_e"]["data"].tolist()
+                              for name in partitions}}
     return out
 
 

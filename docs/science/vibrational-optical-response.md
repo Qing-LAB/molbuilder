@@ -1,7 +1,8 @@
 # The optical activity of a SIESTA vibration — infrared and Raman
 
-**Role:** science reference — a method; the charges it reads are written
-since 2.35.2, the rest is not built
+**Role:** science reference — a method; the charges are written since
+2.35.2, the infrared and the displacement reference built in 2.36.0, Raman
+not built
 **Domain:** science
 **Companions:** [`engines/vibration.md`](?doc=engines/vibration.md) § 5.3 (the
 force-constant input), § 5.10 ② (the charge each mode moves), ③ (a mode's
@@ -65,9 +66,9 @@ a fake statement")*.
 | step | what runs | molbuilder today |
 |---|---|---|
 | **1. The vibration** | SIESTA's force-constant run on the relaxed junction, as today: each free atom nudged ±0.0212 Å along x, y and z, a self-consistent solution at each — $1 + 6\,n_{\mathrm{free}}$ of them; SIESTA prints every atom's Hirshfeld and Voronoi charge after each | **exists** — the charges since 2.35.2 |
-| **2. Infrared, every mode** | nothing more: the vibration's finish reads the charges of step 1 → each mode's dipole change → its infrared strength $A_\nu(\hat e)$ and rank (§ 2; a worked example, § 2.4) | to build |
+| **2. Infrared, every mode** | nothing more: the vibration's finish stores the charges of step 1; asked for a set of atoms, a direction and a partition, one function derives each mode's dipole change → its infrared strength $A_\nu(\hat e)$ and rank (§ 2; a worked example, § 2.4) | **built 2.36.0** — the spectrum viewer and `molbuilder.postprocess.infrared_view` |
 | **3. Raman, the chosen modes** | for each mode, its three-frame set — the geometries at $0$ and $\pm\delta Q$ (§ 3.2); one SIESTA run at each frame with its optical calculation (the `OpticalCalculation` option: the light-absorption spectrum from its own states, § 3.1) → the static polarizability at each → its change → the Raman strength $R_\nu(\hat e)$ and rank (§ 3) | the frame set **exists** (2.35.0); the runs need the `electronic` calculation kind (§ 5), **not built** |
-| **4. The displacement** | nothing: the reference maximum displacement at the person's temperature, from the vibration result, beside the person's own (§ 4; an example, § 4.1) | to build |
+| **4. The displacement** | nothing: the reference maximum displacement at the person's temperature, from the vibration result, beside the person's own (§ 4; an example, § 4.1) | **built 2.36.0** — the *Write frame set…* dialog and `molbuilder.postprocess.reference_max_displacement` |
 
 ```mermaid
 flowchart TD
@@ -326,6 +327,13 @@ familiar $\frac{N_A}{12\varepsilon_0 c^2}\lvert\partial\boldsymbol\mu/\partial Q
 [Porezag1996] — a third of the value above, since a tumbling dipole lies along
 the field a third of the time; held in the junction, it does not tumble. (Both
 prefactors computed from the CODATA constants.)
+
+**The direction is applied after the run.** The light's field enters only
+through the projection $\hat e\cdot\partial\boldsymbol\mu_M/\partial Q_\nu$:
+the coupling is first order in the field, so the run needs no field, and the
+force-constant charges give the whole vector $\partial\boldsymbol\mu_M/\partial Q_\nu$
+— one run answers every direction, each a dot product (the viewer's *Light
+along*, `web/spectra.md` § 3.2).
 
 **Reported**: $A_\nu(\hat e)$ for every mode, and
 $A_\nu(\hat e)/\max_{\nu'}A_{\nu'}(\hat e)$; the charge the mode moves beside
@@ -599,7 +607,7 @@ nothing beyond reading what the runs wrote.
 | choice | proposed | check |
 |---|---|---|
 | $\delta$ (`FC.Displacement`) | the run's own, 0.0212 Å by default | where the person runs a displacement sweep (`engines/vibration.md` § 5.9), the charge derivatives are read at each of its steps, as the force constants are |
-| the charges' grain | Hirshfeld or Voronoi charges are integrated on SIESTA's real-space mesh, so an atom moved by $\delta$ against the mesh changes its charge a little even with no physics behind it | the same sweep, where it is run |
+| the charges' grain | Hirshfeld or Voronoi charges are integrated on SIESTA's real-space mesh, so an atom moved by $\delta$ against the mesh changes its charge a little even with no physics behind it, and a coarse mesh tells two equivalent atoms apart | the same sweep, where it is run; a symmetry-forbidden mode's residue against the mesh cutoff (measured on CO₂: 0.5 % at 150 Ry, $6.5\times10^{-8}$ at 500 Ry, § 7) |
 | $\delta Q$ for Raman | $\delta/\max_k\lvert\mathbf L_k^{(\nu)}\rvert$ — the largest atom moved by $\delta$, the force constants' own linear range | — |
 | `Optical.Mesh`, `Optical.Broaden`, `Optical.NumberOfBands`, `Optical.Energy.Maximum` | the person's, stated with every value | — |
 | the charge sum | — | at every step the charge column over all atoms sums to zero (measured, § 7) |
@@ -619,7 +627,31 @@ both ways; moved along it, it changes them with opposite signs — as the
 chain's symmetry asks. Molbuilder's reader reads the output without a
 warning, and the modes are the earlier run's to the last digit. **From the same
 run, the infrared strengths of § 2.4**: the symmetry-forbidden mode reads
-zero under both partitions, the allowed one does not.
+zero under both partitions, the allowed one does not — and the built
+function (2.36.0) gives § 2.4's numbers again, 21.3 and 101.8 km/mol.
+
+**CO₂ with its carbon held, through jobset** (the SIESTA vibration e2e,
+`tests/test_siesta_vibration_e2e.py`, 2.36.0): on the relaxed molecule and on
+the unrelaxed one alike, under both partitions, a field along z sees neither
+bend, a field along x neither stretch; each stretch's dipole change along z
+opposes the oxygens' net motion — their charge is negative under both
+partitions — and the neutral molecule moves no charge (below
+$5\times10^{-5}\,e$ amu$^{-1/2}$). **The stretch whose oxygens move apart
+reads 0.5 % of the other** on the relaxed molecule (1.13 against
+215.3 km/mol, Hirshfeld), not zero: the computed modes themselves are not
+quite the symmetric pair — the oxygens' z components (−0.164, 0.189) give an
+in-phase share whose square, 0.0050, is the measured ratio. With the carbon
+held the two stretches lie close (1250 and 1312 cm⁻¹), so the slightest
+difference between the two oxygens mixes them. **The mesh is what made the
+difference**: relaxing to 0.001 eV/Å instead of 0.01 changes nothing (the
+relaxation had reached 0.0009 eV/Å either way), while raising `MeshCutoff`
+from 150 to 500 Ry (`frequency/co2-tight-500`, the same tolerance) gives the
+symmetric pair — oxygen z components 0.17675 and 0.17682 — and the stretch
+whose oxygens move apart then reads $6.5\times10^{-8}$ of the other under
+Hirshfeld (216.5 km/mol against $1.4\times10^{-5}$) and $1.2\times10^{-5}$
+under Voronoi. The same cutoff moves the bend from 281 to 325 cm⁻¹ and the
+stretches by 6 cm⁻¹. A residue of this kind is the calculation's mesh,
+read beside the values, never corrected (§ 6, the charges' grain).
 
 **Not yet shown — the proof before anything is built**: on a molecule whose
 answer is known independently, SIESTA's infrared (§ 2) and Raman (§ 3)
