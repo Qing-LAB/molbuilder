@@ -295,7 +295,7 @@ def this_prep_lines(stage: str, takes) -> List[str]:
 # --------------------------------------------------------------------- #
 
 def _vibration_block(stage: str, cfg, relaxed_by, *, criterion,
-                     struct) -> dict:
+                     criterion_from: str, struct) -> dict:
     """A SIESTA force-constant deck's `vibration` block: the facts its job's
     finish reads and no SIESTA keyword states (`engines/vibration.md`
     § 5.3), built here because only `prep` holds all of them -- the stage,
@@ -318,6 +318,7 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion,
     return vibration_record(
         stage=stage,
         force_criterion_ev_ang=criterion,
+        force_criterion_from=criterion_from,
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         relaxation=relaxed_by,
         relaxation_stage=VIBRATION_RELAX_STAGE,
@@ -467,7 +468,7 @@ def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
             (relaxed.info or {}).get("relaxation"))
 
 
-def _structure_path(task, base: Path) -> Optional[Path]:
+def structure_path(task, base: Path) -> Optional[Path]:
     """Where the structure this calculation is *of* is -- beside the
     calculation first, at the recorded path second (`stages.md` § 6.3); the
     suffix-corrected candidate is the codec's own naming rule (a .pdb source
@@ -496,7 +497,7 @@ def _order_said(task, base: Path) -> list:
     that does not read says nothing here: the read that builds refuses
     it."""
     from ..workingcopy_structure import ORDER_NOT_STATED, StructureCodec
-    path = _structure_path(task, base) or _cited_pair_path(task, base)
+    path = structure_path(task, base) or _cited_pair_path(task, base)
     if path is None:
         return []
     said: list = []
@@ -543,7 +544,7 @@ def _structure_for(task, base: Path, pset):
     # pair (--vacuum lives NOWHERE a bare .xyz can put it), and the codec
     # applies the .molstruct.json and compares its pin with the file
     # (`structure-molstruct.md` § 3).
-    candidate = _structure_path(task, base)
+    candidate = structure_path(task, base)
     if candidate is not None:
         try:
             struct = codec.load(candidate)
@@ -714,14 +715,22 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
     # value, and the template's when the structure is stated relaxed.
     from ..resolve import resolved_ladder
     from ..template import stage_role
+    # WHERE IT CAME FROM rides with it, so the deck says (L5).
     criterion = (relaxed_by or {}).get("force_tolerance_ev_ang")
+    criterion_from = "the relax stage's own record"
     if criterion is None:
-        criterion = next(
-            (getattr(c, "relax_force_tol", None) for n, c in resolved_ladder(
-                template_text, task, seam.config_cls)
-             if stage_role(str(task.engine), "vibration", n)
-             == "relaxation"),
-            getattr(pset[0].render_config(), "relax_force_tol", None))
+        rung = next((c for n, c in resolved_ladder(
+                         template_text, task, seam.config_cls)
+                     if stage_role(str(task.engine), "vibration", n)
+                     == "relaxation"), None)
+        if rung is not None:
+            criterion = getattr(rung, "relax_force_tol", None)
+            criterion_from = "the relaxation rung's relax_force_tol"
+        else:
+            criterion = getattr(pset[0].render_config(), "relax_force_tol",
+                                None)
+            criterion_from = ("the template's relax_force_tol -- the "
+                              "structure stated already relaxed")
 
     def spec_extra(element, cfg, point):
         return {**({"cell": cell} if cell is not None else {}),
@@ -731,6 +740,7 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
                 **({"vibration": _vibration_block(pset.stage, cfg,
                                                    relaxed_by,
                                                    criterion=criterion,
+                                                   criterion_from=criterion_from,
                                                    struct=struct)}
                    if finishes and not element.is_trial else {}),
                 # THE RELAX STAGE'S RECORD reaches every deck at its

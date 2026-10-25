@@ -593,23 +593,25 @@ Built 2026-09-23 and described with the PySCF route, side by side, in § 4b.4
 and step by step in § 4b.6:
 force constants by central differences of SIESTA's forces over the free atoms
 only, derived by the job itself right after the run (`vibration.md` § 5.5) through the same harmonic path.
-Intensities are not computed on it (§ 4a.6).
+Its infrared comes from the run's own charges, for the atoms a person names;
+Raman is not computed on it (§ 4a.6).
 
-### 4a.6 SIESTA: not offered, and why that is a statement about this tool
+### 4a.6 SIESTA: the infrared from the run's charges, Raman not offered
 
 The SIESTA path (§ 3.1a, and the design document) computes **frequencies and
-mode shapes only**. Infrared and Raman controls are **not drawn** when SIESTA is
-the engine — not drawn rather than defaulted off, because a control that
-silently does nothing is worse than an absent one: the user believes they asked
-for something.
-
-This is not a claim that SIESTA cannot do it. Infrared intensities are reachable
-there by a different route entirely — **Born effective charges** from the
-Berry-phase polarisation machinery, which answers "how does the polarisation
-respond to moving an ion" for a periodic system, where a molecular dipole moment
-is not even well defined. That is a separate feature with separate physics and
-separate validation, and if it is ever wanted it should be designed as one
-rather than implied by leaving a molecular checkbox on the page.
+mode shapes**, and records **every atom's Hirshfeld and Voronoi charge at every
+force-constant step** — from which the infrared of a set of atoms the person
+names is derived after the run: the set's dipole by its atoms' charges, its
+change along each mode, for light in vacuum along a direction the person
+picks ([`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 2; `vibration.md` § 5.10 ②). Born effective charges from the Berry-phase
+polarisation are the route for an insulating crystal, and SIESTA computes them
+for an insulator only; a junction is metallic. **A Raman control is not
+drawn** when SIESTA is the engine — not drawn rather than defaulted off,
+because a control that silently does nothing is worse than an absent one: the
+user believes they asked for something. Its design is
+[`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 3, open (problem 5 of § 4b.7 below).
 
 **And for the junction work the more useful quantity is a different one again.**
 What modulates a current is not how a mode couples to light but how it couples
@@ -789,10 +791,10 @@ labour is reproduced here with a third column — what this tool does today.
 | δ convergence | none for the Hessian | required | `fc_displacement` is a stage item, so a ladder of δ runs is describable, and `jobset summarize task` compares the stages into `<label>.fc-sweep.json` (§ 4b.6 C; `spectra/displacement_sweep.py`). PySCF's strengths and its probe are finite differences with steps of their own (§ 4b.5) |
 | active-region convergence | useful | strongly recommended | two structures, two runs; the artifact records the free set; no matching tool (§ 4b.9) |
 | normal modes | yes | yes | one function for both, with the rank rule in front of the eigenproblem (§ 4b.1) |
-| infrared and Raman | molecular response calculations | hard at a metal surface | PySCF: built (§ 4a); SIESTA: absent, never zero (§ 4a.6, § 4b.7) |
+| infrared and Raman | molecular response calculations | hard at a metal surface | PySCF: built (§ 4a); SIESTA: the infrared of a named set of atoms from the run's charges, Raman not built (§ 4a.6, § 4b.7) |
 | frontier-orbital modulation | natural | use projected densities of states and resonances instead | the PySCF probe is built, two points per mode (§ 4b.5 G); nothing on SIESTA |
 | surface modes | a finite-cluster approximation | natural | — |
-| transport `T(E, Q)` | not its strength | TranSIESTA / TBtrans | the transport kind exists; the chain through a mode-displaced structure is not built (`vibration.md` § 5.6) |
+| transport `T(E, Q)` | not its strength | TranSIESTA / TBtrans | built: a mode's frame set, and transport at every frame (`vibration.md` § 5.10 ③; `transport.md` § 2a.9) |
 | the same model as the transport | no | yes | the reason the SIESTA route exists at all |
 
 **Why the overlap is useful rather than redundant.** For a molecular-like
@@ -1158,11 +1160,19 @@ the Au–S bond, or drives a broad screening response in the metal — and it is
 two SCFs on the displaced pair of § 4b.6 G, SIESTA writing the density grid at
 each. Not built (§ 4b.9).
 
-**5. Why the tool draws no infrared or Raman control on SIESTA** (§ 4a.6):
-problems 1 and 2 above, plus two the discussion adds — the local optical
-field at the molecule is not the incident field, and Raman brings in the
-metal's frequency-dependent dielectric response. Each is a feature with its
-own physics and validation; none is implied by a molecular checkbox.
+**5. What the tool offers on SIESTA, and what it does not** (§ 4a.6):
+problems 1 and 2 above are why the infrared is the dipole of a named set of
+atoms by their charges, not of the cell. The metal's rearrangement of point
+3 enters it twice: in the set's own charges, partitioned from the whole
+density at every step, and in the charge the mode moves between the set and
+the metal, reported beside the strength; the metal atoms' own charges are
+left out of the set's dipole, whose origin in a metal is not defined. Two
+more the discussion adds: the
+local optical field at the molecule is not the incident field — the infrared
+is for light in vacuum, the field at the molecule taken as the incident one,
+an assumption the method states — and Raman brings in the metal's
+frequency-dependent dielectric response, which is why the Raman route is not
+built and its design is still open.
 
 **6. What this means for a held atom on PySCF — a correction to § 4a.5.**
 With atoms held, the infrared derivative is `Σ_k (∂μ/∂R_k)·L_k` over the
@@ -1190,7 +1200,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | frozen is not cheap electronically — "a 200-Au cluster remains a 200-Au electronic-structure problem" | **the same, and sharpened from the code** (`vibration.md` § 4.4, § 5.7): on PySCF the response equations and the derivative integrals shrink with the free atoms, the exchange-correlation derivative matrices do not, and at hundreds of atoms those matrices are the wall; on SIESTA the count of force evaluations shrinks and each stays whole-system |
 | PySCF is a finite-system code; a metal surface is a periodic solid | **the same, and it is why there are two routes**: the isolated molecule goes to PySCF, the slab or junction to SIESTA, and both hand the same block to the same harmonic path |
 | a fixed atom's displacement is zero, its interaction is not: `F_F = −H_FA u_A ≠ 0` | **the same**, and it is the sentence a reader of a held-atom result should carry: the held atoms shape every number in `H_AA` |
-| three outputs in a chain — modes, optical activity, electronic and transport modulation | **the same organisation** (§ 4b.3): the tool covers the first link on both engines, the second on PySCF, and the third in part — the PySCF probe |
+| three outputs in a chain — modes, optical activity, electronic and transport modulation | **the same organisation** (§ 4b.3): the tool covers the first link on both engines, the second on PySCF and, for infrared, on SIESTA, and the third in part — the PySCF probe and transport along a mode's frames |
 | on PySCF there is no finite step to converge | **for the Hessian, the same**; the tool's Raman activities, its infrared with atoms held and its probe are finite differences with steps of their own (§ 4b.5 B, E, F), untested for convergence by the tool |
 | infrared and Raman for the constrained system "depends on the property implementation" (first turn); for a finite cluster, obtainable by displacing along `±Q_ν` and differentiating (later turn) | **settled** (§ 4a; `vibration.md` § 4.6): with atoms held the analytic dipole route takes no atom list, so infrared goes by central differences of the dipole and Raman by central differences of the polarizability — over the free atoms' Cartesian coordinates, projected onto every mode at once, rather than one displaced pair per selected mode: the same derivative, organised per coordinate |
 | `R(Q_ν) = R₀ + Q_ν e_ν` with the mass-weighting conversion, at five points, the held coordinates unchanged | **differs in the coordinate and the count**: two points along the display eigenvector at a peak displacement `A`; the held atoms unchanged; the conversion to the discussion's `∂ε/∂Q_ν` and to the coupling per zero-point amplitude is § 4b.5 F, and the five-point sample is owed |

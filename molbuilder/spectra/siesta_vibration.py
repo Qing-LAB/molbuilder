@@ -75,7 +75,7 @@ try:                                        # inside molbuilder
     from ..sidecars.spectra import dump_spectra_json
     from ..wrapper_log import LOG_CLOCK, LOG_LINE
     from .methods import extract_citation_keys, siesta_methods_text
-    from .results import SpectraResults
+    from .results import FC_STEP_PATTERN, SpectraResults
     from .vibrational_analysis import vibrational_analysis
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import (Permutation,  # type: ignore[no-redef]
@@ -96,7 +96,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from spectra_sidecar import dump_spectra_json
     from wrapper_log import LOG_CLOCK, LOG_LINE
     from methods import extract_citation_keys, siesta_methods_text
-    from results import SpectraResults
+    from results import FC_STEP_PATTERN, SpectraResults
     from vibrational_analysis import vibrational_analysis
 
 #: What the result says about how the geometry was reached: the run it
@@ -107,6 +107,7 @@ GEOMETRY_NOTE = ("the force-constant run relaxes nothing: its reference "
 
 def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                      already_relaxed: bool,
+                     force_criterion_from: str = "",
                      relaxation: Optional[Mapping[str, Any]],
                      temperature_K: float,
                      masses_amu: Sequence[float],
@@ -140,6 +141,9 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
     return {"stage": str(stage),
             "force_criterion_ev_ang": (None if force_criterion_ev_ang is None
                                        else float(force_criterion_ev_ang)),
+            # where the tolerance came from -- the relax stage's record, the
+            # relaxation rung's item, or the template's -- said, never read
+            "force_criterion_from": str(force_criterion_from),
             "already_relaxed": bool(already_relaxed),
             "relaxation": (dict(relaxation) if relaxation is not None
                            else None),
@@ -347,7 +351,7 @@ def partial_charges_of(run: ForceConstantRun) -> Optional[dict]:
     if not printed:
         return None
     n = len(run.elements)
-    expected = 1 + 6 * len(run.displaced)
+    expected = 1 + len(FC_STEP_PATTERN) * len(run.displaced)
     if len(run.step_charges) != expected:
         raise FinishError(
             f"{run.output.name} reads {len(run.step_charges)} steps; the "
@@ -370,10 +374,8 @@ def partial_charges_of(run: ForceConstantRun) -> Optional[dict]:
     steps = [{"atom": None, "axis": None, "side": 0}]
     for k in run.displaced:
         user = map_to_user_index(run.permutation, [k], n)[0]
-        for axis in "xyz":
-            for side in (-1, 1):
-                steps.append({"atom": int(user), "axis": axis,
-                              "side": side})
+        for axis, side in FC_STEP_PATTERN:
+            steps.append({"atom": int(user), "axis": axis, "side": side})
     return {"displacement_ang": float(run.fc.displacement_ang),
             "steps": steps, "charges_e": charges}
 
@@ -442,14 +444,16 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
                 None if criterion is None else float(criterion))})
     # THE METHODS PARAGRAPH, once the analysis has said how many motions it
     # removed -- its own count, not a second derivation of it (R1).
+    charges = partial_charges_of(run)
     methods = siesta_methods_text(
         displacement_bohr=run.fc.displacement_ang / BOHR_ANGSTROM,
         n_free=len(run.displaced), n_held=len(run.held),
         n_rigid=int(res.removed_motions["count"]),
-        siesta_version=run.siesta_version)
+        siesta_version=run.siesta_version,
+        charge_partitions=tuple(charges["charges_e"]) if charges else ())
     return replace(res, methods_text=methods,
                    bibliography_keys=extract_citation_keys(methods),
-                   partial_charges=partial_charges_of(run))
+                   partial_charges=charges)
 
 
 def finish(deck, output) -> Path:

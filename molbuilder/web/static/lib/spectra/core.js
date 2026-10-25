@@ -206,7 +206,8 @@
             // person names one -- the light's direction, the partition
             // (Hirshfeld, the user's default).
             irAtoms:           "",
-            irDirection:       "z",
+            irDirection:       "z",         // x, y, z, or "vector"
+            irVector:          "0 0 1",     // its three numbers, when a vector
             irPartition:       "hirshfeld",
         },
 
@@ -249,7 +250,7 @@
      *           (the tag) and § 5 (the only two calls), `molview.md` § 11.2b
      *           (the lane this copies -- "looking is not changing").
      * Owns:     one workspace slot, tag `results:spectra:ui`, state_index 0,
-     *           holding the eight view knobs in `state.uiPrefs`.
+     *           holding the view knobs in `state.uiPrefs`.
      *
      * NOT sessionStorage.  `workspace.md` § 4 promises "there is one way to
      * save and one way to load", and the browser-storage half underneath the
@@ -324,6 +325,9 @@
         put(els.animTemperature,  u.animTemperature);
         put(els.irDirection,      u.irDirection);
         put(els.irPartition,      u.irPartition);
+        const vec = _vectorOf(u.irVector);
+        if (vec) [els.irVecX, els.irVecY, els.irVecZ].forEach(
+            (el, i) => put(el, vec[i]));
         // The mode pairing owns more than its own value: it decides whether the
         // temperature box or the size slider is the one on screen.  Re-run the
         // handler init() runs, for the same reason init() runs it.
@@ -360,6 +364,7 @@
                 if (!Object.prototype.hasOwnProperty.call(got, k)) continue;
                 if (typeof got[k] !== typeof PREFS_DEFAULTS[k]) continue;
                 if (typeof got[k] === "number" && !isFinite(got[k])) continue;
+                if (!_prefAdmissible(k, got[k])) continue;
                 state.uiPrefs[k] = got[k];      // the bucket, not the alias
             }
             // Still inside the applying window: pushing values into the
@@ -370,18 +375,41 @@
             _prefsApplying = false;
             _prefsArmed = true;
         }
-        // The knobs are read while rendering, and the read above is async, so
-        // a file already on screen was drawn with the defaults.  renderResults
-        // is the door every watch tick already goes through, so re-entering it
-        // is the ordinary path and not a special case.
-        if (state.fileState.results) {
-            try { renderResults(state.fileState.results, state.fileState.path); }
-            catch (_) {}
-            // A SAVED TEMPERATURE is a changed one: the first load asked the
-            // door at the default, so ask it again at the saved number
-            // (web/spectra.md § 4.1) -- setting the box fires no event.
-            if (state.fileState.path) _refreshThermal();
+        // THE FILE IS ASKED AGAIN WITH THE SAVED KNOBS.  The read above is
+        // async, so the file's load -- in flight or done -- asked the door
+        // with the defaults: the temperature its spreads and references are
+        // at, and the infrared it carries (web/spectra.md § 3.2, § 4.1).  A
+        // load of the same file is the one door that answers both; it
+        // supersedes one still in flight -- and is asked only when the
+        // restored knobs ask something other than what was asked.
+        if (state.fileState.path
+                && JSON.stringify(_askOf()) !== _lastAsk) {
+            loadByPath(state.fileState.path);
         }
+    }
+
+    /* A STORED VALUE IS RESTORED ONLY WHERE ITS CONTROL HOLDS IT (§ 7: a
+     * stored value is not trusted): the door refuses an ask it cannot read,
+     * so a direction or a partition no option carries would turn every load
+     * into a refusal; a temperature is kelvin, 0 or more, the door's rule. */
+    function _prefAdmissible(k, v) {
+        const sel = { irDirection: els.irDirection,
+                      irPartition: els.irPartition }[k];
+        if (sel) return [...sel.options].some(o => o.value === v);
+        if (k === "animTemperature") return v >= 0;
+        if (k === "irVector") return _vectorOf(v) !== null;
+        if (k === "irAtoms") return v === "" || _setOf(v) !== null;
+        return true;
+    }
+
+    /* A DIRECTION GIVEN AS THREE NUMBERS -- "x y z", the remembered form --
+     * or null where it is not three finite numbers, not all zero (the door's
+     * rule, `spectra.infrared.read_ask`). */
+    function _vectorOf(text) {
+        const v = String(text == null ? "" : text).trim().split(/[\s,]+/)
+            .map(Number);
+        return (v.length === 3 && v.every(Number.isFinite)
+                && v.some(x => x !== 0)) ? v : null;
     }
 
     // Backward-compat aliases.  ~3000 lines of existing render +
@@ -417,6 +445,7 @@
         prefAlias("animTemperature");
         prefAlias("irAtoms");
         prefAlias("irDirection");
+        prefAlias("irVector");
         prefAlias("irPartition");
         alias("watchTimer",     "lifecycle");
         alias("watchInFlight",  "lifecycle");
@@ -1083,6 +1112,10 @@
     // a server-echoed path would not equal the string the caller holds and
     // APPLY would drop every payload.  One string feeds both sides.
     async function fetchResults(path, signal) {
+        // WHAT THIS LOAD ASKS, remembered as it leaves -- what a restore of
+        // the knobs compares against (`_prefsRestore`).
+        const ask = _askOf();
+        _lastAsk = JSON.stringify(ask);
         const r = await fetch("/api/spectra/load", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
@@ -1091,13 +1124,25 @@
             // AND WHAT IS ASKED OF THE CHARGES, when the person named the
             // atoms (web/spectra.md § 3.2): a result that cannot answer says
             // why in `infrared_said` and loads all the same.
-            body:    JSON.stringify(Object.assign(
-                         { path: path, temperature_k: state.animTemperature },
-                         _infraredAsk())),
+            body:    JSON.stringify(Object.assign({ path: path }, ask)),
             signal:  signal,
         });
         return { path: path, body: await r.json() };
     }
+
+    /* WHAT EVERY LOAD ASKS beside the file: the temperature and the
+     * infrared (web/spectra.md § 3.2, § 4.1). */
+    let _lastAsk = null;
+    function _askOf() {
+        // THE REFERENCE'S TEMPERATURE, where the frame-set dialog named one
+        // for this file (web/spectra.md § 4.3); unnamed, the door takes the
+        // run's own thermochemistry temperature.
+        const ref = (_refTemp && _refTemp.path === state.fileState.path)
+            ? { reference_temperature_k: _refTemp.t } : {};
+        return Object.assign({ temperature_k: state.animTemperature },
+                             _infraredAsk(), ref);
+    }
+    let _refTemp = null;
 
     /** Load the file ``path`` names -- the dropdown's pick, a return to
      *  the tab, or the registry's hot swap -- and FOLLOW it while
@@ -1366,8 +1411,8 @@
         dots.forEach(dot => {
             const ph = dot.dataset.phase;   // relaxation|frequencies|raman|ir|es
             // A phase the file's route does not have shows no dot at all
-            // (web/spectra.md § 3): SIESTA's has no Raman, no infrared and
-            // no probe.  Infrared's flag is "" in a file written before it
+            // (web/spectra.md § 3): SIESTA's has no Raman, no infrared phase
+            // (its infrared is the charges', derived at load) and no probe.  Infrared's flag is "" in a file written before it
             // existed -- no record, so no dot rather than one left empty.
             const has = ph === "raman" ? _routeHas(results, "compute_raman")
                       : ph === "ir" ? (_routeHas(results, "compute_ir")
@@ -1482,14 +1527,31 @@
     }
     function _chargeMovedOf(m, r) {
         const v = _irModeOf(m, r || state.results);
-        return v ? v.charge_moved_e_per_amu12 : null;
+        return v ? v.charge_moved_e_per_amu12_ang : null;
     }
+    /* WHAT EVERY LOAD ASKS OF THE INFRARED (web/spectra.md § 3.2): the
+     * light's direction always -- a held engine's dipole change is read
+     * along it -- and, once a set is named, the set and the partition; the
+     * door answers what applies to the result. */
     function _infraredAsk() {
-        return state.irAtoms
-            ? { infrared: { atoms: state.irAtoms,
-                            direction: state.irDirection,
-                            partition: state.irPartition } }
-            : {};
+        const ask = { direction: state.irDirection === "vector"
+                          ? _vectorOf(state.irVector) : state.irDirection };
+        const set = _setOf(state.irAtoms);
+        if (set !== null) {
+            ask.atoms = set;
+            ask.partition = state.irPartition;
+        }
+        return { infrared: ask };
+    }
+    /* A named set as the select holds it -- its ask as JSON text -- or null
+     * for none, or for text that is no ask. */
+    function _setOf(text) {
+        if (!text) return null;
+        try {
+            const v = JSON.parse(text);
+            return (typeof v === "string" && v)
+                || (v && typeof v === "object" && v.set === "free") ? v : null;
+        } catch (_) { return null; }
     }
 
     /* The one sentence under the mode positions, saying why there are no
@@ -1498,10 +1560,23 @@
      * being computed; the run asked and recorded none. */
     function _noSpectrumSentence(r) {
         if (!_routeHas(r, "compute_raman") && !_routeHas(r, "compute_ir")) {
-            return "Each line marks where a mode is -- this route computes "
-                 + "the frequencies and the mode shapes, not infrared or "
-                 + "Raman intensities, so there are no heights.  Click a line "
-                 + "to pick its mode.";
+            // A SIESTA RESULT STATING ITS CHARGES has the infrared of the
+            // atoms the person names (web/spectra.md § 3.2).
+            if (r.partial_charges) {
+                return r.infrared_said
+                    ? "Each line marks where a mode is -- the infrared asked "
+                      + "of the run's charges could not be given (why: above "
+                      + "the modes table); this route computes no Raman "
+                      + "intensities.  Click a line to pick its mode."
+                    : "Each line marks where a mode is -- name the atoms "
+                      + "above the modes table for their infrared, from the "
+                      + "run's charges; this route computes no Raman "
+                      + "intensities.  Click a line to pick its mode.";
+            }
+            return "Each line marks where a mode is -- this result carries "
+                 + "the frequencies and the mode shapes, no infrared or "
+                 + "Raman intensities, so there are no heights.  Click a "
+                 + "line to pick its mode.";
         }
         const cfg = r.config || {};
         if (!cfg.compute_raman && !cfg.compute_ir) {
@@ -1520,6 +1595,32 @@
              + "log says why.";
     }
 
+    /* WHAT AN INFRARED VIEW IS, in the one wording every place names it by --
+     * the column headers, the run summary (web/spectra.md § 3.2): the atoms,
+     * the direction, the partition. */
+    function _partitionName(p) {
+        return String(p).charAt(0).toUpperCase() + String(p).slice(1);
+    }
+    function _directionWords(view, sep) {
+        return view.direction_name
+            || view.direction.map(x => String(Number(x.toFixed(3)))).join(sep);
+    }
+    function _irViewWords(view) {
+        const how = view.orientation === "free"
+            ? "averaged over orientations"
+            : "along " + (view.direction_name
+                          || "(" + _directionWords(view, ", ") + ")");
+        // A stored dipole change is the whole system's, of no partition.
+        return view.atoms_label + ", " + how
+             + (view.source === "dipole" ? ""
+                : ", " + _partitionName(view.partition));
+    }
+    /* A FREE MOLECULE -- the result holds no atom -- meets the light
+     * tumbling: no direction is asked (the door's `infrared_orientation`). */
+    function _irFree(results) {
+        return !!(results && results.infrared_orientation === "free");
+    }
+
     /* The run summary's infrared line -- module scope, so a change of the
      * infrared view rewrites it without rebuilding the page. */
     function _irRouteLabel(r) {
@@ -1527,27 +1628,37 @@
         // A SIESTA RESULT'S INFRARED is its charges', for the atoms the
         // person names (web/spectra.md § 3.2, § 9b.3).
         if (!asked && r.partial_charges) {
-            return r.infrared
-                ? "from the run's charges — " + r.infrared.atoms_label
-                  + ", along " + (r.infrared.direction_name || "a vector")
-                  + ", " + r.infrared.partition
+            if (r.infrared)
+                return "from the run's charges — " + _irViewWords(r.infrared);
+            return r.infrared_said
+                ? "from the run's charges — not given: " + r.infrared_said
                 : "from the run's charges — name the atoms above "
                   + "the modes table";
         }
+        // A SIESTA RESULT STATING NO CHARGES: why is the door's, said once
+        // above the modes table (`infrared_absent`).
+        if (!asked && r.infrared_absent) {
+            return "none in this result — it states no charges (why: above "
+                 + "the modes table)";
+        }
         if (!asked && r.ir_route === "none") return "not computed on this route";
         if (!r.config || !r.config.compute_ir) return "not requested";
+        // A HELD MOLECULE'S COLUMN is its stored dipole change along the
+        // light (web/spectra.md § 3.2): the summary says which view it is.
+        const shown = (r.infrared && r.infrared.source === "dipole")
+            ? "; shown " + _irViewWords(r.infrared) + ", atoms held" : "";
         switch (r.ir_route) {
             case "analytic":
                 return "computed — analytic \u2202\u03bc/\u2202R "
-                     + "(no extra SCFs)";
+                     + "(no extra SCFs)" + shown;
             case "finite-difference":
-                return "computed — finite-difference dipoles";
+                return "computed — finite-difference dipoles" + shown;
             case "none":
             case "":
             case undefined:
-                return "computed — route not recorded";
+                return "computed — route not recorded" + shown;
             default:
-                return "computed — " + r.ir_route;
+                return "computed — " + r.ir_route + shown;
         }
     }
 
@@ -1556,20 +1667,41 @@
      * the door's reason when it could not answer, and the infrared column
      * titled by what was asked. */
     function _renderInfraredControls(results) {
-        const has = !!(results && results.partial_charges);
+        // WHAT IS ASKED FOLLOWS WHERE THE INFRARED COMES FROM (web/spectra.md
+        // § 3.2): a result's charges -- the set, the direction, the
+        // partition; a held engine's dipole change -- the direction alone;
+        // a free molecule -- no direction at all.
+        const source = results && results.infrared_source;
+        const charges = source === "charges";
+        const free = _irFree(results);
+        const has = charges || (source === "dipole" && !free);
         if (els.irControls) els.irControls.hidden = !has;
-        if (els.irAbsent) els.irAbsent.hidden = has
-            || !(results && results.engine === "siesta");
-        if (has && els.irAtoms) {
-            const labels = results.infrared_atoms_labels || [];
+        if (els.irAtomsRow) els.irAtomsRow.hidden = !charges;
+        if (els.irPartitionRow) els.irPartitionRow.hidden = !charges;
+        if (els.irExplain) els.irExplain.hidden = !charges;
+        if (els.irDirectionRow) els.irDirectionRow.hidden = free;
+        if (els.irVector) els.irVector.hidden = free
+            || state.irDirection !== "vector";
+        // WHY A RESULT OF THIS ROUTE HAS NO CHARGES is the door's sentence
+        // (`spectra.infrared.no_charges_reason`), shown where it says one.
+        const absent = (results && results.infrared_absent) || "";
+        if (els.irAbsent) {
+            els.irAbsent.textContent = absent;
+            els.irAbsent.hidden = !absent;
+        }
+        if (charges && els.irAtoms) {
+            // THE SETS, the door's: the built-in "the free atoms", then the
+            // structure's labels -- each option's value the ask it names.
+            const sets = results.infrared_sets || [];
             const keep = [els.irAtoms.options[0]];
-            els.irAtoms.replaceChildren(...keep, ...labels.map(name => {
+            els.irAtoms.replaceChildren(...keep, ...sets.map(set => {
                 const o = document.createElement("option");
-                o.value = name;
-                o.textContent = name;
+                o.value = JSON.stringify(set.ask);
+                o.textContent = set.name;
                 return o;
             }));
-            els.irAtoms.value = labels.includes(state.irAtoms)
+            els.irAtoms.value = sets.some(
+                set => JSON.stringify(set.ask) === state.irAtoms)
                 ? state.irAtoms : "";
         }
         if (els.irStatus) setStatus(els.irStatus,
@@ -1577,17 +1709,32 @@
             results && results.infrared_said ? "warn" : "muted");
         const view = results && results.infrared;
         if (els.irColHead) els.irColHead.textContent = view
-            ? "IR along " + (view.direction_name || "("
-                             + view.direction.join(", ") + ")")
-              + " — " + view.atoms_label + ", "
-              + (view.partition === "voronoi" ? "Voronoi" : "Hirshfeld")
-              + " (km/mol)"
+            ? "IR — " + _irViewWords(view) + " (km/mol)"
             : "IR (km/mol)";
+        if (els.chargeColHead) els.chargeColHead.textContent =
+            (view && view.source === "charges")
+            ? "Charge moved — " + view.atoms_label + ", "
+              + _partitionName(view.partition) + " (e/(√amu·Å))"
+            : "Charge moved (e/(√amu·Å))";
     }
 
     function onInfraredChange() {
         state.irAtoms = els.irAtoms ? els.irAtoms.value : "";
         state.irDirection = els.irDirection ? els.irDirection.value : "z";
+        if (els.irVector) els.irVector.hidden =
+            _irFree(state.fileState.results) || state.irDirection !== "vector";
+        if (state.irDirection === "vector") {
+            // THE THREE NUMBERS AS TYPED, asked only when they are a
+            // direction; otherwise the line beside the controls says why.
+            const typed = [els.irVecX, els.irVecY, els.irVecZ]
+                .map(el => (el ? el.value : "")).join(" ");
+            if (_vectorOf(typed) === null) {
+                setStatus(els.irStatus, "a direction is three numbers, not "
+                          + "all zero", "warn");
+                return;
+            }
+            state.irVector = _vectorOf(typed).join(" ");
+        }
         state.irPartition = els.irPartition ? els.irPartition.value
                                             : "hirshfeld";
         _refreshInfrared();
@@ -1612,8 +1759,19 @@
         if (path !== state.fileState.path || !body.ok || !body.results) return;
         held.infrared = body.results.infrared || null;
         held.infrared_said = body.results.infrared_said || null;
+        held.methods_text = body.results.methods_text || held.methods_text;
         _renderInfraredControls(held);
         _renderStrengths(held);
+        _renderMethods(held);
+    }
+
+    /* THE METHODS PARAGRAPH, as the door composed it -- the infrared view's
+     * sentence in it where one is shown (web/spectra.md § 9b.3). */
+    function _renderMethods(results) {
+        if (!els.methodsBlock) return;
+        const md = (results.methods_text || "").trim();
+        els.methodsBlock.hidden = !md;
+        if (md && els.methodsText) els.methodsText.textContent = md;
     }
 
     /* What a change of infrared redraws: the heading and its sentence, the
@@ -1788,11 +1946,7 @@
         // rather than gated on the run being finished.  Empty means the
         // composer has not written anything yet -- show nothing, never
         // an empty box that reads like a missing result.
-        if (els.methodsBlock) {
-            const md = (results.methods_text || "").trim();
-            els.methodsBlock.hidden = !md;
-            if (md && els.methodsText) els.methodsText.textContent = md;
-        }
+        _renderMethods(results);
 
         // Built, not written: the values are the results file's own strings
         // (engine, version, host), set as text.
@@ -2067,6 +2221,8 @@
             m.raman_activity_a4_amu != null
                 ? Number(m.raman_activity_a4_amu).toFixed(2) : "",
             _irOf(m) != null ? Number(_irOf(m)).toFixed(2) : "",
+            _chargeMovedOf(m) != null ? Number(_chargeMovedOf(m)).toFixed(4)
+                                      : "",
             m.has_imag ? "imag" : "",
             es ? "es" : "",
         ];
@@ -2281,18 +2437,24 @@
         const hasIr = _routeHas(state.results, "compute_ir")
             || !!state.results.partial_charges;
         const view = state.results.infrared;
+        const hasCharge = !!state.results.partial_charges;
         const hasEs = _routeHas(state.results, "es_mode_selection");
         // THE HEADER NAMES WHAT A VIEW IS (web/spectra.md § 3.2): the atoms,
         // the direction and the partition the infrared was asked for.
-        const irHead = view ? "ir_km_mol_along_" + (view.direction_name
-                                  || view.direction.join("_"))
-                              + "_" + view.atoms_label + "_" + view.partition
+        const irHead = view ? "ir_km_mol_"
+                              + view.atoms_label.replace(/\s+/g, "_")
+                              + (view.orientation === "free" ? "_averaged"
+                                 : "_along_" + _directionWords(view, "_"))
+                              + (view.partition ? "_" + view.partition : "")
                             : "ir_intensity_km_mol";
         const headers = ["index_1based", "frequency_cm1"]
             .concat(hasRaman ? ["raman_activity_a4_amu"] : [])
             .concat(hasIr ? [irHead] : [])
-            .concat(view ? ["charge_moved_e_per_amu12_" + view.atoms_label
-                            + "_" + view.partition] : [])
+            .concat(hasCharge ? [view
+                ? "charge_moved_e_per_amu12_ang_"
+                  + view.atoms_label.replace(/\s+/g, "_") + "_"
+                  + view.partition
+                : "charge_moved_e_per_amu12_ang"] : [])
             .concat(["has_imag"])
             .concat(hasEs ? ["has_es"] : []);
         if (anyES) headers.push("homo_eq_ev", "lumo_eq_ev",
@@ -2304,7 +2466,7 @@
                 : Number(m.raman_activity_a4_amu).toFixed(4));
             if (hasIr) row.push(_irOf(m) == null ? ""
                 : Number(_irOf(m)).toFixed(4));
-            if (view) row.push(_chargeMovedOf(m) == null ? ""
+            if (hasCharge) row.push(_chargeMovedOf(m) == null ? ""
                 : Number(_chargeMovedOf(m)).toFixed(6));
             row.push(m.has_imag ? "1" : "0");
             if (hasEs) row.push(m.electronic_structure ? "1" : "0");
@@ -3035,6 +3197,27 @@
      * (`POST /api/spectra/frameset`, engines/vibration.md § 5.10 ③).  The
      * animation's amplitude above is a drawing choice and never this input.
      */
+    /* THE REFERENCE ASKED AT ANOTHER TEMPERATURE (web/spectra.md § 4.3):
+     * the door answers each mode's reference at it, and what it says
+     * replaces what the page holds of the reference -- nothing else. */
+    async function _askReference(t) {
+        const path = state.fileState.path, held = state.fileState.results;
+        if (!path || !held) return null;
+        _refTemp = { path: path, t: t };
+        let body;
+        try {
+            body = (await fetchResults(path, undefined)).body;
+        } catch (_) { return null; }
+        if (path !== state.fileState.path || !body.ok || !body.results)
+            return null;
+        held.reference_temperature_k = body.results.reference_temperature_k;
+        (body.results.modes || []).forEach((m, i) => {
+            if (held.modes[i]) held.modes[i].reference_max_displacement_ang =
+                m.reference_max_displacement_ang;
+        });
+        return held;
+    }
+
     async function onWriteFrameSet() {
         const r = state.results;
         const path = state.fileState && state.fileState.path;
@@ -3053,36 +3236,65 @@
             ? Math.max(...mode.zero_point_displacement_ang.map(
                   v => Math.hypot(v[0], v[1], v[2])))
             : null;
-        // THE REFERENCE AT THE PAGE'S TEMPERATURE, the door's (web/spectra.md
-        // § 4.3): the maximum displacement whose frames sample the mode's
-        // thermal spread, for three frames and five.
-        const ref = mode.reference_max_displacement_ang || null;
-        const refSaid = (ref && ref["3"] != null)
-            ? "  Reference at " + state.animTemperature + " K -- frames "
-              + "sampling the mode's thermal spread: " + ref["3"].toFixed(4)
-              + " Å for 3 frames, " + ref["5"].toFixed(4) + " Å for 5."
-            : "";
+        // THE REFERENCE AT THE DIALOG'S OWN TEMPERATURE, the door's
+        // (web/spectra.md § 4.3): the maximum displacement whose frames
+        // sample the mode's thermal spread, for three frames and five, at
+        // the temperature the door computed it at -- the run's own
+        // thermochemistry temperature until another is typed.
+        const held = state.fileState.results || {};
+        const refSaid = (m, at) => {
+            const ref = m && m.reference_max_displacement_ang;
+            return (ref && ref["3"] != null && at != null)
+                ? "  Reference at " + at + " K — frames sampling the "
+                  + "mode's thermal spread: " + ref["3"].toFixed(4)
+                  + " Å for 3 frames, " + ref["5"].toFixed(4) + " Å for 5."
+                : "";
+        };
+        const base = "The maximum displacement is the largest atom's move at "
+            + "the outermost frames; it sets the spread the frames sample."
+            + (zp !== null ? "  This mode's largest zero-point atom move: "
+               + zp.toFixed(4) + " Å." : "");
         const { askFields } = await import("/static/lib/dialog.js");
         const { chooseSavePath } = await import(
             "/static/lib/projects/dialogs.js");
+        const { toDisplay } = await import("/static/lib/molview/index.js");
+        let refTimer = null, askedAt = held.reference_temperature_k;
         const asked = await askFields({
             title: "Mode " + mode.index_1based + " as a frame set",
-            hint: "The maximum displacement is the largest atom's move at the "
-                + "outermost frames; it sets the spread the frames sample."
-                + (zp !== null ? "  This mode's largest zero-point atom move: "
-                   + zp.toFixed(4) + " Å." : "") + refSaid,
+            hint: base + refSaid(mode, held.reference_temperature_k),
             fields: [
                 { name: "max", label: "Maximum displacement (Å)",
                   type: "number", attrs: { min: "0", step: "any" } },
-                { name: "nodes", label: "Frames (3 or 5)", value: "3",
-                  type: "number", attrs: { min: "3", max: "5", step: "2" } },
+                { name: "nodes", label: "Frames", value: "3",
+                  options: [["3", "3"], ["5", "5"]] },
+                { name: "temperature",
+                  label: "Temperature for the reference (K)",
+                  type: "number", attrs: { min: "0", step: "any" },
+                  value: held.reference_temperature_k == null ? ""
+                      : held.reference_temperature_k },
             ],
             validate: (v) => !(Number(v.max) > 0)
                 ? "the maximum displacement is a positive number of Å"
                 : (v.nodes !== "3" && v.nodes !== "5")
                 ? "three frames or five" : null,
+            // A TEMPERATURE TYPED ASKS THE DOOR AGAIN, once the typing pauses,
+            // and the hint says what it answered.
+            onInput: (v, { setHint }) => {
+                const t = parseFloat(v.temperature);
+                if (!Number.isFinite(t) || t < 0 || t === askedAt) return;
+                clearTimeout(refTimer);
+                refTimer = setTimeout(async () => {
+                    askedAt = t;
+                    const now = await _askReference(t);
+                    if (!now) return;
+                    const m = (now.modes || []).find(
+                        x => x.index_1based === mode.index_1based);
+                    setHint(base + refSaid(m, now.reference_temperature_k));
+                }, 250);
+            },
             confirmLabel: "Next",
         });
+        clearTimeout(refTimer);
         if (!asked) return;
         let out;
         try {
@@ -3120,7 +3332,10 @@
             return;
         }
         const lines = ["wrote " + body.path].concat(
-            body.frames.map((f, i) => "frame " + i + ": q/σ "
+            // NAMED AS THE FRAME-SET CARD NAMES THEM: the display's count
+            // from 1 (`model/structure.md` § 2.2e).
+            body.frames.map((f, i) => "frame " + toDisplay(i) + " (of "
+                + body.frames.length + "): q/σ "
                 + f.q_sigma.toFixed(4) + ", largest atom move "
                 + f.max_atom_displacement_ang.toFixed(4) + " Å, weight "
                 + f.weight.toFixed(6)),
@@ -3368,7 +3583,9 @@
     let _thermalTimer = null, _thermalAbort = null;
     function onTemperatureChange() {
         const t = parseFloat(els.animTemperature.value);
-        if (!Number.isFinite(t) || t <= 0) return;
+        // The door's rule (spectra.derived.checked_temperature_k): kelvin,
+        // 0 or more -- 0 K the zero-point motion alone.
+        if (!Number.isFinite(t) || t < 0) return;
         state.animTemperature = t;
         clearTimeout(_thermalTimer);
         _thermalTimer = setTimeout(_refreshThermal, 250);
@@ -3387,11 +3604,10 @@
         }
         if (path !== state.fileState.path || !body.ok
             || !body.results || !Array.isArray(body.results.modes)) return;
+        held.temperature_k = body.results.temperature_k;
         body.results.modes.forEach((m, i) => {
             if (held.modes[i]) {
                 held.modes[i].thermal_spread_amu12_ang = m.thermal_spread_amu12_ang;
-                held.modes[i].reference_max_displacement_ang =
-                    m.reference_max_displacement_ang;
             }
         });
         const inputs = _animationInputs();
@@ -3478,9 +3694,13 @@
      * nothing about the number is lost, only the pretence that the
      * height means a transmittance. */
     const CHART_CHANNELS = [
-        { key: "raman", label: "Raman activity",  unit: "Å⁴/amu", direction: "up" },
+        // `floorKey`: the page constant naming the channel's band floor
+        // (spectra/activity.py), handed to the chart at mount.
+        { key: "raman", label: "Raman activity",  unit: "Å⁴/amu", direction: "up",
+          floorKey: "raman_present_floor_a4_amu" },
         { key: "ir",    label: "IR absorption",   unit: "arb. units",
-          direction: "down", relative: true },
+          valueUnit: "km/mol", direction: "down", relative: true,
+          floorKey: "ir_present_floor_km_mol" },
     ];
 
     function _chartModes(modes) {
@@ -3654,7 +3874,9 @@
                 .then(({ mount }) => mount(els.spectrumChart, {
                     // Declared at mount because they decide the LAYOUT --
                     // how many panels, and which one each occupies.
-                    channels: CHART_CHANNELS,
+                    channels: CHART_CHANNELS.map(c => Object.assign(
+                        {}, c, { presentFloor: ((state.results || {})
+                                 .constants || {})[c.floorKey] })),
                     // A click enters the tab and comes back as setSelected;
                     // the chart never highlights on its own.
                     onSelect: (index) => selectMode(index),
@@ -3767,9 +3989,18 @@
         els.irControls          = $("ir-controls");
         els.irAtoms             = $("ir-atoms");
         els.irDirection         = $("ir-direction");
+        els.irVector            = $("ir-vector");
+        els.irDirectionRow      = $("ir-direction-row");
+        els.irAtomsRow          = $("ir-atoms-row");
+        els.irPartitionRow      = $("ir-partition-row");
+        els.irExplain           = $("ir-explain");
+        els.irVecX              = $("ir-vec-x");
+        els.irVecY              = $("ir-vec-y");
+        els.irVecZ              = $("ir-vec-z");
         els.irPartition         = $("ir-partition");
         els.irStatus            = $("ir-status");
         els.irAbsent            = $("ir-absent");
+        els.chargeColHead       = $("charge-col-head");
         els.irColHead           = $("ir-col-head");
 
         // --- Generate-side wiring (only present on /spectra) -------
@@ -3853,6 +4084,9 @@
             _on(els.modesCsvBtn,   "click", exportCSV);
             _on(els.irAtoms,       "change", onInfraredChange);
             _on(els.irDirection,   "change", onInfraredChange);
+            _on(els.irVecX,        "change", onInfraredChange);
+            _on(els.irVecY,        "change", onInfraredChange);
+            _on(els.irVecZ,        "change", onInfraredChange);
             _on(els.irPartition,   "change", onInfraredChange);
         }
 

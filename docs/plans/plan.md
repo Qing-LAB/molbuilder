@@ -1018,7 +1018,7 @@ the same day, with what it turned out to be.
 
 ---
 
-## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; Raman open)*
+## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; Raman designed, R1 open)*
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode
 calculated have polarization or dipole strength changes that it will be IR or
@@ -1041,10 +1041,12 @@ chooses; no field applied, no other calculation:
   to hirshfeld")*: both computed, every number stated with its partition,
   Hirshfeld shown unless the person picks Voronoi (the method's § 1a;
   `web/spectra.md` § 3.2; `engines/vibration.md` § 5.10 ②).
-- **Raman, chosen modes**: SIESTA's optical calculation — its response to
-  light polarized along the chosen direction, from its own states — one run
-  per frame of the mode's three-frame set (the `electronic` kind, § 5.10 ④);
-  the static polarizability from the dielectric function (§ 3).
+- **Raman, chosen modes**: SIESTA's optical calculation, one run per frame
+  of the mode's three-frame set (the `electronic` kind, § 5.10 ④); both
+  numbers reported, the whole cell's change and the named set's share
+  (D-e below; the method's § 3.4, its cost § 5.1); the polarizability at
+  the laser's frequency the person enters after the run, the static one
+  beside it (D-f). The measurement before it is built is R1 below.
 - **The displacement**: § 1ac.2.
 
 ### 1ac.2 The maximum displacement — the reference at a temperature, and a driven mode *(the science: [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a, § 5)*
@@ -1067,9 +1069,10 @@ chooses; no field applied, no other calculation:
   extended to `q` — an estimate, not a SIESTA energy there; the energies
   measured at the outer frames (item B below) check the harmonic picture.
 
-**Proposed**: the *Write frame set…* dialog and the command line show `d_T`
-at a temperature the person types, beside `d_max`; the value stays the
-person's.
+**Built 2.36.0**: the *Write frame set…* dialog shows `d_T` at the page's
+temperature, beside `d_max`, and `molbuilder.postprocess.reference_max_displacement`
+gives it to a script; `molbuilder frameset from-mode` does not print it. The
+value stays the person's.
 
 **Measured — the harmonic range checked.** Single-point SIESTA energies at
 the frame set's frames — the junction, the vibration's settings — against
@@ -1098,7 +1101,75 @@ a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
 | A | **the reference displacement `d_T`** beside the maximum displacement — **built 2.36.0**: the load door serves it per mode at the page's temperature, the *Write frame set…* dialog shows it, `molbuilder.postprocess.reference_max_displacement` for a script (§ 1ac.2) | small: no calculation | — |
 | B | **energies along a mode**, measured (§ 1ac.2): one SCF per frame | medium | the `electronic` kind (§ 5.10 ④) |
 
-**Decisions for the user:** next, the `electronic` kind for Raman (pieces 3b and 5, contract first), or the water comparison of 3a.
+**The 2026-10-24 review** (two rounds, six agents, the code and documents in
+full, each finding checked against the code — and SIESTA's source — before it
+was acted on; 2.37.0 fixed what broke a written rule and built the user's
+choices below — `process/changelog.md`).
+
+**Decided by the user, 2026-10-24, built 2.37.0:**
+
+| # | what | the choice |
+|---|---|---|
+| D-a | the band floor | kept for the infrared view and every chart lane: a lane whose strongest real value is at or below its channel's floor draws no band, and no mode of such a view is ranked *("threshold should exist")* |
+| D-b | the dipole's centre | the set's centre of mass at equilibrium *("center should be mass center")* |
+| D-c | the light's direction | any vector on the viewer, z the default *("allow setting polarization direction of light with a vector, default to z direction")*; the infrared needs no extra calculation for it |
+| D-d | held or free | a result holding atoms: the strength along the light's direction, the molecule in one orientation; holding none: the conventional orientation average, no direction *("if no fix atoms are listed, that means gas phase … when we have fixed atoms that means we have rigidity and surface effects")* |
+| D-e | Raman, what is reported | both numbers — the whole cell's change, which keeps the held gold's response at the contact, and the named set's share beside it; the method's § 3.4, its cost measured in § 5.1 |
+| D-f | Raman's polarizability | at the laser's frequency, the wavelength the person enters **after the run** — one integral over the absorption spectrum each frame's optical calculation already wrote, so no SIESTA run is added and the laser can be changed or compared on the same runs; the static value beside it as the textbook comparison where it is stable (a free molecule, or where the toy junction's measurement shows it settling) *(the user, 2026-10-24: "yes", to that proposal; the method's § 3.1)* — designed, not built |
+
+**Decided by the user, 2026-10-24, on the recommendations** *("go ahead with
+your recommendation"; for PySCF with held atoms, "i will accept your
+recommendation, but would need document to be updated explaining how pyscf
+calculates, and how saved values are used, justified by scientific
+arguments")*:
+
+| # | what | the choice | state |
+|---|---|---|---|
+| D-g (R2a) | Raman's step | taken from the vibration result — the force-constant run's own nudge, the largest atom moved by it; nothing typed; stated beside the result | designed (the method's § 3.2) |
+| D-h (R2b) | Raman's light direction | z by default, another direction chosen before the run; the whole polarizability table (six optical runs a geometry, any direction after) decided once R1 measures the optical calculation's cost | designed (the method's § 3.2) |
+| D-i (R2c) | Raman's frame 0 | once for every mode: one Raman calculation takes the modes chosen and shares the undisplaced geometry, $1 + 2N$ runs | designed (the method's § 3.2, § 5.1) |
+| D-j (R3) | the reference displacement's temperature | its own box in the *Write frame set…* dialog, starting at the run's thermochemistry temperature | 2.37.0 |
+| D-k (R4) | the infrared's sets | a built-in *the free atoms* — everything the vibration moved — beside the structure's labels | 2.37.0 |
+| D-l (R5) | a mode's frame set's settings | the record of the relaxation its frame 0 came from: the vibration's own `relax` stage's (its own deck's, as before), or, for a structure stated already relaxed, the record that structure states; one stating none gives a set with none, said | 2.37.0 |
+| D-m (R7) | PySCF with held atoms | each mode's dipole change stored whole; a result holding atoms gives the strength along the light's direction, as SIESTA's does; one holding none, PySCF's orientation average, unchanged; `engines/vibration.md` § 4.6 explains how PySCF computes it and how the stored values are used | 2.37.0 |
+| L1, L5, L7 | the frame-set dialog's frame numbers; the relaxation tolerance's provenance; the polish | fixed | 2.37.0 |
+| L4 | the charge switch shown in Task setup and the deck's provenance | with the Raman inputs, when they are declared | with Raman |
+| L2, L3, L6, L8 | — | closed, as recommended | — |
+
+**Open, each the user's:**
+
+| # | decision | the choice |
+|---|---|---|
+| R1 | Raman's numbers, measured first | on the toy junction, before anything is built: whether the whole cell's change, at a laser frequency and static, is stable against the optical calculation's k-point mesh and broadening; and what the optical calculation costs per frame (the method's § 3.1, § 5.1) |
+| R6 | a frame set whose frame 0 is a finished transport calculation's junction | may it reuse that calculation's seed, leads and 0 V point (`engines/transport.md` § 2a.16 keeps the junction fixed today) — on AuBDTAu about 7 h of seed and leads and 6 h + 45 h for the 0 V point |
+
+**Found, not fixed — each with why** (to fix, or to close):
+
+| # | finding | where | why not fixed |
+|---|---|---|---|
+| L1 | the *Write frame set…* dialog's answer numbers frames from 0 ("frame 0: q/σ …"), the frame-set card from 1 | `core.js` (the dialog's status text), `lib/frameset/card.js` | the dialog predates the review; a wording change of the frame generator's answer |
+| L2 | the chart's infrared lane is titled *IR absorption*, never naming the atoms, direction or partition | `core.js` `CHART_CHANNELS`, `spectrumchart` | a lane's title is fixed when the chart is mounted; retitling needs a new chart door; the column beside it names the view |
+| L3 | the view's `relative` and the chart's own lane scaling compute the same ranking twice | `spectra/infrared.py`, `spectrumchart/index.js` | `relative` serves a script; the chart scales every channel, PySCF's too |
+| L4 | the charge switch (`Charge.Hirshfeld` / `Charge.Voronoi geometry`) is written by the deck builder, not declared as a catalogue item: no PROVENANCE row in the deck, no locked line on Task setup | `siesta/vibration_deck.py` `fc_block` | the force-constant block's other fixed lines (`MD.TypeOfRun FC`, `FC.First`) are written the same way |
+| L5 | a vibration stated already relaxed judges its reference forces by `relax_force_tol`, an item declared for the relaxation rung; the deck's provenance does not trace it (the pipeline log does) | `jobset/prep.py` | older than this work |
+| L6 | `temperature_K` (template, deck block, thermo) beside `temperature_k` (load door, `postprocess`, `mode_frames`, the data file's axis) | several | naming only |
+| L7 | polish: "--" where the page writes "—" in the dialog's reference sentence; the infrared status line has no live-region announcement; *Frames (3 or 5)* is a number box where the page uses selects; the explanation's link has no § 1a anchor | `core.js`, `_spectra_inspector.html` | polish |
+| L8 | a vibration run at cheaper settings than its relaxation (AuBDTAu: 1×1×1 against 5×5×1, 300 against 400 Ry) — prep warned, the run went ahead — so its geometry is not a stationary point there | `engines/vibration.md` § 2.2 (warn only) | the person's choice, warned; tied to R5 |
+
+**From the multi-frame check on AuBDTAu** (2026-10-24, the synced Sol copy, a
+scratch prep, nothing launched): the citation door accepts the mode-56 set —
+312 atoms, one cell, no electrode atom moved, the 5-point Gauss–Hermite nodes
+and weights; frame 0 is atom for atom the junction `AuBDTAu_singlebias_equilibrium`
+cited; prep writes the seed and leads once and the device and transmission
+as five points each, one walk a rung. Said to the person, not ours to change:
+each walk's wall is its points' summed — 5 × the 2-day card = 10 days, over
+`public`'s 7 — and at the measured 45 h a transmission point the walk needs
+about 9.4 days; the set's σ is 2.1 times mode 56's thermal spread at 300 K
+(the reference for five frames at 300 K is 0.047 Å, the set used 0.1 Å).
+R5 and R6 above are the two decisions it raised.
+
+Then: R1's measurement on the toy junction, the `electronic` kind for Raman
+(pieces 3b and 5, contract first), or the water comparison of 3a.
 
 **References**: the method's own list
 ([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)),

@@ -57,6 +57,17 @@ const normaliseChannel = (c, i) => ({
      * floor, the readout and the modes table stay in the units the run
      * produced. */
     relative: Boolean(c && c.relative),
+    /* THE UNIT THE MEASURED VALUE IS READ IN -- the readout's, beside the
+     * number `valueIn` returns.  The axis's `unit` when unsaid; a channel
+     * whose axis is relative names its value's own here. */
+    valueUnit: String(c && c.valueUnit ? c.valueUnit
+                      : (c && c.unit ? c.unit : "")),
+    /* THE CHANNEL'S BAND FLOOR, in its value unit: a lane whose strongest
+     * REAL value is at or below it has no band -- every value residue --
+     * and draws none, rather than scaling the residue to full height.  The
+     * caller's number (the server's rule), 0 when unsaid. */
+    presentFloor: (c && Number.isFinite(c.presentFloor) && c.presentFloor > 0)
+        ? c.presentFloor : 0,
 });
 
 const valueIn = (mode, key) => {
@@ -225,6 +236,7 @@ export async function mount(host, options = {}) {
         const lanes = channels.map((c) => {
             const known = laneKnown(c.key);
             const lanePeak = peakIn(c.key);
+            const hasBand = lanePeak > c.presentFloor;
 
             /* BELOW THE FLOOR, a stick is drawn at ZERO height rather
              * than removed.  Two reasons, and the second is the
@@ -239,7 +251,7 @@ export async function mount(host, options = {}) {
             const cut = floorPct > 0 ? lanePeak * (floorPct / 100) : 0;
             const shown = (m) => {
                 const v = valueIn(m, c.key);
-                return v !== null && Math.abs(v) >= cut;
+                return hasBand && v !== null && Math.abs(v) >= cut;
             };
 
             /* A relative lane divides by its own peak on the way to the
@@ -257,9 +269,9 @@ export async function mount(host, options = {}) {
                  * with no numbers yet still names itself: an anonymous
                  * axis beside a named one reads as a second unit nobody
                  * declared. */
-                title: known
-                    ? `${c.label} (${c.unit})`.replace(" ()", "")
-                    : `${c.label} — not computed`,
+                title: !known ? `${c.label} — not computed`
+                    : !hasBand ? `${c.label} — no band`
+                    : `${c.label} (${c.unit})`.replace(" ()", ""),
                 known,
                 sticks: {
                     x: modes.map((m) => m.freq),
@@ -355,7 +367,7 @@ export async function mount(host, options = {}) {
             .map((c) => {
                 const v = valueIn(mode, c.key);
                 if (v === null) return null;
-                const unit = c.unit ? ` ${c.unit}` : "";
+                const unit = c.valueUnit ? ` ${c.valueUnit}` : "";
                 return `${v.toFixed(2)}${unit}`;
             })
             .filter((t) => t !== null)

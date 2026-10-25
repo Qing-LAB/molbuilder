@@ -46,7 +46,7 @@ by a second reader: it is that composition on its grid, for analysis.
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
 | `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same bytes | `molbuilder/transport-data@5` | `engines/transport.md` § 2a.12 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@4` (`@1`–`@3` read as they are) | `engines/vibration.md` § 6.10.5 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@6` (`@1`–`@5` read as they are) | `engines/vibration.md` § 6.10.5 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@3` | `model/parse.md` § 5e |
 
 **An engine's NetCDF files molbuilder reads** come through the same door

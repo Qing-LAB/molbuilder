@@ -30,7 +30,7 @@ trailing bibliography and the ``bibliography_keys`` field of
 from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import Any, List, Mapping, Optional, Sequence
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotations only -- importing
@@ -175,7 +175,13 @@ def with_ir_route(methods_md: str, ir_route: str,
     reference list reads as a footnote to the references rather than as
     part of the method.
     """
-    sentence = ir_route_sentence(ir_route, fd_step_ang)
+    return _with_sentence(methods_md, ir_route_sentence(ir_route,
+                                                         fd_step_ang))
+
+
+def _with_sentence(methods_md: str, sentence: str) -> str:
+    """``methods_md`` with ``sentence`` placed at the end of the paragraph,
+    before the bibliography."""
     if not sentence or not methods_md:
         return methods_md
     marker = "\n**Bibliography**"
@@ -185,12 +191,51 @@ def with_ir_route(methods_md: str, ir_route: str,
     return f"{methods_md.rstrip()} {sentence}\n"
 
 
+def infrared_view_sentence(view: Mapping[str, Any]) -> str:
+    """The sentence naming the infrared a page shows of a SIESTA result
+    (`web/spectra.md` § 3.2): the atoms, the partition and how the molecule
+    meets the light -- held, in one orientation, along the light's direction,
+    three times the orientation average; or free, nothing held, the
+    orientation average itself (`science/vibrational-optical-response.md`
+    § 2.3)."""
+    partition = str(view["partition"]).capitalize()
+    head = ("The infrared shown is the whole system's, from the dipole "
+            "change the engine computed along each mode"
+            if view.get("source") == "dipole" else
+            f"The infrared shown is that of {view['atoms_label']}, from "
+            f"their {partition} charges")
+    if view.get("orientation") == "free":
+        return (f"{head}, averaged over orientations: no atom is held, so the "
+                f"molecule tumbles, as a free molecule's infrared intensity "
+                f"reports.")
+    direction = view.get("direction_name") or "(" + ", ".join(
+        f"{x:g}" for x in view["direction"]) + ")"
+    return (f"{head}, for light polarized along {direction}: atoms are held, "
+            f"so the molecule meets the light in one orientation -- three "
+            f"times the orientation average a free molecule's infrared "
+            f"intensity reports.")
+
+
+def with_infrared_view(methods_md: str, view: Mapping[str, Any]) -> str:
+    """``methods_md`` with :func:`infrared_view_sentence` placed in the
+    paragraph -- composed at load, as the view is."""
+    return _with_sentence(methods_md, infrared_view_sentence(view))
+
+
+#: Each partition the force-constant run's charges may be taken by, as the
+#: Methods paragraph names and cites it (`engines/vibration.md` § 5.10 ②).
+CHARGE_PARTITION_WORDS = {"hirshfeld": "Hirshfeld [Hirshfeld1977]",
+                          "voronoi": "Voronoi [FonsecaGuerra2004]"}
+
+
 def siesta_methods_text(*, displacement_bohr: float, n_free: int,
-                        n_held: int, n_rigid: int, siesta_version: str) -> str:
+                        n_held: int, n_rigid: int, siesta_version: str,
+                        charge_partitions: Sequence[str] = ()) -> str:
     """The Methods paragraph for SIESTA's force-constant route
     (`engines/vibration.md` § 5.5), with the citation keys the science
     contract carries -- composed by the job's finish once the run has said
-    its version and the analysis how many motions it removed."""
+    its version, the analysis how many motions it removed, and its output
+    which partitions' charges it printed (``charge_partitions``)."""
     held = (f" {n_held} atom(s) were held fixed and no force constant was "
             f"taken with respect to them -- partial Hessian vibrational "
             f"analysis [Head1997, LiJensen2002], the block taken from the "
@@ -200,6 +245,13 @@ def siesta_methods_text(*, displacement_bohr: float, n_free: int,
                f" were projected out before diagonalisation [Ghysels2008]."
                if n_rigid else "")
     ver = f" (SIESTA {siesta_version})" if siesta_version else ""
+    named = [CHARGE_PARTITION_WORDS[p] for p in charge_partitions]
+    intensities = (
+        f" {' and '.join(named)} atomic charges were recorded at every "
+        f"displacement, from which the infrared of a chosen set of atoms is "
+        f"derived; Raman intensities are not computed on this route."
+        if named else
+        " Infrared and Raman intensities are not computed on this route.")
     return (
         "## Methods\n\n"
         f"Harmonic force constants were obtained by central finite "
@@ -207,8 +259,7 @@ def siesta_methods_text(*, displacement_bohr: float, n_free: int,
         f"free atoms was displaced by ±{displacement_bohr:g} Bohr along "
         f"x, y and z (`MD.TypeOfRun FC`).{held} The resulting "
         f"{'partial ' if n_held else ''}Hessian was mass-weighted with isotope-averaged masses and "
-        f"diagonalised.{removed} Infrared and Raman intensities are not "
-        f"computed on this route."
+        f"diagonalised.{removed}{intensities}"
     )
 
 

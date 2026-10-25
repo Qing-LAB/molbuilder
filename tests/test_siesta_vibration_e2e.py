@@ -256,7 +256,7 @@ def _states_its_charges_and_their_infrared(d):
         for k in (2, 3):
             assert along_z[k].dmu_dq_e_per_amu12[2] * oxygens_z[k] < 0, \
                 (partition, k, along_z[k], oxygens_z[k])
-        assert all(abs(m.charge_moved_e_per_amu12) < 1e-3
+        assert all(abs(m.charge_moved_e_per_amu12_ang) < 1e-3
                    for m in along_z), (partition, along_z)
 
 
@@ -432,8 +432,8 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
 
     * mode positions, not a spectrum: one line of one height at each mode, no
       curve, no height numbers, no width control, under *Mode positions*, one
-      sentence saying the route computes no intensities (§ 2;
-      `spectrumchart.md` § 6.2);
+      sentence saying which case it is -- a result stating its charges: name
+      the atoms for their infrared (§ 2; `spectrumchart.md` § 6.2);
     * the modes table without the columns the route cannot compute, and the
       run summary saying *not computed on this route* for each (§ 9b.3);
     * no phase dot for Raman or the probe (§ 3);
@@ -484,7 +484,8 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
         assert not _shown(page, "#broadening-fwhm")
         assert not _shown(page, "#display-floor")
         absent = page.inner_text("#spectrum-absent")
-        assert "not infrared or Raman intensities" in absent, absent
+        assert "name the atoms above the modes table for their infrared" \
+            in absent, absent
         assert page.locator("#modes-tbody tr").count() == len(d["modes"])
         drawn = page.wait_for_function(
             "() => { const g = document.querySelector("
@@ -513,9 +514,13 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
         assert _shown(page, '#modes-table th[data-col="ir_intensity_km_mol"]')
         assert _shown(page, '#modes-table th[data-col="charge_moved"]')
         assert _shown(page, "#ir-controls") and not _shown(page, "#ir-absent")
+        # THE SETS (§ 3.2): the built-in free atoms, then the structure's
+        # labels -- each option's value the ask it names.
         offered = page.eval_on_selector_all(
-            "#ir-atoms option", "os => os.map(o => o.value)")
-        assert offered == ["", "frozen_atoms"], offered
+            "#ir-atoms option", "os => os.map(o => [o.value, o.textContent])")
+        assert offered == [["", "— name the atoms —"],
+                           ['{"set":"free"}', "the free atoms"],
+                           ['"frozen_atoms"', "frozen_atoms"]], offered
         summary = page.evaluate("""() => {
             const dl = document.getElementById("results-summary-list");
             const out = {};
@@ -531,10 +536,10 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
 
         # THE ATOMS NAMED, the door answers (§ 3.2): the column titled by
         # what was asked, a number in every cell, the summary saying so.
-        page.select_option("#ir-atoms", value="frozen_atoms")
+        page.select_option("#ir-atoms", value='"frozen_atoms"')
         page.wait_for_function(
             "() => document.getElementById('ir-col-head').textContent"
-            "  === 'IR along z \u2014 frozen_atoms, Hirshfeld (km/mol)'",
+            "  === 'IR \u2014 frozen_atoms, along z, Hirshfeld (km/mol)'",
             timeout=20000)
         cells = page.eval_on_selector_all(
             "#modes-tbody td.ir-col", "ts => ts.map(t => t.textContent)")
@@ -545,7 +550,7 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
                 x => x.textContent === "IR intensities");
             return dt.nextElementSibling.textContent; }""")
         assert said == ("from the run's charges \u2014 frozen_atoms, along "
-                        "z, hirshfeld"), said
+                        "z, Hirshfeld"), said
 
         # NO DOT FOR A PHASE THE ROUTE DOES NOT HAVE (§ 3).
         assert _shown(page, '.spectra-phase-dot[data-phase="frequencies"]')

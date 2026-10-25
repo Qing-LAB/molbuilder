@@ -57,7 +57,7 @@ except ImportError:                         # beside a job, in a bundle
                         unnumber_attr, write_group)
     from persist import write_bytes
 
-DATA_SCHEMA = "molbuilder/spectra-data@5"
+DATA_SCHEMA = "molbuilder/spectra-data@6"
 #: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
 #: the same variables without its atom index map, read as it is and never
 #: rewritten -- its map made as it is read (`engines/vibration.md`
@@ -68,7 +68,8 @@ DATA_SCHEMA = "molbuilder/spectra-data@5"
 READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1",
                          "molbuilder/spectra-data@2",
                          "molbuilder/spectra-data@3",
-                         "molbuilder/spectra-data@4", DATA_SCHEMA)
+                         "molbuilder/spectra-data@4",
+                         "molbuilder/spectra-data@5", DATA_SCHEMA)
 #: AN AXIS'S VALUES AS EARLIER SCHEMAS NAMED THEM, newest first -- before
 #: every axis was a coordinate of its own name, and before an axis's name
 #: carried its unit (`model/datafiles.md` § 2a, rule 5).
@@ -309,6 +310,11 @@ def _mode_vars() -> Tuple[Var, ...]:
         Var("raman_activity_a4_amu", ("mode",), "raw", "A^4/amu",
             "the Raman activity", "as the engine computed it; NaN where not",
             source="the engine"),
+        Var("dipole_derivative_d_per_ang_amu12", ("mode", "xyz"), "raw",
+            "D/(Angstrom amu^1/2)", "the dipole change along the mode",
+            "dmu/dQ, the vector the IR intensity is the orientation average "
+            "of (engines/vibration.md § 4.6); NaN where the engine kept none",
+            source="the engine"),
         Var("ir_active", ("mode",), "derived", "1", "whether IR active",
             "the activity class's IR verdict (§ 6.6); -1 where not computed",
             dtype="i1", flag=True),
@@ -489,6 +495,9 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             if m.get("zero_point_displacement_ang") is not None:
                 values["zero_point_displacement_ang"][k] = np.asarray(
                     m["zero_point_displacement_ang"], dtype=float)
+            if m.get("dipole_derivative_d_per_ang_amu12") is not None:
+                values["dipole_derivative_d_per_ang_amu12"][k] = np.asarray(
+                    m["dipole_derivative_d_per_ang_amu12"], dtype=float)
             values["ir_active"][k] = flag(m.get("ir_active"))
             values["raman_active"][k] = flag(m.get("raman_active"))
             values["activity_class"][k] = str(m.get("activity_class") or "")
@@ -666,6 +675,14 @@ def read_spectra_data(path) -> Dict[str, Any]:
                     None if amplitude is None else
                     mv["zero_point_displacement_ang"]["data"][k].tolist()),
             }
+            # THE DIPOLE CHANGE, where the file keeps the variable (@6): the
+            # fill value says the engine kept none.
+            if "dipole_derivative_d_per_ang_amu12" in mv:
+                v = np.asarray(
+                    mv["dipole_derivative_d_per_ang_amu12"]["data"][k],
+                    dtype=float)
+                m["dipole_derivative_d_per_ang_amu12"] = (
+                    None if not np.all(np.isfinite(v)) else v.tolist())
             modes.append(m)
         out["modes"] = modes
         removed: Dict[str, Any] = {}

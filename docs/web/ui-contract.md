@@ -668,10 +668,13 @@ resolves with its answer — **one at a time** (opening a second answers the
 first with its cancel value), and Esc, the native close and a click off the
 surface all cancel; `settleDialog` answers it; the parts (`newDialog`,
 `dialogTitle`, `dialogHint`, `dialogField`, `dialogError`, `dialogActions`)
-build it in the one vocabulary; `askFields` is the form dialog — labelled
-fields checked as typed, the answer's button enabled only while the answer
-can stand, its refusal on a line that is reserved so nothing moves under the
-pointer. Buttons run cancel first and the answer last, which wears `.primary`
+build it in the one vocabulary — a field a text or number box, or a choice
+among a few values (`options`, a `<select>`); `askFields` is the form dialog —
+labelled fields checked as typed, the answer's button enabled only while the
+answer can stand, its refusal on a line that is reserved so nothing moves
+under the pointer; a caller whose hint follows a field is told every change
+(`onInput(values, {setHint})`) and may rewrite the hint — the *Write frame
+set…* dialog's reference at the temperature typed (`web/spectra.md` § 4.3). Buttons run cancel first and the answer last, which wears `.primary`
 or, when it costs something, `.danger` — both in `page-shell.css`, because a
 dialog opens on every page. The sidebar's questions (`lib/projects/dialogs.js`)
 and the tree picker (`lib/tree-picker.js`) are built on it.

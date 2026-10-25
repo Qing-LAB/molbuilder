@@ -467,12 +467,11 @@ FORCE_ROW_PREFIX = re.compile(r"^\s*siesta:\s+(?=\d)", re.IGNORECASE)
 #: ``partial_charges.F90``): a header row, one row per atom -- its number,
 #: its charge in e (valence less the electrons it holds, positive where
 #: electrons left), its electrons, [its spin,] its species -- a dashed rule
-#: and the total.  Group 1 is the partition, read by :data:`PARTITIONS`.
+#: and the total.  Group 1 is the partition, its word in lower case the name
+#: every record of the charges carries (`spectra.results.PARTITIONS`,
+#: `engines/vibration.md` § 5.10 ②).
 PARTIAL_CHARGES_BEGIN = re.compile(
     r"^\s*(Hirshfeld|Voronoi)\s+Atomic\s+Populations:\s*$", re.IGNORECASE)
-#: The partition each block's word names -- the name every record of the
-#: charges carries (`engines/vibration.md` § 5.10 ②).
-PARTITIONS = {"hirshfeld": "hirshfeld", "voronoi": "voronoi"}
 #: A step's Kohn-Sham energy, ``siesta: E_KS(eV) = ...`` -- it sits mid-line.
 E_KS_LINE = "siesta: E_KS(eV)"
 #: The bare ``siesta: Etot = ...`` of the energy decomposition, never

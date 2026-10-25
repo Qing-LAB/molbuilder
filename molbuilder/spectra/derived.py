@@ -66,6 +66,20 @@ def zero_point_amplitude_amu12_ang(frequency_cm1: float,
     return math.sqrt(ZERO_POINT_Q2_AMU_ANG2_CM1 / nu)
 
 
+def checked_temperature_k(raw: Any) -> float:
+    """A temperature as every door takes one: a number of kelvin, 0 or more
+    -- 0 K the zero-point motion alone (`science/vibrational-averaging.md`
+    § 2) -- refused by name otherwise."""
+    try:
+        t = float("nan") if isinstance(raw, bool) else float(raw)
+    except (TypeError, ValueError):
+        t = float("nan")
+    if not (math.isfinite(t) and t >= 0.0):
+        raise ValueError(f"temperature_k is a number of kelvin, 0 or more; "
+                         f"got {raw!r}")
+    return t
+
+
 def thermal_spread_amu12_ang(zero_point_amplitude_amu12_ang: float,
                              frequency_cm1: float,
                              temperature_k: float) -> float:
@@ -74,7 +88,8 @@ def thermal_spread_amu12_ang(zero_point_amplitude_amu12_ang: float,
     exactly the Gaussian's width at every temperature, ``Q_zp`` at 0 K, its
     limit (`science/vibrational-averaging.md` § 2).  ``hbar omega / k_B T``
     is ``nu * CM1_KELVIN / T``."""
-    if float(temperature_k) == 0.0:
+    temperature_k = checked_temperature_k(temperature_k)
+    if temperature_k == 0.0:
         return float(zero_point_amplitude_amu12_ang)
     x = float(frequency_cm1) * CM1_KELVIN / (2.0 * float(temperature_k))
     return float(zero_point_amplitude_amu12_ang) * math.sqrt(
@@ -88,11 +103,12 @@ def thermal_spread_of(mode: Mapping[str, Any],
     for a mode with no zero-point amplitude (imaginary, or a row written
     before the key).  What the spectrum tab's load door serves per mode
     (`web/spectra.md` § 4.1): the tab draws it and derives nothing."""
+    temperature_k = checked_temperature_k(temperature_k)
     q = mode.get("zero_point_amplitude_amu12_ang")
     if q is None:
         return None
     return thermal_spread_amu12_ang(float(q), float(mode["frequency_cm1"]),
-                                    float(temperature_k))
+                                    temperature_k)
 
 
 def mode_derivations(modes: Sequence[Mapping[str, Any]]

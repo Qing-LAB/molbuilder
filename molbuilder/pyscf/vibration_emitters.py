@@ -900,6 +900,7 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("        'frequency_cm1':         float(_f),")
     out.append("        'raman_activity_a4_amu': None,")
     out.append("        'ir_intensity_km_mol':   None,")
+    out.append("        'dipole_derivative_d_per_ang_amu12': None,")
     out.append("        'eigenvector_canonical': _evec_canon_json,")
     out.append("        'eigenvector_display':   _evec_disp_json,")
     out.append("        'has_imag':              bool(HAS_IMAG[_i]),")
@@ -1061,6 +1062,11 @@ def _emit_ir_projection() -> List[str]:
     out.append("        * float(np.dot(_dmudq, _dmudq))")
     out.append("    )")
     out.append("    modes_payload[_n]['ir_intensity_km_mol'] = _ir_intensity")
+    out.append("    # THE VECTOR ITSELF, beside its orientation average: every light")
+    out.append("    # direction's strength is computed from it, a molecule held in one")
+    out.append("    # orientation read along the light (engines/vibration.md 4.6).")
+    out.append("    modes_payload[_n]['dipole_derivative_d_per_ang_amu12'] = (")
+    out.append("        [float(_x) for _x in _dmudq])")
     return out
 
 

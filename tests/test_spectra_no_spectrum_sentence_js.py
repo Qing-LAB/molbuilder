@@ -5,7 +5,9 @@ positions, and one sentence under them says why there are no heights, naming
 one of FOUR cases, read BY ROLE from the file
 (`_routeHas`: the file's own config carries the switch or it does not) --
 
-* the route computes none: a SIESTA file, whose config has no strength switch;
+* the route computes none: a SIESTA file, whose config has no strength switch
+  -- one stating its charges told to name the atoms for their infrared, one
+  stating none that it carries no intensities (§ 3.2);
 * the run asked for none: a PySCF file with both switches off;
 * they are still being computed: a PySCF run whose Raman or infrared phase is
   still to finish;
@@ -72,20 +74,25 @@ def _judge(files):
 
 
 def test_the_sentence_names_the_case_and_the_viewer_waits_for_infrared():
-    route, off, mid_sweep, before_sweep, none, old = _judge([
+    route, charged, off, mid_sweep, before_sweep, none, old = _judge([
         _file(_SIESTA),
+        _file(_SIESTA, partial_charges={"displacement_ang": 0.0212}),
         _file({**_PYSCF, "compute_ir": False}),
         _file(_PYSCF, phase_ir="running"),
         _file(_PYSCF, phase_ir="empty"),
         _file(_PYSCF, phase_ir="complete"),
         _file(_PYSCF, phase_ir=""),
     ])
-    assert "this route computes the frequencies" in route["sentence"]
+    assert "carries the frequencies and the mode shapes, no infrared" \
+        in route["sentence"]
+    assert "name the atoms above the modes table for their infrared" \
+        in charged["sentence"]
     assert "not requested in this run" in off["sentence"]
     for mid in (mid_sweep, before_sweep):
         assert "still being computed" in mid["sentence"], mid
         assert mid["done"] is False, mid
     assert "recorded none" in none["sentence"]
-    assert (route["done"], off["done"], none["done"]) == (True,) * 3
+    assert (route["done"], charged["done"], off["done"], none["done"]) \
+        == (True,) * 4
     # a file from before the flag carries "" -- no record, nothing to wait on
     assert old["done"] is True

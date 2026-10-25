@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -81,7 +81,13 @@ except ImportError:                         # beside a job, in a bundle
 #          `spectra.derived` and checked on read (engines/vibration.md
 #          § 6.6).  A v4-v6 file reads as before: no masses, its derived
 #          values computed on read.
-SCHEMA_VERSION = 11  # 11: the SIESTA force-constant run's CHARGES,
+SCHEMA_VERSION = 12  # 12: each mode's DIPOLE CHANGE, whole --
+#                    `dipole_derivative_d_per_ang_amu12`, dmu/dQ in
+#                    D/(A amu^1/2), on PySCF where infrared was computed
+#                    (engines/vibration.md § 4.6): the vector the IR
+#                    intensity is the orientation average of; a v4-v11 file
+#                    reads, the key absent.
+#                    11: the SIESTA force-constant run's CHARGES,
 #                    `partial_charges` -- every atom's Hirshfeld and Voronoi
 #                    charge at every step, in the user order, beside each
 #                    step's displaced atom, axis and side (engines/
@@ -104,7 +110,7 @@ SCHEMA_VERSION = 11  # 11: the SIESTA force-constant run's CHARGES,
 #                    v4-v7 file reads as before, its range read under v8's
 #                    name (`from_dict`).
 #: Every version the reader serves as the v9 shape.
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11})
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -187,7 +193,7 @@ _ES_KEYS = frozenset({
 _MODE_KEYS = frozenset({
     "index_1based", "frequency_cm1", "raman_activity_a4_amu",
     "ir_intensity_km_mol", "eigenvector_canonical", "eigenvector_display",
-    "has_imag", "electronic_structure",
+    "has_imag", "electronic_structure", "dipole_derivative_d_per_ang_amu12",
     "eigenvector_free",                 # schema v1's single vector, read as both
     # DERIVED (`spectra.derived`, `engines/vibration.md` § 6.6) -- stated by
     # every writer from v7, checked on read.
@@ -277,6 +283,25 @@ def checked_partial_charges(block: Mapping[str, Any], n_atoms: int,
                        "axis": s["axis"], "side": int(s["side"])}
                       for s in steps],
             "charges_e": {p: out[p] for p in PARTITIONS if p in out}}
+
+
+def _partial_charges_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """A file's ``partial_charges`` as it states it: ``None`` where it states
+    none; a stated block whatever it holds, for :func:`checked_partial_charges`
+    to judge -- never read as absent; refused on a schema before 11, which
+    has no such key (`engines/vibration.md` § 6.2)."""
+    block = d.get("partial_charges")
+    if block is None:
+        return None
+    if int(d.get("schema_version", 0)) < 11:
+        raise ValueError(f"SpectraResults: a schema-{d.get('schema_version')} "
+                         f"result states partial_charges, which schema 11 "
+                         f"first carries")
+    if not isinstance(block, Mapping):
+        raise ValueError(f"SpectraResults.partial_charges is a block "
+                         f"{{displacement_ang, steps, charges_e}}, not "
+                         f"{block!r}")
+    return dict(block)
 
 
 def _refuse_unknown_keys(d, known, where: str) -> None:
@@ -464,6 +489,14 @@ class ModeData:
 
     electronic_structure:  Optional[ModeElectronicStructure] = None
 
+    # THE DIPOLE CHANGE ALONG THE MODE, whole (v12): dmu/dQ, x, y, z in
+    # D/(A amu^1/2), as the engine projected it -- the vector
+    # ``ir_intensity_km_mol`` is the orientation average of, and every light
+    # direction's strength is computed from (engines/vibration.md § 4.6).
+    # ``None`` where the engine kept none (SIESTA, whose infrared is its
+    # charges'; a file before v12).
+    dipole_derivative_d_per_ang_amu12: Optional[Tuple[float, float, float]] = None
+
     __eq__ = _no_equality
 
     def __post_init__(self):
@@ -495,6 +528,14 @@ class ModeData:
                 f"{self.eigenvector_canonical.shape} vs "
                 f"{self.eigenvector_display.shape}"
             )
+        if self.dipole_derivative_d_per_ang_amu12 is not None:
+            v = np.asarray(self.dipole_derivative_d_per_ang_amu12, dtype=float)
+            if v.shape != (3,) or not np.all(np.isfinite(v)):
+                raise ValueError(
+                    f"ModeData.dipole_derivative_d_per_ang_amu12 is three "
+                    f"finite numbers, x, y, z; got "
+                    f"{self.dipole_derivative_d_per_ang_amu12!r}")
+            self.dipole_derivative_d_per_ang_amu12 = tuple(float(x) for x in v)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -509,6 +550,9 @@ class ModeData:
             "has_imag":              bool(self.has_imag),
             "electronic_structure":  (None if self.electronic_structure is None
                                       else self.electronic_structure.to_dict()),
+            "dipole_derivative_d_per_ang_amu12": (
+                None if self.dipole_derivative_d_per_ang_amu12 is None
+                else list(self.dipole_derivative_d_per_ang_amu12)),
         }
 
     @classmethod
@@ -558,6 +602,8 @@ class ModeData:
             has_imag              = bool(d.get("has_imag", False)),
             electronic_structure  = (None if es is None
                                      else ModeElectronicStructure.from_dict(es)),
+            dipole_derivative_d_per_ang_amu12 = d.get(
+                "dipole_derivative_d_per_ang_amu12"),
         )
 
 
@@ -1326,8 +1372,7 @@ class SpectraResults:
             runtime_info         = dict(d.get("runtime_info", {})),
             atom_index_map       = (dict(d[MAP_KEY])
                                     if MAP_KEY in d else None),
-            partial_charges      = (dict(d["partial_charges"])
-                                    if d.get("partial_charges") else None),
+            partial_charges      = _partial_charges_read(d),
         )
 
 

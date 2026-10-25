@@ -101,7 +101,9 @@
     gap: var(--space-xs);
     min-width: 0;          /* a grid item may shrink below its content */
 }
-.spectrum-controls .inline-label {
+/* The infrared row's labels are the same component (web/spectra.md § 3.2). */
+.spectrum-controls .inline-label,
+.ir-controls .inline-label {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
@@ -202,12 +204,17 @@
 
 /* The infrared controls of a SIESTA result (web/spectra.md § 3.2): the
  * table-controls row, its explanation on a line of its own beneath. */
-.ir-controls[hidden] { display: none; }
+.ir-controls[hidden],
+.ir-controls .inline-label[hidden] { display: none; }
+.ir-controls input[type="number"] { width: var(--sp-number-w); }
 .ir-explain {
     flex-basis: 100%;
     margin: 0;
     color: var(--text-muted);
 }
+/* Why this run has no charges: a line of its own, so none of page-shell's
+ * left indent (meant for a status trailing a button). */
+.ir-absent { margin: var(--space-sm) 0; }
 
 /* The sentence under the mode positions when no strength was computed --
  * which of the four cases it is (web/spectra.md § 2). */

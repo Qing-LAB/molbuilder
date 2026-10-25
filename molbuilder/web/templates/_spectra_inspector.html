@@ -86,7 +86,8 @@
       </details>
 
       {#- THE SPECTRUM, OR THE MODE POSITIONS (web/spectra.md § 2, § 9b.3):
-          with no strength computed -- every SIESTA result -- the chart draws
+          with no strength computed -- a SIESTA result until its infrared is
+          asked of the atoms the person names -- the chart draws
           one line at each mode (spectrumchart.md § 6.2), the heading says
           "Mode positions", the controls below go (no height for a width or
           a floor to act on), and #spectrum-absent says why. -#}
@@ -180,26 +181,37 @@
             the atoms, the light's direction and the partition; the load door
             answers, and the page computes nothing. -#}
         <div id="ir-controls" class="modes-table-controls ir-controls" hidden>
-          <label class="inline-label"><span>Atoms</span>
+          <label class="inline-label" id="ir-atoms-row"><span>Atoms</span>
             <select id="ir-atoms">
               <option value="">— name the atoms —</option>
             </select>
           </label>
-          <label class="inline-label"><span>Light along</span>
+          {#- No direction for a free molecule: nothing held, its strength
+              is the orientation average (web/spectra.md § 3.2). -#}
+          <label class="inline-label" id="ir-direction-row"><span>Light along</span>
             <select id="ir-direction">
               <option value="x">x</option>
               <option value="y">y</option>
               <option value="z" selected>z</option>
+              <option value="vector">a vector…</option>
             </select>
           </label>
-          <label class="inline-label"><span>Charges</span>
+          {#- THE FIELD'S DIRECTION AS THREE NUMBERS -- only its direction
+              counts; the door normalises it (web/spectra.md § 3.2). -#}
+          <span id="ir-vector" class="inline-label" hidden>
+            <input id="ir-vec-x" type="number" step="any" value="0" aria-label="x">
+            <input id="ir-vec-y" type="number" step="any" value="0" aria-label="y">
+            <input id="ir-vec-z" type="number" step="any" value="1" aria-label="z">
+          </span>
+          <label class="inline-label" id="ir-partition-row"><span>Charges</span>
             <select id="ir-partition">
               <option value="hirshfeld" selected>Hirshfeld</option>
               <option value="voronoi">Voronoi</option>
             </select>
           </label>
-          <span id="ir-status" class="status muted"></span>
-          <p class="ir-explain">Both divide the same thing — how the
+          <span id="ir-status" class="status muted" role="status"
+                aria-live="polite"></span>
+          <p class="ir-explain" id="ir-explain">Both divide the same thing — how the
             electrons moved when the atoms bonded — between neighbouring
             atoms. Voronoi draws a wall halfway between two nuclei;
             Hirshfeld shares the charge at each point in proportion to how
@@ -210,9 +222,7 @@
             <em>Why — <a href="/documents?doc=science/vibrational-optical-response.md"
             target="_blank" rel="noopener">the method, § 1a</a>.</em></p>
         </div>
-        <p id="ir-absent" class="status muted" hidden>This run printed no
-          charges — a deck prepared before 2.35.2 — so it carries no
-          infrared.</p>
+        <p id="ir-absent" class="status muted ir-absent" hidden></p>
         <div class="modes-table-controls">
           <input id="modes-filter" type="text"
                  placeholder="Filter (matches any visible column)"
@@ -239,7 +249,7 @@
                 <th data-col="ir_intensity_km_mol"   data-numeric="1" class="ir-col" id="ir-col-head">IR (km/mol)</th>
                 {#- THE CHARGE A MODE MOVES into or out of the named atoms
                     (docs/web/spectra.md § 3.2), beside its infrared. -#}
-                <th data-col="charge_moved" data-numeric="1" class="charge-col">Charge moved (e/√amu)</th>
+                <th id="charge-col-head" data-col="charge_moved" data-numeric="1" class="charge-col">Charge moved (e/(√amu·Å))</th>
                 <th data-col="has_imag">imag?</th>
                 <th data-col="has_es" class="es-col">ES?</th>
                 <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>
@@ -293,7 +303,7 @@
             </label>
             <label class="inline-label" id="anim-temperature-row" hidden>
               <span>Temperature</span>
-              <input id="anim-temperature" type="number" min="1" max="2000"
+              <input id="anim-temperature" type="number" min="0" max="2000"
                      step="1" value="298">
               <span class="unit">K</span>
             </label>

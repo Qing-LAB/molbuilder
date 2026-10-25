@@ -69,6 +69,39 @@ def _ordered_nodes(n: int) -> Tuple[np.ndarray, np.ndarray]:
     return x[order], w[order] / math.sqrt(math.pi)
 
 
+def _relaxation_record(run) -> Tuple[Optional[Dict[str, Any]], str]:
+    """THE RECORD OF THE RELAXATION a vibration run's geometry came from
+    (`engines/vibration.md` § 5.10 ③) and, where there is none, why: the
+    vibration's own `relax` stage relaxed it at the one template's settings,
+    so its own deck's record (`runs.view_of`); a structure stated already
+    relaxed (its deck's `vibration` block says so) states its own -- the
+    calculation's structure beside it, its ``info.calculation``."""
+    from .deck_record import extract_vibration_record
+    from .jobset.prep import structure_path
+    from .runs import view_of
+    from .workingcopy_structure import StructureCodec
+    deck = run.deck
+    record = (extract_vibration_record(deck.read_text(encoding="utf-8-sig"))
+              if deck is not None else None)
+    if not (record or {}).get("already_relaxed"):
+        own = (view_of(run).info or {}).get("calculation")
+        return own, ("" if own is not None else
+                     f"{run.label}'s deck records no settings (a PySCF deck "
+                     f"states none), so this set states no info.calculation "
+                     f"and is no transport citation")
+    path = structure_path(run.place.task, run.place.root)
+    stated = (StructureCodec().load(path).info or {}).get("calculation") \
+        if path is not None else None
+    if stated is None:
+        return None, (
+            f"the structure {run.label} measured was stated already relaxed "
+            f"and states no record of the relaxation it came from, so this "
+            f"set states no info.calculation and is no transport citation -- "
+            f"save the structure from its relaxation run (the Results tab, or "
+            f"`molbuilder xv2xyz --from-run`) and run the vibration from it")
+    return stated, ""
+
+
 def reference_max_displacement(mode: Dict[str, Any], temperature_k: float,
                                nodes: int) -> Optional[float]:
     """THE REFERENCE MAXIMUM DISPLACEMENT of a mode row at ``temperature_k``
@@ -121,7 +154,7 @@ def frameset_from_mode(run_folder, *, mode: int,
     :data:`NODES`, a pair already at ``out``."""
     from .frame_average import INFO_KEY, MASS_CHANNEL
     from .runfiles import ROLE_SPECTRA
-    from .runs import place_of, run_of, view_of
+    from .runs import place_of, run_of
     from .sidecars.molstruct import sidecar_path_for
     from .sidecars.spectra import SpectraJsonError, parse_spectra_json
     from .spectra.derived import zero_point_amplitude_amu12_ang
@@ -210,17 +243,15 @@ def frameset_from_mode(run_folder, *, mode: int,
     r0 = np.asarray(base.positions, dtype=float)
     built = base.with_frames(np.stack([r0 + q * L for q in qs]))
 
-    # FRAME 0'S SETTINGS -- the vibration run's own deck's record, the one a
-    # transport citation takes its settings from (`transport.md` § 3.1).
+    # FRAME 0'S SETTINGS -- the record of the relaxation its geometry came
+    # from, the one a transport citation takes its settings from
+    # (`engines/vibration.md` § 5.10 ③, `transport.md` § 3.1).
     said: List[str] = []
-    calculation = (view_of(run).info or {}).get("calculation")
+    calculation, why = _relaxation_record(run)
     if calculation is not None:
         built.set_info("calculation", calculation)
     else:
-        said.append(
-            f"{run.label}'s deck records no settings (a PySCF deck states "
-            f"none), so this set states no info.calculation and is no "
-            f"transport citation")
+        said.append(why)
 
     # THE ROWS, in `model/structure.md` § 2.2f's vocabulary.
     masses = [float(v) for v in res.equilibrium_masses_amu]

@@ -90,29 +90,55 @@ def read_spectra_data(path) -> Dict[str, Any]:
     return {**_read(path), MAP_KEY: atom_index_map(path)}
 
 
-def infrared_view(path, *, atoms, direction, partition: str = "hirshfeld"):
-    """THE INFRARED OF A SET OF ATOMS from a SIESTA vibration result
-    ``<label>.spectra.json`` (`engines/vibration.md` § 5.10 ②): ``atoms`` a
-    label of its structure by name, or user indices; ``direction`` ``x``,
-    ``y``, ``z`` or a vector; ``partition`` ``hirshfeld`` or ``voronoi`` --
-    the one derivation the spectrum viewer asks
-    (`spectra.infrared.infrared_view`), read through the result's own
-    reader."""
+def infrared_view(path, *, direction, atoms=None,
+                  partition: "str | None" = None):
+    """THE INFRARED of a vibration result ``<label>.spectra.json``, as the
+    spectrum viewer asks it (`spectra.infrared`): ``direction`` ``x``,
+    ``y``, ``z`` or a vector; on a SIESTA result, from its charges, of
+    ``atoms`` -- a label of its structure, ``{"set": "free"}`` for the atoms
+    the vibration moved, or user indices -- by ``partition``, ``hirshfeld``
+    or ``voronoi`` (:data:`spectra.infrared.DEFAULT_PARTITION` when
+    unsaid); on a PySCF result, the whole system's, from the dipole change
+    it stored (``atoms`` not named).  Held or free by the result's own held
+    atoms (`engines/vibration.md` § 4.6; `science/vibrational-optical-
+    response.md` § 2.3)."""
     from .sidecars.spectra import parse_spectra_json
-    from .spectra.infrared import infrared_view as _view, labelled_atoms
+    from .spectra.infrared import (DEFAULT_PARTITION, SOURCE_DIPOLE,
+                                   InfraredError, atoms_of, dipole_view,
+                                   infrared_view as _view, source_of)
     result = parse_spectra_json(path)
-    label = atoms if isinstance(atoms, str) else ""
-    chosen = labelled_atoms(result, atoms) if label else list(atoms)
+    if source_of(result) == SOURCE_DIPOLE:
+        if atoms is not None:
+            raise InfraredError(f"{path}: a {result.engine} result's infrared "
+                                f"is the whole system's -- name no atoms")
+        return dipole_view(result, direction=direction)
+    if atoms is None:
+        raise InfraredError(f"{path}: name the atoms -- a label, "
+                            f"{{'set': 'free'}} or user indices")
+    if isinstance(atoms, (str, dict)):
+        chosen, label = atoms_of(result, atoms)
+    else:
+        chosen, label = list(atoms), ""
     return _view(result, atoms=chosen, direction=direction,
-                 partition=partition, atoms_label=label)
+                 partition=partition or DEFAULT_PARTITION, atoms_label=label)
 
 
-def reference_max_displacement(mode, temperature_k: float, nodes: int = 3):
-    """A mode row's reference maximum displacement at ``temperature_k`` for
-    ``nodes`` frames -- the frames sampling its thermal spread
-    (`mode_frames.reference_max_displacement`)."""
-    from .mode_frames import reference_max_displacement as _ref
-    return _ref(mode, temperature_k, nodes)
+def reference_max_displacement(path, *, mode: int, temperature_k: float,
+                               nodes: int = 3):
+    """THE REFERENCE MAXIMUM DISPLACEMENT of mode ``mode`` (its number, as
+    the result numbers its modes) of the vibration result
+    ``<label>.spectra.json`` at ``temperature_k`` for ``nodes`` frames, in
+    Angstrom -- the frames sampling its thermal spread, read through the
+    result's own reader (`mode_frames.reference_max_displacement`);
+    ``None`` for an imaginary mode, which has no spread."""
+    from .mode_frames import FrameSetError, reference_max_displacement as _ref
+    from .sidecars.spectra import parse_spectra_json
+    rows = parse_spectra_json(path).to_dict()["modes"]
+    row = next((m for m in rows if m["index_1based"] == mode), None)
+    if row is None:
+        raise FrameSetError(f"{path} holds modes 1..{len(rows)}, not mode "
+                            f"{mode!r}")
+    return _ref(row, temperature_k, nodes)
 
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "atom_index_map",

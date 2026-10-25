@@ -28,11 +28,12 @@ beside them ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.5) — and
 panels of sticks over one frequency axis, a sortable table of the vibrational
 modes, and — when you click a peak — a **3D animation of that normal mode**. You reach it two ways, but it is the same code
 both times. **A result with no strength computed draws its mode
-positions, not a spectrum**: every SIESTA result, whose route computes none,
-and a PySCF run with infrared and Raman both off draw one line at each mode's
-wavenumber — no heights, no broadening — which is still where a mode is
-picked for its animation and its electronic structure, and one sentence says
-why there are no heights (§ 2, § 9b.3).
+positions, not a spectrum**: a SIESTA result until the atoms whose infrared
+its charges give are named (§ 3.2), and a PySCF run with infrared and Raman
+both off, draw one line at each mode's wavenumber — no heights, no
+broadening — which is still where a mode is picked for its animation and its
+electronic structure, and one sentence says why there are no heights (§ 2,
+§ 9b.3).
 
 ## 1. Two surfaces, one engine
 
@@ -111,9 +112,12 @@ Two special cases are worth knowing:
   display-floor control**, since there is no height for either to act on
   ([`spectrumchart.md`](?doc=web/spectrumchart.md) § 6.2). A click on a line
   picks the mode exactly as on a spectrum. One sentence above the lines says
-  which of four cases it is: **the route computes none** (SIESTA — *this route
-  computes the frequencies and the mode shapes, not infrared or Raman
-  intensities*); **the run asked for none** (a PySCF run with both strengths
+  which of four cases it is: **the route computes none** (SIESTA — where the
+  result states its charges, *name the atoms above the modes table for their
+  infrared, from the run's charges; this route computes no Raman
+  intensities*, and where it states none, *this result carries the
+  frequencies and the mode shapes, no infrared or Raman intensities*);
+  **the run asked for none** (a PySCF run with both strengths
   off); **they are still being computed** (a PySCF run before its first
   strength lands — its `phase_raman` or `phase_ir` still to finish, § 7 —
   which draws the spectrum the moment one does); or **the run asked and
@@ -143,9 +147,9 @@ filter**, export to CSV, and click a row to select a mode. Four more columns
 give that check's numbers: the HOMO, the LUMO, the gap and the gap's largest
 shift along the mode. **The columns follow the file's route, never its data**:
 a column the route can compute stays in the header and its cells fill in as
-the numbers land, and a column the route cannot compute — infrared, Raman and
-the four orbital columns on SIESTA — is not shown, nor exported to CSV
-(§ 9b.3).
+the numbers land, and a column the route cannot compute — Raman and the four
+orbital columns on SIESTA, and its infrared where the result states no
+charges — is not shown, nor exported to CSV (§ 9b.3).
 
 ### 3.1 The level diagram — and why it has to zoom
 
@@ -231,9 +235,25 @@ the page draws what the one function answers
 § 2):
 
 - **Atoms** — a label the structure holds, by its name (the molecule, `BDT`
-  on AuBDTAu): whose dipole the light sees. Until one is named there is no
+  on AuBDTAu), or **the free atoms**, the built-in set of everything the
+  vibration moved *(the user, 2026-10-24, on the recommendation)*, which
+  needs no label made before the run — for a free molecule the molecule
+  itself: whose dipole the light sees. Until one is named there is no
   infrared — nothing is picked for the person;
-- **Light along** — x, y or z: the direction of the light's field;
+- **Light along** — x, y, z or *a vector…*: the direction of the light's
+  field, z until the person picks another *(the user, 2026-10-24: "allow
+  setting polarization direction of light with a vector, default to z
+  direction")*. A vector is three numbers in three boxes, of which only the
+  direction counts — the door normalises it, and three numbers not all zero
+  is the one rule (`spectra.infrared.read_ask`); typed otherwise, the line
+  beside the controls says so and nothing is asked. Any direction costs
+  nothing more: the run gives each mode's dipole change whole, and a
+  direction is a dot product with it. The direction is named in every header
+  and the summary, a vector by its normalised components (*along (0.707,
+  0.707, 0)*). **A result that holds no atom has no direction to ask**: its
+  molecule is free and tumbles, so its strength is the orientation average
+  (the method's § 2.3) — *Light along* is not shown, and the view is named
+  *averaged over orientations* (`infrared_orientation` `free`);
 - **Charges: Hirshfeld | Voronoi** — the partition *(user, 2026-10-24: "both
   on"; "default to hirshfeld")*, **Hirshfeld** unless the person picks
   Voronoi, and **beside it, always visible, the explanation** — not a
@@ -256,15 +276,48 @@ thermal temperature does (§ 4.1), and the door answers `infrared` — per mode
 the strength along the direction, `A(ê)` in km/mol, and the charge the mode
 moves into or out of the set, from `spectra.infrared.infrared_view`. **The
 page computes nothing**: the modes table shows both in their columns, the
-infrared column titled by what it is (*IR along z — BDT, Hirshfeld*), the
 chart's infrared lane draws the strengths (§ 2), and the CSV export follows
-the table, its header naming the atoms, the direction and the partition. The
-three choices are remembered with the other view preferences (§ 7) and sent
-with every load: a result that cannot answer them — another result's label,
-no charges — loads all the same, the door's reason beside the controls. A
-SIESTA result that states no charges — a run prepared before 2.35.2 — shows
-no controls, and one line says so; a PySCF result's infrared is its own
-column, as before.
+the table. **A view is named one way everywhere** — the atoms, the
+direction, the partition, in that order (*BDT, along z, Hirshfeld*): the
+infrared column *IR — BDT, along z, Hirshfeld (km/mol)*, the charge column
+*Charge moved — BDT, Hirshfeld (e/(√amu·Å))*, the run summary *from the run's
+charges — BDT, along z, Hirshfeld*, the CSV's columns
+`ir_km_mol_BDT_along_z_hirshfeld` (`…_averaged_…` for a free molecule) and
+`charge_moved_e_per_amu12_ang_BDT_hirshfeld`,
+and the Methods paragraph's sentence, which adds how the molecule meets the
+light — held, in one orientation, three times the orientation average a free
+molecule's infrared reports; or free, that average itself
+(`spectra.methods.with_infrared_view`). The
+chart's lane names the quantity, *IR absorption*: its lanes are declared when
+it is drawn, and the column beside it names the view. A lane whose strongest
+real value is at or below the infrared band floor — every value residue, as
+for a set whose dipole the direction cannot see — draws no band and says *no
+band* (`spectrumchart.md`; `engines/vibration.md` § 6.6), and no mode is
+ranked; the rug keeps the file's classes, a SIESTA mode staying `partial`,
+its Raman not computed. The three choices are remembered with the other view
+preferences (§ 7) and sent with every load — the first load of a page
+included, once the remembered choices are read: a result that cannot answer
+them — another result's label — loads all the same, the door's reason beside
+the controls, or, where the result states no charges, that reason; an ask
+that is no ask at all — another key, a value of another kind, a direction or
+a partition the door does not know — is refused (§ 6). A remembered choice is
+restored only where its control holds it (§ 7), so a stored value the door
+would refuse never reaches it. A SIESTA result that states no charges
+shows no controls, and one line says why, in the door's words from the
+result's own facts (`infrared_absent`, `spectra.infrared.no_charges_reason`):
+written before 2.36.0, which first keeps the charges, and how to run the
+force-constant stage again.
+
+**A PySCF result's infrared is its own** — the whole system's dipole change,
+computed by PySCF (`engines/vibration.md` § 4.6) — and the same held-or-free
+rule decides its column *(the user, 2026-10-24)*: nothing held, the file's
+`ir_intensity_km_mol`, the orientation average, as before, and no control;
+atoms held, *Light along* alone above the table — no atoms, no partition, the
+system its own set — and the column the strength along that direction, from
+the vector the file keeps (`dipole_derivative_d_per_ang_amu12`, schema 12),
+named *IR — the whole system, along z (km/mol)*. A held PySCF result written
+before schema 12 keeps no vector: the column stays the orientation average,
+and the line beside *Light along* says the direction cannot be applied to it.
 
 ## 4. Clicking a mode — the 3D animation
 
@@ -383,7 +436,7 @@ is said to be **frozen out**. At 298 K, as a multiple of the zero-point swing:
 | ν̃ (cm⁻¹) | 50 | 100 | 300 | 1000 | 3000 |
 |---|---|---|---|---|---|
 | ×  zero-point | 2.9 | 2.1 | 1.27 | 1.01 | 1.00 |
-| at 500 K | 3.7 | 2.7 | 1.57 | 1.06 | 1.00 |
+| at 500 K | 3.7 | 2.6 | 1.57 | 1.06 | 1.00 |
 
 So temperature is worth setting for **soft modes** — torsions, librations,
 metal–ligand bends, lattice modes — and is invisible on a C–H stretch. This is
@@ -511,18 +564,27 @@ multi-frame structure pair a transport calculation cites
 person states the **maximum displacement** — the largest atom's move at the
 outermost frames, in Å, with this mode's largest zero-point atom move shown
 beside the field (the result's `zero_point_displacement_ang`) — three or five
-frames, and where in the tree to save the pair. **Beside the field, the
-reference** — the maximum displacement whose frames sample the mode's
-thermal spread at the page's temperature (§ 4.1), for three frames and for
+frames, chosen from the two, and where in the tree to save the pair.
+**Beside the field, the reference** — the maximum displacement whose frames
+sample the mode's thermal spread at a temperature, for three frames and for
 five, which the load door serves per mode
 (`mode_frames.reference_max_displacement`,
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-§ 5); the value stays the person's. The page writes nothing
-itself: it asks the one generator through `POST /api/spectra/frameset` (§ 6),
-and shows its answer — each frame's `q/σ`, largest atom move and weight, the
-pair's path, and, where an electrode atom moves, that transport refuses the
-set. The animation's amplitude (§ 4.1) is a drawing choice and never this
-input.
+§ 5). **The temperature is the dialog's own box** *(the user, 2026-10-24, on
+the recommendation)*, starting at the run's thermochemistry temperature —
+the result's `thermo.temperature_K`, the number its thermochemistry was
+computed at — and separate from the animation's (§ 4.1); typing another
+asks the door again at it (`reference_temperature_k`), and the sentence
+names the temperature the door computed the numbers at, never a value still
+on its way. A result that states no thermochemistry temperature starts the
+box empty, and no reference is shown until one is typed. The value stays the
+person's. The page writes nothing itself: it asks the one generator through
+`POST /api/spectra/frameset` (§ 6), and shows its answer — each frame, named
+as the frame-set card names it (*frame 1 (of 5)* for the first, the
+display's count from 1, `model/structure.md` § 2.2e), its `q/σ`, largest atom
+move and weight, the pair's path, and, where an electrode atom moves, that
+transport refuses the set. The animation's amplitude (§ 4.1) is a drawing
+choice and never this input.
 
 ## 5. The standalone tab — from a structure to a description
 
@@ -620,8 +682,15 @@ of the same file — the same reset a file-switch does. The full "which state
 resets what" rules live in [`results.md § 4`](?doc=web/results.md). One thing
 specific here: your view **preferences** (the broadening width, the animation
 amplitude and speed and its pairing, the thermal temperature, the table's sort
-and filter) **survive a page reload**, not just a file-switch (shipped
-2026-09-10; a documented follow-up until then).
+and filter, and the infrared's atoms, direction and partition of § 3.2)
+**survive a page reload**, not just a file-switch (shipped 2026-09-10; a
+documented follow-up until then). **Read back, they are the file's ask**: the
+read is async, so once it lands the file on screen is loaded again with them
+where they ask something other than the load did — its thermal spreads, its
+references and its infrared at the remembered choices. A stored value is
+restored only where its control holds it — a direction or a partition among
+the select's options, a temperature of 0 K or more — so a value the door
+would refuse never turns every load into a refusal.
 
 **They are kept where everything else is kept** — the workspace
 ([`workspace.md`](?doc=web/workspace.md)), under the tag
@@ -809,9 +878,10 @@ The calculation has **two engines** (chosen 2026-09-21;
 [`engines/vibration.md`](?doc=engines/vibration.md) § 1.3): PySCF for isolated
 molecules, SIESTA for slabs and junctions — where the point is consistency,
 the same pseudopotentials, orbitals and functional as the transport the modes
-will be displaced for. SIESTA yields **frequencies and mode shapes only**;
-infrared and Raman are not offered there (`science/normal-modes.md` § 4a.6).
-So the file has to carry a result with pieces missing, and say so.
+will be displaced for. SIESTA yields **frequencies, mode shapes and every atom's charge at every
+force-constant step** — the infrared of the atoms a person names derived from
+them (§ 3.2) — and no Raman ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.6). So the file has to carry a result with pieces missing, and say so.
 
 **One file, every engine; a missing number is ABSENT, never zero.** `engine`
 names who produced the file. A key an engine cannot produce is absent or
@@ -822,13 +892,13 @@ compute a channel and for a run that did not ask for one:
 
 | where | what a reader sees |
 |---|---|
-| the chart | **mode positions, not a spectrum**, when no mode carries a strength — a SIESTA result with no infrared asked of it (§ 3.2): one line of one height at each mode, no curve, no height scale, no width or display-floor control, and one sentence above them: *not computed on this route* (§ 2) *(user, 2026-09-28)*. With some strengths computed — a SIESTA result's infrared of a set of atoms among them — a lane whose channel is missing is titled *not computed* |
+| the chart | **mode positions, not a spectrum**, when no mode carries a strength — a SIESTA result with no infrared asked of it (§ 3.2): one line of one height at each mode, no curve, no height scale, no width or display-floor control, and one sentence above them saying which case it is (§ 2) *(user, 2026-09-28)*. With some strengths computed — a SIESTA result's infrared of a set of atoms among them — a lane whose channel is missing is titled *not computed* |
 | the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked |
 | the modes table | **a column the file's route cannot compute is not shown** — Raman and the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them; the IR column and the charge-moved column on SIESTA only where the result states its charges (§ 3.2). Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
 | the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names PySCF's `es_mode_selection`, which a SIESTA run has no way to set. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
-| the run summary | *not computed on this route* for every channel the route lacks — infrared, Raman, the per-mode orbital energies — by the same rule; *not requested* only where the run could have asked; a SIESTA result's infrared, where it states its charges, *from the run's charges* — the atoms, direction and partition asked, or *name the atoms above the modes table* (§ 3.2) |
+| the run summary | *not computed on this route* for every channel the route lacks — Raman and the per-mode orbital energies on SIESTA — by the same rule; *not requested* only where the run could have asked; a SIESTA result's infrared, where it states its charges, *from the run's charges* — the view (*BDT, along z, Hirshfeld*), *not given:* and the door's reason, or *name the atoms above the modes table* — and where it states none, *none in this result — it states no charges*, the reason itself said once, above the modes table (§ 3.2) |
 | the thermochemistry tab | labelled by its regime (§ 3): on SIESTA the vibrational contributions alone, with what they are good for and where they stop ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.7) |
-| the write-up | names what was computed; the file and the viewer name what was not, so an absence cannot be read as a zero |
+| the write-up | names what was computed — on SIESTA the charges recorded, and at load the infrared view shown (§ 3.2); the file and the viewer name what was not, so an absence cannot be read as a zero |
 
 **What the file carries for each engine** — the molecular-orbital block
 optional as a whole, the intensities `null` on every SIESTA mode, the routes
@@ -857,6 +927,7 @@ tab: the modes without a spectrum, the columns and dots by route, the
 infrared controls, columns and summary of a result stating its charges and
 the door's answer once the atoms are named (§ 3.2), the vibrational-only
 thermochemistry and its bars),
-`test_spectra_no_spectrum_sentence_js.py` (the four cases of § 2, by role,
-and when the viewer stops waiting — infrared's own flag included, § 7),
+`test_spectra_no_spectrum_sentence_js.py` (the four cases of § 2, by role —
+a SIESTA result with and without its charges among them — and when the viewer
+stops waiting, infrared's own flag included, § 7),
 `test_vibrationview_maths_js.py` (the animation's eigenvector math).

@@ -438,8 +438,8 @@ d_T = \sqrt2\,x_{\mathrm{out}}\;\sigma_T\,\max_A\lvert\mathbf L_A\rvert
 \qquad (\sqrt3\,\sigma_T\max_A\lvert\mathbf L_A\rvert \text{ for three frames}),
 $$
 
-the floor a driven mode adds to (§ 2a). The set states σ beside `Q_zp`, and
-no temperature.
+the floor a driven mode adds to (§ 2a). The generator states σ beside
+`Q_zp`, and no temperature (a person's script may state one, § 8).
 
 ### 5.1 The Gauss–Hermite rule
 
@@ -501,10 +501,10 @@ give $0.692$, and the disagreement between the two rules is the signal:
 flowchart TD
     A["three frames<br/>0, ±√3 σ"] --> B["⟨T⟩₃"]
     C["five frames for the mode<br/>0, ±1.356 σ, ±2.857 σ"] --> D["⟨T⟩₅"]
-    B --> E{"⟨T⟩₃ and ⟨T⟩₅ agree<br/>within the stated tolerance?"}
+    B --> E{"the person compares<br/>⟨T⟩₃ and ⟨T⟩₅"}
     D --> E
-    E -->|yes| F["the expansion holds over the thermal range:<br/>report ⟨T⟩₅ and the % change"]
-    E -->|no| G["T(Q) is not smooth there — a resonance<br/>crossing E_F: report ⟨T⟩₅ and SAY SO;<br/>the % change is not a curvature"]
+    E -->|they agree| F["the expansion holds over the thermal range:<br/>⟨T⟩₅ and the % change"]
+    E -->|they differ| G["T(Q) is not smooth there — a resonance<br/>crossing E_F: ⟨T⟩₅ is the better average,<br/>and the % change is not a curvature"]
 ```
 
 Five frames cost two more transport calculations; they are a check the frame

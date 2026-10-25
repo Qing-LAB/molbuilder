@@ -568,8 +568,8 @@ class SiestaReader:
     def _on_charges_start(self, line: str, line_no: int) -> None:
         """``<Partition> Atomic Populations:`` -- a step's partial charges
         begin (`siesta_grammar.PARTIAL_CHARGES_BEGIN`)."""
-        word = _G.PARTIAL_CHARGES_BEGIN.match(line).group(1).lower()
-        self._charges_partition = _G.PARTITIONS[word]
+        self._charges_partition = (
+            _G.PARTIAL_CHARGES_BEGIN.match(line).group(1).lower())
         self._step_charges[self._charges_partition] = []
 
     def _consume_charges(self, line: str, line_no: int) -> str:

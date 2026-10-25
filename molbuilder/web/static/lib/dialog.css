@@ -62,7 +62,8 @@
 }
 .mb-dialog input[type="text"],
 .mb-dialog input[type="number"],
-.mb-dialog input[type="file"] {
+.mb-dialog input[type="file"],
+.mb-dialog select {
     font: inherit;
     padding: var(--space-xs) var(--space-sm);
     background: var(--bg-page);

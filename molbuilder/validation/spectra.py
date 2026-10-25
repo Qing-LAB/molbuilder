@@ -556,8 +556,10 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
                 f"(6 force evaluations per free atom, each a whole-system "
                 f"SCF).  Frequencies are those of the free atoms moving in "
                 f"the static field of the held ones; thermochemistry is "
-                f"vibrational-only.  Intensities are not computed on this "
-                f"route."),
+                f"vibrational-only.  Every atom's Hirshfeld and Voronoi "
+                f"charge is recorded at every nudge, so the spectrum viewer "
+                f"gives the infrared of the atoms you name; Raman "
+                f"intensities are not computed on this route."),
             where="structure.regions"))
     # THE RELAXATION IS THE PERSON'S EXPLICIT CHOICE (`engines/vibration.md`
     # § 2.2, § 5.8), made with one box.  Unticked, the ladder relaxes first

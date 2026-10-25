@@ -103,19 +103,31 @@ export function newDialog(extra) {
 export function dialogTitle(text) { return _node("h2", "mb-dialog-title", text); }
 export function dialogHint(text) { return _node("p", "mb-dialog-hint", text); }
 
-/** A labelled input, stacked: ``{wrap, input}``. */
+/** A labelled input, stacked: ``{wrap, input}`` -- a choice among
+ *  ``spec.options`` (``[[value, text], ...]``) a ``<select>``. */
 export function dialogField(label, spec) {
   spec = spec || {};
   const wrap = _node("label", "mb-dialog-field");
   wrap.appendChild(_node("span", null, label));
-  const input = document.createElement("input");
-  input.type = spec.type || "text";
+  const input = document.createElement(spec.options ? "select" : "input");
+  if (spec.options) {
+    for (const [value, text] of spec.options) {
+      const o = document.createElement("option");
+      o.value = String(value);
+      o.textContent = String(text);
+      input.appendChild(o);
+    }
+  } else {
+    input.type = spec.type || "text";
+  }
   if (spec.value !== undefined && spec.value !== null) {
     input.value = String(spec.value);
   }
   if (spec.placeholder) input.placeholder = spec.placeholder;
-  input.setAttribute("autocomplete", "off");
-  input.setAttribute("spellcheck", "false");
+  if (!spec.options) {
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("spellcheck", "false");
+  }
   for (const [k, v] of Object.entries(spec.attrs || {})) {
     input.setAttribute(k, String(v));
   }
@@ -152,7 +164,10 @@ export function dialogActions(buttons) {
 /** Ask for one or more values.
  *
  *  ``opts``: ``{title, hint?, fields: [{name, label, value?, type?,
- *  placeholder?, attrs?}], validate?, confirmLabel?, danger?, extra?}``.
+ *  placeholder?, attrs?, options?}], validate?, onInput?, confirmLabel?,
+ *  danger?, extra?}``.  ``onInput(values, {setHint})``, where given, is
+ *  told the values at every change -- for a dialog whose hint says
+ *  something that follows a field, ``setHint(text)`` rewriting it.
  *  ``validate(values)`` returns ``null`` when the answer can stand, else
  *  the refusal -- ``""`` refuses without words (an empty name).  The confirm
  *  button is enabled only while it can stand; Enter confirms likewise.
@@ -165,7 +180,8 @@ export function askFields(opts) {
   opts = opts || {};
   const dialog = newDialog(opts.extra);
   dialog.appendChild(dialogTitle(opts.title || ""));
-  if (opts.hint) dialog.appendChild(dialogHint(opts.hint));
+  const hintEl = opts.hint ? dialogHint(opts.hint) : null;
+  if (hintEl) dialog.appendChild(hintEl);
   const inputs = [];
   for (const f of opts.fields || []) {
     const { wrap, input } = dialogField(f.label, f);
@@ -206,8 +222,17 @@ export function askFields(opts) {
   confirmBtn = actions.querySelector('[data-action="confirm"]');
   dialog.appendChild(actions);
 
+  const told = () => {
+    if (typeof opts.onInput === "function") {
+      opts.onInput(read(), {
+        setHint: (text) => { if (hintEl) hintEl.textContent = String(text); },
+      });
+    }
+  };
   for (const [, input] of inputs) {
-    input.addEventListener(input.type === "file" ? "change" : "input", check);
+    const event = (input.type === "file" || input.tagName === "SELECT")
+      ? "change" : "input";
+    input.addEventListener(event, () => { check(); told(); });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && input.type !== "file") {
         e.preventDefault();

@@ -80,39 +80,40 @@ def _page_constants():
     load rather than copied into the browser (`architecture.md` § 3; user,
     2026-09-27: one source per fact).  Named by what each converts."""
     from molbuilder import constants as C
+    from molbuilder.spectra import activity as A
     return {
         "hartree_ev":          C.HARTREE_EV,               # 1 Eh in eV
         "hartree_kcal_mol":    C.HARTREE_EV / C.KCAL_MOL_EV,  # 1 Eh in kcal/mol
+        # each channel's band floor: a lane whose strongest real value is at
+        # or below it has no band (`engines/vibration.md` § 6.6)
+        "ir_present_floor_km_mol":    A.CHANNEL_PRESENT_FLOOR_IR_KM_MOL,
+        "raman_present_floor_a4_amu": A.CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU,
     }
 
 
-def _temperature_k(body, form):
-    """The temperature the tab asks its thermal spreads at -- ``temperature_k``
-    in the JSON body or the upload's form -- as a float, ``None`` when the
-    request names none; a value that is not a positive number is refused
-    with the reason (a 400, `web-api.md` § 2)."""
-    raw = (body or {}).get("temperature_k")
+def _temperature_k(body, form, key: str = "temperature_k"):
+    """A temperature the tab asks at -- ``temperature_k``, the animation's
+    thermal spreads', or ``reference_temperature_k``, the frame-set
+    dialog's reference's -- in the JSON body or the upload's form, as a
+    float, ``None`` when the request names none; a value that is not one is
+    refused with the reason (a 400, `web-api.md` § 2), by the rule every
+    door shares (`spectra.derived.checked_temperature_k`)."""
+    raw = (body or {}).get(key)
     if raw is None and form is not None:
-        raw = form.get("temperature_k")
+        raw = form.get(key)
     if raw is None or raw == "":
         return None
-    try:
-        t = float(raw)
-    except (TypeError, ValueError):
-        t = float("nan")
-    if not (t > 0):
-        raise ValueError(f"temperature_k must be a positive number of "
-                         f"kelvin; got {raw!r}")
-    return t
+    from molbuilder.spectra.derived import checked_temperature_k
+    return checked_temperature_k(raw)
 
 
 def _infrared_asked(body, form) -> Optional[Dict[str, Any]]:
     """What the tab asks of a SIESTA result's charges (`web/spectra.md`
     § 3.2) -- ``infrared: {atoms, direction, partition}`` in the JSON body,
-    or as JSON text in the upload's form: a label of the result's
-    structure, ``x``/``y``/``z`` or a vector, ``hirshfeld``/``voronoi``
-    (Hirshfeld when unsaid, the user's default).  ``None`` when not asked; a
+    or as JSON text in the upload's form, read by the one reading every
+    door shares (`spectra.infrared.read_ask`).  ``None`` when not asked; a
     malformed ask is refused with the reason (a 400)."""
+    from molbuilder.spectra.infrared import read_ask
     raw = (body or {}).get("infrared")
     if raw is None and form is not None and form.get("infrared"):
         try:
@@ -121,36 +122,34 @@ def _infrared_asked(body, form) -> Optional[Dict[str, Any]]:
             raise ValueError(f"infrared is a JSON object: {exc}") from None
     if raw is None:
         return None
-    if not isinstance(raw, dict) or not isinstance(raw.get("atoms"), str) \
-            or not raw.get("atoms") or raw.get("direction") is None:
-        raise ValueError("infrared is {atoms: a label of the result's "
-                         "structure, direction: x, y, z or a vector, "
-                         "partition: hirshfeld or voronoi}")
-    return {"atoms": raw["atoms"], "direction": raw["direction"],
-            "partition": str(raw.get("partition") or "hirshfeld")}
+    return read_ask(raw)
 
 
 def _loaded(results, run: Optional[Dict[str, Any]] = None,
             temperature_k: Optional[float] = None,
-            infrared: Optional[Dict[str, Any]] = None):
+            infrared: Optional[Dict[str, Any]] = None,
+            reference_temperature_k: Optional[float] = None):
     """The one success reply for /api/spectra/load — the typed results as a
     dict, plus what only the server can work out.
 
-    ``temperature_k`` is the temperature the tab asked for: each mode is
-    served its ``thermal_spread_amu12_ang`` at it, from the one derivation
-    (`spectra.derived.thermal_spread_of`, `web/spectra.md` § 4.1), and its
-    ``reference_max_displacement_ang`` for three frames and five
-    (`mode_frames.reference_max_displacement`, § 4.3) -- the tab holds no
-    constant and derives nothing.  Asked for none, no mode carries either.
+    ``temperature_k`` is the animation's temperature: each mode is served
+    its ``thermal_spread_amu12_ang`` at it, from the one derivation
+    (`spectra.derived.thermal_spread_of`, `web/spectra.md` § 4.1); asked for
+    none, no mode carries it.  ``reference_temperature_k`` is the frame-set
+    dialog's: each mode is served its ``reference_max_displacement_ang`` for
+    three frames and five at it (`mode_frames.reference_max_displacement`,
+    § 4.3), the run's own thermochemistry temperature when the dialog has
+    named none -- the tab holds no constant and derives nothing.
 
-    ``infrared`` is what the tab asks of a SIESTA result's charges: the
-    view is ``results.infrared``, from the one derivation
-    (`spectra.infrared.infrared_view`, `web/spectra.md` § 3.2).  A view the
-    result cannot give -- a label its structure does not hold, a partition
-    it does not state, no charges at all -- is ``results.infrared_said``,
-    the refusal in its words, and the result still loads: the tab sends
-    the person's remembered choice with every load, and another result
-    need not hold it.
+    ``infrared`` is what the tab asks of the result's infrared: on a SIESTA
+    result stating its charges, the named set's view; on a PySCF result
+    holding atoms, the stored dipole change along the light's direction --
+    ``results.infrared``, from the one derivation (`spectra.infrared`,
+    `web/spectra.md` § 3.2).  A view the result cannot give -- a label its
+    structure does not hold, a partition it does not state, no charges, no
+    stored vector -- is ``results.infrared_said``, the refusal in its words,
+    and the result still loads: the tab sends the person's remembered
+    choice with every load, and another result need not hold it.
 
     WHY THE PAYLOAD IS NOT SIMPLY ``to_dict()``.  ``to_dict`` is the ON-DISK
     format: ``from_dict(to_dict(x)) == x``, byte-equal modulo float
@@ -218,34 +217,75 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
         except (ValueError, KeyError):
             pass
     if temperature_k is not None:
-        from molbuilder.mode_frames import NODES, reference_max_displacement
+        # the temperature the animation's spreads are at, said with them
+        payload["temperature_k"] = temperature_k
         from molbuilder.spectra.derived import thermal_spread_of
         for mode in payload.get("modes") or []:
             mode["thermal_spread_amu12_ang"] = thermal_spread_of(
                 mode, temperature_k)
+    # THE REFERENCE DISPLACEMENT'S TEMPERATURE (`web/spectra.md` § 4.3): the
+    # one the dialog asked, else the run's own thermochemistry temperature;
+    # neither, no reference.  Said with the numbers.
+    ref_t = reference_temperature_k
+    if ref_t is None:
+        ref_t = (payload.get("thermo") or {}).get("temperature_K")
+    if ref_t is not None:
+        from molbuilder.mode_frames import NODES, reference_max_displacement
+        payload["reference_temperature_k"] = float(ref_t)
+        for mode in payload.get("modes") or []:
             mode["reference_max_displacement_ang"] = {
-                str(n): reference_max_displacement(mode, temperature_k, n)
+                str(n): reference_max_displacement(mode, float(ref_t), n)
                 for n in NODES}
     # THE LABELS A SET MAY BE NAMED BY, where the result states its charges
     # (`web/spectra.md` § 3.2) -- the structure's, read through its own
-    # door, so the page picks no structure apart.
-    if results.partial_charges is not None and results.structure_stated():
-        from molbuilder.structure import Structure as _S
-        regions = _S.from_dict(results.structure_stated()).regions or {}
-        payload["infrared_atoms_labels"] = sorted(
-            k for k, v in regions.items() if v)
-    if infrared is not None:
-        from molbuilder.spectra.infrared import (InfraredError,
-                                                 infrared_view,
-                                                 labelled_atoms)
-        try:
-            payload["infrared"] = infrared_view(
-                results, atoms=labelled_atoms(results, infrared["atoms"]),
-                direction=infrared["direction"],
-                partition=infrared["partition"],
-                atoms_label=infrared["atoms"]).to_wire()
-        except InfraredError as exc:
-            payload["infrared_said"] = str(exc)
+    # door, so the page picks no structure apart; and, for a SIESTA result
+    # that states none, why, in its own facts.
+    from molbuilder.spectra.infrared import (SOURCE_CHARGES, SOURCE_DIPOLE,
+                                             ORIENTATION_HELD, InfraredError,
+                                             atoms_of, dipole_view,
+                                             infrared_view, no_charges_reason,
+                                             orientation_of, sets_of,
+                                             source_of)
+    from molbuilder.spectra.methods import with_infrared_view
+    # WHERE ITS INFRARED COMES FROM, and held or free -- whether the light's
+    # direction is asked at all (`web/spectra.md` § 3.2).
+    source = source_of(results)
+    if source is not None:
+        payload["infrared_source"] = source
+        payload["infrared_orientation"] = orientation_of(results)
+    if source == SOURCE_CHARGES and results.structure_stated():
+        payload["infrared_sets"] = sets_of(results)
+    elif source is None and str(results.engine).lower() == "siesta":
+        payload["infrared_absent"] = (f"This result states no charges, so "
+                                      f"it carries no infrared: "
+                                      f"{no_charges_reason(results)}.")
+    # WHAT IS ASKED, answered where it applies: a charges result's named
+    # set; a held engine-dipole result's direction; a set named of a result
+    # with no charges, the reason.  A free result's column is the file's.
+    view = None
+    try:
+        if infrared is None:
+            pass
+        elif source == SOURCE_CHARGES and infrared["atoms"] is not None:
+            atoms, name = atoms_of(results, infrared["atoms"])
+            view = infrared_view(results, atoms=atoms,
+                                 direction=infrared["direction"],
+                                 partition=infrared["partition"],
+                                 atoms_label=name)
+        elif source == SOURCE_DIPOLE \
+                and payload["infrared_orientation"] == ORIENTATION_HELD:
+            view = dipole_view(results, direction=infrared["direction"])
+        elif source is None and infrared["atoms"] is not None:
+            payload["infrared_said"] = (f"the result states no charges: "
+                                        f"{no_charges_reason(results)}")
+    except InfraredError as exc:
+        payload["infrared_said"] = str(exc)
+    if view is not None:
+        payload["infrared"] = view.to_wire()
+        # THE WRITE-UP NAMES WHAT IS SHOWN (`web/spectra.md` § 9b.3).
+        if payload.get("methods_text"):
+            payload["methods_text"] = with_infrared_view(
+                payload["methods_text"], payload["infrared"])
     # HOW THE RUN THE FILE BELONGS TO IS DOING -- the one door's answer, which
     # the viewer follows; ``None`` for an upload or an inline result, which
     # belong to no run (`web/results.md` § 4.1).
@@ -290,10 +330,13 @@ def api_spectra_load():
     try:
         temperature_k = _temperature_k(request.get_json(silent=True),
                                        request.form)
+        reference_temperature_k = _temperature_k(
+            request.get_json(silent=True), request.form,
+            "reference_temperature_k")
         infrared = _infrared_asked(request.get_json(silent=True),
                                    request.form)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": False, "kind": "field", "error": str(exc)}), 400
     # ---- multipart upload ---------------------------------------- #
     if request.files.get("file"):
         upload = request.files["file"]
@@ -317,7 +360,8 @@ def api_spectra_load():
         except SpectraJsonError as exc:
             return _err_load(exc)
         return _loaded(results, temperature_k=temperature_k,
-                       infrared=infrared)
+                       infrared=infrared,
+                       reference_temperature_k=reference_temperature_k)
 
     # ---- JSON body (path or inline JSON) ------------------------- #
     body = request.get_json(silent=True) or {}
@@ -349,7 +393,8 @@ def api_spectra_load():
         except SpectraJsonError as exc:
             return _err_load(exc)
         return _loaded(results, run=run, temperature_k=temperature_k,
-                       infrared=infrared)
+                       infrared=infrared,
+                       reference_temperature_k=reference_temperature_k)
     if inline is not None:
         if not isinstance(inline, dict):
             return _err_load(SpectraJsonMalformedError(
@@ -360,7 +405,8 @@ def api_spectra_load():
         except SpectraJsonError as exc:
             return _err_load(exc)
         return _loaded(results, temperature_k=temperature_k,
-                       infrared=infrared)
+                       infrared=infrared,
+                       reference_temperature_k=reference_temperature_k)
 
     return jsonify({
         "ok":    False,

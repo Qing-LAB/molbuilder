@@ -334,6 +334,16 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
     # regression that looks like success.
     assert d["ir_route"] in ("analytic", "finite-difference"), (
         f"IR ran but recorded no route: {d.get('ir_route')!r}")
+    # THE VECTOR IS THE ONE THE INTENSITY CAME FROM (`engines/vibration.md`
+    # § 4.6, schema 12): every direction's strength is read from it, so a
+    # vector kept in another unit or another projection would put every
+    # held molecule's column wrong while the file's own column stayed right.
+    from molbuilder.constants import IR_KM_MOL_PER_D2_A2_AMU
+    for m in modes:
+        v = m["dipole_derivative_d_per_ang_amu12"]
+        assert v is not None and len(v) == 3, m
+        assert IR_KM_MOL_PER_D2_A2_AMU * sum(x * x for x in v) == \
+            pytest.approx(m["ir_intensity_km_mol"], rel=1e-9), m
 
     # Raman was NOT requested: its phase says so (vibration.md § 4.9),
     # and the run says so as a route, not as a zero.  Infrared's own flag
@@ -537,8 +547,19 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     with the two loudest infrared bands of the run.  Through the whole
     described road, the run must now report the three vibrations only,
     say what it removed, and keep the free atoms' own stationarity test
-    (R5) rather than the constraint force on the oxygen."""
+    (R5) rather than the constraint force on the oxygen.  With infrared on,
+    the held molecule's column is its stored dipole change read along the
+    light, the three axes averaging back to the file's own intensity
+    (`engines/vibration.md` § 4.6)."""
     bundle = _describe(tmp_path, monkeypatch, frozen=(0,))
+    # INFRARED ON, so the held molecule's column is read along the light
+    # (`engines/vibration.md` § 4.6): finite-difference dipoles, the held
+    # route's, twelve small SCFs.
+    tpl = bundle / "W.template.toml"
+    t = tpl.read_text()
+    i = t.index("[item.compute_ir]"); j = t.index("[item.", i + 1)
+    t = t[:i] + t[i:j].replace("value = false", "value = true", 1) + t[j:]
+    tpl.write_text(t)
     d = _prep_and_run(bundle)
 
     # THE HELD ATOMS are the structure's own label (schema 9).
@@ -578,6 +599,27 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     assert wrap_logs, "the wrapper writes its session log beside the run"
     header = wrap_logs[-1].read_text(errors="replace")
     assert "frozen_atoms: 1 listed indices" in header, header[:1500]
+    # HELD, SO READ ALONG THE LIGHT (§ 4.6; `web/spectra.md` § 3.2): the
+    # load door answers the stored dipole change along each axis, and the
+    # three average back to the file's own orientation average -- one vector
+    # read two ways.
+    from molbuilder.spectra.results import SpectraResults
+    from molbuilder.web.app import create_app
+    from molbuilder.web.blueprints.spectra import _infrared_asked, _loaded
+    result = SpectraResults.from_dict(d)
+    with create_app().app_context():
+        along = {}
+        for axis in "xyz":
+            got = _loaded(result, infrared=_infrared_asked(
+                {"infrared": {"direction": axis}}, None)).get_json()["results"]
+            assert (got["infrared_source"], got["infrared_orientation"]) == \
+                ("dipole", "held"), got.get("infrared_said")
+            along[axis] = [m["intensity_km_mol"]
+                           for m in got["infrared"]["modes"]]
+    for k, m in enumerate(d["modes"]):
+        mean = sum(along[a][k] for a in "xyz") / 3.0
+        assert mean == pytest.approx(m["ir_intensity_km_mol"], rel=1e-9), \
+            (m["index_1based"], along, m["ir_intensity_km_mol"])
     # Every mode is normalised and orthogonal to every removed motion in the
     # mass metric of the masses the result states (I3; science/normal-modes.md
     # § 7 point 3), read off the artifact itself.
