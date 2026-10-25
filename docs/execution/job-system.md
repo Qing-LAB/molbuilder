@@ -133,7 +133,13 @@ kind decides when it is taken:
 
 **Which run, by default, is one rule for every kind**: the **newest** run of
 what it builds on, which **must have finished** — an older one never stands
-in, because a run launched again to tighten is the one you mean. For an
+in, because a run launched again to tighten is the one you mean. A
+calculation that reuses a finished one asks the same of it: a stage is copied
+whole only when its newest run there finished, and one result — one voltage
+at one frame — is reused only when it finished in that newest run; its
+manifest names the run each comes from *(the user, 2026-10-25: "newest, must
+be finished, the manifest will name the run it took, only finished ones will
+guarantee the correct result")*. For an
 independent ladder's stage, `--from` names any other run of this calculation
 (`<NN>_<stage>/run-<n>`), taken as said (§ 5.4); a force-constant stage's `relax` run is named at its prep, and a
 transport rung's inputs are its kind's, never named. A transport rung's gather
@@ -2271,7 +2277,7 @@ starts from**:
 | the stages | named by you, as many as you like ([`engines/stages.md`](?doc=engines/stages.md) § 2) | the kind's own, each by its role ([`engines/template.md`](?doc=engines/template.md) § 6.4) |
 | what a stage starts from | **the stage before it, by default**: medium's first launch takes the newest attempt of the stage before it and copies that run's geometry, its density and — for the same optimiser — its history ([`project-layout.md`](?doc=execution/project-layout.md) § 2.3.4). A stage whose `restart` is `clean`, and the first stage, start from the calculation's structure | the stages before it, by the kind: **transport, files at the first launch** — the device the seed's density and the leads' Hamiltonians, the transmission the device's, each from the newest attempt that ended so and ran the same engine input as the deck that stage renders now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11); **a force-constant stage, its deck written at prep** from `relax`'s newest attempt, which must have finished — its relaxed coordinates and cell — and that same run's restart files copied at its first launch ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a) |
 | when the stage before has not finished | the stage is prepared all the same; its **launch** refuses before anything is sent, says why in the status door's words, and names what to do: launch the one before, let it finish, or run it again — or choose: `--from` an earlier run of it that finished, `--cold` the structure (on the flat layout, the stage's override `restart: clean`) — a launch says these for one stage, so a member of a group of several is told to give it a group of its own first. One that finished without converging is taken, with a warning; one that failed is refused | transport: the **launch** refuses before anything is sent and names the stage to run first; a force-constant stage: its **prep** refuses — its preview gives the same refusal (§ 5.0) — since its deck needs `relax`'s geometry |
-| another source | yours to choose — any attempt by `--from`, none by `--cold`, at the launch | the frequency stage: a `relax` run you name with `--from` **at its prep**, taken as said — no other run, and no `--cold` at its first launch, while the ladder holds a `relax`; or no `relax` at all, the structure stated relaxed (`already_relaxed`) — every case in [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table. The kind's first rung — a vibration's `relax` — builds on the structure: `--from` naming a run of another stage is refused. A transport rung: none — what it takes is its kind's, gathered from the rungs upstream at its first launch; launched again, `--gather` takes them anew, and `--cold` starts it with none of its own files, keeping what it gathered; `--from` is refused, and `--cold` at its first launch |
+| another source | yours to choose — any attempt by `--from`, none by `--cold`, at the launch | the frequency stage: a `relax` run you name with `--from` **at its prep**, taken as said — no other run, and no `--cold` at its first launch, while the ladder holds a `relax`; or no `relax` at all, the structure stated relaxed (`already_relaxed`) — every case in [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table. The kind's first rung — a vibration's `relax` — builds on the structure: `--from` naming a run of another stage is refused. A transport rung: none — what it takes is its kind's, gathered from the rungs upstream at its first launch; launched again, `--gather` takes them anew, and `--cold` starts it with none of its own files, keeping what it gathered; `--from` is refused, and `--cold` at its first launch — but for a rung of points of a calculation that reuses a finished one, where `--cold` takes none of that calculation's points over (R-L13) |
 
 **What crosses between stages, when a deck is a reordered copy**
 *([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R3)*. A stage that takes another's **geometry** — a SIESTA
@@ -2327,9 +2333,10 @@ comes from; and its record — `.continued-from`, the one run it continues
 from, or `.gathered-from`, each input with its run. One function carries
 every hand-over out, `materialize.hand_over` — it copies the files and
 writes the record. A point a transport calculation takes over from a finished
-one it reuses is one more, its record `.copied-from`, and so are the energies a
-transmission point shares with a finished point, copied into its `shared/` at
-every launch that walks it; the runs its prep copies
+one it reuses, and the energies a transmission point shares with a finished
+point, copied into its `shared/` at every launch that walks it, are copied by
+the reuse's own two (`reuse.take_into`, `reuse.shared_into`), each recorded in
+`.copied-from`; the runs its prep copies
 in are no hand-over — no run takes them, they are brought whole
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16):
 
@@ -2409,8 +2416,10 @@ converged) and refuses only what cannot be done (no such attempt, no restart
 files in it) — and `--cold` starts from the calculation's structure. What cannot be taken is
 refused **before anything is written** too: a run that is not an attempt of
 this calculation, `--from` with `--cold`; `--from` on the flat layout or on a
-transport rung, and `--cold` there at a first launch (launched again, `--cold`
-starts either clean); `--from` and `--cold` on a benchmark, whose trial
+transport rung, and `--cold` there at a first launch — save a rung of points
+of a calculation that reuses a finished one, where it takes none of that
+calculation's points over (R-L13) — (launched again, `--cold` starts either
+clean); `--from` and `--cold` on a benchmark, whose trial
 starts cold from its deck — and the attempt is opened once, with what it
 carries, so a refusal leaves an attempt an earlier prep set up as it was.
 Either way `launch` prints which run the stage continues from — before the

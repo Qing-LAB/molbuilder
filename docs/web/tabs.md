@@ -300,8 +300,17 @@ B8)*.
    sentences the describe door's, drawn as it is (`extend.says`). Describe
    writes what `molbuilder describe --reuses` writes, the fixed rungs
    holding the finished calculation's own values; a changed fixed value, a
-   finished voltage dropped, or the junction, its rename or its label
-   changed, is refused by name with nothing written; and its answer lists
+   finished voltage dropped, or its rename or its label changed, is refused
+   by name with nothing written. The panel shows which junction the extension
+   uses: the finished calculation's, with its number of frames. *Cite a frame
+   set of this junction…* opens the picker. A frame set whose first frame is
+   that junction can be cited in its place — a relaxation run's folder with
+   that geometry is accepted too — and one whose first frame is another
+   junction is refused when it is picked, the junction you had staying.
+   *Use <name>'s junction* goes back. *Start a new calculation from this
+   junction with these settings* starts from the junction shown — the
+   finished one, or the frame set cited (`engines/transport.md` § 2a.16, *A
+   frame set of the same junction*). Describe's answer lists
    what the new calculation will copy and what it runs (`reuse.decide`,
    the manifest's words). Anything else
    answers *not citable* with the condition named, and the citation held
@@ -360,7 +369,8 @@ B8)*.
 **A reload keeps the citation and what the forms hold**, through the
 workspace's one door, each under the tab's own tag
 ([`workspace.md`](?doc=web/workspace.md) § 4): the citation
-(`transport:panel`), and what the shared panel and each rung's tab hold
+(`transport:panel`) — and, extending a finished calculation, the frame set
+cited in its junction's place (`frame_set`) — and what the shared panel and each rung's tab hold
 (`transport:form` — one note, saved on every edit while a junction is cited
 and put back after each surface draws, for the junction it was typed for --
 or the finished calculation reused, its folder: the last one edited)

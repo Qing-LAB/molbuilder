@@ -582,21 +582,17 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
     no = why_no_transport(engine)
     if no:
         raise click.ClickException(f"engine {engine!r}: {no}.")
-    # A FRAME SET OF THE SAME JUNCTION, cited in its place (§ 2a.16): the
-    # run's id is its label and its citation, derived again; whether its
-    # frame 0 is the finished junction is the writer's question
-    # (`write_reusing`).
-    if slots_opt:
-        from ..task import derive_run
-        junction, _path, _cited = _junction_slot(slots_opt, root)
-        run = finished.task.run
-        said.update(slots={"junction": junction}, run=derive_run(
-            run.name, junction, created=run.created,
-            stage_names=tuple(st.name for st in finished.task.stages)))
+    # A FRAME SET OF THE SAME JUNCTION, cited in its place (§ 2a.16,
+    # `reuse.citing`); whether its first frame is the finished junction is
+    # the writer's question (`write_reusing`).
+    junction = _junction_slot(slots_opt, root)[0] if slots_opt else None
     try:
         task = dataclasses.replace(
             finished.task, reuses=citation, engine=engine,
             shape=shape or finished.task.shape, **said)
+        if junction is not None:
+            from ..transport.reuse import citing
+            task = citing(task, junction)
     except ValueError as exc:
         raise click.ClickException(str(exc))
     if finer != 1 and not window_opt:
@@ -641,7 +637,7 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
     except (ReuseError, DescribeError, OSError) as exc:
         raise click.ClickException(str(exc))
     for note in notes:
-        click.echo(f"note: {note}", err=True)
+        click.echo(f"note: {note.message}", err=True)
     click.echo(f"Described transport '{task.run.name}' in {dest} -- reuses "
                f"{citation}.")
     for path in written:

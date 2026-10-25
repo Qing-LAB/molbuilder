@@ -861,11 +861,13 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
             assert one(tmpl, name).source == "cited", name
 
 
-def _cited_on_the_tab(page, base, junction) -> dict:
-    """The Transport tab citing the relaxation as a returning person's tab
-    cites it: its session note, restored through the describe-and-adopt
-    path a pick takes (`lib/transport/core.js` `_restoreSession`) -- and
-    what the describe door answered the page."""
+def _cited_on_the_tab(page, base, junction, cite=None) -> dict:
+    """The Transport tab citing the relaxation -- or ``cite``, a path from
+    the tree's root -- as a returning person's tab cites it: its session
+    note, restored through the describe-and-adopt path a pick takes
+    (`lib/transport/core.js` `_restoreSession`) -- and what the describe
+    door answered the page."""
+    cite = cite or junction.cite
     page.goto(f"{base}/transport-calculation",
               wait_until="domcontentloaded")
     page.wait_for_function(
@@ -884,15 +886,16 @@ def _cited_on_the_tab(page, base, junction) -> dict:
                await new Promise(r => setTimeout(r, 100));
              }
              return false;
-           }""", junction.cite), "the session note never landed"
+           }""", cite), "the session note never landed"
     with page.expect_response(
             lambda r: "/api/transport/describe_attempt" in r.url,
             timeout=30000) as described:
         page.reload(wait_until="domcontentloaded")
+    answer = described.value.json()
     page.wait_for_function(
         "(j) => (document.getElementById('transport-junction-readout') || {})"
-        "        .textContent === j", arg=junction.cite, timeout=15000)
-    return described.value.json()
+        "        .textContent === j", arg=answer["citation"], timeout=15000)
+    return answer
 
 
 def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
@@ -3699,7 +3702,7 @@ def test_a_frame_set_of_the_same_junction_takes_over_frame_0(reused):
     assert f"{label}.DM" in [fn for _r, fn in read_gathered_from(first)]
     assert f"{label}.DM" not in [fn for _r, fn in read_gathered_from(newest)]
     assert ("the junction is P/structure/frames.xyz, its "
-            f"{_N_FRAMES} frame(s); its frame 0 is the junction O ran"
+            f"{_N_FRAMES} frame(s); its first frame is the first frame O ran"
             ) in framed.said["describe"].output
     task = task_of(framed.bundle)
     assert task.slots["junction"] == junction.frame_set
@@ -3879,8 +3882,8 @@ def test_a_transmission_that_runs_once_shares_as_its_one_point(reused):
     from molbuilder.runrecord import read_copied_from
     lowbias, lowfit = reused["lowbias"], reused["lowfit"]
     bare = lowbias.said["prep bare"].output
-    assert ("holds the points 0 V, 0.2 V; this calculation runs it once, "
-            "at 0 V") in bare, bare
+    assert ("T runs it at the points 0 V, 0.2 V; this calculation runs it "
+            "once, at 0 V") in bare, bare
     bare = lowfit.said["prep bare"].output
     assert ("0 V    shares 401 of 601 energies with "
             "lowbias/05_transmission/run-0 -- computes 200 here") in bare, bare
@@ -3987,3 +3990,95 @@ def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):
             == (reused["finished"].bundle / "T.template.toml").read_text())
     for f in ("junction.xyz", "slot-provenance.json", "H.psml"):
         assert (page / f).is_file(), f
+
+
+def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
+        reused, page, monkeypatch):
+    """§ 2a.16, *A frame set of the same junction*, on the Transport tab
+    (`web/tabs.md` § 4), driven by its clicks: extending O, the panel names
+    O's junction, one frame; *Cite a frame set of this junction…* opens the
+    picker, whose line for the mode's set says its frame 0 is the junction
+    O ran, and citing it moves the readout and the junction line to the
+    set; a set whose frame 0 is another junction is refused where it is
+    picked, the set held staying held; a reload keeps the set; *Use O's
+    junction* goes back; and the set cited again, Describe writes it as the
+    junction of a calculation reusing O, its label O's.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the page sending O's junction while
+    showing the set; the reload dropping the set; the picker asking without
+    `reuses`, so the moved set cites."""
+    import json
+    from playwright.sync_api import expect
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.task import of as task_of
+    from support.live_server import serve
+    junction, once = reused["finished"], reused["once"]
+    tree = junction.tree.resolve()
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    dest = tree / "P" / "transport" / "tabframed"
+    dest.mkdir()
+    # THE SIDEBAR ON THE NEW FOLDER, the most recent place a tab opens on
+    # (`web/projects.md` § 2) -- where Describe writes.
+    page.add_init_script(
+        "try { sessionStorage.setItem('molbuilder.current_dir', "
+        f"{json.dumps(str(dest))}); }} catch (_) {{}}")
+    readout = page.locator("#transport-junction-readout")
+    status = page.locator("#transport-status")
+
+    def line():
+        return page.locator("#transport-extend-junction").inner_text()
+
+    def pick(rel):
+        """The frame-set picker, by its rows: P, then structure, opened;
+        ``rel`` selected; its line read once the door answered; cited."""
+        page.locator("#transport-extend-frameset-btn").click()
+        dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+        for folder in ("P", "P/structure"):
+            dialog.locator(f'li.tp-node[data-path="{tree / folder}"]'
+                           " > .tp-row > .tp-twisty").click()
+        dialog.locator(f'li.tp-node[data-path="{tree / rel}"]'
+                       " > .tp-row").click()
+        meta = dialog.locator(".tp-meta")
+        expect(meta).not_to_have_text("")
+        expect(meta).not_to_have_text("Reading…", timeout=60000)
+        said = meta.inner_text()
+        dialog.get_by_role("button", name="Cite this").click()
+        return said
+
+    with serve() as base:
+        _cited_on_the_tab(page, base, junction, cite="P/transport/O")
+        assert "the one O ran, one frame" in line(), line()
+        said = pick(junction.frame_set)
+        assert "FRAME 0 IS THE JUNCTION O RAN" in said, said
+        expect(readout).to_have_text(junction.frame_set, timeout=30000)
+        assert "a frame set whose first frame is the junction O ran" in line(), \
+            line()
+        # ANOTHER JUNCTION, refused where it is picked.
+        said = pick("P/structure/moved.xyz")
+        assert "its frame 0 is not the junction O ran" in said, said
+        expect(status).to_contain_text("its frame 0 is not the junction O "
+                                       "ran", timeout=30000)
+        expect(readout).to_have_text(junction.frame_set)
+        # A RELOAD KEEPS THE SET.
+        page.reload(wait_until="domcontentloaded")
+        expect(readout).to_have_text(junction.frame_set, timeout=60000)
+        assert "a frame set whose first frame is the junction O ran" in line(), \
+            line()
+        # BACK TO O'S JUNCTION, and the set cited again.
+        page.locator("#transport-extend-own-btn").click()
+        expect(readout).to_have_text(junction.cite)
+        assert "the one O ran, one frame" in line(), line()
+        pick(junction.frame_set)
+        expect(readout).to_have_text(junction.frame_set, timeout=30000)
+        send = page.locator("#transport-send-btn")
+        expect(send).to_be_enabled(timeout=60000)
+        with page.expect_response(
+                lambda r: r.url.endswith("/api/transport/describe"),
+                timeout=120000) as described:
+            send.click()
+        answer = described.value.json()
+        assert answer.get("ok"), answer
+    task = task_of(dest)
+    assert task.slots["junction"] == junction.frame_set
+    assert task.reuses == "P/transport/O"
+    assert task.label == task_of(once.bundle).label

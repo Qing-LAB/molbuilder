@@ -119,6 +119,13 @@ def api_transport_describe_attempt() -> Any:
     answers with its junction, and the refusal is a finding beside it.
     ``fix`` is a word the tab can act on (today only
     ``"swap_electrodes"``), never prose to match.
+
+    ``&reuses=<folder>`` asks whether the path is a frame set of that
+    transport calculation's junction (`engines/transport.md` § 2a.16, *A
+    frame set of the same junction*): described with that calculation's
+    rename and checked by the one rule (`transport.reuse.frame_set_of`), its
+    summary opening with what it is; one whose frame 0 is another junction
+    answers ``citation: null`` with the refusal as the summary.
     """
     from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               classify_citation,
@@ -140,6 +147,19 @@ def api_transport_describe_attempt() -> Any:
     citation, cited_path, root, refusal = _fence(raw)
     if refusal is not None:
         return refusal
+    # A FRAME SET OF A FINISHED CALCULATION'S JUNCTION, asked beside it
+    # (`engines/transport.md` § 2a.16): described with that calculation's
+    # rename, its own (§ 4), and checked below by the one rule.
+    finished = None
+    reuses_raw = str(request.args.get("reuses") or "")
+    if reuses_raw:
+        from molbuilder.transport.reuse import ReuseError, reused
+        try:
+            finished, _rel = reused(reuses_raw, tree_root=root)
+        except ReuseError as exc:
+            return jsonify({"ok": True, "citation": None,
+                            "summary": str(exc), "findings": []}), 200
+        swap = finished.task.swap_electrodes
     # A TRANSPORT CALCULATION'S FOLDER, to reuse it (`engines/transport.md`
     # § 2a.16): its junction, its description and its template fill the
     # cards, and Describe writes what `molbuilder describe --reuses` writes.
@@ -147,7 +167,7 @@ def api_transport_describe_attempt() -> Any:
     # kind's folder is no citation, as any path that is not one.
     from molbuilder import task as _task
     from molbuilder.calcdirs import described
-    if described(cited_path):
+    if finished is None and described(cited_path):
         try:
             kind = _task.of(cited_path).calculation
         except ValueError:
@@ -236,6 +256,7 @@ def api_transport_describe_attempt() -> Any:
     # order, taken as the user order (`model/overview.md` § 2.2b, F4).
     if isinstance(cited, CitedPair):
         findings.extend(cited.said)
+    composed = None
     try:
         composed = compose_junction(citation, tree_root=root,
                                     swap_electrodes=swap)
@@ -245,7 +266,9 @@ def api_transport_describe_attempt() -> Any:
         # -- it biases the other end -- so the tab gets the observation
         # (the sort's one note, with the numbers) plus `fix` as a WORD
         # it can act on without matching prose.
-        for note in composed.notes:
+        # ...BUT NOT WHILE EXTENDING, where the rename is the finished
+        # calculation's own and not offered (§ 2a.16).
+        for note in (composed.notes if finished is None else ()):
             findings.append(Issue("warn", note))
         # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model`
         # measures each lead's period and periodic seam into
@@ -288,6 +311,20 @@ def api_transport_describe_attempt() -> Any:
         cited.structure if isinstance(cited, CitedPair) else None)
     if frame_set.get("why"):
         findings.append(Issue("error", str(frame_set["why"])))
+    if finished is not None:
+        # ITS FRAME 0 IS THE FINISHED JUNCTION, or it is refused here, where
+        # it is picked, the junction the tab holds staying held; the rename
+        # is the finished calculation's, never offered.
+        from molbuilder.transport.reuse import ReuseError, frame_set_of
+        try:
+            frame_set_of(finished, citation, tree_root=root,
+                         composed=composed)
+        except ReuseError as exc:
+            return jsonify({"ok": True, "citation": None,
+                            "summary": str(exc), "findings": []}), 200
+        status = (f"FRAME 0 IS THE JUNCTION {finished.base.name} RAN · "
+                  + status)
+        fix = None
     return jsonify({
         "ok": True,
         "citation": citation,
@@ -610,9 +647,10 @@ def api_transport_describe() -> Any:
     With ``reuses`` -- a transport calculation's folder, picked to reuse it
     (`engines/transport.md` § 2a.16) -- it writes what `molbuilder describe
     --reuses` writes, through the same writer (`transport.reuse.
-    write_reusing`): that calculation's description, its label and its
-    junction, as the cards change its voltages, its rungs' values and its
-    shared ones; its template, each value the panel changed said to be the
+    write_reusing`): that calculation's description and its label, its
+    junction -- its own, or a frame set of it, ``junction`` naming which --
+    as the cards change its voltages, its rungs' values and its shared
+    ones; its template, each value the panel changed said to be the
     person's; its job request.
     """
     from molbuilder.projects import projects_root
@@ -785,13 +823,16 @@ def api_transport_describe() -> Any:
                                      f"carries the items the catalogue "
                                      f"marks `shared` for transport"}), 400
     try:
-        # THE CALCULATION IT REUSES, as the cards change it -- its label,
-        # its junction and its rename its own (§ 2a.16); or a new one.
-        task = (dataclasses.replace(
+        # THE CALCULATION IT REUSES, as the cards change it -- its label
+        # and its rename its own, its junction the finished one or a frame
+        # set of it, which the writer checks (§ 2a.16, `reuse.citing`); or
+        # a new one.
+        from molbuilder.transport.reuse import citing
+        task = (citing(dataclasses.replace(
             finished.task, reuses=reuses_rel, bias=bias,
             low_bias_approximation=approx,
             varies=tuple(sorted({n for b in bags.values() for n in b})),
-            stages=tuple(stages_for_transport(bags)))
+            stages=tuple(stages_for_transport(bags))), citation)
             if finished is not None else Task(
             engine=engine, shape=fixed_by_kind("transport")["shape"],
             run=derive_run(typed, citation,
@@ -818,11 +859,13 @@ def api_transport_describe() -> Any:
                 "error", str(exc), where=f"task.{where}" if where else "")]),
         }), 400
     # AN EXTENSION KEEPS WHAT THE FINISHED CALCULATION COMPUTED ONCE FOR
-    # EVERY VOLTAGE (`engines/transport.md` § 2a.16, *Extending it*): its
-    # junction, the rungs it keeps, the shared values and its voltages --
-    # a change of any is another calculation, started from the junction
-    # (the way out the page offers), refused BESIDE THE CONTROL IT NAMES,
-    # nothing written (`transport.reuse.Extension.refusal`).
+    # EVERY VOLTAGE (`engines/transport.md` § 2a.16, *Extending it*): the
+    # rungs it keeps, the shared values, its voltages, its rename and its
+    # label -- a change of any is another calculation, started from the
+    # junction (the way out the page offers), refused BESIDE THE CONTROL IT
+    # NAMES, nothing written (`transport.reuse.Extension.refusal`); its
+    # junction, the finished one or a frame set of it, is the writer's to
+    # check (`write_reusing`, below).
     if ext is not None:
         from molbuilder.issues import Issue
         no = ext.refusal(task, shared=shared_chosen)
@@ -916,8 +959,8 @@ def api_transport_describe() -> Any:
                 manifest = (_reuse.lines(dest) if _reuse is not None
                             else None)
             except PrepError as exc:
-                notes = list(notes) + [f"what it will reuse is not known "
-                                       f"yet -- {exc}"]
+                notes = list(notes) + [Issue(
+                    "warn", f"what it will reuse is not known yet -- {exc}")]
         else:
             written = write_description(_desc, dest)
     except (DescribeError, OSError) as exc:
@@ -930,12 +973,12 @@ def api_transport_describe() -> Any:
         # A CALCULATION THAT REUSES A FINISHED ONE: what it will copy, and
         # what runs, in the manifest's words; null otherwise.
         "manifest": manifest,
-        # WHAT THE REUSE SAYS OF ITSELF -- a finished calculation carrying
-        # no composed junction -- beside the description's own notes
+        # WHAT THE REUSE SAYS OF ITSELF, each at its weight -- a finished
+        # calculation carrying no composed junction, a frame set written in
+        # its junction's place -- beside the description's own notes
         # (`issues.Issue`, the one finding).
-        "notices": _issues_to_json(
-            list(_pf) + [Issue("warn", note) for note in notes],
-            cfg=_cfg_cls_for(task)),
+        "notices": _issues_to_json(list(_pf) + list(notes),
+                                   cfg=_cfg_cls_for(task)),
     })
 
 

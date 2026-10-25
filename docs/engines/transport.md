@@ -3680,6 +3680,72 @@ calculation every run of a launched stage ran the same calculation
 (`job-system.md` R-P5), so a stage that is the same calculation is the same in
 every run of it.
 
+#### The workflow, step by step *(the user, 2026-10-25: "show workflow"; "no jargon, no cryptic language")*
+
+You have a transport calculation that finished — call it **O**. You want a
+new one that asks more of the same junction: more voltages, a wider or finer
+energy window, other device or transmission settings, or the junction at
+several geometries along one vibration (a frame set). The new calculation
+lives in a folder of its own and copies from O what O already computed. O is
+only read, never changed.
+
+```text
+ O  finished: the seed, both leads, the device and the transmission all ran
+ |  to their end
+ |
+ |  (optional) a frame set: the junction moved along one vibration, frame
+ |  by frame, its first frame exactly O's junction
+ v
+ 1  DESCRIBE the new calculation as an extension of O
+      command line:  molbuilder describe --calculation transport --reuses O
+                         [--slot junction=<the frame set's .xyz>]
+                         [--bias ...] [--window LO,HI [--finer N]]
+      Transport tab: pick O's folder; change the voltages, the window, the
+                     device's or the transmission's settings; if you want,
+                     "Cite a frame set of this junction..."; press Describe
+      -> the plan: what will be copied from O, what will be computed new,
+         and why
+ |
+ 2  PREP the new calculation          (the folder's state is saved first)
+      molbuilder jobset prep task --group 1 --group 2 --group 3 --target <machine>
+      -> each stage O computed exactly as this calculation would is copied
+         from O whole -- the seed and both leads, and more when only the
+         window or the voltages under the low-bias approximation change;
+         the plan names each
+ |
+ 3  LAUNCH the stages that were not copied, in order (usually the device,
+    then the transmission)            (each one's first launch saves the
+                                       folder's state first)
+      -> every result O already has -- the same voltage at the same frame,
+         computed the same way from the same inputs -- is copied from O;
+         every other one is computed, and the launch says why
+ |
+ 4  SUMMARIZE -> one record with every voltage and every frame, each
+                 saying whether it was copied from O or computed here
+```
+
+**Which of O's results can be used.** Only O's newest run of each stage. A
+whole stage is copied when that newest run finished; one result — one voltage
+at one frame — is used when it finished in that newest run, even if another
+result of the same run did not. An older run never stands in for a newer one
+that failed, is still running, or was never started: launch that stage of O
+again first. The plan names, for every result, the run it comes from, or
+why it is computed again: the run failed, is still running or was never
+started; a setting differs, each named; or what it was computed from is not
+the same.
+
+**Without a frame set**, the extension uses O's junction as O ran it. **With
+one**, the frame set's first frame must be O's junction — the same atoms in
+the same order at the same places, the same cell, the same electrode, bridge
+and buffer labels. Which atoms are held fixed may differ: a vibration
+usually holds more. The first frame can then reuse O's results — when O
+computed it the same way, which the plan says — and the other frames are
+computed (*A frame set of the same junction*, below).
+
+**What never happens.** O is never written. Describe and prep start no
+calculation. A result is never reused because it looks close: only when it
+is the same calculation.
+
 #### Describing it
 
 ```bash
@@ -3717,6 +3783,14 @@ as for any calculation. The describe copies no run.
 - **The junction's citation is read as for any calculation** (§ 1.1, *The
   first prep*): the record travels, and a cited pair edited since is refused
   by name.
+
+**A finished calculation whose record of its junction does not read** — its
+`slot-provenance.json` or its composed junction missing or incomplete — is
+described all the same, saying so: no junction and no pseudopotentials are
+written, prep composes the junction again from its citation, and nothing the
+finished calculation computed is then reused — every stage runs here. (Citing
+a frame set needs that record: it is compared with it, and refused without
+it.)
 
 Refused, before anything is written: a folder `--reuses` names that is not a
 transport calculation's — said in its description's own words; a new folder
@@ -3768,10 +3842,14 @@ pseudopotential directory, `asked_of_the_person`); a value cited from the
 junction is cited again, and a default stays not chosen: what an extension is not for is
 never edited inside one. **The Transport tab's Describe holds the limits**:
 the fixed rungs keep the finished calculation's own values, and a changed
-fixed value, a finished voltage dropped, or the junction, its rename or its
-label changed is refused by name beside the control it names, nothing
-written (`transport.reuse.Extension.refusal`) — and so is Task setup's Save
-of one. Each change is measured against the description it is made from —
+fixed value, a finished voltage dropped, or its rename or its label changed
+is refused by name beside the control it names, nothing written
+(`transport.reuse.Extension.refusal`) — and so is Task setup's Save of one.
+The junction is the finished one or a frame set whose first frame is it:
+Describe refuses any other, nothing written (`transport.reuse.write_reusing`,
+*A frame set of the same junction*, below), and Task setup's Save refuses any
+change of junction, because a calculation's id is built from its name and
+its junction. Each change is measured against the description it is made from —
 the finished calculation's at Describe, the folder's own at Save — so an
 extension the command line wrote is never refused for what it holds.
 **Task setup keeps the same limits** ([`web/task-setup.md`](?doc=web/task-setup.md)
@@ -3791,75 +3869,105 @@ energies shared, and what runs here, each in the manifest's words. The
 command line limits no value: a fixed value typed into the template is the
 person's, and the manifest names what it makes run again.
 
-#### A frame set of the same junction *(the user, 2026-10-24: "yes to R6", "go ahead, contract first"; built 2.38.0)*
+#### A frame set of the same junction *(the user, 2026-10-24: "yes to R6", "go ahead, contract first"; built 2.38.0; on the Transport tab 2026-10-25, built 2.39.0)*
 
-A mode's frame set (§ 2a.9) is often written from the very junction a finished
-calculation already ran: its frame 0 is that junction, atom for atom — on
-AuBDTAu, the mode-56 set and `AuBDTAu_singlebias_equilibrium`. Its seed, its
-leads and its frame-0 points are then the same calculations the finished one
-ran, and recomputing them costs hours. **So a calculation that reuses a
-finished one may cite a frame set in place of the finished junction, when the
-frame set's frame 0 is that junction.**
+A vibration's frame set is the junction moved a little along one vibration,
+frame by frame (§ 2a.9). Its first frame is often exactly the junction a
+finished calculation already ran — on AuBDTAu, the mode-56 set and
+`AuBDTAu_singlebias_equilibrium`. The seed, both leads and the first frame's
+device and transmission are then calculations the finished one already made,
+hours each on a cluster. **So an extension may use a frame set in place of
+the finished junction, when the set's first frame is that junction.**
+Without a set, it uses the finished junction as it ran.
 
-**What "is that junction" means — checked at describe against the junction
-the finished calculation ran, as its record holds it (a record that does not
-read is refused, its reader's words said), by the one rule two junctions are
-compared by (`compose.junction_difference`), each in the user order at its
-frame 0; refused by name otherwise (`transport.reuse.frame_set_refusal`):**
+**"Is that junction" is checked when the extension is described**, against
+the junction the finished calculation ran as its folder recorded it, by the
+one comparison two junctions are compared by (`compose.junction_difference`),
+both in the order the person listed the atoms. Anything else is refused,
+naming the atom or label that differs, and nothing is written
+(`transport.reuse.frame_set_refusal`). A finished calculation whose record
+of its junction cannot be read is refused too, in that reader's words.
 
-| | must be the same | why |
-|---|---|---|
-| the atoms | the same count, species and order, in the user order | the decks are indexed by them |
-| the positions | each atom of frame 0 within `structure.SAME_PLACE_ANG` of where the finished junction has it | the seed, the leads and frame 0's points were computed at those positions |
-| the cell, and each axis's kind | the same three vectors; x and y each periodic or isolated as the finished junction's, z the transport axis in both (§ 6.1c) | the leads tile the cell (I6), and the vacuum and k-point grid each rung writes follow the kinds |
-| the transport partition | the atoms of `L-electrode`, `R-electrode`, `bridge` and `buffer` (`sort.PARTITION_LABELS`) | they decide the leads, the device's regions and the deck's order (§ 4) |
+| must be the same | why |
+|---|---|
+| the atoms, the same count and elements, in the same order | every input file lists them in that order |
+| each atom of the first frame within `structure.SAME_PLACE_ANG` (10⁻⁶ Å) of where the finished junction has it | the finished results were computed at those positions |
+| the cell, and whether x and y are each periodic or isolated (z is the transport axis in both) (§ 6.1c) | the leads repeat along the cell (I6); the vacuum and the k-point grid of every stage follow these |
+| the atoms labelled `L-electrode`, `R-electrode`, `bridge` and `buffer` (`sort.PARTITION_LABELS`) | they decide the leads, the device's regions and the order the engine reads the atoms in (§ 4) |
 
-**What may differ — the held set, and every other label.** A vibration holds
-far more of the junction than transport's electrodes — everything but the
-molecule in the gap and a few surface metal atoms (`engines/vibration.md`
-§ 2.3a). Transport reads the held set for one thing — that it holds every
-electrode atom (§ 1.1, Step 0, *What transport asks of the held set*) — and
-no transport deck states it as engine input: the
-rungs solve the electrons at fixed positions, with no `Geometry.Constraints`,
-and the deck's order is the partition's (`sort.deck_sort_key`), never the held
-set's. *(Measured on AuBDTAu, 2026-10-24: the finished junction held its 150
-electrode atoms, the mode-56 set 292 — the electrodes and 142 bridge gold; the
-seed, both leads and device `f000` rendered from the set read as SIESTA reads
-them differ in nothing from the decks the finished runs ran,
-`engine_input_differences`.)* The set's other labels — `VIB_CALC`, any of the
-person's — travel with it and are read by nothing here.
+**What may differ: which atoms are held fixed, and any other label.** A
+vibration usually holds much more of the junction than transport needs —
+everything but the molecule in the gap and a few surface metal atoms
+(`engines/vibration.md` § 2.3a). Transport asks one thing of the held atoms:
+that every electrode atom is among them (§ 1.1, Step 0, *What transport
+asks of the held set*). No transport input file states which atoms are
+held — the stages solve the electrons with every atom where it is, with no
+`Geometry.Constraints` — and the atom order the engine reads follows the four
+labels above (`sort.deck_sort_key`), never the held atoms. So a larger held
+set changes nothing the engine reads. *(Measured on AuBDTAu, 2026-10-24: the
+finished junction held its 150 electrode atoms, the mode-56 set 292, the
+electrodes and 142 more gold atoms; the seed's, both leads' and the first
+frame's device input files built from the set are the same, as SIESTA reads
+them, as the ones the finished runs ran, `engine_input_differences`.)* The
+set's other labels — `VIB_CALC`, any of the person's — travel with it and
+nothing here reads them.
 
-**What it keeps, and what it composes.** As every reuse: the finished
-calculation's label, template, job request and pseudopotentials. The junction
-is the frame set's — composed from it at describe, every frame, its record
-written by the composition's one writer (`compose.write_compose_record`) — so
-its device and transmission run a point per frame (§ 2a.11).
+**What the extension keeps, and what it takes from the set.** Like every
+extension, it keeps the finished calculation's name (its label), its
+parameter template, its run cards and its pseudopotentials. The junction is
+the set's, every frame, recorded in the new folder when it is described
+(`compose.write_compose_record`), so the device and the transmission run
+once per frame and voltage (§ 2a.11).
 
-**What is reused is the rule above, deck by deck** — nothing new decides it:
-a group whose members' decks are the same calculation as the finished runs is
-copied in (the seed and the leads, rendered at frame 0); a point is taken over
-where the finished calculation holds the same point, the same calculation —
-and a finished calculation of one geometry holds its points on frame 0, a
-rung it ran once its 0 V point there (`point_key`), so the points of
-**frame 0 alone** can be; every other frame runs. A transmission point whose
-energies differ runs too, sharing only energies exactly the same (below).
-*(Measured on AuBDTAu, 2026-10-24, the manifest of the mode-56 set reusing
-`AuBDTAu_singlebias_equilibrium` — a scratch copy, nothing launched: the seed
-and both leads copied in, the device's and the transmission's `f000` taken
-over — about 7 h, 6 h and 45 h on Sol — and frames 1 to 4 run. Its device ran
-twice, the second launch warm, so its newest run's own record names only the
-leads; what it carries names the seed's density too, below.)*
+**What is reused follows the rule above**, one input file at a time —
+nothing new decides it. The seed and the leads are copied when their input
+files, built from the set's first frame, are the same as the ones the
+finished runs ran. A device or transmission result is reused for the first
+frame where the finished calculation holds the same voltage, computed the
+same way from the same inputs; a calculation of one geometry holds its
+results at the first frame (`point_key`), so **only the first frame** can be
+reused, and every other frame is computed. The other way round — a finished
+calculation that ran a frame set, extended with one geometry — the device
+and the transmission run once instead of once per frame, another shape of
+run, so none of their results is reused; the plan says so. A transmission whose energies
+differ is computed too, sharing only the energies that are exactly the same
+(below). *(Measured on AuBDTAu, 2026-10-24, a scratch copy, nothing
+launched: the seed and both leads copied, the first frame's device and
+transmission reused — about 7 h, 6 h and 45 h on Sol — and frames 1 to 4
+computed. Its device ran twice, the second run continuing the first, so the
+second run's own record lists only the leads as its inputs; following the
+continuation back to the first run adds the seed's density, and that is what
+the new device's inputs are compared with — *At prep*, below.)*
 
-**Asked on the command line**: `molbuilder describe --reuses <finished>
---slot junction=<the set's .xyz>`, through the writer every reuse is
-described by (`transport.reuse.write_reusing`); its answer says the junction
-is the set's — the set, its frame count — and that its frame 0 is the
-junction the finished calculation ran. The new description's run id
-is its label and this citation (`run-identity.md` § 2), so once described the
-frame set is the calculation's junction, as any citation is: Task setup's
-Save of another junction is another calculation, refused by its id. The
-Transport tab's extension panel draws the finished junction, and describes
-with it.
+**Where it is asked**, both through the writer every extension is described
+by (`transport.reuse.write_reusing`), which checks the set
+(`transport.reuse.frame_set_of`):
+
+- **The command line**: `molbuilder describe --reuses <finished> --slot
+  junction=<the set's .xyz>`. Its answer says the junction is the set's,
+  how many frames it has, and that its first frame is the first frame the
+  finished calculation ran.
+- **The Transport tab**: the extension panel says which junction it
+  describes with — the one the finished calculation ran, with its number of
+  frames — and offers *Cite a frame set of this junction…*. The picker checks
+  each citation you select — a frame set's `.xyz`, or any other whose first
+  frame is that junction, a relaxation run's folder among them — and shows
+  the answer before you confirm (`describe_attempt` with `reuses`): one
+  whose first frame is the finished junction reads *FRAME 0 IS THE JUNCTION
+  <name> RAN*, followed by what it is; one whose first frame is another
+  junction, or that does not compose, shows why it is refused, and the
+  junction you had stays. Once a set is cited, the panel names it, says the
+  device and the transmission run once per frame and that the plan
+  Describe shows says which results are reused, and the viewer and the
+  frame card show it; *Use <name>'s junction* goes back; reloading the page
+  keeps the set. *Start a new calculation from this junction with these
+  settings* starts from the junction shown — the finished one, or the set
+  cited. **Not citing a set is describing with the finished junction**, as
+  the finished calculation ran it.
+
+Once described, the set is the calculation's junction: its run id is made
+from its name and this citation (`run-identity.md` § 2), so saving another
+junction on Task setup is a different calculation and is refused.
 
 #### At prep — a group copied in, or prepared here
 
@@ -3925,7 +4033,7 @@ run's — what the gather gave the point, as for a point walked — and
 voltage starting from the closest converged voltage before it in its frame, a
 point taken over among them (§ 1.1, step 4). A point is a frame and a voltage,
 matched as such; a rung the finished calculation ran once is its 0 V point on
-each frame — so a calculation that leaves the low-bias approximation takes over
+its first frame — so a calculation that leaves the low-bias approximation takes over
 the 0 V device and transmission points the finished one computed.
 
 **A narrower list** — every point the finished run holds and fewer, so
@@ -3939,8 +4047,13 @@ asked about, before it writes**: for each group in the ladder's order, copied
 in — each run, where it comes from, how it ended and its size, and what of it
 is left behind — or prepared here, with what decided it: each difference of
 the new request as it reaches that rung, in the words of § 6.1's comparison,
-or the finished run's state. For a rung of points prepared here, the points
-its first launch will take over, from which run, and the points it will walk.
+or the finished run's state — a change of shape, a rung run once against a
+rung of points, said by what each calculation runs. For a rung of points
+prepared here, the points its first launch will take over, from which run,
+and the points it will walk, and why each point the finished calculation
+holds is walked: its newest run never launched, the point not done there —
+in the done door's words — another calculation, or other inputs; and, a
+narrower list with nothing left to walk, that its first launch is refused.
 Then the totals: what is copied now, what the transmission's first launch
 will copy into its points' `shared/`, and what the next save stores again.
 
@@ -4021,7 +4134,10 @@ point does, its `shared/` in its run's folder (the manifest's example above).
 finished point holds, its own and those it shared, and no other — **is that
 point**: it renders the finished point's contours, so it is the same
 calculation, and it is copied in with its run or taken over, its `shared/`
-with it.
+with it. Only a finished point that is done holds its energies: one that did
+not finish, or lacks its `shared/` and its record, is no point to be, and a
+transmission that ran once is its one point, judged so
+(`continuation.done`, `reuse.that_point`).
 
 **Exactly the same, and nothing else**: an energy is shared when the finished
 point computed that energy — never one a few 10⁻⁶ eV away: the transmission's
@@ -4166,8 +4282,12 @@ in the totals:
 
 - **The leads' surface Green's functions** (`tsgf/`): one bias, one run
   (§ 2a.11) — a device point that runs here computes its own.
-- **A run not finished, or a point not done**: it runs here — to reuse it,
-  let it finish and prepare again.
+- **A whole stage whose newest run did not finish**: it is not copied, and a
+  result that did not finish is computed here — to reuse it, let it finish
+  in the finished calculation and prepare again. The results that did finish
+  in that newest run are still reused one by one (*At prep*). A stage that is
+  copied carries all its runs, the older ones too, because the newest
+  continues from them (`.continued-from`).
 - **The launch folder** that sent the finished runs: their walk scripts and
   logs stay where they ran.
 
@@ -4210,7 +4330,9 @@ the size of what it copies.
   saying what a change re-runs; the shared panel and the seed's and the
   leads' tabs drawn locked at the values it ran with, the line over the
   shared panel saying whose; the rename is its own and is not offered. Its
-  panel opens with what the extension offers and the way out. **Describe**
+  panel opens with what the extension offers, the way out, and the junction
+  it describes with — the finished one, or a frame set of it (*A frame set
+  of the same junction*). **Describe**
   writes what `molbuilder describe --reuses` writes, through the same
   writer ([`web/tabs.md`](?doc=web/tabs.md) § 4).
 - **Task setup** echoes `reuses` with the junction it shows, not editable

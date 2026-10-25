@@ -412,6 +412,10 @@ const WORKSPACE_TAG = "transport";
     /* Each rung's own values in the calculation reused, as its tab drew
      * them -- what a new calculation from its junction starts from. */
     var _rungHeld = {};
+    /* THE CALCULATION REUSED, AS ITS FOLDER ANSWERED -- its own junction,
+     * which *Use <name>'s junction* returns to (engines/transport.md
+     * \u00a7 2a.16, *A frame set of the same junction*); null for none. */
+    var _reusedAnswer = null;
 
     /* WHAT THE FORMS' NOTE AND THE PANEL'S NOTE ARE KEPT FOR -- the
      * calculation reused, or the junction cited: what a reload describes
@@ -444,14 +448,19 @@ const WORKSPACE_TAG = "transport";
         return { workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0 };
     }
 
-    function _writePanelNote() {
+    function _writePanelNote(keep) {
         var ws = root.molbuilder && root.molbuilder.workspace;
         if (!ws || typeof ws.persist !== "function") return;
         /* The tab's ONE fact is the CITATION.  A reload
          * re-describes it through the same seam a pick uses, so the
          * structure, the meta line and both surfaces always come back
          * fresh from the server, never from a stale copy. */
-        ws.persist(PANEL_TAG, { v: 3, junction: _noteKey() },
+        // ``keep``: a frame set the page could not ask about, kept for the
+        // next reload to ask again.
+        ws.persist(PANEL_TAG, { v: 3, junction: _noteKey(),
+                               frame_set: keep !== undefined ? keep
+                                          : (_citesFrameSet() ? _junction
+                                                              : null) },
                    _panelIdentity(ws));
     }
 
@@ -535,6 +544,36 @@ const WORKSPACE_TAG = "transport";
                     .then(function (b) {
                 if (mine !== _citeSeq) return;     // a citation made since
                 _adoptCitation(b, "Restored your last session: ");
+                // ...AND THE FRAME SET CITED IN ITS JUNCTION'S PLACE, asked
+                // again against it (engines/transport.md \u00a7 2a.16).
+                if (!note.frame_set || !_reuses) return;
+                var reuses = _reuses;
+                function lost(why) {
+                    _setStatus("Your last session's frame set, "
+                        + note.frame_set + ", no longer cites (" + why
+                        + ") \u2014 " + reuses + "'s own junction is held.",
+                        "warn");
+                }
+                return _describeAttempt(note.frame_set, false, reuses)
+                        .then(function (f) {
+                    if (mine !== _citeSeq || reuses !== _reuses) return;
+                    if (f && f.citation) {
+                        _showJunction(f, "Restored your last session: ");
+                    } else {
+                        lost((f && f.summary) || "it is not a frame set "
+                             + "of that junction");
+                    }
+                }, function (e) {
+                    if (mine !== _citeSeq || reuses !== _reuses) return;
+                    // THE QUESTION FAILED, not the set: kept, and asked
+                    // again at the next reload.
+                    _writePanelNote(note.frame_set);
+                    _setStatus("Your last session's frame set, "
+                        + note.frame_set + ", could not be asked about ("
+                        + (e && e.message ? e.message : String(e))
+                        + ") \u2014 " + reuses + "'s own junction is held "
+                        + "for now; a reload asks again.", "warn");
+                });
             });
         }).catch(function (e) {
             /* SAID ON THE PAGE, through the one status writer (F8): the
@@ -635,6 +674,44 @@ const WORKSPACE_TAG = "transport";
         host.appendChild(_el("p", { "class": "hint" },
             _el("strong", null, "Extending " + name + ". "),
             _extend.offered));
+        // THE JUNCTION IT DESCRIBES WITH: the finished one as it ran, its
+        // frames counted -- or a frame set of it (engines/transport.md
+        // \u00a7 2a.16, *A frame set of the same junction*).
+        var own = _reusedAnswer ? _reusedAnswer.citation : _junction;
+        var set = _citesFrameSet();
+        var ran = ((_reusedAnswer || {}).frame_set || {}).n_frames || 1;
+        host.appendChild(_el("p", { "class": "hint",
+                                    id: "transport-extend-junction" },
+            set ? "Junction: " + _junction + " \u2014 a frame set whose "
+                  + "first frame is the junction " + name + " ran.  The "
+                  + "device and the transmission run once per frame; the "
+                  + "plan Describe shows says which of " + name
+                  + "'s results are reused."
+                : "Junction: " + own + " \u2014 the one " + name
+                  + " ran, " + (ran === 1 ? "one frame" : ran + " frames")
+                  + ".  Without a frame set, the extension describes with "
+                  + "it."));
+        var cite = _el("button", { type: "button", "class": "full-btn",
+                                   id: "transport-extend-frameset-btn" },
+                       set ? "Cite another frame set of this junction\u2026"
+                           : "Cite a frame set of this junction\u2026");
+        cite.addEventListener("click", function () { _citeFrameSet(name); });
+        host.appendChild(cite);
+        if (set) {
+            var back = _el("button", { type: "button", "class": "full-btn",
+                                       id: "transport-extend-own-btn" },
+                           "Use " + name + "'s junction");
+            back.addEventListener("click", function () {
+                // THE LATEST CHOICE STANDS: a frame set still being
+                // described is superseded (`_citeSeq`).
+                ++_citeSeq;
+                if (_reusedAnswer) {
+                    _showJunction(_reusedAnswer,
+                                  "Back to " + name + "'s junction: ");
+                }
+            });
+            host.appendChild(back);
+        }
         var btn = _el("button", { type: "button", "class": "full-btn" },
                       "Start a new calculation from this junction with "
                       + "these settings");
@@ -676,8 +753,16 @@ const WORKSPACE_TAG = "transport";
                 : formSchema.heldValues(_rungHosts[r], _rungSchemas[r], null);
         });
         var citation = _junction;
-        _reuses = "";
-        _extend = null;
+        // THE EXTENSION STAYS until the new calculation's answer is
+        // adopted (`_adoptCitation` leaves it): a request that fails leaves
+        // the page as it was, the forms' note put back.
+        var before = _formNote;
+        function putBack() {
+            _formNote = before;
+            if (before && ws && typeof ws.persist === "function") {
+                ws.persist(FORM_TAG, before, _formIdentity(ws));
+            }
+        }
         _formNote = { v: 1, junction: citation, shared: shared,
                       rungs: rungs };
         if (ws && typeof ws.persist === "function") {
@@ -687,20 +772,30 @@ const WORKSPACE_TAG = "transport";
         _describeAttempt(citation, _swapElectrodesChoice)
             .then(function (d) {
                 if (mine !== _citeSeq) return;
+                if (!d || !d.citation) {
+                    putBack();
+                    btn.disabled = false;
+                    _setStatus((d && d.summary)
+                        || "That junction does not cite.", "warn");
+                    return;
+                }
                 _adoptCitation(d, "A new calculation from this junction, "
                     + "starting from " + name + "'s settings \u2014 it "
                     + "reuses nothing.  Cited ");
             })
             .catch(function (e) {
+                putBack();
                 btn.disabled = false;
                 _setStatus("The junction did not cite: " + e, "error");
             });
     }
 
-    function _describeAttempt(rel, swap) {
+    function _describeAttempt(rel, swap, reuses) {
         return root.fetch("/api/transport/describe_attempt?path="
                           + encodeURIComponent(rel.replace(/^\/+/, ""))
-                          + (swap ? "&swap_electrodes=1" : ""))
+                          + (swap ? "&swap_electrodes=1" : "")
+                          + (reuses ? "&reuses=" + encodeURIComponent(reuses)
+                                    : ""))
             .then(function (r) { return r.json(); })
             .then(function (b) {
                 if (!b || b.ok === false) {
@@ -739,7 +834,7 @@ const WORKSPACE_TAG = "transport";
         var holds = !!(described && described.swap_electrodes);
         // A CALCULATION REUSED keeps its rename: its own, and not offered
         // (engines/transport.md \u00a7 2a.16).
-        if (!described || described.reuses
+        if (!described || described.reuses || _reuses
                 || (described.fix !== "swap_electrodes" && !holds)) {
             host.hidden = true;
             host.textContent = "";
@@ -800,8 +895,6 @@ const WORKSPACE_TAG = "transport";
 
     var _adoptSeq = 0;             // the newest citation adopted
     function _adoptCitation(described, statusPrefix) {
-        var vf = (root.molbuilder || {}).validationFindings;
-        var fpanel = _$("transport-junction-findings");
         if (!described || !described.citation) {
             // Not citable: the server's summary IS the refusal, naming
             // what is missing and the whole condition -- said in the status
@@ -816,6 +909,7 @@ const WORKSPACE_TAG = "transport";
         _swapElectrodesChoice = !!described.swap_electrodes;
         _reuses = described.reuses || "";
         _extend = _reuses ? (described.extend || null) : null;
+        _reusedAnswer = _reuses ? described : null;
         _rungHeld = {};
         if (_reuses) {
             // ITS VOLTAGES AND THEIR TREATMENT, from its description
@@ -859,6 +953,29 @@ const WORKSPACE_TAG = "transport";
                 _setStatus("The shared panel did not draw: "
                     + (e && e.message ? e.message : String(e)), "error");
             });
+        _showJunction(described, statusPrefix);
+    }
+
+    /* THE JUNCTION THE TAB DESCRIBES WITH, shown -- its readout, the meta
+     * line, its frames, what its composition measured, the rename's offer,
+     * the extension's junction line, the viewer: one path for a citation
+     * adopted and for a frame set cited in an extension's junction's place
+     * (engines/transport.md \u00a7 2a.16). */
+    function _showJunction(described, statusPrefix) {
+        var vf = (root.molbuilder || {}).validationFindings;
+        var fpanel = _$("transport-junction-findings");
+        _junction = described.citation;
+        _junctionStructure = described.structure || null;
+        // DESCRIBE'S CARD SPEAKS OF WHAT THE PAGE HOLDS: what it said of
+        // another junction -- its message, its findings, its plan -- goes.
+        _setSendStatus("");
+        var sentFindings = _$("transport-send-findings");
+        if (vf && sentFindings) vf.render([], { panel: sentFindings });
+        var plan = _$("transport-send-manifest");
+        if (plan) {
+            plan.hidden = true;
+            plan.textContent = "";
+        }
         var out = _$("transport-junction-readout");
         if (out) out.textContent = _junction;
         var meta = _$("transport-junction-meta");
@@ -898,6 +1015,60 @@ const WORKSPACE_TAG = "transport";
                 + "line says why), so the viewer keeps its last "
                 + "content." + late);
         }
+    }
+
+    /* Whether the junction held is a frame set cited in the place of the
+     * junction of the calculation reused. */
+    function _citesFrameSet() {
+        return !!(_reuses && _reusedAnswer
+                  && _junction !== _reusedAnswer.citation);
+    }
+
+    /* A FRAME SET OF THE FINISHED JUNCTION, cited in its place
+     * (engines/transport.md \u00a7 2a.16, *A frame set of the same
+     * junction*): the one pop-out picker, each citation it selects -- a
+     * frame set's .xyz, or any other whose first frame is that junction --
+     * described against that junction; one whose first frame is another
+     * junction answers its refusal, and the junction held stays held. */
+    function _citeFrameSet(name) {
+        var proj = root.molbuilder && root.molbuilder.projects;
+        function toRel(path) {
+            return (proj && proj.relativeToProjects)
+                ? String(proj.relativeToProjects(path) || "") : path;
+        }
+        var reuses = _reuses;
+        import("../tree-picker.js").then(function (mod) {
+            return mod.pickPath({
+                title: "Cite a frame set of " + name + "'s junction",
+                hint: "Pick a frame set's .xyz -- a vibration mode's "
+                    + "frames -- whose first frame is the junction " + name
+                    + " ran.  \u25b8 expands.",
+                mode: "any",
+                describe: function (path) {
+                    return _describeAttempt(toRel(path), false, reuses)
+                        .then(function (b) { return b.summary || ""; });
+                },
+                confirmLabel: "Cite this",
+            });
+        }).then(function (picked) {
+            if (!picked) return;
+            var mine = ++_citeSeq;
+            return _describeAttempt(toRel(picked), false, reuses)
+                    .then(function (b) {
+                if (mine !== _citeSeq || reuses !== _reuses) return;
+                if (!b || !b.citation) {
+                    _setStatus((b && b.summary)
+                        || "That is not a frame set of " + name
+                           + "'s junction.", "warn");
+                    return;
+                }
+                _showJunction(b, "Cited a frame set of " + name
+                                 + "'s junction: ");
+            });
+        }).catch(function (e) {
+            _setStatus("Picker failed: "
+                + (e && e.message ? e.message : String(e)), "error");
+        });
     }
 
     function _wireJunctionPicker() {

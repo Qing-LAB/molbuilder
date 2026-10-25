@@ -2799,6 +2799,11 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
                f"{', '.join(t.point.words() for t in across.taken)} from "
                f"{across.run}; " if across is not None and across.taken
                else "")
+            # WHY A POINT THE FINISHED CALCULATION HOLDS RUNS HERE, as the
+            # manifest said it at prep (`engines/transport.md` § 2a.16).
+            + (f"not taken over from {Path(calc.task.reuses).name}: "
+               f"{'; '.join(across.why)}; "
+               if across is not None and across.why else "")
             + f"runs {', '.join(said)}")
     member = dataclasses.replace(m, read_from=stage_dir / walked[0][1].rel,
                                  walk=walk,
@@ -2867,13 +2872,14 @@ def _shares(calc, job, prepared: Path, folder: Path, pt, held,
 def _across(calc, stage: str, m: "_Member"):
     """The points ``m``'s first launch takes over from the finished
     calculation this one reuses (`reuse.takes_over`), each matched by what
-    this launch's gather gives it -- or ``None`` when that calculation is
-    not there to read."""
+    this launch's gather gives it, and why each other point it holds runs
+    here -- none, said why, when that calculation is not there to read."""
     from .gather import ReadOnce
-    from .reuse import finished_of, origin, takes_over
-    finished, _gone = finished_of(calc)
+    from .reuse import Takes, finished_of, origin, takes_over
+    finished, gone = finished_of(calc)
     if finished is None:
-        return None
+        return Takes(stage, "", (), tuple(pt for _p, pt in m.points),
+                     (gone,) if gone else ())
     base = Path(calc.base)
 
     def given(pt):

@@ -71,17 +71,26 @@ class Take:
 class Takes:
     """What a rung of points prepared here takes over at its first launch,
     from the finished calculation's newest run of it (``run``, as the
-    manifest names it), and what it walks."""
+    manifest names it), and what it walks -- ``why`` each point the finished
+    calculation holds is walked, in words, once each."""
     stage: str
     run: str
     taken: Tuple[Take, ...]
     walked: Tuple[object, ...]
+    why: Tuple[str, ...] = ()
 
     def line(self) -> str:
         took = (f"takes over {', '.join(t.point.words() for t in self.taken)}"
                 f" from {self.run}" if self.taken else "takes over no point")
         walks = (f"walks {', '.join(p.words() for p in self.walked)}"
                  if self.walked else "walks none")
+        if self.taken and not self.walked:
+            # A NARROWER LIST (§ 2a.16, *At prep*): refused at the launch,
+            # in the launch's words (`submit` R-L18).
+            walks += (" -- nothing is left to run, so its first launch is "
+                      "refused: a calculation that reuses a finished one "
+                      "answers a wider question; to run them all here, "
+                      "launch it --cold")
         return f"{self.stage}: {took}; {walks}"
 
 
@@ -162,8 +171,9 @@ class Reuse:
             else:
                 out.append(head + "prepared here -- " + d.why[0])
                 out.extend(f"           {w}" for w in d.why[1:])
-                out.extend(f"           at its first launch, {t.line()}"
-                           for t in d.takes)
+                for t in d.takes:
+                    out.append(f"           at its first launch, {t.line()}")
+                    out.extend(f"             {w}" for w in t.why)
                 if d.energies:
                     out.append("           its energies:")
                     out.extend(f"             {w}" for w in d.energies)
@@ -190,6 +200,7 @@ class Reuse:
                                      for c in d.copies],
                             "energies": list(d.energies),
                             "takes": [{"stage": t.stage, "line": t.line(),
+                                       "why": list(t.why),
                                        "taken": [{**x.point.to_wire(),
                                                   "from": x.copied_from}
                                                  for x in t.taken],
@@ -298,13 +309,25 @@ def decide(calc, numbers: Sequence[int]) -> Optional[Reuse]:
     take over -- its inputs as they will be: copied in, or taken over by
     the rung upstream (:func:`takes_over`); and what each transmission
     point it computes shares -- a rung that runs once, its one point, the
-    run itself.  Nothing is written."""
+    run itself.  Nothing is written.  A record of a run that does not read
+    -- a `.copied-from`, a `.gathered-from`, a launch record -- refuses, in
+    its reader's words (:class:`PrepError`), as the gather's does
+    (`job-system.md` R-L21)."""
+    from .errors import PrepError
+    if not calc.task.reuses or not numbers:
+        return None
+    try:
+        return _decided(calc, numbers)
+    except LaunchRecordError as exc:
+        raise PrepError(str(exc)) from None
+
+
+def _decided(calc, numbers: Sequence[int]) -> Reuse:
+    """:func:`decide`'s answer, its records read."""
     from .gather import ReadOnce
     from .materialize import ever_launched
     from .transport_rung import junction_record
     from ..transport.stages import frames_of, rung_points
-    if not calc.task.reuses or not numbers:
-        return None
     finished, gone = finished_of(calc)
     if finished is not None:
         composed, said, _root = junction_record(calc)
@@ -428,9 +451,11 @@ def finished_window(finished) -> Tuple[float, float, int]:
     (:func:`_window_of`).  :class:`ValueError` when it holds none done."""
     from ..runs import run_of
     from ..transport.stages import frames_of, rung_points
+    said = ""
     for pt in (rung_points(finished.task, SHARING_RUNG,
                            frames=frames_of(finished.base)) or (None,)):
-        src, _run = _finished_point(finished, SHARING_RUNG, pt)
+        src, _run, why = _finished_point(finished, SHARING_RUNG, pt)
+        said = said or why or ""
         run = run_of(src) if src is not None else None
         window = (_window_of(run.deck.read_text(encoding="utf-8",
                                                 errors="replace"))
@@ -438,9 +463,10 @@ def finished_window(finished) -> Tuple[float, float, int]:
         if window is not None:
             return window
     raise ValueError(
-        f"{Path(finished.base).name} holds no transmission point done -- a "
-        f"window is fitted to the energies its transmission computed "
-        f"(engines/transport.md 2a.16)")
+        f"{Path(finished.base).name} holds no transmission point done"
+        + (f" -- {said}" if said else "")
+        + " -- a window is fitted to the energies its transmission computed "
+          "(engines/transport.md 2a.16)")
 
 
 def _shared_files(src: Path, label: str) -> List[Path]:
@@ -486,18 +512,19 @@ def that_point(calc, pt, cfg):
     energy that point holds, its own and those it shared, and no other --
     IS THAT POINT (`engines/transport.md` § 2a.16): its deck renders the
     finished point's contours, the ones that point's deck records, so it is
-    the same calculation.  ``None`` for a point whose finished point
-    computed its window whole, or another grid; ``cfg`` is the point's
+    the same calculation.  ``None`` for a point whose finished point is not
+    done (`_finished_point`), computed its window whole, or another grid;
+    ``cfg`` is the point's
     config, its window's; a rung that runs once, its one point (``None``),
     the run itself."""
     from ..transport.energies import grid, same_grid, sharing_of
     if not calc.task.reuses:
         return None
     finished, _gone = finished_of(calc)
-    newest = (_newest(finished, SHARING_RUNG) if finished is not None
-              else None)
-    src = (_at(finished, SHARING_RUNG, newest, pt) if newest is not None
-           else None)
+    # THE FINISHED POINT, DONE (`_finished_point`): a point not done holds
+    # no energy of its own to be.
+    src = (_finished_point(finished, SHARING_RUNG, pt)[0]
+           if finished is not None else None)
     c = sharing_of(src) if src is not None and src.is_dir() else None
     if c is None:
         return None
@@ -559,10 +586,11 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
     from ..transport.energies import grid, held, shared_contours
     words = f"{_words(pt):<6}"
     fbase = Path(finished.base)
-    src, newest = _finished_point(finished, SHARING_RUNG, pt)
+    src, newest, why = _finished_point(finished, SHARING_RUNG, pt)
     if src is None:
-        return None, (f"{words} shares none -- the finished calculation "
-                      f"holds no {_words(pt)} point done")
+        return None, (f"{words} shares none -- "
+                      + (why or f"the finished calculation holds no "
+                                f"{_words(pt)} point"))
     shown = f"{fbase.name}/{src.relative_to(fbase)}"
     if not _given_the_same(finished, SHARING_RUNG, newest, src, mine):
         return None, (f"{words} shares none -- it is not given what "
@@ -607,8 +635,11 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
 
 
 def _finished_point(finished, stage: str, pt):
-    """``(the finished point's folder, its run)`` -- ``stage``'s newest run
-    in the finished calculation at ``pt``, done -- or ``(None, run)``."""
+    """``(the finished point's folder, its run, why)`` -- ``stage``'s newest
+    run in the finished calculation at ``pt``, done, ``why`` ``None`` -- or
+    ``(None, run, why)``: the newest run named and what it is instead, in
+    the done-door's words (`continuation.done`); ``why`` ``None`` for a
+    point the finished calculation does not hold."""
     from ..runrecord import launch_record
     from ..transport.stages import products_of
     from .continuation import done
@@ -616,18 +647,25 @@ def _finished_point(finished, stage: str, pt):
     fbase, ftask = Path(finished.base), finished.task
     names = stage_home(fbase, ftask, stage).names(ftask.shape)
     newest = _newest(finished, stage)
+    if newest is None:
+        return None, None, f"{fbase.name} holds no run of {stage}"
+    shown = f"{fbase.name}/{newest.relative_to(fbase)}"
     try:
-        launch = (launch_record(newest, names) if newest is not None
-                  else None)
-    except LaunchRecordError:
-        launch = None
-    src = _at(finished, stage, newest, pt) if launch is not None else None
-    if src is None or not done(
-            src, names, launch=launch,
-            products=products_of(stage, ftask.label, base_dir=fbase),
-            launched_in=newest)[0]:
-        return None, newest
-    return src, newest
+        launch = launch_record(newest, names)
+    except LaunchRecordError as exc:
+        return None, newest, f"{shown}: {exc}"
+    if launch is None:
+        return None, newest, f"{shown} was never launched"
+    src = _at(finished, stage, newest, pt)
+    if src is None:
+        return None, newest, None
+    ok, why = done(src, names, launch=launch,
+                   products=products_of(stage, ftask.label, base_dir=fbase),
+                   launched_in=newest)
+    if not ok:
+        return None, newest, (f"{fbase.name}/{src.relative_to(fbase)} is "
+                              f"not done -- {why}")
+    return src, newest, None
 
 
 def _forecast(calc, finished, stage: str, pt, copied: set,
@@ -666,7 +704,7 @@ def _member(calc, finished, stage: str, once, copied: set
     from ..runrecord import launch_record, read_copied_from
     from ..transport.stages import (frames_of, inputs_of, points_in,
                                     products_of, rung_points)
-    from .continuation import points_state, read_run, usable
+    from .continuation import done, points_state, read_run, usable
     from .gather import ran_otherwise
     from .naming import stage_home
     # EVERY STAGE IT TAKES INPUTS FROM COPIED IN -- by this decision, or its
@@ -693,12 +731,13 @@ def _member(calc, finished, stage: str, once, copied: set
     theirs = rung_points(ftask, stage, frames=frames_of(fbase))
     if bool(points) != bool(theirs):
         # A RUN OF POINTS AND A RUN THAT RUNS ONCE are two shapes of run --
-        # the treatment changed (§ 2a.10): never the same run.
+        # the treatment changed (§ 2a.10), or the number of frames (§ 2a.9):
+        # never the same run.
         def words(pts):
             return ", ".join(p.words() for p in pts)
-        return no(f"{stage}: {shown} "
-                  + (f"holds the points {words(theirs)}" if theirs
-                     else "ran once, at 0 V")
+        return no(f"{stage}: {fbase.name} runs it "
+                  + (f"at the points {words(theirs)}" if theirs
+                     else "once, at 0 V")
                   + "; this calculation runs it "
                   + (f"at the points {words(points)}" if points
                      else "once, at 0 V"))
@@ -728,6 +767,17 @@ def _member(calc, finished, stage: str, once, copied: set
         if not usable(state):
             return no(f"{stage}: {shown} is {state}"
                       + (f" -- {detail}" if detail else ""))
+        if stage == SHARING_RUNG:
+            # A TRANSMISSION THAT RAN ONCE IS ITS ONE POINT, whole only with
+            # what it holds -- the energies it shared among them -- as the
+            # done door asks of a point (§ 2a.16, *is that point*); the deck
+            # it is compared with below renders that point's energies only
+            # when it is (:func:`that_point`).
+            ok, said = done(newest, names, launch=launch_record(newest, names),
+                            products=products_of(stage, ftask.label,
+                                                 base_dir=fbase))
+            if not ok:
+                return no(f"{stage}: {shown} is not done -- {said}")
     # THE SAME CALCULATION as the deck this calculation renders for it now,
     # at each of its points (`engines/transport.md` § 6.1).
     for pt in (points or (None,)):
@@ -832,20 +882,32 @@ def takes_over(calc, finished, stage: str, points, *, once,
     token = stage_home(fbase, finished.task, stage).token
     taken: List[Take] = []
     walked: List[object] = []
+    why: List[str] = []
     run = ""
     for pt in points:
-        src, newest = _finished_point(finished, stage, pt)
+        src, newest, said = _finished_point(finished, stage, pt)
         run = run or (f"{fbase.name}/{newest.relative_to(fbase)}"
                       if newest is not None else "")
-        if (src is None
-                or ran_otherwise(once, stage, src, token=token, point=pt)
-                or not _given_the_same(finished, stage, newest, src,
-                                       inputs(pt))):
+        if src is None:
             walked.append(pt)
+            if said:
+                why.append(said)
             continue
-        taken.append(Take(pt, src, f"{fbase.name}/{src.relative_to(fbase)}",
-                          origin(fbase, src)))
-    return Takes(stage, run, tuple(taken), tuple(walked))
+        shown = f"{fbase.name}/{src.relative_to(fbase)}"
+        differs = ran_otherwise(once, stage, src, token=token, point=pt)
+        if differs:
+            walked.append(pt)
+            why.append(f"{shown} ran another calculation -- "
+                       f"{'; '.join(differs)}")
+            continue
+        if not _given_the_same(finished, stage, newest, src, inputs(pt)):
+            walked.append(pt)
+            why.append(f"{pt.words()} is not given what {shown} was "
+                       f"given")
+            continue
+        taken.append(Take(pt, src, shown, origin(fbase, src)))
+    return Takes(stage, run, tuple(taken), tuple(walked),
+                 tuple(dict.fromkeys(why)))
 
 
 def _given_the_same(finished, stage: str, run: Path, src: Path,

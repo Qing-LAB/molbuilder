@@ -1644,8 +1644,9 @@ def api_task_setup_save():
                     after, n, *hit)}), 409
 
     # AN EXTENSION'S LIMITS, AT THIS DOOR TOO (`engines/transport.md`
-    # § 2a.16, *Extending it*; `task-setup.md` § 3): its junction, the
-    # rungs it keeps and its voltages stay -- the one rule the Transport
+    # § 2a.16, *Extending it*; `task-setup.md` § 3): the rungs it keeps,
+    # its voltages, its rename and its label stay -- another junction is
+    # another calculation, refused above by its id -- the one rule the Transport
     # tab's Describe asks (`transport.reuse.Extension`), each change
     # measured against the folder's own description, so what the command
     # line wrote is never refused for what it holds.  A finished

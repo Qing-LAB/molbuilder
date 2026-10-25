@@ -1135,6 +1135,7 @@ arguments")*:
 | L1, L5, L7 | the frame-set dialog's frame numbers; the relaxation tolerance's provenance; the polish | fixed | 2.37.0 |
 | L4 | the charge switch shown in Task setup and the deck's provenance | with the Raman inputs, when they are declared | with Raman |
 | L2, L3, L6, L8 | — | closed, as recommended | — |
+| D-o (R8) | a frame set on the Transport tab | the extension panel names the junction it describes with and offers *Cite a frame set of this junction…*, the picker asking the one rule; skipping it describes the finished junction as it ran *(the user, 2026-10-25: "Build it"; "the user can skip citing frameset")* | 2.39.0 |
 | D-n (R6) | a frame set whose frame 0 is a finished transport calculation's junction | a calculation that reuses the finished one may cite the set in its place: checked at describe — the same atoms in the user order at the same places, the same cell and axes, the same transport partition; the held set and other labels may differ — and reused deck by deck, as every reuse is, so the seed, the leads and frame 0's points are taken — a finished run launched warm read through what it carries (`runrecord.carried_gather`); on the command line, `describe --reuses <finished> --slot junction=<set>` (`engines/transport.md` § 2a.16, *A frame set of the same junction*) *(the user, 2026-10-24: "yes to R6", "go ahead, contract first")* | 2.38.0 |
 
 **Open, each the user's:**
@@ -1142,7 +1143,6 @@ arguments")*:
 | # | decision | the choice |
 |---|---|---|
 | R1 | Raman's numbers, measured first | on the toy junction, before anything is built: whether the whole cell's change, at a laser frequency and static, is stable against the optical calculation's k-point mesh and broadening; and what the optical calculation costs per frame (the method's § 3.1, § 5.1) |
-| R8 | the Transport tab's extension panel and a frame set | the panel draws the finished junction and describes with it; citing a frame set of it there needs a control the panel does not have — or the command line stays the road for it (D-n) |
 
 **Found, not fixed — each with why** (to fix, or to close):
 
