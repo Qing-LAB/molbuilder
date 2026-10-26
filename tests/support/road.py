@@ -369,7 +369,10 @@ def calls_made(calls: Path):
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
 # first, each a list of words (`["prep", "task", "--group", "1"]`), the calculation
-# and the target named as the row's own prep names them; `launched` -- the
+# and the target named as the row's own prep names them;
+# `first_launch_refused` -- group 1's first launch then sent, the folder's
+# state saved before it and the send refused by the suite's scheduler
+# (`a_machine_with_queues`); `launched` -- the
 # stages then launched, each its newest run's launch record written by its
 # writer, no engine started (`_road_launched`); `changed` -- the records then
 # changed through Task setup's Save: blocks of the job request
@@ -1191,6 +1194,15 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         got = jobset(*words, "--bundle", bundle,
                      *(("--target", target) if words[0] == "prep" else ()))
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
+    if case.get("first_launch_refused"):
+        # THE STATE A WAY BACK RESTORES is saved by a group's first launch,
+        # before its send (`job-system.md` § 6.0, step 4) -- sent here, and
+        # refused by the suite's scheduler.
+        got = jobset("launch", "task", "--group", "1", "--bundle", bundle,
+                     "--mode", "submit", "--yes")
+        assert (got.exit_code != 0
+                and "the folder's state was saved first" in got.output), \
+            _one_line(got)
     _road_launched(case, bundle)
     _road_changed(case, bundle)
     if "removed" in case or "added" in case:
@@ -1221,6 +1233,14 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         assert r.exit_code != 0, _one_line(r)
         for words in ([said] if isinstance(said, str) else said):
             assert words in r.output, _one_line(r)
+        if "restores_state" in case:
+            # THE WAY BACK RESTORES THE STATE ITS NOTE NAMES, by its id.
+            from molbuilder.checkpoint import Repo
+            sid = next(st.short for st in Repo(str(bundle)).states()
+                       if st.note.endswith(case["restores_state"]))
+            assert any("molbuilder checkpoint restore" in ln
+                       and ln.rstrip().endswith(sid)
+                       for ln in r.output.splitlines()), _one_line(r)
         _road_after_prep(case, bundle)
         _road_saved(case, bundle)
         return

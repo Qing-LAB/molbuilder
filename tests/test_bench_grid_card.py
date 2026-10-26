@@ -88,7 +88,7 @@ def bundle(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    env = Environment(scheduler=SLURM,
+    env = Environment(machine="this", scheduler=SLURM,
                       topology=Topology(sockets=2, cores_per_socket=32,
                                         gpus_per_node=4),
                       domains=[Domain.from_row(r) for r in _DOMAINS],

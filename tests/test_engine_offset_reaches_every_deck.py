@@ -102,7 +102,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     # environment there -- the record carries it for the generator
     # (`configuration.md` § 4).
     (dest / "environment.json").write_text(
-        Environment(scheduler=WORKSTATION,
+        Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4),
                     env_init={"activation": "conda activate",
                                        "preamble": "true"}

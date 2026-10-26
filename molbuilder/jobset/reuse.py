@@ -848,14 +848,16 @@ def _member(calc, finished, stage: str, once, copied: set
 
 
 def _unfinished(finished, stage: str) -> Optional[str]:
-    """THE RESULTS THE FINISHED CALCULATION'S NEWEST RUN OF ``stage`` DID NOT
-    FINISH, warned of (`engines/transport.md` § 2a.16, *The manifest*; the
-    user, 2026-10-25: "warning of unfinished points because this could
-    indicate problems in physics or parameter choices"): each of its results
-    -- a point of a rung of points, or a rung run once its one result --
-    the done door does not call done, with its words; ``None`` when each
-    finished, when the run never launched, or while it is still going.  It
-    decides nothing."""
+    """THE RESULTS OF THE FINISHED CALCULATION'S NEWEST RUN OF ``stage``
+    THAT ARE NOT DONE, warned of (`engines/transport.md` § 2a.16, *The
+    manifest*; the user, 2026-10-25: "warning of unfinished points because
+    this could indicate problems in physics or parameter choices"): each of
+    its results -- a point of a rung of points, or a rung run once its one
+    result -- the done door does not call done, in its words (*not
+    finished*, *finished, not converged*, a file missing); ``None`` when
+    each is done, when the run never launched, or while it is still going.
+    It decides nothing: a stage run once is copied when its run finished
+    (the user, 2026-10-25)."""
     from ..runrecord import launch_record
     from ..transport.stages import frames_of, products_of, rung_points
     from .continuation import done, stage_run_state
@@ -883,9 +885,12 @@ def _unfinished(finished, stage: str) -> Optional[str]:
                           f" ({said})")
     if not missed:
         return None
-    return (f"{fbase.name}/{newest.relative_to(fbase)} did not finish "
-            f"{'; '.join(missed)} -- a result that does not finish can mean "
-            f"a problem in the physics or in the parameter choices")
+    return (f"{fbase.name}/{newest.relative_to(fbase)} holds "
+            + ("a result that is" if len(missed) == 1 else
+               "results that are")
+            + f" not done: {'; '.join(missed)} -- a result that is not done "
+              f"can mean a problem in the physics or in the parameter "
+              f"choices")
 
 
 def _laid_here(calc, finished, stage: str) -> Dict[str, str]:

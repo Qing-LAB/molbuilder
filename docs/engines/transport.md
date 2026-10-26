@@ -912,8 +912,8 @@ G = G₀ · T(E_F),     G₀ = 2e²/h ≈ 77.5 µS          per channel when pol
 
 **The two treatments** (§ 2a.10). With **`low_bias_approximation: true`** the
 device and the transmission run once, at 0 V, and the record computes the I–V
-from that one slice — the **linear-response** approximation, the zero-bias
-transmission held fixed as the window opens:
+from that one slice — the **low-bias approximation**: the transmission's
+dependence on bias neglected, T(E, V) taken as T(E, 0) as the window opens:
 
 ```
 I(V) ≈ (2e/h) ∫ T(E, 0) [ f(E − μ_L) − f(E − μ_R) ] dE
@@ -1008,7 +1008,7 @@ Read each row left to right: what stands, and what runs again.
 |---|---|---|---|---|---|
 | **the energy window widened** — −2…2 → −3…3 eV | stand | stand | **stand**: no NEGF cycle | **runs again** on the same device Hamiltonians. Every energy is independent, so T at the old energies comes out the same — and a new calculation reusing the finished one shares the energies it computed exactly (§ 2a.16) | the same at every listed voltage whose window ±(\|V\|/2 + 5 kT) the old window already reached; a voltage it did not reach gets its current |
 | the energy points refined, the transmission k-point grid, a broadening, the eigenchannels or DOS asked for | stand | stand | stand | **runs again** | follows the new T |
-| **a bias point added — low-bias approximation** | stand | stand | stand: one run, at 0 V | **stands** while the window reaches ±(\|V\|/2 + 5 kT) of the new voltage; else its window is widened and it runs again | **computed** for the new voltage from the one T(E, 0) (`record.linear_response_iv`) — no engine runs |
+| **a bias point added — low-bias approximation** | stand | stand | stand: one run, at 0 V | **stands** while the window reaches ±(\|V\|/2 + 5 kT) of the new voltage; else its window is widened and it runs again | **computed** for the new voltage from the one T(E, 0) (`record.low_bias_iv`) — no engine runs |
 | **a bias point added — self-consistent** | stand: bias-independent | stands | the converged points **stand**; the new point runs **one NEGF cycle**, started from the closest converged point's `.TSDE` — the manual's *"copy the TSDE from the closest, previously, calculated bias"*, which the sweep already does (§ 2a.11) — and computes its own leads' Green's functions, which belong to its bias | the existing points stand; the new point runs | each existing point's current stands; the new point has its own |
 | the device's own convergence settings (mixing, tolerances, its iteration budget) | stand | stand | **runs again**, every point | runs again on the new device | follows |
 | `electrode_kz` | **run again** | stands | runs again — the leads' Fermi level moved | runs again | follows |
@@ -1259,7 +1259,7 @@ again**.
 - **I(0.4 V)**, the Landauer integral of T over the bias window with both
   leads' Fermi functions (§ 1.1, step 5):
   - **low-bias approximation** — T(E, 0) integrated, the record's own sum
-    (`record.linear_response_iv`): **1.822 × 10⁻⁵ A**;
+    (`record.low_bias_iv`): **1.822 × 10⁻⁵ A**;
   - **self-consistent** — T(E, 0.4 V), tbtrans's own sum at that point:
     **1.807 × 10⁻⁵ A**.
 
@@ -1835,7 +1835,7 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 |---|---|---|
 | **seed** | mixing 0.05, budget 200 | a closed periodic warm-up; it only has to produce a serviceable density, so it can mix boldly and stop early |
 | **electrodes** | mixing 0.02, budget 300, **k-points along z = 100** (`electrode_kz`, the catalogue's default; recommended 50–200, warned outside) | a metallic bulk lead mixes cautiously — and 100 k-points along z decide the lead's Hamiltonian and Fermi level, the reference energy everything downstream is measured against (§ 0.2) |
-| **device** | mixing 0.02, budget 400 | an NEGF cycle on an open boundary is the hardest to converge here. The bias is not set on this panel: it is Class D, each point's voltage the description's list, written by the rung (§ 2a.10) — at the one point 0 V this is a linear-response calculation |
+| **device** | mixing 0.02, budget 400 | an NEGF cycle on an open boundary is the hardest to converge here. The bias is not set on this panel: it is Class D, each point's voltage the description's list, written by the rung (§ 2a.10) — at the one point 0 V it gives the zero-bias transmission and conductance |
 | **transmission** | window −3…+3 eV, 601 points, broadening 1 meV, 4 eigenchannels | wide enough to contain the resonances that matter, fine enough that none falls between points |
 
 **And then what a change costs — the whole reason for the classification:**
@@ -1978,9 +1978,9 @@ refuse to let them be reported as the same thing:
   of both, T(E, V).
 
 A low-bias I–V *can* be obtained from a single zero-bias curve by integrating it
-against the leads' Fermi functions — that is the **linear-response
-approximation**, it is legitimate and standard, and it is **not** a finite-bias
-NEGF result. Where a deliverable is computed that way it must say so, or a
+against the leads' Fermi functions — that is the **low-bias approximation**,
+T(E, V) taken as T(E, 0); it is legitimate and standard, and it is **not** a
+finite-bias NEGF result. Where a deliverable is computed that way it must say so, or a
 reader will take an approximation for the real thing.
 
 #### What makes a set citable — ONE PAIR, many frames *(user, 2026-09-24)*
@@ -2143,7 +2143,7 @@ here is how many slices you pay for.
 
 | | what runs | what you get |
 |---|---|---|
-| **`low_bias_approximation: true`** | the device SCF converges **once, at 0 V**, and the transmission runs **once**, on it | **T(E, 0)** — one slice, a full energy curve; the I–V computed from it by the record for every listed voltage, **I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE**, μ_L,R = E_F ± eV/2 with V signed (`record.linear_response_iv`) — the **linear-response approximation**. A negative voltage carries a negative current, as TBtrans's own does, and I(−V) = −I(V): the one slice serves both signs |
+| **`low_bias_approximation: true`** | the device SCF converges **once, at 0 V**, and the transmission runs **once**, on it | **T(E, 0)** — one slice, a full energy curve; the I–V computed from it by the record for every listed voltage, **I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE**, μ_L,R = E_F ± eV/2 with V signed (`record.low_bias_iv`) — the **low-bias approximation**: the transmission's dependence on bias neglected. Nothing in it is linear in V — the integral takes in whatever T(E, 0) holds as the window opens, so a level inside the widest window bends the I–V *(the user, 2026-10-25: "low bias assumption talks about T(E) dependence on bias, nothing about linearity. this is not an ohmic device by default")*. A negative voltage carries a negative current, as TBtrans's own does, and I(−V) = −I(V): the one slice serves both signs |
 | **`low_bias_approximation: false`** | **every voltage gets its own device SCF** and its own transmission — a sweep (§ 2a.11) | **T(E, V)** — one slice per point; each point's current TBtrans's own integral over its window — a point that shares energies the record's, by TBtrans's rule over its joined grid (§ 2a.16) — with no approximation beyond the method itself; I(−V) is its own point's, and differs from −I(V) where T(E, −V) differs from T(E, V) inside the bias window — an asymmetric junction's rectification |
 
 The mechanism is the same in both cases; the difference is how many device SCFs
@@ -2167,7 +2167,7 @@ E_F — offered as orientation, never as a guarantee:
 
 | bias | practice |
 |---|---|
-| **< 0.1 V** | linear response is fine; this is the conductance regime, where the observable is essentially G = G₀·T(E_F) |
+| **< 0.1 V** | one slice serves; this is the conductance regime, where the observable is essentially G = G₀·T(E_F) |
 | **0.1 – 0.5 V** | usually sound qualitatively, with quantitative error growing; worth checking rather than assuming |
 | **> 0.5 – 1 V** | re-converge at each voltage — the window is now comparable to the level offset, resonances enter it, the molecule charges and levels pin |
 
@@ -2189,17 +2189,23 @@ below ~0.4 V — inside the regime where one slice is a sound elastic baseline.*
 
 #### The labelling rule
 
-> **A transmission result records how it was computed, and an I–V derived under
-> the linear-response approximation says so.**
+> **A transmission result records how it was computed: whether the low-bias
+> approximation was made, said as yes or no.**
 
-Not a formality. A linear-response I–V and a finite-bias I–V are different
-claims about the same junction, they can differ substantially above a few tenths
+Not a formality. An I–V under the low-bias approximation and a self-consistent
+one are different claims about the same junction, they can differ substantially above a few tenths
 of a volt, and on a plot they are indistinguishable. A curve that does not carry
 its own provenance will eventually be read as the stronger claim.
 
-So: the record names the treatment, the bias point or points, and — where the
-I–V was obtained by integrating a single slice — that it is linear response.
-The Results surface shows that label beside the curve, not buried in metadata.
+So: the record names the treatment, the bias point or points, and the flag
+itself — `low_bias_approximation`, `true` only when one 0 V slice served every
+listed voltage, `false` otherwise, a single voltage included: its device and its
+transmission ran at that voltage. The Results report and `summarize` say it
+beside the curve — *low-bias approximation: yes, the 0 V transmission integrated
+over each voltage's window* / *low-bias approximation: no, each voltage its own
+device SCF* — and the data file carries it as an attribute. The conductance
+column keeps its name at every voltage; what a row at a nonzero voltage means is
+the person's to read, the flag beside it *(the user, 2026-10-25)*.
 
 #### The choice, as stated and as run *(user, 2026-10-08: "low-bias should be low-bias-approximation, and when this is set to false, all bias will need a scf calculation")*
 
@@ -2216,15 +2222,12 @@ in its own copy of the cited junction (§ 4); false writes no key.
 
 | `low_bias_approximation` | the device | the transmission | the I–V | what the record calls it |
 |---|---|---|---|---|
-| **`true`** | one run, at 0 V — `04_device/run-0/` | one run, at 0 V — `05_transmission/run-0/` | computed by the record from T(E, 0) for each listed voltage (above) | the linear-response approximation, said beside the curve |
+| **`true`** | one run, at 0 V — `04_device/run-0/` | one run, at 0 V — `05_transmission/run-0/` | computed by the record from T(E, 0) for each listed voltage (above) | the low-bias approximation, said beside the curve |
 | **`false`** | a sweep: one run, a point per voltage — `04_device/run-0/v0.2/` (§ 2a.11) | a sweep: a point per voltage, each reading its own device point's H | each point's TBtrans current | self-consistent at every voltage |
 
 The record names the switch and computes the low-bias I–V itself: a sum over
 the transmission TBtrans wrote, with the leads' Fermi functions — no TBtrans
-run at a voltage the device did not converge at. *(The 2026-10-08 build ran
-TBtrans at each voltage on the 0 V Hamiltonian with the leads shifted ±V/2 —
-`m_ts_electrode.F90:1461` — neither linear response nor self-consistent; the
-switch replaces it.)* `jobset migrate` writes the switch for a description that
+run at a voltage the device did not converge at. `jobset migrate` writes the switch for a description that
 states the older `bias.treatment` word.
 
 #### Where bias sits in the map
@@ -2824,10 +2827,10 @@ surface should present both.
 
 **The curve, and what it is.** T(E) for a single-bias calculation, or the family
 T(E, V) for a sweep — shown **with its treatment named** (§ 2a.10). An I–V
-obtained by integrating the single zero-bias slice is labelled *linear response*,
-beside the curve **and beside the I–V table** — not in metadata: the two kinds
+obtained by integrating the single zero-bias slice is labelled *low-bias
+approximation: yes*, beside the curve **and beside the I–V table** — not in metadata: the two kinds
 of I–V are different claims and look identical on a plot. Under the low-bias
-approximation the I–V table is the record's own (`record.linear_response_iv`):
+approximation the I–V table is the record's own (`record.low_bias_iv`):
 one current per listed voltage, signed as the voltage is — I(−V) = −I(V),
 the one slice serving both signs (§ 2a.10) — computed from T(E, 0) with the
 Fermi tails at the deck's electronic temperature, and a voltage the energies
@@ -2839,9 +2842,20 @@ E_F are in their periodic cells, where the cell-average potential is zero;
 TranSIESTA fixes the Hartree potential on the boundary plane instead and
 reports the device's E_F in that frame — on the 2026-10-08 walk 5.17 eV beside
 the leads' −1.92 eV, a convention and not a mismatch. The record says so in one
-sentence (`record.fermi_frames`: the device's E_F, `ts-Vha`, its value back in
-the seed's frame against the seed's own), printed by `summarize` and shown under
-the rungs table, so no reader compares the two numbers raw. The lead
+sentence (`record.fermi_frames`: the device's E_F; the `ts-Vha` TranSIESTA
+printed in its **periodic start** — the device cell's SCF before the NEGF
+cycles, which sets the shift between the two zeros; the device's E_F back in
+the seed's frame; and its difference from the seed's own, a number and no
+verdict), printed by `summarize` and shown under the rungs table, so no reader
+compares the two numbers raw. The NEGF cycles print a `ts-Vha` too, and it is
+not this shift (on the e2e chain it would put the two levels 31 meV apart; the
+periodic start's puts them 1 µeV apart). **A run continued from a density file
+has no periodic start** — TranSIESTA carries the E_F over in that file (a
+0.2 V point that read the 0 V point's `.TSDE` kept E_F −6.151179 eV) — so its
+shift is the one printed where the chain of runs began, and the sentence names
+that run; when that run is no longer in the folder, the device's E_F is given
+alone, in TranSIESTA's frame, saying why *(the user, 2026-10-25)*. None of this
+enters T(E), G or the I–V: it places two numbers side by side. The lead
 Hamiltonians are aligned to μ = E_F ± V/2 inside TranSIESTA; T(E) is measured
 relative to the leads' E_F.
 
@@ -3022,7 +3036,7 @@ part — their rows, masses and average — is laid out by their post-process
 | `conductance_g0` | frame, bias_v | derived | `G / G₀ = T` at E − E_F = 0, linearly interpolated |
 | `current_from` | frame, bias_v | state | which current `current_a` is: `tbtrans`, the junction's total from the printed figures (above), or `joined`, the record's integral by TBtrans's rule over a point whose energies two runs computed (§ 2a.16) |
 | `current_a` | frame, bias_v | derived | the junction's total, as `current_from` says: `tbtrans` — twice the printed figure unpolarized, the channels' sum polarized (`current_by_spin_a`); `joined` — the record's over the point's joined grid, its printed figure the fill value (§ 2a.16) |
-| `iv_current_a` | frame, iv_bias_v | derived | the I–V — each point's own total (`iv_computed` `tbtrans`), or the record's linear response from that frame's 0 V slice (`linear-response`, the low-bias approximation): `I(V) = G₀ ∫ T(E, 0) [f(E − eV/2) − f(E + eV/2)] dE` at `iv_kt_ev`, the fill value where the window does not reach (§ 2a.10) |
+| `iv_current_a` | frame, iv_bias_v | derived | the I–V — each point's own total (`iv_computed` `tbtrans`), or the record's from that frame's 0 V slice under the low-bias approximation (`low-bias-approximation`): `I(V) = G₀ ∫ T(E, 0) [f(E − eV/2) − f(E + eV/2)] dE` at `iv_kt_ev`, the fill value where the window does not reach (§ 2a.10) |
 | `device_ef_ev` · `device_vha_ev` | frame, bias_v | raw | the device point's NEGF Fermi level and boundary Hartree potential, as TranSIESTA printed them — wherever the device point ran, its transmission done or not |
 | `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` | frame, bias_v, (region · lead), energy_ev | raw | k-averaged, TBtrans's own text files on the data file's energies, and `dos_region` from each point's kept reading of its data file (`transport/tbtnc.py` through the SIESTA family's parser, [`model/parse.md`](?doc=model/parse.md) § 5e; `summarize task` reads what is not kept first; an export holds what is kept); a polarized point's two channels summed over spin (`tbtnc.point_dos`, 2026-10-11), each spin's own beside (`dos_total_by_spin`) |
 | `eigenchannel_transmission` | frame, bias_v, spin, eigenchannel, energy_ev | raw | each spin channel's eigenchannels, k-averaged, from its `.TBT.AVTEIG_<L>-<R>` — a non-polarized point's one channel's |
@@ -3049,8 +3063,9 @@ part — their rows, masses and average — is laid out by their post-process
 ångström `angstrom` and the ampere `A` — `long_name`, `definition` — how it is
 obtained, the formula for a derived one — and, for a raw one, `source`, the
 file it was read from. The file says what it is: `schema`
-(`molbuilder/transport-data@5`), the label, the treatment and what it means
-(`treatment_note`), what each spin's current means (`current_means`, JSON),
+(`molbuilder/transport-data@6`), the label, the treatment and what it means
+(`treatment_note`), whether the low-bias approximation was made
+(`low_bias_approximation`, 1 or 0), what each spin's current means (`current_means`, JSON),
 the calculation's own records as they read when it was written —
 `description` (its `task.json`), `template` (its `<label>.template.toml`)
 and `job_request` (its `job-request.json`), each the file's text — the
@@ -3342,7 +3357,7 @@ cycle — seconds on a test junction, days on Au–BDT–Au (§ 1.2).
 | `tbt_k_grid` | `TBT.k` | **The transmission k-point grid** in the electrode plane (x, y), for T(E). A grid converged for a total energy is routinely far too coarse for a transmission. **Left blank, the rule answers it**: three times the shared k-point grid, worked out when the deck is written, so it follows the shared grid; set, it is the person's, and it is warned if it is coarser than the shared grid (§ 0.2, § 0.3b) | 3 |
 | `tbt_elecs_eta_ev` | `TBT.Elecs.Eta` | Lead self-energy broadening: too large smears real resonances flat, too small turns them into noise | 3 |
 | `tbt_contours_eta_ev` | `TBT.Contours.Eta` | The device Green function's broadening. **Blank is not set** — not written, and tbtrans takes a tenth of the smallest lead broadening; **0 is written as 0** — none (below) | 3 |
-| `tbt_spin` | `TBT.Spin` | Which spin channel is reported | 3 |
+| `tbt_spin` | `TBT.Spin` | **Fixed at 0 for transport** and written so: both spin channels of a polarized device, which a transmission point is done with and the record reads — each channel's T(E), their total, the junction's current. 1 or 2 has TBtrans compute one channel (`TBT_UP` or `TBT_DN` alone), which no point could be done with *(the user, 2026-10-25)* | — |
 | `tbt_t_eig` | `TBT.T.Eig` | Eigenchannel decomposition — what turns one number into a picture of which orbital pathway carries the current | 3 |
 | `tbt_t_bulk` · `tbt_t_all` | `TBT.T.Bulk` · `TBT.T.All` | The pristine-lead baseline; every electrode pair rather than the first | 3 |
 | `tbt_verbosity` | `TBT.Verbosity` | How much tbtrans writes to its log — the log only, never the transmission. 5 is tbtrans's own default *(row since 2026-09-29)* | 3 |
@@ -3372,6 +3387,7 @@ Exposing these as controls would offer a choice with one correct answer.
 | `write_forces` · `write_coor_step` | `WriteForces` · `WriteCoorStep` | Every step's forces and coordinates in the output, which molbuilder reads back — fixed on every SIESTA run that runs an SCF, not only here: the seed, the leads and the device; the transmission writes neither (§ 6.1b; `template.md` § 6.4). **The device's forces are not computed**: its continued-fraction equilibrium contour switches TranSIESTA's forces off whatever the deck asks, and it says so — *ALL FORCES AFTER TRANSIESTA HAS RUN ARE WRONG* — setting the energy-density matrix the stress is built from to zero too; so no surface shows a device's force or stress, each saying why instead (`model/parse.md` § 5d.5, § 5d.6; the user, 2026-10-17) | 1 |
 | `tbt_solution_method` | `TBT.SolutionMethod` | `BTD`, on the transmission: the only method tbtrans has — any other word stops it (`m_tbt_options.F90:490`). Written, so the deck says what runs *(2.1.0)* | 1 |
 | `ts_hartree_fix` | `TS.Hartree.Fix` | `C`, on the device: the plane where the Hartree potential is held, which follows from the transport axis — always the cell's third, along z. TranSIESTA's own default is that axis's letter; any other spelling, `-C` included, is a different request it warns about (`m_ts_hartree.F90:50-72`). Written, so the deck says what runs *(2.1.0)* | 1 |
+| `tbt_spin` | `TBT.Spin` | `0`, on the transmission: every spin channel computed — both of a polarized device, the one of any other — since a transmission point is done, and read by the record, with both (§ 6.1). `1` or `2` would compute one channel alone *(the user, 2026-10-25; 2.41.0)* | 1 |
 
 *(`wrap_into_cell` left this table on 2026-09-25, with the knob: no atom is
 wrapped any more. Every rung's atoms are placed by the engine offset
@@ -3780,7 +3796,9 @@ junction is the finished one's, atom for atom, and is not composed again; and
 its **pseudopotentials**, `pseudos/`, which prep takes before any other
 source, so every deck reads the files the finished runs read. A flag beside
 `--reuses` sets what it sets on any describe — the voltages, the treatment,
-the window — and one naming what the extension keeps is refused by name:
+the window; voltages typed with no treatment keep the finished calculation's,
+as the Transport tab does — and one naming what the extension keeps is
+refused by name:
 `--name` (the label), `--psml-lib` (the pseudopotentials); `--slot
 junction=` names a frame set of the same junction or is refused by name
 (*A frame set of the same junction*, below). You then change what the new
@@ -4098,13 +4116,17 @@ the new request as it reaches that rung, in the words of § 6.1's comparison,
 or the finished run's state — a change of shape, a rung run once against a
 rung of points, said by what each calculation runs. A run copied in names
 the results it holds that this calculation does not describe: copied and
-unread, or left behind. **A result that did not finish is warned of**: for each stage, when the
-finished calculation's newest run of it has ended holding a result that did
-not finish — asked or not, copied in or prepared here — the manifest says,
-under the group, `warning:` that run, each such result and how it ended (the
-done door's words), and that a result that does not finish can mean a problem
-in the physics or in the parameter choices. It decides nothing: the results
-that finished are reused all the same. *(The user, 2026-10-25.)* For a rung of points
+unread, or left behind. **A result that is not done is warned of**: for each stage, when the
+finished calculation's newest run of it has ended holding a result that is not
+done — asked or not, copied in or prepared here — the manifest says, under the
+group, `warning:` that run, each such result and how it ended in the done
+door's words — *not finished*, *finished, not converged (SCF NO)* (possible only
+where the run's `scf_must_converge` was false; SIESTA otherwise stops it), a
+file missing — and that such a result can mean a problem in the physics or in
+the parameter choices. It decides nothing: a stage run once is copied when its
+run finished, as this calculation's own gather would take it
+(`continuation.usable`), and the results that finished are reused all the
+same *(the user, 2026-10-25)*. For a rung of points
 prepared here, the points its first launch will take over, from which run,
 and the points it will walk, and why each point the finished calculation
 holds is walked: its newest run never launched, the point not done there —
@@ -4265,10 +4287,9 @@ launched point prepared again for its job request keeps its contours, read
 back from the deck prep wrote for it, never decided again.
 
 **One moment, one record**: prep decides — the manifest says it — and the
-point's deck records it. The transmission's first launch checks that the
-prepared files are still what prep would write now (R-L15), the decision
-among them, and then copies the finished point's energies into the run's
-point folder, from the point the deck names. **Every launch that walks a
+point's deck records it. The transmission's first launch copies the finished
+point's energies into the run's point folder, from the point the deck
+names. **Every launch that walks a
 sharing point gives it its energies**: a launch again, warm or cold, copies
 them from the rung's newest run that holds them whole — its `shared/`, with
 its `.copied-from` — or, with none, from the point the deck names; a point
@@ -4431,7 +4452,14 @@ the size of what it copies.
   no value typed, never said.
   Citing anything that is not a transport calculation's folder leaves the
   extension: the page reads *NEW CALCULATION from <citation>*, every card
-  as for a new calculation, and the voltages back to 0.0.
+  as for a new calculation, and the voltages back to 0.0 — so the junction
+  card's picker, while extending, says so on its button: *Choose another
+  junction — leaves the extension…* *(the user, 2026-10-25)*. The rail
+  speaks of the extension too: what it keeps (the seed's and the leads'
+  results, the shared k-point grid, their SCF settings), what is yours (the
+  device's and the transmission's tabs), and that prep copies in the groups
+  the plan names and prepares the others here; the rail's advice for setting
+  up a new calculation is not shown.
 - **Task setup** echoes `reuses` with the junction it shows, not editable
   here, and keeps the same limits ([`web/task-setup.md`](?doc=web/task-setup.md)
   § 3). Its **Preview** is
@@ -4684,9 +4712,14 @@ converged minimum.
 record and no conclusion; classification RECORDS that, because describing a
 transport calculation ahead of a finishing relax is legal. Composing from it
 refuses — you may plan against a run in flight, but you may not build a deck
-from a geometry that is still moving. A run that ended with an error (exit code
-≠ 0) classifies too, said as such, and compose refuses it: its last geometry
-is whatever the engine left when it failed.
+from a geometry that is still moving. **A run that ended with an error (exit
+code ≠ 0) is refused when the calculation is described**, before anything is
+written *(the user, 2026-10-25)*: its last geometry is whatever the engine left
+when it failed, and a folder citing it could never be prepared — nor pointed at
+another run, one calculation being one structure. The refusal names the way
+on: launch the relaxation again and cite the run that finishes, or cite another
+relaxation. A run cited while still going that then fails is refused at prep
+the same way, its way on a new folder citing the run that finishes.
 
 > **The settings are DEFAULTED, never sealed** (§ 2a.7). The cited run's values
 > land in this calculation's own template and you may change any of them

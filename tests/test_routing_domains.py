@@ -30,7 +30,8 @@ _DOMAINS = [
 
 def _write_record(where, domains=_DOMAINS, gpu_type=None):
     return write_environment(
-        Environment(scheduler=SLURM,
+        Environment(machine="this",      # as a first prep names it
+                    scheduler=SLURM,
                     topology=Topology(cores_per_socket=64, gpu_type=gpu_type),
                     site=Site(partition="public"),
                     domains=list(domains)),
@@ -88,7 +89,7 @@ def test_get_routing_is_empty_without_a_record(tmp_path):
 def test_get_routing_is_empty_on_a_workstation(tmp_path):
     """M-2: one shape for both machines.  A workstation record is a valid
     record that simply has no domains — not a missing file, and not an error."""
-    write_environment(Environment(scheduler=WORKSTATION,
+    write_environment(Environment(machine="this", scheduler=WORKSTATION,
                                   topology=Topology(cores_per_socket=10)),
                       tmp_path / FILENAME)
     assert get_routing(project_dir=tmp_path) == []
@@ -118,7 +119,7 @@ def test_an_unknown_column_survives_the_type(tmp_path):
     """
     row = {"name": "x", "partition": "p", "qos": "q", "invented_by_hand": 7}
     write_environment(
-        Environment(scheduler=SLURM, topology=Topology(),
+        Environment(machine="this", scheduler=SLURM, topology=Topology(),
                     domains=[Domain.from_row(row)]), tmp_path / FILENAME)
     got = get_routing(project_dir=tmp_path)[0]
     assert got.extra["invented_by_hand"] == 7

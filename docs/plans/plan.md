@@ -51,6 +51,16 @@ instead of carrying their own order.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-20)*
 
+> **NOW (2026-10-25).** Two things, in this order, each the user's: **(1)
+> close 2.41.0** — the 2.40 review's decisions, built (§ 1ad.1: the
+> prepared-with record and *changed since prepared*, launch comparing nothing,
+> the periodic-start Fermi shift, the low-bias words, the rest) — its fast
+> batch, the real-junction and Task setup e2e, two review rounds, changelog,
+> commit on the user's order; the verified findings of § 1ad.2 are last-number
+> moves after it. **(2) Build § 1ae** — SIESTA's vibration as one run in
+> phases, Raman its optical phase (the user's B; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11, the
+> design; the proof of concept verified 2026-10-25) — milestone by milestone.
+
 **Where we are.** Shipped since the last handover (2026-10-18; it is
 [`archive/2026-10-20-plan-handover.md`](?doc=archive/2026-10-20-plan-handover.md),
 verbatim), each row in the changelog: 2.16.3–2.18.0 (the seven-lane review's
@@ -1018,7 +1028,7 @@ the same day, with what it turned out to be.
 
 ---
 
-## 1ad. The six-dimension review of 2.40 — what it found, and what waits on the user *(2026-10-25; molecular dynamics removed 2.40.2, the user's yes; the rest open)*
+## 1ad. The six-dimension review of 2.40 — what it found, and what waits on the user *(2026-10-25; molecular dynamics removed 2.40.2; the fifteen decisions built 2.41.0; the verified findings of § 1ad.2 are last-number moves after it)*
 
 Six fresh reviewers (science, back end, workflow, front end, documents, test
 design) read 2.40.1 whole against the contract, each claim reproduced on a
@@ -1030,25 +1040,18 @@ script")* — `Verlet` and `Nose` and their three settings, retired; the
 relaxation section's note says why `MD.FinalTimeStep` is not written — and
 the 2.40.1 tests' own findings TS1–TS4, TS6, TS7.
 
-### 1ad.1 Decisions for the user — each with the recommendation
+### 1ad.1 The decisions — the user's, 2026-10-25, one by one
 
-| # | the question | recommended |
+| # | the question | decided |
 |---|---|---|
-| D1 | a warm-started device run has no periodic step, so its Fermi level has no frame to be moved to | print the value only, with no frame sum |
-| D2 | `G₀·T(E_F)` is shown at every bias; conductance is defined at zero bias | call it *T(E_F) at V*; conductance at 0 V only |
-| D3 | "linear-response approximation" names a current that is not linear in V | rename it the *low-bias approximation* (words, and the data file's attribute value) |
-| D4 | `TBT.Spin` 1 or 2 is offered, but the done check and the record take both channels only (BE1) | fix it at 0 for transport |
-| D5 | an unconverged seed or lead can be copied in by a reuse (BE4) | never: one rule, `done`, for every stage |
-| D6 | describing a transport calculation that cites a failed relaxation succeeds, and prep refuses with no way on (WF2) | describe refuses, naming the way on |
-| D7 | prepared for another machine, the closing lines print `launch … # here` (WF4) | label them *on sol, once the folder is there* |
-| D8 | `describe --reuses --bias …` with no treatment flag is refused (WF7) | keep the finished calculation's treatment, as the Transport tab does |
-| D9 | old-release clauses in 31 places (*prepared before 2.7.0* …) | one refusal naming `jobset migrate` |
-| D10 | *Choose junction…* while extending leaves the extension quietly (UI3) | label it as leaving |
-| D11 | the Transport tab's rail while extending speaks of the steps of a new calculation (UI2) | sentences for an extension |
-| D12 | the frame-average test asks before any frame is done; a frame set with some frames done needs another engine run | restated in 2.40.2 with no extra run; the partial case only if you want it |
-| D13 | `err()` with no callers | delete it; state the reply shape |
-| D14 | a calculation's machine-record copy naming no machine passes any target (`scheduler/record.py`) | an explicit error naming `jobset migrate` |
-| D15 | launch compares and refuses a changed calculation (R-L15, R-L16, R-L45) against the 2026-10-17 rule | keep it |
+| D1 | the device's E_F is placed beside the seed's with the last NEGF cycle's `ts-Vha`; the periodic start's is the right one (SCI1), and a run continued from a density file has no periodic start | **B** — the periodic start's `ts-Vha` of the run where the chain began, that run named in the note (TranSIESTA carries E_F over in the density file it continues from: measured, the 0.2 V point read the 0 V point's `.TSDE` and kept E_F −6.151179 eV); the value alone only when that run is gone; no 0.01 eV *equal* cut. Display only: T(E), G, I–V never read it |
+| D2 + D3 | what a row at a nonzero voltage is called; what the low-bias approximation is called | *"there is no reason to extrapolate low-bias assumption to 'linear response' — these are simply wrong. low bias assumption talks about T(E) dependence on bias, nothing about linearity. this is not an ohmic device by default"*: **linear response deleted** wherever it names this (the record's notes, the I–V's `computed` → `low-bias-approximation`, the data file, the command-line help, `task.py`, `transport.md`, the Results page); the low-bias approximation defined as T(E, V) taken as T(E, 0). **The flag stated** — `low_bias_approximation` `true`/`false` in the record and the data file's attributes (so the CSV README), and a *yes*/*no* line in `summarize` and the Results header; one voltage is *no* (its SCF and transmission run at that voltage). The conductance column keeps its name — *"leave user for interpretation"* |
+| D4 | `TBT.Spin` 1 or 2: a polarized device's one channel is never done, and the record refuses it (BE1) | **A** — fixed at 0 for transport, written in the deck |
+| D5 | a reuse copies a finished seed or lead whose SCF did not converge (only possible with `scf_must_converge = false`), while its plan's warning says *did not finish* (BE4) | **A** — a reuse takes what the calculation's own gather would; the warning says *finished, its SCF not converged* |
+| D6 | describing a calculation that cites a failed relaxation succeeds; prep refuses; the folder cannot be re-pointed (WF2) | **A** — describe refuses, before writing anything, naming the way on (launch the relaxation again and cite the run that finishes, or cite another); a run still going stays legal |
+| D7 | the closing lines of a prep for another machine say `# here` (WF4) | *"just claim what it is doing"* — `# runs directly on sol`, `# submits to sol's queue`; nothing added |
+| D8–D14 | follow standing rules, not questions | D8 the finished treatment kept, as the tab does; D9 narrowed: the old-release clauses printed on current calculations removed (gf_files, the scratch docstring, the displacement sweep, the gather, `redo_launched`); the readers of result files written by an older release stay, since removing them would break existing results; D10, D11 the extension's words; D12 done 2.40.2; D13 not done — its premise was false: `err()` is `modify.py`'s `_err`, so it stays, and `web-api.md` with it; D14 an explicit error (`UnknownTarget.unnamed_copy`) when a calculation's copy of the target's record names no machine; the way on is `checkpoint restore` and `prep --target`, since `migrate` cannot know the machine |
+| D15 | launch re-plans prep and compares byte for byte (R-L15, R-L16, R-L45's header) against the 2026-10-17 rule; nothing else says a prepared group no longer matches its description | **C** — prep records the fingerprint of the description, template and request it prepared from; `status` and Task setup say *changed since prepared*; launch sends what prep wrote. And *"make sure user understand: when prep with existing run, should save checkpoint, and start from beginning if possible unless there is no launch at all yet"*: never launched — prepare it again; launched — its runs computed the description as it was: save the folder as it stands, go back to the state saved before the group's first launch, prepare again, the commands printed (WF1's missing command with it) |
 
 ### 1ad.2 Verified findings — fixed after the decisions, last-number moves
 
@@ -1121,7 +1124,42 @@ walk script called with invented arguments; hand-built `task.json` and
 e2e files; support helpers duplicated.
 
 
-## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; Raman designed, R1 open)*
+## 1ae. SIESTA's vibration as one run in phases — Raman its optical phase: the build *(2026-10-25; the design [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11, the user's B; R-a, R-c, R1 decided; the SIESTA side verified by the proof of concept, § 5.11 § 12)*
+
+*(The user, 2026-10-25: "i don't see why pyscf can do all this in one run,
+while you struggle so much. there is no intrinsic difference"; "i choose B";
+"consolidate how these steps are joint, and how output record/log are
+correctly unified to save in one place for parser"; "it should share the same
+structure as pySCF results"; "make sure the monitor probe etc should be
+integrated correctly"; "consolidate the plan and design document to include
+all these aspects, review and if no missing gaps, continue to implement".)*
+
+**What it is**, in one line each (the rules are § 5.11's, not restated here):
+one stage `freq` on both engines; SIESTA's phases `relax` → `fc` →
+`optical`, each SIESTA call a point of the run in transport's folder shape;
+the walk a loop over phases — `plan` (Python) → each call through prep's run
+script for its phase (bash) → `record` (Python) → `finish`; every deck by
+the one deck writer, its coordinates from a file beside it; the records: each
+call's own, the index, the result pair in PySCF's structure, `optical.nc`
+through the data-file framework; one monitor per call, the run reporting as
+one run; warm relaunch taking over calls done; Raman presented at the laser
+and width asked. The `relax` stage retires.
+
+**The milestones** — each closed as § 0a closes one: a full code-text
+review of what it touched, its tests green, then the next.
+
+| # | milestone | pieces | done when |
+|---|---|---|---|
+| M1 | **the framework** | a rung of points declared — each `RUNGS` row states where its points come from, what makes a point done, its start and its finish; every reader asking `calculation == "transport"` today asks the row (prep, the walk, `status`, `continuation`, the gather, Task setup, the record); `siesta/vibration_phases.py` — `PHASES`, the index's writer and reader, its `runfiles.WRITTEN` row and registry parser, the state rule over `points_state`; `parse/fdf.py` reads `%block Label < Filename`; `selection`, `calcdirs`, `paths` join the vibration bundle; `materialize.bring_files`' copy core split into a floor-1 function both call; `siesta/deck_lines.coordinates_rows` (one for `spec_for`, TranSIESTA, the plan); the displacement rule one function (`mode_frames` and the plan) | the fast batch and the real-junction e2e pass unchanged — nothing a transport calculation does differs |
+| M2 | **prep and launch** | `spec_for(part=)` for the relax, force-constant and optical decks; the stage's phase folders with their run scripts; `relax`'s coordinates file; the count beside the wall; `vibration_stages` one stage on both engines and the `relax` stage's rules retired (`ladder`, `ready`'s *waits before it can be prepared*, `_vibration_stage_geometry`, `first_launch_takes`' branch, § 5.2a); the phased walk at launch; the calls a warm launch takes over through `materialize.HandOver`; `warm-files.toml` per phase; the monitor's `--member` flag and `notify` verb, the run script's monitor block rendered for a member, the N-hour clock from the run's start | the CO₂ e2e through `jobset init → prep → launch`: each call's folder read by the run door as a point, the walk's log, one `start` and one `finish` sent |
+| M3 | **the job's Python** | `plan`, `record`, `finish` in `spectra/siesta_vibration.py`; `spectra/siesta_raman.py`; `parse/engines/siesta_epsimg.py`; `spectra/optical_data.py` (its `Var` table, `photon_energy_ev` in `ncdata.AXES`); the result's `phase_*` on SIESTA, `raman_route` `optical`, `raman_fd_step_ang`, `optical` (schema 13; the `.nc` @7) | the e2e's index, result and data file agree; the result's phases and route right; the data file reads through its reader and `xarray.load_dataset`; the warm-relaunch e2e (stopped after `fc`) takes `relax` and `fc` over |
+| M4 | **the view and the settings** | `spectra/raman.raman_view` (KK, the width composed, the laser); the load door's `raman` view and its asks; `postprocess.raman_view`; `methods`; the viewer's `_ramanOf`, the *Laser* and *Broadening* boxes, the Raman column and lane on a SIESTA result; the catalogue's optical items, the selector's `engines` gaining `siesta`, the charge switch as items (L4); Task setup's card per phase | the KK and composition API tests; the CO₂ e2e's symmetry check (mutual exclusion); the viewer on the running server showing Raman for the e2e's result (Claude in Chrome) |
+| M5 | **the contract, closed** | § 5.11 becomes the rules of § 2.2, § 5.2a–§ 5.5, § 5.8, § 5.9 as built; `job-system.md` § 5.4's vibration rows; `project-layout.md` § 5 (the manifest regenerated); `job-contracts.md`'s rows; `web/results.md`; `web/spectra.md` § 3.2; `web-api.md`; the method doc's § 5 and § 7; the changelog; two review rounds | R1 measured on the toy junction through the built run (two `optical_mesh` values), its numbers in the method doc's § 3.1 |
+
+**Open after it**: the named set's share (D-e), designed after R1; the
+`electronic` kind (§ 5.10 ④) for the response along a mode, unchanged.
+
+## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; SIESTA's vibration redesigned 2026-10-25 as one run in phases, Raman its optical phase (the user's B); R-a, R-c and R1 decided as recommended, 2026-10-25 — to build)*
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode
 calculated have polarization or dipole strength changes that it will be IR or
@@ -1144,8 +1182,11 @@ chooses; no field applied, no other calculation:
   to hirshfeld")*: both computed, every number stated with its partition,
   Hirshfeld shown unless the person picks Voronoi (the method's § 1a;
   `web/spectra.md` § 3.2; `engines/vibration.md` § 5.10 ②).
-- **Raman, chosen modes**: SIESTA's optical calculation, one run per frame
-  of the mode's three-frame set (the `electronic` kind, § 5.10 ④); both
+- **Raman, chosen modes**: SIESTA's optical calculation, one single point
+  per frame — the equilibrium and ±δQ along each chosen mode — the optical
+  phase of one vibration run whose phases are the relaxation, the force
+  constants and Raman, PySCF's shape ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11; the user,
+  2026-10-25: "i choose B"); both
   numbers reported, the whole cell's change and the named set's share
   (D-e below; the method's § 3.4, its cost § 5.1); the polarizability at
   the laser's frequency the person enters after the run, the static one
@@ -1193,9 +1234,9 @@ a frame set — the kind `engines/vibration.md` § 5.10 ④ decided (D4,
 | 1 | **the charge switch** in the force-constant input: `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` (D3, `engines/vibration.md` § 5.3, § 5.10 ②) — **built 2.35.2** | small | — |
 | 2 | **the charges measured** at every force-constant step on the toy junction — **done 2026-10-24** (the method's § 7) | small | 1 |
 | 3a | **the infrared proof** — **on CO₂ through the SIESTA e2e, 2.36.0**: what the molecule's symmetry demands, under both partitions, on the relaxed and the unrelaxed molecule; the forbidden stretch's 0.5 % residue at `MeshCutoff` 150 Ry falls to 6.5·10⁻⁸ at 500 Ry (the method's § 7). **Still owed**: water in a box on both engines, SIESTA's infrared against PySCF's, mode by mode and in rank | small: two vibration runs | 2 |
-| 3b | **the Raman proof**: the same water, SIESTA's optical calculation at each mode's ±δQ against PySCF's Raman — it checks the chain to the Raman strength on SIESTA's molecular formulation, not the junction's (the method's § 7) | medium | the `electronic` kind (§ 5.10 ④) |
+| 3b | **the Raman proof**: the same water, SIESTA's optical calculation at each mode's ±δQ against PySCF's Raman — it checks the chain to the Raman strength on SIESTA's molecular formulation, not the junction's (the method's § 7) | medium | the Raman runs ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) |
 | 4 | **infrared, built 2.36.0**: the finish stores every step's charges (schema 11, `partial_charges`); one function derives the infrared of a set of atoms along a direction by a partition (`spectra.infrared`), served by the load door and `molbuilder.postprocess`; the viewer's atoms, direction and partition controls, its columns and chart (`web/spectra.md` § 3.2) | medium | 3a |
-| 5 | **Raman, built**: the `electronic` kind (§ 5.10 ④) with the optical calculation added to its input, on each chosen mode's three-frame set; the polarizability from SIESTA's optical programs and its change | large | 3b |
+| 5 | **Raman, built**: SIESTA's vibration as one run in phases (`relax` stage retired) — the call function and the phase loop in the run script, the phases table, the index, the optical phase and its data file, `raman_view` at the laser and the broadening asked, the viewer ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) | large | 3b |
 
 **Separate items:**
 
@@ -1246,7 +1287,10 @@ arguments")*:
 
 | # | decision | the choice |
 |---|---|---|
-| R1 | Raman's numbers, measured first | on the toy junction, before anything is built: whether the whole cell's change, at a laser frequency and static, is stable against the optical calculation's k-point mesh and broadening; and what the optical calculation costs per frame (the method's § 3.1, § 5.1) |
+| R1 | Raman's numbers, measured | through the built runs, on the toy junction: whether the whole cell's change, at a laser frequency and static, is stable against the optical calculation's k-point mesh and broadening; and what the optical calculation costs per geometry (the method's § 3.1, § 5.1) |
+| R-a | how SIESTA's form asks for Raman — which modes is PySCF's selector, reused (`es_mode_selection`, its window and list) | the selector alone, `skip` no optical phase, `compute_raman` staying PySCF's (recommended); or `compute_raman` on both engines beside it ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) |
+| R-e | a run of points' monitors report as one run — one `start`, one `finish`, the walk's; transport's points lose their per-point pair ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a) | taken with the build unless the user objects |
+| R-c | the run's resolution, `Optical.Broaden` — the presentation's width is the viewer's, applied after the run: Gaussians compose, **verified exact on H₂** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 12) | 0.002 Ry (recommended: 2.7 MB of `.EPSIMG` text a frame, 0.4 MB in the data file), revisited with R1 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 13) |
 
 **Found, not fixed — each with why** (to fix, or to close):
 
@@ -1273,8 +1317,10 @@ about 9.4 days; the set's σ is 2.1 times mode 56's thermal spread at 300 K
 (the reference for five frames at 300 K is 0.047 Å, the set used 0.1 Å).
 R5 and R6 above are the two decisions it raised, both built (D-l, D-n).
 
-Then: R1's measurement on the toy junction, the `electronic` kind for Raman
-(pieces 3b and 5, contract first), or the water comparison of 3a.
+**Verified 2026-10-25, a proof of concept on H₂ outside jobset** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 12): SIESTA reads a deck's coordinates from a file beside it; the phases chain by the density (the optical frame 0 converges in one SCF iteration from the force-constant run's `.DM`); the broadening composes exactly after the run.
+
+Then: R-a and R-c, then Raman built (piece 5, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11), R1
+measured through it, and the water comparison of 3a and 3b.
 
 **References**: the method's own list
 ([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)),
@@ -1517,7 +1563,7 @@ below says.
 | **N11** | a middle number — the user's four answers 2026-10-22; 2026-10-23: two releases, the first shipped 2.33.0 — the extension on the Transport tab, its limits on Task setup and prep's *nothing to write*; the second open (§ 1aa) | **Extending a finished transport calculation — what may change, and what is fixed** (§ 1aa) | the user, 2026-10-22: *"what are the things that we could touch and what are the things that we should not touch?"* |
 | **N12** | group 1 **shipped 2.33.1**; groups 2 and 3 **2.33.2**; the four decisions **2.34.0**; group 4 open | **The six-agent review** (2026-10-23/24) — every calculation kind and Task setup, the whole contract against the production code, each finding verified before a fix: group 1, the four errors 2.33.0 shipped (2.33.1); groups 2 and 3, the older road errors and the contract's contradictions with the code (2.33.2), with BENCH-SHELF (§ 2) left for a real shelf to confirm; the four decisions, the user's answers (2.34.0): the device's charges explained region by region and `D(V) − D(0 V)` shown, a re-probe copying `env_init`, every data-file axis a row of `model/datafiles.md` § 2a, no verdict on the leads' Fermi levels. **Group 4, to bring for approval**: messages in the wrong words, unit spellings, a node's two core counts, dead whole-node code, the sweep presenter's columns, `read_data_file`'s atom map, a copied device's provenance, PySCF's two convergence doors, `--one-job`'s nothing-to-write | the user, 2026-10-23: a review of every calculation kind; *"make sure issues detected are first validated and investigated with fact and real code before fixing"* |
 | **N13** | **shipped 2.35.0** — the user, 2026-10-24: *"we need 6 to be built first"* | **A mode's frame set — the generator** (step 6's first piece; V1.25, `engines/vibration.md` § 5.10 ③): one vibration mode written as one multi-frame pair a transport calculation cites — frame 0 the Hessian's geometry, the frames at the Gauss–Hermite nodes, each frame's weight, the rows of `model/structure.md` § 2.2f; a command-line verb and the spectrum viewer's button, one generator; the transport side (each frame a point, the weighted average) was built before it. **The frames' extent is set by a maximum displacement** (the user's answer, 2026-10-24: the largest atom's move at the outermost frame, in Å). Not yet clicked on the running server: *Write frame set…* is proven through its route in the real-junction e2e | the user, 2026-10-24: *"integrate vibration mode to a multiframe structure for transport calculation with weight integrated"* |
-| **N14** | molecular dynamics removed **2.40.2**; the rest open | **The six-dimension review of 2.40** (§ 1ad) — fifteen decisions for the user, then the verified findings as last-number moves | the user, 2026-10-25: *"yes, remove MD from the optimization kind"*; the review's findings look for wrong results on the transport road |
+| **N14** | molecular dynamics removed **2.40.2**; the rest open | **The six-dimension review of 2.40** (§ 1ad) — the fifteen decisions taken (§ 1ad.1, the user, 2026-10-25), then the verified findings with them | the user, 2026-10-25: *"yes, remove MD from the optimization kind"*; the review's findings look for wrong results on the transport road |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 

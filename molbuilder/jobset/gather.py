@@ -64,7 +64,7 @@ def transport_inputs(calc, stage: str, *, point=None,
     its sources are structural — fixed by the design's DAG, not named by a
     person — so what keeps it honest is not a name but three gates, per
     input, each a refusal naming what to do first (strict composition,
-    ruling Q2 — transport never runs its pieces for you):
+    transport never runs its pieces for you):
 
     * the upstream stage must have been PREPARED (its deck rendered);
     * its NEWEST run must have FINISHED -- the one rule every kind's default
@@ -105,7 +105,7 @@ def transport_inputs(calc, stage: str, *, point=None,
         from .commands import (block, launch_lines, launch_pending,
                                redo_launched, run_first as _run_first)
         from .continuation import read_run, state_remedy
-        q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
+        q2 = ("\n  (strict composition: transport never runs its "
               "pieces for you.)")
         redo = redo_launched(upstream, calc=calc)
         # PREPARED, by the plan's own answer, as the verb read it.
@@ -258,7 +258,7 @@ def gather_sources(calc, stage: str
     recorded as `.gathered-from`), or at a launch that gathers anew
     (``--gather``): refused before anything is sent when an upstream is not
     done, or ran another engine input (:func:`transport_inputs`'s gates;
-    strict composition, ruling Q2).  Prep renders the decks without it: a
+    strict composition).  Prep renders the decks without it: a
     deck is the reviewable artifact, whether or not the rungs before it have
     run."""
     from ..transport.stages import frames_of, rung_points

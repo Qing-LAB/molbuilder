@@ -124,6 +124,7 @@
     </div>{#- /#transport-junction-intro -#}
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
+              data-extending="Choose another junction — leaves the extension…"
               title="Walk the projects tree and pick the junction: a finished relaxation run of molbuilder's own (its folder), or a structure pair saved from one, or a frame set written onto such a pair (its .xyz) -- or a transport calculation's folder, to reuse it.">
         Choose junction…
       </button>
@@ -224,8 +225,8 @@
       <label class="choice-row">
         <input type="radio" name="transport-bias-treatment" value="true" />
         <span><strong>yes</strong> — the device and the transmission run once,
-          at 0 V, and each voltage's current is computed from that T(E): the
-          linear-response approximation</span>
+          at 0 V, and each voltage's current is computed from that T(E):
+          T(E, V) taken as T(E, 0)</span>
       </label>
       <label class="choice-row">
         <input type="radio" name="transport-bias-treatment" value="false" />
@@ -377,9 +378,16 @@
 
   <section class="card" id="transport-stages-card">
     <h2>The five stages, in order</h2>
-    <p class="hint">Each tab in step 4 is one of these stages.  What each
-      one computes, what it hands to the next, and which k-points it
-      samples:</p>
+    <p class="hint" data-new-only>Each tab in step 4 is one of these stages.
+      What each one computes, what it hands to the next, and which k-points
+      it samples:</p>
+    {#- WHILE EXTENDING, the rail speaks of the extension (`core.js`
+        `_paintExtend`, `data-extension-only`). -#}
+    <p class="hint" data-extension-only hidden>An extension keeps the
+      finished calculation's seed and leads: their results are copied from
+      it.  What you can change is on the device's and the transmission's
+      tabs, under <em>3. What you can change</em>.  What each stage
+      computes and hands to the next:</p>
     {#- Filled from the rung list the schema route answers -- the same notes
         each tab opens with (transport/stages.py RUNG_NOTES), each headed by
         the rung's own number, as its tab is ("1 · seed"). -#}
@@ -441,8 +449,8 @@
       differ from the shared grid because tbtrans rebuilds each lead's
       self-energy at its own k-points.  One k-point along z.</p>
 
-    <h3>Setting them up, in order</h3>
-    <ol class="hint">
+    <h3 data-new-only>Setting them up, in order</h3>
+    <ol class="hint" data-new-only>
       <li><strong>The shared k-point grid</strong> starts as the junction
         you cited.  Raise each count about 1.5&times; and run the leads and
         the device again: it is settled when the leads' Fermi level and T(E)
@@ -456,9 +464,13 @@
         moves by less than about 1&nbsp;% and no peak moves.  Keep that grid
         for every voltage.</li>
     </ol>
-    <p class="hint">A finer transmission grid cannot rescue a shared grid
-      that was too coarse: the device's Hamiltonian itself would be wrong,
-      and more k-points do not fix it.</p>
+    <p class="hint" data-new-only>A finer transmission grid cannot rescue a
+      shared grid that was too coarse: the device's Hamiltonian itself would
+      be wrong, and more k-points do not fix it.</p>
+    <p class="hint" data-extension-only hidden>An extension keeps the
+      finished calculation's shared k-point grid and its leads' k-points;
+      the transmission k-point grid is on the transmission's tab, and a
+      change there runs the transmission again.</p>
 
     <h3>Example</h3>
     <p class="hint">A gold junction three gold atoms wide (about
@@ -490,7 +502,10 @@
 
   <section class="card" id="transport-scf-card">
     <h2>SCF settings: each stage has its own</h2>
-    <p class="hint">The seed, both leads and the device each run their own
+    <p class="hint" data-extension-only hidden>An extension keeps the
+      seed's and the leads' SCF settings, as they ran.  The device's tab is
+      yours: a change there runs the device again, at every voltage.</p>
+    <p class="hint" data-new-only>The seed, both leads and the device each run their own
       SCF &mdash; the loop that repeats until the electrons settle &mdash;
       so each of their tabs carries the same SCF settings with its own
       values, and a value set on one tab reaches that stage alone.  Each
@@ -498,9 +513,10 @@
       <em>from the junction you cited</em>.  The
       transmission runs no SCF: it reads the device's and the leads'
       finished results, so T(E) is only as settled as those runs.</p>
-    <p class="hint"><strong>Example</strong> &mdash; if the device's SCF
-      swings back and forth instead of settling, lower the mixing weight on
-      the device's tab; the seed and the leads keep theirs.</p>
+    <p class="hint" data-new-only><strong>Example</strong> &mdash; if the
+      device's SCF swings back and forth instead of settling, lower the
+      mixing weight on the device's tab; the seed and the leads keep
+      theirs.</p>
   </section>
 
   <section class="card" id="transport-after-card">
@@ -508,7 +524,13 @@
     {#- The road after describing — the composite's own quickstart. -#}
     <div class="hint">
       <ol>
-        <li><strong>Prepare the task, then launch it group by group</strong>
+        <li data-extension-only hidden><strong>Prepare the task, then
+            launch what it prepares here</strong> &mdash; <code>jobset prep
+            task</code> copies in the groups the plan above names as copied
+            from the finished calculation, and prepares the others here;
+            each <code>jobset launch task</code> sends the next group
+            prepared here whose upstream has finished.</li>
+        <li data-new-only><strong>Prepare the task, then launch it group by group</strong>
             &mdash; <code>jobset prep task</code> prepares every stage at
             once, from the command line or from
             <a href="/task-setup">Task setup</a>'s Prep on that folder;

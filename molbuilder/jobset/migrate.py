@@ -33,7 +33,7 @@ low-bias switch from the word it replaced (2026-10-08); every stage's
 above where the ladder allows it.  Each `job-set.json` --
 the root's and each sweep's: a job's `point`, `finish`, `resumes`,
 `placement` and `members` (W57; `members` written as `group` before 2.7.0),
-its `written_at` and `asked` (2.7.0) and its `scratch_dir` (2.22.0), each
+its `written_at` (2.7.0) and its `scratch_dir` (2.22.0), each
 with the meaning its absence had; the program it runs, onto the job
 (`Job.program`, 2.27.0), and a placement's source ``description`` said
 ``allocation``.
@@ -209,13 +209,10 @@ _NOTIFY_ABSENT = {"on_scf_converged": False, "every_hours": None,
 _JOB_ABSENT = {"point": ({}, "w57"), "finish": (None, "w57"),
                "resumes": (True, "w57"), "placement": (None, "w57"),
                "members": (None, "2026-10-07"),
-               # A PREP BEFORE 2.7.0 recorded no `relax` run, and nothing it
-               # was told: launch's check plans it as told nothing beside
-               # the description, and one told flags is refused there,
-               # naming its prep again.
+               # A PREP BEFORE 2.7.0 recorded no `relax` run.  (A row's
+               # `asked`, written 2.7.0-2.40.2 and read by nothing since
+               # 2.41.0, is left as it lies: `Job.from_dict` reads past it.)
                "written_at": (None, "2.7.0"),
-               "asked": ({"allocation": {}, "env": None,
-                          "emit_sbatch": True}, "2.7.0"),
                # A PREP BEFORE 2.22.0 kept no scratch folder: its device
                # deck names the leads' files loose in the run, and a launch
                # again of it empties nothing (`engines/transport.md`

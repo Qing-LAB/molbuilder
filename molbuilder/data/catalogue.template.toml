@@ -2294,6 +2294,7 @@ A finer grid here cannot rescue a shared grid that was too coarse: the device's 
 
 [item.tbt_spin]
 stages = ["transmission"]
+role = ["transport"]
 kind = "engine"
 category = ["system"]
 engines = ["siesta"]
@@ -2302,15 +2303,17 @@ anchor = "TBT.Spin"
 engine_key = "TBT.Spin"
 manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "int"
+# FIXED AT 0 for transport (the user, 2026-10-25): a point is done with both
+# channels of a polarized device, and the record reads both.
+choices = [0]
 value = 0
 default = 0
 engine_default = { value = 0, source = "SIESTA 5.4.2 m_tbt_hs.F90:247: spin_idx = fdf_get('TBT.Spin', 0)" }
-range = [0, 2]
 group = "profile"
-label = "Spin channel for T(E)"
+label = "Spin channels for T(E)"
 tier = "advanced"
 help = """
-Which spin channel tbtrans reports: 1 selects spin-up, 2 spin-down, and 0 -- the engine's default -- does both.  It only means anything once the device itself is spin-polarised; otherwise there is a single channel whatever you pick.
+Fixed at 0: tbtrans computes every spin channel -- both of a spin-polarised device, the one of any other.  1 or 2 would compute the up or the down channel alone (`TBT_UP` or `TBT_DN`), and a transmission point is done, and read by the record, with both: each channel's T(E), their total and the junction's current (engines/transport.md 6.1).
 """
 
 [item.tbt_elecs_eta_ev]
@@ -2583,9 +2586,9 @@ It is the description's BIAS LIST, not a value a template or a stage states: eac
 
 You give it in volts, because that is what a person means and measures.  The deck spells it `TS.Voltage <v> eV`, which is not a mismatch: fdf treats this as an energy, and the energy an electron gains across V volts is exactly V electron-volts, so the number is the same and only the unit word differs.  Do not "fix" either side to match the other.
 
-It is the experiment, and it decides what the result may be called.  At zero bias the device is converged once and tbtrans sweeps energy, giving T(E); an I-V obtained by integrating that single curve against the leads' Fermi functions is the linear-response approximation and must say so.  A genuine finite-bias result re-converges the device at every voltage, giving T(E, V), because the potential drop reshapes the molecular levels.
+It is the experiment, and it decides what the result may be called.  At zero bias the device is converged once and tbtrans sweeps energy, giving T(E); an I-V obtained by integrating that single curve against the leads' Fermi functions is the low-bias approximation -- T(E, V) taken as T(E, 0) -- and must say so.  A genuine finite-bias result re-converges the device at every voltage, giving T(E, V), because the potential drop reshapes the molecular levels.
 
-There is no universal voltage above which the approximation fails: compare eV/2 with the gap from the Fermi level to the nearest transmission resonance.  Below ~0.1 V linear response is sound; above ~0.5-1 V it is not.  The dependable check is to converge at zero and at your maximum and compare the two curves inside the window.
+There is no universal voltage above which the approximation fails: compare eV/2 with the gap from the Fermi level to the nearest transmission resonance.  Below ~0.1 V one slice serves; above ~0.5-1 V it does not.  The dependable check is to converge at zero and at your maximum and compare the two curves inside the window.
 
 Each transmission point must read its own point's converged Hamiltonian, never another's.
 """

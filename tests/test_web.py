@@ -1177,8 +1177,10 @@ def test_siesta_form_schema_matches_documented_layout():
         # `write_forces` and `write_coor_step` are fixed by the rung on
         # every SIESTA kind (`engines/template.md` § 6.4) and shown
         # read-only at that answer (`locked`, § 6.6 obligation 3; plan § 5w
-        # K7) -- never a control.
-        ("procedure",  14),
+        # K7) -- never a control.  Three fewer since 2.40.2: molecular
+        # dynamics left the optimization kind, retiring the three `md_*`
+        # items (`engines/template.md` § 3).
+        ("procedure",  11),
     ], got
 
     # `staging` items are declared parameters this surface does not ask

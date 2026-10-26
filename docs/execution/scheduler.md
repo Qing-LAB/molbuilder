@@ -40,7 +40,7 @@ The rules, one line each — full statement in § 3:
 | **R6** | shown, never a veto | prep refuses no request for what the record says of its queue: it prepares it and prints the fit; the scheduler decides, and its answer is shown |
 | **R7** | ask what you know | unasked constraints are `None`, and `None` is never counted |
 | **R8** | fact vs statement | what a queue ALLOWS is the record's; which queue a job USES is the job's own statement |
-| **R9** | placed once | what prep placed is what launch sends: prep's header, checked only against prep's own files; a calculation meant for a changed record goes back to the state before its first prep |
+| **R9** | placed once | what prep placed is what launch sends: prep's header, as it stands; a calculation meant for a changed record goes back to the state before its first prep |
 | **R10** | name what holds it | the fit names the machines that hold the request, not only those that do not |
 | **R11** | compare KINDS | comparability = the node's kind (cores, device model, mem ≈10 GB) — never its hostname, never the allocation |
 | **R12** | sent ≠ landed | `run.json` records where it was SENT; the monitor's first `[MACHINE]` line records what it LANDED on |
@@ -364,12 +364,10 @@ and mixes neither.
 launch or submission, all the decision is already done at the prep … It is
 none of molbuilder's business at the launch time to decide what is allowed to
 launch")*. What prep placed on the target's record is what launch sends:
-launch sends the header prep wrote, walks no graph and fits nothing. What it
-checks is prep's own files — at a first launch, prep's own planning asked
-again on the calculation's own files (its description, its job request, its
-template and its copy of the target's record), refusing a prep that is no
-longer what they give; every launch, that a benchmark trial starts cold
-(`job-system.md` § 6.0, R-L15, R-L16, R-L29). That copy is the one its first prep
+launch sends the header prep wrote, walks no graph, fits nothing and plans
+nothing again; every launch checks that a benchmark trial starts cold
+(`job-system.md` § 6.0, R-L29). The calculation's copy of the target's record
+is the one its first prep
 took, and no probe replaces it (`configuration.md` M-3): a calculation meant
 for a machine whose record has changed since goes back to the state saved
 before its first prep. The one value a launch may restate is a submitted

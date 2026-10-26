@@ -32,7 +32,7 @@ change, and when two decks are the same calculation.
 | its files | `task.json` and `<label>.template.toml` ([`stages.md`](?doc=engines/stages.md) § 6, [`template.md`](?doc=engines/template.md)) | `job-request.json`, beside them |
 | it says | what the calculation is — its structure or the junction it cites, its kind, its stages and what each varies, its bias points, every parameter's value | how and where it runs — the queue, the wall, the memory; each run's ranks, cores, GPUs and run settings; which stages share one job; what a benchmark measures; when the calculation reports, and to whom |
 | written by | Task setup's stage table and the parameter tabs' hand-over; `molbuilder describe`; the Transport tab's describe door; a person | Task setup's run cards, group numbers, benchmark and report cards; `molbuilder describe`, which writes each stage's group; a person |
-| read by | prep's resolve — every deck; the transport gather; status and the Results tab | prep's assembly — each job's launch values, header and run script, the groups; launch, for its groups and to compare a first launch's files with what prep would write — never for a launch value (§ 7); the transport gather, rendering a rung's deck now; the continuation door; status, summarize, `jobset migrate` and the Task setup cards |
+| read by | prep's resolve — every deck; the transport gather; status and the Results tab | prep's assembly — each job's launch values, header and run script, the groups; launch, for its groups — never for a launch value (§ 7); the transport gather, rendering a rung's deck now; the continuation door; status, summarize, `jobset migrate` and the Task setup cards |
 | it must never | say how or where the calculation runs | state anything the calculation computes |
 
 **`shape` stays in the description.** It is how the folder is laid out, fixed
@@ -817,12 +817,11 @@ what a launched stage computes** still goes back to the state saved before its
 group's first launch. In a sequence (`--one-job`), a launched group is read as
 its last prep wrote it ([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 2a).
 
-**A first launch compares every prepared file.** A stage's first launch, and a
-launch that takes its inputs anew (`--from`, `--gather`), checks that each
-prepared file is what prep would write now from both records ([`job-system.md`](?doc=execution/job-system.md)
-R-L15) — whether the files are the ones the records give, which is no question
-of the same calculation. A plain launch again sends what prep last wrote: a job
-request changed since reaches the next run when its group is prepared again.
+**A launch sends what prep wrote.** A job request changed since its prep
+reaches a run when its group is prepared again; until then `status` and Task
+setup say the group is *changed since prepared*, each value that differs
+([`job-system.md`](?doc=execution/job-system.md), *Changed since
+prepared*).
 
 ## 6. The same calculation — one door, each engine's reading
 
@@ -850,9 +849,8 @@ rung's deck computes now ([`engines/transport.md`](?doc=engines/transport.md)
 § 6.1); prep, of a launched stage (§ 5); the run record's `current` and the
 run door's `Run.report` — whether the stage's deck, and the check written beside
 it, are still the calculation the run ran ([`model/parse.md`](?doc=model/parse.md)
-§ 5d; [`architecture.md`](?doc=execution/architecture.md) § 3.2). **Not** by a
-first launch, which compares every prepared file with what prep would write
-now (§ 5).
+§ 5d; [`architecture.md`](?doc=execution/architecture.md) § 3.2). **Not** by a launch, which compares nothing
+([`job-system.md`](?doc=execution/job-system.md) § 6.0).
 
 **A deck's comments record what it was rendered with** — PROVENANCE's
 `resolved-defaults`, BENCH-MARKS' rank count — and nothing reads them as a
@@ -876,12 +874,12 @@ may edit either file; a reader refuses what does not read, naming the file.
 opens (`calculation.open` → `Calculation.request`, beside its description, its
 template and its plan); prep's flags lay over it field by field for that prep
 alone ([`architecture.md`](?doc=execution/architecture.md) § 5.2) — what a
-flag said is recorded on the job's row (`asked`), never written here.
+flag said reaches the job's row as the values it resolved to (`resources`),
+never this file.
 **`launch` takes no launch value from it**: it sends what prep wrote,
 `--time` restating a submitted job's wall for that launch
 ([`job-system.md`](?doc=execution/job-system.md) § 6.0). It reads the job request for its groups —
-which stages one launch sends — and to compare a first launch's files with what
-prep would write now (§ 5). Status, summarize, the transport gather and the
+which stages one launch sends. Status, summarize, the transport gather and the
 continuation door take it from the calculation their verb opened
 (`Calculation.request`, A16); `jobset migrate` and the Task setup cards read
 it through the same door.
@@ -965,8 +963,7 @@ declared run-setting items go, and nothing it computes changes.
 
 **A prepared stage is prepared again before its first launch**: the files prep
 writes now differ from those it wrote before — the run script takes its wall
-slack and retries from the job, with no fallback of its own (§ 4) — so its
-first launch refuses the files prep wrote before, naming the prep (R-L15). A launched one keeps its
+slack and retries from the job, with no fallback of its own (§ 4). A launched one keeps its
 runs; a SIESTA one's group may be prepared again as § 5 says. A PySCF script
 written before holds no run-settings block, so none rendered now is the same
 calculation (§ 6): a launched PySCF stage takes the way back for any change.

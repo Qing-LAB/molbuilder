@@ -230,15 +230,21 @@ def launch_lines(kind: str, *words, base,
     if configured_mode() and launches_here(base, target):
         return [command("launch", *words_for(kind, *words, groups=groups),
                         base=base, flags=flags)]
+    # EACH LINE SAYS WHAT IT DOES, the machine named as its record names it
+    # (`job-system.md` § 9; the user, 2026-10-25: "just claim what it is
+    # doing: submitting to execute on sol").
+    from ..scheduler.record import LOCAL_TARGET, calculation_machine
+    machine = calculation_machine(base) or target or LOCAL_TARGET
+    on = "this machine" if machine == LOCAL_TARGET else machine
     typed = [(f, True) for f in flags]
-    here = (launch_with(kind, *words, base=base, mode="direct", typed=typed,
-                        groups=groups)
-            + "   # here")
+    direct = (launch_with(kind, *words, base=base, mode="direct",
+                          typed=typed, groups=groups)
+              + f"   # runs directly on {on}")
     if not takes_a_queue(base, target):
-        return [here]
-    return [here, launch_with(kind, *words, base=base, mode="submit",
-                              typed=typed, groups=groups)
-            + "   # to the queue"]
+        return [direct]
+    return [direct, launch_with(kind, *words, base=base, mode="submit",
+                                typed=typed, groups=groups)
+            + f"   # submits to {on}'s queue"]
 
 
 def lines(verb: str, kind: str, *words, base) -> List[str]:
@@ -323,42 +329,82 @@ def _saved_states(base) -> str:
 
 
 def redo_launched(stage: Optional[str], *, calc) -> str:
-    """How a LAUNCHED stage is changed (`job-system.md` § 5.0): the state
-    saved before its group's first launch restored -- every run it builds on
-    is in it, and there it is prepared, never launched -- and a prep anew;
-    for a group copied in from a finished calculation, the state saved
-    before the prep that copied it in.
-    The group is named by the members it was launched with, as the state's
-    note named them (`group.named`, at the launch): the job request may
-    hold other members now, and a number shifts when a stage above it is
-    removed.  A stage launched before 2.7.0, whose launch saved no state,
-    goes back to the state saved before its prep.  ``calc`` is the
-    calculation as the verb read it (A16): its job request and its plan."""
+    """How a LAUNCHED stage is changed: its group **started from the
+    beginning** (`job-system.md`, *The task*, *Changed since prepared*; the
+    user, 2026-10-25) -- the folder saved as it stands, so its runs are kept
+    in a saved state; the state saved before its group's first launch
+    restored, every run it builds on in it and the group there prepared,
+    never launched; the group prepared again.  The three lines whole, the
+    state named by its id, found in the folder's history by the note its
+    launch saved it with (:func:`_state_before`); for a group copied in from
+    a finished calculation, the state saved before the prep that copied it
+    in.  The group is named by the members it was launched with, as the
+    state's note named them (`group.named`, at the launch): the job request
+    may hold other members now, and a number shifts when a stage above it is
+    removed.  With no such state in the history, the folder's saved states
+    are listed to pick it from.  ``calc`` is the calculation as the verb
+    read it (A16): its job request and its plan."""
+    import shlex
+    from ..identity import checkpoint_as_typed
     from ..runrecord import copied_in
-    from .group import members_of, named, same_members
+    from .group import members_of, named
     from .naming import stage_home
     base, request = calc.base, calc.request
     g = (request.group_of(stage)
          if request is not None and stage is not None else None)
+    job = calc.job(stage) if stage is not None else None
+    ran = members_of(job) if job is not None else (
+        request.members(g) if g is not None else [])
+    who = f"({', '.join(ran)})"
+    group = (f"group {g} {who}" if g is not None else "its group")
     # A GROUP COPIED IN from the finished calculation a transport
-    # calculation reuses was launched by no launch of this one: its way back
-    # is the state saved before the prep that copied it in
+    # calculation reuses was launched by no launch of this one: its state is
+    # the one saved before the prep that copied it in
     # (`engines/transport.md` § 2a.16).
     if (stage is not None and g is not None
             and copied_in(stage_home(base, calc.task, stage).dir)):
-        return (f"go back to the state saved before the prep that copied "
-                f"{named(request, g)} in from {Path(calc.task.reuses).name} "
-                f"-- and prep anew -- " + _saved_states(base))
-    job = calc.job(stage) if stage is not None else None
-    ran = members_of(job) if job is not None else None
-    what = ("the first launch of its group" if g is None else
-            f"the first launch of {named(request, g)}"
-            if ran is None or same_members(ran, request.members(g)) else
-            f"the first launch of its group as it was launched "
-            f"({', '.join(ran)})")
-    return (f"go back to the state saved before {what} -- for a stage "
-            f"launched before 2.7.0, the one saved before its prep -- and "
-            f"prep anew -- " + _saved_states(base))
+        what = (f"the prep that copied {named(request, g)} in from "
+                f"{Path(calc.task.reuses).name}")
+        state = _state_before(base, lambda note: "before prep task" in note
+                              and f"{who}, copied in from" in note)
+    else:
+        what = f"the first launch of {group}"
+        state = _state_before(base, lambda note: "before launch task group"
+                              in note and note.rstrip().endswith(who))
+    if state is None:
+        return (f"start {group} from the beginning: go back to the state "
+                f"saved before {what}, and prepare it again -- "
+                + _saved_states(base))
+    folder = shlex.quote(str(Path(base).resolve()))
+    _shown, restore = checkpoint_as_typed(Path(base).resolve())
+    note = shlex.quote(f"{group} as launched, before going back")
+    return (f"start {group} from the beginning -- save the folder as it "
+            f"stands, so its runs are kept in a saved state; go back to the "
+            f"state saved before {what}; prepare it again --\n"
+            + block([f"molbuilder checkpoint save -p {folder} -m {note}",
+                     f"{restore} {state}",
+                     *(prep_group_lines([g], base=base) if g is not None
+                       else [command("prep", "task", base=base)])]))
+
+
+def _state_before(base, matches) -> Optional[str]:
+    """The id of the state a way back restores -- the newest state, from
+    where the folder stands back through the states it came from, whose
+    note ``matches`` -- or ``None``: no history, or none there."""
+    from ..checkpoint import CheckpointError, Repo
+    try:
+        repo = Repo(str(base))
+        if not repo.initialized:
+            return None
+        st = repo.standing_at()
+        by = {x.id: x for x in repo.states()}
+    except (CheckpointError, OSError):
+        return None
+    while st is not None:
+        if matches(st.note):
+            return st.short
+        st = by.get(st.parent) if st.parent else None
+    return None
 
 
 def way_back(stage: str, *, calc, launched: bool) -> str:

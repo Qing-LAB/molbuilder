@@ -610,8 +610,9 @@ for an insulator only; a junction is metallic. **A Raman control is not
 drawn** when SIESTA is the engine — not drawn rather than defaulted off,
 because a control that silently does nothing is worse than an absent one: the
 user believes they asked for something. Its design is
+[`vibration.md`](?doc=engines/vibration.md) § 5.11, its science
 [`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
-§ 3, open (problem 5 of § 4b.7 below).
+§ 3 — not built (problem 5 of § 4b.7 below).
 
 **And for the junction work the more useful quantity is a different one again.**
 What modulates a current is not how a mode couples to light but how it couples
@@ -1171,8 +1172,9 @@ more the discussion adds: the
 local optical field at the molecule is not the incident field — the infrared
 is for light in vacuum, the field at the molecule taken as the incident one,
 an assumption the method states — and Raman brings in the metal's
-frequency-dependent dielectric response, which is why the Raman route is not
-built and its design is still open.
+frequency-dependent dielectric response: its route is designed
+([`vibration.md`](?doc=engines/vibration.md) § 5.11), not built, and how the
+metal's part behaves is measured with it (plan § 1ac, R1).
 
 **6. What this means for a held atom on PySCF — a correction to § 4a.5.**
 With atoms held, the infrared derivative is `Σ_k (∂μ/∂R_k)·L_k` over the

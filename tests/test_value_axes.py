@@ -85,6 +85,7 @@ def sol_calc(tree):
     req["execution"] = {"use_gpu": False, "diag_algorithm": "ELPA-1STAGE"}
     write_request(dest, req)
     env = Environment(
+        machine="this",                  # as a first prep names it
         scheduler=SLURM,
         topology=Topology(sockets=2, cores_per_socket=64,
                           gpus_per_node=None, gpu_type=None),
@@ -537,6 +538,7 @@ def flat_sol_calc(tree):
     req["execution"] = {"use_gpu": False, "diag_algorithm": "ELPA-1STAGE"}
     write_request(dest, req)
     env = Environment(
+        machine="this",                  # as a first prep names it
         scheduler=SLURM,
         topology=Topology(sockets=2, cores_per_socket=64,
                           gpus_per_node=None, gpu_type=None),

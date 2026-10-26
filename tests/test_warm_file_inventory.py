@@ -31,7 +31,7 @@ def _isolated(monkeypatch, tmp_path_factory):
     # exactly as a person does:  molbuilder jobset probe --write
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (cwd / "environment.json").write_text(
-        _Env(scheduler=SLURM,
+        _Env(machine="this", scheduler=SLURM,
              topology=_Topo(sockets=2, cores_per_socket=32),
              env_init={"activation": "conda activate",
                                 "preamble": "true"}).to_json()

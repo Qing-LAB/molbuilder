@@ -1,7 +1,7 @@
 """P4a — prep COMPOSES the transport calculation from its one citation.
 
 `engines/transport.md` § 3.1 and § 6.2: resolve the junction citation on
-the machine where prep runs (strict composition, ruling Q2 — a missing
+the machine where prep runs (strict composition, a missing
 or unconcluded relaxation is a refusal naming what to run first, never a
 trigger to run it); read the junction it holds — a cited run's folder
 through the run door, as the Results tab reads a run (`runs.run_of`,
@@ -221,7 +221,9 @@ def classify_citation(cited: Path) -> "CitedRun | CitedPair":
 
     CLASSIFYING IS NOT COMPOSING: a run still going, or one that ended with
     an error, is RECORDED here -- describing a transport calculation ahead
-    of its relaxation is legal -- and refused by :func:`compose_junction`.
+    of its relaxation is legal -- and refused by :func:`compose_junction`;
+    the describe doors refuse one that ended with an error first
+    (:func:`refuse_failed_citation`).
     """
     cited = Path(cited)
     if cited.is_file():
@@ -382,6 +384,25 @@ def resolve_citation(citation: str, tree_root: Path
             f"the junction citation {citation!r} names nothing under the "
             f"projects tree.  {CITATION_CONDITION}.")
     return cited, classify_citation(cited)
+
+
+def refuse_failed_citation(cited, citation: str) -> None:
+    """A CITATION NO PREP COULD EVER TAKE, refused when the calculation is
+    described, before anything is written (`engines/transport.md` § 3.1;
+    the user, 2026-10-25): a relaxation run that ended with an error.  Its
+    last geometry is whatever the engine left when it failed, and a folder
+    citing it could not be pointed at another run -- one calculation is one
+    structure.  A run still going is legal: a person may plan against a run
+    in flight, and prep refuses it should it fail."""
+    if (isinstance(cited, CitedRun) and cited.concluded is not None
+            and cited.exit_code not in (None, 0)):
+        raise ComposeError(
+            f"the cited relaxation {citation!r} ended with exit code "
+            f"{cited.exit_code} ({cited.concluded}) -- its last geometry is "
+            f"whatever the engine left when it failed, and a calculation "
+            f"citing it could never be prepared.  Launch the relaxation "
+            f"again and cite the run that finishes, or cite another "
+            f"relaxation (engines/transport.md 3.1).")
 
 
 def _with_transport(across, where: str) -> Tuple[str, str, str]:

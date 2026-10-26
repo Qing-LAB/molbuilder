@@ -116,7 +116,7 @@ def calc(tree):
     # The probe's answer, pre-seeded: machine.set_machine early-returns on an
     # existing environment.json, so the grid enumerates THIS topology.
     (dest / "environment.json").write_text(
-        Environment(scheduler=WORKSTATION,
+        Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
@@ -989,7 +989,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
     (dest / "environment.json").write_text(
-        Environment(scheduler=WORKSTATION,
+        Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
@@ -1085,7 +1085,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tree):
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
     (dest / "environment.json").write_text(
-        Environment(scheduler=WORKSTATION,
+        Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
@@ -1350,7 +1350,7 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tree):
                             source=str(tree / "h2.xyz")),
         dest)
     (dest / "environment.json").write_text(
-        Environment(scheduler=WORKSTATION,
+        Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1,
                                       cores_per_socket=4)).to_json() + "\n")
     with pytest.raises(PrepError) as e:
@@ -1397,7 +1397,7 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tree):
     req["stages"]["only"]["execution"] = {"threads": 3}
     write_request(dest, req)
     (dest / "environment.json").write_text(
-        Environment(scheduler=WORKSTATION,
+        Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4),
                     env_init=_ENTERS).to_json() + "\n")
     r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",

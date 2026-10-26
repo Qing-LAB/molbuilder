@@ -1392,6 +1392,28 @@ class UnknownTarget(Exception):
         return exc
 
 
+    @classmethod
+    def unnamed_copy(cls, bundle_dir) -> "UnknownTarget":
+        """This calculation's copy of its machine's record names NO machine
+        -- a state no prep writes (every prep names the machine it sets the
+        calculation to, `configuration.md` M-3): refused, never taken as
+        whatever machine is asked (the user, 2026-10-25).  Nothing in the
+        copy says which machine it describes, so no rewrite can name one:
+        the way on is the prep that names it, from the state saved before
+        the first."""
+        exc = cls.__new__(cls)
+        exc.name, exc.known = None, []
+        Exception.__init__(exc, (
+            f"this calculation's copy of its machine's record "
+            f"({calculation_record(bundle_dir).name}) names no machine, so "
+            f"which machine it is set to cannot be told -- every prep names "
+            f"it.\n"
+            f"  Go back to the state saved before its first prep "
+            f"({checkpoint_words(bundle_dir)}) and prep again, naming its "
+            f"machine with --target."))
+        return exc
+
+
 class AmbiguousTarget(Exception):
     """Several machines could be meant and nobody said which.
 
@@ -1585,8 +1607,12 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None
             if label == "calculation" and Path(path).is_file():
                 raise UnknownTarget.unreadable_copy(bundle_dir)
             continue
+        if label == "calculation" and env.machine is None:
+            # A COPY THAT NAMES NO MACHINE is no answer to *which machine*:
+            # an explicit error, never any target's (the user, 2026-10-25).
+            raise UnknownTarget.unnamed_copy(bundle_dir)
         if label == "calculation" and target is not None \
-                and env.machine is not None and env.machine != target:
+                and env.machine != target:
             # SET AT ITS FIRST PREP, AND IT DOES NOT CHANGE (M-3; user,
             # 2026-10-02).  The copy names its machine, so the check is a
             # name: `this` is checked like any other, and a re-probe of the

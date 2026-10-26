@@ -346,10 +346,11 @@ def _junction_slot(slots_opt, root):
     NAME=PATH, from the projects root or absolute inside it), fenced to the
     tree and classified through the door prep composes through
     (`compose.resolve_citation`): a citation that cannot compose is refused
-    at describe, naming what is missing (strict composition, Q2)."""
+    at describe, naming what is missing (strict composition)."""
     from pathlib import Path as _P
 
-    from ..transport.compose import ComposeError, resolve_citation
+    from ..transport.compose import (ComposeError, refuse_failed_citation,
+                                     resolve_citation)
     slots = {}
     for entry in slots_opt:
         name_, sep, cite = entry.partition("=")
@@ -377,6 +378,9 @@ def _junction_slot(slots_opt, root):
                 f"root.")
     try:
         resolved, cited = resolve_citation(str(raw), root)
+        # A RUN THAT FAILED is refused here, before anything is written
+        # (`engines/transport.md` § 3.1).
+        refuse_failed_citation(cited, str(raw))
     except ComposeError as exc:
         raise click.ClickException(str(exc))
     return str(resolved.relative_to(root)), resolved, cited
@@ -571,11 +575,16 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
     except ReuseError as exc:
         raise click.ClickException(str(exc))
     # WHAT A FLAG SETS, as on any describe: the voltages with their
-    # treatment, or the treatment alone.
+    # treatment, or the treatment alone.  Voltages typed with no treatment
+    # keep the finished calculation's, as the Transport tab does
+    # (`engines/transport.md` § 2a.16) -- a single voltage states none.
     said = {}
     if bias_opt:
-        said = {"bias": _bias_of(bias_opt),
-                "low_bias_approximation": low_bias_approximation}
+        bias = _bias_of(bias_opt)
+        said = {"bias": bias, "low_bias_approximation": (
+            low_bias_approximation if low_bias_approximation is not None
+            else finished.task.low_bias_approximation if len(bias) > 1
+            else None)}
     elif low_bias_approximation is not None:
         said = {"low_bias_approximation": low_bias_approximation}
     engine = engine or finished.task.engine
@@ -733,7 +742,7 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
               help="transport only, with several --bias points: with the "
                    "approximation, the device and the transmission run once, "
                    "at 0 V, and each voltage's current is computed from T(E, 0) "
-                   "(linear response); without it, every voltage gets its own "
+                   "-- T(E, V) taken as T(E, 0); without it, every voltage gets its own "
                    "device SCF and transmission (engines/transport.md 2a.10).  "
                    "Required with several points, never inferred.")
 @click.option("--window", "window_opt", default=None, metavar="LO,HI",
@@ -2890,8 +2899,7 @@ def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
     engines' vocabularies name scratch (TranSIESTA's leads' Green's
     functions, `*.TSGFL` / `*.TSGFR`): recomputed by every run, never
     carried, never saved by a checkpoint.  A run's walk empties them as it
-    ends; a run that stopped first, or one prepared before 2.22.0, leaves
-    them behind.  Listed with each file's stage and size; ``--empty``
+    ends; a run that stopped first leaves them behind.  Listed with each file's stage and size; ``--empty``
     removes them from every run not queued or running, after one question
     (job-system.md § 5.3)."""
     from ..units import size_words

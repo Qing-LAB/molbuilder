@@ -1808,7 +1808,7 @@ prepared tight: 02_tight/run-0
   resources: mpi_np 4 | omp 6
 …
 next -- launch the group that can go, each group one job:
-    molbuilder jobset launch task --bundle bdt_au --mode direct   # here
+    molbuilder jobset launch task --bundle bdt_au --mode direct   # runs directly on this machine
 ```
 
 **Printing what it resolved is what makes `launch` a plain yes.** It is the only
@@ -2775,6 +2775,7 @@ and in a remapped pair's sidecar, never a file of its own
 | `warm-files.toml` — only: a person writes one | this calculation's own restart-file list | a person, from molbuilder's list for the engine | `warmfiles.warm_list` | source |
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
 | `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.of` | derived |
+| `prepared-with.json` | what each prepared stage was prepared with — its settings, points and run card, merged per stage — which `status` compares with its records now | prep (`jobset.prepared_with.record`) | `jobset.prepared_with.changes` | record |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
 | `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
 | `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines.pseudo_dir`, `materialize`); `molbuilder describe --psml-lib` | `pseudos.psml_sources` | input |

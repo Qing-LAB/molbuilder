@@ -71,7 +71,7 @@ def sweep(isolated_projects_root, monkeypatch):
     from conftest import write_pseudos
     write_pseudos(calc, ["H"])
     (calc / "environment.json").write_text(
-        Environment(scheduler=WORKSTATION,
+        Environment(machine="this", scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),

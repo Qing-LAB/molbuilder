@@ -135,10 +135,10 @@ launch_refused = ["`medium` continues from the newest attempt of `coarse`", "whi
 launch_writes_nothing = true
 
 [[case]]
-name = "a prepared stage is still what the description gives at its first launch -- a run card changed since its prep is refused, naming its group's prep again"
+name = "a run card changed since a stage's prep is said by status -- changed since prepared, the value was and now, and its group's prep -- and its launch sends what prep wrote (job-system.md, The task, Changed since prepared)"
 saved = { execution = { mpi_np = 4, omp_threads = 1 } }
 launch = []
-launch_refused = ["`coarse` was prepared from the description as it stood then", "H2_01_coarse.run.sh", "prepare its group again -- it was never launched", "molbuilder jobset prep task --group 1"]
+after_launch = { status_says = ["changed since prepared: coarse: run card mpi_np: 2 → 4 -- prepare it again", "molbuilder jobset prep task --group 1"] }
 
 [[case]]
 name = "a group's first launch saves the folder's state at the send, before anything is written, and says which -- the state a redo of the group restores, named though the scheduler then refuses the send -- empties its run whole and gives prep's own files back as they lie, and records what each stage took: the first stage, nothing"
@@ -418,6 +418,15 @@ launched = ["coarse"]
 changed = { overrides = { coarse = { mesh_cutoff = 400.0 } } }
 kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh"]
 refused = ["stage 'coarse' was launched, and its deck rendered now is not the calculation its runs ran", "MeshCutoff"]
+
+[[case]]
+name = "...and its way back starts the group from the beginning: the folder saved as it stands, the state saved before its first launch restored by its id, its prep (the user, 2026-10-25)"
+before = [["prep", "task", "--group", "1"]]
+first_launch_refused = true
+launched = ["coarse"]
+changed = { overrides = { coarse = { mesh_cutoff = 400.0 } } }
+refused = ["start group 1 (coarse) from the beginning", "molbuilder checkpoint save -p", "molbuilder jobset prep task --group 1"]
+restores_state = "before launch task group 1 (coarse)"
 
 [[case]]
 name = "...and on the flat layout, where its runs share its folder, a launched stage is not prepared again"

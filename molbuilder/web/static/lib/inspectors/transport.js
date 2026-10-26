@@ -159,6 +159,9 @@ const WORKSPACE_TAG = "results:transport";
             "Transport — " + (rec.label || "(unlabelled)")));
         head.appendChild(_el("p", "transport-sub",
             rec.treatment
+            /* THE FLAG ITSELF, in the record's words (`record.
+             * LOW_BIAS_SAID`; § 2a.10, *The labelling rule*). */
+            + " · " + rec.low_bias_said
             + (state.nFrames > 1 ? " · " + state.nFrames + " frames" : "")
             + " · " + pts.length + " point" + (pts.length === 1 ? "" : "s")
             + " with a transmission"
@@ -533,13 +536,13 @@ const WORKSPACE_TAG = "results:transport";
         const table = _el("table", "num-table transport-iv");
         const head = _el("tr");
         const iv = rec.iv || {};
-        const computed = iv.computed === "linear-response";
+        const computed = iv.computed === "low-bias-approximation";
         const n = state.nFrames;
         /* THE CURRENT IS THE JUNCTION'S TOTAL, both spin channels, beside
          * the figure TBtrans printed -- one channel's (`engines/
          * transport.md` § 2a.4; `record.py` CURRENT_MEANS).  Under the
          * low-bias approximation the record computed it from T(E, 0) for
-         * each listed voltage (`record.linear_response_iv`). */
+         * each listed voltage (`record.low_bias_iv`). */
         [n > 1 ? "Point" : "Bias [V]", "G(E_F) [G0]",
          computed ? "Current, computed from T(E, 0) [A]" : "Current, total [A]",
          // Under the approximation TBtrans ran at 0 V only: a dash at the
@@ -1171,10 +1174,10 @@ const WORKSPACE_TAG = "results:transport";
         /* I-V: the frame's curve, or one per frame, its points clickable, the
          * selected one marked.  Under the low-bias approximation each curve
          * is the record's own I(V) computed from that frame's T(E, 0)
-         * (`record.linear_response_iv`), one value per listed voltage, the
+         * (`record.low_bias_iv`), one value per listed voltage, the
          * measured 0 V slice its only point (`engines/transport.md`
          * § 2a.12). */
-        const computed = state.iv && state.iv.computed === "linear-response";
+        const computed = state.iv && state.iv.computed === "low-bias-approximation";
         const frames = all("iv") ? Array.from({ length: n }, (_, f) => f) : [frame];
         const ivTraces = frames.map((f) => {
             const rows = computed

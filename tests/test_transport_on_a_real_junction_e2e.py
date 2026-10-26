@@ -1460,8 +1460,12 @@ def test_a_point_added_to_a_launched_rung_is_refused(junction):
     assert "its points now are not the ones its runs ran" in said.output, \
         said.output
     assert "added: v0.4" in said.output, said.output
-    # THE WAY BACK, named: the folder's saved states.
-    assert "molbuilder checkpoint list" in said.output, said.output
+    # THE WAY BACK, whole: the group started from the beginning -- the
+    # folder saved, the state before its first launch restored, its prep.
+    for line in ("molbuilder checkpoint save -p",
+                 "molbuilder checkpoint restore -p",
+                 "molbuilder jobset prep task --group"):
+        assert line in said.output, said.output
     # NOTHING WRITTEN below the stage: no point's folder, no deck, as the
     # calculation's files read before and after the prep.
     from support.real_runs import stage_status
@@ -3638,9 +3642,9 @@ def reused(junction, tmp_path_factory):
         _typed(again, "prep bare", "prep", "task")
         out["again"] = again
 
-        # A RUNG OF POINTS PREPARED, ITS WINDOW CHANGED BEFORE ITS FIRST
-        # LAUNCH: the launch asks whether each point's deck is still what
-        # prep writes now (R-L15).
+        # A RUNG OF POINTS PREPARED, ITS ENERGY POINTS CHANGED BEFORE ITS
+        # FIRST LAUNCH, on Task setup's Save: `status` says it
+        # (`job-system.md`, *The task*, *Changed since prepared*).
         from support.road import read_request, save_both
         edited = described("edited", "--window", "-2,2", "--finer", "3")
         _taken(edited, "prep", "prep", "task", *every_group,
@@ -3654,8 +3658,6 @@ def reused(junction, tmp_path_factory):
                                     | {"transmission_n_points"})
         r = save_both(edited.bundle, task_now, read_request(edited.bundle))
         assert r.status_code == 200, r.get_json()
-        _typed(edited, "launch transmission", "launch", "task", "--group",
-               "3", "--mode", "direct", "--foreground", "--yes")
         out["edited"] = edited
 
         # THE TRANSPORT TAB'S DESCRIBE of the finished calculation's folder.
@@ -3899,7 +3901,7 @@ def test_a_result_that_did_not_finish_is_computed_here_and_named(reused):
     reusing one whose transmission was stopped in its loop -- the seed, the
     leads and the device copied in; the transmission prepared here, the
     plan naming its newest run and that it failed; no older run stands in;
-    and the plan warns of the result that did not finish, how it ended, and
+    and the plan warns of the result that is not done, how it ended, and
     that it can mean a problem in the physics or in the parameter choices
     (*The manifest*; the user, 2026-10-25).  The silent failure: a result
     that never finished copied in as if it had."""
@@ -3914,7 +3916,8 @@ def test_a_result_that_did_not_finish_is_computed_here_and_named(reused):
     (warned,) = [ln.strip() for ln in bare.splitlines()
                  if ln.strip().startswith("warning:")]
     assert warned.startswith("warning: S-stopped-in-its-loop/"
-                             "05_transmission/run-0 did not finish") \
+                             "05_transmission/run-0 holds a result that is "
+                             "not done") \
         and "stopped before its end" in warned \
         and "a problem in the physics or in the parameter choices" \
         in warned, warned
@@ -4196,16 +4199,59 @@ def test_an_extension_keeps_what_its_finished_calculation_computed_once(
     assert answer["manifest"][0].startswith("reuses P/transport/T"), answer
 
 
-def test_a_rung_of_points_changed_after_its_prep_is_refused_at_launch(reused):
-    """`job-system.md` R-L15: a prepared stage is still what the
-    description gives at its first launch -- for a rung of points, each
-    point's deck too.  The silent failure: a transmission window changed on
-    Task setup after its prep, and the launch running every point on the old
-    window, the record then laying the old grid out as the new."""
-    said = reused["edited"].said["launch transmission"]
-    assert said.exit_code != 0, said.output
-    assert "prep would write" in said.output, said.output
-    assert "05_transmission/run-0/v0/" in said.output, said.output
+def test_a_launched_groups_run_card_change_is_prepared_again_for_its_request(
+        junction):
+    """`job-system.md`, *The task*, *Changed since prepared*, the launched
+    row; `job-request.md` § 5: a launched group whose job request alone
+    changed -- the ranks of the finished junction's transmission raised --
+    is said *changed since prepared* by the status door, each difference the
+    run card's, and its next step is its prep again with its runs kept,
+    never the three lines that start the group from the beginning.  The
+    silent failure: a person following the status to the restore, throwing
+    the finished runs away for a bigger request."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.prepared_with import RUN_CARD
+    from molbuilder.jobset.runstatus import jobset_status
+    from support.real_runs import RealRun, copy_of, stage_status
+    from support.road import read_request, write_request
+
+    def more_ranks(copy):
+        req = read_request(copy.bundle)
+        req["execution"]["mpi_np"] = int(req["execution"]["mpi_np"]) + 1
+        write_request(copy.bundle, req)
+
+    base = RealRun(tree=junction.tree,
+                   bundle=junction.tree / "P" / "transport" / "T")
+    made = copy_of(base, "ranks", more_ranks)
+    said = stage_status(made.bundle, "transmission").changed
+    assert said and all(d.kind == RUN_CARD for d in said), said
+    step = next(s for s in jobset_status(open_calculation(made.bundle)).steps
+                if "transmission" in s.stages)
+    assert step.state == "changed since prepared", step
+    assert "its runs are kept" in step.words, step.words
+    assert any("prep task --group" in ln for ln in step.lines), step.lines
+    assert not any("checkpoint restore" in ln for ln in step.lines), step.lines
+
+
+def test_a_rung_of_points_changed_after_its_prep_is_said_by_status(reused):
+    """`job-system.md`, *The task*, *Changed since prepared*: a rung of
+    points' energy points changed on Task setup after its prep -- the
+    status door says the value, was and now, and its group's next step is
+    its prep; nothing is refused, the launch sending what prep wrote.  The
+    silent failure: a transmission's prepared decks holding the old energy
+    points with nothing saying so."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.runstatus import jobset_status
+    from support.real_runs import stage_status
+    bundle = reused["edited"].bundle
+    said = stage_status(bundle, "transmission").changed
+    assert any(d.said.startswith("transmission_n_points: ")
+               and d.said.endswith("→ 7") for d in said), said
+    step = next(s for s in jobset_status(open_calculation(bundle)).steps
+                if "transmission" in s.stages)
+    assert step.state == "changed since prepared", step
+    assert any(ln.startswith("molbuilder jobset prep task --group")
+               for ln in step.lines), step
 
 
 def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):

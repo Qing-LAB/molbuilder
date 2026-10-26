@@ -10,7 +10,7 @@ is the shape of the "stomp" bugs (§ 3.3).
 benchmark) are the verb's two entries, and both doors call them with the
 calculation they opened once (`calculation.open`, A16), checked here
 (:func:`checked`), planning each stage with the one member planner
-(:func:`plan_stage` -- which launch asks too, to compare), then saves,
+(:func:`plan_stage`), then saves,
 writes and records.  The planner hands its answer to
 :func:`prep_calculation` -- the five steps, on the described route: a
 description plus its template in, one rendered deck and wrapper **per
@@ -48,6 +48,7 @@ from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from .plan import FILENAME as _PLAN_FILE
+from . import prepared_with
 from ..runfiles import RunNames
 from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
 from .machine import machine_record, require_activation, set_machine
@@ -965,7 +966,7 @@ def prep_calculation(calc, stage: Optional[str], *,
                      emit_sbatch: bool = True,
                      opened: Optional[list] = None,
                      findings: Optional[list] = None,
-                     continuation=None, quiet: bool = False,
+                     continuation=None,
                      walks: Optional[dict] = None,
                      notes: Optional[list] = None,
                      copied: bool = False,
@@ -1018,8 +1019,7 @@ def prep_calculation(calc, stage: Optional[str], *,
     ``findings``, when given, receives what each deck's checks said
     (`script_emit.prepare_deck`) -- the terminal also reads them on stderr as
     each deck renders; the Task setup tab reads them from here, through the
-    one prep entry's answer.  ``quiet`` says nothing on stderr -- launch's
-    check, which plans the stage again only to compare (`plan_stage`).
+    one prep entry's answer.
 
     ``plan`` (`jobset.planned.Plan`) receives everything this prep writes,
     and is carried out by the entry, which saves the folder's state between
@@ -1036,7 +1036,7 @@ def prep_calculation(calc, stage: Optional[str], *,
         return _plan_calculation(
             calc, stage, resolved, env=env, emit_sbatch=emit_sbatch,
             opened=opened, findings=findings,
-            continuation=continuation, plan=plan, quiet=quiet, walks=walks,
+            continuation=continuation, plan=plan, walks=walks,
             notes=notes, copied=copied, contours=contours)
     finally:
         PLANNED.reset(scope)
@@ -1048,7 +1048,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                       opened: Optional[list] = None,
                       findings: Optional[list] = None,
                       continuation=None,
-                      plan, quiet: bool = False,
+                      plan,
                       walks: Optional[dict] = None,
                       notes: Optional[list] = None,
                       copied: bool = False,
@@ -1186,7 +1186,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         def flush(self):
             self._w.flush()
 
-    _once = _OncePerLine(_io.StringIO() if quiet else _sys.stderr)
+    _once = _OncePerLine(_sys.stderr)
     _scope = REPORT_STREAM.set(_once)
     try:
         for element in pset:
@@ -1345,18 +1345,10 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                 # files its first launch copies (`engines/vibration.md`
                 # § 5.2a) -- its attempt, or on the flat layout its name.
                 written_at=(None if element.is_trial or continuation is None
-                            else continuation.source or continuation.run),
-                # WHAT ITS PREP WAS TOLD beside the description, so launch
-                # can plan it again as this prep did (`job-system.md` § 6.0).
-                asked=(None if element.is_trial else {
-                    "allocation": {f: getattr(allocation, f)
-                                   for f, src in sorted(
-                                       resolved.sources.items())
-                                   if src == "flag"},
-                    "env": env, "emit_sbatch": bool(emit_sbatch)}))))
+                            else continuation.source or continuation.run))))
     finally:
         REPORT_STREAM.reset(_scope)
-    if _once.dropped and not quiet:
+    if _once.dropped:
         # TRUE OF A PREVIEW TOO, which writes nothing: the report is the
         # deck's, written with it when the prep is.
         print(f"  (each warning shown once; {_once.dropped} repeat(s) "
@@ -1580,8 +1572,8 @@ def as_written(path, data: bytes) -> bool:
     """Whether the file at ``path`` holds ``data``, the stamps of both
     masked (when and by which build each was written,
     `deck_record.without_stamps`) -- the one test of *what prep writes now is
-    what is there*, for a stage's own files (R-L15) and a group's header
-    (R-L16)."""
+    what is there*, for a stage's own files and a group's header, asked by
+    prep of a group prepared and never launched."""
     from ..deck_record import without_stamps
     path = Path(path)
     return path.is_file() and (without_stamps(path.read_bytes())
@@ -1589,7 +1581,7 @@ def as_written(path, data: bytes) -> bool:
 
 
 def prepared_differs(calc, plan, prepared, planned) -> List[str]:
-    """THE PREPARED STAGE AGAINST WHAT ``plan`` WRITES FOR IT NOW (R-L15):
+    """THE PREPARED STAGE AGAINST WHAT ``plan`` WRITES FOR IT NOW:
     every file its run takes, as written (:func:`as_written`) -- by the
     catalogue, an input its run reads or a file derived for the stage or
     its run: its deck, its scripts and headers, the bundles beside them
@@ -1600,9 +1592,9 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
     anew is the next launch's, R-L25), and none removed; and its row in
     `job-set.json`, its members aside -- the run settings every script
     states.  Each that differs, named from the calculation; none when the
-    plan writes the stage as it stands.  The one comparison a stage's
-    launch asks (`submit._as_described`) and a prep of a group prepared and
-    never launched (`job-system.md`, *The task*, 2).  ``prepared`` is the
+    plan writes the stage as it stands.  The comparison a prep of a group
+    prepared and never launched asks (`job-system.md`, *The task*, 2);
+    launch compares nothing (§ 6.0).  ``prepared`` is the
     stage's row on disk, ``planned`` the row the plan holds for it
     (``None`` when it planned none)."""
     from ..deck_record import same_calculation
@@ -1810,8 +1802,8 @@ def _seeded_progress_channel(folder: Path, plan) -> List[Path]:
     `runfiles.find_by_role` reads a folder on disk, each name's own role,
     the catalogue's ``output`` column saying which roles are the progress
     channel (R-RO1)."""
-    from ..runfiles import WRITTEN, role_of
-    roles = {a.role for a in WRITTEN if a.output == "progress"}
+    from ..runfiles import progress_roles, role_of
+    roles = set(progress_roles())
     return [f for f in plan.glob(folder, "*") if role_of(f.name) in roles]
 
 
@@ -1986,8 +1978,7 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
              seam: EngineSeam, base_dir=None,
              finish: Optional[str] = None,
              placement: Optional[dict] = None,
-             written_at: Optional[str] = None,
-             asked: Optional[dict] = None) -> Job:
+             written_at: Optional[str] = None) -> Job:
     """One element of the parameter set as one :class:`Job`.
 
     ``resources`` is **copied from the element**, never re-derived: the element
@@ -2016,7 +2007,7 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     return Job(name=name, script=script, resources=element.resources,
                warm=warm, traits=traits, point=dict(element.point),
                finish=finish, resumes=resumes, placement=placement,
-               written_at=written_at, asked=dict(asked or {}))
+               written_at=written_at)
 
 
 def _rung_kind(task, stage_name: Optional[str]) -> str:
@@ -2230,9 +2221,7 @@ class PrepAnswer:
     #: prep checks its members' shared allocation by, before anything is
     #: written (`group.envelope`).
     job: Optional[object] = None
-    #: A PREVIEW'S PLAN, whole (`jobset.planned.Plan`) -- what launch
-    #: compares a prepared stage's files with (`submit._as_described`).
-    #: Not on the wire.
+    #: A PREVIEW'S PLAN, whole (`jobset.planned.Plan`).  Not on the wire.
     plan: Optional[object] = None
     #: WHERE EACH VALUE CAME FROM, the one fold's answer
     #: (`prep_inputs.fold_allocation`) -- what a prep that writes no header
@@ -2469,8 +2458,7 @@ class Described:
         return self.calc.template_text
 
 
-def checked(base, described: Described, *, target,
-            environment=None) -> Described:
+def checked(base, described: Described, *, target) -> Described:
     """CHECKPOINTS 3 AND 4 (`job-system.md` § 5.0), on ``described``:
 
     3 · § 6.6's PREFLIGHT, at its live moment (R5, 2026-08-12): prep on a
@@ -2483,9 +2471,7 @@ def checked(base, described: Described, *, target,
     machine's -- which says how a shell enters an environment there, or the
     prep is refused before anything is written (W52); and WHICH FILES
     ANSWERED, as they were read -- what STAGE-PLAN.md, the pipeline log and
-    the ledger's *prepared* line each say (`configuration.md` § 2.2).
-    ``environment`` is the record a caller already read -- launch's, once
-    for the whole launch (`submit._machine_of`) -- never read again."""
+    the ledger's *prepared* line each say (`configuration.md` § 2.2)."""
     from ..runtime_config import config_provenance
     from ..validation.task import preflight
     base = Path(base).resolve()
@@ -2499,8 +2485,7 @@ def checked(base, described: Described, *, target,
             "the description or its job request fails its own preflight "
             "(engines/stages.md § 6.6; execution/job-request.md § 7):\n  - "
             + "\n  - ".join(i.message for i in errors))
-    described.environment = (environment if environment is not None
-                             else machine_record(base, target))
+    described.environment = machine_record(base, target)
     require_activation(target, described.environment, base=base)
     described.provenance = config_provenance(
         project_dir=base, target=target, record=described.environment)
@@ -2516,7 +2501,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                target: Optional[str] = None, allocation=None,
                from_attempt: Optional[str] = None, env: Optional[str] = None,
                emit_sbatch: bool = True, plan, notes: Optional[list] = None,
-               continuation=DECIDE, quiet: bool = False,
+               continuation=DECIDE,
                on_inputs=None, copied: bool = False,
                contours=DECIDE) -> PrepAnswer:
     """**THE MEMBER PLANNER** -- one stage, planned into ``plan``, nothing
@@ -2529,14 +2514,12 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     job, its fit said); a
     force-constant stage's `relax` run -- decided (``continuation``
     :data:`DECIDE`: its newest run, which must have finished, or the one
-    ``from_attempt`` names, taken as said) or given (launch's check: the
-    run its prep took); then the steps planned (:func:`prep_calculation`)
-    and the answer read off the plan.
+    ``from_attempt`` names, taken as said); then the steps planned
+    (:func:`prep_calculation`) and the answer read off the plan.
 
     Asked by every door that plans a stage: `prep task` for each member of
-    the groups it picks, into its one plan; `prep bench`; and launch, which
-    plans a stage again as its prep did to compare (``quiet``: nothing on
-    stderr).  The doors save, write and record; this never does.
+    the groups it picks, into its one plan; `prep bench`.  The doors save,
+    write and record; this never does.
     ``described`` is the calculation as the door opened and checked it
     (`calculation.open`, :func:`checked`); ``on_inputs`` is called
     once the inputs and their checks stand, before anything is rendered --
@@ -2691,7 +2674,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     dirs = prep_calculation(pcalc, stage, env=env, emit_sbatch=emit_sbatch,
                             opened=opened, findings=deck_findings,
                             continuation=continuation, plan=plan,
-                            resolved=resolved, quiet=quiet, walks=walks,
+                            resolved=resolved, walks=walks,
                             notes=notes, copied=copied, contours=contours)
     flat = not resolved.shape.keeps_attempts_as_directories
 
@@ -2823,8 +2806,8 @@ def _contours_now(calc, stage: str) -> Optional[dict]:
     finished one computes, where it is not its window whole
     (`engines/transport.md` § 2a.16): for a stage launched, as the decks its
     prep wrote record it -- never decided again; else decided on the
-    calculation as it is (`reuse.decide`) -- what a launch's check plans
-    with.  ``None`` for any other stage."""
+    calculation as it is (`reuse.decide`).  ``None`` for any other
+    stage."""
     from .materialize import ever_launched
     from .reuse import SHARING_RUNG, decide, point_key
     if stage != SHARING_RUNG or not calc.task.reuses:
@@ -3136,8 +3119,7 @@ def sequence_header(base, task, request, numbers: Sequence[int], jobs_of,
     point -- ``points_of[n]`` of them), their one request
     (`group.sequence_request`: one queue, the largest of each, the walls
     summed), by the one header of a walk (:func:`walk_header_of`).  Asked by
-    prep's ``--one-job`` and by the sequence's launch, which compares what
-    it sends with what prep would write now.  Raises :class:`PrepError`
+    prep's ``--one-job``.  Raises :class:`PrepError`
     naming what the groups cannot share (R-P22)."""
     from .group import (GroupError, own_request, sequence_names,
                         sequence_request)
@@ -3567,9 +3549,9 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             .to_wire())
     # 2d · NOTHING TO WRITE (`job-system.md`, *The task*, 2; checkpoint 2a):
     #      a group prepared, never launched, and planned now as it stands --
-    #      each member's decks, scripts and row (`prepared_differs`, the
-    #      launch's own comparison), its members and the group's header, as
-    #      its first launch asks it (R-L16) -- is left out of the save, the
+    #      each member's decks, scripts and row (`prepared_differs`), its
+    #      members, its record of what it was prepared with and the group's
+    #      header -- is left out of the save, the
     #      writing and the record, said with its next step; the groups that
     #      differ are prepared without it, a preview's plan the same as its
     #      Prep's.  A sequence of groups (`--one-job`) is one job: nothing to
@@ -3603,6 +3585,15 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                                                 was, a.job)
             if not same_members(was.members or [was.name], members[n]):
                 differs[a.stage].append("its group's members")
+            # ITS RECORD OF WHAT IT WAS PREPARED WITH, as the records give
+            # it now (`prepared_with.changes`) -- a group status calls
+            # changed since prepared is never one with nothing to write.
+            recorded, since = prepared_with.changes(description.calc,
+                                                    a.stage)
+            if not recorded or since:
+                differs[a.stage].append(
+                    f"its record of what it was prepared with "
+                    f"({prepared_with.FILENAME})")
             same = same and not differs[a.stage]
         if fresh:
             return False
@@ -3679,6 +3670,10 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             j.members = list(members[g]) if len(members[g]) > 1 else None
     js.write(base, plan=the_plan)
     answers = [a for n in numbers for a in previews[n]]
+    #      WHAT EACH WAS PREPARED WITH, for `status` to say when its records
+    #      give otherwise (`job-system.md`, *Changed since prepared*).
+    prepared_with.record(description.calc, [a.stage for a in answers],
+                         plan=the_plan)
     if sequence:
         answers[-1].sequence = sequence_said
     #      THE REVIEWABLE PLAN, ONCE: the job set as this prep leaves it,

@@ -38,7 +38,7 @@ def _wrapper(tmp_path):
     # every job carries (`engines/template.md` § 5.4).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (tmp_path / "environment.json").write_text(
-        _Env(scheduler=SLURM,
+        _Env(machine="this", scheduler=SLURM,
              topology=_Topo(sockets=2, cores_per_socket=32),
              env_init={"activation": "conda activate",
                                 "preamble": "true"}).to_json()

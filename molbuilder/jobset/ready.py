@@ -59,10 +59,17 @@ class Readiness:
     #: alone) -- ``None`` when not prepared.
     job_members: Optional[List[str]] = None
     #: A stage prepared and never launched by ANOTHER molbuilder, in words
-    #: (``molbuilder 2.17.1``) -- its first launch plans it again as prep
-    #: would now and refuses it if prep would write it differently (R-L15),
-    #: so its next step says so -- ``None`` when this one prepared it.
+    #: (``molbuilder 2.17.1``), said beside its state -- ``None`` when this
+    #: one prepared it.
     prepared_by: Optional[str] = None
+    #: CHANGED SINCE PREPARED (`job-system.md`, *The task*): each value its
+    #: records give now otherwise than its prep recorded, ``name: was →
+    #: now`` (`prepared_with.changes`) -- ``[]`` when none does, and for a
+    #: stage not prepared.
+    changed: list = field(default_factory=list)      # `prepared_with.Difference`
+    #: Prepared, and its prep recorded no values (prepared before 2.41.0):
+    #: nothing is compared, and that is said.
+    unrecorded: bool = False
 
     @property
     def state(self) -> str:
@@ -75,10 +82,20 @@ class Readiness:
     def detail(self) -> str:
         """One line beside the state: what a ready stage takes, the first
         line of what one waiting waits for."""
-        if self.launched:
-            return ""
         from .commands import reason_of
+        from .prepared_with import UNRECORDED_SAID
+        if self.launched:
+            # A LAUNCHED STAGE SAYS IT TOO (`job-system.md`, *The task*,
+            # the launched row): its runs computed the description as it
+            # was; the way on is its group's step.
+            return ("changed since prepared: "
+                    + "; ".join(d.said for d in self.changed)
+                    if self.changed else "")
         first = reason_of(self.why or "")
+        if self.prepared and self.changed:
+            return ("changed since prepared: "
+                    + "; ".join(d.said for d in self.changed)
+                    + " -- prepare it again")
         if self.prepared:
             if not self.ready:
                 return {"regrouped": "its job's members changed: ",
@@ -86,11 +103,11 @@ class Readiness:
                         "again": "prepare its group again: "}.get(
                             self.blocked, "waits for: ") + first
             return ("ready to launch"
-                    + (f" (prepared by {self.prepared_by}: its launch "
-                       f"compares it with what prep writes now)"
+                    + (f" (prepared by {self.prepared_by})"
                        if self.prepared_by else "")
                     + " -- " + ("; ".join(self.takes) if self.takes else
-                                "takes nothing from another run"))
+                                "takes nothing from another run")
+                    + (f"; {UNRECORDED_SAID}" if self.unrecorded else ""))
         if not self.ready:
             return "waits before it can be prepared: " + first
         return "; ".join(self.takes) if self.takes else "builds on nothing"
@@ -157,6 +174,15 @@ class GroupAnswer:
                 and self.members_changed is None
                 and self.held is None
                 and all(a.prepared or a.ready for a in self.answers))
+
+    @property
+    def since_prepared(self) -> list:
+        """CHANGED SINCE PREPARED: each value that differs, by member --
+        ``tight: mesh_cutoff: 300 → 400`` (:attr:`Readiness.changed`), each
+        keeping what it is of (`prepared_with.Difference.kind`)."""
+        from .prepared_with import Difference
+        return [Difference(d.kind, f"{a.stage}: {d.said}")
+                for a in self.answers for d in a.changed]
 
     @property
     def prepared_by(self) -> Optional[str]:
@@ -675,13 +701,20 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
             # rows stand.
             return Readiness(stage, group, prepared=True, why=str(exc),
                              blocked="unreadable", job_members=members)
+        # CHANGED SINCE PREPARED -- its records now against what its prep
+        # recorded, a read (`prepared_with.changes`; `job-system.md`, *The
+        # task*): said, never a refusal.
+        from .prepared_with import changes
+        recorded, changed = changes(calc, stage)
+        since = dict(changed=changed, unrecorded=not recorded)
         if launched:
             return Readiness(stage, group, prepared=True, launched=True,
-                             job_members=members)
+                             job_members=members, **since)
         why = regrouped(calc, stage)
         if why:
             return Readiness(stage, group, prepared=True, why=why,
-                             blocked="regrouped", job_members=members)
+                             blocked="regrouped", job_members=members,
+                             **since)
         cont, gather, why = first_launch_takes(calc, stage, job,
                                                verdict=verdict)
         if why:
@@ -692,11 +725,12 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
                      and force_constant_stage(task, stage))
             return Readiness(stage, group, prepared=True, why=why,
                              blocked="again" if again else "waits",
-                             job_members=members)
+                             job_members=members, **since)
         return Readiness(stage, group, prepared=True, ready=True,
                          takes=_takes_lines(cont, gather),
                          job_members=members,
-                         prepared_by=_prepared_by_another(calc, job))
+                         prepared_by=_prepared_by_another(calc, job),
+                         **since)
     if group is not None and jobset is not None:
         # PUT INTO A LAUNCHED GROUP it was not launched with: its prep, and
         # its group's launch, are refused -- said here, with the way on.
@@ -866,8 +900,11 @@ def groups(request, answers: List[Readiness]) -> List[GroupAnswer]:
 
 def prep_offer(gs: List[GroupAnswer]) -> List[int]:
     """The groups `prep task` offers pre-selected (`job-system.md`, *The
-    task*): every one not prepared as described and preparable."""
-    return [g.number for g in gs if not g.prepared and g.preparable]
+    task*): every one not prepared as described, or never launched and
+    changed since prepared, and preparable."""
+    return [g.number for g in gs
+            if (not g.prepared or (g.since_prepared and not g.launched))
+            and g.preparable]
 
 
 def launch_offer(gs: List[GroupAnswer]) -> List[int]:

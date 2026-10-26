@@ -384,8 +384,7 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
     if sent.time is None:
         # A HEADER THAT STATES NO WALL is not one prep wrote: prep states
         # every job's wall or refuses (R-P13).  Refused here, the header
-        # named, as a prepared stage that is not what prep writes is
-        # (R-L15, R-L16).
+        # named (R-L44).
         raise SubmitError(
             f"{header} states no wall ({kind.name}'s `wall` directive), so "
             f"the launch cannot say what it sends -- prep writes one into "
@@ -952,85 +951,17 @@ def _redo(calc, job) -> str:
     return way_back(job.name, calc=calc, launched=ever_launched(calc, job))
 
 
-def _as_described(calc, job, *, described, written_at=None):
-    """THE PREPARED STAGE IS STILL WHAT THE DESCRIPTION GIVES
-    (`job-system.md` § 6.0, step 1) -- asked at a first launch and at a
-    launch that takes inputs anew: the stage planned again as its prep
-    planned it, quietly (`prep.plan_stage`: the description read and
-    checked as prep reads it, then what its prep was told, `Job.asked`; a
-    force-constant stage at ``written_at``, the `relax` run its prep took),
-    and its deck, run script, header and row in
-    `job-set.json` compared with what is on disk, their stamps masked (when
-    and by which build each was written).  A difference -- a template value,
-    a run card's ranks, a junction re-cited since the prep -- is refused,
-    naming the way to prepare it as it is described now: an edit never runs
-    unsaid on another stage's new files.  ``described`` gives the
-    calculation as prep checks it, once for the whole launch
-    (``_planned``)."""
-    from .errors import as_prep_error, step_errors
-    from .planned import Plan
-    from .errors import PrepError
-    from .prep import plan_stage
-    base = Path(calc.base)
-    asked = job.asked or {}
-    try:
-        try:
-            d = described()
-            now = plan_stage(base, d, "task", job.name,
-                             allocation=Resources.from_dict(
-                                 asked.get("allocation") or {}),
-                             env=asked.get("env"),
-                             emit_sbatch=asked.get("emit_sbatch", True),
-                             plan=Plan(), continuation=written_at,
-                             quiet=True)
-        except step_errors() as exc:
-            raise as_prep_error(exc) from exc
-    except PrepError as exc:
-        raise SubmitError(
-            f"`{job.name}`, planned again as its prep planned it, is refused "
-            f"now -- the description no longer gives what was prepared:\n  "
-            f"{exc}\n  To prepare it as it is described now, "
-            + _redo(calc, job)) from None
-    # ITS DECKS, SCRIPTS AND ROW against what prep writes now -- the one
-    # comparison (`prep.prepared_differs`).
-    from .prep import prepared_differs
-    differ = prepared_differs(calc, now.plan, job, now.job)
-    # WHICH MOLBUILDER PREPARED IT, read off the deck's own record: a stage
-    # prepared before an upgrade is said so by name (R-L15).
-    deck = next((p for p in now.plan.writes()
-                 if p.name == Path(job.script).name and p.is_file()), None)
-    deck_read = deck is not None
-    prepared_by = None
-    if deck_read:
-        from ..script_emit import written_by
-        prepared_by = written_by(deck.read_text(errors="replace"))
-    if differ:
-        from .. import __version__
-        from ..script_emit import molbuilder_words
-        upgraded = (f"; it was prepared by {molbuilder_words(prepared_by)}, "
-                    f"and this is molbuilder {__version__}"
-                    if deck_read and prepared_by != __version__ else "")
-        raise SubmitError(
-            f"`{job.name}` was prepared from the description as it stood "
-            f"then, and prep would write {', '.join(differ)} differently now "
-            f"-- the template, its run card, or what it is composed from "
-            f"changed since, or molbuilder did{upgraded} (job-system.md "
-            f"§ 6.0).  Launched as it is, it would run the old setup on the "
-            f"files it takes now.  To prepare it as it is described now, "
-            + _redo(calc, job))
-    return now
-
-
-def _prep_files_back(prepared, run: Path, writes: Plan) -> None:
-    """A FIRST LAUNCH'S RUN, emptied whole, given prep's own files back as
-    they lie (`job-system.md` § 6.0, step 4): the ones ``prepared`` -- prep's
-    plan, made again for the check (:func:`_as_described`) -- puts below
-    ``run`` that the launch's opener has not brought from the stage's folder
-    (a seeded progress log), each as prep wrote it."""
-    top = Path(os.path.normpath(os.path.abspath(run)))
-    for path in prepared.plan.writes():
-        if (top in path.parents and not writes.is_file(path)
-                and path.is_file()):
+def _prep_files_back(run: Path, writes: Plan) -> None:
+    """A FIRST LAUNCH'S RUN, emptied whole, given back the progress logs
+    prep moved into it (`prep._move_progress_channel_into`), each as it
+    lies -- the one kind of file prep puts in a run that the opener does not
+    bring from the stage's folder (`job-system.md` § 6.0, step 4); the
+    catalogue's progress roles say which (`runfiles.progress_roles`)."""
+    from ..runfiles import progress_roles, role_of
+    roles = set(progress_roles())
+    for path in sorted(Path(run).rglob("*")):
+        if (path.is_file() and role_of(path.name) in roles
+                and not writes.is_file(path)):
             writes.bytes(path, path.read_bytes())
 
 
@@ -1077,7 +1008,7 @@ def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str, shape,
 
 def _plan_member(calc, job, *, writes: Plan,
                  cold: bool = False, from_attempt: Optional[str] = None,
-                 gather: bool = False, described=None) -> "_Member":
+                 gather: bool = False) -> "_Member":
     """**THE MEMBER PLANNER** -- one stage of a task: where it runs and what
     it takes, its run decided and filled in ``writes`` (the send writes it,
     never before the person has said yes), every refusal before anything is
@@ -1152,11 +1083,11 @@ def _plan_member(calc, job, *, writes: Plan,
         return _first_launch(calc, job, member=member, names=names,
                              container=container, points=points,
                              writes=writes, cold=cold,
-                             from_attempt=from_attempt, described=described)
+                             from_attempt=from_attempt)
     return _launch_again(calc, job, member=member, names=names,
                          container=container, ns=ns, points=points,
                          writes=writes, cold=cold, from_attempt=from_attempt,
-                         gather=gather, described=described)
+                         gather=gather)
 
 
 def _newest_launched(container: Path, names: RunNames, ns) -> Path:
@@ -1169,36 +1100,29 @@ def _newest_launched(container: Path, names: RunNames, ns) -> Path:
 
 
 def _first_launch(calc, job, *, member, names: RunNames, container: Path,
-                  points: bool, writes: Plan, cold: bool, from_attempt,
-                  described=None) -> "_Member":
+                  points: bool, writes: Plan, cold: bool, from_attempt) -> "_Member":
     """``job``'s stage's FIRST LAUNCH (`job-system.md` § 6.0, step 1): what
     it takes, from the ready door -- the one door per kind, every kind's
     refusal with it (`ready.first_launch_takes`): the stage before it's
     newest run, which must have finished, ``from_attempt`` a run named,
     ``cold`` none; a transport rung's gather, each point its own; a
     force-constant stage's `relax` run its prep took -- refused before
-    anything is sent while an upstream has not finished (R-L11); the prepared
-    stage checked against the description (:func:`_as_described`); and its
+    anything is sent while an upstream has not finished (R-L11); and its
     first run filled: prep's run, emptied whole, prep's own files put back
     as they lie (:func:`_prep_files_back`), and given what it takes now,
     with its record (`project-layout.md` § 1.6.3).  On the flat layout
     nothing is copied: the run's `.continued-from` is written with its
     launch record."""
     from ..runrecord import next_run
-    from .ladder import force_constant_stage
     from .gather import gather_into
     from .materialize import open_sweep_run, prepare_attempt
     from .ready import first_launch_takes
-    base, task, sh = Path(calc.base), calc.task, calc.shape
+    base, sh = Path(calc.base), calc.shape
     stage = job.name
     cont, got, why = first_launch_takes(calc, stage, job,
                                         from_attempt=from_attempt, cold=cold)
     if why:
         raise SubmitError(why)
-    prepared = _as_described(
-        calc, job,
-        written_at=cont if force_constant_stage(task, stage) else None,
-        described=described)
     if not sh.keeps_attempts_as_directories:
         # A FLAT RUN takes what it builds on where its files lie: nothing is
         # copied, and its hand-over's record is written with its launch
@@ -1211,7 +1135,7 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
     if points:
         # A RUN OF POINTS: prep's run, each point given its own gather.
         sweep = open_sweep_run(calc, stage, plan=writes)
-        _prep_files_back(prepared, sweep.dir, writes)
+        _prep_files_back(sweep.dir, writes)
         took, gathered = _gather_sweep(base, sweep.dir, sweep.points, got,
                                        writes, names=names)
         return member(job, container, sweep.dir, True, sweep.dir,
@@ -1228,7 +1152,7 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
             plan=writes)
     except ValueError as exc:
         raise SubmitError(f"{stage}: {exc}") from None
-    _prep_files_back(prepared, opened.dir, writes)
+    _prep_files_back(opened.dir, writes)
     inputs = [(src, fn) for _pt, ins in (got or ()) for src, fn in ins]
     run = next_run(opened.dir, names)
     gathered = gather_into(base, opened.dir, inputs, writes, names=names,
@@ -1245,7 +1169,7 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
 
 def _launch_again(calc, job, *, member, names: RunNames, container: Path,
                   ns, points: bool, writes: Plan, cold: bool, from_attempt,
-                  gather, described=None) -> "_Member":
+                  gather) -> "_Member":
     """A STAGE LAUNCHED BEFORE, launched again (`job-system.md` § 5.4, *A
     stage launched again*): warm by default -- the next run from its newest
     launched run (:func:`_newest_launched`; the flat layout runs again where
@@ -1284,8 +1208,6 @@ def _launch_again(calc, job, *, member, names: RunNames, container: Path,
         if why:
             raise SubmitError(why)
         got = _gathered_now(calc, stage) if gather else None
-        if gather:
-            _as_described(calc, job, described=described)
         sweep = open_sweep_run(calc, stage, plan=writes)
         took: List[dict] = []
         if gather:
@@ -1326,17 +1248,15 @@ def _launch_again(calc, job, *, member, names: RunNames, container: Path,
                                         from_attempt=from_attempt, cold=cold)
         if why:
             raise SubmitError(why)
-        _as_described(calc, job, described=described)
         source, named_by = cont.source, True
     else:
         cont = relaunch(calc, job, cold=cold, ran=ran)
         source, named_by = (cont.source if cont is not None else None), False
     inputs = None
     if gather:
-        # THE INPUTS ANEW (`job-system.md` § 5.4, R-L11): the upstreams' newest runs, under the
-        # gather's gates, and the stage checked against the description.
+        # THE INPUTS ANEW (`job-system.md` § 5.4, R-L11): the upstreams'
+        # newest runs, under the gather's gates.
         got = _gathered_now(calc, stage)
-        _as_described(calc, job, described=described)
         inputs = [(src, fn) for _pt, ins in got for src, fn in ins]
     try:
         # THE ONE OPENER, planned (`project-layout.md` § 1.6.2): the next
@@ -1625,22 +1545,11 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         except ValueError as e:
             raise SubmitError(str(e))
 
-    # A LADDER'S DESCRIPTION AND TEMPLATE are the calculation's, read once:
-    # what each member is checked against and what its first launch takes.
-    described = None
-    if jobset.kind == KIND_LADDER:
-        # AS PREP CHECKS IT, ONCE for the whole launch -- the first member
-        # whose files are compared with prep's plan asks -- on the machine's
-        # record the launch read.
-        import functools
-        described = functools.lru_cache(maxsize=None)(
-            lambda: _checked(calc, machine))
     if len(groups) > 1:
         return _plan_sequence(calc, jobset, groups, machine=machine,
                               mode=mode, time_s=time_s, told=told,
                               one=bool(only or from_attempt or cold
-                                       or gather),
-                              described=described)
+                                       or gather))
     members, number = ((_the_group(calc, group=group, only=only,
                                    one=bool(from_attempt or cold or gather)))
                        if jobset.kind == KIND_LADDER else (None, None))
@@ -1681,8 +1590,7 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         if mode in ("submit", "ask") else (None, None))
     if members:
         plan = _plan_group(calc, members, mode=mode,
-                           time_s=time_s, told=told, number=number,
-                           described=described, machine=machine,
+                           time_s=time_s, told=told, number=number, machine=machine,
                            inside=inside)
     elif jobset.kind == KIND_SWEEP and only is None and mode in ("submit", "ask"):
         plan = _plan_shelves(jobset, base, shape=shape, mode=mode, side=side,
@@ -1694,8 +1602,7 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
     else:
         plan = _plan_stage(calc, jobset, mode=mode, only=only,
                            time_s=time_s, told=told, cold=cold,
-                           from_attempt=from_attempt, gather=gather,
-                           described=described, machine=machine,
+                           from_attempt=from_attempt, gather=gather, machine=machine,
                            inside=inside)
     plan.queue = (domain, source)
     plan.engine = jobset.engine
@@ -1706,16 +1613,6 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         from .group import named
         plan.save_before = f"launch task {named(calc.request, number)}"
     return plan
-
-
-def _checked(calc, machine):
-    """The calculation AS PREP CHECKS IT (`prep.Described`, `prep.checked`),
-    for the member whose files are compared with prep's plan -- ``calc``
-    as the launch opened it (A16), on ``machine``, the record the launch
-    read (:func:`_machine_of`), never read again."""
-    from .prep import Described, checked
-    return checked(calc.base, Described(calc), target=None,
-                   environment=machine)
 
 
 def _the_group(calc, *, group, only,
@@ -3023,8 +2920,7 @@ def _record_launch(m: "_Member", *, mode: str, command: List[str],
 
 
 def _plan_group(calc, names: List[str], *, machine, mode: str, told,
-                number: int, time_s: Optional[int] = None,
-                described=None, inside: Optional[Inside] = None
+                number: int, time_s: Optional[int] = None, inside: Optional[Inside] = None
                 ) -> LaunchPlan:
     """ONE submission walking a GROUP's stages -- the description's group
     ``number``, its members ``names`` in the ladder's order, prepared as one
@@ -3035,10 +2931,9 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     attempt, and one that fails does not stop the others -- each told its
     own card's wall when run here.  The header is the one the group's prep
     wrote (`launch/<group>.sbatch`), its members' shared request
-    (`group.envelope`, refused at prep, R-P13) -- at the group's first
-    launch checked against what prep would write now (`prep.group_header`,
-    R-L16), as each member is (`job-system.md` § 6.0); the walker is
-    written at the send, with each run's number."""
+    (`group.envelope`, refused at prep, R-P13), sent as prep wrote it
+    (`job-system.md` § 6.0); the walker is written at the send, with each
+    run's number."""
     from .group import names_for
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     jobs = [jobset.job(n) for n in names]
@@ -3046,7 +2941,7 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     plan = LaunchPlan(base, mode, [])
     members: List[_Member] = []
     for job in jobs:
-        m = _plan_member(calc, job, writes=plan.writes, described=described)
+        m = _plan_member(calc, job, writes=plan.writes)
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, m.names.name(".run.sh"))]
         members.append(m)
@@ -3084,24 +2979,6 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
                 f"group {number}", f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
                 base=base, told=told, machine=machine,
                 redo=_redo(calc, jobs[0])))
-    if header.is_file() and any(m.first for m in members):
-        # THE HEADER IS STILL WHAT PREP WOULD WRITE (R-L16): the members'
-        # shared request, rendered now.
-        from .errors import PrepError
-        from .prep import as_written, group_header
-        try:
-            now = group_header(base, task, number, jobs,
-                               described().environment)
-        except PrepError as exc:
-            raise SubmitError(str(exc)) from None
-        if now is None or not as_written(header, now.text.encode("utf-8")):
-            raise SubmitError(
-                f"group {number}'s header, {LAUNCH_DIR}/{header.name}, is "
-                f"not what prep would write now for its members' shared "
-                f"request -- the header was edited, or the machine's record "
-                f"it is rendered from changed, since the prep (job-system.md "
-                f"§ 6.0).  To prepare it as it is described now, "
-                + _redo(calc, jobs[0]))
     if header.is_file():
         plan.reads.append(_as_found(header, base))
     sent, placement, cmd, outputs_in = _sbatch_request(
@@ -3133,7 +3010,7 @@ def _held_by(held, number: int, base) -> str:
 
 def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                    machine, mode: str, time_s: Optional[int], told,
-                   one: bool, described) -> LaunchPlan:
+                   one: bool) -> LaunchPlan:
     """A SEQUENCE OF GROUPS (`job-system.md` § 6.0, *A sequence of
     groups*): ONE submission whose walk launches each group named, in the
     description's order, as `launch task --group N --mode direct` launches
@@ -3146,7 +3023,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     (:func:`_the_group`, `ready.held_by_sequence`); under ``submit`` or
     ``ask``,
     no header prep wrote for exactly these groups (`prep task --group …
-    --one-job`), or one that is not what prep would write now.  The plan
+    --one-job`).  The plan
     shows the first group's plan, made as its own launch makes it now -- its
     gates, its runs, what each takes -- and each group after it by its
     stages; it writes the sequence's walk and its launch record
@@ -3241,8 +3118,6 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                 + block(prep_sequence_lines(numbers, base=base))
                 + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
         if header.is_file():
-            _sequence_header_is_prep_s(calc, numbers, groups, header,
-                                       described)
             plan.reads.append(_as_found(header, base))
         sent, placement, cmd, outputs_in = _sbatch_request(
             header=header, placement=_placed_by_prep(jobs), time_s=time_s,
@@ -3269,44 +3144,10 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     return plan
 
 
-def _sequence_header_is_prep_s(calc, numbers, groups, header,
-                               described) -> None:
-    """THE SEQUENCE'S HEADER IS STILL WHAT PREP WOULD WRITE (R-L45, as a
-    group's is, R-L16): each group's own request as its rows stand now, the
-    sequence's one request rendered now (`prep.sequence_header`), compared
-    with the file by the one test (`prep.as_written`)."""
-    from ..transport.stages import frames_of, rung_points
-    from .commands import block, prep_sequence_lines
-    from .errors import PrepError
-    from .prep import as_written, sequence_header
-    base, task, jobset = Path(calc.base), calc.task, calc.jobset
-    jobs_of = {g["number"]: [jobset.job(st) for st in g["stages"]]
-               for g in groups}
-    points_of = {n: (len(rung_points(task, js[0].name,
-                                     frames=frames_of(base)))
-                     if len(js) == 1 else 0) for n, js in jobs_of.items()}
-    try:
-        now, _less = sequence_header(base, task, calc.request, numbers,
-                                     jobs_of, points_of,
-                                     described().environment)
-    except PrepError as exc:
-        raise SubmitError(str(exc)) from None
-    if now is None or not as_written(header, now.text.encode("utf-8")):
-        raise SubmitError(
-            f"the header of groups {', '.join(map(str, numbers))} as one "
-            f"job, {header.relative_to(base)}, is not what prep would write "
-            f"now -- a group was prepared again, or the header or the "
-            f"machine's record changed, since that prep.  Prepare them as "
-            f"one job again:\n" + block(prep_sequence_lines(numbers,
-                                                            base=base))
-            + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
-
-
 def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
                 only: Optional[str], time_s: Optional[int], told,
                 cold: bool = False,
-                from_attempt: Optional[str] = None, gather: bool = False,
-                described=None, inside: Optional[Inside] = None
+                from_attempt: Optional[str] = None, gather: bool = False, inside: Optional[Inside] = None
                 ) -> LaunchPlan:
     """The stage door's plan -- a task's stage, or a benchmark's named
     trial: one submission.
@@ -3347,7 +3188,7 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
              if jobset.kind == KIND_SWEEP else
              _plan_member(calc, job, writes=plan.writes,
                           cold=cold, from_attempt=from_attempt,
-                          gather=gather, described=described))
+                          gather=gather))
         if isinstance(m, JobResult):
             plan.skipped.append(m)             # a trial measured before
             continue

@@ -1000,6 +1000,7 @@ TASK_HANDOVER_FILE = "task.1st.json"
 WARM_FILES_FILE = "warm-files.toml"
 MACHINE_RECORD_FILE = "environment.json"
 JOBSET_FILE = "job-set.json"
+PREPARED_WITH_FILE = "prepared-with.json"
 PLAN_FILE = "STAGE-PLAN.md"
 LEDGER_FILE = "jobset-decisions.log"
 PSEUDO_DIR = "pseudos"
@@ -1465,6 +1466,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="prep", level="calculation", kind="derived",
              writer="prep (`jobset.model.JobSet.write`)",
              door="jobset.model.JobSet.of"),
+    Artifact(name=PREPARED_WITH_FILE,
+             what="what each prepared stage was prepared with — its "
+                  "settings, points and run card, merged per stage — which "
+                  "`status` compares with its records now",
+             when="prep", level="calculation", kind="record",
+             writer="prep (`jobset.prepared_with.record`)",
+             door="jobset.prepared_with.changes"),
     Artifact(name=PLAN_FILE, what="the plan in reading order",
              when="prep", level="calculation", kind="derived",
              writer="prep (`jobset.prep.prep_jobset`), whole at each prep"),
@@ -2024,6 +2032,12 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
     live = [a.role for a in ON_THE_LABEL
             if a.output == "progress" and a.role not in named]
     return tuple(named + spoken + live)
+
+
+def progress_roles() -> "tuple[str, ...]":
+    """THE PROGRESS CHANNEL'S roles -- the logs a run writes as it goes,
+    seeded by prep beside the deck (the catalogue's ``output`` column)."""
+    return tuple(a.role for a in WRITTEN if a.output == "progress")
 
 
 def deck_roles(engine: Optional[str] = None) -> "tuple[str, ...]":

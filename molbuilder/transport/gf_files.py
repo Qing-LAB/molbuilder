@@ -35,8 +35,7 @@ def status_line(base, task, stage_dir, run_dir: Optional[Path],
 def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
            task, base, *, going: bool) -> str:
     if not folder.is_dir():
-        return (f"{scratch_dir}/: not there (a run made before 2.22.0, "
-                f"whose pair lies in the run's folder)")
+        return f"{scratch_dir}/: not there"
     from ..warmfiles import is_scratch
     files = sorted(p for p in folder.iterdir()
                    if p.is_file() and is_scratch(p.name))

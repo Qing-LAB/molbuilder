@@ -149,6 +149,12 @@ class StageStatus:
     script: Optional[str] = None
     carries: List[str] = field(default_factory=list)
     resources: Optional[str] = None
+    #: CHANGED SINCE PREPARED -- each value its records give now otherwise
+    #: than its prep recorded, ``name: was → now`` (`ready.Readiness.
+    #: changed`; `job-system.md`, *The task*) -- and whether its prep
+    #: recorded none (``unrecorded``, prepared before 2.41.0).
+    changed: list = field(default_factory=list)      # `prepared_with.Difference`
+    unrecorded: bool = False
 
     @property
     def name(self) -> str:
@@ -585,7 +591,8 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
             # a stage never launched, the ready door's words for its launch.
             row = dataclasses.replace(
                 _job_status(base, jobset, job, task, **kw), ref=ref,
-                group=calc.request.group_of(st.name))
+                group=calc.request.group_of(st.name),
+                changed=list(r.changed), unrecorded=r.unrecorded)
             if not r.launched and row.state == "pending":
                 row = dataclasses.replace(row, detail=r.detail,
                                           takes=list(r.takes), why=r.why)
@@ -633,7 +640,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     finished is the next step; with every group finished, the last names
     `summarize task` where the task's result gathers its stages
     (`summarize.task_summary`)."""
-    from .commands import reason_of, said_lines, way_back
+    from .commands import reason_of, redo_launched, said_lines, way_back
     from .summarize import task_summary
     base, task = Path(calc.base), calc.task
     by = {s.name: s for s in rows}
@@ -663,22 +670,42 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
         elif g.held is not None:
             # A GROUP A SEQUENCE STILL GOING HOLDS, not launched by it yet --
             # launched before or not (`job-system.md` § 6.0, *A sequence of
-            # groups*): that job's to launch.
+            # groups*): that job's to launch, whatever changed
+            # since its prep (R-P23 refuses its prep).
             step = ("in a job", f"{g.said} ({g.held[2]})",
                     ["molbuilder jobs status"])
+        elif g.since_prepared and not any(r.state in _ON_ITS_WAY
+                                          for r in members):
+            # CHANGED SINCE PREPARED (`job-system.md`, *The task*): never
+            # launched, prepared again; launched and changed in its run
+            # card alone, prepared again for its request, its runs kept
+            # (`job-request.md` § 5, on the hierarchical layout); launched
+            # and changed in what it computes, the group started from the
+            # beginning, the three lines whole (`commands.redo_launched`).
+            from .prepared_with import run_card_only
+            words = ("changed since prepared: "
+                     + "; ".join(d.said for d in g.since_prepared))
+            if not g.launched:
+                step = ("changed since prepared",
+                        words + " -- prepare it again",
+                        prep_group_lines([n], base=base))
+            elif (run_card_only(g.since_prepared)
+                  and calc.shape.keeps_attempts_as_directories):
+                step = ("changed since prepared",
+                        words + " -- prepare its group again for its job "
+                                "request; its runs are kept",
+                        prep_group_lines([n], base=base))
+            else:
+                step = ("changed since prepared", words,
+                        said_lines(redo_launched(g.members[0],
+                                                 calc=calc))[1:])
         elif not g.launched:
-            # PREPARED BY ANOTHER MOLBUILDER: its launch compares it with
-            # what prep writes now, and a difference is refused (R-L15) --
-            # the step says so, and the prep that answers it.
+            # PREPARED BY ANOTHER MOLBUILDER: said, the launch sending what
+            # it wrote (`job-system.md` § 6.0).
             step = (("ready",
-                     "ready to launch" + (f" (prepared by {g.prepared_by}: "
-                                          f"its launch refuses it if prep "
-                                          f"would write it differently now)"
+                     "ready to launch" + (f" (prepared by {g.prepared_by})"
                                           if g.prepared_by else ""),
-                     launch_lines("task", base=base, groups=[n])
-                     + ([f"{ln}   # if the launch refuses it, first"
-                         for ln in prep_group_lines([n], base=base)]
-                        if g.prepared_by else []))
+                     launch_lines("task", base=base, groups=[n]))
                     if g.launchable else
                     ("waiting", "waits for: " + reason_of(g.why or ""), []))
         else:
@@ -912,6 +939,15 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     rows.append(("converged", s.converged or "-"))
     rows.append(("warm files", ", ".join(s.warm_files) or "-"))
     rows.append(("detail", s.detail or "-"))
+    # CHANGED SINCE PREPARED, a launched stage's too: its runs computed the
+    # description as it was (`job-system.md`, *The task*); the way on is
+    # its group's step.
+    if s.changed:
+        rows.append(("changed since prepared",
+                     "; ".join(d.said for d in s.changed)))
+    elif s.unrecorded:
+        from .prepared_with import UNRECORDED_SAID
+        rows.append(("prepared with", UNRECORDED_SAID))
     # A SWEEP'S POINTS, one row each (`engines/transport.md` § 2a.11): done
     # or not done and why, what it started from, what it alone took.
     for p in s.points:

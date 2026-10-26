@@ -742,6 +742,8 @@ const WORKSPACE_TAG = "transport";
             });
         root.document.querySelectorAll("[data-new-only]").forEach(
             function (el) { el.hidden = !!_extend; });
+        root.document.querySelectorAll("[data-extension-only]").forEach(
+            function (el) { el.hidden = !_extend; });
         [bias, out, fixedHost].forEach(function (el) {
             if (el) el.textContent = "";
         });

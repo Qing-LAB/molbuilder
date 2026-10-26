@@ -658,7 +658,9 @@ def api_transport_describe() -> Any:
     """
     from molbuilder.projects import projects_root
     from molbuilder.task import Task, derive_run, fixed_by_kind
-    from molbuilder.transport.compose import ComposeError, resolve_citation
+    from molbuilder.transport.compose import (ComposeError,
+                                             refuse_failed_citation,
+                                             resolve_citation)
     from molbuilder import template as _T
     from molbuilder.transport.stages import (TRANSPORT_STAGES,
                                              resolvable_override_names,
@@ -758,6 +760,9 @@ def api_transport_describe() -> Any:
     else:
         try:
             _, cited = resolve_citation(citation, projects_root())
+            # A RUN THAT FAILED, refused before anything is written
+            # (`engines/transport.md` § 3.1).
+            refuse_failed_citation(cited, citation)
         except ComposeError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 

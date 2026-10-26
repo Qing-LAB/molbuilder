@@ -1526,9 +1526,7 @@ def _gpu_runtime_block() -> str:
         # kernel's sysfs -- the same lookup the per-rank launcher makes
         # (`_bash_numa_from_gpu`).  A machine fact is measured where the job
         # runs, never on the machine that prepared it (`configuration.md`
-        # § 5 M-1; until 2026-10-18 the prepping machine's node was baked
-        # into the script, wrong for another target and a line R-L15
-        # read as a changed description).  The runtime override
+        # § 5 M-1).  The runtime override
         # ``MOLBUILDER_GPU_NUMA=N`` wins; 0 is a valid node.
         + _bash_numa_from_gpu("0", "_gpu_numa_probed")
         + '_gpu_numa="${MOLBUILDER_GPU_NUMA:-$_gpu_numa_probed}"\n' +

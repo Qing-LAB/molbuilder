@@ -185,3 +185,20 @@ def test_the_decision_log_prints_channel_names_readably():
     # absent stays absent: `None` means "not asked for" and is left out
     # rather than printed as a null.
     assert "notify_channels" not in _flat_resources(Resources(mpi_np=4))
+
+
+def test_a_calculation_this_molbuilder_prepared_is_current_to_migrate(calc):
+    """`jobset migrate` on a calculation this molbuilder described and
+    prepared says it is current and rewrites nothing (`migrate.CURRENT`).
+    The silent failure: a key a release retired still listed among those an
+    older plan lacks, so every current plan is "given" it, rewritten and
+    kept beside a copy, on every run."""
+    from molbuilder.jobset.migrate import migrate_state
+    _prep(calc)
+    before = sorted(p.relative_to(calc) for p in calc.rglob("*") if p.is_file())
+    # NOTHING SAID IS NOTHING MIGRATED: the verb prints `migrate.CURRENT`
+    # for an empty answer (`_cli.migrate_cmd`).
+    said = migrate_state(calc)
+    assert said == [], said
+    after = sorted(p.relative_to(calc) for p in calc.rglob("*") if p.is_file())
+    assert after == before, set(after) ^ set(before)

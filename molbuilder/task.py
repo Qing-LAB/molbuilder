@@ -429,7 +429,8 @@ class Task:
                 f"task: a bias list of {len(self.bias)} voltages states "
                 f"bias.low_bias_approximation -- true (the device and the "
                 f"transmission once, at 0 V; each voltage's current from "
-                f"T(E, 0), linear response) or false (every voltage its own "
+                f"T(E, 0), the low-bias approximation) or false (every voltage "
+                f"its own "
                 f"device SCF and transmission); got "
                 f"{self.low_bias_approximation!r} (engines/transport.md "
                 f"2a.10)", where="bias.low_bias_approximation")

@@ -1443,8 +1443,14 @@ Preview says so with its next step, and Prep writes nothing for it. Beside each 
 launch will take and whether it can go now — `ready to launch -- <what it
 takes>`, or `waits for: <why>` — the ready door's answer (`ready.Readiness.detail`,
 the folder answer's `ladder`); a stage another molbuilder prepared says so
-there: `ready to launch (prepared by molbuilder 2.23.2: its launch compares it
-with what prep writes now) -- …`.
+there: `ready to launch (prepared by molbuilder 2.23.2) -- …`. **A stage changed
+since prepared** says so there — a launched one too — each value that
+differs, `was → now`, and its group's next step is the way on: never
+launched, its prep; launched and changed in its run card alone, its prep
+again, the runs kept; launched and changed in what it computes, the three
+lines that start the group from the beginning
+([`job-system.md`](?doc=execution/job-system.md), *Changed since
+prepared*).
 
 **One tab per group** — the card *What each group runs*. Inside a tab,
 everything else you do with that job and its stages:

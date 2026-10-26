@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@11``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@12``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@11"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@12"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -307,7 +307,7 @@ def sampled_window(emin_ev: float, emax_ev: float,
     return lo + h / 2.0, hi - h / 2.0
 
 
-def linear_response_iv(energies: List[float], trans: List[float],
+def low_bias_iv(energies: List[float], trans: List[float],
                        voltages: List[float], kt_ev: float) -> Dict:
     """**I(V) = (2e/h) ∫ T(E, 0) [f(E − μ_L) − f(E − μ_R)] dE**, μ = ±eV/2 --
     the low-bias approximation's current, computed by the record from the
@@ -341,7 +341,7 @@ def linear_response_iv(energies: List[float], trans: List[float],
                               * np.trapezoid(t * (f_l - f_r), e)))
     return {"voltages_v": [float(v) for v in voltages],
             "current_a": currents,
-            "computed": "linear-response", "kt_ev": kt_ev,
+            "computed": "low-bias-approximation", "kt_ev": kt_ev,
             "window_ev": [lo, hi], "notes": notes}
 
 
@@ -376,7 +376,7 @@ def joined_currents(read: Dict, volts: float, kt_ev: float,
 
 def iv_notes_placed(iv: Dict) -> List[Dict]:
     """The I-V's notes, each with the frame and the voltage it is about --
-    a voltage's (keyed by its row of the table, :func:`linear_response_iv`)
+    a voltage's (keyed by its row of the table, :func:`low_bias_iv`)
     with both, a frame's own (keyed by the frame: its 0 V transmission not
     run) with ``bias_v`` ``None``: how a file with no row axis states them
     (`transport/datafile.py`, `engines/transport.md` § 2a.12)."""
@@ -582,6 +582,15 @@ def _stage_facts(calc, label: str) -> List[Dict]:
                 fact["facts_at_v"] = first["bias_v"]
                 fact["facts_at_frame"] = first["frame"]
                 fact["facts_at"] = first["point"]
+                if name == "device":
+                    # ITS OWN PERIODIC START, as read; else where its chain
+                    # began (:func:`_periodic_shift`).
+                    fact["periodic"] = (
+                        {**first["periodic"], "from": first["attempt"]}
+                        if first.get("periodic") else
+                        _periodic_shift(base, task, name, token,
+                                        base / first["started_from"])
+                        if first.get("started_from") else None)
             out.append(fact)
             continue
         outs = (_outs_newest_first(run, token)
@@ -590,8 +599,40 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             out.append(fact)
             continue
         fact.update(_science(outs[0], answers))
+        if name == "device":
+            fact["periodic"] = (
+                {**fact["periodic"], "from": fact.get("attempt")}
+                if fact.get("periodic") else
+                _periodic_shift(base, task, name, token, run))
         out.append(fact)
     return out
+
+
+def _periodic_shift(base: Path, task, stage: str, token: str,
+                    folder: Path) -> Optional[Dict]:
+    """THE SHIFT BETWEEN THE DEVICE'S ZERO AND THE SEED'S, where it was
+    printed -- ``{vha_ev, from}``: the periodic start's `ts-Vha` of
+    ``folder``'s own output, else of the run it continued from, back along
+    the chain of runs to where it began (TranSIESTA carries the E_F over in
+    the density file a run continues from, so the shift printed there is
+    this run's; `engines/transport.md` § 2a.12) -- or ``None`` when no run
+    of the chain is in the folder to say it."""
+    from ..jobset.naming import stage_home
+    from ..runrecord import LaunchRecordError, read_continued_from
+    names = stage_home(base, task, stage).names(task.shape)
+    seen: set = set()
+    while folder is not None and folder.is_dir() and folder not in seen:
+        seen.add(folder)
+        outs = _outs_newest_first(folder, token)
+        shift = _science(outs[0], "scf").get("periodic") if outs else None
+        if shift:
+            return {**shift, "from": str(folder.relative_to(base))}
+        try:
+            src = read_continued_from(folder, names, 0)
+        except LaunchRecordError:
+            return None
+        folder = src.path(base) if src is not None else None
+    return None
 
 
 def gathered_device_run(base: Path, task) -> Optional[Path]:
@@ -661,14 +702,23 @@ def _science(out: Path, answers: str) -> Dict:
         fact["scf_residuals"] = info["scf_residuals"]
     if info.get("scf_phases"):
         fact["scf_phases"] = info["scf_phases"]
+    # THE PERIODIC START'S SHIFT (`engines/transport.md` § 2a.12): the
+    # `ts-Vha` TranSIESTA printed in the device cell's SCF before its NEGF
+    # cycles -- the shift between the device's zero and the seed's.  A run
+    # continued from a density file has no periodic start
+    # (:func:`_periodic_shift` follows its chain).
+    periodic = [c for c in hist if c.get("phase") == "periodic"
+                and c.get("vha_ev") is not None]
+    if periodic:
+        fact["periodic"] = {"vha_ev": periodic[-1]["vha_ev"]}
     # THE NEGF PHASE'S OWN FIGURES -- never the periodic start's
     # (`engines/transport.md` § 2a.12): its last row's E_F and charge, and
     # how many cycles it ran.
     negf = [c for c in hist if c.get("phase") == "negf"]
     if negf:
         last = negf[-1]
-        # `vha_ev` is TranSIESTA's Hartree potential on the boundary plane,
-        # the shift between the device's frame and the seed's (§ 2a.12).
+        # `vha_ev` is the last NEGF cycle's `ts-Vha`, as TranSIESTA printed
+        # it -- a value, not the shift between the two zeros (§ 2a.12).
         fact["negf"] = {"cycles": len(negf),
                         **{k: last[k] for k in ("ef", "dq", "charges",
                                                 "energy", "vha_ev")
@@ -1076,16 +1126,20 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # WHAT THE RESULT IS ENTITLED TO BE CALLED (§ 2a.10, ruled
         # 2026-09-16).  The mechanism is identical either way; what differs is
         # how many device SCFs were paid for, and therefore what may be
-        # claimed.  One slice is T(E), and an I-V read off it is the
-        # LINEAR-RESPONSE approximation -- integrating a zero-bias curve
-        # cannot reproduce a resonance entering the window, nor that
-        # resonance moving under the field.  A self-consistent sweep is T(E, V)
-        # and its I-V carries no such caveat.
+        # claimed.  One slice serving every voltage is the LOW-BIAS
+        # approximation -- T(E, V) taken as T(E, 0), which cannot reproduce
+        # a resonance entering the window, nor that resonance moving under
+        # the field.  A self-consistent sweep is T(E, V), and a single bias
+        # its own SCF at its voltage: neither carries that caveat.
         #
         # Recorded here, not decided in the browser: § 2a.12 requires the
         # treatment NAMED BESIDE THE CURVE and not in metadata, because "the
         # two kinds of I-V are different claims and look identical on a plot".
         "treatment": treatment,
+        # WHETHER THE LOW-BIAS APPROXIMATION WAS MADE, the flag itself and
+        # its words (`engines/transport.md` § 2a.10, *The labelling rule*).
+        "low_bias_approximation": treatment == "low-bias-approximation",
+        "low_bias_said": LOW_BIAS_SAID[treatment == "low-bias-approximation"],
         "treatment_note": TREATMENT_NOTE[treatment],
         # EVERY RUNG'S E_F, said in its frame (`fermi_frames`).
         "fermi_frames": fermi_frames(stages),
@@ -1099,7 +1153,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         "points": points_out,
         # THE I-V: each point's own TBtrans current -- or, under the low-bias
         # approximation, computed by the record from the one 0 V slice for
-        # every listed voltage (`linear_response_iv`, § 2a.10).
+        # every listed voltage (`low_bias_iv`, § 2a.10).
         "iv": _iv(base, task, treatment, points_out,
                   [pt.frame for pt in rung_points(
                       task, "transmission", frames=frames_of(base))]
@@ -1289,7 +1343,7 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
     columns ``frame`` (each row's frame, ``None`` on a calculation with no
     frame axis), ``voltages_v``, ``current_a``, ``current_a_printed``.
     ``computed`` says where the currents came from: ``tbtrans`` -- each
-    point's own printed integral -- or ``linear-response`` -- the record's
+    point's own printed integral -- or ``low-bias-approximation`` -- the record's
     integral of each frame's own 0 V slice for every listed voltage, with
     the Fermi tails at the electronic temperature that point's deck states
     (§ 2a.10).  The frames share one transmission deck, so ``kt_ev``,
@@ -1299,14 +1353,14 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
     ``current_down_a``, each spin's current beside the total
     (`web/results.md` § 2.5): TBtrans's printed figures, or under the
     approximation each spin's own integral, half of
-    :func:`linear_response_iv` of that spin's T(E, 0) -- the integral is
+    :func:`low_bias_iv` of that spin's T(E, 0) -- the integral is
     the two-channel G₀'s."""
     from ..structure import frame_words
     from .stages import frame_token, same_volts
     polarized = any(p.get("spin") == "polarized" for p in points_out)
     if treatment == "low-bias-approximation":
         out: Dict = {"frame": [], "voltages_v": [], "current_a": [],
-                     "current_a_printed": [], "computed": "linear-response",
+                     "current_a_printed": [], "computed": "low-bias-approximation",
                      "kt_ev": None, "window_ev": None, "notes": {}}
         if polarized:
             out["current_up_a"], out["current_down_a"] = [], []
@@ -1328,12 +1382,12 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                     else "the 0 V transmission has not run")
                 continue
             kt = BOLTZMANN_EV_K * deck_temperature_k(base / zero["attempt"])
-            iv = linear_response_iv(zero["energy_ev"], zero["transmission"],
+            iv = low_bias_iv(zero["energy_ev"], zero["transmission"],
                                     list(task.bias), kt)
             if polarized:
                 chans = zero.get("channels") or {}
                 for spin in ("up", "down"):
-                    got = (linear_response_iv(zero["energy_ev"], chans[spin],
+                    got = (low_bias_iv(zero["energy_ev"], chans[spin],
                                               list(task.bias), kt)
                            ["current_a"] if spin in chans
                            else [None] * len(iv["current_a"]))
@@ -1377,19 +1431,21 @@ def write_record(base_dir, record: Dict) -> Path:
 
 def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
     """THE FERMI LEVELS, EACH IN ITS RUN'S OWN FRAME, said once for every
-    reader (`engines/transport.md` § 2a.12; the 2026-10-08 road walk showed
-    the device's 5.17 eV beside the leads' −1.92 eV with no word).  The
-    seed's and the leads' E_F are in their periodic cells, where the
-    cell-average potential is zero.  TranSIESTA fixes the Hartree potential
-    on the boundary plane instead and reports the device's E_F in that
-    frame: ``device_ef + vha`` is the device's E_F back in the seed's frame,
-    and the NEGF loop holds E_F fixed while the charge floats, so it equals
-    the seed's.  The leads' Hamiltonians are aligned to μ = E_F ± V/2
-    inside TranSIESTA; T(E) is measured relative to the leads' E_F.  Nothing
-    printed tests the physical alignment of the device's electrode region
-    against the bulk.  ``None`` until the device has a NEGF E_F."""
+    reader (`engines/transport.md` § 2a.12).  The seed's and the leads' E_F
+    are in their periodic cells, where the cell-average potential is zero.
+    TranSIESTA fixes the Hartree potential on the boundary plane instead and
+    reports the device's E_F against that: the `ts-Vha` it printed in its
+    periodic start -- the device cell's SCF before the NEGF cycles -- is the
+    shift between the two zeros, so ``device_ef + vha`` is the device's E_F
+    back in the seed's frame, beside the seed's own, their difference a
+    number and no verdict.  A run continued from a density file has no
+    periodic start; the shift is the one printed where its chain began, that
+    run named (`_periodic_shift`), and with none the device's E_F is given
+    alone, saying why.  Nothing here enters T(E), G or the I-V.  ``None``
+    until the device has a NEGF E_F."""
     by = {st["stage"]: st for st in stages}
-    dev = (by.get("device") or {}).get("negf") or {}
+    device = by.get("device") or {}
+    dev = device.get("negf") or {}
     if dev.get("ef") is None:
         return None
     out: Dict = {"device_ef_ev": dev["ef"], "frame": "transiesta"}
@@ -1400,52 +1456,66 @@ def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
         out["seed_ef_ev"] = seed_ef
     if leads:
         out["lead_ef_ev"] = leads
-    vha = dev.get("vha_ev")
+    shift = device.get("periodic") or {}
     # WHICH POINT THESE DEVICE FIGURES ARE -- a rung that runs per point
     # has its first point's facts (`_stage_facts`), and the sentence says
     # which, in the point's words.
-    at_v = (by.get("device") or {}).get("facts_at_v")
-    at = (by.get("device") or {}).get("facts_at")
+    at_v = device.get("facts_at_v")
+    at = device.get("facts_at")
     where = f" at {at}" if at else ""
     note = ("Fermi levels are in each run's own frame: the seed's and the "
             "leads' in their periodic cells (cell-average potential zero); "
             "the device's after TranSIESTA fixes the Hartree potential on "
             "the boundary plane")
+    if at_v is not None:
+        out["at_v"] = at_v
+        out["at"] = at
+    vha = shift.get("vha_ev")
     if vha is not None:
         out["vha_ev"] = vha
-        if at_v is not None:
-            out["at_v"] = at_v
-            out["at"] = at
+        out["vha_from"] = shift.get("from")
         out["device_ef_in_seed_frame_ev"] = dev["ef"] + vha
-        note += (f" (ts-Vha {vha:+.3f} eV{where}) -- in the seed's frame "
-                 f"it is {dev['ef'] + vha:.3f} eV")
+        note += (f" (the periodic start's ts-Vha {vha:+.6f} eV, printed in "
+                 f"{shift.get('from')}) -- the device's E_F{where} in the "
+                 f"seed's frame is {dev['ef'] + vha:.6f} eV")
         if seed_ef is not None:
             out["device_minus_seed_ev"] = dev["ef"] + vha - seed_ef
-            note += (f", against the seed's {seed_ef:.3f} eV"
-                     + (" (equal: the NEGF loop holds E_F and lets the "
-                        "charge float)"
-                        if abs(out["device_minus_seed_ev"]) < 0.01 else
-                        f" ({out['device_minus_seed_ev']:+.3f} eV apart)"))
+            note += (f", the seed's {seed_ef:.6f} eV, a difference of "
+                     f"{out['device_minus_seed_ev']:+.6f} eV")
+    else:
+        note += (f"; no run of the device's chain{where} that printed its "
+                 f"periodic start's ts-Vha is in the folder, so its E_F, "
+                 f"{dev['ef']:.6f} eV, stays in TranSIESTA's frame")
     note += ("; the leads' Hamiltonians are aligned to E_F ± V/2 inside "
              "TranSIESTA and T(E) is measured relative to the leads' E_F.")
     out["note"] = note
     return out
 
 
+#: WHETHER THE LOW-BIAS APPROXIMATION WAS MADE, in the words every surface
+#: shows beside the curve (`engines/transport.md` § 2a.10, *The labelling
+#: rule*; the user, 2026-10-25): yes only where one 0 V slice served every
+#: voltage -- a single voltage ran its device and transmission at it.
+LOW_BIAS_SAID = {
+    True: "low-bias approximation: yes, the 0 V transmission integrated "
+          "over each voltage's window",
+    False: "low-bias approximation: no, each voltage its own device SCF",
+}
+
+
 #: WHAT EACH TREATMENT'S I-V IS ENTITLED TO BE CALLED, beside the curve
 #: (`engines/transport.md` § 2a.10, § 2a.12) -- the one wording, which the
 #: record carries and both the Results report and `summarize` print.
 TREATMENT_NOTE = {
-    "single-bias": ("One device SCF. An I-V derived from this curve is the "
-                    "LINEAR-RESPONSE approximation: integrating a zero-bias "
-                    "slice cannot reproduce a resonance entering the bias "
-                    "window, nor that resonance moving under the field."),
+    "single-bias": ("One device SCF and one transmission, at the one "
+                    "voltage: T(E) there, with no approximation beyond the "
+                    "method."),
     "low-bias-approximation": (
-        "LOW-BIAS (linear-response) approximation: the device SCF converged "
-        "once, at 0 V, and each voltage's current is the zero-bias "
-        "transmission T(E, 0) integrated over that voltage's window -- a "
-        "resonance entering the window is not re-converged, nor moved by "
-        "the field."),
+        "The low-bias approximation: the device SCF converged once, at 0 V, "
+        "and each voltage's current is the zero-bias transmission T(E, 0) "
+        "integrated over that voltage's window -- the transmission's "
+        "dependence on bias neglected; a resonance entering the window is "
+        "not re-converged, nor moved by the field."),
     "self-consistent": ("The device SCF was converged at every voltage, so "
                         "each slice is its own solution and the I-V carries "
                         "no approximation beyond the method."),
@@ -1485,9 +1555,9 @@ def iv_table_text(record: Dict) -> str:
             lines.append(f"  {_frame(p):>5}  {p['bias_v']:>8.3f}  "
                          f"{what:>12}  {p['state']:>12}  ({p['why']})")
     iv = record.get("iv") or {}
-    if iv.get("computed") == "linear-response":
+    if iv.get("computed") == "low-bias-approximation":
         # THE RECORD'S OWN I-V, from each frame's 0 V slice
-        # (`linear_response_iv`).
+        # (`low_bias_iv`).
         kt = iv.get("kt_ev")
         lines.append("  I(V) computed from T(E, 0)"
                      + (f", kT = {kt:.4f} eV, window {iv.get('window_ev')} eV"
@@ -1498,7 +1568,7 @@ def iv_table_text(record: Dict) -> str:
                                           iv.get("voltages_v", ()),
                                           iv.get("current_a", ()))):
             notes = iv.get("notes") or {}
-            # A VOLTAGE'S NOTE IS KEYED BY ITS ROW (`linear_response_iv`).
+            # A VOLTAGE'S NOTE IS KEYED BY ITS ROW (`low_bias_iv`).
             note = notes.get(str(k)) or (
                 notes.get(frame_token(f)) if f is not None
                 else notes.get("all"))
@@ -1508,6 +1578,7 @@ def iv_table_text(record: Dict) -> str:
                          + (f"  ({note})" if note else ""))
     for spin, means in sorted((record.get("current_means") or {}).items()):
         lines.append(f"  {spin}: {means}")
+    lines.append(f"  {record['low_bias_said']}")
     lines.append(f"  {record['treatment']}: {record['treatment_note']}")
     from ..frame_average import summary_lines
     lines.extend(summary_lines(record.get("average") or {}))

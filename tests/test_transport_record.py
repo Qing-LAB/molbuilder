@@ -8,7 +8,7 @@ whose integral the contract states exactly.
 """
 from __future__ import annotations
 
-from molbuilder.transport.record import conductance_g0, linear_response_iv
+from molbuilder.transport.record import conductance_g0, low_bias_iv
 
 
 def test_conductance_needs_the_window_to_straddle_ef():
@@ -36,7 +36,7 @@ def test_a_perfect_channels_low_bias_current_is_g0_times_v():
 
     e = np.linspace(-2.0, 2.0, 4001).tolist()
     volts = [0.0, 0.2, 0.4, -0.2, 3.9]
-    got = linear_response_iv(e, [1.0] * len(e), volts, kt_ev=0.0259)
+    got = low_bias_iv(e, [1.0] * len(e), volts, kt_ev=0.0259)
     # SIGNED: I = G0·V at a negative voltage too -- μ_L,R = ±V/2.
     for v, i in zip(volts[:4], got["current_a"]):
         assert abs(i - G0 * v) < 1e-3 * G0 * max(abs(v), 0.1), (v, i, G0 * v)

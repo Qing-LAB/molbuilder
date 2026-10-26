@@ -393,13 +393,6 @@ class Job:
     #: launch copies (`engines/vibration.md` § 5.2a).  ``None`` for every
     #: other stage, whose hand-over is taken at its first launch.
     written_at: Optional[str] = None
-    #: WHAT ITS PREP WAS TOLD BESIDE THE DESCRIPTION -- ``allocation``, the
-    #: launch values said on prep's command line (each over the run card and
-    #: the description, `prep_inputs.fold_allocation`), ``env`` and
-    #: ``emit_sbatch``; ``{}`` for a trial.  Launch plans the stage again
-    #: with it to check the prepared stage is still what the description
-    #: gives (`job-system.md` § 6.0).
-    asked:      Dict[str, Any] = field(default_factory=dict)
     #: WHICH PROGRAM THE JOB RUNS -- what it computes, so the job's and
     #: never a resource: ``None`` is the engine's own (``siesta`` for a
     #: ``.fdf``); a transport ladder's transmission is ``tbtrans``
@@ -419,7 +412,7 @@ class Job:
     def to_dict(self) -> Dict[str, Any]:
         # EVERY KEY, EVERY JOB (`job-contracts.md` § 6.1): `point` empty for
         # a job that is no trial, `finish`, `placement`, `members` and
-        # `written_at` null where there is none, `asked` empty, `resumes`
+        # `written_at` null where there is none, `resumes`
         # true or false.
         return {
             "name": self.name,
@@ -437,7 +430,6 @@ class Job:
             "members": (list(self.members) if self.members is not None
                         else None),
             "written_at": self.written_at,
-            "asked": dict(self.asked),
             "program": self.program,
         }
 
@@ -471,7 +463,6 @@ class Job:
                      if d["members"] is not None else None),
             written_at=(str(d["written_at"]) if d["written_at"] is not None
                         else None),
-            asked=dict(d["asked"]),
             program=(str(d["program"]) if d["program"] is not None
                      else None),
         )
@@ -552,7 +543,7 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
 #: § 6.1) -- the one list the writer's dict and the reader's check share.
 JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
             "finish", "resumes", "scratch_dir", "placement", "members",
-            "written_at", "asked", "program")
+            "written_at", "program")
 
 
 class WrittenBefore(ValueError):

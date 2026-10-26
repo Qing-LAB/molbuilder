@@ -44,7 +44,7 @@ from .stages import same_volts
 #: provenance (`engines/transport.md` § 2a.12, *Export*; the user,
 #: 2026-10-23).  An older file is refused by its version, and `summarize
 #: task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@5"
+DATA_SCHEMA = "molbuilder/transport-data@6"
 
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
@@ -196,7 +196,7 @@ def _variables() -> Tuple[Var, ...]:
         Var("iv_current_a", ("frame", "iv_bias_v"), "derived", "A",
             "the I-V's current",
             "as the file's iv_computed says: tbtrans -- each point's own "
-            "total, current_a; linear-response (the low-bias approximation) "
+            "total, current_a; low-bias-approximation "
             "-- I(V) = G0 * integral of T(E, 0) [f(E - V/2) - f(E + V/2)] dE "
             "over that frame's 0 V transmission, E in eV, f the Fermi "
             "function at iv_kt_ev; the fill value at a voltage whose window "
@@ -212,7 +212,9 @@ def _variables() -> Tuple[Var, ...]:
             source="the device point's SIESTA output"),
         Var("device_vha_ev", ("frame", "bias_v"), "raw", "eV",
             "the device point's boundary Hartree potential",
-            "ts-Vha, the shift between the device's frame and the seed's",
+            "its NEGF phase's last cycle's ts-Vha, as TranSIESTA printed it "
+            "-- a value, not the shift between the device's zero and the "
+            "seed's, which is the periodic start's (`fermi_frames`)",
             source="the device point's SIESTA output"),
         Var("dos_total", ("frame", "bias_v", "energy_ev"), "raw", "1/eV",
             "the device's density of states", "its Green-function DOS, "
@@ -657,6 +659,10 @@ def data_file_bytes(base_dir, task, record: Dict, *,
         "schema": DATA_SCHEMA,
         "label": str(record.get("label") or task.label),
         "treatment": str(record.get("treatment") or ""),
+        # WHETHER THE LOW-BIAS APPROXIMATION WAS MADE, 1 or 0
+        # (`engines/transport.md` § 2a.12, *The data file*).
+        "low_bias_approximation": int(bool(
+            record.get("low_bias_approximation"))),
         "treatment_note": str(record.get("treatment_note") or ""),
         "current_means": json_attr(record.get("current_means") or {}),
         "energies_relative_to_ef": 1,

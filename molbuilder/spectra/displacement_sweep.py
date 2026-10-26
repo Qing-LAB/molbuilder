@@ -227,9 +227,9 @@ def collect_sweep(calc, *,
                 if st.state == "finished":
                     entry["detail"] = (
                         f"the run finished without writing {spectrum_name} "
-                        f"({st.detail}) -- an attempt prepared before its job "
-                        f"finished itself, which engines/vibration.md 5.5 "
-                        f"finishes by hand")
+                        f"({st.detail}) -- its finish did not write the "
+                        f"result; the run's session log says why "
+                        f"(engines/vibration.md 5.5)")
                 failed.append(entry)
             continue
         try:
@@ -311,8 +311,7 @@ def collect_sweep(calc, *,
                 f"(engines/vibration.md 5.2a), and a launched stage is not "
                 f"prepared again (job-system.md 5.0): to measure them at the "
                 f"relaxation they should share, "
-                + rollback("their groups' first launch (stages launched "
-                           "before 2.7.0: before their prep)", base=base))
+                + rollback("their groups' first launch", base=base))
 
     # WHICH MODE IS WHICH, by shape, against the first stage with a result.
     masses = [mass_of(i, ref.equilibrium_elements, ref.equilibrium_masses_amu)
