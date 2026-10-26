@@ -168,7 +168,6 @@ def _the_structure(struct: Structure, *, cell: Optional[np.ndarray],
 def validate(struct: Structure, cfg, *,
              cell: Optional[np.ndarray] = None,
              dest_dir: "Optional[object]" = None,
-             prior: "Optional[object]" = None,
              calculation: str = "optimization",
              design: "Optional[Structure]" = None,
              k_meshes=None,
@@ -206,12 +205,6 @@ def validate(struct: Structure, cfg, *,
         None, dest-relative paths fall back to projects/-anchored
         resolution; the file-existence check may then misfire and is
         downgraded to a WARN.
-    prior
-        What an EARLIER STAGE of this calculation left that this stage's
-        checks judge -- today, at a SIESTA force-constant stage, the ladder's
-        `relax` stage's relaxation record (`engines/vibration.md` § 5.2a),
-        handed in by the deck's spec from the `vibration` block `prep`
-        built.  ``None`` everywhere else.
 
     design
         The structure AS THE PERSON HOLDS IT, when ``struct`` is the placed
@@ -263,14 +256,12 @@ def validate(struct: Structure, cfg, *,
     # Engine-specific dispatch via the registry.  isinstance() picks
     # up subclasses too, so a future engine config that subclasses
     # an existing one inherits its validator unless it registers its
-    # own.  Extra kwargs (dest_dir / prior) are forwarded only when
+    # own.  Extra kwargs (dest_dir / design) are forwarded only when
     # set; every registered validator accepts **_ and ignores the ones
     # it doesn't use.
     engine_kw = {}
     if dest_dir is not None:
         engine_kw["dest_dir"] = dest_dir
-    if prior is not None:
-        engine_kw["prior"] = prior
     if design is not None:
         engine_kw["design"] = design
     # THE K-POINT MESH(ES) THE DECK WRITES (`engines/siesta.md` § 6.1), when
@@ -346,9 +337,7 @@ def report(issues: List[Issue], *,
 
 # --- The calculation kinds' validators ---------------------------------- #
 # A kind's science runs beside the engine's, keyed by what the description
-# says it is, so every deck of that kind is checked on every route.  What an
-# earlier stage left -- a SIESTA force-constant stage's `relax` record --
-# arrives as ``validate``'s ``prior`` and is forwarded here (V1.36).
+# says it is, so every deck of that kind is checked on every route.
 #: The calculation KIND's science, keyed by the described fact
 #: (``task.calculation``).  "optimization" deliberately has no entry:
 #: its science IS the engine validators above.  A new kind registers
@@ -358,7 +347,7 @@ _KIND_VALIDATORS: dict = {}
 
 
 def _validate_vibration_kind(struct: Structure, cfg, cell, *,
-                             prior=None, design=None, **_) -> List[Issue]:
+                             design=None, **_) -> List[Issue]:
     """The vibration kind's science (grid / amplitude / frozen atoms /
     the relaxation record), over the deck's own config view -- the charge
     and spin are the electronic state's one family, asked by ``validate``."""
@@ -370,8 +359,7 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
     from ..config.siesta import SiestaConfig
     if isinstance(cfg, SiestaConfig):
         from .spectra import siesta_vibration_checks
-        return list(siesta_vibration_checks(struct, cfg, design=design,
-                                            relaxed_by=prior))
+        return list(siesta_vibration_checks(struct, cfg, design=design))
     # The kind's science is written per engine, and an engine this dispatch
     # does not name has NO science here -- a gap to refuse, never an empty
     # verdict: an empty list reads as "checked, nothing found" on every
@@ -384,7 +372,7 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
 
 
 def _validate_transport_kind(struct: Structure, cfg, cell, *,
-                             prior=None, rung=None, **_) -> List[Issue]:
+                             rung=None, **_) -> List[Issue]:
     """The transport KIND's science — keyed on ``task.calculation``, so it
     fires whatever config class the deck renders from.  A rule that only
     runs for one of two config classes is not a gate; this one runs for the

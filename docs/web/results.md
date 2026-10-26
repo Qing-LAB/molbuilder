@@ -40,6 +40,7 @@ flowchart LR
 | the folder is | the picker opens | shown by | its data |
 |---|---|---|---|
 | **one run** — an attempt directory, or one rung's files in a flat calculation | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`; a PySCF run's stdout no parser claims, so its progress log opens — `parse.md` § 5.5), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
+| **a run in phases' root** — a SIESTA vibration's `run-<n>/`, holding its calls' folders ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2) | the run's result, the spectrum its record step wrote at the root (`runs.on_label_at`, the one door a reader of a stage's result takes); its index and its notification record listed beside it as aspects, never opened first; each call's folder opens as one run | the spectra viewer | as one run's |
 | **a calculation root** | a result file at the root if it holds one, **beside** the **ladder** — each rung's state and **every run of the calculation**, any of which is opened here when picked (§ 2.4) | the ladder card, and the picked run's presenter | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
 | **a transport calculation** | its **`task.json`** — the description is the report's handle, as a benchmark's `job-set.json` is (the registry's `transport-task` parser claims only a transport calculation's); `<label>.transport.json` is `summarize task`'s copy for the command line, opened as a file. A **transmission run's** result is this report at its point: its ladder row opens the report with that bias selected (§ 2.4), and so does the run's own folder — the run door answers it with the calculation's `task.json` and the point (§ 2) | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize task` wrote |
@@ -1362,8 +1363,6 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
   poll, dispose, and an answer written under its own file's name or not at
   all.
 - § 4.1, the run followed by the server's answer:
-  `tests/data/hand_overs.toml` (the server's answer for a run that ended --
-  not followed),
   `test_trajectory_settle_post_load_js.py` (the trajectory settle, as a case
   table) and `test_trajectory_transition_js.py` (its poll loop takes a quiet
   poll's answer).  *(The run's end read before the file's last read, and the

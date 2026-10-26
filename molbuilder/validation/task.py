@@ -86,6 +86,28 @@ def preflight(task, config_cls=None, *,
             where="task.engine")]
     cls = config_cls if config_cls is not None else known[task.engine]
 
+    # -- 1a. a SIESTA vibration described before 2.42.0 as `relax -> freq`:
+    # one run in phases since, its relaxation the run's first call
+    # (`engines/vibration.md` § 5.11 § 9) -- refused, naming migrate, which
+    # folds the stage into the one, keeping its overrides.
+    if str(task.engine) == "siesta" and task.calculation == "vibration":
+        from ..config.stages import VIBRATION_RELAX_STAGE
+        from ..identity import stage_key
+        old = [s.name for s in task.stages
+               if stage_key(s.name) == stage_key(VIBRATION_RELAX_STAGE)]
+        if old and len(task.stages) > 1:
+            out.append(Issue(
+                "error",
+                f"stage {old[0]!r}: a SIESTA vibration is one run in phases "
+                f"since 2.42.0 -- its relaxation the run's first call, "
+                f"switched by already_relaxed -- and this description still "
+                f"holds the relaxation as a stage of its own "
+                f"(engines/vibration.md 5.11).  `molbuilder jobset migrate` "
+                f"in this calculation's folder folds it into the one stage, "
+                f"keeping its overrides.",
+                where=f"stages.{old[0]}"))
+            return out
+
     # -- 1b. § 6.8 -- only a SPEED knob may be swept -----------------------
     #
     # The codec checked the shape of ``bench`` and stopped there: deciding

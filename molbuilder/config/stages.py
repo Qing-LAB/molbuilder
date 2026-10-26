@@ -18,14 +18,14 @@ from typing import Dict, Tuple
 #: until 2026-10-18, and PySCF's ladder imported it from there.
 STAGE_NAMES = {1: "coarse", 2: "medium", 3: "tight"}
 
-#: The vibration ladder's two stage names (`engines/vibration.md` § 2.2,
-#: § 5.2a): the measurement, and the relaxation SIESTA runs before it when
-#: the person has not stated the structure is relaxed.  Spelled here and
-#: read everywhere else -- which deck a stage renders is asked of ``relax``
-#: alone (`pyscf.stages.vibration_render_kind`), ``freq`` is the name the
-#: proposed ladder gives its force-constant stage, and the Task setup tab
-#: proposes both by the same words.
+#: THE VIBRATION KIND'S ONE STAGE on both engines (`engines/vibration.md`
+#: § 2.2, § 5.11 § 1): the harmonic analysis -- on SIESTA one run in phases,
+#: its relaxation the run's first call.  Read by the kind's fresh ladder
+#: (`pyscf.stages.vibration_stages`) and the Task setup page's proposal.
 VIBRATION_FREQ_STAGE = "freq"
+#: THE NAME SIESTA'S RELAXATION STAGE HAD before the run in phases (2.42.0):
+#: what `jobset migrate` folds into the one stage, and what prep refuses an
+#: unmigrated description by (`engines/vibration.md` § 5.11 § 9).
 VIBRATION_RELAX_STAGE = "relax"
 
 STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {

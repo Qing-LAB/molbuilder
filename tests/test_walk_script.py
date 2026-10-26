@@ -29,7 +29,7 @@ def test_a_point_whose_start_cannot_be_copied_is_not_run(tmp_path):
              ("dev@p2", "p2", "run.sh", "", (("p1/H2.TSDE", "p2"),))]
     script = _walk_script("walk", steps, where="a run of points",
                           log="walk.log", member_word="point",
-                          stop_on_failure=True, chains=[0, 0, 0])
+                          needs=[None, 0, 1])
     r = subprocess.run(["bash", "-c", script], cwd=tmp_path,
                        capture_output=True, text=True)
     ran = sorted(p for p in ("p0", "p1", "p2")
@@ -38,5 +38,5 @@ def test_a_point_whose_start_cannot_be_copied_is_not_run(tmp_path):
     assert ran == ["p0"], (ran, log)
     assert r.returncode != 0, log
     assert "dev@p1 not run -- its start could not be copied" in log, log
-    assert "dev@p2 not run -- its chain stopped" in log, log
+    assert "dev@p2 not run -- what it builds on failed" in log, log
     assert "p0/H2.TSDE" in log and r.stderr == "", (log, r.stderr)

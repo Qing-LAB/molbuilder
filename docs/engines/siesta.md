@@ -177,7 +177,7 @@ class SiestaConfig: ...                                             # config/sie
 
 spec_for(struct, config=None, *, names, cell=None,
          calculation="optimization", vibration=None,
-         relaxed_by=None, state=None, trial=None) -> DeckSpec          # siesta/input.py
+         part=None, state=None, trial=None) -> DeckSpec             # siesta/input.py
 copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # siesta/input.py → the elements whose <label>.psml was MISSING
 ```
 

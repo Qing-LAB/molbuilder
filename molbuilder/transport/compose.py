@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import numpy as np
 
 from ..cell import entering
+from ..parse.fdf import read_deck
 from ..structure import (SAME_PLACE_ANG, Structure, farthest_apart,
                          frame_words)
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE, SortError,
@@ -814,7 +815,7 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
         "relaxation": {"converged": cited.converged,
                        "exit_code": cited.exit_code},
     }
-    return struct, start, deck.read_text(encoding="utf-8"), files, said
+    return struct, start, read_deck(deck), files, said
 
 
 def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
@@ -877,15 +878,22 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
             f"(engines/transport.md 3.1).")
 
 
-def read_provenance(base_dir) -> Optional[Dict]:
+def read_provenance(base_dir, *, read=None) -> Optional[Dict]:
     """The calculation's ``slot-provenance.json`` -- where each part of the
     junction came from, written at its first prep
     (:func:`write_compose_record`) -- through `persist`, or ``None`` before
     anything was composed.  The one reader of that file: the record's own
     check below, the transport record, and the frame count
-    (`transport.stages.frames_of`)."""
+    (`transport.stages.frames_of`).  ``read`` reads a path's text where the
+    record is a prep's plan's, not yet on disk (`prepared_with.record`)."""
+    import json
     from ..persist import read_json
     path = Path(base_dir) / PROVENANCE_FILE
+    if read is not None:
+        try:
+            return json.loads(read(path))
+        except FileNotFoundError:
+            return None
     return read_json(path) if path.is_file() else None
 
 
@@ -1108,7 +1116,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # DECLARATION is asked separately and does re-run here, as does
     # even-spacing.  Both need only the structure.
     elec_l, elec_r = _extract_and_gate_electrodes(dev)
-    deck_text = deck_path.read_text(encoding="utf-8") if kind == "run" else None
+    deck_text = read_deck(deck_path) if kind == "run" else None
     return ComposedJunction(
         junction=dev,
         notes=(),

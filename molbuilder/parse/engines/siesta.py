@@ -238,14 +238,8 @@ class SiestaParser:
                 in_progress = True,
             ))
 
-        # THE ATOMS THE RUN HELD, as its own .out echoes them -- the pass
-        # read them (`siesta_grammar.CONSTRAINT_LINE`), 1-based as SIESTA
-        # prints; translated through the engine index API, never a bare
-        # n - 1 (wrong for a 0-based engine).
-        if read["held"]:
-            from ...engine_atom_index import convert_from_engine_numbering
-            runtime_info["frozen_atoms"] = sorted(
-                convert_from_engine_numbering(n, "siesta") for n in read["held"])
+        # THE ATOMS THE RUN HELD are the pass's to state
+        # (`runtime_info["frozen_atoms"]`, `siesta_reader`).
 
         _scan_log.info(
             f"parsed {len(frames)} frames, run_state={read['run_state']}, "

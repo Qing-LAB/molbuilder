@@ -24,7 +24,9 @@ _SIESTA_INVENTORY = (".XV", ".DM",
                      ".EIG", ".HSX", ".WFSX", ".STRUCT_NEXT_ITER",
                      ".CG", ".TSHS", ".TSDE",
                      # the force-constant run's product and its constrained twin
-                     ".FC", ".FCC")
+                     ".FC", ".FCC",
+                     # an optical call's product (engines/vibration.md 5.11)
+                     ".EPSIMG")
 
 #: pyscf/warm-files.toml, same rule.
 _PYSCF_INVENTORY = (".chk", "_optimized.xyz")
@@ -74,9 +76,26 @@ def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
     assert W.is_scratch("AuBDT.v0.2.TSGFL") and W.is_scratch("AuBDT.v0.2.TSGFR")
     assert not W.is_scratch("AuBDT.TSDE") and not W.is_scratch("AuBDT.TSHS")
     # ...AND THE FOLDER OF THE RUN'S OWN IT LIVES IN -- the fourth section
-    # fact, stated together with `scratch` (job-contracts.md § 4.2a).
+    # fact, stated only with `scratch` (job-contracts.md § 4.2a).
     assert W.warm_list("siesta", "transport").scratch_dir == "tsgf"
     assert W.warm_list("siesta", "optimization").scratch_dir is None
+
+
+def test_an_optical_calls_scratch_lies_beside_it_and_its_spectrum_is_kept():
+    """SIESTA's breakdown of an optical call's spectrum by transition,
+    `.contrib.EPSIMG`, is the engine's scratch: no copy carries it -- not a
+    warm launch's take-over, not the checkpoint, not a download -- and it
+    lies beside the call, with no folder of its own.  The spectrum itself,
+    `.EPSIMG`, is the call's product, carried with every done call
+    (`engines/vibration.md` § 5.11 § 6, § 8; `job-contracts.md` § 4.2a).
+    The families are globs over the shipped vocabulary: one read wrong
+    drops the product from every saved state, or saves the scratch in
+    each, and nothing says so."""
+    assert W.is_scratch("CO2.contrib.EPSIMG")
+    assert W.never_carried("CO2.contrib.EPSIMG")
+    assert not W.is_scratch("CO2.EPSIMG")
+    assert not W.never_carried("CO2.EPSIMG")
+    assert W.warm_list("siesta", "optical").scratch_dir is None
 
 
 # --------------------------------------------------------------------- #

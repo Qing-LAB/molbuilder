@@ -102,17 +102,17 @@ def differs(asked: Any, used: Any) -> Optional[bool]:
     return None if same is None else not same
 
 
-def _stage_role(f: "RunFiles") -> Optional[str]:
-    """The ROLE the run's rung plays (`template.stage_role`) -- what the
+def _stage_roles(f: "RunFiles"):
+    """The ROLES the run's rung plays (`template.stage_roles`) -- what the
     catalogue's `stages` axis names, so the items a rung reads are the
     ones its deck was written with.  Its stage's name comes out of the token
     in the run's names, which the run door gave the record
     (`RunFiles.names`): the run's stage is known before any file of it is
     read."""
     from ...identity import parse_token
-    from ...template import stage_role
+    from ...template import stage_roles
     got = parse_token(f.names.stage)
-    return stage_role(f.engine, f.calculation, got[1] if got else None)
+    return stage_roles(f.engine, f.calculation, got[1] if got else None)
 
 
 def _used_from_fdf_log(keys, params, blocks) -> Any:
@@ -149,7 +149,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     """``{"setup": {"rows", "engine_only"}, "verdict": {"findings"}}`` for the
     run ``f`` describes -- each part present only when a file states it."""
     from ... import script_emit as _sc
-    from ..fdf import fdf_key
+    from ..fdf import fdf_key, read_deck
     from ..registry import parse as _parse
     from .record import _read
 
@@ -158,7 +158,9 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     block = {r["item"]: r for r in
              _sc.read_parameters_fence(f.wrapper_text)
              + _sc.read_parameters_fence(_read(f.pyscf_log))}
-    deck_text = _read(f.deck) if f.engine == "siesta" else ""
+    # THE DECK WHOLE, its coordinates file inlined (`parse.fdf.read_deck`).
+    deck_text = (read_deck(f.deck)
+                 if f.engine == "siesta" and f.deck is not None else "")
     params: Dict[str, Any] = {}
     blocks: Dict[str, Any] = {}
     if f.fdf_log is not None:
@@ -169,7 +171,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
             pass
 
     items = _sc.declarations(engine=f.engine, calculation=f.calculation,
-                             stage=_stage_role(f))
+                             stage=_stage_roles(f))
     rows: List[Dict[str, Any]] = []
     by_keys: Dict[tuple, Dict[str, Any]] = {}
     written: set = set()

@@ -33,7 +33,7 @@ low-bias switch from the word it replaced (2026-10-08); every stage's
 above where the ladder allows it.  Each `job-set.json` --
 the root's and each sweep's: a job's `point`, `finish`, `resumes`,
 `placement` and `members` (W57; `members` written as `group` before 2.7.0),
-its `written_at` (2.7.0) and its `scratch_dir` (2.22.0), each
+its `phases` (2.42.0) and its `scratch_dir` (2.22.0), each
 with the meaning its absence had; the program it runs, onto the job
 (`Job.program`, 2.27.0), and a placement's source ``description`` said
 ``allocation``.
@@ -72,7 +72,7 @@ inside the file.
 from __future__ import annotations
 
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional,
                     Tuple)
 
@@ -209,10 +209,11 @@ _NOTIFY_ABSENT = {"on_scf_converged": False, "every_hours": None,
 _JOB_ABSENT = {"point": ({}, "w57"), "finish": (None, "w57"),
                "resumes": (True, "w57"), "placement": (None, "w57"),
                "members": (None, "2026-10-07"),
-               # A PREP BEFORE 2.7.0 recorded no `relax` run.  (A row's
-               # `asked`, written 2.7.0-2.40.2 and read by nothing since
-               # 2.41.0, is left as it lies: `Job.from_dict` reads past it.)
-               "written_at": (None, "2.7.0"),
+               # A PREP BEFORE 2.42.0 knew no run in phases.  (A row's
+               # `asked`, written 2.7.0-2.40.2, and its `written_at`,
+               # written 2.7.0-2.41.0 -- each read by nothing since -- are
+               # left as they lie: `Job.from_dict` reads past them.)
+               "phases": (None, "2.42.0"),
                # A PREP BEFORE 2.22.0 kept no scratch folder: its device
                # deck names the leads' files loose in the run, and a launch
                # again of it empties nothing (`engines/transport.md`
@@ -328,6 +329,10 @@ class _Records:
     #: The job request as the records step decided it -- ``None`` until
     #: then (:func:`_migrate_records`).
     request: Any = None
+    #: The stages the records step folded into another (a SIESTA
+    #: vibration's `relax` into its one stage, 2.42.0): what the job
+    #: request's rows drop with them.
+    folded_stages: List[str] = field(default_factory=list)
 
     @classmethod
     def read(cls, base: Path) -> "_Records":
@@ -649,6 +654,68 @@ def _migrate_records(rec: "_Records"):
         st.pop("enabled")
         lines.append((f"stages[{name}].enabled removed (2026-10-03: a "
                       f"stage has no on/off switch)", "2026-10-03"))
+    # A SIESTA VIBRATION DESCRIBED BEFORE 2.42.0 AS `relax -> freq`: one run
+    # in phases since, its relaxation the run's first call
+    # (`engines/vibration.md` § 5.11 § 9) -- the relaxation stage folded
+    # into the one stage, its overrides carried; a value the two stages
+    # state otherwise is refused by name.
+    if (obj.get("engine") == "siesta"
+            and obj.get("calculation") == "vibration"):
+        from ..config.stages import VIBRATION_RELAX_STAGE
+        from ..identity import stage_key
+        stages = [st for st in (obj.get("stages") or [])
+                  if isinstance(st, dict)]
+        old = [st for st in stages
+               if stage_key(str(st.get("name", "")))
+               == stage_key(VIBRATION_RELAX_STAGE)]
+        if old and len(stages) > 1:
+            relax = old[0]
+            rest = [st for st in stages if st is not relax]
+            # THE RELAXATION'S OWN ITEMS go onto the one stage (§ 5.11
+            # § 9): those whose `stages` name the relaxation and no other
+            # phase of the kind -- an item every phase reads, alone or as a
+            # set (`scf`), is the one stage's to state.  Any other value the
+            # retired stage set for its own run is a conflict, named -- one
+            # run in phases computes every phase at one value.
+            from ..paths import KIND_ROLES
+            from ..template import catalogue, select
+            others = set(KIND_ROLES["vibration"]) - {"relaxation"}
+            relaxation_items = {
+                it.name for it in select(catalogue(), engine="siesta",
+                                         stages=("relaxation",))
+                if it.stages and not set(it.stages) & others}
+            overrides = dict(relax.get("overrides") or {})
+            carried = {k: v for k, v in overrides.items()
+                       if k in relaxation_items}
+            foreign = [k for k in overrides if k not in relaxation_items]
+            for st in rest:
+                own = dict(st.get("overrides") or {})
+                clash = sorted(
+                    [k for k in carried if k in own and own[k] != carried[k]]
+                    + [k for k in foreign if own.get(k) != overrides[k]])
+                if clash:
+                    raise MigrateError(
+                        f"stage {relax.get('name')!r} overrides "
+                        f"{', '.join(clash)}, which stage {st.get('name')!r} "
+                        f"does not state the same way -- one run in phases "
+                        f"carries one value for each, every phase computed "
+                        f"at it (engines/vibration.md 5.11 9): state "
+                        f"{'it' if len(clash) == 1 else 'them'} on "
+                        f"{st.get('name')!r} or remove "
+                        f"{'it' if len(clash) == 1 else 'them'}, in "
+                        f"{TASK_FILENAME}, then run the migration again; "
+                        f"nothing was written.")
+                if carried:
+                    st["overrides"] = {**own, **carried}
+            obj["stages"] = rest
+            rec.folded_stages.append(str(relax.get("name")))
+            lines.append((
+                f"stage {relax.get('name')!r} folded into "
+                f"{', '.join(repr(st.get('name')) for st in rest)} (2.42.0: "
+                f"a SIESTA vibration is one run in phases, its relaxation "
+                f"the run's first call"
+                + (f"; its overrides {', '.join(sorted(carried))} carried"
+                   if carried else "") + ")", "2.42.0"))
     if obj.pop("centre_junction", None) is not None:
         # RETIRED IN 2.6.0: the junction enters its calculation centred
         # (`model/structure-periodicity.md` § 6.0).
@@ -745,12 +812,36 @@ def _migrate_records(rec: "_Records"):
         moved = _onto_the_card(rec, task, card)
         changed = card != (body.get("execution") or {})
         body["execution"] = card
+        # A STAGE FOLDED INTO ANOTHER (a SIESTA vibration's `relax`, 2.42.0)
+        # takes its row with it; the stage it was folded into keeps its own.
+        folded = [n for n in rec.folded_stages
+                  if n in (body.get("stages") or {})]
+        if folded:
+            body["stages"] = {k: v for k, v in body["stages"].items()
+                              if k not in folded}
+            # THE NUMBERS AGAIN FROM 1, each stage keeping who it shares a
+            # job with -- the page's rule for a stage removed
+            # (`web/task-setup.md` § 5.3; `job-request.md` § 3.3: the first
+            # stage is group 1).
+            kept = [st.name for st in task.stages
+                    if isinstance(body["stages"].get(st.name), dict)]
+            numbers: list = []
+            for n in kept:
+                if body["stages"][n].get("group") not in numbers:
+                    numbers.append(body["stages"][n].get("group"))
+            for n in kept:
+                body["stages"][n]["group"] = (
+                    numbers.index(body["stages"][n].get("group")) + 1)
+            changed = True
+            moved += [f"stage {n!r}'s row dropped with the stage (2.42.0)"
+                      for n in folded]
         try:
             rec.request = _jr.from_dict(body, task)
         except ValueError as exc:
             raise _refused_rewrite(jr_path, exc) from None
         if changed:
-            writes.add(jr_path, json_text(rec.request.to_dict()), {_RUN_OUT})
+            writes.add(jr_path, json_text(rec.request.to_dict()),
+                       {_RUN_OUT} | ({"2.42.0"} if folded else set()))
         said += [f"{ln} ({_RUN_OUT})" for ln in moved]
 
     for folder, d in rec.jobsets.items():

@@ -544,10 +544,6 @@ method = "POST"
 where = "json"
 name = "dest"
 request = { json = { dest = "{outside_dir}", kind = "task", groups = [1], plan_id = "probe" } }
-[[route.path]]
-where = "json"
-name = "from"
-request = { json = { dest = "{inside_dir}", kind = "task", groups = [1], plan = true, from = "{link_out}" } }
 
 [[route]]
 rule = "/api/task-setup/prep-plan"

@@ -1,16 +1,20 @@
-"""The vibration kind on SIESTA, through the whole described road.
+"""The vibration kind on SIESTA, through the whole described road: one stage,
+one run in phases.
 
-``molbuilder describe --engine siesta --calculation vibration`` → ``prep task`` →
-``launch task --mode direct`` on this workstation, and nothing after it: the
-road's CO2 (`support.road.CO2`), listed O O C with the carbon held, the
-force-constant run nudging the two oxygens only, and the modes derived BY THE
-JOB -- its finish, ``mb_vibration.pyz``, run by the wrapper after SIESTA with
-the job's own python, which cannot import molbuilder -- through the one path
-both engines share (`engines/vibration.md` § 5.5, I22, I23).  The carbon is
-LAST in the input, so the held-first order the decks are written in is a
-3-cycle (`support.road.CO2_HELD_FIRST`), and the result comes back in your
-order through the order record its deck states (`model/overview.md` § 2.2a,
-I5, I7).
+``molbuilder describe --engine siesta --calculation vibration`` → ``prep task``
+→ ``launch task --mode direct`` on this workstation, and nothing after it: the
+road's CO2 (`support.road.CO2`), listed O O C with the carbon held.  The one
+stage `freq` runs as ONE RUN IN PHASES (`engines/vibration.md` § 5.11): its
+`relax` call, its `fc` call nudging the two oxygens at the geometry the
+relaxation reached, and -- one mode picked -- its optical calls, each a
+SIESTA call in a folder of its own below the run, walked by one job; the
+modes derived BY THE JOB -- the `fc` call's record step, `mb_vibration.pyz`,
+run by each call's run script with the job's own python, which cannot import
+molbuilder -- through the one path both engines share (§ 5.5, I22, I23).
+The carbon is LAST in the input, so the held-first order the decks are
+written in is a 3-cycle (`support.road.CO2_HELD_FIRST`), and the result comes
+back in your order through the order record its deck states
+(`model/overview.md` § 2.2a, I5, I7).
 
 WHAT THE PHYSICS SAYS OF IT.  The molecule lies along z.  Six free
 coordinates; the carbon held on the axis leaves two whole-body motions -- the
@@ -18,25 +22,30 @@ turns about it, about x and about y -- so four modes (`science/normal-modes.md`
 § 3.1): a bend pair, degenerate by the molecule's symmetry, moving the
 oxygens in the (x, y) plane, and two stretches along z.
 
-MUTATIONS THIS MUST FAIL AGAINST: a wrapper that does not run the finish
-(the launch then ends with no spectrum); a finish bundle missing a member
-(the job's python cannot import it, and the job fails); a finish that reads
-no order record from its deck (the result's oxygens then stand where the
-carbon is).
+MUTATIONS THIS MUST FAIL AGAINST: a run script that does not run its
+record step (the launch then ends with no spectrum, and no optical call is
+planned); a bundle missing a member (the job's python cannot import it, and
+the job fails); a plan step that writes the force-constant call's
+coordinates from the structure rather than the relaxation (the geometry in
+the result is the input's); a record step reading no order record from its
+deck (the result's oxygens then stand where the carbon is); a finish that
+does not send the run's `finish` (the notification record lists `start`
+alone).
 
 The roads: one per state of the person's one box (`engines/vibration.md`
-§ 2.2) -- unticked, the ladder `init` writes relaxes first (the shared
-relaxation, `support.real_runs.relaxed_for_vibration`), and `freq` is written
-at the geometry `relax` reached (§ 5.2a); ticked, `freq` alone measures at
-the geometry as given -- then a displacement sweep (§ 5.9), on the unticked
-calculation.  A flat calculation's refusal of a sweep needs no engine:
+§ 2.2) -- unticked, the run relaxes first (the shared run,
+`support.real_runs.vibration`, which the relaxation's and the monitor's
+e2e read too), its `fc` call at the geometry `relax` reached, one mode's
+optical calls after it; ticked, the run is the `fc` call alone, at the
+geometry as given -- then a displacement sweep (§ 5.9), on the unticked
+calculation.  A flat calculation's refusal needs no engine:
 `test_siesta_vibration_deck`.  The ticked road's result is then opened on the
 Results tab, in a browser.
 
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
-cleanly anywhere else.  Each force-constant run is thirteen single points of
-CO2 on one rank, about a minute here, and the module launches four, on the
-shared relaxation (`process/testing.md` tier 3: each run made once a pass).
+cleanly anywhere else.  Each force-constant call is thirteen single points of
+CO2 on one rank, about a minute here, and the module launches three runs
+(`process/testing.md` tier 3: each run made once a pass).
 """
 from __future__ import annotations
 
@@ -62,32 +71,30 @@ pytestmark = [
 _ZERO_POINT = 1.054571817e-34 / (4 * np.pi * 2.99792458e10
                                  * 1.66053906660e-27 * 1e-20)
 
+#: The mode the shared run's optical phase is asked for -- the lower stretch,
+#: mode 3 of four, 1-based (`support.real_runs.CO2_OPTICAL`).
+_PICKED_MODE = 3
+
 
 @pytest.fixture(scope="module")
-def unticked(real_relaxed_for_vibration, tmp_path_factory):
-    """The box unticked: a copy of the shared relaxation's calculation
-    (`support.real_runs.copy_of`), on which, in order -- `freq` prepared and
-    launched, and `summarize` asked of one force-constant stage; the ladder
-    as it then stands kept (``stages_before_the_sweep``); a displacement
-    sweep, `freq_half` at 0.02 Bohr added beside `freq` in a group of its
-    own (a launched group is fixed, `engines/stages.md` § 2), prepared, the
-    sweep summarized (``early``), `freq_half` launched and summarized
-    (``record``), and summarized again under a tolerance (``flagged``); then
-    `freq` launched again.  What each step answered is written down by its
-    name."""
+def unticked(real_co2_vibration, tmp_path_factory):
+    """The box unticked: a copy of the shared run's calculation
+    (`support.real_runs.copy_of`), on which, in order -- `summarize` asked
+    of one stage; `freq` launched again, warm, with every call done and the
+    result written; a displacement sweep, `freq_half` at 0.02 Bohr added
+    beside `freq` in a group of its own (a launched group is fixed,
+    `engines/stages.md` § 2), prepared, the sweep summarized (``early``),
+    `freq_half` launched and summarized (``record``), and summarized again
+    under a tolerance (``flagged``).  What each step answered is written
+    down by its name."""
     from support.real_runs import _road_at, _taken, _typed, copy_of
 
-    def on_the_relaxation(run):
+    def on_the_run(run):
         record = run.bundle / "CO2.fc-sweep.json"
         with _road_at(run.tree.parent, tmp_path_factory):
-            _taken(run, "prep freq", "prep", "task",
-                   *group_words(run.bundle, "freq"), "--target", "this")
-            _taken(run, "launch freq", "launch", "task", "--stage", "freq",
-                   "--mode", "direct", "--foreground", "--yes")
             _typed(run, "summarize", "summarize", "task")
-            run.stages_before_the_sweep = [
-                st["name"] for st in
-                json.loads((run.bundle / "task.json").read_text())["stages"]]
+            _typed(run, "launch freq again", "launch", "task", "--stage",
+                   "freq", "--mode", "direct", "--foreground", "--yes")
             ladder_edited({"added": [{"name": "freq_half",
                                       "overrides": {"fc_displacement": 0.02}}]},
                           run.bundle)
@@ -102,26 +109,18 @@ def unticked(real_relaxed_for_vibration, tmp_path_factory):
             _taken(run, "summarize with a tolerance", "summarize", "task",
                    "--tolerance-cm1", "1e-6")
             run.flagged = json.loads(record.read_text())
-            _taken(run, "launch freq again", "launch", "task", "--stage",
-                   "freq", "--mode", "direct", "--foreground", "--yes")
-    return copy_of(real_relaxed_for_vibration, "unticked", on_the_relaxation)
+    return copy_of(real_co2_vibration, "unticked", on_the_run)
 
 
 @pytest.fixture(scope="module")
 def ticked(tmp_path_factory):
-    """The box ticked, on the road: `freq` asked before `relax` has run; the
-    ladder cut to `freq` alone and asked again unticked; then ticked, the
-    template's temperature set to 350 K, prepared and launched -- each answer
-    written down."""
-    from support.real_runs import (RealRun, _on_the_road, _taken, _typed,
+    """The box ticked, on the road: the template's `already_relaxed` true
+    and its temperature 350 K, `freq` prepared and launched -- one run, its
+    `fc` call alone -- each answer written down."""
+    from support.real_runs import (RealRun, _on_the_road, _taken,
                                    co2_vibration)
     with _on_the_road(tmp_path_factory, "ticked") as tree:
         run = RealRun(tree=tree, bundle=co2_vibration(tree))
-        _typed(run, "prep freq before relax", "prep", "task",
-               *group_words(run.bundle, "freq"), "--target", "this")
-        ladder_edited({"removed": ["relax"]}, run.bundle)
-        _typed(run, "prep freq unticked", "prep", "task",
-               *group_words(run.bundle, "freq"), "--target", "this")
         template = run.bundle / "CO2.template.toml"
         set_template_value(template, "already_relaxed", "true")
         set_template_value(template, "temperature_K", "350.0")
@@ -132,14 +131,15 @@ def ticked(tmp_path_factory):
     return run
 
 
-def _deck_of(attempt):
-    """The deck the run in ``attempt`` read, through the run door
-    (`runs.run_of`), as fdf reads it (`parse.fdf.read_fdf`): ``(scalars,
-    blocks, run)``."""
-    from molbuilder.parse.fdf import read_fdf
+def _deck_of(call):
+    """The deck the SIESTA call in ``call`` read, through the run door
+    (`runs.run_of`), as the engine read it -- its coordinates block inlined
+    from the file beside it (`parse.fdf.read_deck`): ``(scalars, blocks,
+    run)``."""
+    from molbuilder.parse.fdf import read_deck, read_fdf
     from molbuilder.runs import run_of
-    run = run_of(attempt)
-    return (*read_fdf(run.deck.read_text()), run)
+    run = run_of(call)
+    return (*read_fdf(read_deck(run.deck)), run)
 
 
 def _said(deck, key):
@@ -148,27 +148,68 @@ def _said(deck, key):
     return deck[0].get(fdf_key(key), [])
 
 
-def _the_result(attempt):
-    """The spectrum the launch left in ``attempt`` -- written by the job
-    itself, so its run finished only with it (`engines/vibration.md` § 5.5:
-    the finish's failure is the job's) -- asked through the run door (the
-    one status door, `runs.run_answer`; the run's result on its label,
-    `Run.on_label`) and read by its reader (`sidecars.spectra
-    .parse_spectra_json`, which refuses a derived value its inputs
-    contradict), as it states itself."""
-    from molbuilder.runs import run_answer, run_of
+def _deck_coordinates(deck):
+    """The deck's own coordinate block (:func:`_deck_of`), as SIESTA reads
+    it."""
+    from molbuilder.parse.fdf import fdf_key
+    rows = deck[1][fdf_key("AtomicCoordinatesAndAtomicSpecies")]
+    return np.array([[float(x) for x in r[:3]] for r in rows])
+
+
+def _the_run(run, stage: str = "freq", n: int = 0):
+    """The run of ``stage`` as `jobset status` reads it -- the one status
+    door (`support.real_runs.stage_status`): finished, every call done and
+    its finish ended; and its folder."""
+    from support.real_runs import stage_status
+    status = stage_status(run.bundle, stage)
+    assert status.state == "finished", (status.state, status.detail)
+    assert all(p["done"] for p in status.points), status.points
+    return status, run.attempt(stage, n)
+
+
+def _the_result(run, stage: str = "freq", n: int = 0):
+    """The spectrum the launch left at the run's root -- written by the
+    job's own record step, so its run finished only with it
+    (`engines/vibration.md` § 5.11 § 3: the step's failure is the job's) --
+    the run read through the one status door (:func:`_the_run`), its
+    result through the one door for a result on the label
+    (`runs.on_label_at`), read by its reader (`sidecars.spectra.parse_spectra_json`, which
+    refuses a derived value its inputs contradict), as it states itself."""
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
     from molbuilder.sidecars.spectra import parse_spectra_json
-    said = run_answer(attempt)
-    assert (said["state"], said["detail"]) == ("finished", "job_completed"), \
-        said
-    out = run_of(attempt).on_label(".spectra.json")
+    _status, folder = _the_run(run, stage, n)
+    out = on_label_at(folder, ROLE_SPECTRA)
     assert out is not None and out.is_file(), (
-        "the launch ended without the spectrum: the job did not finish its "
-        "own calculation")
+        "the launch ended without the spectrum at the run's root: the job "
+        "did not finish its own calculation")
     return parse_spectra_json(str(out)).to_dict()
 
 
-def _common_assertions(d):
+def _index_of(run, stage: str = "freq", n: int = 0) -> dict:
+    """The run's index -- its calls, what each is, how each ended, the
+    finish -- the file of its role among the run's own, read by its one
+    reader (`siesta.vibration_phases.read_index`)."""
+    from molbuilder.runfiles import ROLE_PHASES, find
+    from molbuilder.siesta.vibration_phases import read_index
+    from molbuilder.task import of as task_of
+    (path, _rf), = find(run.attempt(stage, n), task_of(run.bundle).label,
+                        role=ROLE_PHASES)
+    return read_index(path)
+
+
+def _notified(run, stage: str = "freq", n: int = 0) -> list:
+    """The events the run sent, by its record (`runrecord.read_notified`),
+    named as its stage's files are (`jobset.naming.stage_home`)."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.runrecord import read_notified
+    from molbuilder.task import of as task_of
+    task = task_of(run.bundle)
+    names = stage_home(run.bundle, task, stage).names(task.shape)
+    return [e["event"] for e in read_notified(run.attempt(stage, n), names, n)]
+
+
+def _common_assertions(d, *, optical: bool):
     from molbuilder.spectra.results import SCHEMA_VERSION
     assert d["engine"] == "siesta" and d["schema_version"] == SCHEMA_VERSION
     # THE USER ORDER: the oxygens atoms 0 and 1, the held carbon atom 2.
@@ -181,16 +222,20 @@ def _common_assertions(d):
     assert d["removed_motions"]["count"] == 2
     _a_bend_pair_and_two_stretches(d["modes"])
     assert d["equilibrium"]["mo_energies_eh"] is None
-    assert d["modes"][0]["raman_activity_a4_amu"] is None
     assert d["thermo"]["regime"] == "vibrational-only"
-    # the frequencies are this route's whole answer; the strengths and the
-    # probe were never asked of it (vibration.md § 4.9)
+    # the frequencies are this route's whole answer; the probe was never
+    # asked of it (vibration.md § 4.9); Raman is the optical phase's, where
+    # it ran (§ 5.11 § 8)
     assert d["phase_frequencies"] == "complete"
-    assert (d["phase_raman"], d["phase_es"]) == ("not requested",) * 2
+    assert d["phase_es"] == "not requested"
+    assert d["raman_route"] == ("optical" if optical else "none"), d
+    if not optical:
+        assert d["phase_raman"] == "not requested"
+        assert d["modes"][0]["raman_activity_a4_amu"] is None
     assert "Head1997" in d["bibliography_keys"]
     # R5 on this route: the reference-step forces judged by the tolerance
-    # the geometry was relaxed to (vibration.md § 5.5) -- the ladder's relax
-    # record's, the template's when ticked: the kind's recommended 0.01 eV/A
+    # the geometry is relaxed to (vibration.md § 5.5) -- the stage's own,
+    # the template's when ticked: the kind's recommended 0.01 eV/A
     assert d["engine_metadata"]["reference_force_criterion_ev_ang"] == 0.01
     # the mass-calibrated displacement a transport step displaces along
     for m in d["modes"]:
@@ -198,8 +243,8 @@ def _common_assertions(d):
                 * m["frequency_cm1"]) == pytest.approx(_ZERO_POINT,
                                                        rel=1e-3), m
     _states_its_masses_and_derived_values(d)
-    # no strength is computed on this route, so no mode can be placed in a
-    # channel (`engines/vibration.md` § 6.5)
+    # no strength is computed from the force constants alone, so no mode
+    # can be placed in a channel (`engines/vibration.md` § 6.5)
     assert {m["activity_class"] for m in d["modes"]} == {"partial"}
     _states_its_charges_and_their_infrared(d)
 
@@ -294,93 +339,111 @@ def _states_its_masses_and_derived_values(d):
         assert abs(float((stated[:, None] * L * L).sum()) - 1.0) < 1e-6, m
 
 
-def _relaxed_geometry(attempt):
-    """Where the `relax` run in ``attempt`` ended, in the user order -- the run
+def _relaxed_geometry(call):
+    """Where the `relax` call in ``call`` ended, in the user order -- the run
     door's one read of a run's geometry (`runs.steps_of`)."""
     from molbuilder.runs import openable, run_of, steps_of
-    return np.asarray(steps_of(run_of(attempt), openable(attempt)[0])
+    return np.asarray(steps_of(run_of(call), Path(openable(call)[0]))
                       .last.positions, dtype=float)
 
 
-def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geometry(
-        unticked):
-    """The box unticked (the default `init` writes): the ladder is `relax`
-    then `freq`; after `relax`, `freq` is written at the geometry `relax`
-    reached, in the held-first order its deck states, and the modes come out
-    in the user order with the reference forces within the template's own
-    tolerance (vibration.md § 2.2, § 5.2a, § 5.5); its first run records
-    the relaxation it was measured at -- `relax`'s run, as its
-    `.continued-from` (§ 5.2a).  And a force-constant stage launched again
-    starts over: its kind's rerun carries nothing of its own
-    (`warm-files.toml` [vibration] `resumes`, `job-system.md` § 5.4, *A
-    stage launched again*)."""
+def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
+        real_co2_vibration, unticked):
+    """The box unticked (the default `describe` writes): the one run's
+    calls are the relaxation, then the force constants at the geometry it
+    reached -- in the held-first order its deck states, written beside that
+    deck by the run's own plan step -- then the picked mode's three optical
+    calls, each planned by the `fc` call's record step; the modes come out
+    in the user order with the reference forces within the stage's own
+    tolerance (`engines/vibration.md` § 5.11 §§ 1–3, § 5.5); the index
+    lists every call with how it ended, the selection as asked and applied,
+    and the finish; the run sent `start` once and `finish` once (§ 7a); and
+    `status` counts the run in its phases' words (§ 7).  Launched again warm
+    with every call done and the result written, a launch has nothing to
+    run and says so, naming `--cold` (§ 6)."""
     from molbuilder.parse.fdf import fdf_key
-    from molbuilder.runs import declared, folder_answer
-    run = unticked
-    assert run.stages_before_the_sweep == ["relax", "freq"]
-    # THE RELAXATION IT WAS MEASURED AT, recorded by its first launch -- as
-    # the Results tab opens that run (it is not the newest: `freq` is
-    # launched again below).
-    launch = folder_answer(run.attempt("freq"))["record"]["computation"][
-        "launch"]
-    assert launch["continued_from"] == (
-        run.attempt("relax").relative_to(run.bundle).as_posix()), launch
+    from molbuilder.runs import declared
+    from molbuilder.siesta.vibration_phases import FC, OPTICAL, RELAX
+    run = real_co2_vibration
+    status, folder = _the_run(run)
+    assert status.detail == "relax done · fc done · optical 3 of 3", \
+        status.detail
+    calls = {(p["phase"], p["call"]): p for p in status.points}
+    assert [k[0] for k in calls] == [RELAX, FC, OPTICAL, OPTICAL, OPTICAL], \
+        list(calls)
     # the ordinary relaxation deck, from the same held-first copy: Broyden
     # to the kind's recommended 0.01 eV/A, the held carbon -- SIESTA's atom 1
     # after the sort -- constrained
-    relax = _deck_of(run.attempt("relax"))
+    relax = _deck_of(run.call("freq", RELAX))
     assert _said(relax, "MD.TypeOfRun") == ["Broyden"]
     assert _said(relax, "MD.MaxForceTol")[:1] == ["0.01"]
     held = [["position", "1"]]
     assert relax[1][fdf_key("Geometry.Constraints")] == held
     # the force-constant deck: the oxygens SIESTA's atoms 2 and 3, the
-    # carbon held; and the run states the held-first order record, read by
-    # the run door's reader (I5)
-    fc = _deck_of(run.attempt("freq"))
+    # carbon held; the run states the held-first order record, read by the
+    # run door's reader (I5); and its coordinates are where the relaxation
+    # ended, in that order (§ 5.11 § 3)
+    fc = _deck_of(run.call("freq", FC))
     assert (_said(fc, "MD.TypeOfRun"), _said(fc, "FC.First"),
             _said(fc, "FC.Last")) == (["FC"], ["2"], ["3"])
     assert fc[1][fdf_key("Geometry.Constraints")] == held
     assert declared(fc[2]).atom_order.to_dict() == CO2_HELD_FIRST
-    attempt = run.attempt("freq")
+    relaxed = _relaxed_geometry(run.call("freq", RELAX))
+    assert np.allclose(_deck_coordinates(fc),
+                       relaxed[CO2_HELD_FIRST["sorted_to_original"]],
+                       atol=1e-6)
     fc_file = fc[2].on_label(".FC")
     assert fc_file is not None and fc_file.is_file(), \
-        "the force-constant run must leave its .FC"
-    # THE LAUNCH ENDS WITH THE RESULT: the job's finish wrote it (§ 5.5).
-    d = _the_result(attempt)
-    # ...and summarize derives nothing: with one force-constant stage there
-    # is no sweep to summarize (§ 5.9, I22).
-    said = run.said["summarize"]
-    assert said.exit_code != 0 and "a sweep compares two or more" in \
-        said.output, said.output
-    _common_assertions(d)
+        "the force-constant call must leave its .FC"
+    # THE INDEX: every call, how it ended, the selection, the finish.
+    index = _index_of(run)
+    assert index["phases"] == [RELAX, FC, OPTICAL]
+    assert [(c["phase"], c["exit"]) for c in index["calls"]] == \
+        [(RELAX, 0), (FC, 0)] + [(OPTICAL, 0)] * 3, index["calls"]
+    assert index["selection"]["applied"] == [_PICKED_MODE], index["selection"]
+    assert index["finish"]["exit"] == 0, index["finish"]
+    # the three optical calls: the equilibrium, then the mode's two sides,
+    # each a folder below the run's `optical/` holding the optical deck and
+    # what SIESTA left (`vibration_phases.calls_of`, `Call.rel`)
+    from molbuilder.siesta.vibration_phases import calls_of
+    optical_calls = [c for c in calls_of(index) if c.phase == OPTICAL]
+    assert [(c.mode, c.side) for c in optical_calls] == \
+        [(None, 0), (_PICKED_MODE, 1), (_PICKED_MODE, -1)], optical_calls
+    for c in optical_calls:
+        optical = _deck_of(folder / c.rel)
+        assert _said(optical, "OpticalCalculation") == [".true."], c
+        assert optical[2].on_label(".EPSIMG") is not None, c
+    # THE RUN REPORTED AS ONE RUN: start once, finish once (§ 7a).
+    assert _notified(run) == ["start", "finish"]
+    # THE LAUNCH ENDS WITH THE RESULT: the record step wrote it (§ 5.11 § 3).
+    d = _the_result(run)
+    _common_assertions(d, optical=True)
     assert d["relaxation"]["converged"] is True
-    # the ladder relaxed first, and the artifact says so from the relax
-    # stage's own record (vibration.md § 4.9)
     assert d["relaxation"]["already_relaxed"] is False
     assert d["phase_relaxation"] == "complete"
     assert d["relaxation"]["enabled"] is True and d["relaxation"]["n_steps"] >= 1
     # the geometry in the file is the one the force constants were taken
-    # at -- where `relax` ended, in the user order
-    assert np.allclose(d["structure"]["positions"],
-                       _relaxed_geometry(run.attempt("relax")), atol=1e-5)
+    # at -- where the relaxation ended, in the user order
+    assert np.allclose(d["structure"]["positions"], relaxed, atol=1e-5)
 
-    # LAUNCHED AGAIN, the force constants start over -- nothing handed on.
-    assert ("launched again into run-1: it starts over -- nothing is handed "
-            "on from a run of its own") in run.said["launch freq again"].output
-    from molbuilder.runs import folder_answer
-    launch = folder_answer(run.attempt("freq", 1))["record"]["computation"][
-        "launch"]
-    assert launch["continued_from"] is None, launch
+    # ...and summarize derives nothing: with one stage there is no sweep to
+    # summarize (§ 5.9, I22).
+    said = unticked.said["summarize"]
+    assert said.exit_code != 0 and "a sweep compares two or more" in \
+        said.output, said.output
+    # LAUNCHED AGAIN with every call done and the finish written: nothing to
+    # run, the cold launch named (§ 5.11 § 6).
+    said = unticked.said["launch freq again"]
+    assert said.exit_code != 0, said.output
+    assert ("every call of 01_freq/run-0 is done and its finish wrote the "
+            "result") in said.output and "--cold" in said.output, said.output
 
 
-def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
-    """The box ticked: no relaxation, the force constants at the geometry as
-    given, the reference forces judged by the template's tolerance -- the
-    road's CO2, one C=O long, is no stationary point, and the result says so.
-    Before it, the ladder's own order and the contradiction refused: `freq`
-    before `relax` has run names the stage to run first (`continuation`,
-    § 5.2a's table), and unticked with no relax stage in the ladder is
-    neither state, so prep names both ways out (§ 5.2a).
+def test_ticked_the_run_measures_at_the_geometry_as_given(ticked):
+    """The box ticked: no relaxation -- the run's one call is the force
+    constants at the geometry as given, the reference forces judged by the
+    template's tolerance -- the road's CO2, one C=O long, is no stationary
+    point, and the result says so.
 
     The thermochemistry is summed at the TEMPLATE'S temperature, which is
     one meaning on both engines (§ 3.1): set to 350 K here, it reaches the
@@ -388,22 +451,21 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
     result records no pressure, since none enters it (§ 4.7).
 
     MUTATION THIS MUST FAIL AGAINST: prep leaving the temperature out of the
-    block -- the finish then refuses the deck and the launch fails.
+    block -- the record step then refuses the deck and the launch fails.
     """
     from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE
-    said = ticked.said["prep freq before relax"]
-    assert said.exit_code != 0 and "`freq` builds on `relax`" in said.output \
-        and "Run it first" in said.output, said.output
-    said = ticked.said["prep freq unticked"]
-    assert said.exit_code != 0 and "already_relaxed = true" in said.output \
-        and "`relax` stage" in said.output, said.output
-    d = _the_result(ticked.attempt("freq"))
-    _common_assertions(d)
+    from molbuilder.siesta.vibration_phases import FC
+    status, _folder = _the_run(ticked)
+    assert status.detail == "fc done", status.detail
+    assert _index_of(ticked)["phases"] == [FC]
+    assert _notified(ticked) == ["start", "finish"]
+    d = _the_result(ticked)
+    _common_assertions(d, optical=False)
     assert d["thermo"]["temperature_K"] == 350.0, d["thermo"]["temperature_K"]
     assert d["thermo"]["pressure_atm"] is None
     assert 350.0 in d["thermo"]["grid"]["temperatures_K"]
     assert d["relaxation"]["already_relaxed"] is True
-    # nothing relaxed: the force-constant run itself never does
+    # nothing relaxed: the force-constant call itself never does
     assert d["phase_relaxation"] == "not requested"
     assert d["relaxation"]["enabled"] is False
     # at the geometry as given, in the user order, placed in its box as the deck
@@ -411,7 +473,7 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
     # § 6.0) -- and judged off a stationary point by the template's 0.01 eV/A
     from molbuilder.deck_record import extract_engine_offset
     from molbuilder.runs import run_of
-    deck = run_of(ticked.attempt("freq")).deck.read_text()
+    deck = run_of(ticked.call("freq", FC)).deck.read_text()
     placed = (np.asarray(CO2["positions"], dtype=float)
               + extract_engine_offset(deck)["applied_offset"])
     assert np.allclose(d["structure"]["positions"], placed, atol=1e-6)
@@ -460,12 +522,13 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
     width it never computed, or a table offering intensities it has not.
     """
     from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.runs import run_of
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
     from support.live_server import serve
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(ticked.tree))
+    d = _the_result(ticked)
     attempt = ticked.attempt("freq")
-    d = _the_result(attempt)
-    result = run_of(attempt).on_label(".spectra.json")
+    result = on_label_at(attempt, ROLE_SPECTRA)
 
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -542,7 +605,7 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
             assert summary[line].startswith("not computed on this route"), \
                 (line, summary[line])
         assert summary["IR intensities"] == (
-            "from the run's charges \u2014 name the atoms above the modes "
+            "from the run's charges — name the atoms above the modes "
             "table"), summary["IR intensities"]
 
         # THE ATOMS NAMED, the door answers (§ 3.2): the column titled by
@@ -550,7 +613,7 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
         page.select_option("#ir-atoms", value='"frozen_atoms"')
         page.wait_for_function(
             "() => document.getElementById('ir-col-head').textContent"
-            "  === 'IR \u2014 frozen_atoms, along z, Hirshfeld (km/mol)'",
+            "  === 'IR — frozen_atoms, along z, Hirshfeld (km/mol)'",
             timeout=20000)
         cells = page.eval_on_selector_all(
             "#modes-tbody td.ir-col", "ts => ts.map(t => t.textContent)")
@@ -560,7 +623,7 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
                 "#results-summary-list dt")].find(
                 x => x.textContent === "IR intensities");
             return dt.nextElementSibling.textContent; }""")
-        assert said == ("from the run's charges \u2014 frozen_atoms, along "
+        assert said == ("from the run's charges — frozen_atoms, along "
                         "z, Hirshfeld"), said
 
         # NO DOT FOR A PHASE THE ROUTE DOES NOT HAVE (§ 3).
@@ -607,28 +670,21 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
     assert unexpected == [], f"the page reported JS errors: {unexpected}"
 
 
-def _deck_coordinates(deck):
-    """The deck's own coordinate block (:func:`_deck_of`), as SIESTA reads
-    it."""
-    from molbuilder.parse.fdf import fdf_key
-    rows = deck[1][fdf_key("AtomicCoordinatesAndAtomicSpecies")]
-    return np.array([[float(x) for x in r[:3]] for r in rows])
+def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
+    """A displacement sweep (`engines/vibration.md` § 5.9): two stages --
+    `freq` at the template's 0.04 Bohr and `freq_half` at 0.02 -- each one
+    run in phases, each at a relaxed geometry; each stage's job writes its
+    own spectrum; and `summarize task` compares them into
+    `<label>.fc-sweep.json` at the root, naming each stage's files rather
+    than copying them (I25), each stage's nudged atoms in SIESTA's
+    numbering.  Before `freq_half` is launched the record lists it as
+    pending, in its attempt's own words.
 
-
-def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
-        unticked):
-    """A displacement sweep (`engines/vibration.md` § 5.9): after `relax`,
-    two force-constant stages -- `freq` at the template's 0.04 Bohr and
-    `freq_half` at 0.02 -- BOTH measure at the relaxed geometry, whatever
-    their names (I24); each stage's job writes its own spectrum; and
-    `summarize task` compares them into `<label>.fc-sweep.json` at the root,
-    naming each stage's files rather than copying them (I25), each stage's
-    nudged atoms in SIESTA's numbering.  Before `freq_half` is launched the
-    record lists it as pending, in its attempt's own words.
-
-    MUTATION THIS MUST FAIL AGAINST: only the stage named `freq` taking the
-    relaxed geometry -- `freq_half` then measures the unrelaxed input.
+    MUTATION THIS MUST FAIL AGAINST: the second stage's record step not
+    writing its own result at its run's root -- the summary then lists it
+    failed, and compares nothing.
     """
+    from molbuilder.siesta.vibration_phases import FC
     bundle, early, rec, rec2 = (unticked.bundle, unticked.early,
                                 unticked.record, unticked.flagged)
     assert [s["name"] for s in early["stages"]] == ["freq"], early["stages"]
@@ -637,15 +693,10 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
         waiting
     assert early["failed"] == []
 
-    decks = {stage: _deck_of(unticked.attempt(stage))
-             for stage in ("freq", "freq_half")}
-    # I24: one geometry for every force-constant stage -- the relaxed one.
-    assert np.allclose(_deck_coordinates(decks["freq"]),
-                       _deck_coordinates(decks["freq_half"]), atol=1e-8), \
-        "the second force-constant stage was not written at the relaxed geometry"
-    assert _said(decks["freq_half"], "FC.Displacement")[:1] == ["0.02"]
-    a1, a2 = (_the_result(unticked.attempt("freq")),
-              _the_result(unticked.attempt("freq_half")))
+    half = _deck_of(unticked.call("freq_half", FC))
+    assert _said(half, "FC.Displacement")[:1] == ["0.02"]
+    a1, a2 = (_the_result(unticked, "freq"),
+              _the_result(unticked, "freq_half"))
     for d in (a1, a2):
         assert d["phase_relaxation"] == "complete" and \
             d["relaxation"]["converged"] is True
@@ -667,6 +718,7 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
     for s in rec["stages"]:
         where = unticked.attempt(s["name"]).relative_to(bundle)
         assert Path(s["spectrum"]).parent == where, (s["spectrum"], where)
+        assert Path(s["fc_file"]).parent == where / FC, (s["fc_file"], where)
     assert not list(bundle.glob("*.FC")) and not list(
         bundle.glob("*.spectra.json")), "the summary copied a stage's files"
     # the oxygens nudged, SIESTA's atoms 2 and 3 in the held-first deck

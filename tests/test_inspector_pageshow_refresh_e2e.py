@@ -87,21 +87,22 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
 
 
 @pytest.fixture(scope="module")
-def live_output(real_relaxed_for_vibration):
+def live_output(real_co2_vibration):
     """A real run's output -- the trajectory inspector's primary file type
     -- made on the road with the real SIESTA, once in this pass
-    (`support/real_runs.py`): a CO2 relaxation, its moves the frames -- the
-    output the Results tab opens in its folder (`runs.openable`)."""
+    (`support/real_runs.py`): a CO2 relaxation, the `relax` call of a
+    vibration's run in phases, its moves the frames -- the output the
+    Results tab opens in its folder (`runs.openable`)."""
     from molbuilder.runs import openable
-    return openable(real_relaxed_for_vibration.attempt("relax"))[0]
+    from molbuilder.siesta.vibration_phases import RELAX
+    return openable(real_co2_vibration.call("freq", RELAX))[0]
 
 
 @pytest.fixture
-def project_with_trajectory(real_relaxed_for_vibration, live_output,
-                            monkeypatch):
+def project_with_trajectory(real_co2_vibration, live_output, monkeypatch):
     """The run's output, its projects tree the only picker root: the
     absolute path string."""
-    _register_tmp_as_picker_root(real_relaxed_for_vibration.tree, monkeypatch)
+    _register_tmp_as_picker_root(real_co2_vibration.tree, monkeypatch)
     return str(live_output)
 
 

@@ -123,6 +123,15 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     from molbuilder.runfiles import compose
     stage_dir = next(dest.glob(f"*_{stage}"))
     deck = stage_dir / compose(name, suffix, stage_dir.name)
+    if engine == "siesta" and calculation == "vibration":
+        # ONE RUN IN PHASES: each phase's deck in its folder below the
+        # stage (`engines/vibration.md` § 5.11 § 2) -- the force-constant
+        # phase's is the one the offset rule speaks of.
+        from molbuilder.siesta.vibration_deck import FC_PART
+        deck = stage_dir / FC_PART / deck.name
+    if engine == "siesta":
+        from molbuilder.parse.fdf import read_deck
+        return dest, stage, read_deck(deck)
     return dest, stage, deck.read_text()
 
 
@@ -210,7 +219,7 @@ def test_a_pyscf_deck_writes_the_design_coordinates_plus_the_offset(
     struct = _water()
     if calculation == "vibration":
         cfg = PySCFConfig(job_name="JOB", already_relaxed=True)
-        stages = vibration_stages("pyscf", already_relaxed=True)
+        stages = vibration_stages("pyscf")
     else:
         cfg, stages = PySCFConfig(job_name="JOB"), default_pyscf_stages("publishable")
     dest, _stage, text = _prep(isolated_projects_root, struct, cfg, stages,
@@ -399,22 +408,22 @@ def _engine_frame():
 
 
 def _vibration(already_relaxed=False, freq_says=None):
-    """A SIESTA vibration's config and ladder: `relax` then `freq`, or `freq`
-    alone when stated relaxed -- by the template, or by ``freq``'s own value
+    """A SIESTA vibration's config and its one stage, `freq` -- the
+    structure stated relaxed by the template, or by ``freq``'s own value
     over it (``freq_says``)."""
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.pyscf.stages import vibration_stages
     from molbuilder.task import Stage
     cfg = SiestaConfig(system_label="JOB", already_relaxed=already_relaxed)
     if freq_says is None:
-        return cfg, vibration_stages("siesta", already_relaxed=already_relaxed)
+        return cfg, vibration_stages("siesta")
     return cfg, [Stage(name="freq", overrides={"already_relaxed": freq_says})]
 
 
 @pytest.mark.parametrize("calculation, ladder, stage, kept", [
     # an engine's origin is not carried into a new calculation ...
     ("optimization", lambda: _engine("siesta"), None, False),
-    ("vibration", lambda: _vibration(), "relax", False),
+    ("vibration", lambda: _vibration(), "freq", False),
     # ... save a SIESTA vibration's input stated relaxed: its grid minimum --
     # by the template, or by the force-constant stage's own value
     ("vibration", lambda: _vibration(already_relaxed=True), "freq", True),

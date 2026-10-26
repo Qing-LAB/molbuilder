@@ -272,7 +272,8 @@ touch it. The parts:
   folder's history (`.git`, `.binsnapshots`), and what no copy of a run
   folder carries, by the one answer the checkpoint asks
   (`warmfiles.never_carried`, [`checkpointing.md`](?doc=execution/checkpointing.md)
-  S1): an engine's scratch a run still holds — a device run's `tsgf/` pair
+  S1): an engine's scratch a run still holds — a device run's `tsgf/` pair,
+  an optical call's `.contrib.EPSIMG`
   (`jobset scratch` lists and empties them, [`job-system.md`](?doc=execution/job-system.md)
   § 5.3) — and molbuilder's temporary files, there only while a write or a
   reading runs (a TBtrans data file's reading's claim, the one writer's

@@ -288,9 +288,7 @@ def _judged_force(rec: Mapping[str, Any]) -> Optional[float]:
 def check_relaxation_record(struct: Structure, *, engine: str,
                             already_relaxed: bool,
                             force_tolerance_ev_ang: Optional[float],
-                            level: Optional[Mapping[str, Any]] = None,
-                            relaxed_by: Optional[Mapping[str, Any]] = None,
-                            relax_stage: str = "relax"
+                            level: Optional[Mapping[str, Any]] = None
                             ) -> List[Issue]:
     """The structure's own evidence against the person's statement
     (`engines/vibration.md` § 2.2, the record table; `model/parse.md`
@@ -308,20 +306,12 @@ def check_relaxation_record(struct: Structure, *, engine: str,
     disagreement is a warning; unticked, the same fact is information,
     because the ladder relaxes regardless.  Holding every atom the
     relaxation held, and more, is no disagreement: an info line says so.
-
-    ``relaxed_by`` is the other question, asked at a force-constant stage
-    whose ladder relaxed the coordinates itself: that stage's record
-    (`engines/vibration.md` § 5.2a, V1.36) -- judged by
-    :func:`_ladder_relaxation_findings`, never by the box's advice.
     """
     # THE one remedy for a structure stated relaxed that is not stationary
     # here -- the text the finish and the PySCF deck write too
     # (`vibrational_analysis.nonstationary_remedy`).
     from ..spectra.vibrational_analysis import nonstationary_remedy
     _remedy = nonstationary_remedy(None, engine)
-    if relaxed_by is not None:
-        return _ladder_relaxation_findings(struct, relaxed_by,
-                                           stage=relax_stage)
     issues: List[Issue] = []
     where = "config.already_relaxed"
     info = getattr(struct, "info", None) or {}
@@ -460,72 +450,4 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                      + ("  The frequencies will be off unless it is relaxed "
                         "further.  " + _remedy if already_relaxed else
                         f"  {_first_relaxation(engine)} tightens it."))))
-    return issues
-
-
-def _ladder_relaxation_findings(struct: Structure, rec: Mapping[str, Any],
-                                *, stage: str) -> List[Issue]:
-    """What a force-constant stage is told about the geometry its ladder's
-    `relax` stage left (`engines/vibration.md` § 5.2a; plan V1.36, the
-    user's word 2026-09-29).
-
-    The fact at this stage is that stage's OUTCOME -- how far it got,
-    against the tolerance it relaxed to, as its record states it
-    (``force_tolerance_ev_ang``): the one yardstick the job's finish judges
-    the reference geometry by too (§ 5.5) -- and, when it stopped short, the
-    one remedy: continue it.  Not the box's describe-time advice ("the ladder
-    relaxes it first", "the box may be ticked", "untick the box"), which
-    was written for the input and is moot once the ladder has relaxed; not
-    the level of theory, which is this calculation's own by construction;
-    and not the geometry's fingerprint, since the coordinates are that
-    record's last frame.  The held set IS compared: an atom the `relax`
-    stage held and this stage frees was never balanced (§ 2.3a).
-    """
-    issues: List[Issue] = []
-    where = "config.already_relaxed"
-    # THE one remedy text, the finish's and the PySCF deck's too
-    # (`engines/vibration.md` § 5.5).
-    from ..spectra.vibrational_analysis import nonstationary_remedy
-    remedy = "  " + nonstationary_remedy(stage, "siesta")
-    held = _held_sets_compared(struct, rec)
-    if held is not None:
-        issues.append(_held_set_finding(
-            struct, held, who=f"The `{stage}` stage", here="this stage",
-            severity="warn", tail=remedy))
-    judged = _judged_force(rec)
-    force_tolerance_ev_ang = rec.get("force_tolerance_ev_ang")
-    steps = rec.get("n_steps", "?")
-    if judged is None:
-        issues.append(Issue(
-            severity="info", where=where,
-            message=(f"The force constants are taken at the geometry the "
-                     f"`{stage}` stage left ({steps} geometry step(s)); its "
-                     f"record carries no final force to judge.")))
-    elif force_tolerance_ev_ang is None:
-        issues.append(Issue(
-            severity="info", where=where,
-            message=(f"The force constants are taken at the geometry the "
-                     f"`{stage}` stage left: a largest force of "
-                     f"{_ev(judged)} eV/Å on the atoms it moved, after "
-                     f"{steps} geometry step(s).")))
-    elif float(judged) <= float(force_tolerance_ev_ang):
-        issues.append(Issue(
-            severity="info", where=where,
-            message=(f"The force constants are taken at the geometry the "
-                     f"`{stage}` stage left: a largest force of "
-                     f"{_ev(judged)} eV/Å on the atoms it moved, after "
-                     f"{steps} geometry step(s), within the tolerance it "
-                     f"relaxed to, {float(force_tolerance_ev_ang):g} "
-                     f"eV/Å.")))
-    else:
-        issues.append(Issue(
-            severity="warn", where=where,
-            message=(f"The `{stage}` stage stopped with a largest force of "
-                     f"{_ev(judged)} eV/Å on the atoms it moved, after "
-                     f"{steps} geometry step(s) -- above the tolerance it "
-                     f"relaxed to, "
-                     f"{float(force_tolerance_ev_ang):g} eV/Å, so the force "
-                     f"constants would be taken off a stationary point and "
-                     f"the frequencies will be off, the low ones most."
-                     + remedy)))
     return issues

@@ -26,12 +26,83 @@ deciding an atom's number.
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from .. import script_emit as _sc
 from ..atom_permutation import SORT_HELD_FIRST
 from ..engine_atom_index import siesta_numbering
 from ..structure import Structure
+from .vibration_phases import PHASES, phase
+
+#: THE PARTS A VIBRATION DECK IS, one per phase of the run
+#: (`vibration_phases.PHASES`, `engines/vibration.md` § 5.11 § 4) -- what
+#: `spec_for(part=)` renders; each spelled once, the phases table's.
+RELAX_PART, FC_PART, OPTICAL_PART = (p.part for p in PHASES)
+PARTS = tuple(p.part for p in PHASES)
+
+
+def optical_facts(cfg, mesh) -> dict:
+    """What the optical call derives, worked out when the SPEC is built
+    (`script-preparation.md` § 4.1; `engines/vibration.md` § 5.11 § 9): the
+    light's direction as the item states it, and the k-point mesh the
+    optical sum runs over -- the item's, or the stage's own k-point grid
+    (``mesh``, `kmesh.mesh_for`) when none is set: for a molecule Γ
+    alone, which is what SIESTA takes for a cell it judges one.  The
+    light's direction is written as SIESTA's ``Optical.Vector`` block, the
+    mesh as ``Optical.Mesh``; each says where it came from."""
+    direction = [float(x) for x in cfg.optical_direction]
+    if not any(abs(x) > 0 for x in direction):
+        raise ValueError("optical_direction is the zero vector: the "
+                         "light's electric field needs a direction")
+    own = getattr(cfg, "optical_mesh", None)
+    if own is not None:
+        counts, mesh_from = [int(n) for n in own], "optical_mesh"
+    elif mesh is not None:
+        counts, mesh_from = [int(n) for n in mesh.counts], "the stage's k-point grid (kgrid)"
+    else:
+        counts, mesh_from = [1, 1, 1], "Γ alone: the stage states no k-point grid"
+    return {"direction": direction, "mesh": counts, "mesh_from": mesh_from}
+
+
+def optical_block(struct: Structure, cfg, derived: dict) -> str:
+    """The optical single point -- structural text, like the force-constant
+    block: a single point (no atom moves), the optical calculation on, the
+    field's polarization and direction, the mesh the sum runs over
+    (`engines/vibration.md` § 5.11 § 4, § 9; SIESTA 5.4.2 manual, *Optical
+    properties*).  ``Optical.Broaden``, ``Optical.Energy.Maximum`` and
+    ``Optical.NumberOfBands`` are items and reach the deck through the
+    syntax door in their own section, with their declaration and note."""
+    o = derived["optical"]
+    v = bool(getattr(cfg, "verbose_comments", True))
+    out: List[str] = [""]
+    if v:
+        out += [
+            "# --- The optical single point ---",
+            "# One SCF at this call's coordinates, no atom moved (MD.Steps 0),",
+            "# then SIESTA's optical calculation: eps2(w) for a field along",
+            "# Optical.Vector, every occupied state coupled with every empty one",
+            "# (OpticalCalculation; engines/vibration.md 5.11), written to",
+            f"# {cfg.system_label}.EPSIMG.  The run's Raman phase runs one such",
+            "# call at the equilibrium and at +/-dQ along each selected mode;",
+            "# the polarizability and the Raman strength are derived from",
+            "# eps2 when the result is presented, at the laser and the width",
+            "# a person asks (science/vibrational-optical-response.md 3).",
+            f"# The mesh: {o['mesh_from']}.",
+        ]
+    out += [
+        "MD.TypeOfRun      CG",
+        "MD.Steps          0",
+        "OpticalCalculation .true.",
+        "Optical.PolarizationType polarized",
+        "%block Optical.Vector",
+        "  " + " ".join(f"{x:.6f}" for x in o["direction"]),
+        "%endblock Optical.Vector",
+        "%block Optical.Mesh",
+        "  " + " ".join(str(n) for n in o["mesh"]),
+        "%endblock Optical.Mesh",
+        "",
+    ]
+    return "\n".join(out)
 
 
 def fc_facts(struct: Structure, cfg) -> dict:
@@ -89,11 +160,12 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
             "# MD.TypeOfRun FC nudges atoms FC.First..FC.Last by FC.Displacement",
             "# along x, y, z, both ways, and writes the force constants to",
             f"# {cfg.system_label}.FC (engines/vibration.md § 5.4).  No atom is",
-            "# relaxed here: the coordinates below are taken as the stationary",
-            "# point -- the ones the ladder's relax stage reached, or the input's",
-            "# when the person stated them relaxed (already_relaxed) -- and the",
-            "# job's finish judges them with the forces of FC step 0, then writes",
-            f"# {cfg.system_label}.spectra.json (engines/vibration.md 5.5).",
+            "# relaxed here: the coordinates are taken as the stationary point",
+            "# -- the ones the run's relax call reached, or the input's when the",
+            "# person stated them relaxed (already_relaxed) -- and the record",
+            "# step after this call judges them with the forces of FC step 0,",
+            f"# then writes {cfg.system_label}.spectra.json at the run's root",
+            "# (engines/vibration.md 5.5, 5.11 3).",
             f"# The range is the {f['n_free']} FREE atom(s); the {f['n_held']} held",
             "# atom(s) come first in this deck's numbering because the structure",
             f"# was sorted with the {SORT_HELD_FIRST!r} key -- the order record",
@@ -104,17 +176,6 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
         "MD.TypeOfRun      FC",
         f"FC.First          {f['fc_first']}",
         f"FC.Last           {f['fc_last']}",
-    ]
-    if v:
-        out += [
-            "# Every atom's partial charge at the end of every step, by both",
-            "# partitions, positive where electrons left the atom -- what the",
-            "# charge each mode moves is read from (engines/vibration.md 5.3,",
-            "# 5.10).  A grid integration each per step, no extra SCF.",
-        ]
-    out += [
-        "Charge.Hirshfeld  geometry",
-        "Charge.Voronoi    geometry",
         "",
     ]
     return "\n".join(out)
@@ -152,15 +213,31 @@ def start_state_lines(cfg) -> List[str]:
     return [f"{k:<18}{answer[k]}" for k in keys if k in answer]
 
 
-def stage_science(cfg, derived: dict) -> str:
-    """The one-line header for a force-constant rung, in the deck's own
-    units -- `_stage_science`'s job for a run that moves nothing."""
-    f = derived["fc"]
-    return (f"force constants over SIESTA's atoms {f['fc_first']}.."
-            f"{f['fc_last']} -- its own numbering, of the deck's held-first "
-            f"order ({f['n_free']} free, {f['n_held']} held), "
-            f"FC.Displacement {f['fc_displacement']:g} Bohr, "
-            f"MeshCutoff {cfg.mesh_cutoff} Ry")
+def stage_science(cfg, derived: dict, part: Optional[str]) -> str:
+    """The one-line header for a vibration call, in the deck's own units --
+    `_stage_science`'s job for each part of the run (`engines/vibration.md`
+    § 5.11 § 4): the relaxation's as an optimisation's, the force-constant
+    run's range, the optical call's light."""
+    if part == FC_PART:
+        f = derived["fc"]
+        return (f"force constants over SIESTA's atoms {f['fc_first']}.."
+                f"{f['fc_last']} -- its own numbering, of the deck's "
+                f"held-first order ({f['n_free']} free, {f['n_held']} held), "
+                f"FC.Displacement {f['fc_displacement']:g} Bohr, "
+                f"MeshCutoff {cfg.mesh_cutoff} Ry")
+    if part == OPTICAL_PART:
+        o = derived["optical"]
+        return (f"the optical single point: a field along "
+                f"({', '.join(f'{x:g}' for x in o['direction'])}), the sum "
+                f"over {'x'.join(map(str, o['mesh']))} k-points, "
+                f"Optical.Broaden {cfg.optical_broaden:g} Ry, "
+                f"MeshCutoff {cfg.mesh_cutoff} Ry")
+    return (f"the relaxation of the run, {phase('relax').role}: "
+            f"MeshCutoff {cfg.mesh_cutoff} Ry, force tol "
+            f"{cfg.relax_force_tol} eV/Ang, {cfg.relax_type}, max "
+            f"{cfg.relax_steps} steps")
 
 
-__all__ = ["fc_facts", "fc_block", "start_state_lines", "stage_science"]
+__all__ = ["RELAX_PART", "FC_PART", "OPTICAL_PART", "PARTS", "optical_facts",
+           "optical_block", "fc_facts", "fc_block", "start_state_lines",
+           "stage_science"]

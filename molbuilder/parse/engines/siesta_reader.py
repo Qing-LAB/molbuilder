@@ -36,6 +36,7 @@ try:                                        # inside molbuilder
         starts_with_ci,
     )
     from .molwatch_grammar import parse_runtime_line
+    from ...engine_atom_index import convert_from_engine_numbering
 except ImportError:                         # beside a job, as the monitor's
     import siesta_grammar as _G
     from _section_rules import (
@@ -44,6 +45,7 @@ except ImportError:                         # beside a job, as the monitor's
         starts_with_ci,
     )
     from molwatch_grammar import parse_runtime_line
+    from engine_atom_index import convert_from_engine_numbering
 
 
 # Validation vocabularies for the loose-capture build/diag probes.  We still
@@ -1557,6 +1559,14 @@ class SiestaReader:
         # WHAT EACH SCF ROW MEASURES, the engine's one declaration.
         self.runtime_info["scf_residuals"] = [dict(r) for r in
                                               _G.SCF_RESIDUALS]
+        # THE ATOMS THE RUN HELD, as its own .out echoes them
+        # (`siesta_grammar.CONSTRAINT_LINE`), 1-based as SIESTA prints --
+        # stated here once for every reader of the pass (the registry's
+        # parser, a job's relaxation record), translated through the
+        # engine index API, never a bare n - 1.
+        if self.held:
+            self.runtime_info["frozen_atoms"] = sorted(
+                convert_from_engine_numbering(n, "siesta") for n in self.held)
         return {"steps": self.steps, "live_scf": live_scf, "doing": doing,
                 "lattice": self.lattice, "run_state": self.run_state,
                 "scf_converged": self.scf_converged,

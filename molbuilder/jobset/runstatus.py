@@ -290,11 +290,11 @@ def run_folders(base, task, stage_dir, stage: str):
     for n in attempts_in(Path(stage_dir)):
         run_dir = Path(stage_dir) / attempt_name(n)
         folders: List[tuple] = []
-        if getattr(task, "calculation", None) == "transport":
-            from ..transport.stages import points_in
-            folders = [(p, pt) for p, pt in points_in(run_dir, task, stage,
-                                                      base=root)
-                       if p.is_dir()]
+        from .points import points_of
+        declared = points_of(task) if task is not None else None
+        if declared is not None:
+            folders = [(p, pt) for p, pt in declared.points_in(
+                run_dir, task, stage, root) if p.is_dir()]
         for folder, pt in folders or [(run_dir, None)]:
             yield n, folder, pt
 
@@ -372,17 +372,18 @@ def _copied(base, run: Optional[Path]) -> Optional[str]:
         return str(exc)
 
 
-def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
-                  names, ref) -> Optional["StageStatus"]:
+def _sweep_status(calc, job, *, d: Path, names, ref
+                  ) -> Optional["StageStatus"]:
     """A SWEPT RUNG's row (`engines/transport.md` § 2a.11): its latest run's
     state -- ``pending`` before it is launched; while launched, ``running``
     while a point runs, ``finished`` once every point is done, ``queued``
     when nothing has run yet, else ``failed`` -- and its points, each done
     or not done and what it started from.  ``None`` for a rung that does
     not sweep."""
-    from ..transport.stages import frames_of, products_of, rung_points
-    if task is None or not rung_points(task, job.name,
-                                       frames=frames_of(base)):
+    from .points import points_of
+    base, task = calc.base, calc.task
+    declared = points_of(task) if task is not None else None
+    if declared is None or not declared.rung_points(calc, job.name):
         return None
     run = latest_attempt(d)
     if run is None:
@@ -393,21 +394,18 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
     except LaunchRecordError as e:
         return StageStatus(ref=ref, dir=d.name, state="unreadable",
                            detail=str(e), attempt=run.name)
-    products = products_of(job.name, task.label, base_dir=base)
     if launch is None:
         pts, _running = point_rows(run, names, task, job.name, base=base,
-                                   launch=launch, products=products)
+                                   launch=launch)
     else:
         # THE ONE RULE the gather asks too (`continuation.points_state`).
         state, detail, pts = points_state(run, names, task, job.name,
-                                          launch=launch, products=products,
-                                          base=base)
+                                          launch=launch, base=base)
     # CONVERGED, in its own column (`job-system.md`, rule 4): yes for a rung
     # with an SCF (`STAGE_FACT`: the transmission converges nothing) when
     # every point's output says it converged; NO when one says it did not;
     # otherwise nothing yet.
-    from ..transport.stages import STAGE_FACT
-    scf_rung = STAGE_FACT.get(job.name, "scf") != "product"
+    scf_rung = declared.converges(job.name)
     converged = ("SCF NO" if any(p["converged"] is False for p in pts)
                  else "SCF yes" if scf_rung and pts
                  and all(p["converged"] is True for p in pts)
@@ -427,20 +425,19 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
                         attempts_in(d), going=state in ("queued", "running")))
 
 
-def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
-                refs, shape) -> StageStatus:
+def _job_status(calc, job, *, dirs, refs, shape) -> StageStatus:
     """One prepared job's status, read from where its attempts are -- a
     run of points' row (:func:`_sweep_status`) or one run's
     (:func:`_one_run_status`); a queued row's standing asked the same way
     for both (`runs.standing_of`, `running-a-job.md` § 4.2)."""
+    base, jobset, task = Path(calc.base), calc.jobset, calc.task
     d = base / dirs[job.name]
     # WHICH FILES are this stage's: its stage's names (`naming.
     # run_names`) -- in either shape a flat folder holds every stage, an
     # attempt may hold several run indexes.  THE LABEL IS THIS JOB'S, NOT
     # THE JOBSET'S: a trial is relabelled with its point.
     names = run_names(jobset, job, shape)
-    row = (_sweep_status(base, jobset, job, task, d=d, names=names,
-                         ref=refs[job.name])
+    row = (_sweep_status(calc, job, d=d, names=names, ref=refs[job.name])
            or _one_run_status(base, jobset, job, task, d=d, names=names,
                               ref=refs[job.name]))
     if row.state != "queued":
@@ -560,6 +557,9 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
     base = Path(calc.base)
     jobset = sweep if sweep is not None else calc.jobset
     task = calc.task if sweep is None else None
+    # THE CALCULATION AS THIS STATUS READS IT: its own plan and
+    # description, or a benchmark's set alone (`_job_status`).
+    view = dataclasses.replace(calc, jobset=jobset, task=task)
     kw = {}
     if jobset is not None:
         sh = calc.shape
@@ -590,7 +590,7 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
             # row by it -- and
             # a stage never launched, the ready door's words for its launch.
             row = dataclasses.replace(
-                _job_status(base, jobset, job, task, **kw), ref=ref,
+                _job_status(view, job, **kw), ref=ref,
                 group=calc.request.group_of(st.name),
                 changed=list(r.changed), unrecorded=r.unrecorded)
             if not r.launched and row.state == "pending":
@@ -600,8 +600,7 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
         offer = state.prep_offer
         steps = _steps(calc, state.groups, stages)
     else:
-        stages = [_job_status(base, jobset, job, None, **kw)
-                  for job in jobset.jobs]
+        stages = [_job_status(view, job, **kw) for job in jobset.jobs]
     first = next((s for s in stages if s.state != _DONE), None)
     # A BENCHMARK'S SWEEP is read against the calculation it measures, as
     # its job-set names its trials (`materialize.bench_owner` re-bases a
@@ -719,9 +718,15 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                 step = (bad.state, f"{bad.name}: " + reason_of(bad.detail),
                         [])
             elif bad is not None:
-                # LAUNCHED AGAIN, it continues from its own latest run or
-                # starts over -- its job's one fact (`Job.relaunch_continues`).
-                again = ("it continues from its own latest run, or `--cold` "
+                # LAUNCHED AGAIN: a run of points takes over every point
+                # its latest run finished (`engines/transport.md` § 2a.11,
+                # `engines/vibration.md` § 5.11 § 6); any other stage
+                # continues from its own latest run or starts over -- its
+                # job's one fact (`Job.relaunch_continues`).
+                again = ("it takes over every point its own latest run "
+                         "finished, or `--cold` runs them all again"
+                         if bad.points else
+                         "it continues from its own latest run, or `--cold` "
                          "starts it over" if bad.relaunch_continues else
                          "it starts over, nothing handed on from a run of "
                          "its own")
@@ -1104,8 +1109,7 @@ def scratch_answer(calc) -> ScratchAnswer:
                 try:
                     # THE RUN'S STATE BY ITS KIND'S RULE -- a run of points
                     # by its points (`continuation.stage_run_state`).
-                    state, detail = stage_run_state(base, calc.task,
-                                                    f.stage, f.run)
+                    state, detail = stage_run_state(calc, f.stage, f.run)
                 except (OSError, ValueError, KeyError) as exc:
                     why = f"its state does not read: {exc}"
                 else:

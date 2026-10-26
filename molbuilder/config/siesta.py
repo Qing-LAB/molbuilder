@@ -278,6 +278,34 @@ class SiestaConfig:
     # gas-phase translational term one would enter.
     temperature_K: float = 298.15
     relax_max_displ: float = 0.05
+    # ----- The run's optical phase: Raman on this engine --------------
+    # WHICH MODES (`engines/vibration.md` § 5.11 § 9): PySCF's mode
+    # selector, reused whole -- `skip` runs no optical call; `all` every
+    # mode inside the window; `explicit` the listed ones.  The same items
+    # on both configs, read by the same function in the job
+    # (`spectra.selection.select_modes`).
+    es_mode_selection: str = "skip"
+    es_explicit_indices: str = ""
+    freq_min_cm1: Optional[float] = None
+    freq_max_cm1: Optional[float] = None
+    # SIESTA'S OPTICAL CALCULATION, one single point per frame (the
+    # equilibrium, then +/-dQ along each selected mode): the light's
+    # direction, the k-point mesh the optical sum runs over (none: the
+    # stage's own k-point grid), the run's resolution (the width a person
+    # reads is applied when the result is presented, R-c), the energy
+    # range and the bands -- each written against the manual, *Optical
+    # properties* (siesta/vibration_deck.py::optical_block).
+    optical_direction: Tuple[float, float, float] = field(
+        default_factory=lambda: (0.0, 0.0, 1.0))
+    optical_mesh: Optional[Tuple[int, int, int]] = None
+    optical_broaden: float = 0.002
+    optical_energy_max: float = 10.0
+    optical_bands: Optional[int] = None
+    # THE PARTIAL CHARGES AT EVERY FORCE-CONSTANT STEP, fixed by the kind
+    # (role items, L4): what the charge each mode moves is read from
+    # (engines/vibration.md 5.3, 5.10).
+    charge_hirshfeld: str = "geometry"
+    charge_voronoi: str = "geometry"
 
     # ``continue_retries`` -- the warm-retry budget.  engines/stages.md § 3
     # is why it is a SHARED field rather than a stage one: it passes both of

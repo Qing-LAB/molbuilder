@@ -316,6 +316,37 @@ THERMO_GRID_K = tuple(float(x) for x in
                       __import__("numpy").linspace(50.0, 1500.0, 30))
 
 
+def mode_over_atoms(mode_free, free_idxs, n_atoms):
+    """A mode's pattern over EVERY atom -- its canonical eigenvector on the
+    free atoms, zero on every held one, so no held atom moves
+    (`engines/vibration.md` § 5.10 ③, § 5.11 § 3): shape ``(n_atoms, 3)``."""
+    import numpy as _np
+    L = _np.zeros((int(n_atoms), 3))
+    L[list(free_idxs)] = _np.asarray(mode_free, dtype=float)
+    return L
+
+
+def q_for_largest_move(mode_over_atoms_, move_ang):
+    """The displacement along the mode, ``Q`` in amu^1/2 Å, at which the
+    atom that moves most moves ``move_ang`` Å: ``move / max_k |L_k|`` --
+    the frame generator's outermost frame and Raman's ``±δQ`` alike
+    (`engines/vibration.md` § 5.10 ③, § 5.11 § 3)."""
+    import numpy as _np
+    largest = float(_np.linalg.norm(_np.asarray(mode_over_atoms_,
+                                                dtype=float), axis=1).max())
+    return float(move_ang) / largest
+
+
+def displaced(positions, mode_over_atoms_, q):
+    """Every atom moved along the mode by ``q`` (amu^1/2 Å): ``R + q·L``,
+    the one displacement rule the frame generator and a Raman phase's
+    plan apply."""
+    import numpy as _np
+    return (_np.asarray(positions, dtype=float)
+            + float(q) * _np.asarray(mode_over_atoms_, dtype=float))
+
+
 __all__ = ["rigid_motions", "vibrational_modes", "signed_omega",
+           "mode_over_atoms", "q_for_largest_move", "displaced",
            "frequencies_cm1", "display_form", "thermo_temperatures",
            "vibrational_thermo", "vibrational_thermo_grid", "THERMO_GRID_K"]

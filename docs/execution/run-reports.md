@@ -86,11 +86,11 @@ its end.
 
 | occasion | `event` | set by | sent |
 |---|---|---|---|
-| **it started** | `start` | a `notify` block | once, when the monitor starts watching a run |
+| **it started** | `start` | a `notify` block | once, when the monitor starts watching a run — a run in phases ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a): once per run, sent by the plan step of its first call (`mb_monitor.pyz notify start`); its calls' member monitors send none |
 | **a step finished** — its SCF converged | `scf_converged` | `notify.on_scf_converged` | on the first wake after a step finishes (§ 2.2) — one message per wake, however many finished since the last |
 | **every N hours** | `periodic` | `notify.every_hours` — a number of hours; `null` is never | N hours after the last message; the first, N hours after the start |
 | **its wall is near** | `wall_near` | a `notify` block, on a job sent with a wall | once, when the time the job has left falls below the longest step it has taken (§ 2.2) — the step it is in may not finish |
-| **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes |
+| **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes — a run in phases: by the record step that completes its index (`notify finish`), with the run's state |
 
 Every message carries the same report (§ 4.1a): the state and where the run is
 — SCF phase and iteration, energy, each residual against its criterion, the
@@ -188,10 +188,12 @@ record names no queue and so no wall, though its engine is told the wall
 its own job states ([`running-a-job.md`](?doc=execution/running-a-job.md)
 § 3.6). A record or a wall that does not read, or a header that
 states no start (one written before it did), is said once in a `[WALL]`
-line, and nothing is counted. **A run of points' points count nothing**: the
-run's one launch record lies in the run's folder, and each point's monitor,
-in the point's own folder, finds none there — and a point, one SCF or one
-transmission, states no steps, so nothing would be warned.
+line, and nothing is counted. **A run of points' points**: a member's
+monitor — a vibration's call (§ 2.4) — reads the run's one launch record
+through `--launched-in` and counts as the run's; a transport sweep's point,
+whose monitor is no member, finds none in its own folder and counts nothing
+— and a point, one SCF or one transmission, states no steps, so nothing
+would be warned.
 
 **It warns once, and only where it can say why**: when the time left falls
 below the longest step the run has taken so far (§ 2.2: a geometry move, a
@@ -363,12 +365,25 @@ A run directory's own state — `pending`, `queued`, `running`, `failed`,
 A report never says `pending` or `queued`: a monitor exists only while its run
 runs.
 
+**A run in phases reports as one run** ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.11 § 7a): each SIESTA call's run script starts its own monitor as a
+**member** (`--member --launched-in <run>`), which watches that call, sends
+`scf_converged`, `periodic` and `wall_near` by the policy, counts its clock
+from the run's own record, and sends neither `start` nor `finish`; the run's
+`start` is sent once by the plan step of its first call and its `finish` by
+the record step that completes the index, each through the bundle's `notify`
+verb (`mb_monitor.pyz notify <event> --dir <run>`), which reads the policy
+from the environment the run script exports (`MB_NOTIFY_CHANNELS`,
+`MB_NOTIFY_REPORT`), skips a `start` already sent, and writes the run's
+notification record (§ 2.5).
+
 ### 2.5 What it writes
 
 | file | written by | when | read by | absent means |
 |---|---|---|---|---|
 | `<stem>-runN.monitor.log` | the monitor | appended from its start to its closing lines | a person; `parse/instruments/monitor.py` ([`model/parse.md`](?doc=model/parse.md) § 5c.1); `run_status`, its closing record ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) | the monitor never started — the wrapper's log says why (*monitor: not started …*) — or it died loading: its `starting` line and the error, no `started` (§ 2.6) |
 | `<stem>-runN.util.csv` | the monitor | a header and a first row at start, then change-gated rows (§ 2.1) | the bench summary; `utilisation` (§ 5c.1 there) | nothing was sampled |
+| `notified.json` beside the run's launch record (`<stem>-runN.notified.json` on the flat layout) | the `notify` verb, and a member monitor sending `periodic` or `wall_near` — a run in phases' | each event sent for the run, with its time (`runrecord.read_notified`) | the member monitors (a `start` or a `wall_near` already sent is not sent again; the N-hour clock from the last event); the `notify` verb; `run_status` | no event sent for the run |
 | `<state dir>/reports/<user>.jsonl` | the listener, on the server | one line per accepted report | `jq`, pandas (§ 4.1a) | no report reached the listener |
 
 `<stem>` is `<label>[_<stage>]` and N the run index
@@ -460,6 +475,7 @@ Nothing else reaches stderr in a healthy run.
 | `--label` · `--stage` · `--run` | the deck's label, its stage token, the run index `launch` gave the wrapper (`--run N`) | which run, all three required; every file named through `runfiles` |
 | `--shared` | the stage's runs share one folder (`RunNames.shared`) | name the files the catalogue marks `attempt="shared"` with the run number (`runfiles`) |
 | `--watch-pid` | `$$`, the wrapper's own PID | stop when it goes; `0` watches none |
+| `--member` · `--launched-in <run>` | a run in phases' call (`runwrap._monitor_block`, the point's `member`) | this monitor is one call's of a run that reports as one run: no `start`, no `finish`, its clock the run's record's (§ 2.4) |
 | `--dir` | not passed: the wrapper starts it in the run's directory | the run's directory, for `molbuilder monitor` pointed at a run from elsewhere |
 | `--util` | always | sample into `util.csv` |
 | `--cores` | the wrapper's launch (§ 2.1a) | the cpu % denominator of a run started directly |
@@ -483,6 +499,7 @@ point it at.
 | `MB_MONITOR` | the wrapper | `0` starts no monitor |
 | `MB_MONITOR_INTERVAL` | the wrapper | seconds between wakes |
 | `MB_NOTIFY_URL` · `MB_NOTIFY_KEY` | the monitor | report to this one URL instead of the channel file (§ 3) |
+| `MB_NOTIFY_CHANNELS` · `MB_NOTIFY_REPORT` | the `notify` verb | the policy a run in phases' run script exports for the `start` and `finish` its Python steps send (§ 2.4) |
 | `MOLBUILDER_CONFIG_DIR` · `XDG_CONFIG_HOME` | the monitor | where `secrets/notify` is (§ 1) |
 | `MB_JOB_ID` | the monitor | inside a scheduler's job (§ 2.1a); the report's `job` — the scheduler's id, said in molbuilder's name by the job's header ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) |
 | `MB_CPUS_ON_NODE` · `MB_CPUS_PER_TASK` | the monitor | the cores held when no affinity mask answers, as the job's header says them |

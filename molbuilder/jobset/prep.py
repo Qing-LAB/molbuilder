@@ -34,7 +34,6 @@ import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 from typing import (TYPE_CHECKING, Callable, Dict, List, NamedTuple, Set,
                     Optional, Sequence, Tuple)
 
@@ -47,6 +46,7 @@ from .naming import (job_dir_names, ladder_homes, open_container,
 from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
+from ..parse.fdf import read_deck
 from .plan import FILENAME as _PLAN_FILE
 from . import prepared_with
 from ..runfiles import RunNames
@@ -87,9 +87,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
     checkpoint 4 (:func:`checked`); ``machine_record`` is that record.
 
     ``points`` names, per job, the folders that hold a copy of its deck
-    written at another point -- a sweep's (`Rung.points`) -- each of which
-    gets the job's wrapper beside it, rendered by the one call the job's own
-    folder gets.
+    written at another point -- a sweep's (`Rung.points`) -- each with how
+    its run script is rendered beyond the job's own facts
+    (`Rung.wrapper_at`: a vibration phase's `resumes`, its Python steps,
+    its monitor as a member); each gets the job's wrapper beside it,
+    rendered by the one call the job's own folder gets.
 
     ``render`` names the jobs whose run scripts this prep writes -- the
     stage it preps.  The plan it is handed is the calculation's, merged
@@ -157,13 +159,14 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
         # (`engines/transport.md` § 2a.11) -- and its one header is its
         # walk's (`prep_calculation`): a point is never sent alone.
         _pts = (points or {}).get(job.name, ())
-        _decks = [Path(p_) / job.script for p_ in _pts] or [script_path]
-        for _deck in _decks:
+        _decks = ([(Path(p_) / job.script, dict(x)) for p_, x in _pts]
+                  or [(script_path, {})])
+        for _deck, _x in _decks:
             if not plan.is_file(_deck):
                 raise PrepError(
                     f"job {job.name!r}: script {job.script!r} not in "
                     f"{_deck.parent} (render the inputs before prep).")
-        def _wrap(script_path):
+        def _wrap(script_path, point_facts):
             # The ALLOCATION, whole (architecture.md § 3.1, rule A8): passed
             # as the object, no field of it can be dropped by a hand-copied
             # argument list.
@@ -204,15 +207,21 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 finish=job.finish,
                 # WHETHER A RE-RUN CONTINUES (`Job.resumes`): the wrapper
                 # says a retry of a run that cannot resume repeats it
-                # (`running-a-job.md` § 3.5).
-                resumes=job.resumes,
+                # (`running-a-job.md` § 3.5) -- a point's own where the
+                # rung renders each point its own (`Rung.wrapper_at`: a
+                # vibration phase's, with its two Python steps and its
+                # monitor a member of the run, `engines/vibration.md`
+                # § 5.11 § 3, § 7a).
+                resumes=point_facts.get("resumes", job.resumes),
+                steps=point_facts.get("steps"),
+                member=point_facts.get("member"),
                 plan=plan,
                 # WHAT THE RENDERING SAYS (`gpu.md` G6), onto the answer.
                 notes=notes,
             )
         with user_error_as_prep():
-            for _deck in _decks:
-                _wrap(_deck)
+            for _deck, _x in _decks:
+                _wrap(_deck, _x)
                 # A HEADER THIS PREP DOES NOT WRITE is taken away: one an
                 # earlier prep left -- for a queue since dropped, or a point
                 # -- would otherwise be sent as this one's (`job-system.md`
@@ -224,8 +233,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
             log.received(job.script, _flat_resources(job.resources)
                          + (f", env={env}" if env else ""))
             for _w in (_names.name(".run.sh"), _names.name(".sbatch")):
-                if plan.is_file(_decks[0].parent / _w):
-                    log.produced(_w, f"{len(plan.read_text(_decks[0].parent / _w).splitlines())}"
+                if plan.is_file(_decks[0][0].parent / _w):
+                    log.produced(_w, f"{len(plan.read_text(_decks[0][0].parent / _w).splitlines())}"
                                      f" lines")
                 elif _w.endswith(".sbatch"):
                     log.note(f"{_w}: not written "
@@ -295,178 +304,41 @@ def this_prep_lines(stage: str, takes) -> List[str]:
 #  The five steps, entire — `project-layout.md` § 2.3.1                  #
 # --------------------------------------------------------------------- #
 
-def _vibration_block(stage: str, cfg, relaxed_by, *, criterion,
-                     criterion_from: str, struct) -> dict:
-    """A SIESTA force-constant deck's `vibration` block: the facts its job's
-    finish reads and no SIESTA keyword states (`engines/vibration.md`
-    § 5.3), built here because only `prep` holds all of them -- the stage,
-    its resolved config, the relax run it read the coordinates from
-    (:func:`_vibration_stage_geometry`), the molbuilder rendering the deck.
-    ``criterion`` is the relaxation rung's own ``relax_force_tol`` -- the
-    force the reference geometry was relaxed to (plan § 5w K4).  ``struct``
-    is the structure the deck is written from, whose atoms' masses the block
-    states (`chemistry.atomic_mass`, I3)."""
+def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
+                     struct) -> dict:
+    """A SIESTA force-constant deck's `vibration` block, format v4: the
+    facts the run's finish reads and no SIESTA keyword states
+    (`engines/vibration.md` § 5.3, § 5.11 § 4), built here because only
+    `prep` holds all of them -- the stage, its resolved config, the
+    molbuilder rendering the deck -- and the mode selection the optical
+    phase applies (`select_modes`), the one fact of that phase no keyword
+    states.  ``criterion`` is the relaxation phase's own ``relax_force_tol``
+    -- the force the reference geometry is relaxed to, and judged by.
+    ``struct`` is the structure the deck is written from, whose atoms'
+    masses the block states (`chemistry.atomic_mass`, I3).  The relaxation
+    record is the `relax` call's, read from the run's index at the finish
+    (§ 5.11 § 3), never written here."""
     from .. import __version__ as _mb_version
     from ..chemistry import atomic_mass
-    from ..config.stages import VIBRATION_RELAX_STAGE
     from ..spectra.siesta_vibration import vibration_record
     from ..structure import IDENTITY_FIELDS
-    # The record is of the ladder's relaxation rung: `_vibration_stage_geometry`
-    # read it from that stage's output, found by its role (plan § 5w K12) --
-    # and the block names it by the kind's name for it, `relax`, which every
-    # verb resolves in any case, so the finish's remedy can
-    # (`engines/vibration.md` § 5.3, § 5.5).
     return vibration_record(
         stage=stage,
         force_criterion_ev_ang=criterion,
         force_criterion_from=criterion_from,
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
-        relaxation=relaxed_by,
-        relaxation_stage=VIBRATION_RELAX_STAGE,
+        relaxation=None,
         temperature_K=float(cfg.temperature_K),
         masses_amu=[atomic_mass(el) for el in struct.elements],
         molbuilder_version=str(_mb_version),
+        selection={"es_mode_selection": str(cfg.es_mode_selection),
+                   "es_explicit_indices": str(cfg.es_explicit_indices),
+                   "freq_min_cm1": cfg.freq_min_cm1,
+                   "freq_max_cm1": cfg.freq_max_cm1},
         # WHAT NO OTHER BLOCK OF THE DECK CARRIES of the structure the result
         # states (engines/vibration.md 6.10.1).
         title=str(struct.title or ""),
         identity={k: getattr(struct, k) for k in IDENTITY_FIELDS})
-
-
-def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
-                              log=None):
-    """``(structure, cell, relaxation)`` a force-constant stage of a SIESTA
-    vibration is written with -- `freq`, or any stage after `relax` in a
-    displacement sweep, asked of `vibration_render_kind` and never of a name
-    (`engines/vibration.md` § 5.2a, § 5.9): the calculation's structure as
-    given, in the user order, and no cell or record of its own, when the ladder
-    holds no `relax` stage; when it does, that structure with the
-    coordinates the stage relaxed to, in the cell it ran in -- read from the
-    run the stage builds on, ``builds_on``, the `Continuation` prep decided
-    at its checkpoint 4a (`relax`'s newest attempt that is one to build on,
-    or the `relax` run named with ``--from``, `engines/vibration.md` § 5.2a's
-    table), through the run door's one read of a run's geometry
-    (`runs.steps_of`: its output parsed by the registry, its view, restored
-    to the user order through `relax`'s own order record): only the coordinates
-    and the cell are taken, the labels and the held set staying this
-    calculation's (`model/overview.md` § 2.2a, I3-I5) -- with that run's
-    relaxation record, which the same read answers (the output's
-    ``info.relaxation``) and the deck's `vibration` block carries to the
-    finish (§ 5.3) so nothing re-picks the attempt later -- and the
-    structure leaves the input's own relaxation record behind, since it is
-    about other coordinates (§ 5.2a).  The
-    cell travels because the deck otherwise re-derives one around the new
-    bounding box and shifts the atoms into it, and a relaxed geometry moved
-    against the real-space grid is not stationary on that grid any more.
-    Every other rung comes back unchanged.
-
-    What it builds on is decided where every hand-over is, naming what to
-    do first when it cannot be had (`continuation.continuation_answer`, the
-    one door, at prep's checkpoint 4a -- asked here too when a caller hands
-    no answer): `relax`'s run, or -- with no `relax` -- the structure as
-    given when it is stated relaxed, refused when it is not (§ 5.2a's
-    table, `continuation.unrelaxed_refusal`).  Refused here: a run whose
-    output holds no geometry this calculation's.
-    """
-    from ..pyscf.stages import vibration_render_kind
-    from .continuation import unrelaxed_refusal
-    from .ladder import relax_stage_of
-    base, task = calc.base, calc.task
-    if vibration_render_kind(pset.stage) != "vibration":
-        return struct, None, None
-    # THE LADDER'S RELAXATION, by the one role rule -- the name in any case
-    # (`engines/stages.md` § 2), never an exact string (plan § 5w K12).
-    relax = relax_stage_of(task)
-    if relax is None:
-        # THE STRUCTURE AS GIVEN, stated relaxed -- the entry refused one not
-        # stated at its 4a; asked again of the config in hand for a caller
-        # with no entry.
-        why = unrelaxed_refusal(task, pset.stage, stated=bool(getattr(
-            pset[0].render_config(), "already_relaxed", False)))
-        if why:
-            raise PrepError(why)
-        return struct, None, None
-    from ..runs import run_of
-    if builds_on is None:
-        # ASKED WITH NO ANSWER from the entry: the same door its checkpoint
-        # 4a asks -- the default, `relax`'s newest attempt that is one to
-        # build on, or the refusal naming what to do first.
-        from .continuation import continuation_answer
-        builds_on, refused = continuation_answer(calc, pset.stage)
-        if refused:
-            raise PrepError(refused)
-    token = stage_home(base, task, relax).token
-    # THE WAYS ON, from the one composer, for a `relax` that is prepared and
-    # has run (§ 5.3: what molbuilder prints, you can type): launched again
-    # it continues from its newest attempt; redone, the state before its
-    # group's first launch is restored first -- a launched stage is not
-    # prepared again (§ 5.0).
-    from .commands import block, launch_lines, redo_launched
-    again = (f"Launch `{relax}` again -- it continues from its newest "
-             "attempt --\n"
-             + block(launch_lines("task", relax, base=base))
-             + "\n  or, to redo it, "
-             + redo_launched(relax, calc=calc))
-    # THE RUN IT BUILDS ON -- its attempt, or on the flat layout the folder
-    # its files lie in, read at the run named: the one its prep took, never
-    # merely the newest.
-    attempt = (base / builds_on.source if builds_on.source is not None
-               else base)
-    _run = run_of(attempt, stage=token)
-    if _run is not None and builds_on.source is None and builds_on.run:
-        from ..runfiles import parse_run_name
-        _named = parse_run_name(builds_on.run, _run.label)
-        if _named is None:
-            raise PrepError(
-                f"{builds_on.run} is not a run of `{relax}` in this folder.  "
-                f"{again}")
-        _run = dataclasses.replace(_run, run=_named.run)
-    out = _run.stdout if _run is not None else None
-    if out is None:
-        raise PrepError(
-            f"{builds_on.where()} holds no engine output of `{relax}`; "
-            f"there is no geometry to read.  {again}")
-    # `relax`'S GEOMETRY IN THE USER ORDER, through the run door's one read
-    # (`runs.steps_of`): restored through `relax`'s own order record (I5); a
-    # run whose order nothing states is refused by name (I9).
-    from ..runs import OrderUnstated, RunStepsError, steps_of
-    try:
-        steps = steps_of(_run, out)
-    except RunStepsError as e:
-        raise PrepError(f"{e}.  {again}") from e
-    except OrderUnstated as e:
-        raise PrepError(f"{e}.  To redo it, "
-                        + redo_launched(relax, calc=calc)) from e
-    relaxed, cell = steps.last, steps.lattice
-    if list(relaxed.elements) != list(struct.elements):
-        raise PrepError(
-            f"{out.name} describes {relaxed.formula}, listed in the user order "
-            f"as {' '.join(relaxed.elements)}, and this calculation is "
-            f"{' '.join(struct.elements)}: the `{relax}` stage ran a "
-            f"different structure.  To redo it, "
-            + redo_launched(relax, calc=calc))
-    if log is not None:
-        log.step(f"the geometry the `{pset.stage}` stage measures at")
-        log.received(str(out.relative_to(base)),
-                     "its last geometry step, in the user order, is written as "
-                     "the deck's coordinates, in that run's cell")
-    # THE ENGINE'S COORDINATES STATE THE ENGINE'S ORIGIN -- 0, set together
-    # with them (`model/structure-periodicity.md` § 6.0) -- so this deck
-    # applies nothing: the rule would re-centre them, moving the relaxed
-    # geometry by the change in its span (-0.0168 Å on the H2 e2e).
-    #
-    # AND THE INPUT'S RELAXATION RECORD STAYS BEHIND (§ 5.2a): it is about
-    # the input's coordinates, not these; this stage's own record rides the
-    # `vibration` block.  The calculation record stays -- every stage reads
-    # the one electronic state from it.  The relaxation record is the one
-    # the run door read with the geometry: `relax`'s output's, in the
-    # structure's ``info`` (`runs.steps_of`, `parse.dirs.run_info`).
-    return (struct.replace(positions=np.asarray(relaxed.positions,
-                                                dtype=float),
-                           engine_offset=np.zeros(3), offset_by="engine",
-                           info={k: v for k, v in (struct.info or {}).items()
-                                 if k != "relaxation"}),
-            (np.asarray(cell, dtype=float) if cell is not None else None),
-            (relaxed.info or {}).get("relaxation"))
 
 
 def structure_path(task, base: Path) -> Optional[Path]:
@@ -616,15 +488,15 @@ class Rung:
     #: The structure the decks describe.
     struct: object
     #: The program each deck is -- `spec_for`'s ``calculation``: the
-    #: calculation's own, or the rung's (a SIESTA vibration's relax rung is
-    #: an optimisation, `_rung_kind`).
+    #: calculation's own (a SIESTA vibration's phases are its parts,
+    #: `spec_extra`'s ``part``).
     render_kind: str
     #: ``cfg -> cfg``: the config an element renders from -- a lead's own
     #: label, the junction's electronic state folded in.
     configure: Callable = lambda cfg: cfg
     #: ``(element, cfg, point) -> {keyword: value}``: what else `spec_for`
-    #: is told -- a vibration's block, the relaxation it builds on, the
-    #: cell; the junction's electronic state and the deck's point.
+    #: is told -- a vibration's block and its phase's part, the cell; the
+    #: junction's electronic state and the deck's point.
     spec_extra: Callable = lambda element, cfg, point: {}
     #: ``((folder, point), ...)``: the folders each holding a deck written at
     #: that point -- a frame and a voltage (`transport.stages.Point`,
@@ -651,10 +523,24 @@ class Rung:
     #: value its steps set after them (a transport rung's label;
     #: `job-contracts.md` § 3.2).
     sources: Callable = lambda element: element.deck_sources
+    #: ``point -> {resumes, steps, member}``: how a point's run script is
+    #: rendered beyond the job's own facts -- a vibration phase's `resumes`,
+    #: its two Python steps and its monitor as a member of the run
+    #: (`engines/vibration.md` § 5.11 § 3, § 7a); ``{}`` renders the job's.
+    wrapper_at: Callable = lambda point: {}
+    #: ``point -> bool``: whether a point's deck relaxes -- its progress
+    #: log's targets (`_seed_trajectory_log`); by default the render kind's.
+    relaxes_at: Optional[Callable] = None
+    #: ``(point, spec, folder, plan) -> None``: what the rung writes BESIDE
+    #: a deck before the deck is checked -- a vibration phase's
+    #: `coordinates.fdf`, which the deck reads as its coordinate block
+    #: (`engines/vibration.md` § 5.11 § 4); ``None`` for a kind whose deck
+    #: holds everything.
+    beside: Optional[Callable] = None
 
 
 def _described_rung(calc, pset, *, seam, sweep, log, plan,
-                    continuation, contours=None) -> Rung:
+                    contours=None) -> Rung:
     """A calculation of its described structure, one deck per element --
     every kind with no steps of its own."""
     return Rung(struct=_structure_for(calc.task, calc.base, pset),
@@ -662,97 +548,106 @@ def _described_rung(calc, pset, *, seam, sweep, log, plan,
 
 
 def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
-                           continuation, contours=None) -> Rung:
-    """A SIESTA vibration's rung (`engines/vibration.md` § 5.2a, § 5.9).
-
-    The atoms in the order the force-constant run needs -- the held ones
-    first, so it nudges one contiguous range -- on a COPY, whose order record
-    its deck states and the job's finish inverts (`model/overview.md`
-    § 2.2a, I5); the user order never reaches the engine
-    and the sorted order never reaches a person.  The `relax` rung is the
-    relaxation deck; every other rung is written at the coordinates the
-    relax rung reached, in that run's own cell, so the force constants are
-    taken on the grid the geometry was relaxed on, with the relaxation
-    record its `vibration` block carries to the finish (§ 5.3)."""
-    # A DISPLACEMENT SWEEP NEEDS A DIRECTORY PER STAGE (§ 5.9): SIESTA names
-    # its force constants and the finish its spectrum by the label alone, so
-    # two force-constant stages sharing the flat layout's one directory
-    # would overwrite the first one's result.
-    from ..spectra.displacement_sweep import stages_share_a_directory
-    base, task, template_text = calc.base, calc.task, calc.template_text
-    if stages_share_a_directory(task):
-        from ..pyscf.stages import force_constant_stages
-        _fc = force_constant_stages(task)
-        raise PrepError(
-            f"this flat calculation describes "
-            f"{len(_fc)} force-constant stages "
-            f"({', '.join(_fc)}), and in the flat "
-            f"layout every stage writes the same <label>.FC and "
-            f"<label>.spectra.json -- each would overwrite the last one's "
-            f"result.  A displacement sweep needs the hierarchical layout "
-            f"(engines/vibration.md 5.9): describe it with --shape "
-            f"hierarchical, or keep one force-constant stage here.")
+                           contours=None) -> Rung:
+    """A SIESTA vibration's rung -- ONE RUN IN PHASES (`engines/vibration.md`
+    § 5.11): the relaxation, the force constants and the optical calls,
+    each phase a point of the run with its own deck, written for its part
+    by the one deck writer (§ 5.11 § 4) from the structure as given -- the
+    atoms in the order the force-constant run needs, the held ones first,
+    on a COPY whose order record its deck states and the job's finish
+    inverts (`model/overview.md` § 2.2a, I5); the user order never reaches
+    the engine and the sorted order never reaches a person.  Every phase's
+    deck is written at the structure's coordinates; what a call computes
+    at is its own `coordinates.fdf`, written by the run's plan step
+    (§ 5.11 § 3).  Which phases run is the stage's config's: each `PHASES`
+    row's switch (`already_relaxed` turns the relaxation off,
+    `es_mode_selection` skip the optical calls).  Each phase's run script
+    is rendered with its own `resumes` and its two Python steps
+    (:attr:`Rung.wrapper_at`)."""
+    from ..paths import Shape
+    from ..siesta.vibration_phases import FC, RELAX, Call, phase, phases_on
     from ..transport.sort import deck_sort_key, sort_by
-    # THE GEOMETRY FIRST, IN THE USER ORDER (`model/overview.md` § 2.2a, I3-I5;
-    # plan V1.41): a force-constant stage's coordinates and cell are the
-    # relaxation's, restored through `relax`'s own order record, taken onto
-    # the calculation's structure -- and then this prep sorts, as every prep
-    # does, never one deck's order copied into another's.
-    struct, cell, relaxed_by = _vibration_stage_geometry(
-        calc, pset, _structure_for(task, base, pset),
-        builds_on=continuation, log=log)
+    from ..warmfiles import warm_list
+    from .naming import stage_home
+    base, task = calc.base, calc.task
+    # THE SHAPE IS HIERARCHICAL ONLY (§ 5.11): three SIESTA calls in one
+    # directory would write over each other's .DM and .XV, and every stage
+    # its .FC and spectrum.
+    if not Shape.named(task.shape).keeps_attempts_as_directories:
+        raise PrepError(
+            "a SIESTA vibration runs as one run in phases -- its "
+            "relaxation, its force constants and its optical calls each a "
+            "SIESTA call in a folder of its own -- which the flat layout "
+            "cannot hold: in one directory the calls would write over each "
+            "other's .DM and .XV (engines/vibration.md 5.11).  Describe it "
+            "with --shape hierarchical.")
+    # THE GEOMETRY IN THE USER ORDER, then sorted as every prep sorts
+    # (`model/overview.md` § 2.2a, I3-I5): the structure as given, every
+    # phase's deck at it.  THE ORDER RECORD RIDES THE COPY into its deck's
+    # ATOM-METADATA block (I5): the deck states the way back, beside the job.
+    struct = _structure_for(task, base, pset)
     key = deck_sort_key(task.engine, task.calculation, pset.stage)
     struct = sort_by(struct, key).structure
-    # THE ORDER RECORD RIDES THE COPY into its deck's ATOM-METADATA block
-    # (I5): the deck states the way back, beside the job.
     log.step(f"the atom order the engine needs -- {key}, {struct.n_atoms} "
              f"atoms; the deck states its order record")
-    render_kind = _rung_kind(task, pset.stage)
-    finishes = render_kind == "vibration"
-    # THE FINISH'S FORCE CRITERION IS THE ONE THE REFERENCE GEOMETRY WAS
-    # RELAXED TO (`engines/vibration.md` § 5.5; plan § 5w K4, M11 SS-C6):
-    # the `relax` stage's own, as its record states it -- the one yardstick
-    # this stage's checks judge that outcome by too -- else that rung's
-    # value, and the template's when the structure is stated relaxed.
-    from ..resolve import resolved_ladder
-    from ..template import stage_role
-    # WHERE IT CAME FROM rides with it, so the deck says (L5).
-    criterion = (relaxed_by or {}).get("force_tolerance_ev_ang")
-    criterion_from = "the relax stage's own record"
-    if criterion is None:
-        rung = next((c for n, c in resolved_ladder(
-                         template_text, task, seam.config_cls)
-                     if stage_role(str(task.engine), "vibration", n)
-                     == "relaxation"), None)
-        if rung is not None:
-            criterion = getattr(rung, "relax_force_tol", None)
-            criterion_from = "the relaxation rung's relax_force_tol"
-        else:
-            criterion = getattr(pset[0].render_config(), "relax_force_tol",
-                                None)
-            criterion_from = ("the template's relax_force_tol -- the "
-                              "structure stated already relaxed")
+    cfg0 = pset[0].render_config()
+    # THE PHASES THIS STAGE RUNS, by the table's switches (§ 5.11 § 1) --
+    # each a point of the run: its folder below the stage, holding the
+    # phase's deck and run script every call of it copies (§ 5.11 § 2).
+    on = phases_on(cfg0)
+    stage_dir = stage_home(base, task, pset.stage).dir
+    points = tuple((stage_dir / p.name, Call(p.name, p.name)) for p in on)
+    log.step("the run's phases: " + ", ".join(p.name for p in on))
+    # THE FINISH'S FORCE CRITERION is the relaxation phase's own tolerance
+    # (`engines/vibration.md` § 5.5): the one yardstick the run relaxes to
+    # and judges the reference geometry by -- said with where it came from.
+    criterion = getattr(cfg0, "relax_force_tol", None)
+    criterion_from = "the stage's relax_force_tol"
 
     def spec_extra(element, cfg, point):
-        return {**({"cell": cell} if cell is not None else {}),
-                # The finish's facts ride a force-constant deck -- never a
-                # benchmark trial's: a spectrum of capped SCFs is a spectrum
-                # of nothing (§ 5.5).
-                **({"vibration": _vibration_block(pset.stage, cfg,
-                                                   relaxed_by,
-                                                   criterion=criterion,
-                                                   criterion_from=criterion_from,
-                                                   struct=struct)}
-                   if finishes and not element.is_trial else {}),
-                # THE RELAX STAGE'S RECORD reaches every deck at its
-                # geometry -- a trial's too, which carries no finish (V1.36).
-                **({"relaxed_by": relaxed_by}
-                   if relaxed_by is not None else {})}
-    return Rung(struct=struct, render_kind=render_kind, spec_extra=spec_extra)
+        # THE PART THE DECK IS -- the point's phase; a benchmark trial's
+        # the force constants' (a trial measures the one call that costs).
+        part = point.phase if point is not None else FC
+        return {"part": part,
+                # The finish's facts ride the force-constant deck alone --
+                # never a benchmark trial's: a spectrum of capped SCFs is a
+                # spectrum of nothing (§ 5.5).
+                **({"vibration": _vibration_block(
+                        pset.stage, cfg, criterion=criterion,
+                        criterion_from=criterion_from, struct=struct)}
+                   if part == FC and not element.is_trial else {})}
+
+    def wrapper_at(point):
+        # EACH PHASE'S RUN SCRIPT (§ 5.11 § 3): the phase's `resumes` from
+        # its warm-files section, its two Python steps, and its monitor a
+        # member of the run's (§ 7a).
+        rule = phase(point.phase)
+        return {"resumes": warm_list("siesta", rule.warm_kind, base).resumes,
+                "steps": (("plan", point.phase), ("record", point.phase)),
+                # ...its way up to the run a CALL's (§ 7a): a planned
+                # phase's calls lie below a container named after it.
+                "member": (Call(rule.name, "call") if rule.planned
+                           else point).to_run}
+
+    def beside(point, spec, folder, plan):
+        # THE STRUCTURE'S COORDINATES, beside every phase's deck (§ 5.11
+        # § 4): the rows the deck writer derived, as the deck reads them.
+        from ..runfiles import COORDINATES_FILE
+        plan.text(Path(folder) / COORDINATES_FILE,
+                  spec.derived["coordinates_file"])
+
+    return Rung(struct=struct, render_kind="vibration",
+                spec_extra=spec_extra, points=points, wrapper_at=wrapper_at,
+                beside=beside,
+                relaxes_at=lambda pt: pt is not None and pt.phase == RELAX,
+                # THE RUN'S PHASES, on its job (`Job.phases`): what launch
+                # opens and walks, what the run's own python follows.
+                job_facts=lambda job: dataclasses.replace(
+                    job, phases=[p.name for p in on]))
 
 
 def _transport_rung_of(calc, pset, *, seam, sweep, log, plan,
-                       continuation, contours=None) -> Rung:
+                       contours=None) -> Rung:
     """A transport rung (`engines/transport.md`): its four steps of its own.
 
     **compose** -- the junction and its leads, composed from the cited
@@ -966,7 +861,6 @@ def prep_calculation(calc, stage: Optional[str], *,
                      emit_sbatch: bool = True,
                      opened: Optional[list] = None,
                      findings: Optional[list] = None,
-                     continuation=None,
                      walks: Optional[dict] = None,
                      notes: Optional[list] = None,
                      copied: bool = False,
@@ -975,10 +869,6 @@ def prep_calculation(calc, stage: Optional[str], *,
     the order it calls *forced rather than chosen*.  ``notes`` is the
     planner's list, handed down to step 4 for what a rendering says.
 
-    ``continuation`` is the `relax` run a force-constant stage's deck is
-    written at, as :func:`plan_stage` decided it at checkpoint 4a
-    (`continuation.Continuation`, `engines/vibration.md` § 5.2a) -- the one
-    value hand-over, recorded on its job (`Job.written_at`) -- or ``None``.
     The stage's first run is opened with its own files alone: what any
     stage takes from another stage's run is its first launch's
     (`job-system.md` § 6.0).
@@ -1036,7 +926,7 @@ def prep_calculation(calc, stage: Optional[str], *,
         return _plan_calculation(
             calc, stage, resolved, env=env, emit_sbatch=emit_sbatch,
             opened=opened, findings=findings,
-            continuation=continuation, plan=plan, walks=walks,
+            plan=plan, walks=walks,
             notes=notes, copied=copied, contours=contours)
     finally:
         PLANNED.reset(scope)
@@ -1047,7 +937,6 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                       emit_sbatch: bool = True,
                       opened: Optional[list] = None,
                       findings: Optional[list] = None,
-                      continuation=None,
                       plan,
                       walks: Optional[dict] = None,
                       notes: Optional[list] = None,
@@ -1129,12 +1018,11 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # WHAT THE DECKS DESCRIBE, and what the kind adds to the steps after
     # this one, from its one record (`script-preparation.md` § 3.0): the
     # structure as described, unless the kind composes or reorders it -- a
-    # transport junction and its leads; a SIESTA vibration's held-first copy
-    # and the geometry its relax rung reached.
+    # transport junction and its leads; a SIESTA vibration's held-first
+    # copy.
     rung = RUNGS.get((str(task.engine), str(task.calculation)),
                      _described_rung)(calc, pset, seam=seam,
                                       sweep=sweep, log=log, plan=plan,
-                                      continuation=continuation,
                                       contours=contours)
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
@@ -1269,9 +1157,12 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             # and none at the stage level (`engines/transport.md` § 2a.11).
             spec = None
             # EACH POINT'S OWN SPEC: a frame set's points are its frames,
-            # each placed by the engine where its own deck puts it.
+            # each placed by the engine where its own deck puts it.  A
+            # BENCHMARK TRIAL IS ONE DECK in its own folder: it measures the
+            # one call that costs, never a run of points.
             spec_at: dict = {}
-            for _out, _point in (list(rung.points) or [(_jdir, None)]):
+            _points_of = [] if element.is_trial else list(rung.points)
+            for _out, _point in (_points_of or [(_jdir, None)]):
                 # A POINT'S FOLDER BELOW ITS STAGE says what it is, as every
                 # folder this tree makes below the root does
                 # (`project-layout.md` invariant 6b): a container, holding
@@ -1294,6 +1185,10 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                             # A TRIAL'S DECK NAMES ITS OWN LAUNCH (plan § 5w
                             # K12) -- the bench lane is SIESTA's alone.
                             **({"trial": _trial} if _trial else {}))
+                    # WHAT THE RUNG WRITES BESIDE THE DECK, before the deck
+                    # is checked as the engine will read it (`Rung.beside`).
+                    if rung.beside is not None:
+                        rung.beside(_point, _spec, _out, plan)
                     _sc.prepare_deck(_spec, _struct, _at, _out / script,
                                      log=log, dest_dir=base,
                                      findings=findings, plan=plan,
@@ -1312,7 +1207,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             # in a folder nothing writes to again.  AND NAMED FOR ITS DECK
             # (`job-contracts.md` § 6.3: the trajectory log takes the deck's
             # basename): the element's label, the deck's own.
-            for _seed_dir, _point in (list(rung.points) or [(_jdir, None)]):
+            for _seed_dir, _point in (_points_of or [(_jdir, None)]):
                 _seed_trajectory_log((rung.struct_at(_point)
                                       if rung.struct_at is not None
                                       and _point is not None
@@ -1321,7 +1216,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                                      engine=task.engine,
                                      kind=task.calculation, names=_names,
                                      frame=spec_at[_seed_dir].engine_frame,
-                                     relaxes=(rung.render_kind
+                                     relaxes=(rung.relaxes_at(_point)
+                                              if rung.relaxes_at is not None
+                                              else rung.render_kind
                                               == "optimization"),
                                      plan=plan)
             log.step("what this deck's text PROMISES, kept")
@@ -1340,12 +1237,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                 # WHERE IT WAS PLACED (`job-system.md` § 6.0): a run's
                 # queue, and a benchmark's one queue on each trial, recorded
                 # on its job -- what launch sends to.
-                placement=resolved.placement,
-                # THE `relax` RUN A FORCE-CONSTANT DECK IS WRITTEN AT, whose
-                # files its first launch copies (`engines/vibration.md`
-                # § 5.2a) -- its attempt, or on the flat layout its name.
-                written_at=(None if element.is_trial or continuation is None
-                            else continuation.source or continuation.run))))
+                placement=resolved.placement)))
     finally:
         REPORT_STREAM.reset(_scope)
     if _once.dropped:
@@ -1409,8 +1301,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # (`job-system.md` § 5.4) -- the line both prep doors print.
     this_prep = None
     if kind == KIND_LADDER and stage:
-        this_prep = this_prep_lines(stage, _takes_at_launch(
-            calc.with_plan(js), stage, js.job(stage), continuation))
+        from .ready import at_launch
+        this_prep = this_prep_lines(stage, at_launch(
+            calc.with_plan(js), stage, job=js.job(stage)))
     log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
     log.received("kind", kind)
     for _j in js.jobs:
@@ -1434,7 +1327,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # A record that does not state it was refused at step 1, before anything
     # was written (`machine.require_activation`) -- whichever machine it describes.
     # A SCAN'S POINTS hold a deck each, so each gets the job's wrapper too.
-    _points = [d for d, _ in rung.points]
+    # EACH POINT'S FOLDER, and how its run script is rendered beyond the
+    # job's own facts (`Rung.wrapper_at`).
+    _points = [(d, rung.wrapper_at(pt)) for d, pt in rung.points]
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment,
@@ -1492,8 +1387,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             for d, _point in rung.points:
                 _drop_progress_channel(Path(d), plan)
         else:
-            sweep = open_sweep_run(planned, stage, plan=plan,
-                                   frames=rung.points[0][1].of or 1)
+            sweep = open_sweep_run(planned, stage, plan=plan)
             # EACH POINT'S LOG, from the point's folder below the stage,
             # where it was seeded beside the point's deck, into the run's
             # point.
@@ -1505,17 +1399,22 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                 opened.append(sweep)
         # THE WALK'S ONE HEADER, written and placed here as a group's is
         # (`job-system.md` § 6.0): one allocation walking every point, their
-        # walls summed (`group.envelope`) -- launch sends it as it is.
+        # walls summed (`group.envelope`) -- or the stage's one wall, where
+        # its points share it (`jobset.points`) -- launch sends it as it is.
         from ..runfiles import GroupNames
         from .group import envelope
+        from .points import walls_of
         job = js.job(stage)
+        n_walls = walls_of(task, len(_points))
         walk = walk_header_of(
             home.dir, GroupNames.of_points(
                 run_names(js, job, resolved.shape).stem),
-            envelope([job] * len(_points)), environment, engine=task.engine,
+            envelope([job] * n_walls), environment, engine=task.engine,
             jobs=[job], emit_sbatch=emit_sbatch,
             what=(f"stage {stage!r}, one job walking its {len(_points)} "
-                  f"points (their walls summed)"))
+                  f"points ("
+                  + ("their walls summed" if n_walls == len(_points)
+                     else "the stage's one wall") + ")"))
         if walk is not None:
             open_container(base, home.dir / LAUNCH_DIR, plan)
             plan.text(walk.path, walk.text)
@@ -1625,8 +1524,8 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
             continue                  # a launched stage's runs are its own
         elif p.name == deck:
             if not p.is_file() or same_calculation(
-                    str(task.engine), p.read_text(errors="replace"),
-                    plan.read_text(p)):
+                    str(task.engine), read_deck(p),
+                    read_deck(p, read=plan.read_text)):
                 differ.append(rel)
         elif not as_written(p, plan.read_bytes(p)):
             differ.append(rel)
@@ -1681,10 +1580,8 @@ def _computes_else(base, engine: str, plan, answer) -> Optional[str]:
     for path in plan.writes():
         if path.name != answer.deck or not path.is_file():
             continue
-        diffs = same_calculation(engine,
-                                 path.read_text(encoding="utf-8",
-                                                errors="replace"),
-                                 plan.read_text(path))
+        diffs = same_calculation(engine, read_deck(path),
+                                 read_deck(path, read=plan.read_text))
         if diffs:
             said.append(f"{Path(path).parent.relative_to(base)}: "
                         + "; ".join(diffs))
@@ -1715,22 +1612,6 @@ def _open_attempts(calc, stage: str, *, plan, shape) -> List:
     rep = prepare_attempt(calc, stage, plan=plan)
     _move_progress_channel_into(rep.dir, plan)
     return [rep]
-
-
-def _takes_at_launch(calc, stage: str, job, continuation) -> List[dict]:
-    """What ``stage``'s first launch will take, said before any run is read
-    -- ``[{"from", "files", "line"}]`` (`job-system.md` § 5.0, *a preview*):
-    a force-constant stage, the files of the `relax` run its deck is written
-    at; any other, :func:`ready.at_launch`'s lines; ``[]`` for a stage that
-    builds on nothing.  ``calc`` holds the plan as this prep holds it,
-    every member planned before this one in it: the files are the pair's,
-    as the launch copies them (`ready.carried_from`)."""
-    from .ready import at_launch, carried_from, written_at_takes
-    if continuation is not None:
-        return [written_at_takes(continuation,
-                                 carried_from(calc, job, continuation.stage)
-                                 if job is not None else None)]
-    return at_launch(calc, stage, job=job)
 
 
 def _launch_as_written(plan, header, script, kind) -> dict:
@@ -1977,8 +1858,7 @@ def _deck_atoms(struct, engine: str, kind: str, stage):
 def _job_for(element, script: str, task, stage_name: Optional[str],
              seam: EngineSeam, base_dir=None,
              finish: Optional[str] = None,
-             placement: Optional[dict] = None,
-             written_at: Optional[str] = None) -> Job:
+             placement: Optional[dict] = None) -> Job:
     """One element of the parameter set as one :class:`Job`.
 
     ``resources`` is **copied from the element**, never re-derived: the element
@@ -1992,10 +1872,10 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
 
     name = point_token(element.point) if element.point else stage_name
 
-    # THE RUNG'S OWN KIND answers what it carries and whether a re-run of it
-    # resumes (`job-contracts.md` § 4.2a): a vibration's `relax` rung is an
-    # optimisation, its force-constant rungs the vibration.
-    kind = _rung_kind(task, stage_name)
+    # THE CALCULATION'S KIND answers what it carries and whether a re-run of
+    # it resumes (`job-contracts.md` § 4.2a); a run in phases renders each
+    # phase's run script with that phase's own section (`Rung.wrapper_at`).
+    kind = str(task.calculation)
     with _calling("warm_for", engine=task.engine, where=name):
         warm = seam.warm_for(element.label, element.values, kind, base_dir)
     resumes = warm_list(str(task.engine), kind, base_dir).resumes
@@ -2006,24 +1886,7 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     # (`engines/vibration.md` § 5.5).
     return Job(name=name, script=script, resources=element.resources,
                warm=warm, traits=traits, point=dict(element.point),
-               finish=finish, resumes=resumes, placement=placement,
-               written_at=written_at)
-
-
-def _rung_kind(task, stage_name: Optional[str]) -> str:
-    """The kind of run a rung IS -- ONE answer, read by the deck it renders
-    and by the warm-files section it reads (`job-contracts.md` § 4.2a): the
-    calculation's own, except a SIESTA vibration's rungs, which are two
-    programs (`vibration_render_kind`): the `relax` rung an optimisation,
-    every other rung the vibration.  A PySCF vibration relaxes inside its
-    one deck, so its rungs are all the vibration.  It is read off the rung's
-    ROLE, the one rule every door asks which items a rung reads by
-    (`template.stage_role`, plan § 5w K4)."""
-    from ..template import stage_role
-    if stage_role(str(task.engine), str(task.calculation),
-                  stage_name) == "relaxation":
-        return "optimization"
-    return str(task.calculation)
+               finish=finish, resumes=resumes, placement=placement)
 
 
 def _with_notify(flags, declared) -> "Resources":
@@ -2155,7 +2018,7 @@ class PrepAnswer:
     #: (`engines/transport.md` § 2a.11).
     points: List[tuple] = dataclasses.field(default_factory=list)
     #: WHAT ITS FIRST LAUNCH WILL TAKE, and from which stage --
-    #: ``[{"from", "files", "line"}]`` (:func:`_takes_at_launch`): nothing
+    #: ``[{"from", "files", "line"}]`` (`ready.at_launch`): nothing
     #: is copied at prep (`job-system.md` § 5.0).
     takes: List[dict] = dataclasses.field(default_factory=list)
     #: What each deck's checks said (`script_emit.prepare_deck`), one of each
@@ -2165,10 +2028,6 @@ class PrepAnswer:
     #: The stage's deck, by file name.
     deck: Optional[str] = None
     pipeline_log: Optional[Path] = None
-    #: The `relax` run a force-constant stage's deck -- or a benchmark's
-    #: trials -- is written at, and what it was
-    #: (`continuation.Continuation`); ``None`` for every other stage.
-    continuation: Optional[object] = None
     #: A LINKED stage -- its kind gives its rungs roles (`paths.KIND_ROLES`)
     #: -- which builds on what its kind says, never on the stage before it:
     #: when it takes nothing from another run, both doors say so without
@@ -2278,9 +2137,6 @@ class PrepAnswer:
             "resources": self.resources,
             "deck": self.deck,
             "pipeline_log": rel(self.pipeline_log) if self.pipeline_log else None,
-            "continuation": (dict(self.continuation.as_dict(),
-                                  line=self.continuation.line())
-                             if self.continuation is not None else None),
             "linked": self.linked,
             # THE PLACEMENT, and the line both doors say of it.
             "placement": (dict(self.placement,
@@ -2327,20 +2183,11 @@ def _record_preflight(base, findings, **said) -> None:
 
 def _record_prepared(base, answer: "PrepAnswer") -> "PrepAnswer":
     """What a prep writes down once its plan is written (`job-system.md`
-    § 5.0, checkpoint 7) -- for a stage the `relax`
-    run a force-constant stage's deck is written at, and *prepared* with
-    which config files answered, the
-    last line of its record.  What a stage takes from another run is
+    § 5.0, checkpoint 7) -- *prepared* with which config files answered,
+    the last line of its record.  What a stage takes from another run is
     recorded by the launch that takes it (`continues`, `gathers`).  The one
     writer of it: a benchmark's prep and every member of a task's."""
     from .ledger import prepared as ledger_prepared
-    from .ledger import record as ledger
-    if answer.continuation is not None:
-        # THE DECISION, LOGGED (`job-system.md` § 5.4): which `relax` run,
-        # by default or named, what it was -- a run's deck, or a benchmark's
-        # trials, written at it; nothing copied at prep.
-        ledger(base, "prep", "continues", stage=answer.stage,
-               **answer.continuation.ledger_facts(), copied=[])
     answer.provenance = ledger_prepared(base, kind=answer.kind,
                                         stage=answer.stage, dirs=answer.dirs,
                                         provenance=answer.provenance)
@@ -2492,16 +2339,15 @@ def checked(base, described: Described, *, target) -> Described:
     return described
 
 
-#: A force-constant stage's `relax` run, decided by :func:`plan_stage` --
-#: the default its prep takes, or ``--from`` (checkpoint 4a).
+#: What :func:`plan_stage` decides on the calculation as it is when its
+#: caller hands it nothing (``contours``).
 DECIDE = object()
 
 
 def plan_stage(base, described: Described, kind: str, stage: str, *,
                target: Optional[str] = None, allocation=None,
-               from_attempt: Optional[str] = None, env: Optional[str] = None,
+               env: Optional[str] = None,
                emit_sbatch: bool = True, plan, notes: Optional[list] = None,
-               continuation=DECIDE,
                on_inputs=None, copied: bool = False,
                contours=DECIDE) -> PrepAnswer:
     """**THE MEMBER PLANNER** -- one stage, planned into ``plan``, nothing
@@ -2511,10 +2357,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     request agreeing with itself (`execution/gpu.md` G5); every launch value
     stated, and a run's whole request placed on the queue it names, where
     a header is written (`placement.placed`: the placement recorded on its
-    job, its fit said); a
-    force-constant stage's `relax` run -- decided (``continuation``
-    :data:`DECIDE`: its newest run, which must have finished, or the one
-    ``from_attempt`` names, taken as said); then the steps planned
+    job, its fit said); then the steps planned
     (:func:`prep_calculation`) and the answer read off the plan.
 
     Asked by every door that plans a stage: `prep task` for each member of
@@ -2638,28 +2481,12 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                 _g.count, _r.mpi_np or 1,
                 one_process=one_process(task.engine)))
 
-    # 4a · A VALUE HAND-OVER (`job-system.md` § 5.0): the `relax` run a
-    #      force-constant stage's deck is written at -- read BEFORE anything
-    #      is written, so a refusal leaves nothing behind (`engines/
-    #      vibration.md` § 5.2a).  Every other stage's hand-over is files,
-    #      taken at its first launch: prep reads no other stage's run.
+    # 4a · EVERY STAGE'S HAND-OVER IS FILES, taken at its first launch
+    #      (`job-system.md` § 5.0): prep reads no other stage's run.
     # THE CALCULATION AS THIS PREP FINDS IT, its plan read through the
-    # overlay once (`Calculation.as_planned`, A16): what the stage continues
-    # from, the rung builders and the plan's merge read this.
+    # overlay once (`Calculation.as_planned`, A16): the rung builders and
+    # the plan's merge read this.
     pcalc = described.calc.as_planned(plan)
-    if continuation is DECIDE:
-        from .continuation import continuation_answer
-        from .ladder import force_constant_stage
-        continuation = None
-        if force_constant_stage(task, stage):
-            # A BENCHMARK of a force-constant stage writes every trial at the
-            # geometry `relax` reached, as its run is (§ 5.2a's table):
-            # nothing carried -- a trial measures from its deck.
-            continuation, refused = continuation_answer(
-                pcalc, stage, from_attempt=from_attempt,
-                bench=(kind == "bench"))
-            if refused:
-                raise PrepError(refused)
     if on_inputs is not None:
         on_inputs()
     if contours is DECIDE:
@@ -2673,7 +2500,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     walks: dict = {}
     dirs = prep_calculation(pcalc, stage, env=env, emit_sbatch=emit_sbatch,
                             opened=opened, findings=deck_findings,
-                            continuation=continuation, plan=plan,
+                            plan=plan,
                             resolved=resolved, walks=walks,
                             notes=notes, copied=copied, contours=contours)
     flat = not resolved.shape.keeps_attempts_as_directories
@@ -2721,11 +2548,6 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                 out.shelves.append({"name": w.stem, "header": lines,
                                     "said": Directives.said(lines),
                                     "fit": walks.get(w, "")})
-    if kind == "bench" and continuation is not None:
-        # A BENCHMARK OF A FORCE-CONSTANT STAGE is written at the geometry
-        # the `relax` run it builds on reached, and says which
-        # (`engines/vibration.md` § 5.2a's table); its trials copy nothing.
-        out.continuation = dataclasses.replace(continuation, carries=())
     if kind != "task":
         return out
     # THE PLAN AS THIS PREP LEFT IT -- its own row now in it.
@@ -2755,10 +2577,6 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         # takes (`execution/job-request.md` § 5).
         out.launched = True
         run_dir = stage_home(base, task, stage).dir
-    # A FORCE-CONSTANT STAGE'S `relax` RUN, its deck written at it; its
-    # files reach it at its first launch.
-    if continuation is not None:
-        out.continuation = dataclasses.replace(continuation, carries=())
     # WHAT IT WILL LAUNCH WITH -- prep writes a deck and its launch
     # together, once (`architecture.md` A3), and launch sends what it wrote.
     # A13: the end point, as the header and the run script carry it.
@@ -2767,13 +2585,14 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     # WHAT ITS FIRST LAUNCH WILL TAKE, said before any run is read
     # (`job-system.md` § 5.0, *a preview*) -- a launched stage's next
     # launch is a launch again, from its own runs (§ 5.4).
+    from .ready import at_launch
     out.takes = ([{"from": stage, "files": [],
                    "line": "at its next launch: launched again, it continues "
                            "from its own latest run or starts over as its "
                            "job says -- --cold starts it over "
                            "(job-system.md § 5.4)"}]
                  if out.launched
-                 else _takes_at_launch(pcalc, stage, job, continuation))
+                 else at_launch(pcalc, stage, job=job))
     if job is not None and run_dir is not None:
         r = job.resources
         out.resources = {"mpi_np": r.mpi_np,
@@ -2822,9 +2641,7 @@ def _contours_now(calc, stage: str) -> Optional[dict]:
                       or [(stage_home(calc.base, calc.task, stage).dir,
                            None)]):
             deck = d / job.script
-            c = (Contours.of_deck(deck.read_text(encoding="utf-8",
-                                                 errors="replace"))
-                 if deck.is_file() else None)
+            c = (Contours.of_deck(read_deck(deck)) if deck.is_file() else None)
             if c is not None:
                 out[point_key(pt)] = c
         return out
@@ -2833,7 +2650,7 @@ def _contours_now(calc, stage: str) -> Optional[dict]:
 
 
 def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
-               allocation=None, from_attempt: Optional[str] = None,
+               allocation=None,
                env: Optional[str] = None, emit_sbatch: bool = True,
                on_found=None, preview: bool = False,
                plan_id: Optional[str] = None) -> PrepAnswer:
@@ -2874,12 +2691,6 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
     try:
         described = Described(calc)
         task = described.task
-        if from_attempt:
-            raise PrepError(
-                "--from chooses what a RUN starts from; a bench trial "
-                "measures its point from its deck -- the structure, or a "
-                "force-constant stage's relaxed geometry -- and names no "
-                "run (job-system.md § 7).")
         # A CALCULATION THAT HAS NO BENCHMARK says so before it is asked
         # which stage's -- or the stage offered is refused next (W52).
         why = bench_refusal(str(task.engine), str(task.calculation))
@@ -2967,7 +2778,6 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
 def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
               stage: Optional[str] = None,
               target: Optional[str] = None, allocation=None,
-              from_attempt: Optional[str] = None,
               env: Optional[str] = None, emit_sbatch: bool = True,
               on_found=None, preview: bool = False,
               plan_id: Optional[str] = None,
@@ -2977,20 +2787,18 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
     setup tab's Prep both call (`job-system.md` § 5.0, § 5.3): `prep task`
     for the ``groups`` picked -- the description's group numbers, each group
     one job (`engines/stages.md` § 2) -- or `prep bench` for one ``stage``
-    (:func:`prep_bench`).  ``from_attempt`` is the `relax` run every
-    force-constant stage it prepares is written at (`engines/vibration.md`
-    § 5.2a).  ``asked`` is the question that picked the groups, with its
-    answer, written down after the save (§ 5.0, checkpoint 7).  ``one_job``
-    -- `--one-job` -- writes too the one header of the groups as one job,
-    each launched in turn (§ 6.0, *A sequence of groups*)."""
+    (:func:`prep_bench`).  ``asked`` is the question that picked the groups,
+    with its answer, written down after the save (§ 5.0, checkpoint 7).
+    ``one_job`` -- `--one-job` -- writes too the one header of the groups as
+    one job, each launched in turn (§ 6.0, *A sequence of groups*)."""
     if kind == "bench":
         return [prep_bench(calc, stage, target=target,
-                           allocation=allocation, from_attempt=from_attempt,
+                           allocation=allocation,
                            env=env, emit_sbatch=emit_sbatch,
                            on_found=on_found, preview=preview,
                            plan_id=plan_id)]
     return _prep_groups(calc, list(groups), target=target,
-                        allocation=allocation, from_attempt=from_attempt,
+                        allocation=allocation,
                         env=env, emit_sbatch=emit_sbatch, on_found=on_found,
                         preview=preview, plan_id=plan_id, asked=asked,
                         one_job=one_job)
@@ -3161,7 +2969,7 @@ def sequence_header(base, task, request, numbers: Sequence[int], jobs_of,
 
 
 def _prep_groups(calc, numbers: List[int], *, target, allocation,
-                 from_attempt, env, emit_sbatch, on_found, preview,
+                 env, emit_sbatch, on_found, preview,
                  plan_id, asked=None, one_job: bool = False
                  ) -> List[PrepAnswer]:
     """**The groups picked, prepared** (`job-system.md`, *The task*, and
@@ -3337,12 +3145,10 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             f"prep, so pick "
             + ("it" if len(missing) == 1 else "them") + " too:\n"
             + block(again(whole, base=base)))
-    from .ladder import force_constant_stage
     # A LAUNCHED MEMBER, prepared again for its job request on the
     # hierarchical layout (`execution/job-request.md` § 5): its deck must
     # stay the calculation its runs ran -- asked of the decks this prep
-    # renders, below -- and a force-constant one keeps the `relax` run its
-    # deck was written from, never another.
+    # renders, below.
     from .materialize import ever_launched as _ever_launched
     launched_members: Set[str] = set()
     for n in numbers:
@@ -3351,22 +3157,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             if job_st is not None and _ever_launched(description.calc,
                                                      job_st):
                 launched_members.add(st)
-                if (from_attempt and force_constant_stage(task, st)
-                        and from_attempt != job_st.written_at):
-                    from .commands import redo_launched
-                    raise _refuse(
-                        f"--from {from_attempt!r}: `{st}` was launched, its "
-                        f"deck written at the `relax` run {job_st.written_at} "
-                        f"-- another is another calculation.  To change "
-                        f"it, " + redo_launched(st, calc=description.calc))
-    if from_attempt and not any(force_constant_stage(task, st)
-                                for n in numbers for st in members[n]):
-        raise _refuse(
-            "--from at prep names the `relax` run a force-constant stage's "
-            "deck is written at, and the groups picked hold none -- what any "
-            "other stage takes from a run is its first launch's to take, "
-            "named there with --from for a stage that is a group of its "
-            "own (job-system.md § 5.4).")
     # 1b · A CALCULATION THAT REUSES A FINISHED ONE (`engines/transport.md`
     #      § 2a.16): each group none of whose members is launched here,
     #      COPIED IN or prepared here -- decided before anything is planned,
@@ -3409,12 +3199,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 previews[n] = [plan_stage(
                     base, description, "task", at, target=target,
                     allocation=allocation,
-                    from_attempt=(
-                        description.calc.job(at).written_at
-                        if at in launched_members
-                        and force_constant_stage(task, at)
-                        else from_attempt if force_constant_stage(task, at)
-                        else None),
                     env=env, emit_sbatch=emit_sbatch, plan=the_plan,
                     copied=reuse is not None and reuse.copied(n),
                     contours=(reuse.contours_for(at)
@@ -3484,18 +3268,22 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         # each group's own request -- this prep's members as planned, a
         # launched group's as its rows stand -- together.
         if sequence:
-            from ..transport.stages import frames_of, rung_points
+            # A RUN OF POINTS' WALLS, as many as its kind asks
+            # (`points.walls_of`): one each, or the stage's one.
+            from .points import rung_points_of, walls_of
             jobs_of, points_of = {}, {}
             for n in sequence:
                 if n in previews:
                     jobs_of[n] = [a.job for a in previews[n]]
-                    points_of[n] = (len(previews[n][0].points or ())
-                                    if len(previews[n]) == 1 else 0)
+                    points_of[n] = walls_of(
+                        task, len(previews[n][0].points or ())
+                        if len(previews[n]) == 1 else 0)
                 else:
                     jobs_of[n] = [old_js.job(st)
                                   for st in request.members(n)]
-                    points_of[n] = (len(rung_points(
-                        task, jobs_of[n][0].name, frames=frames_of(base)))
+                    points_of[n] = walls_of(
+                        task, len(rung_points_of(
+                            description.calc, jobs_of[n][0].name))
                         if len(jobs_of[n]) == 1 else 0)
             got, less = sequence_header(base, task, request, sequence,
                                         jobs_of, points_of, environment,
@@ -3638,13 +3426,9 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             if sequence:
                 kept_as_is[-1].sequence = sequence_said
             return kept_as_is
-        # THE REST, prepared as any pick: `--from` goes with them only where
-        # one of them is written at a `relax` run (R-P7 asks the pick).
+        # THE REST, prepared as any pick.
         again = _prep_groups(
             calc, rest, target=target, allocation=allocation,
-            from_attempt=(from_attempt if any(
-                force_constant_stage(task, st) for r in rest
-                for st in members[r]) else None),
             env=env, emit_sbatch=emit_sbatch, on_found=on_found,
             preview=preview, plan_id=plan_id, asked=asked)
         for a in again:
@@ -3672,8 +3456,8 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     answers = [a for n in numbers for a in previews[n]]
     #      WHAT EACH WAS PREPARED WITH, for `status` to say when its records
     #      give otherwise (`job-system.md`, *Changed since prepared*).
-    prepared_with.record(description.calc, [a.stage for a in answers],
-                         plan=the_plan)
+    prepared_with.record(description.calc.with_plan(js),
+                         [a.stage for a in answers], plan=the_plan)
     if sequence:
         answers[-1].sequence = sequence_said
     #      THE REVIEWABLE PLAN, ONCE: the job set as this prep leaves it,

@@ -27,10 +27,11 @@
 #                 write whenever the file carries
 # and the facts a section states of its kind: `resumes`, whether a re-run of
 # that kind of run continues from what the last one left (true unless
-# stated); for a sweep, `along`, what a done point hands the next,
-# `scratch`, the engine's scratch at a run -- never carried, never taken
-# over into a new run -- and `scratch_dir`, the folder of the run's own it
-# lives in; the two are stated together or not at all
+# stated); for a sweep, `along`, what a done point hands the next;
+# `scratch`, the engine's scratch at a run -- written for itself, never
+# carried, never taken over into a new run, never saved -- and, where it
+# lives in a folder of the run's own, `scratch_dir`, that folder, stated
+# only with `scratch`; without one the scratch lies beside the run's files
 # (engines/transport.md 2a.11, job-contracts.md 4.2a).
 #
 # What an edit does: drop a row's `carry` to stop a file carrying (withhold
@@ -166,3 +167,32 @@ suffix = ".FC"                  # the force constants, eV/A^2: the PRODUCT
 
 [[vibration.file]]
 suffix = ".FCC"                 # the same with the held atoms' rows zeroed
+
+# ---- optical: one call of a vibration run in phases ---------------------
+# A single point at one frame -- the equilibrium, or a mode's side at its
+# displacement -- seeded by the walk from the force-constant call's density
+# (siesta/vibration_phases.PHASES: seed) and run with SIESTA's optical
+# calculation (engines/vibration.md 5.11).  It takes no step, so the base
+# `.XV` row says nothing here it did not say for a relaxation: a re-run
+# continues from its own `.DM`, the one state it leaves.
+
+[optical]
+resumes = true                  # A RE-RUN CONTINUES: the SCF from the
+                                # density the last try left (DM.UseSaveDM)
+scratch = [".contrib.EPSIMG"]   # THE ENGINE'S SCRATCH AT A CALL: SIESTA's
+                                # breakdown of the spectrum by transition --
+                                # each band pair's share at each energy bin
+                                # (Src/optical.F) -- which no reader of ours
+                                # reads and every run of the call writes
+                                # again.  It lies beside the call's own
+                                # files, so no scratch_dir: never carried,
+                                # never taken over, never saved by the
+                                # checkpoint (checkpointing.md S1), emptied
+                                # by `jobset scratch` (engines/vibration.md
+                                # 5.11 6, 8)
+
+[[optical.file]]
+suffix = ".EPSIMG"              # the imaginary part of the dielectric
+                                # function along Optical.Vector: the PRODUCT
+                                # of the call, read beside it by the job's
+                                # Raman step (engines/vibration.md 5.11 8)

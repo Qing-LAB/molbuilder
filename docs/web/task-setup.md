@@ -1412,7 +1412,7 @@ answer `prep task` shows before it asks), each in the group answer's words
 (`GroupAnswer.said`, the state diagram's names) — *not prepared*; *prepared,
 never launched*; *prepared, its members changed*; *launched, its members
 fixed*; *launched, its members changed* — and for a
-force-constant stage not preparable yet, what it waits for. **Every group has
+group not preparable yet, what it waits for. **Every group has
 a box, and the box is the group answer's** (`ready.GroupAnswer`,
 [`job-system.md`](?doc=execution/job-system.md), *The task*): enabled when the
 answer says the group may be prepared now, and when it may not, the answer's
@@ -1425,8 +1425,7 @@ after looking reaches a group not yet launched. A **launched** group on the
 hierarchical layout has a box too, for a change of its job request: Prep
 renders it again, each deck the same calculation as its runs ran, and refuses
 otherwise, naming the way back; on the flat layout its box is disabled
-([`job-request.md`](?doc=execution/job-request.md) § 5). The box of a group not preparable yet is disabled, until its
-force-constant stage's Continue from names a `relax` run. Under them the
+([`job-request.md`](?doc=execution/job-request.md) § 5). Under them the
 command for the pick (`prep task --group … --group …`) and the Preview / Prep
 pair that does what it does. Each ticked group is one
 job (`project-layout.md` § 1.6.6). After a Prep the folder is read again, and
@@ -1484,27 +1483,20 @@ benchmark, and read as part of the bench setup.
 **What the rung continues from is chosen in its tab too.** A group of one stage that
 continues from the stage before it — a continuing stage of an independent
 ladder ([`job-system.md`](?doc=execution/job-system.md) § 5.4), whose choice
-goes on its **launch** line, the first launch taking it — or a vibration's
-force-constant stage, which builds on `relax` and whose choice goes on its
-**prep** line, its deck being written at that run — shows a **Continue from**
-choice: *the stage before it, its
-newest run* (the default — *the relaxation it builds on* for a force-constant
-stage), each run of that stage with what it was, or the
-calculation's structure (`--cold`, where the layout has one and the stage may
-start from it — a force-constant stage may not while the ladder holds a
-`relax`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a). Under
-it, what the choice means: the default's own line — *continues from
-01_coarse/run-1 (the stage before it; concluded rc=0 …)* — or, while the
-launch (a force-constant stage: the prep) would refuse it, why, whole, with
-the commands it names. It is the folder's answer (`continue_from`), the one
-the launch — or a force-constant stage's prep — acts on, given each time the
-folder is opened and so without the run's relaxation verdict, which that verb
+goes on its **launch** line, the first launch taking it — shows a
+**Continue from** choice: *the stage before it, its newest run* (the
+default), each run of that stage with what it was, or the calculation's
+structure (`--cold`, where the layout has one). Under it, what the choice
+means: the default's own line — *continues from 01_coarse/run-1 (the stage
+before it; concluded rc=0 …)* — or, while the launch would refuse it, why,
+whole, with the commands it names. It is the folder's answer
+(`continue_from`), the one the launch acts on, given each time the folder
+is opened and so without the run's relaxation verdict, which that verb
 reads; the command line follows the choice (`--from <run>`, `--cold`). A
-transport rung and a rung that starts clean show no choice: their first launch
-takes their input itself, or none — and a choice the folder no longer offers
-(a stage set clean since) is dropped, never sent. A
-force-constant stage with no `relax` shows, instead of a choice, why prep
-refuses it while its structure is not stated relaxed.
+transport rung, a vibration's stage and a rung that starts clean show no
+choice: their first launch takes their input itself, or none — and a choice
+the folder no longer offers (a stage set clean since) is dropped, never
+sent.
 
 **So a tab holds one job**: how to measure its stages, what it will run with,
 and the commands that prepare and launch it. What it will produce is the
@@ -1609,8 +1601,7 @@ from the same answer:
   frame and its voltage as the UI names a point
   (`lib/results/point-words.js`);
 * **what each stage's first launch will take** — the stage before it's newest
-  run, a transport rung's gather, a force-constant stage's `relax` run (whose
-  geometry its deck holds) — copied at that launch, never at prep;
+  run, a transport rung's gather — copied at that launch, never at prep;
 * **where it was placed, and the fit of what it sends** — the queue and
   where each value came from, then the job sent with its header in one line
   and its fit on that queue's machines: a run's own, a run of points' one

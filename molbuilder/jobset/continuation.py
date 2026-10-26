@@ -1,16 +1,14 @@
 """What a stage continues from -- which run, and what that run was
 (`execution/job-system.md` § 5.4, plan W37): the stage before it in an
-independent ladder, and the `relax` run a vibration's force-constant stage
-builds on (`engines/vibration.md` § 5.2a, W38 F9).
+independent ladder.
 
 **Module:** L2 (jobset).  ONE answer, asked by `launch` at a stage's first
-launch (`job-system.md` § 6.0), by `prep` for the `relax` run a force-constant
-stage's deck is written at -- the default, or what a run named by ``--from``
-is -- and by `status` through the ready door, so none says a different thing
-about the same run.
+launch (`job-system.md` § 6.0) -- the default, or what a run named by
+``--from`` is -- and by `status` through the ready door, so none says a
+different thing about the same run.
 Reads the folder; writes
 nothing; raises nothing the person can fix -- a refusal is an answer, which
-`prep` turns into its own error and `status` prints; a bug raises.
+`launch` turns into its own error and `status` prints; a bug raises.
 """
 from __future__ import annotations
 
@@ -19,15 +17,13 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..runrecord import LaunchRecordError
-from .ladder import (force_constant_stage, independent, relax_stage_of,
-                     source_stage, stage_config)
+from .ladder import independent, source_stage
 
 
 @dataclasses.dataclass(frozen=True)
 class Continuation:
     """WHICH RUN A STAGE CONTINUES FROM, and what that run was -- printed by
-    the launch that takes it (a force-constant stage's, by its prep too)
-    and recorded in the decision ledger."""
+    the launch that takes it and recorded in the decision ledger."""
     #: The stage the run belongs to.
     stage: str
     #: Its attempt, from the calculation folder (``01_coarse/run-0``) --
@@ -42,9 +38,6 @@ class Continuation:
     state: Optional[str]
     #: The relaxation's verdict, ``None`` when the run relaxed nothing.
     converged: Optional[bool]
-    #: A force-constant stage building on its `relax` (`engines/vibration.md`
-    #: § 5.2a), not a stage continuing from the one before it.
-    linked: bool = False
     #: The files it carries into the attempt, by the pair's rule
     #: (`model.warm_carry`) of what the run holds -- counted against the
     #: stage's job, ``None`` until then.  On the flat layout nothing is
@@ -83,16 +76,13 @@ class Continuation:
         which are what it reads (`job-system.md` § 5.4)."""
         if self.source is not None:
             return self.source
-        # A FORCE-CONSTANT STAGE'S RUN IS THE ONE ITS DECK IS WRITTEN AT, the
-        # run its prep took -- not necessarily `relax`'s latest.
-        which = "run its deck is written at" if self.linked else "latest run"
-        mine = (f"{self.stage}'s {which}"
+        mine = (f"{self.stage}'s latest run"
                 + (f", {self.run}," if self.run else "") + " in this folder")
         if not self.written_by:
             return mine
         return (f"the restart files {self.written_by} left in this folder "
                 f"({self.written_by_is}) -- the last run here; "
-                f"{self.stage}'s {which} is {self.run}")
+                f"{self.stage}'s latest run is {self.run}")
 
     def line(self, copied=(), *, would: bool = False, warned=None) -> str:
         """``continues from 01_coarse/run-0 (the stage before it; concluded
@@ -104,16 +94,10 @@ class Continuation:
         warned = warned or {}
         facts = [("named" if not self.by_default else
                   "its own latest run" if self.own else
-                  "the relaxation it builds on" if self.linked else
                   "the stage before it"),
                  _what_it_is(self.concluded, self.state)]
         if self.converged is not None:
-            # NOT CONVERGED, said for what it costs: a force-constant stage
-            # measured off a stationary point reports imaginary frequencies
-            # (W38 F9).
             facts.append("converged" if self.converged else
-                         "NOT converged -- expect imaginary frequencies"
-                         if self.linked else
                          "NOT converged -- taken as it stands")
         in_place = [n for n in warned if n not in copied]
         return (f"continues from {self.where()} ({'; '.join(facts)})"
@@ -188,15 +172,14 @@ def usable(state: Optional[str]) -> bool:
     nothing in its output says the engine stopped (user, 2026-10-06: "the
     handover should call a unified api that tells the true status of
     previous stage that views all facts from exit code, log etc.").  The
-    default of every hand-over -- a continuing stage, the frequency stage's
-    geometry, a transport rung's inputs; a run named with ``--from`` is
-    taken as said, and a structure stated relaxed needs no run, so neither
-    asks it."""
+    default of every hand-over -- a continuing stage, a transport rung's
+    inputs; a run named with ``--from`` is taken as said, so it does not
+    ask it."""
     return state == "finished"
 
 
 def done(folder, names, *, launch=None, products=(),
-         launched_in=None) -> Tuple[bool, str]:
+         launched_in=None, verdict_counts: bool = True) -> Tuple[bool, str]:
     """THE DONE-DOOR (`engines/transport.md` § 2a.11): whether the run, or a
     swept run's point, in ``folder`` is DONE -- ``(True, "done")`` -- or what
     it is instead, in the run door's words.  Done is three facts, all read
@@ -209,7 +192,10 @@ def done(folder, names, *, launch=None, products=(),
     § 2a.16).  ``launch`` is
     the launch record the folder's run was sent with (a point's is its
     run's), and ``launched_in`` the folder it lies in when not ``folder``
-    (a point's run's folder; `run_status`)."""
+    (a point's run's folder; `run_status`).  ``verdict_counts`` False where
+    the kind says a point's verdict is not its done -- a vibration's
+    relaxation call, done finished, converged or not
+    (`points.PointsOf.verdict_counts`)."""
     from ..parse.dirs import run_status
     folder = Path(folder)
     if not folder.is_dir():
@@ -222,7 +208,7 @@ def done(folder, names, *, launch=None, products=(),
         return False, "not run"
     if not usable(st.state):
         return False, st.detail or st.state
-    if st.verdict is not None and not st.verdict[1]:
+    if verdict_counts and st.verdict is not None and not st.verdict[1]:
         return False, f"finished, not converged ({st.converged_words})"
     missing = [_said(p) for p in products if not _held(folder, p)]
     if missing:
@@ -268,8 +254,7 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     steps, which its stdout cannot stand in for.  The run is the newest in
     ``attempt`` by the one rule (`runrecord.newest_run`): where a stage's
     runs share the folder, its newest launched; in a run's own folder, its
-    newest try -- or ``run``, a run named (a force-constant stage's
-    `relax` run, recorded at its prep).  ``verdict=False``
+    newest try -- or ``run``, a run named.  ``verdict=False``
     skips the relaxation's parse -- a list of runs needs each one's
     conclusion, not a parse of each output."""
     from ..parse.contract import relaxation_of
@@ -295,10 +280,8 @@ def read_run(base: Path, task, stage: str, attempt: Path,
         # own, or this stage's among a flat folder's -- read in the order the
         # run door reads a run (`runfiles.result_roles`): its engine output
         # at the run's index, then its progress log, which a SIESTA run never
-        # writes into and a PySCF run's output no parser reads.  The
-        # force-constant stage reads its relax run's record from that same
-        # output (`prep._vibration_stage_geometry`), so the line and the deck
-        # say one verdict.  Where a stage's runs share the folder, the run
+        # writes into and a PySCF run's output no parser reads.  Where a
+        # stage's runs share the folder, the run
         # is the newest launched -- the one whose record was read above.
         _run = run_of(attempt, stage=token)
         if _run is not None and run is not None:
@@ -329,10 +312,12 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
                         ) -> Tuple[Optional[Continuation], Optional[str]]:
     """``(continuation, refusal)`` for ``stage`` (`job-system.md` § 5.4).
 
-    First, what cannot be taken at all is refused, before prep writes
-    anything (:func:`cannot_be_named`): a run that is not one of this
-    calculation's, ``--from`` with ``--cold``, and -- this door answers a
-    first launch -- either on the flat layout or a bias sweep.  **Named** (``--from``): taken as said, for any kind -- what
+    First, what cannot be taken at all is refused, before anything is
+    written (:func:`cannot_be_named`): a run that is not one of this
+    calculation's, ``--from`` with ``--cold``, ``--from`` for a kind whose
+    stages take their input from the kind (transport, a vibration), and --
+    this door answers a first launch -- either on the flat layout or a bias
+    sweep.  **Named** (``--from``): taken as said -- what
     the run was is read and reported; `prepare_attempt` refuses only what
     cannot be done (no restart files in it).  **By default**, for a
     continuing stage of an independent ladder (`stage_before`): the NEWEST
@@ -340,14 +325,11 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
     with exit code 0 (:func:`usable`) -- an older one never stands in,
     because a stage re-launched to tighten is the run the person means.  Otherwise the refusal, worded by
     what the run's state says and naming the commands that work on this
-    layout.  ``(None, None)`` for ``--cold``, a linked kind's default, the
-    first stage, a stage that starts clean, and one the description does
-    not hold (which prep refuses at its checkpoint 2).  ``verdict=False`` leaves the
-    relaxation unread -- for a reader that never prints it.
-
-    A force-constant stage with no `relax` before it builds on nothing: the
-    structure as given, when it is stated relaxed -- else refused, whatever
-    was asked (`engines/vibration.md` § 5.2a's table).
+    layout.  ``(None, None)`` for ``--cold``, a stage that builds on no
+    stage before it, the first stage, a stage that starts clean, and one
+    the description does not hold (which prep refuses at its checkpoint 2).
+    ``verdict=False`` leaves the relaxation unread -- for a reader that
+    never prints it.
 
     ``calc`` is the calculation as the verb read it (A16) -- prep's, with
     its plan as prep's overlay leaves it (`Calculation.as_planned`).
@@ -356,38 +338,26 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
     from ..identity import command_stage
     base, task = Path(calc.base), calc.task
     template_text = calc.template_text
-    if force_constant_stage(task, stage) and relax_stage_of(task) is None:
-        try:
-            cfg = stage_config(task, stage, template_text)
-        except unreadable() as exc:
-            return None, (f"what `{stage}` builds on cannot be read: "
-                          f"{exc}")
-        why = unrelaxed_refusal(
-            task, stage, stated=bool(getattr(cfg, "already_relaxed", False)))
-        if why:
-            return None, why
     refused = cannot_be_named(base, task, stage, from_attempt, cold)
     if refused:
         return None, refused
     if cold:
         return None, None
     if from_attempt:
-        # A RUN NAMED is taken as said, for any kind -- what it was is
-        # reported and recorded, a linked stage's as much as any.
+        # A RUN NAMED is taken as said -- what it was is reported and
+        # recorded.
         attempt = base / from_attempt
         named = command_stage(Path(from_attempt).parts[0])
         concluded, state, converged, _ = read_run(
             base, task, named, attempt, verdict=verdict)
         return Continuation(stage=named, source=str(Path(from_attempt)),
                             by_default=False, concluded=concluded, state=state,
-                            converged=converged,
-                            linked=force_constant_stage(task, stage)), None
+                            converged=converged), None
     try:
-        prev, linked = source_stage(task, stage, template_text)
+        prev = source_stage(task, stage, template_text)
         if prev is None:
             return None, None
-        return _by_default(calc, stage, prev, verdict=verdict,
-                           linked=linked, bench=bench)
+        return _by_default(calc, stage, prev, verdict=verdict, bench=bench)
     except unreadable() as exc:
         # RAISES NOTHING THE PERSON CAN FIX, as this module promises: a
         # template prep would refuse is a refusal here too, said.  A
@@ -402,27 +372,6 @@ def unreadable() -> tuple:
     from ..resolve import ResolveError
     from .errors import PrepError
     return (ValueError, KeyError, OSError, ResolveError, PrepError)
-
-
-def unrelaxed_refusal(task, stage: str, *, stated: bool) -> Optional[str]:
-    """§ 5.2a's row *no `relax` stage, the structure not stated relaxed*
-    (`engines/vibration.md`): the box says *relax first* and the ladder
-    holds nothing that would, so the description contradicts itself -- refused
-    with the two ways out rather than measured at a geometry nobody chose
-    (§ 2.2).  ``None`` when the ladder holds a `relax`, or the structure is
-    stated relaxed."""
-    from ..config.stages import VIBRATION_RELAX_STAGE
-    if relax_stage_of(task) is not None or stated:
-        return None
-    return (f"the structure is not stated to be relaxed (already_relaxed is "
-            f"false in the template) and this ladder has no "
-            f"`{VIBRATION_RELAX_STAGE}` stage to relax it -- a harmonic "
-            f"analysis off a stationary point reports the wrong frequencies "
-            f"(engines/vibration.md 2.2).  Either add the "
-            f"`{VIBRATION_RELAX_STAGE}` stage before `{stage}` (Task setup, "
-            f"or task.json) and run it first, or state already_relaxed = true "
-            f"in the template; the finish then measures the forces at this "
-            f"geometry and says whether the statement held.")
 
 
 def cannot_be_named(base: Path, task, stage: str, from_attempt,
@@ -455,16 +404,17 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
                 "gathered by its kind at its first launch, and anew with "
                 "--gather when it is launched again (engines/transport.md "
                 "§ 6.1, job-system.md § 5.4).")
-    if (from_attempt and not independent(task)
-            and not force_constant_stage(task, stage)):
-        # A LINKED KIND'S FIRST RUNG -- a vibration's `relax`, PySCF's one
-        # rung -- builds on the calculation's structure; a run of another
+    if not independent(task):
+        # A VIBRATION'S STAGE -- one run in phases on SIESTA, PySCF's one
+        # deck -- builds on the calculation's structure; a run of another
         # stage is not its input (a `freq` run's `.XV` is a displaced
-        # geometry).
-        return (f"--from {from_attempt!r}: `{stage}` builds on the "
-                f"calculation's structure, its kind's first rung -- no run "
-                f"of another stage is its input (engines/vibration.md "
-                f"5.2a).")
+        # geometry), and a first launch has nothing to start cold from
+        # (`engines/vibration.md` § 5.11 § 6: `--cold` is a launch again's).
+        return (f"{'--from ' + repr(from_attempt) if from_attempt else '--cold'}"
+                f": `{stage}` builds on the calculation's structure -- no "
+                f"run of another stage is its input, and its first launch "
+                f"takes nothing to start cold from (engines/vibration.md "
+                f"5.11).")
     if from_attempt:
         p = PurePosixPath(str(from_attempt))
         if p.is_absolute() or ".." in p.parts:
@@ -496,40 +446,15 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
         if not ran:
             return (f"--from {from_attempt!r}: that run was never launched "
                     f"-- name a run that has run, e.g. '01_coarse/run-0'.")
-    # A FORCE-CONSTANT STAGE BUILDS ON ITS LADDER'S `relax`, or on nothing
-    # (`engines/vibration.md` § 5.2a's table): a run of `relax` may be
-    # named; no other run, and no start from the structure while there is a
-    # `relax` to measure at.
-    if force_constant_stage(task, stage):
-        relax = relax_stage_of(task)
-        if relax is None:
-            if from_attempt:
-                return (f"--from {from_attempt!r}: nothing in this ladder "
-                        f"relaxes -- `{stage}` measures the structure as "
-                        f"given, stated relaxed (engines/vibration.md "
-                        f"5.2a).  To build on a relaxation, add the "
-                        f"`relax` stage before it and run it first.")
-        elif cold:
-            return (f"--cold: `{stage}` builds on `{relax}` -- it measures "
-                    f"at the geometry `{relax}` reached.  To measure the "
-                    f"structure as given, remove `{relax}` and state the "
-                    f"structure relaxed (`already_relaxed` in the "
-                    f"template) (engines/vibration.md 5.2a).")
-        elif from_attempt and named != relax:
-            return (f"--from {from_attempt!r}: `{stage}` builds on "
-                    f"`{relax}` -- name one of its runs, "
-                    f"<NN>_{relax}/run-<n> (engines/vibration.md 5.2a).")
     return None
 
 
 def _by_default(calc, stage: str, prev: str, *, verdict: bool,
-                linked: bool = False, bench: bool = False
+                bench: bool = False
                 ) -> Tuple[Optional[Continuation], Optional[str]]:
-    """The default for ``stage``, which builds on ``prev`` -- the stage
-    before it, or (``linked``) the `relax` a force-constant stage builds on:
-    the newest attempt, or the refusal (`continuation_answer`).  A linked
-    stage is offered no start from the structure (`engines/vibration.md`
-    § 5.2a), and a benchmark no earlier run (it takes no ``--from``)."""
+    """The default for ``stage``, which continues from ``prev``, the stage
+    before it: the newest attempt, or the refusal (`continuation_answer`).
+    A benchmark is offered no earlier run (it takes no ``--from``)."""
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
@@ -544,11 +469,10 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
 
     # THE COMMANDS, from the one composer (`commands`): each names the
     # calculation and states the mode where its config sets none.  A choice
-    # of run is said where it is taken: a force-constant stage's at its
-    # prep, any other stage's at its launch (`job-system.md` § 5.4).
+    # of run is said where it is taken, at the stage's launch
+    # (`job-system.md` § 5.4).
     from ..identity import stage_key
-    from .commands import (block, command, launch_lines, launch_pending,
-                           run_first, words_for)
+    from .commands import block, launch_lines, launch_pending, run_first
     run_prev = block(run_first(prev, calc=calc))
     g_prev = calc.request.group_of(prev)
     g_stage = calc.request.group_of(stage)
@@ -558,18 +482,14 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     # measures one stage, never a group.
     mates = [n for n in calc.request.members(g_stage)
              if stage_key(n) != stage_key(stage)]
-    alone = linked or bench or not mates
+    alone = bench or not mates
 
     def _taking(*flags) -> List[str]:
-        if linked:
-            return [command("prep", *words_for("task", groups=[g_stage]),
-                            base=base, flags=flags)]
         return launch_lines("task", stage, base=base, flags=flags)
     # THE WAY OUT THAT WORKS HERE (the W37 review's first finding): `--cold`
     # names an attempt-less start, which the flat layout -- one folder, no
     # attempts -- refuses; there a stage starts clean by its `restart`.
-    clean = ("" if linked else
-             f"or start `{stage}` clean: set its `restart` override to "
+    clean = (f"or start `{stage}` clean: set its `restart` override to "
              f"`clean` (Task setup's stage table, or task.json)\n" if flat else
              f"or start `{stage}` from the calculation's structure --\n"
              + block(_taking("--cold")) + "\n" if alone else
@@ -579,11 +499,8 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
              f"{g_stage} with {', '.join(f'`{m}`' for m in mates)}, so give "
              f"it a group of its own first (Task setup, or job-request.json) and "
              f"prepare that group\n")
-    rule = ("(engines/vibration.md § 5.2a)" if linked
-            else "(job-system.md § 5.4)")
-    # WHAT IT BUILDS ON, in the words of the ladder's kind.
-    lead = (f"`{stage}` builds on `{prev}`" if linked else
-            f"`{stage}` continues from the stage before it, `{prev}`")
+    rule = "(job-system.md § 5.4)"
+    lead = f"`{stage}` continues from the stage before it, `{prev}`"
 
     run = None
     if flat:
@@ -616,7 +533,7 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
             return flat_files(base, task, Continuation(
                 stage=prev, source=source, by_default=True,
                 concluded=concluded, state=state, converged=converged,
-                linked=linked, run=run)), None
+                run=run)), None
         except LaunchRecordError as exc:
             return None, str(exc)
 
@@ -647,14 +564,14 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
            + block(_taking("--from", other)) + "\n"
            if other else "")
-    return None, (f"`{stage}` {'builds on' if linked else 'continues from'} "
-                  f"{what} {why}.  {first}\n{alt}{clean}{rule}")
+    return None, (f"`{stage}` continues from {what} {why}.  {first}\n"
+                  f"{alt}{clean}{rule}")
 
 
 def relaunch(calc, job, *, cold: bool = False, ran=None
              ) -> Optional[Continuation]:
     """What ``job``'s stage, LAUNCHED AGAIN, continues from -- the door
-    `launch` asks, as prep asks :func:`continuation_answer`
+    `launch` asks, as a first launch asks :func:`continuation_answer`
     (`job-system.md` § 5.4, *A stage launched again*).  Any stage is
     launched again, however its last run ended: warm, from its OWN latest
     run -- ``ran``, its newest attempt launched, as launch found it, or on
@@ -721,28 +638,19 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     stage before it with what it was; whether the structure (``--cold``) is
     a choice here -- or ``None`` when the stage continues from nothing by
     default (`job-system.md` § 5.4, `web/task-setup.md` § 11).  The answer
-    its first launch acts on -- a force-constant stage's prep -- served
-    before it does, without the relaxation's verdict (`continuation_answer`
-    reads it): a folder is answered every time it is opened, and parsing
+    its first launch acts on -- served before it does, without the
+    relaxation's verdict (`continuation_answer` reads it): a folder is
+    answered every time it is opened, and parsing
     each stage's output there is the cost of a preview nobody asked for."""
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
     from .naming import stage_home
     base, task = Path(calc.base), calc.task
-    if force_constant_stage(task, stage) and relax_stage_of(task) is None:
-        # NO `relax` TO BUILD ON: the structure as given when it is stated
-        # relaxed -- nothing to choose -- else the refusal prep gives, here
-        # before anything is written (`engines/vibration.md` § 5.2a).
-        _got, why = continuation_answer(calc, stage, verdict=False)
-        return ({"from_stage": None, "linked": True, "default": None,
-                 "refused": why, "runs": [], "cold": False}
-                if why else None)
-    prev, linked = source_stage(task, stage, calc.template_text)
+    prev = source_stage(task, stage, calc.template_text)
     if prev is None:
         return None
-    got, refused = _by_default(calc, stage, prev, verdict=False,
-                               linked=linked)
+    got, refused = _by_default(calc, stage, prev, verdict=False)
     sh = Shape.named(task.shape)
     runs = []
     if sh.keeps_attempts_as_directories:
@@ -754,19 +662,15 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
             runs.append({"source": str(a.relative_to(base)),
                          "what": _what_it_is(c, s)})
     return {"from_stage": prev,
-            # A FORCE-CONSTANT STAGE builds on its ladder's relaxation, not
-            # always the stage before it -- the page's words follow.
-            "linked": linked,
             "default": (dict(got.as_dict(), line=got.line())
                         if got is not None else None),
             "refused": refused, "runs": runs,
             # THE STRUCTURE, where the layout keeps attempts and the stage
-            # may start from it -- a force-constant stage may not while
-            # it builds on `relax` (`engines/vibration.md` § 5.2a).
-            "cold": sh.keeps_attempts_as_directories and not linked}
+            # may start from it.
+            "cold": sh.keeps_attempts_as_directories}
 
 
-def point_rows(run, names, task, stage: str, *, launch, products, base):
+def point_rows(run, names, task, stage: str, *, launch, base):
     """A SWEPT RUN'S POINTS AS `status` READS THEM -- `StageStatus.points`'
     rows for ``run``: the folder each ran in, whether it is done, what it
     started from (its `.continued-from`), what it is a copy of -- a point
@@ -779,13 +683,18 @@ def point_rows(run, names, task, stage: str, *, launch, products, base):
     (§ 2a.12), so the two never read a point two ways.  Returns ``(rows,
     running)``, the second whether any point not done is running."""
     from ..runs import concluded
-    from ..transport.stages import points_in
     from ..runrecord import copied_of, read_continued_from
+    from .points import points_of
+    declared = points_of(task)
     gathered = gathered_lines(run)
     pts, running = [], False
-    for pdir, pt in points_in(run, task, stage, base=base):
-        ok, why = done(pdir, names, launch=launch, products=products,
-                       launched_in=run)
+    for pdir, pt in declared.points_in(run, task, stage, base):
+        # WHAT THIS POINT MUST HOLD TO BE DONE, by its kind's declaration
+        # (`points.PointsOf.products_of`), the point itself asked.
+        ok, why = done(pdir, names, launch=launch, launched_in=run,
+                       products=declared.products_of(stage, task.label, base,
+                                                     point=pt),
+                       verdict_counts=declared.verdict_counts(stage, pt))
         # ITS RUN'S STATE AND VERDICT, through the one door every reader of
         # a run's state asks (`runs.concluded`: the run's record, and the
         # scheduler where this machine sent its job, its answer written
@@ -823,25 +732,14 @@ def point_rows(run, names, task, stage: str, *, launch, products, base):
     return pts, running
 
 
-def points_summary(pts) -> str:
-    """THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
-    § 2a.11): *k of N points done (F frames × V voltages)*."""
-    n_done = sum(p["done"] for p in pts)
-    n_frames = len({p["frame"] for p in pts})
-    n_volts = len({p["bias_v"] for p in pts})
-    return (f"{n_done} of {len(pts)} points done ({n_frames} "
-            f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
-            f"voltage{'' if n_volts == 1 else 's'})")
-
-
-def points_verdict(pts) -> "tuple[str, str]":
+def points_verdict(pts, summary: str) -> "tuple[str, str]":
     """A run of points' state once nothing in it runs -- THE RUN'S STATE IS
     ITS POINTS' RUNS': finished when every one finished -- converged or not,
     which is the converged column's (`job-system.md`, rule 4) -- else
-    failed; the first point not done says why.  The one rule, asked by
-    :func:`points_state` and by the transport record for the run its
-    transmission gathered (`engines/transport.md` § 2a.12)."""
-    summary = points_summary(pts)
+    failed; the first point not done says why, after ``summary``, the
+    count in the kind's words (`points.PointsOf.summary`).  The one rule,
+    asked by :func:`points_state` and by the transport record for the run
+    its transmission gathered (`engines/transport.md` § 2a.12)."""
     state = ("finished" if all(p["state"] == "finished" for p in pts)
              else "failed")
     first = next((p for p in pts if not p["done"]), None)
@@ -881,7 +779,7 @@ def gathered_lines(folder) -> List[str]:
         return [str(exc)]
 
 
-def points_state(run, names, task, stage: str, *, launch, products, base
+def points_state(run, names, task, stage: str, *, launch, base
                  ) -> "Tuple[str, str, list]":
     """A LAUNCHED RUN OF POINTS' STATE -- ``(state, detail, rows)``, the one
     rule the status door and the gather ask (`engines/transport.md`
@@ -895,9 +793,11 @@ def points_state(run, names, task, stage: str, *, launch, products, base
     A run the job the reader runs inside sent (:func:`_own_job_s`) is read
     by its points alone: its walk has returned, and the job, the reader's
     own, is still going (`job-system.md` § 6.0, *A sequence of groups*)."""
+    from .points import points_of
+    declared = points_of(task)
     pts, running = point_rows(run, names, task, stage, launch=launch,
-                              products=products, base=base)
-    summary = points_summary(pts)
+                              base=base)
+    summary = declared.summary(pts, run, names)
     if running:
         return "running", summary, pts
     walked = _walked_here(pts, run, base)
@@ -912,7 +812,7 @@ def points_state(run, names, task, stage: str, *, launch, products, base
             jid = (launch or {}).get("job_id")
             return "queued", (f"queued as job {jid}" if jid
                               else "launched, nothing run yet"), pts
-        state, detail = points_verdict(pts)
+        state, detail = points_verdict(pts, summary)
         return state, (detail + (" -- its walk ended before any point "
                                  "started" if own else
                                  " -- its job ended before any point "
@@ -920,7 +820,18 @@ def points_state(run, names, task, stage: str, *, launch, products, base
     if (any(not p["done"] for p in pts) and not _own_job_s(launch)
             and _walk_going(base, run)):
         return "running", summary + " (between two points)", pts
-    state, detail = points_verdict(pts)
+    state, detail = points_verdict(pts, summary)
+    # WHAT THE RUN NEEDS BEYOND ITS POINTS, by its kind (`points.PointsOf.
+    # also_needs`): a vibration's finish, which writes the result after its
+    # last call (`engines/vibration.md` § 5.11 § 7) -- still running while
+    # the job that holds the run is going (its last call's record step, or
+    # the finish, at work).
+    if state == "finished":
+        why = declared.also_needs(run, names, task, stage, base)
+        if why:
+            if not _own_job_s(launch) and _walk_going(base, run):
+                return "running", summary + " (after its last point)", pts
+            return "failed", f"{detail}; {why}", pts
     return state, detail, pts
 
 
@@ -972,23 +883,23 @@ def _ended_before_a_point(base, run, names) -> bool:
         return False
 
 
-def stage_run_state(base, task, stage: str, run) -> "Tuple[str, str]":
-    """``(state, detail)`` of one run of ``stage`` -- THE ONE DOOR for a
-    run's state, whichever kind: a run of points by :func:`points_state`,
-    any other run by the run door (:func:`read_run`).  Asked by `jobset
-    scratch` of each run that holds an engine's scratch."""
+def stage_run_state(calc, stage: str, run) -> "Tuple[str, str]":
+    """``(state, detail)`` of one run of ``stage`` of ``calc`` -- THE ONE
+    DOOR for a run's state, whichever kind: a run of points by
+    :func:`points_state`, any other run by the run door (:func:`read_run`).
+    Asked by `jobset scratch` of each run that holds an engine's scratch."""
     from ..runrecord import launch_record
-    from ..transport.stages import frames_of, products_of, rung_points
     from .naming import stage_home
+    from .points import points_of
+    base, task = calc.base, calc.task
     names = stage_home(base, task, stage).names(task.shape)
-    if rung_points(task, stage, frames=frames_of(base)):
+    declared = points_of(task)
+    if declared is not None and declared.rung_points(calc, stage):
         launch = launch_record(run, names)
         if launch is None:
             return "pending", "prepared, not launched"
         state, detail, _rows = points_state(
-            run, names, task, stage, launch=launch,
-            products=products_of(stage, task.label, base_dir=base),
-            base=base)
+            run, names, task, stage, launch=launch, base=base)
         return state, detail
     _ended, state, _conv, detail = read_run(base, task, stage, run,
                                             verdict=False)

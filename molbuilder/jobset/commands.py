@@ -472,17 +472,15 @@ def target_flags(base, target: Optional[str]) -> tuple:
 
 def stage_lines(kind: str, *, base, groups=(), stages=(),
                 from_attempt=None, cold: bool = False,
-                target: Optional[str] = None, prepared: bool = False,
-                from_at_prep: bool = False) -> List[str]:
+                target: Optional[str] = None, prepared: bool = False
+                ) -> List[str]:
     """What a person types next -- the lines Task setup shows, composed here
     as the terminal composes its own (`task-setup.md` § 11; W55 B4: the page
-    composes none).  For a task's ``groups``: their prep -- the machine,
-    and a force-constant stage's `relax` run (``from_attempt`` with
-    ``from_at_prep``) -- unless ``prepared``; then, for one group, its
-    launch, with what a group of one continues from (``from_attempt``,
-    ``cold``).  For
-    ``stages`` (one): a benchmark's prep, launch and read; a task's member
-    launched again alone, with what it continues from."""
+    composes none).  For a task's ``groups``: their prep -- the machine --
+    unless ``prepared``; then, for one group, its launch, with what a group
+    of one continues from (``from_attempt``, ``cold``).  For ``stages``
+    (one): a benchmark's prep, launch and read; a task's member launched
+    again alone, with what it continues from."""
     out: List[str] = []
     if kind == BENCH:
         if not prepared:
@@ -491,10 +489,8 @@ def stage_lines(kind: str, *, base, groups=(), stages=(),
         out += launch_lines(kind, *stages, base=base, target=target)
         out.append(command("summarize", BENCH, *stages, base=base))
         return out
-    # WHAT IT CONTINUES FROM, said at its launch -- a force-constant
-    # stage's `relax` run is its prep's.
-    launch_flags = ((() if from_at_prep or not from_attempt
-                     else ("--from", from_attempt))
+    # WHAT IT CONTINUES FROM, said at its launch.
+    launch_flags = ((("--from", from_attempt) if from_attempt else ())
                     + (("--cold",) if cold else ()))
     if stages:
         return launch_lines(kind, *stages, base=base, target=target,
@@ -502,9 +498,7 @@ def stage_lines(kind: str, *, base, groups=(), stages=(),
     if not prepared:
         out.append(command(
             "prep", *words_for(kind, groups=list(groups)), base=base,
-            flags=((("--from", from_attempt)
-                    if from_attempt and from_at_prep else ())
-                   + target_flags(base, target))))
+            flags=target_flags(base, target)))
     if len(groups) > 1:
         # SEVERAL GROUPS PICKED FOR ONE PREP: each launched as its own job.
         return out

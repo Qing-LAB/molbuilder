@@ -210,5 +210,14 @@ def write_json(path, obj: Any, *, mode: Optional[int] = None) -> Path:
     return write_bytes(path, data, mode=mode)
 
 
+def sha256_of(path) -> str:
+    """The sha256 of the file at ``path``, hex -- the one digest a record
+    states of a file it names (a run in phases' index: each call's deck
+    and coordinates, `engines/vibration.md` § 5.11 § 7)."""
+    import hashlib
+    from pathlib import Path
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 __all__ = ["schema_major", "schema_name", "check_schema", "read_json",
-           "json_text", "write_json", "write_bytes"]
+           "json_text", "write_json", "write_bytes", "sha256_of"]

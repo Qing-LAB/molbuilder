@@ -13,8 +13,8 @@ This module answers the group's questions, each in one place:
 
 * **does a stage build on another** (:func:`upstream_of`) -- the one fact
   the description already states: a transport rung's inputs
-  (`transport.stages.stage_inputs`), a force-constant stage's `relax`, an
-  independent stage's stage before (`ladder.source_stage`) -- and so
+  (`transport.stages.stage_inputs`), an independent stage's stage before
+  (`ladder.source_stage`) -- and so
   **the numbers a new calculation takes** (:func:`default_groups`,
   :func:`fresh_groups`) and **whether the stated ones keep it**
   (:func:`check_groups`);
@@ -81,27 +81,23 @@ def card_shares(request, stage: str) -> dict:
 def upstream_of(task, stage: str,
                 template_text: Optional[str] = None) -> Set[str]:
     """The stages ``stage`` builds on, as the description states it: a
-    transport rung's inputs, a force-constant stage's `relax`, an
-    independent stage's stage before it (none for one set `restart: clean`,
-    or the first)."""
+    transport rung's inputs, an independent stage's stage before it (none
+    for one set `restart: clean`, or the first)."""
     if getattr(task, "calculation", None) == "transport":
         from ..transport.stages import inputs_of
         return {src for src, _f in inputs_of(task, stage)}
     from .ladder import source_stage
-    src, _linked = source_stage(task, stage, template_text)
+    src = source_stage(task, stage, template_text)
     return {src} if src else set()
 
 
 def linked(task, stage: str,
            template_text: Optional[str] = None) -> bool:
     """Whether what ``stage`` builds on is its KIND's -- a transport rung's
-    inputs, a force-constant stage's `relax` -- which no override changes;
-    ``False`` for an independent ladder's stage, which builds on the stage
-    before it only while its `restart` continues (`job-system.md` § 5.4)."""
-    if getattr(task, "calculation", None) == "transport":
-        return True
-    from .ladder import source_stage
-    return bool(source_stage(task, stage, template_text)[1])
+    inputs -- which no override changes; ``False`` for an independent
+    ladder's stage, which builds on the stage before it only while its
+    `restart` continues (`job-system.md` § 5.4)."""
+    return getattr(task, "calculation", None) == "transport"
 
 
 def may_join(task, request, stage: str, members: Sequence[str],

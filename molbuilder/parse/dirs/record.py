@@ -543,6 +543,7 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
     deck, and what it was gathered from."""
     from ...runrecord import read_gathered_from
     from ...deck_record import same_calculation
+    from ..fdf import read_deck
     if f.deck is None:
         return {}
     text = _read(f.deck)
@@ -556,8 +557,10 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
     stage_deck = f.stage_deck
     if (stage_deck is not None and stage_deck.is_file()
             and stage_deck.resolve() != f.deck.resolve()):
-        deck["current"] = not same_calculation(f.engine, text,
-                                               _read(stage_deck))
+        # EACH DECK WHOLE, its coordinates file inlined (`parse.fdf.
+        # read_deck`, the one reader of a deck's file).
+        deck["current"] = not same_calculation(
+            f.engine, read_deck(f.deck), read_deck(stage_deck))
     gathered = read_gathered_from(f.directory)
     if gathered:
         deck["gathered_from"] = [{"file": fn, "from": str(src)}

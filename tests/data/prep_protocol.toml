@@ -78,6 +78,15 @@ said_lacks = ["the folder's state was"]
 kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh", "01_coarse/run-0/H2_01_coarse.fdf", "STAGE-PLAN.md", "jobset-decisions.log"]
 
 [[case]]
+name = "...and a SIESTA vibration -- one stage, one run in phases -- prepared again as it was has nothing to write: each phase's deck and run script kept as they were (engines/vibration.md 5.11 2)"
+calculation = "vibration"
+stage = "freq"
+before = [["prep", "task", "--group", "1"]]
+said = ["freq (01_freq): prepared, never launched, and already as this prep would prepare it now -- nothing to write (group 1)"]
+said_lacks = ["the folder's state was"]
+kept = ["01_freq/relax/H2_01_freq.fdf", "01_freq/relax/H2_01_freq.run.sh", "01_freq/fc/H2_01_freq.fdf", "01_freq/fc/H2_01_freq.run.sh", "STAGE-PLAN.md", "jobset-decisions.log"]
+
+[[case]]
 name = "...and one whose description changed since is prepared again whole -- its first run reused, and what differed named"
 before = [["prep", "task", "--group", "1"]]
 changed = { overrides = { coarse = { max_scf_iter = 200 } } }

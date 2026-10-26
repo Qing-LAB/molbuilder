@@ -860,9 +860,7 @@ automatic hand-off of files. Prep writes every stage's deck when you pick its
 group; when coarse finishes you look at what it produced, decide, and then
 launch tight — whose first launch copies in the files of the run it takes
 ([`job-system.md`](?doc=execution/job-system.md), *The task*, *What a stage
-takes, and when*). The one stage
-whose deck is written from another's result — a SIESTA force-constant stage, at
-`relax`'s geometry — is prepared after `relax` has run. Stages that build on
+takes, and when*). Stages that build on
 nothing from each other may share one job, their group (§ 1.6.6).
 
 That is § 1's rule — *this framework writes correct files; it does not run
@@ -1827,8 +1825,9 @@ what `--from` and `--cold` change, and when `launch` refuses, is
 [`job-system.md`](?doc=execution/job-system.md), *The task*, *What a stage
 takes, and when* (and § 5.4). That is a ladder of independent stages; a linked stage — transport's
 device and transmission — has its input fixed by the calculation, and its first
-launch takes it from the stage before; a vibration's `freq` is written at
-`relax`'s geometry, so its prep takes that run (§ 5.4 too).
+launch takes it from the stage before; a vibration's stage builds on the
+calculation's structure, its run relaxing first
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11).
 
 ```
 molbuilder jobset launch task --group 2                            # the stage before it, newest
@@ -1918,7 +1917,7 @@ right name.
 | **which groups** | you, on the command line — `--group N`, repeated for several | which stages are prepared, and so which overrides apply |
 | **the machine** | its record, read — `jobset probe` wrote it; `prep` never probes (§ 2.3.1) | ranks, GPUs, scheduler, activation → snapshotted as `environment.json` |
 | a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | **nothing, on its own** — it is a REPORT you read, and `prep task` never opens it (§ 2.3.3). What it tells you about rank count, eigensolver, GPU and memory reaches the deck only once YOU write it onto a run card in the job request. |
-| a finished run *(optional)* | what the stage builds on, taken by its first `launch` — or, for a force-constant stage, the `relax` run its `prep` writes its deck at (`job-system.md`, *The task*, *What a stage takes, and when*) | which coordinates and density matrix the run starts from |
+| a finished run *(optional)* | what the stage builds on, taken by its first `launch` (`job-system.md`, *The task*, *What a stage takes, and when*) | which coordinates and density matrix the run starts from |
 
 | Output | What it is |
 |---|---|
@@ -2587,7 +2586,7 @@ So these searches have no door and must not grow one:
 
 | the search | whose name it is |
 |---|---|
-| `*.XV`, `*{suffix}` from `warmfiles.warm_list`; an engine's scratch, `*.TSGFL` / `*.TSGFR` from `warmfiles.scratch_families`, each name asked of `warmfiles.is_scratch` | SIESTA's restart state and TranSIESTA's scratch. The vocabulary already comes from one home (`<engine>/warm-files.toml`, `job-contracts.md` § 4.2a); only the loop is local |
+| `*.XV`, `*{suffix}` from `warmfiles.warm_list`; an engine's scratch, `*.TSGFL` / `*.TSGFR` / `*.contrib.EPSIMG` from `warmfiles.scratch_families`, each name asked of `warmfiles.is_scratch` | SIESTA's restart state and its scratch. The vocabulary already comes from one home (`<engine>/warm-files.toml`, `job-contracts.md` § 4.2a); only the loop is local |
 | `*_geom_optim.xyz` | geomeTRIC's, via the declared `runfiles.ROLE_GEOM_TRAJ`. It cannot go through `find_by_role` and that refusal is the grammar's own rule: without a label, a trailing `_geom_optim.xyz` cannot be told from a stage token named `..._geom_optim` with `.xyz` as the role |
 | conda-meta's `*.json` | conda's |
 
@@ -2801,6 +2800,7 @@ root, told apart by `<base>`.
 | `<base>.validation.txt` | what the generator checked before it wrote the deck | prep (`script_emit.write_validation_report`), beside the deck | `runs.Run.report` | record |
 | `<base>.run.sh` | the wrapper — activates the environment, tees the output, catches a kill | prep (`runwrap.write_run_wrapper`), beside its deck; a copy in each attempt | none | derived |
 | `<base>.sbatch` — only: a machine with a queue | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each attempt | none | derived |
+| `coordinates.fdf` *(SIESTA, vibration)* | the coordinate rows of one SIESTA call, which the deck beside it reads as its AtomicCoordinatesAndAtomicSpecies block -- the structure's beside each phase's deck, a call's own in its folder | prep, beside each phase's deck (`siesta.deck_lines.coordinates_text`); the run's own python for each call (`spectra.siesta_vibration`, the plan verb) | `parse.fdf.read_deck` | derived |
 | `calcdir.json` | what this folder is in its calculation — a container, a run, or a run's scratch folder — and where the calculation is | the code that makes the folder: prep and launch (`materialize.open_run` -- a stage's attempt, a bias point's, a benchmark trial's, and the containers above each -- `naming.open_container`, a submission's `launch/`, `pseudos/` and a point's folder below its stage, and `materialize.open_scratch`, a device run's `tsgf/`) | `calcdirs.where` | record |
 | `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_vibration.pyz` *(SIESTA, vibration)* — only: a force-constant stage | a force-constant job's finish: the modes, from `.FC` | prep, beside the run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
@@ -2821,6 +2821,7 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `<label>_initial.molstruct.json` *(PySCF)* | the input geometry's cell and labels | the PySCF deck | none | result |
 | `<label>_optimized.molstruct.json` *(PySCF)* | the relaxed geometry's cell and labels -- the sidecar of the restart file `_optimized.xyz` | the PySCF deck | none | result |
 | `<label>.constraints.txt` *(PySCF)* — only: atoms are held | which atoms are held still, in geomeTRIC's own format | the PySCF deck | none | derived |
+| `<base>-run<N>.phases.json` *(SIESTA, vibration)* | the index of a run in phases: every SIESTA call of the run -- its phase and folder, what it is (the relaxation; the force constants; a mode's side at its displacement), what it was written from and seeded with, how it ended, whether it was taken over -- and the finish's entry | launch, for the calls it opens (`submit`); the run's own python for the rest (`spectra.siesta_vibration`: the plan, record and finish verbs) | `siesta.vibration_phases.read_index` | record |
 | `<label>.spectra.json` *(vibration)* | the spectrum this run computed: frequencies, the strengths the engine computes, thermochemistry -- written by the run itself | the run itself: the PySCF deck, or a SIESTA force-constant job's finish (`mb_vibration.pyz`) | `parse.sidecars.spectra.SpectraSidecarFileParser` | result |
 | `<label>.spectra.nc` *(vibration)* | the spectrum as data on its grids -- the structure, the modes, the thermochemistry, every variable stating itself (NetCDF-4); the JSON's sha256 beside | the run itself, with the JSON (`sidecars.spectra.write_spectra_payload`) | `spectra.datafile.read_spectra_data` | result |
 | `<base>.molwatch.log` *(hierarchical)* · `<base>-run<N>.molwatch.log` *(flat)* | the run as it happens — coordinates, energy and forces, one block per step | prep seeds the first run's, in the attempt -- in the flat shape numbered for run 0; PySCF's deck writes each step into its run's own, SIESTA never does | `parse.engines.molwatch.MolwatchLogFileParser` | record |
@@ -2841,6 +2842,7 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `<label>.<tbt>.digest.nc` *(transport)* — only: its data file read | a transmission point's data file, read once: its device DOS per orbital averaged over the k-points, what the file states of its geometry and electrodes, and TBtrans's own k-averaged quantities -- every variable with its units (NetCDF-4) | the SIESTA family's parser (`parse.engines.tbtrans_nc`), on the person's word: the Results tab's DOS tab, `jobset summarize task` | `parse.engines.tbtrans_nc.kept` | derived |
 | `<base>-run<N>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act | `runrecord.ending` | record |
 | `run.json` *(hierarchical)* · `<base>-run<N>.run.json` *(flat)* | the launch record: how, where and when the run was sent, what it continued from, and the run a warm retry retries | launch (`runrecord.write_launch`); a flat run's warm retry, the run script through the monitor's bundle (`runrecord.record_retry`) | `runrecord.launch_record` | record |
+| `notified.json` *(hierarchical)* · `<base>-run<N>.notified.json` *(flat)* | the run's notification record: every event sent for the run -- start, a step, the periodic report, its wall near, finish -- and when | `mb_monitor.pyz notify` (the run's start and finish, sent by its plan and record steps, `runrecord.note_notified`); a member monitor that sends a periodic or wall report (`monitor`) | `runrecord.read_notified` | record |
 | `.continued-from` *(hierarchical)* · `<base>-run<N>.continued-from` *(flat)* — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a walked point's start, a taken-over point's computing run (one hop) | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) -- with the files it takes; on the flat layout with the run's launch record | `runrecord.read_continued_from` | record |
 | `<base>-run<N>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
 | `.gathered-from` *(transport)* | what a rung took, from which upstream run | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_gathered_from`) -- a rung's first launch or a `--gather` (`jobset.gather.transport_inputs`), or a launch again keeping what its last run was given | `runrecord.read_gathered_from` | record |

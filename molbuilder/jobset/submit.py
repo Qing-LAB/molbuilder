@@ -508,9 +508,9 @@ class _Member:
     #: own; at a first launch, nothing of the stage before it.
     cold: bool = False
     #: What it continues from -- at a first launch, what it builds on (the
-    #: stage before it, or a force-constant stage's `relax` run its prep
-    #: took); launched again warm, its own latest run, or a run named by
-    #: ``--from`` -- one `Continuation` from the one door, or ``None``.
+    #: stage before it); launched again warm, its own latest run, or a run
+    #: named by ``--from`` -- one `Continuation` from the one door, or
+    #: ``None``.
     continuation: Optional[Continuation] = None
     #: WHAT ITS RUN TAKES FROM OTHER RUNS, each one hand-over
     #: (`materialize.HandOver`, `job-system.md` § 5.4): the run it continues
@@ -1105,9 +1105,9 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
     it takes, from the ready door -- the one door per kind, every kind's
     refusal with it (`ready.first_launch_takes`): the stage before it's
     newest run, which must have finished, ``from_attempt`` a run named,
-    ``cold`` none; a transport rung's gather, each point its own; a
-    force-constant stage's `relax` run its prep took -- refused before
-    anything is sent while an upstream has not finished (R-L11); and its
+    ``cold`` none; a transport rung's gather, each point its own --
+    refused before anything is sent while an upstream has not finished
+    (R-L11); and its
     first run filled: prep's run, emptied whole, prep's own files put back
     as they lie (:func:`_prep_files_back`), and given what it takes now,
     with its record (`project-layout.md` § 1.6.3).  On the flat layout
@@ -1133,11 +1133,14 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
                       first=True, cold=cold, continuation=cont,
                       hands=_flat_hand(container, names, run, cont))
     if points:
-        # A RUN OF POINTS: prep's run, each point given its own gather.
+        # A RUN OF POINTS: prep's run, each point given its own gather --
+        # none for a kind whose run takes nothing (a vibration's calls
+        # build on each other inside the run, `engines/vibration.md`
+        # § 5.11).
         sweep = open_sweep_run(calc, stage, plan=writes)
         _prep_files_back(sweep.dir, writes)
-        took, gathered = _gather_sweep(base, sweep.dir, sweep.points, got,
-                                       writes, names=names)
+        took, gathered = _gather_sweep(base, sweep.dir, sweep.points,
+                                       got or [], writes, names=names)
         return member(job, container, sweep.dir, True, sweep.dir,
                       run=FIRST_ATTEMPT, label=stage, first=True, cold=cold,
                       points=list(sweep.points), took=took, hands=gathered)
@@ -1234,16 +1237,8 @@ def _launch_again(calc, job, *, member, names: RunNames, container: Path,
     if from_attempt:
         # A RUN NAMED, taken anew (`job-system.md` § 5.4): the one door, as a first launch asks
         # it -- what cannot be taken is refused (a transport rung, a run
-        # that is not this calculation's); a force-constant stage's run is
-        # its prep's.
+        # that is not this calculation's, a vibration's).
         from .continuation import continuation_answer
-        from .ladder import force_constant_stage
-        if force_constant_stage(task, stage):
-            raise SubmitError(
-                f"--from {from_attempt!r}: `{stage}`'s deck is written at "
-                f"the `relax` run its prep took ({job.written_at}) -- another "
-                f"is said at its prep, which a launched stage is not given "
-                f"again.  To change it, " + _redo(calc, job))
         cont, why = continuation_answer(calc, stage,
                                         from_attempt=from_attempt, cold=cold)
         if why:
@@ -1691,13 +1686,11 @@ def _the_group(calc, *, group, only,
 
 
 def _a_sweep(calc, stage: str) -> bool:
-    """Whether ``stage`` of ``calc`` is a transport rung that runs per point
-    (`transport.stages.rung_points`: a frame and a voltage each) --
-    launched as ONE job walking its run's points."""
-    from ..transport.stages import frames_of, rung_points
-    return bool(calc.task.calculation == "transport"
-                and rung_points(calc.task, stage,
-                                frames=frames_of(calc.base)))
+    """Whether ``stage`` of ``calc`` is a rung that runs per point, by its
+    kind's declaration (`points.rung_points_of`: a transport rung's frames
+    and voltages) -- launched as ONE job walking its run's points."""
+    from .points import rung_points_of
+    return bool(rung_points_of(calc, stage))
 
 
 def ask_launch(plan: LaunchPlan) -> List[JobResult]:
@@ -2224,36 +2217,60 @@ class WalkCommand(str):
     step names a run script, which the walk runs with ``bash``."""
 
 
+@dataclass(frozen=True)
+class WalkLoop:
+    """A walk step over the folders a glob matches WHEN THE STEP RUNS -- the
+    calls a run in phases plans in the job, below the run's `optical/`
+    (`engines/vibration.md` § 5.11 § 3): each folder's run script
+    ``run_sh``, run with ``args`` as a member named ``<member>@<folder>``;
+    ``skip``, the folders this launch took over, passed over by name;
+    ``before``, the files copied into each folder just before it runs (the
+    call's seed), from the folder the walk runs in.  One call failing stops
+    no other."""
+    run_sh: str
+    args: str
+    skip: Tuple[str, ...] = ()
+    before: Tuple[str, ...] = ()
+
+
 def _walk_script(name: str, steps, *, where: str, log: str,
                  member_word: str = "trial",
                  bound_s: Optional[int] = None,
-                 stop_on_failure: bool = False,
-                 chains: Optional[List[Any]] = None,
+                 needs: Optional[Sequence[Optional[int]]] = None,
                  empties: Optional[Dict[int, str]] = None,
                  empty_at_end: Optional[str] = None,
-                 walls: Optional[Sequence[Optional[int]]] = None) -> str:
+                 walls: Optional[Sequence[Optional[int]]] = None,
+                 one_start: bool = False) -> str:
     """THE ONE WALK SCRIPT -- what runs several members one after another in
     one submission: a benchmark's trials (a shelf sent to a queue, or its
     unlaunched trials run here, `generator.md` § 4.3a), a group's stages
     (`project-layout.md` § 1.6.6), a swept rung's points
-    (`engines/transport.md` § 2a.11), a sequence's groups (`job-system.md`
-    § 6.0).  ``steps`` are ``(name, folder, run script, its arguments,
-    before)``: the folder from where the walk runs -- the run script run
-    with ``bash``, or a :class:`WalkCommand`, shell words run as they stand
-    (a group's launch) -- and ``before`` the files copied into it just
-    before it starts -- ``(source, folder)`` pairs, a sweep's start (its
-    `along` row); ``()`` for every other walk.  ``bound_s`` is a per-member bound, a member past
-    it killed and read incomplete (a benchmark's).  A member that fails
-    leaves the rest to run, and the walk exits nonzero when any failed --
-    unless ``stop_on_failure`` (a device's points: the ones after a failed
-    one would start from it), when the members after it IN ITS CHAIN are not
-    run -- ``chains`` names each step's chain (a device point's frame,
-    `engines/transport.md` § 2a.9), one chain when none is named -- and the
-    walk goes on with the other chains.  Stopped by the person (Ctrl-C at a
-    launch waited on, a lost terminal, ``molbuilder jobs stop`` of one left
-    in the background, a cancel), it starts no further member.  What the
-    scheduler tells the job it reads in molbuilder's names, which the job's
-    header says once for everything it starts (`kinds.Kind.job_lines`).
+    (`engines/transport.md` § 2a.11), a run in phases' calls
+    (`engines/vibration.md` § 5.11 § 3), a sequence's groups
+    (`job-system.md` § 6.0).  ``steps`` are ``(name, folder, run script,
+    its arguments, before)``: the folder from where the walk runs -- the
+    run script run with ``bash``, a :class:`WalkCommand`, shell words run
+    as they stand (a group's launch), or a :class:`WalkLoop`, the folders
+    a glob matches when the step runs -- and ``before`` the files copied
+    into it just before it starts -- ``(source, folder)`` pairs, a sweep's
+    start (its `along` row), a call's seed; ``()`` for every other walk.
+    ``bound_s`` is a per-member bound, a member past it killed and read
+    incomplete (a benchmark's).  A member that fails leaves the rest to
+    run, and the walk exits nonzero when any failed -- unless ``needs``
+    names, for each step, the step it builds on (a device point's start,
+    the point before it in its frame, `engines/transport.md` § 2a.9; a
+    vibration's force constants its relaxation, § 5.11 § 5): a step whose
+    need failed, or was not run, is not run, and the walk goes on with the
+    rest.  Stopped by the person (Ctrl-C at a launch waited on, a lost
+    terminal, ``molbuilder jobs stop`` of one left in the background, a
+    cancel), it starts no further member.  What the scheduler tells the job
+    it reads in molbuilder's names, which the job's header says once for
+    everything it starts (`kinds.Kind.job_lines`).  ``one_start``: the
+    members share ONE WALL -- a run in phases' calls (`jobset.points`,
+    ``one_wall``) -- and THE RUN'S START the walk states once itself for a
+    run here (``MB_JOB_STARTED``, `running-a-job.md` § 3.6), so every member
+    counts the one wall; every other walk's members count from their own
+    starts.
     ``empties`` names, by the index of the step it stands before, a folder
     whose scratch family the walk empties there -- a device run's ``tsgf/``
     as each round begins -- and ``empty_at_end`` the folder emptied after
@@ -2278,6 +2295,11 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "# it runs alone; nothing here re-implements module load / source",
         "# activate.",
         "set -u",
+        # THE RUN'S START, once for every member, where the members share
+        # one wall (running-a-job.md § 3.6): a job's header said it; run
+        # here, the walk says it now.
+        *([': "${MB_JOB_STARTED:=$(date +%s)}"', "export MB_JOB_STARTED"]
+          if one_start else []),
         f'LOG="{log}"',
         # EVERYTHING IT SAYS IS IN ITS LOG -- bash's own errors and a start
         # that could not be copied among them -- so a walk left in the
@@ -2289,9 +2311,10 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         'alloc_ntasks=${MB_NTASKS:-unset} '
         'alloc_cpus=${MB_CPUS_PER_TASK:-unset}" >> "$LOG"',
         "fails=0",
-        # A CHAIN'S FLAG, where a failed member stops the ones after it.
-        *([f"_chain_{i}=0" for i in range(len(dict.fromkeys(chains or [None])))]
-          if stop_on_failure else []),
+        # EACH STEP'S FLAG, where a step builds on another: 1 once it ran
+        # and succeeded, 0 when it failed or was not run.
+        *([f"_ok_{k}=0" for k in range(len(steps))]
+          if needs is not None else []),
         # STOPPED BY THE PERSON -- Ctrl-C, a lost terminal, a cancel --
         # the walk starts no further member (bash runs this after the
         # running member returns; one under a per-member bound ends at it).
@@ -2323,49 +2346,76 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     ]
     import shlex as _shlex
     from ..scheduler.kinds import WALL_VAR
-    chain_of = {c: i for i, c in enumerate(dict.fromkeys(chains or [None]))}
     for k, (member, folder, run_sh, args, before) in enumerate(steps):
         if empties and k in empties:
             lines.append(f'empty_scratch {_shlex.quote(empties[k])}')
         wall = walls[k] if walls else None
-        what = (str(run_sh) if isinstance(run_sh, WalkCommand)
-                else f'bash "{run_sh}"')
-        call = ((f"{WALL_VAR}={int(wall)} " if wall else "")
-                + f'run_member "{member}" "{folder}" {what}'
-                + (f" {args}" if args else ""))
-        # THE MEMBERS AFTER A FAILED ONE IN ITS CHAIN WOULD START FROM IT:
-        # they are not run, and the walk goes on with the other chains.
-        flag = (f"_chain_{chain_of[chains[k] if chains else None]}"
-                if stop_on_failure else None)
-        call += (f' || {{ echo "[group] {when} {member} failed -- the '
-                 f'members after it in its chain would start from it, so '
-                 f'they are not run" >> "$LOG"; {flag}=1; }}'
-                 if flag else " || true")
-        run = [call]
-        if before:
-            # ITS START, copied just before it runs (`along`): from a point
-            # done before it, which may be one this very walk finished --
-            # or it is not run, since its record names that start
-            # (`.continued-from`, written with the plan).
-            copies = " && ".join(f"cp -f {_shlex.quote(src)} "
-                                 f"{_shlex.quote(dst)}/" for src, dst in before)
-            run = ([f"if {copies}; then"]
-                   + [f'    echo "[group] {member}: starts from {src}" '
-                      f'>> "$LOG"' for src, _dst in before]
-                   + [f"    {call}",
-                      "else",
-                      f'    echo "[group] {when} {member} not run -- its '
-                      f'start could not be copied" >> "$LOG"',
-                      "    fails=$((fails+1))"
-                      + (f"; {flag}=1" if flag else ""),
-                      "fi"])
-        if not flag:
+        told = f"{WALL_VAR}={int(wall)} " if wall else ""
+        # WHAT ITS FAILURE DOES: with ``needs``, its flag stays 0 and the
+        # steps that build on it are not run; else nothing, the rest run.
+        failed = (f' || {{ echo "[group] {when} {member} failed -- what '
+                  f'builds on it is not run" >> "$LOG"; }}'
+                  if needs is not None else " || true")
+        if isinstance(run_sh, WalkLoop):
+            # THE LOOP STEP: the folders there when it runs, each its own
+            # member; the ones taken over passed by name; each seeded just
+            # before it runs; one failing stops no other.
+            copies = " && ".join(f'cp -f {_shlex.quote(src)} "$_d"/'
+                                 for src in run_sh.before)
+            run = [f"for _d in {folder}; do",
+                   '    [ -d "$_d" ] || continue',
+                   '    _n="$(basename "$_d")"']
+            if run_sh.skip:
+                run.append(
+                    f'    case " {" ".join(run_sh.skip)} " in *" $_n "*) '
+                    f'echo "[group] {when} {member}@$_n taken over -- not '
+                    f'run" >> "$LOG"; continue ;; esac')
+            if copies:
+                run.append(
+                    f'    if ! {copies}; then echo "[group] {when} '
+                    f'{member}@$_n not run -- its start could not be '
+                    f'copied" >> "$LOG"; fails=$((fails+1)); continue; fi')
+            run += [f'    {told}run_member "{member}@$_n" "$_d" '
+                    f'bash "{run_sh.run_sh}"'
+                    + (f" {run_sh.args}" if run_sh.args else "") + " || true",
+                    "done"]
+            if needs is not None:
+                run.append(f"_ok_{k}=1")
+        else:
+            what = (str(run_sh) if isinstance(run_sh, WalkCommand)
+                    else f'bash "{run_sh}"')
+            call = (f'{told}run_member "{member}" "{folder}" {what}'
+                    + (f" {args}" if args else "")
+                    + (f" && _ok_{k}=1" if needs is not None else "")
+                    + failed)
+            run = [call]
+            if before:
+                # ITS START, copied just before it runs (`along`): from a
+                # point done before it, which may be one this very walk
+                # finished -- or it is not run, since its record names that
+                # start (`.continued-from`, written with the plan).
+                copies = " && ".join(f"cp -f {_shlex.quote(src)} "
+                                     f"{_shlex.quote(dst)}/"
+                                     for src, dst in before)
+                run = ([f"if {copies}; then"]
+                       + [f'    echo "[group] {member}: starts from {src}" '
+                          f'>> "$LOG"' for src, _dst in before]
+                       + [f"    {call}",
+                          "else",
+                          f'    echo "[group] {when} {member} not run -- its '
+                          f'start could not be copied" >> "$LOG"',
+                          "    fails=$((fails+1))",
+                          "fi"])
+        need = needs[k] if needs is not None else None
+        if need is None:
             lines += run
             continue
-        lines += [f'if [ "${{{flag}}}" -eq 0 ]; then', *[f"    {r}" for r in run],
+        # IT BUILDS ON ANOTHER STEP: run once that one ran and succeeded.
+        lines += [f'if [ "${{_ok_{need}}}" -eq 1 ]; then',
+                  *[f"    {r}" for r in run],
                   "else",
-                  f'    echo "[group] {when} {member} not run -- its chain '
-                  f'stopped at a failed member" >> "$LOG"',
+                  f'    echo "[group] {when} {member} not run -- what it '
+                  f'builds on failed or did not run" >> "$LOG"',
                   "fi"]
     if empty_at_end:
         lines.append(f"empty_scratch {_shlex.quote(empty_at_end)}")
@@ -2549,12 +2599,13 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     here, each point is told its card's wall (`running-a-job.md` § 3.6)."""
     from ..runrecord import launch_record, next_run, read_continued_from
     from ..transport.energies import SHARED_DIR
-    from ..transport.stages import hands_on, products_of
     from ..warmfiles import never_carried
     from .continuation import done
-    jobset, base, task = calc.jobset, Path(calc.base), calc.task
+    from .points import points_of
+    base, task = Path(calc.base), calc.task
     job, names, stage = m.job, m.names, m.job.name
     stage_dir, run, prev = m.container, m.run_dir, m.ran
+    declared = points_of(task)
     # WHAT NO COPY CARRIES (the one answer, `warmfiles.never_carried`): an
     # engine's scratch, recomputed by every run, so never taken over -- it
     # lies in the run's own folder for it (`Job.scratch_dir`), and a run
@@ -2564,8 +2615,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     # WHAT A POINT MUST HOLD TO BE DONE -- the one list (`products_of`):
     # what the rungs downstream take, and what a point hands to the next
     # (`hands_on`, the one answer of that).
-    products = products_of(stage, task.label, base_dir=base)
-    hand = hands_on(stage, task.label, base)
+    hand = declared.hands_on(stage, task.label, base)
     taken, walked = [], []
     prev_launch = launch_record(prev, names) if prev is not None else None
     # A FIRST LAUNCH IN A CALCULATION THAT REUSES A FINISHED ONE takes that
@@ -2579,8 +2629,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     for pdir, pt in m.points:
         if prev is not None and not m.cold:
             src = prev / pt.rel
-            ok, _why = done(src, names, launch=prev_launch, products=products,
-                            launched_in=prev)
+            ok, _why = done(src, names, launch=prev_launch, launched_in=prev,
+                            products=declared.products_of(
+                                stage, task.label, base, point=pt))
             if ok:
                 taken.append((pdir, pt, src))
                 continue
@@ -2662,7 +2713,11 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
                   else None)
     empties: Dict[int, str] = {}
     seen_rounds: set = set()
-    steps, said, chains = [], [], []
+    steps, said, needs = [], [], []
+    # WHAT EACH STEP BUILDS ON (`_walk_script`'s ``needs``): the point
+    # before it in its frame, walked here -- a frame's chain, which a
+    # failed point stops (§ 2a.9).
+    last_in_frame: Dict[Any, int] = {}
     for pdir, pt in walked:
         if scratch_at and pt.volts not in seen_rounds:
             seen_rounds.add(pt.volts)
@@ -2680,11 +2735,12 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
             start = HandOver(pdir, names, tries, CONTINUED, source=at,
                              files=tuple((at, f) for f in hand), walk=True)
             hand_over(base, start, plan.writes)
+        needs.append(last_in_frame.get(pt.frame))
+        last_in_frame[pt.frame] = len(steps)
         steps.append((f"{stage}@{pt.rel}",
                       f"{run.name}/{pt.rel}", names.name(".run.sh"),
                       " ".join(_run_sh_args(job.resources, tries)),
                       start.walk_copies(base, stage_dir) if start else ()))
-        chains.append(pt.frame)
         said.append(pt.words() + (f" (from {prior.words()}'s "
                                   f"{', '.join(hand)})" if start else ""))
         plan.reads += [_as_found(stage_dir / pt.rel / f, base)
@@ -2706,16 +2762,32 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
                                  walk=walk,
                                  copied=across.taken if across else ())
     gn = GroupNames.of_points(names.stem)
-    launch_dir = stage_dir / LAUNCH_DIR
     log = f"{LAUNCH_DIR}/{gn.name('.log')}"
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s sweep, {run.name}",
         member_word="point", log=log,
-        stop_on_failure=bool(hand), chains=chains,
+        needs=(needs if hand else None),
         empties=empties, empty_at_end=scratch_at,
         walls=([_wall_s(job.resources)] * len(steps)
                if _own_walls(mode, inside)
                else None))
+    _send_walk(plan, member, calc, script, gn, stage_dir, mode=mode,
+               machine=machine, time_s=time_s, told=told)
+
+
+def _send_walk(plan: LaunchPlan, member: "_Member", calc, script: str,
+               gn: GroupNames, stage_dir: Path, *, mode: str, machine,
+               time_s: Optional[int], told) -> None:
+    """A RUN OF POINTS' WALK, SENT: the walk script written into the
+    stage's ``launch/`` and submitted -- run here, or as one scheduler job
+    through the walk's one header, as its prep wrote and placed it: one
+    allocation walking every point, their walls summed (`group.envelope`,
+    `prep.prep_calculation`) -- or no queue to send to, said by the one
+    answer (`_no_sbatch`); asked about, the same."""
+    jobset, base = calc.jobset, Path(calc.base)
+    job = member.job
+    launch_dir = stage_dir / LAUNCH_DIR
+    log = f"{LAUNCH_DIR}/{gn.name('.log')}"
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
         plan.writes.text(launch_dir / gn.name(".run.sh"), script)
@@ -2725,11 +2797,6 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
             stage_dir, True, [member], rides="rides the sweep",
             log=stage_dir / log))
         return
-    # ---- submit / ask: one scheduler job walking the points ------------ #
-    # THE WALK'S ONE HEADER, as its prep wrote and placed it: one
-    # allocation walking every point, their walls summed (`group.envelope`,
-    # `prep.prep_calculation`) -- or no queue to send to, said by the one
-    # answer (`_no_sbatch`); asked about, the same.
     header = launch_dir / gn.name(".sbatch")
     if _needs_header(mode, machine):
         if not header.is_file():
@@ -2747,6 +2814,206 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         gn.stem, cmd, stage_dir, False, [member], placement=placement,
         sent=sent, rides="rides the sweep", header=header, machine=machine,
         outputs_in=outputs_in))
+
+
+def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
+                 mode: str, time_s: Optional[int], told,
+                 inside: Optional[Inside] = None) -> None:
+    """A RUN IN PHASES SENT (`engines/vibration.md` § 5.11 § 3, § 6): one
+    submission walking ``m``'s run -- its calls as :func:`_plan_member`
+    opened them (the relaxation's and the force constants' folders) and
+    the optical calls the job plans below the run's `optical/`, each a
+    SIESTA call in a folder of its own.
+
+    Launched again warm, each call DONE in the newest launched run is
+    taken over whole (its folder but the engine's scratch, its
+    `.continued-from` naming the run that computed it, one hop), the
+    optical ones included -- listed to the walk's loop step, which passes
+    them over; a `relax` not done continues from its own warm files, one
+    hand-over; a planned optical call not done runs again from the stage's
+    `optical/` files and the coordinates its planning wrote.  With every
+    call done and the finish not done, the last call runs again so its
+    record step finishes the run; with the finish done too, refused,
+    naming `--cold`.  Each call's seed is the walk's copy from the call
+    before it (its `PHASES` row); the walk's steps name what each needs.
+    The new run's index is written with the calls launch knows (§ 7); the
+    run's own python adds the rest."""
+    from ..persist import json_text
+    from ..runfiles import COORDINATES_FILE, compose
+    from ..runrecord import (launch_record, newest_run, next_run,
+                             read_continued_from)
+    from ..siesta.vibration_phases import (FC, OPTICAL, RELAX, add_call,
+                                           calls_of, empty_index, entry_of,
+                                           index_path, phase, read_index)
+    from ..warmfiles import never_carried, warm_list
+    from .continuation import done
+    from .materialize import bring_files, open_run
+    from .points import points_of
+    jobset, base, task = calc.jobset, Path(calc.base), calc.task
+    job, names, stage = m.job, m.names, m.job.name
+    stage_dir, run, prev = m.container, m.run_dir, m.ran
+    declared = points_of(task)
+    on = [phase(p) for p in (job.phases or ())]
+    prev_launch = launch_record(prev, names) if prev is not None else None
+    prev_index = None
+    if prev is not None:
+        n_prev = newest_run(prev, names)
+        p_idx = index_path(prev, names,
+                           n_prev if n_prev is not None else FIRST_ATTEMPT)
+        if p_idx.is_file():
+            prev_index = read_index(p_idx)
+    def _done(pt) -> bool:
+        if prev is None or m.cold or not (prev / pt.rel).is_dir():
+            return False
+        ok, _why = done(prev / pt.rel, names, launch=prev_launch,
+                        launched_in=prev,
+                        products=declared.products_of(stage, task.label,
+                                                      base, point=pt),
+                        verdict_counts=declared.verdict_counts(stage, pt))
+        return ok
+
+    # EVERY CALL THE RUN HOLDS: the ones its planner opened (the relaxation,
+    # the force constants) and, where the force constants are taken over,
+    # the optical calls the last run planned from them -- theirs, taken
+    # with them.  Cold, or the force constants run again, this run's own
+    # `fc` plans its calls (§ 5.11 § 6).
+    calls = list(m.points)
+    fc_taken = any(pt.phase == FC and _done(pt) for _p, pt in calls)
+    if prev_index is not None and fc_taken:
+        calls += [(run / c.rel, c) for c in calls_of(prev_index)
+                  if c.phase == OPTICAL]
+
+    def _facts(pt, taken: bool) -> dict:
+        # WHAT THE LAST RUN'S INDEX SAID OF THE CALL -- what it is, from
+        # what -- and, for a call TAKEN OVER, when it ran and how it ended:
+        # done is done, its ending the run's that computed it (§ 5.11
+        # § 6); a call this run walks gets its own.
+        row = entry_of(prev_index, pt) if prev_index is not None else None
+        own = (("phase", "name", "taken_from") if taken else
+               ("phase", "name", "started", "ended", "exit", "taken_from"))
+        return {k: v for k, v in (row or {}).items() if k not in own}
+
+    taken = [(pdir, pt) for pdir, pt in calls if _done(pt)]
+    walked = [(pdir, pt) for pdir, pt in calls if not _done(pt)]
+    if not walked:
+        fin = (prev_index or {}).get("finish") or {}
+        if fin.get("ended") is not None and fin.get("exit") in (0, "0"):
+            raise SubmitError(
+                f"{stage}: every call of {prev.relative_to(base)} is done "
+                f"and its finish wrote the result, so a warm launch has "
+                f"nothing to run -- to run them all again, launch it "
+                f"cold:\n"
+                + block(launch_lines("task", stage, base=base,
+                                     flags=("--cold",))))
+        # THE FINISH ALONE: the last call runs again, and its record step
+        # finishes the run (§ 5.11 § 6).
+        walked.append(taken.pop())
+    index = empty_index(p.name for p in on)
+    # THE SELECTION the force constants taken over applied (§ 7): the
+    # optical calls taken with them are its.
+    if fc_taken and prev_index.get("selection") is not None:
+        index["selection"] = prev_index["selection"]
+    # THE CALLS TAKEN OVER, each one hand-over: the done call's folder
+    # whole but the engine's scratch, its record the run that COMPUTED it,
+    # one hop (`engines/transport.md` § 2a.11).
+    for pdir, pt in taken:
+        src = prev / pt.rel
+        at = RunRef.at(base, src)
+        marker = read_continued_from(src, names, FIRST_ATTEMPT)
+        origin = (marker if marker is not None
+                  and not marker.within(RunRef.at(base, prev)) else at)
+        if pt.phase == OPTICAL:
+            open_run(base, pdir, plan.writes)
+        hand_over(base, HandOver(
+            pdir, names, FIRST_ATTEMPT, CONTINUED, source=origin,
+            files=tuple((at, f.name) for f in sorted(src.iterdir())
+                        if f.is_file() and not never_carried(f.name))),
+            plan.writes)
+        add_call(index, pt, **_facts(pt, True), taken_from=str(origin))
+    # THE CALLS NOT DONE: an optical call planned before runs again from
+    # the stage's files with the coordinates its planning wrote; a `relax`
+    # not done continues from its own warm files (§ 5.11 § 6).
+    for pdir, pt in walked:
+        if pt.phase == OPTICAL:
+            open_run(base, pdir, plan.writes)
+            bring_files(jobset, job, base, stage_dir / OPTICAL, pdir, names,
+                        plan.writes)
+            coords = prev / pt.rel / COORDINATES_FILE
+            if coords.is_file():
+                plan.writes.copy(coords, pdir / COORDINATES_FILE)
+            add_call(index, pt, **_facts(pt, False))
+            continue
+        add_call(index, pt)
+        if (pt.phase == RELAX and prev is not None and not m.cold
+                and (prev / pt.rel).is_dir()):
+            at = RunRef.at(base, prev / pt.rel)
+            files = tuple(
+                (at, compose(task.label, r.suffix))
+                for r in warm_list("siesta", phase(RELAX).warm_kind,
+                                   base).carry_rules
+                if (prev / pt.rel / compose(task.label, r.suffix)).is_file())
+            if files:
+                hand_over(base, HandOver(pdir, names, FIRST_ATTEMPT,
+                                         CONTINUED, source=at, files=files),
+                          plan.writes)
+    plan.writes.text(index_path(run, names, FIRST_ATTEMPT), json_text(index))
+    # THE WALK: the known calls in the phases' order, each seeded by the
+    # walk from the call before it, then the loop over the optical calls
+    # there when it runs; each step naming what it needs.
+    present = {pt.phase for _p, pt in calls}
+    order = {p.name: i for i, p in enumerate(on)}
+    plain = sorted([(pdir, pt) for pdir, pt in walked if pt.phase != OPTICAL],
+                   key=lambda x: order.get(x[1].phase, 0))
+    steps, needs, said, at = [], [], [], {}
+
+    def _seed(rule):
+        if rule.seed is None or rule.seed[0] not in present:
+            return None
+        return f"{run.name}/{rule.seed[0]}/{compose(task.label, rule.seed[1])}"
+
+    for pdir, pt in plain:
+        rule = phase(pt.phase)
+        tries = next_run(pdir, names)
+        seed = _seed(rule)
+        needs.append(next((at[n] for n in rule.needs if n in at), None))
+        at[pt.phase] = len(steps)
+        steps.append((f"{stage}@{pt.rel}", f"{run.name}/{pt.rel}",
+                      names.name(".run.sh"),
+                      " ".join(_run_sh_args(job.resources, tries)),
+                      ((seed, f"{run.name}/{pt.rel}"),) if seed else ()))
+        said.append(pt.words())
+        plan.reads += [_as_found(stage_dir / pt.phase / f, base)
+                       for f in (job.script, names.name(".run.sh"))]
+    again = [pt for _p, pt in walked if pt.phase == OPTICAL]
+    if OPTICAL in {p.name for p in on} and (again or FC in at):
+        rule = phase(OPTICAL)
+        seed = _seed(rule)
+        needs.append(next((at[n] for n in rule.needs if n in at), None))
+        steps.append((f"{stage}@{OPTICAL}", f"{run.name}/{OPTICAL}/*/",
+                      WalkLoop(run_sh=names.name(".run.sh"),
+                               args=" ".join(_run_sh_args(job.resources,
+                                                          FIRST_ATTEMPT)),
+                               skip=tuple(pt.name for _p, pt in taken
+                                          if pt.phase == OPTICAL),
+                               before=((seed,) if seed else ())),
+                      "", ()))
+        said.append(f"the optical calls below {run.name}/{OPTICAL}/"
+                    + (f" ({len(again)} to run again)" if again else ""))
+    walk = ((f"takes over {', '.join(pt.words() for _p, pt in taken)} "
+             f"done in {prev.name}; " if taken else "")
+            + f"runs {', '.join(said)}")
+    read_from = stage_dir / (plain[0][1].phase if plain else FC)
+    member = dataclasses.replace(m, read_from=read_from, walk=walk)
+    gn = GroupNames.of_points(names.stem)
+    script = _walk_script(
+        gn.stem, steps, where=f"{stage}'s run in phases, {run.name}",
+        member_word="call", log=f"{LAUNCH_DIR}/{gn.name('.log')}",
+        needs=needs,
+        walls=([_wall_s(job.resources)] * len(steps)
+               if _own_walls(mode, inside) else None),
+        one_start=declared.one_wall)
+    _send_walk(plan, member, calc, script, gn, stage_dir, mode=mode,
+               machine=machine, time_s=time_s, told=told)
 
 
 def _shares(calc, job, prepared: Path, folder: Path, pt, held,
@@ -3091,10 +3358,12 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                   "--yes", "--in-sequence", shlex.quote(names.stem),
                   "--in-job", '"${MB_JOB_ID:-$(hostname)-$$}"'])), "", ())
         for g in groups]
+    # EACH GROUP BUILDS ON THE ONE BEFORE IT: a group that failed stops the
+    # groups after it (`job-system.md` § 6.0, *A sequence of groups*).
     script = _walk_script(names.stem, steps,
                           where=f"groups {words} in sequence, one job",
                           member_word="group", log=log,
-                          stop_on_failure=True, chains=[0] * len(steps))
+                          needs=[None] + list(range(len(steps) - 1)))
     sequence = {"name": names.stem, "groups": groups, "record": rec_path}
     if mode == "direct":
         sub = Submission(names.stem, ["bash", walk_name], base, True, [],
@@ -3193,9 +3462,15 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
             plan.skipped.append(m)             # a trial measured before
             continue
         if m.points is not None:
-            _points_walk(plan, m, calc, mode=mode,
-                         time_s=time_s, told=told, machine=machine,
-                         inside=inside)
+            # A RUN OF POINTS: its kind's walk -- the points decided at
+            # prep, or the calls of a run in phases (`points.PointsOf.
+            # planned_in_job`).
+            from .points import points_of
+            walk_of = (_phased_walk if points_of(calc.task).planned_in_job
+                       else _points_walk)
+            walk_of(plan, m, calc, mode=mode,
+                    time_s=time_s, told=told, machine=machine,
+                    inside=inside)
             continue
         if jobset.kind == KIND_SWEEP:
             # the cold gate rides the named-trial door too (user,

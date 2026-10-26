@@ -72,7 +72,7 @@ def _ordered_nodes(n: int) -> Tuple[np.ndarray, np.ndarray]:
 def _relaxation_record(run) -> Tuple[Optional[Dict[str, Any]], str]:
     """THE RECORD OF THE RELAXATION a vibration run's geometry came from
     (`engines/vibration.md` § 5.10 ③) and, where there is none, why: the
-    vibration's own `relax` stage relaxed it at the one template's settings,
+    run's own `relax` call relaxed it at the one template's settings,
     so its own deck's record (`runs.view_of`); a structure stated already
     relaxed (its deck's `vibration` block says so) states its own -- the
     calculation's structure beside it, its ``info.calculation``."""
@@ -80,8 +80,9 @@ def _relaxation_record(run) -> Tuple[Optional[Dict[str, Any]], str]:
     from .jobset.prep import structure_path
     from .runs import view_of
     from .workingcopy_structure import StructureCodec
+    from .parse.fdf import read_deck
     deck = run.deck
-    record = (extract_vibration_record(deck.read_text(encoding="utf-8-sig"))
+    record = (extract_vibration_record(read_deck(deck))
               if deck is not None else None)
     if not (record or {}).get("already_relaxed"):
         own = (view_of(run).info or {}).get("calculation")
@@ -154,7 +155,8 @@ def frameset_from_mode(run_folder, *, mode: int,
     :data:`NODES`, a pair already at ``out``."""
     from .frame_average import INFO_KEY, MASS_CHANNEL
     from .runfiles import ROLE_SPECTRA
-    from .runs import place_of, run_of
+    from .runs import on_label_at, place_of, run_of
+    from .siesta.vibration_phases import force_constants_call
     from .sidecars.molstruct import sidecar_path_for
     from .sidecars.spectra import SpectraJsonError, parse_spectra_json
     from .spectra.derived import zero_point_amplitude_amu12_ang
@@ -187,22 +189,31 @@ def frameset_from_mode(run_folder, *, mode: int,
             f"written over, since a transport calculation citing it is "
             f"pinned to it: choose another name")
 
-    # THE RUN, AND ITS RESULT, through the run door.
-    run = run_of(Path(run_folder))
-    if run is None:
+    # THE RUN, AND ITS RESULT, through the one door for a result on the
+    # label (`runs.on_label_at`): a run's own folder, or a run in phases'
+    # root, where its finish writes it (`engines/vibration.md` § 5.11 § 2).
+    place = place_of(Path(run_folder))
+    if not place.ours or place.problem:
         # WHY IT IS NO RUN, in the run door's words: a calculation whose
         # description does not read says so, naming its way out.
-        problem = place_of(Path(run_folder)).problem
         raise FrameSetError(
             f"{run_folder}: its calculation's description does not read -- "
-            f"{problem}" if problem else
+            f"{place.problem}" if place.problem else
             f"{run_folder}: no run of ours -- name the folder of the "
             f"vibration run whose mode is written")
-    result = run.on_label(ROLE_SPECTRA)
+    result = on_label_at(Path(run_folder), ROLE_SPECTRA)
     if result is None:
         raise FrameSetError(
             f"{run_folder}: the run holds no vibration result "
-            f"({run.label}{ROLE_SPECTRA}) -- one whose finish has written it")
+            f"({place.task.label}{ROLE_SPECTRA}) -- one whose finish has "
+            f"written it")
+    # THE RUN WHOSE DECK MEASURED THE FORCE CONSTANTS: the folder named --
+    # PySCF's one run -- or, a run in phases' root, its force-constant call
+    # (`vibration_phases.force_constants_call`).
+    run = run_of(Path(run_folder)) or run_of(force_constants_call(run_folder))
+    if run is None:
+        raise FrameSetError(
+            f"{run_folder}: holds {result.name} but no run that measured it")
     try:
         res = parse_spectra_json(result)
     except SpectraJsonError as exc:
@@ -230,18 +241,20 @@ def frameset_from_mode(run_folder, *, mode: int,
 
     # THE MODE OVER EVERY ATOM: the canonical eigenvector on the free atoms,
     # zero on every held one -- so no held atom moves.
-    n = base.n_atoms
-    L = np.zeros((n, 3))
-    L[list(res.free_atom_idxs)] = np.asarray(m.eigenvector_canonical,
-                                             dtype=float)
-    largest = float(np.linalg.norm(L, axis=1).max())
+    # THE ONE DISPLACEMENT RULE (`spectra.normal_modes`): the mode over
+    # every atom, the Q at which the largest atom moves d_max, each frame
+    # R + q·L -- what a Raman phase's plan applies at ±δQ too (§ 5.11 § 3).
+    from .spectra.normal_modes import (displaced, mode_over_atoms,
+                                       q_for_largest_move)
+    L = mode_over_atoms(m.eigenvector_canonical, res.free_atom_idxs,
+                        base.n_atoms)
     x, weights = _ordered_nodes(nodes)
     x_out = float(np.abs(x).max())
-    q_out = d_max / largest
+    q_out = q_for_largest_move(L, d_max)
     sigma = q_out / (math.sqrt(2.0) * x_out)
     qs = [math.sqrt(2.0) * sigma * float(xj) for xj in x]
     r0 = np.asarray(base.positions, dtype=float)
-    built = base.with_frames(np.stack([r0 + q * L for q in qs]))
+    built = base.with_frames(np.stack([displaced(r0, L, q) for q in qs]))
 
     # FRAME 0'S SETTINGS -- the record of the relaxation its geometry came
     # from, the one a transport citation takes its settings from
@@ -283,7 +296,7 @@ def frameset_from_mode(run_folder, *, mode: int,
             built.set_customized(name, value, unit=unit, frame=f)
         frames.append(row)
     built.set_info(INFO_KEY, {
-        "run": _relative(run.folder, root),
+        "run": _relative(Path(run_folder), root),
         "result_sha256": hashlib.sha256(result.read_bytes()).hexdigest()})
 
     # AN ELECTRODE ATOM LEFT FREE MOVES -- written, and said.

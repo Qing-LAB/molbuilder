@@ -15,6 +15,8 @@ from .fc_sweep import FcSweepRecordFileParser
 from .molstruct import MolstructSidecarFileParser
 from .spectra import SpectraSidecarFileParser
 from .transport import TransportRecordFileParser
+from .vibration_phases import VibrationPhasesFileParser
+from .notified import NotifiedFileParser
 
 
 register(MolstructSidecarFileParser)
@@ -23,10 +25,15 @@ register(TransportRecordFileParser)
 # A SIESTA vibration's displacement sweep (`engines/vibration.md` § 5.9) --
 # the transport record's twin, offered at the calculation root.
 register(FcSweepRecordFileParser)
+# A run in phases' index -- every SIESTA call of a vibration run
+# (`engines/vibration.md` § 5.11 § 7), offered in the run.
+register(VibrationPhasesFileParser)
+register(NotifiedFileParser)
 
 __all__ = [
     "FcSweepRecordFileParser",
     "MolstructSidecarFileParser",
     "SpectraSidecarFileParser",
     "TransportRecordFileParser",
+    "VibrationPhasesFileParser",
 ]

@@ -889,15 +889,13 @@ def describe_cmd(structure, bundle: str, shape: str,
         _ladder = {"siesta": default_siesta_stages,
                    "pyscf": default_pyscf_stages}[engine]
         if calculation == "vibration":
-            # The vibration kind's own ladder, read from the person's one
-            # statement (`engines/vibration.md` § 2.2, § 5.2a): a fresh
-            # description carries the catalogue's own value of the box --
-            # unticked -- so SIESTA gets `relax` then `freq`, PySCF `freq`
-            # alone.  A --stage-strategy names the optimization ladder's
+            # The vibration kind's own ladder: one stage, `freq`, on both
+            # engines (`engines/vibration.md` § 2.2, § 5.11 § 1) -- a SIESTA
+            # stage is one run in phases, its relaxation the run's first
+            # call.  A --stage-strategy names the optimization ladder's
             # tiers, which grade nothing here: the convergence settings are
             # the template's, recommended tight (`template.md` § 6.3a).
             from ..pyscf.stages import VIBRATION_ENGINES
-            from ..template import catalogue as _catalogue, one as _item
             if engine not in VIBRATION_ENGINES:
                 raise click.ClickException(
                     f"calculation 'vibration' runs on pyscf (analytic "
@@ -907,21 +905,17 @@ def describe_cmd(structure, bundle: str, shape: str,
             if stage_strategy:
                 raise click.ClickException(
                     "--stage-strategy names the optimization ladder's "
-                    "tiers; a vibration calculation's ladder is read from "
-                    "its own template -- `freq`, with a `relax` stage "
-                    "before it on SIESTA unless the structure is stated "
-                    "relaxed (engines/vibration.md 2.2) -- and its "
-                    "convergence settings are the template's own.")
-            _box = _item(_catalogue(), "already_relaxed", engine=engine)
-            stages = fresh_stages(
-                calculation, engine,
-                already_relaxed=bool(_box.default if _box else False))
+                    "tiers; a vibration calculation's ladder is one stage, "
+                    "`freq` -- on SIESTA one run in phases, its relaxation "
+                    "a phase of it unless the structure is stated relaxed "
+                    "(engines/vibration.md 5.11) -- and its convergence "
+                    "settings are the template's own.")
+            stages = fresh_stages(calculation, engine)
         else:
             # THE FRESH LADDER'S ONE OWNER (`ladder.fresh_stages`), or the
             # tiers a --stage-strategy names.
             stages = (tuple(_ladder(stage_strategy)) if stage_strategy
-                      else fresh_stages(calculation, engine,
-                                        already_relaxed=False))
+                      else fresh_stages(calculation, engine))
         # The label goes through the SAME normaliser Task.label uses, so the
         # template's SystemLabel and the description's id cannot disagree
         # about what this calculation is called.
@@ -1254,14 +1248,6 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "2).  A group prepared and never launched is prepared "
                    "again.")
 @_bundle_option()
-@click.option("--from", "from_attempt", default=None,
-              metavar="NN_relax/run-N",
-              help="the `relax` run every force-constant stage this prep "
-                   "prepares is written at, by its folder -- e.g. "
-                   "'01_relax/run-0'.  Without it, relax's newest run, which "
-                   "must have finished (engines/vibration.md 5.2a).  What "
-                   "any other stage takes from a run is its first launch's "
-                   "(`launch --from`).")
 @click.option("--env", default=None,
               help="force one conda env for every job (default: each job's "
                    "env by what it asks for -- the GPU env for a GPU job, "
@@ -1313,7 +1299,7 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "that is launched already is read as prepared.  Then "
                    "`launch task` with the same --group lines sends it "
                    "(job-system.md 6.0, A sequence of groups).")
-def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
+def prep_cmd(kind: str, words, groups, bundle: str, env,
              mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
              domain, target, emit_sbatch: bool, one_job: bool) -> None:
     """Set the task's groups up to run -- each group one job -- and report
@@ -1322,8 +1308,7 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
     Renders each stage's deck and its wrappers, makes its first ``run-<n>``
     with the deck and the shared package in it, and writes each group's one
     header.  What a stage takes from another stage's run is its first
-    launch's to take -- a force-constant stage's `relax` geometry alone is
-    written into its deck here.  **Prep printing what it resolved is what
+    launch's to take.  **Prep printing what it resolved is what
     makes the launch a plain yes.**
 
     Bare ``prep task`` shows the groups and asks which, every one not
@@ -1403,7 +1388,7 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
     try:
         answers = prep_task(calc, kind, groups=groups, stage=bench_stage,
                             target=target, allocation=allocation,
-                            from_attempt=from_attempt, env=env,
+                            env=env,
                             emit_sbatch=emit_sbatch, on_found=_show,
                             asked=asked, one_job=one_job)
     except PrepError as e:
@@ -1637,11 +1622,6 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
             click.echo(f"  {shelf['name']}  {shelf['said']}")
             if shelf["fit"]:
                 click.echo(f"    {shelf['fit']}")
-        if ans.continuation is not None:
-            # A FORCE-CONSTANT STAGE'S TRIALS are written at the geometry of
-            # the relax run it builds on -- which one, said (§ 5.2a).
-            click.echo("  every trial's geometry: "
-                       + ans.continuation.line())
         _echo_pipeline_log(ans, base)
         # ONE COMMAND A LINE, prose after `#`; the report's `execution`
         # block is the person's to copy into task.json (job-system.md § 7).
@@ -1687,15 +1667,11 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
     if ans.differs:
         click.echo("  prepared again -- differed from what was prepared: "
                    + ", ".join(ans.differs))
-    # A FORCE-CONSTANT STAGE's deck is written at a `relax` run -- which,
-    # and what it was (`engines/vibration.md` § 5.2a).
-    if ans.continuation is not None:
-        click.echo("  written at: " + ans.continuation.line())
     # WHAT ITS FIRST LAUNCH WILL TAKE (`job-system.md` § 5.0, *a preview*):
     # nothing is copied at prep.
     for t in ans.takes:
         click.echo("  " + t["line"])
-    if not ans.takes and ans.continuation is None:
+    if not ans.takes:
         click.echo("  takes nothing from another run"
                    + ("" if ans.linked else
                       " (the first stage, or one that starts clean)"))
@@ -2897,9 +2873,11 @@ def export_cmd(bundle: str, fmt: str, to: str) -> None:
 def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
     """The engine's scratch a calculation's runs hold -- the files the
     engines' vocabularies name scratch (TranSIESTA's leads' Green's
-    functions, `*.TSGFL` / `*.TSGFR`): recomputed by every run, never
-    carried, never saved by a checkpoint.  A run's walk empties them as it
-    ends; a run that stopped first leaves them behind.  Listed with each file's stage and size; ``--empty``
+    functions, `*.TSGFL` / `*.TSGFR`; an optical call's breakdown by
+    transition, `*.contrib.EPSIMG`): recomputed by every run, never
+    carried, never saved by a checkpoint.  A transport run's walk empties
+    its scratch folder as it ends; what a run leaves behind stays until
+    emptied here.  Listed with each file's stage and size; ``--empty``
     removes them from every run not queued or running, after one question
     (job-system.md § 5.3)."""
     from ..units import size_words

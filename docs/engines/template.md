@@ -659,7 +659,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `run_card` | **a row on every run card from the start**, blank until stated — `run_card = true` on every run setting, the `execution` category's items (2026-10-11 for the launch's, 2.27.0 for the rest; [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2b). One boolean, read by the run card through `/api/task-setup/sweepable`; it states no value and decides nothing prep does |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`, the spin's `spin_treatment` and `unpaired_electrons` (2026-09-28), the grid's offset `kgrid_displacement` (2026-09-30, `engines/siesta.md` § 6.1), and the SCF's mixer and criteria — `mixing_weight`, `pulay_history`, `dm_tolerance`, `h_tolerance`, `dm_energy_tolerance`, `scf_energy_converge` — each SCF stage's starting value, not shared (2026-10-09, TD6). It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
 | `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
-| `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`, and since 2.1.0 on the device's `ts_hartree_fix` and the transmission's `tbt_solution_method`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
+| `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`, and since 2.1.0 on the device's `ts_hartree_fix` and the transmission's `tbt_solution_method`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1); the vibration kind on `charge_hirshfeld` and `charge_voronoi` — both partitions at every force-constant step ([`vibration.md`](?doc=engines/vibration.md) § 5.10 ②). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
 | `role_values` | **a rung whose role gives another answer than `value`**, by the rung's name — `role_values = { device = "transiesta" }` on `solution_method`. Only on a `role` item; each value passes the item's own `type` at parse time, as `recommended`'s do. Like `recommended`, a catalogue key: it does not travel into a calculation's template, whose role items hold no value — `resolve` asks the catalogue (`template.role_answers`) |
 | `stages` | **which rungs of the kind read it, by the rung's ROLE** — `stages = ["electrode_L", "electrode_R"]` on a lead's item, `stages = ["relaxation"]` on the relaxation settings (2026-09-30, plan § 5w K4) — or **the name of a set of roles**, `stages = "scf"`: every rung that runs an SCF, never the transmission, on the solver, mixer, tolerance, diagonaliser and GPU items alike (`paths.ROLE_SETS`, beside the roles; a fact fifteen rows share, stated once — 2026-10-12), read as its roles, a name no set has refused; only those rungs may carry their own value, and on a `role` item, which nobody sets, it names the rungs that write it. Absent means every rung reads it (§ 6.4). **With `shared`, one value carried by the named rungs only** — `electrodes_bulk`, `stages = ["device", "transmission"]` (TD11, 2026-10-11): no stage sets its own, the other rungs' decks never write it, and the shared panel and Task setup say which rungs it is for (`template.shared_scope_words`); a refusal says why (`why_shared`) |
 | `tightens` | **which way a ladder makes this item tighter** — `"down"` for a tolerance, `"up"` for a mesh cutoff (2026-09-30, plan § 5w K4). Set where [`tuning.md`](?doc=engines/tuning.md) § 2 gives a tier table and nowhere else; the ladder check reads it on every engine ([`stages.md`](?doc=engines/stages.md) § 4 R3) |
@@ -1737,10 +1737,10 @@ back rather than a rung's part in a ladder.
 at all; `stages` says which RUNGS of such a kind read it, naming each rung by
 what it does in the kind:
 
-| kind | its rungs' roles (`paths.KIND_ROLES`) | a stage's role (`template.stage_role`) |
+| kind | its rungs' roles (`paths.KIND_ROLES`) | a stage's roles (`template.stage_roles`) |
 |---|---|---|
 | transport | `seed`, `electrode_L`, `electrode_R`, `device`, `transmission` | its name — the five rungs are fixed |
-| vibration | `relaxation`, `force_constants` | on SIESTA the stage named `relax` — in any case, as every name compares ([`stages.md`](?doc=engines/stages.md) § 2) — relaxes and every other stage measures force constants, whatever it is called; a PySCF vibration relaxes inside its one deck, so each of its rungs is the force-constant run ([`vibration.md`](?doc=engines/vibration.md) § 5.2a) |
+| vibration | `relaxation`, `force_constants`, `optical` | a SIESTA stage carries every role: its one run relaxes, measures the force constants and runs the optical calls, each phase's deck rendering the items of its role ([`vibration.md`](?doc=engines/vibration.md) § 5.11 § 9); a PySCF vibration relaxes inside its one deck, so each of its rungs is the force-constant run (§ 5.2a there) |
 | optimization | none | — every rung reads every item the kind carries: one calculation tuned N ways |
 
 | state | means |
@@ -2188,7 +2188,6 @@ flowchart LR
     subgraph SRC["what travels in the folder"]
       TPL["the template + task.json"]
       STR["the structure<br/>+ .molstruct.json sidecar"]
-      RLX["a SIESTA vibration's relax run"]
     end
     subgraph GEN["known only at prep"]
       VER["molbuilder version<br/>+ the moment<br/>+ who set each value (resolve)"]
@@ -2202,7 +2201,6 @@ flowchart LR
     STR -->|ENGINE-OFFSET| DECK
     PLC -->|ENGINE-OFFSET| DECK
     TPL -->|VIBRATION| DECK
-    RLX -->|VIBRATION| DECK
     TPL -->|"the engine body"| DECK
 ```
 
@@ -2213,7 +2211,7 @@ flowchart LR
 | **ATOM-METADATA** | the structure's regions, frozen atoms and annotations | **the structure and its `.molstruct.json` sidecar** — data files in the folder (§ 9.1) | the deck writer |
 | **USER-CUSTOM** | text a person wrote | **an item in the template** (§ 9.2) — ⚠ **not built.** No `user_custom` item exists, so a first prep emits the block empty; text a person wrote into a prepared deck survives a prep again of that deck (`write_script`, § 9.2) and travels in no other file (§ 12) | the deck writer, verbatim |
 | **ENGINE-OFFSET** | where the atoms were placed — the cell, the offset applied, the axis kinds, whether the offset was the structure's own | **the structure and its sidecar** (cell, axis kinds, a stated offset), placed by the rule (`cell.to_engine`) | the deck writer, on every deck |
-| **VIBRATION** | what a SIESTA force-constant run's finish reads that no keyword states — the force criterion, the temperature, the relaxation statement and record, every atom's mass | **the template and `task.json`**, and the `relax` run in the folder ([`vibration.md`](?doc=engines/vibration.md) § 5.3) | the deck writer, SIESTA force-constant decks only |
+| **VIBRATION** | what a SIESTA force-constant run's finish reads that no keyword states — the force criterion, the temperature, the relaxation statement and record, every atom's mass | **the template and `task.json`** ([`vibration.md`](?doc=engines/vibration.md) § 5.3) — the relaxation's record is the run's own `relax` call's, read by its finish (§ 5.11 § 3 there) | the deck writer, SIESTA force-constant decks only |
 | **HEADER** | reserved, emitted by nobody today | — | — |
 
 **Nothing here is new machinery.** The deck writer emits every block but

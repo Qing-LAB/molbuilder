@@ -45,12 +45,25 @@ OUTPUT_SECTION = Section(
      "write_md_xmol", "write_hs"),
 )
 
-#: The force-constant run's one parameter (the vibration kind on this
-#: engine).  The run type and the atom range are structural text derived
-#: from the structure -- `siesta/vibration_deck.py` -- not items.
+#: The force-constant run's items (the vibration kind on this engine): the
+#: nudge, and the partial charges at every step -- role items, fixed by the
+#: kind (`engines/vibration.md` § 5.3, § 5.11 § 9).  The run type and the
+#: atom range are structural text derived from the structure --
+#: `siesta/vibration_deck.py` -- not items.
 FC_SECTION = Section(
     "Force constants",
-    ("fc_displacement",),
+    ("fc_displacement", "charge_hirshfeld", "charge_voronoi"),
+)
+
+#: The optical calculation's items (the vibration run's optical phase,
+#: `engines/vibration.md` § 5.11 § 9): the run's resolution, the energy
+#: range and the bands.  The switch, the polarization, the light's
+#: direction and the mesh are structural text -- `siesta/vibration_deck.
+#: optical_block` -- the two blocks among them written whole, as the
+#: k-point block is.
+OPTICAL_SECTION = Section(
+    "Optical",
+    ("optical_broaden", "optical_energy_max", "optical_bands"),
 )
 
 #: The free-energy criterion and the switch that arms it.  **Two items, one

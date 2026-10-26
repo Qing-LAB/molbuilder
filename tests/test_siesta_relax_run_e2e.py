@@ -1,15 +1,14 @@
 """A vibration's relaxation, run with the real SIESTA, and what it hands on:
 the relaxation record (`model/parse.md` § 5b.1), the two doors that answer
-it, the stage that builds on it (`engines/vibration.md` § 5.2a), and the
-vibration gate's verdicts on a structure that carries it (§ 2.2, the record
-table).
+it, and the vibration gate's verdicts on a structure that carries it (§ 2.2,
+the record table).
 
 ``molbuilder describe --calculation vibration`` (hierarchical) -> ``prep task --group 1``
--> ``launch task --stage relax --mode direct``, on the road's CO2 in a 10 Å
-box, isolated, listed O O C with its carbon held: the `relax` stage of the
-kind's own ladder, at the kind's own tight tolerance, its deck written in the
-engine's held-first order (`engines/vibration.md` § 5.2) -- and what the
-run's order means for every door that shows or writes it
+-> ``launch task --stage freq --mode direct``, on the road's CO2 in a 10 Å
+box, isolated, listed O O C with its carbon held: the `relax` call of the
+kind's one run in phases (`engines/vibration.md` § 5.11), at the kind's own
+tight tolerance, its deck written in the engine's held-first order (§ 5.2)
+-- and what the run's order means for every door that shows or writes it
 (`model/overview.md` § 2.2a).
 
 Every expectation is what the run was given -- the structure written here,
@@ -29,7 +28,6 @@ from typing import Any, Optional, Tuple
 
 import numpy as np
 import pytest
-from molbuilder.calculation import open as open_calculation
 
 from _road import conda_hook, env_available
 from support.road import CO2, CO2_ENGINE_ELEMENTS, CO2_HELD_FIRST
@@ -42,15 +40,16 @@ pytestmark = [
 ]
 
 @pytest.fixture(scope="module")
-def relaxed(real_relaxed_for_vibration):
-    """The calculation, its `relax` stage run (`support/real_runs.RealRun`)."""
-    return real_relaxed_for_vibration
+def relaxed(real_co2_vibration):
+    """The calculation, its run in phases run (`support/real_runs.RealRun`)."""
+    return real_co2_vibration
 
 
 def _run(calc) -> Path:
-    """The `relax` stage's run -- its folder, the handle the run door
-    takes."""
-    return calc.attempt("relax")
+    """The run's `relax` call -- its folder, the handle the run door
+    takes (`RealRun.call`)."""
+    from molbuilder.siesta.vibration_phases import RELAX
+    return calc.call("freq", RELAX)
 
 
 def _deck(calc) -> Path:
@@ -67,9 +66,10 @@ def _out(calc) -> Path:
 
 def _tolerance(calc) -> float:
     """The force tolerance the deck states -- what SIESTA was told, read by
-    fdf's own rule (`parse.fdf.read_fdf`)."""
-    from molbuilder.parse.fdf import fdf_key, read_fdf
-    told = read_fdf(_deck(calc).read_text())[0][fdf_key("MD.MaxForceTol")]
+    fdf's own rule (`parse.fdf.read_fdf`), the deck read as the engine reads
+    it (`read_deck`)."""
+    from molbuilder.parse.fdf import fdf_key, read_deck, read_fdf
+    told = read_fdf(read_deck(_deck(calc)))[0][fdf_key("MD.MaxForceTol")]
     return float(told[0])
 
 
@@ -78,10 +78,10 @@ def _as_its_deck_states(attempt: Path):
     with what the run declared about it (`runs.view_of`: its labels, its
     order record) -- the species and coordinates through the deck's own
     readers (`parse.fdf.deck_atoms`, ``parse_fdf_params(...).coords_ang``)."""
-    from molbuilder.parse.fdf import deck_atoms, parse_fdf_params
+    from molbuilder.parse.fdf import deck_atoms, parse_fdf_params, read_deck
     from molbuilder.runs import run_of, view_of
     ran = run_of(attempt)
-    text = ran.deck.read_text()
+    text = read_deck(ran.deck)
     return view_of(ran).structure(deck_atoms(text).labels,
                                   parse_fdf_params(text).coords_ang)
 
@@ -189,26 +189,6 @@ def test_both_doors_answer_one_record_of_the_run(relaxed, web_client,
     assert asked["relaxation"] == record
     assert (asked["calculation"] == loaded["info"]["calculation"]
             == contract_of(_deck(relaxed)))
-
-
-def test_the_force_constants_build_on_the_relaxation(relaxed):
-    """`freq` builds on its `relax` run -- the newest, which finished -- and
-    is offered every run of `relax` and no start from the structure
-    (`engines/vibration.md` § 5.2a's table, W38 F9)."""
-    from molbuilder.jobset.continuation import (continuation_answer,
-                                                continue_from_choices)
-    calc = open_calculation(relaxed.bundle)
-    got, refused = continuation_answer(calc, "freq")
-    assert refused is None, refused
-    assert (got.stage, got.source, got.by_default, got.linked) == (
-        "relax", "01_relax/run-0", True, True), got
-    assert "(the relaxation it builds on; concluded rc=0" in got.line()
-    named, refused = continuation_answer(calc, "freq",
-                                         from_attempt="01_relax/run-0")
-    assert refused is None and not named.by_default and named.linked, named
-    offered = continue_from_choices(calc, "freq")
-    assert offered["from_stage"] == "relax" and offered["cold"] is False
-    assert [r["source"] for r in offered["runs"]] == ["01_relax/run-0"]
 
 
 # --------------------------------------------------------------------- #

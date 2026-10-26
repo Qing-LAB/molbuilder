@@ -151,7 +151,7 @@ facts on the wrong floor:
 |---|---|---|---|
 | a lead's own stem and its budget (`rung_label`, `lead_tail_bytes`) | `transport.stages` | `Task.label` | names (floor 1) |
 | a stage's number, folder and file names (`stage_home`, `run_names`, `job_dir_names`, `open_container`) | `materialize` (4) | `group`, `plan`, `transport_rung`, `engines` (3) | one naming module below the plan |
-| what a stage builds on (`source_stage`, `stage_before`, `force_constant_stage`) | `continuation` (4) | `group` (3) | the ladder's rule (3) |
+| what a stage builds on (`source_stage`, `stage_before`) | `continuation` (4) | `group` (3) | the ladder's rule (3) |
 | launched or not (`ever_launched`, `launched_stage`) | `materialize`, `ready` (4) | `group`, `transport_rung` (3) | asked from floor 4 and up only |
 | a plan's job by stage (`ready.job_of`) | `ready` (4) | `commands.way_back` (3) | `JobSet.job` |
 | the way back / migrate sentence | `commands` (3) | `task`, `jobset.machine` (2, 1) | floor 1 (`identity`, as the checkpoint words) |
@@ -1151,10 +1151,29 @@ review of what it touched, its tests green, then the next.
 | # | milestone | pieces | done when |
 |---|---|---|---|
 | M1 | **the framework** | a rung of points declared — each `RUNGS` row states where its points come from, what makes a point done, its start and its finish; every reader asking `calculation == "transport"` today asks the row (prep, the walk, `status`, `continuation`, the gather, Task setup, the record); `siesta/vibration_phases.py` — `PHASES`, the index's writer and reader, its `runfiles.WRITTEN` row and registry parser, the state rule over `points_state`; `parse/fdf.py` reads `%block Label < Filename`; `selection`, `calcdirs`, `paths` join the vibration bundle; `materialize.bring_files`' copy core split into a floor-1 function both call; `siesta/deck_lines.coordinates_rows` (one for `spec_for`, TranSIESTA, the plan); the displacement rule one function (`mode_frames` and the plan) | the fast batch and the real-junction e2e pass unchanged — nothing a transport calculation does differs |
-| M2 | **prep and launch** | `spec_for(part=)` for the relax, force-constant and optical decks; the stage's phase folders with their run scripts; `relax`'s coordinates file; the count beside the wall; `vibration_stages` one stage on both engines and the `relax` stage's rules retired (`ladder`, `ready`'s *waits before it can be prepared*, `_vibration_stage_geometry`, `first_launch_takes`' branch, § 5.2a); the phased walk at launch; the calls a warm launch takes over through `materialize.HandOver`; `warm-files.toml` per phase; the monitor's `--member` flag and `notify` verb, the run script's monitor block rendered for a member, the N-hour clock from the run's start | the CO₂ e2e through `jobset init → prep → launch`: each call's folder read by the run door as a point, the walk's log, one `start` and one `finish` sent |
+| M2 | **prep and launch** | `spec_for(part=)` for the relax, force-constant and optical decks; the stage's phase folders with their run scripts; `relax`'s coordinates file; the count beside the wall; `vibration_stages` one stage on both engines and the `relax` stage's rules retired (`ladder`, `ready`'s *waits before it can be prepared*, `_vibration_stage_geometry`, `first_launch_takes`' branch, § 5.2a); the phased walk at launch; the calls a warm launch takes over through `materialize.HandOver`; `warm-files.toml` per phase; the monitor's `--member` flag and `notify` verb, the run script's monitor block rendered for a member, the N-hour clock from the run's start | **built 2.42.0** — the scratch H₂ (held and free) through `describe → prep → launch --mode direct`: `01_freq/{relax,fc}/` each with its deck, `coordinates.fdf` and run script; `run-0/relax`, `run-0/fc` seeded from its `.DM`; the index with both calls, its phases and the finish; `notified.json` start + finish; the result pair at the run's root; the CO₂ e2e (`tests/test_siesta_vibration_e2e.py`) through `describe → prep → launch`: the `relax` and `fc` calls, one mode's three optical calls, the index, the result, one `start` and one `finish`, the sweep — and the relaxation's, the monitor's and the inspector's e2e on the same run |
 | M3 | **the job's Python** | `plan`, `record`, `finish` in `spectra/siesta_vibration.py`; `spectra/siesta_raman.py`; `parse/engines/siesta_epsimg.py`; `spectra/optical_data.py` (its `Var` table, `photon_energy_ev` in `ncdata.AXES`); the result's `phase_*` on SIESTA, `raman_route` `optical`, `raman_fd_step_ang`, `optical` (schema 13; the `.nc` @7) | the e2e's index, result and data file agree; the result's phases and route right; the data file reads through its reader and `xarray.load_dataset`; the warm-relaunch e2e (stopped after `fc`) takes `relax` and `fc` over |
 | M4 | **the view and the settings** | `spectra/raman.raman_view` (KK, the width composed, the laser); the load door's `raman` view and its asks; `postprocess.raman_view`; `methods`; the viewer's `_ramanOf`, the *Laser* and *Broadening* boxes, the Raman column and lane on a SIESTA result; the catalogue's optical items, the selector's `engines` gaining `siesta`, the charge switch as items (L4); Task setup's card per phase | the KK and composition API tests; the CO₂ e2e's symmetry check (mutual exclusion); the viewer on the running server showing Raman for the e2e's result (Claude in Chrome) |
 | M5 | **the contract, closed** | § 5.11 becomes the rules of § 2.2, § 5.2a–§ 5.5, § 5.8, § 5.9 as built; `job-system.md` § 5.4's vibration rows; `project-layout.md` § 5 (the manifest regenerated); `job-contracts.md`'s rows; `web/results.md`; `web/spectra.md` § 3.2; `web-api.md`; the method doc's § 5 and § 7; the changelog; two review rounds | R1 measured on the toy junction through the built run (two `optical_mesh` values), its numbers in the method doc's § 3.1 |
+
+**Handover, M2 built (2026-10-26)** — what M3–M5 pick up: (a) a sweep's
+later stage taking the first stage's `relax` call over (§ 5.11 § 1, § 6) is
+not built — each stage relaxes in its own run today, and § 5.9's summary
+refuses two geometries; (b) the finish marks
+`phase_raman` complete when optical calls ran, before any reader of their
+`.EPSIMG` exists (M3); (c) `status` reads a run whose calls are all done
+while its job still goes as *running (after its last point)* — the record
+step or the finish at work; (d) § 5.11 is still one
+section beside the rules it changes (M5 folds it into § 2.2, § 5.2a–§ 5.5,
+§ 5.8, § 5.9); (e) prep's count and sizes (§ 5.11 § 9) are M3's, beside
+the `.EPSIMG` size; (f) `ready.first_launch_takes` and `at_launch` still
+ask `calculation == "transport"` — the next framework pass moves the
+question to the rung-of-points declaration (`jobset.points`); (g) a
+transport sweep's points still send their own `start` and `finish` — the
+run's one pair needs a step its walk can run (R-e's transport half,
+`engines/vibration.md` § 5.11 § 7a); (h) a call whose bundle does not load
+on the job's python (no numpy) records nothing and sends no event — its
+run's state still reads failed, by the run door.
 
 **Open after it**: the named set's share (D-e), designed after R1; the
 `electronic` kind (§ 5.10 ④) for the response along a mode, unchanged.

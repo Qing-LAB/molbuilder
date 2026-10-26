@@ -42,17 +42,31 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
-from .identity import parse_token
-from .paths import BENCH_DIRNAME, attempt_index, flat_bench_token, trial_point
-from .persist import json_text, read_json
-from .runfiles import LAUNCH_DIR
+# TWO WAYS, because this module travels beside a job in
+# ``mb_vibration.pyz`` (`runwrap.VIBRATION_COMPANIONS`), where the
+# package is not installed.
+try:                                       # inside molbuilder
+    from .identity import parse_token
+    from .paths import (BENCH_DIRNAME, attempt_index, flat_bench_token,
+                        trial_point)
+    from .persist import json_text, read_json
+    from .runfiles import LAUNCH_DIR
+except ImportError:                        # beside a job
+    from identity import parse_token
+    from paths import (BENCH_DIRNAME, attempt_index, flat_bench_token,
+                       trial_point)
+    from persist import json_text, read_json
+    from runfiles import LAUNCH_DIR
 
 #: The record's filename.  VISIBLE, not dotted: it sits beside `task.json`,
 #: `job-set.json`, `run.json` and `environment.json`, and a person listing a
 #: directory should see the thing that explains it (user ruling:
 #: *"explicit information is better than implicit, so people can see the
 #: JSON"*).
-from .runfiles import CALCDIR_FILE as FILENAME  # noqa: E402 -- the catalogue's
+try:                                       # inside molbuilder
+    from .runfiles import CALCDIR_FILE as FILENAME  # noqa: E402 -- the catalogue's
+except ImportError:                        # beside a job
+    from runfiles import CALCDIR_FILE as FILENAME  # noqa: E402
 
 SCHEMA = "molbuilder/calcdir@1"
 
@@ -142,7 +156,10 @@ def description_path(directory) -> Path:
     floor's, so *is this a calculation's folder* is answered here
     (:func:`described`) without reading the description; its writer and
     `jobset migrate` reach it through its owner (`task.path_of`)."""
-    from .runfiles import TASK_FILE
+    try:                                    # inside molbuilder
+        from .runfiles import TASK_FILE
+    except ImportError:                     # beside a job
+        from runfiles import TASK_FILE
     return Path(directory) / TASK_FILE
 
 

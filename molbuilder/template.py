@@ -522,7 +522,7 @@ class Item:
     #:
     #: THE NAMES ARE ROLES (:data:`KIND_ROLES`, plan § 5w K4): a transport
     #: rung by its name, a vibration's ``relaxation`` or ``force_constants``
-    #: whatever the stage is called (:func:`stage_role`).  Each kind reads
+    #: whatever the stage is called (:func:`stage_roles`).  Each kind reads
     #: its own roles here, and a kind without roles reads every item on every
     #: rung -- so the relaxation settings declare ``["relaxation"]`` once, a
     #: vibration's relax rung's alone and every rung's of an optimization.
@@ -1853,48 +1853,52 @@ def _rungs_words(stages) -> str:
 
 def stage_role_rule(engine: str, kind: str) -> Optional[Dict[str, Any]]:
     """How a ``kind`` calculation on ``engine`` names its rungs' roles, as
-    DATA -- ``{"named": {stage: role}, "otherwise": role}``, where an
-    ``"otherwise"`` of ``None`` means *a rung's role is its name* -- or
-    ``None`` for a kind without roles.  ``named`` is keyed by
-    `identity.stage_key`, so a reader matches a stage's name in any case.  The one statement of the rule:
-    :func:`stage_role` reads it, and so does a surface that maps its own
-    rows (the stage table, which is handed it with its columns).
+    DATA -- ``{"named": {stage: roles}, "otherwise": roles}``, each
+    ``roles`` a list, where an ``"otherwise"`` of ``None`` means *a rung's
+    role is its name* -- or ``None`` for a kind without roles.  ``named`` is
+    keyed by `identity.stage_key`, so a reader matches a stage's name in any
+    case.  The one statement of the rule: :func:`stage_roles` reads it, and
+    so does a surface that maps its own rows (the stage table, which is
+    handed it with its columns).
 
-    A transport rung's role is its name.  A SIESTA vibration's ``relax``
-    stage is its relaxation and every other stage its force-constant run,
-    whatever it is called (`engines/vibration.md` § 5.2a); a PySCF
-    vibration relaxes inside its one deck, so each of its rungs is the
-    force-constant run."""
+    A transport rung's role is its name.  A SIESTA vibration's one stage
+    is one run in three phases, and carries every phase's role
+    (`engines/vibration.md` § 5.11 § 9: the stage's one resolved
+    configuration feeds every phase's deck); a PySCF vibration relaxes
+    inside its one deck, so each of its rungs is the force-constant run."""
     if kind not in KIND_ROLES:
         return None
     if kind == "transport":
         return {"named": {}, "otherwise": None}
-    from .config.stages import VIBRATION_RELAX_STAGE
-    return {"named": ({stage_key(VIBRATION_RELAX_STAGE): "relaxation"}
-                      if str(engine) == "siesta" else {}),
-            "otherwise": "force_constants"}
+    return {"named": {},
+            "otherwise": (list(KIND_ROLES[kind]) if str(engine) == "siesta"
+                          else ["force_constants"])}
 
 
-def stage_role(engine: str, kind: str, stage: Optional[str]) -> Optional[str]:
-    """The role the rung ``stage`` plays in a ``kind`` calculation on
+def stage_roles(engine: str, kind: str, stage: Optional[str]
+                ) -> Optional[Tuple[str, ...]]:
+    """The roles the rung ``stage`` plays in a ``kind`` calculation on
     ``engine`` (:func:`stage_role_rule`) -- the ONE rule every door asks
-    which items a rung reads with (§ 6.4).  ``None`` for a kind without
-    roles, or no stage."""
+    which items a rung reads with (§ 6.4): one role for a transport rung,
+    every phase's for a SIESTA vibration's stage.  ``None`` for a kind
+    without roles, or no stage."""
     rule = stage_role_rule(engine, kind)
     if rule is None or stage is None:
         return None
-    return rule["named"].get(stage_key(stage)) or rule["otherwise"] or stage
+    got = rule["named"].get(stage_key(stage)) or rule["otherwise"]
+    return tuple(got) if got else (stage,)
 
 
 def reads(item: "Item", engine: str, kind: str, stage: Optional[str]) -> bool:
     """Does the rung ``stage`` of a ``kind`` calculation read ``item``?  Not
     when the kind does not carry it (`calculations`); on a kind without
-    roles, always; else when its ``stages`` names the rung's role, or names
-    none (§ 6.4)."""
+    roles, always; else when its ``stages`` names one of the rung's roles,
+    or names none (§ 6.4)."""
     if item.calculations and kind not in item.calculations:
         return False
-    role = stage_role(engine, kind, stage)
-    return role is None or not item.stages or role in item.stages
+    roles = stage_roles(engine, kind, stage)
+    return (roles is None or not item.stages
+            or bool(set(roles) & set(item.stages)))
 
 
 def unread_overrides(engine: str, kind: str, stage: str, names) -> List[str]:
@@ -1920,11 +1924,12 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
         return (f"which {a_kind(kind)} does not carry -- no rung of it reads "
                 f"it, so the value would change nothing (engines/template.md "
                 f"6.3)")
-    role = stage_role(engine, kind, stage)
+    roles = stage_roles(engine, kind, stage) or (stage,)
     # ...THE RUNGS OF THIS KIND that read it, never another kind's roles.
     mine = [r for r in it.stages if r in KIND_ROLES.get(kind, it.stages)]
     who = " / ".join(mine)
-    rung = repr(stage) if role == stage else f"{stage!r} (its {role} rung)"
+    rung = (repr(stage) if roles == (stage,)
+            else f"{stage!r} (its {' + '.join(roles)} rung)")
     return (f"which only the {who} rung{'s' if len(mine) > 1 else ''} "
             f"of {a_kind(kind)} read{'' if len(mine) > 1 else 's'}, not "
             f"{rung} -- {then} (engines/template.md 6.4, the `stages` "
@@ -1953,9 +1958,9 @@ def role_answers(engine: str, kind: str,
     renders (`engines/transport.md` § 2a.10).
     """
     out: Dict[str, Any] = {}
-    # ...by the rung's ROLE (`stage_role`), which on transport is its name.
+    # ...by the rung's ROLES (`stage_roles`), on transport its name.
     for it in select(catalogue(), engine=engine,
-                     stages=stage_role(engine, kind, stage)):
+                     stages=stage_roles(engine, kind, stage)):
         if kind not in it.role:
             continue
         if stage is None and it.stages:
@@ -2524,10 +2529,11 @@ def select(t: "Template", *, category=None, engine=None,
         if shared is not None and bool(it.shared) is not bool(shared):
             continue  # `True` = binds every rung of some kind
         if stages is not None:
-            # A RUNG'S ROLE (`stage_role`), not a boolean: "does this rung
-            # read this item?".  An item declaring no stages is read by any
-            # -- the ordinary case -- so it matches every role asked about.
-            if it.stages and stages not in it.stages:
+            # A RUNG'S ROLES (`stage_roles`) -- one, or a SIESTA vibration
+            # stage's three -- not a boolean: "does this rung read this
+            # item?".  An item declaring no stages is read by any -- the
+            # ordinary case -- so it matches every role asked about.
+            if it.stages and not (set(_as_tuple(stages)) & set(it.stages)):
                 continue
         # A CALCULATION KIND, read as the stage is: "does this item apply to
         # it?".  An item declaring no calculations applies to every kind.

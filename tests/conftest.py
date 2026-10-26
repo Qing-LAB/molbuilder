@@ -1266,9 +1266,9 @@ def real_h2_bench(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def real_relaxed_for_vibration(tmp_path_factory):
-    from support.real_runs import relaxed_for_vibration
-    return relaxed_for_vibration(tmp_path_factory)
+def real_co2_vibration(tmp_path_factory):
+    from support.real_runs import vibration
+    return vibration(tmp_path_factory)
 
 
 @pytest.fixture(scope="session")

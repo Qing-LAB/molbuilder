@@ -590,10 +590,10 @@ seconds, `MB_WALL_S`, and the run script counts it from the start
 | launched | `MB_WALL_S` — told by `jobset launch` | `MB_JOB_STARTED` — counted from |
 |---|---|---|
 | one run, to a queue | on the send line, beside the launch claim ([`scheduler.md`](?doc=execution/scheduler.md) § 6a): the wall the header prep wrote carries, read off it by its kind's spelling (`Kind.directive_value`), or the launch's `--time` — the value `run.json`'s `placed_on.time` records (`submit._sbatch_request`) | the job's start, which its header says once ([`run-reports.md`](?doc=execution/run-reports.md) § 2.1b) |
-| a walk, to a queue — a group, a run of points, a benchmark's shelf | the same line, the job's one wall for every member: its header's — a group's and a run of points' its members' walls summed (`group.envelope`), a shelf's the benchmark's own — or the launch's `--time` | the job's start: a later member counts what the members before it left |
+| a walk, to a queue — a group, a run of points, a benchmark's shelf | the same line, the job's one wall for every member: its header's — a group's and a run of points' its members' walls summed (`group.envelope`), or the stage's one wall where a run's points share it (a vibration's calls, `jobset.points`), a shelf's the benchmark's own — or the launch's `--time` | the job's start: a later member counts what the members before it left |
 | a sequence of groups, to a queue ([`job-system.md`](?doc=execution/job-system.md) § 6.0) | the same line, the job's one wall for every run of every group: its header's — every group's own wall summed (`group.sequence_request`) — or the launch's `--time`; each group's launch inside the job tells its runs nothing of their own (`submit._own_walls`) | the job's start: a later group counts what the groups before it left |
 | one run, here | in its environment (`submit._go`), the wall its own job states (`Resources.time`: § 5.3.1's chain at prep) — none stated, nothing | its run script's own start |
-| a walk, here | on each member's line of the walk script (`submit._walk_script`, `walls`), the wall that member's own job states — none stated, nothing | each member's run script's own start |
+| a walk, here | on each member's line of the walk script (`submit._walk_script`, `walls`), the wall that member's own job states — none stated, nothing | each member's run script's own start — but a run whose points share the stage's one wall (a vibration's calls, `jobset.points`), the walk's own start, exported once by the walk script (`MB_JOB_STARTED`), so its calls count from one start |
 | a sequence of groups, here | each group's launch tells its runs as a run here or a walk here is told, above: each its own card's | each run script's own start |
 
 From the two the run
@@ -641,7 +641,7 @@ run already had.
 it** (`materialize.written_as_ended`). Every launch that continues a stage
 from a run's files compares each file with the second that run ended — a
 stage launched again from its own last run, a first launch from the stage
-before it or from the relaxation it builds on, a run named with `--from`;
+before it, a run named with `--from`;
 on the flat layout, where nothing is copied, the warm files the run reads in
 place, against the run that wrote them (`<label>.last-run`,
 [`job-system.md`](?doc=execution/job-system.md) § 5.4). The run's end is
@@ -971,7 +971,7 @@ stateDiagram-v2
 | a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
 | a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
-| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unknown` (unreadable); for a prepared stage not launched, the ready door's *ready to launch* — *(prepared by molbuilder X.Y.Z)* when another molbuilder prepared it — / *waits for*; *changed since prepared* and each value that differs ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*); for one not prepared, `described` — a force-constant stage waiting for `relax` with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
+| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unknown` (unreadable); for a prepared stage not launched, the ready door's *ready to launch* — *(prepared by molbuilder X.Y.Z)* when another molbuilder prepared it — / *waits for*; *changed since prepared* and each value that differs ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*); for one not prepared, `described` — or *waits before it can be prepared*, with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
 | the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`'s, asked after it writes its closing record |
 
@@ -1294,7 +1294,7 @@ flowchart TD
     RD["the calculation folder"]
     G[".git/<br/>everything small:<br/>.fdf .out .XV .CG run.json"]
     B[".binsnapshots/&lt;digest&gt;/<br/>whole copies of everything large<br/>+ MANIFEST.do_not_edit"]
-    S["an engine's scratch<br/>(TranSIESTA's *.TSGFL, *.TSGFR)<br/>in neither store; a restore removes it"]
+    S["an engine's scratch<br/>(TranSIESTA's *.TSGFL, *.TSGFR;<br/>an optical call's *.contrib.EPSIMG)<br/>in neither store; a restore removes it"]
     RD --> G
     RD --> B
     RD -.-> S

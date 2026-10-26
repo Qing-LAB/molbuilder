@@ -330,16 +330,16 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
     assert one(written, "psml_lib").source == "person"
 
 
-@pytest.mark.parametrize("engine, ladder", [("siesta", ["relax", "freq"]),
+@pytest.mark.parametrize("engine, ladder", [("siesta", ["freq"]),
                                             ("pyscf", ["freq"])])
 def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box(
         tmp_path, monkeypatch, engine, ladder):
     """`template.md` § 6.3a: `molbuilder describe` writes a kind's recommended value
     as the item's `value` AND `default`, for every item the catalogue
     recommends for that kind -- so the vibration template starts tight.
-    `vibration.md` § 2.2 / § 5.2a: the ladder is read from the box a fresh
-    description carries (unticked): `relax` then `freq` on SIESTA, `freq`
-    alone on PySCF.  No engine runs: `init` describes."""
+    `vibration.md` § 5.11 § 1: one stage, `freq`, on both engines -- on
+    SIESTA one run in phases, the relaxation a phase of it, switched by the
+    box.  No engine runs: `init` describes."""
     from click.testing import CliRunner
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.template import catalogue, recommended_for, select

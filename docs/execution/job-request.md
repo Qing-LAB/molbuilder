@@ -556,17 +556,15 @@ job, prepared together and launched together
 ([`job-system.md`](?doc=execution/job-system.md), *The task*). The first stage
 of the description is group 1; each later stage **repeats the number above it
 or adds one**, so the groups run in the ladder's order. **A stage never shares
-a group with a stage it builds on** — its continuation, a force-constant
-stage's `relax`, a transport rung's upstream — because a job runs its members
+a group with a stage it builds on** — its continuation, a transport
+rung's upstream — because a job runs its members
 one after another with nothing handed between them. Whether a stage builds on
 the one before it is the description's to say (its `restart`,
 [`stages.md`](?doc=engines/stages.md) § 2), and the check reads it there, as
 the science it is. Groups that build on each other go in one job as a
 **sequence**, each group launched — taking what it builds on — when the one
 before has finished ([`job-system.md`](?doc=execution/job-system.md) § 6.0, *A
-sequence of groups*); a SIESTA force-constant stage excepted, whose deck is
-written from `relax`'s finished run at its prep (R-P11), so it is prepared —
-and sent — after `relax` has run.
+sequence of groups*).
 
 **Every entry states one.** `molbuilder describe` and Task setup write the
 defaults, repeating the number above wherever that is allowed — the stage
@@ -786,9 +784,7 @@ difference and the way back, the state saved before the group's first launch
 ([`job-system.md`](?doc=execution/job-system.md), *How the checkpoint supports you*). A change of the
 job request passes; so does an edit of the description that leaves what the
 engine computes unchanged — the test is the engine's input, never which file
-was edited. **A force-constant stage keeps the `relax` run its deck was
-written from** (its row's `written_at`; [`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint
-4a), never a newer one.
+was edited.
 
 **On the flat layout a launched stage is not prepared again.** Its runs share
 its folder's deck and run script, so a deck rendered anew would rewrite what

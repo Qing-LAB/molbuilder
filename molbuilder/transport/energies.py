@@ -195,9 +195,8 @@ def sharing_of(folder: Path) -> Optional[Contours]:
     from ..runs import run_of
     run = run_of(folder)
     deck = run.deck if run is not None else None
-    return (Contours.of_deck(deck.read_text(encoding="utf-8",
-                                            errors="replace"))
-            if deck is not None else None)
+    from ..parse.fdf import read_deck
+    return Contours.of_deck(read_deck(deck)) if deck is not None else None
 
 
 def _pick(a, b, rows, na: int, nb: int):

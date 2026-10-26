@@ -34,7 +34,7 @@ from test_engine_offset_reaches_every_deck import _prep
 
 def _ladder(kind):
     return (default_siesta_stages("publishable") if kind == "optimization"
-            else vibration_stages("siesta", already_relaxed=False))
+            else vibration_stages("siesta"))
 
 
 def _siesta(root, *, kind="optimization", before_prep=None, refused=False):

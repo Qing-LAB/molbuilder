@@ -296,10 +296,9 @@ class Run:
             from molbuilder.deck_record import same_calculation
             # Read as the record reads a deck (`record._read`): one file
             # that will not decode costs its own row, never the ladder's.
-            if same_calculation(
-                    self.place.task.engine,
-                    deck.read_text(encoding="utf-8", errors="replace"),
-                    prepared.read_text(encoding="utf-8", errors="replace")):
+            from molbuilder.parse.fdf import read_deck
+            if same_calculation(self.place.task.engine, read_deck(deck),
+                                read_deck(prepared)):
                 return None
         hits = _rf.find(self.prepared, self.label, role=".validation.txt",
                         stage=self.stage)
@@ -345,6 +344,27 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
             label, stage, place.task.shape, trial=trial))
     return Run(place=place, folder=folder, label=label, stage=stage,
                run=run, trial=trial)
+
+
+def on_label_at(folder, role: str) -> Optional[Path]:
+    """THE FILE IN ``role`` NAMED ON THE LABEL ALONE, in ``folder`` -- a
+    run's own folder (:func:`run_of`, `Run.on_label`), or the root of a run
+    of points (a container at a stage's attempt, `calcdirs.where`), where
+    the run's own steps write its result (`engines/vibration.md` § 5.11
+    § 2: the spectrum at the run's root); ``None`` for a folder that is
+    neither, or one that holds no such file.  The one door a reader of a
+    stage's result takes, whichever shape the run has."""
+    folder = Path(folder)
+    run = run_of(folder)
+    if run is not None:
+        return run.on_label(role)
+    place = place_of(folder)
+    if (not place.ours or place.role != calcdirs.CONTAINER
+            or place.where.what != calcdirs.ATTEMPT):
+        return None
+    label, _stage, _trial = _position(place)
+    hits = _rf.find_on_label(folder, label, role)
+    return hits[-1] if hits else None
 
 
 # --------------------------------------------------------------------- #
@@ -453,8 +473,9 @@ def declared_of_deck(deck: Optional[Path], task, stage: Optional[str], *,
     from molbuilder.deck_record import DeckRecordUnreadable
     if deck is None:
         return Declared()
+    from molbuilder.parse.fdf import read_deck
     try:
-        text = deck.read_text(encoding="utf-8-sig", errors="replace")
+        text = read_deck(deck)
     except OSError as exc:
         raise DeckRecordUnreadable(f"{deck}: does not read ({exc})") from exc
     from molbuilder.deck_record import (DeckRecordUnreadable,
@@ -520,10 +541,8 @@ def deck_atom_index_map(said: Declared, task, stage: Optional[str]):
     if n is None and said.deck is not None and said.deck.suffix == ".fdf":
         # A DECK WITH NOTHING ELSE TO SAY -- no block -- states its count in
         # the engine's own keyword, read through the one fdf reader.
-        from molbuilder.parse.fdf import read_fdf
-        got = read_fdf(said.deck.read_text(encoding="utf-8-sig",
-                                           errors="replace"))[0].get(
-            "numberofatoms")
+        from molbuilder.parse.fdf import read_deck, read_fdf
+        got = read_fdf(read_deck(said.deck))[0].get("numberofatoms")
         n = int(got[0]) if got else None
     if n is None:
         raise ValueError(f"{said.deck.name if said.deck else 'the run'} "
@@ -867,11 +886,49 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     it is for (:func:`speaking`)."""
     from molbuilder.parse.dirs.job import LIVE_STATES
     run = run_of(path)
-    if run is None or run.stage is None:
+    if run is None:
+        # A FILE AT A RUN OF POINTS' ROOT -- the result its own steps wrote
+        # there (`engines/vibration.md` § 5.11 § 7): the run's state is its
+        # points'.
+        p = Path(path)
+        folder = p if p.is_dir() else p.parent
+        got = points_root_state(place_of(folder), folder)
+        if got is None:
+            return None
+        return {"state": got["state"], "detail": got["detail"],
+                "live": got["state"] in LIVE_STATES}
+    if run.stage is None:
         return None
     st = state_of(run)
     return {"state": st.state, "detail": st.detail,
             "live": st.state in LIVE_STATES}
+
+
+def points_root_state(place: Place, folder) -> Optional[Dict[str, Any]]:
+    """A RUN OF POINTS' ROOT -- a container at a stage's attempt
+    (`calcdirs.where`), of a kind whose rung runs per point
+    (`jobset.points`) -- answers the run's state in the folder answer's
+    shape, by the one rule for a run of points (`continuation.
+    stage_run_state`); ``None`` for any other place.  The calculation is
+    opened once for it (`calculation.open`, A16)."""
+    if not place.ours or place.role != calcdirs.CONTAINER:
+        return None
+    at = place.where
+    if at.what != calcdirs.ATTEMPT or at.stage is None or at.trial is not None:
+        return None
+    from molbuilder.jobset.points import points_of
+    if points_of(place.task) is None:
+        return None
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.continuation import stage_run_state
+    from molbuilder.jobset.points import rung_points_of
+    calc = open_calculation(place.root)
+    stage = parse_token(at.stage)[1]
+    if not rung_points_of(calc, stage):
+        return None
+    state, detail = stage_run_state(calc, stage, Path(folder))
+    return {"state": state, "detail": detail,
+            "last_change_at": None, "active_source": None}
 
 
 # --------------------------------------------------------------------- #
@@ -1162,10 +1219,19 @@ def folder_answer(directory) -> Dict[str, Any]:
             # description's shape (`Place.role`); one that says nothing is no
             # calculation's (`calcdirs.where`).
             chosen = _container_product(d, place, label, stage, attempts)
-            attempts.append(
-                "this directory is a container, not a run -- it has no run "
-                "state; its runs are the directories below it "
-                "(project-layout.md § 1.4)")
+            got = points_root_state(place, d)
+            if got is not None:
+                # A RUN OF POINTS' ROOT: the run's state is its points'
+                # (`engines/vibration.md` § 5.11 § 7; `transport.md` § 2a.11).
+                status = got
+                attempts.append("a run of points: its state is its points', "
+                                "read through the one door "
+                                "(continuation.stage_run_state)")
+            else:
+                attempts.append(
+                    "this directory is a container, not a run -- it has no "
+                    "run state; its runs are the directories below it "
+                    "(project-layout.md § 1.4)")
     files = [_file_row(entry, label, place)
              for entry in sorted(d.iterdir(), key=lambda e: e.name)
              if entry.is_file()]

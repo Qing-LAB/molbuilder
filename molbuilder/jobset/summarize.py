@@ -62,8 +62,8 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
         return None
     # One deck reader: `parse/fdf.py`.  It also tracks `%block`, so a
     # block's first token is never read as a keyword.
-    from ..parse.fdf import read_fdf
-    scalars, _blocks = read_fdf(_read(deck))
+    from ..parse.fdf import read_deck, read_fdf
+    scalars, _blocks = read_fdf(read_deck(deck))
     got = scalars.get(fdf_key(keyword))
     return got[0] if got else None
 

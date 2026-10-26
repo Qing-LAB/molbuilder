@@ -279,7 +279,7 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
 
 @pytest.fixture
 def out_of_set_dir(isolated_projects_root_module):
-    """A vibration whose relax rung holds a relaxer the kind does not
+    """A vibration whose one stage holds a relaxer the kind does not
     offer (`engines/template.md` § 6.3a)."""
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.task import (Stage, StructureRef, Task, derive_run,
@@ -296,11 +296,10 @@ def out_of_set_dir(isolated_projects_root_module):
         encoding="utf-8")
     write_task(d, Task(
         engine="siesta", shape="hierarchical",
-        run=derive_run("probe", stage_names=("relax", "freq")),
+        run=derive_run("probe", stage_names=("freq",)),
         structure=StructureRef(source="probe.source.xyz"),
         calculation="vibration", varies=("relax_type",),
-        stages=(Stage(name="relax", overrides={"relax_type": "none"}),
-                Stage(name="freq", overrides={}))))
+        stages=(Stage(name="freq", overrides={"relax_type": "none"}),)))
     _request_beside(d)
     yield d
 
@@ -315,10 +314,10 @@ def test_a_stored_value_the_kind_does_not_offer_is_shown_as_itself(
     MUTATION THIS MUST FAIL AGAINST: the viewer without the branch (the
     cell shows nothing selected)."""
     _open(page, flask_server, out_of_set_dir,
-          ready='[aria-label="relax relax_type"]')
+          ready='[aria-label="freq relax_type"]')
     cell = page.evaluate(
         "() => { const n = document.querySelector("
-        "  '[aria-label=\"relax relax_type\"]');"
+        "  '[aria-label=\"freq relax_type\"]');"
         "  if (!n) return null;"
         "  return {value: n.value, text: n.selectedIndex < 0 ? null"
         "          : n.options[n.selectedIndex].text,"

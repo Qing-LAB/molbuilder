@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+from ..parse.fdf import read_deck
 from ..runrecord import LaunchRecordError
 
 
@@ -487,8 +488,7 @@ def finished_window(finished) -> Tuple[float, float, int]:
         src, _run, why = _finished_point(finished, SHARING_RUNG, pt)
         said = said or why or ""
         run = run_of(src) if src is not None else None
-        window = (_window_of(run.deck.read_text(encoding="utf-8",
-                                                errors="replace"))
+        window = (_window_of(read_deck(run.deck))
                   if run is not None and run.deck is not None else None)
         if window is not None:
             return window
@@ -626,7 +626,7 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
         return None, (f"{words} shares none -- it is not given what "
                       f"{shown} was given")
     now = once.deck_now(SHARING_RUNG, pt)
-    ran = run_of(src).deck.read_text(encoding="utf-8", errors="replace")
+    ran = read_deck(run_of(src).deck)
     differs = same_calculation(calc.task.engine, ran,
                                _with_energies(now, ran))
     if differs:
@@ -777,7 +777,7 @@ def _member(calc, finished, stage: str, once, copied: set
         if launch is None:
             return no(f"{stage}: {shown} was never launched")
         state, detail, _rows = points_state(
-            newest, names, ftask, stage, launch=launch, products=products,
+            newest, names, ftask, stage, launch=launch,
             base=fbase)
         if state in ("queued", "running"):
             return no(f"{stage}: {shown} is {state} -- {detail}")
@@ -870,7 +870,7 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     launch = launch_record(newest, names)
     if launch is None:
         return None
-    state, _detail = stage_run_state(fbase, ftask, stage, newest)
+    state, _detail = stage_run_state(finished, stage, newest)
     if state in ("pending", "queued", "running"):
         return None
     products = products_of(stage, ftask.label, base_dir=fbase)
@@ -938,7 +938,7 @@ def _relaid_copy(finished, stage: str, newest: Path, run: Path,
     from ..warmfiles import is_scratch, never_carried
     from .continuation import stage_run_state
     fbase = Path(finished.base)
-    state, _detail = stage_run_state(fbase, finished.task, stage, newest)
+    state, _detail = stage_run_state(finished, stage, newest)
     of_points = any(rel for _src, rel, _made in points)
 
     def here(ref) -> str:
@@ -995,8 +995,7 @@ def _copy_of(finished, stage: str, source: Path, run: Path, *,
     size, and the engine's scratch it leaves behind, named."""
     from ..warmfiles import is_scratch, never_carried
     from .continuation import stage_run_state
-    state, _detail = stage_run_state(Path(finished.base), finished.task,
-                                     stage, source)
+    state, _detail = stage_run_state(finished, stage, source)
     size, left = 0, []
     for f in _files(source, carried=False):
         if is_scratch(f.name):
@@ -1252,9 +1251,7 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
     from ..runfiles import COPIED_FROM_FILE
     from ..runrecord import write_copied_from
     from ..transport.energies import SHARED_DIR, Contours
-    contours = (Contours.of_deck(deck.read_text(encoding="utf-8",
-                                                errors="replace"))
-                if deck.is_file() else None)
+    contours = (Contours.of_deck(read_deck(deck)) if deck.is_file() else None)
     if contours is None:
         return
     dest = Path(pdir) / SHARED_DIR

@@ -355,6 +355,11 @@ class WatchedRun:
     names: "_rf.RunNames"
     run: int
     directory: Path = field(default_factory=lambda: Path("."))
+    #: THE RUN'S FOLDER, for a member of a run of points (`run-reports.md`
+    #: § 2.1b; `engines/vibration.md` § 5.11 § 7a): where the run's one
+    #: launch record and its notification record lie -- ``None`` for a run
+    #: in its own folder, which holds them itself.
+    launched_in: Optional[Path] = None
     #: Each live output, and the reader fed from it.
     _growth: Dict[Path, "_Growth"] = field(default_factory=dict)
 
@@ -449,12 +454,28 @@ class WatchedRun:
         st.done_pct = state.get("done_pct")
         st.eta_s = state.get("eta_s")
 
+    @property
+    def run_folder(self) -> Path:
+        """Where the run's records lie: the run's folder for a member of a
+        run of points, else this one."""
+        return self.launched_in if self.launched_in is not None else self.directory
+
     def launch(self) -> Optional[Dict[str, Any]]:
         """This run's launch record (`runrecord.launch_record`) -- ``None``
         while it is not written: the sender writes it as the scheduler
         answers, and a job can start first.  One that does not read is
-        :class:`LaunchRecordError`."""
-        return _rr.launch_record(self.directory, self.names, self.run)
+        :class:`LaunchRecordError`.  A member of a run of points reads the
+        run's, in the run's folder."""
+        return _rr.launch_record(self.run_folder, self.names, self.run)
+
+    def notified(self) -> List[Dict[str, Any]]:
+        """Every event sent for the run so far (`runrecord.read_notified`)."""
+        return _rr.read_notified(self.run_folder, self.names, self.run)
+
+    def note(self, event: str, at: float) -> None:
+        """``event`` sent for the run at ``at``, into its notification
+        record (`runrecord.note_notified`, `run-reports.md` § 2.6)."""
+        _rr.note_notified(self.run_folder, self.names, self.run, event, at)
 
     def conclude(self, st: JobStatus) -> JobStatus:
         """How the run ended, as the Results tab reads it: `run_status` over
@@ -2004,8 +2025,16 @@ def run_monitor(watched: "WatchedRun", *,
                 notify: "NotifyPolicy" = NotifyPolicy(),
                 job_started: Optional[float] = None,
                 sleep: Callable[[float], None] = time.sleep,
-                clock: Callable[[], float] = time.time) -> JobStatus:
+                clock: Callable[[], float] = time.time,
+                member: bool = False) -> JobStatus:
     """Periodically read + log + notify until the watched job ends.
+
+    ``member``: this run is one call of a run of points, whose walk speaks
+    once for the run (`run-reports.md` § 2.1b; `engines/vibration.md`
+    § 5.11 § 7a) -- it sends no `start` and no `finish` of its own, its
+    N-hour clock counts from the last event the run's notification record
+    holds (``watched.launched_in``), and every event it sends it writes
+    there.
 
     ``watched`` names the run; its log and its utilisation CSV (with
     ``util``) are its own files, named through `runfiles`.  Every reading is
@@ -2065,12 +2094,35 @@ def run_monitor(watched: "WatchedRun", *,
     # (a channel not set up here, a malformed file) follows the machine.
     _install_env_notifiers(log, run_identity(watched), notify.channels,
                            notify.report, layout)
-    _fire(st0, "start")
+
+    def _said(st: JobStatus, event: str, now: float) -> None:
+        # ONE EVENT SENT, and written into the run's notification record --
+        # never breaking the monitor over the record.
+        _fire(st, event)
+        try:
+            watched.note(event, now)
+        except Exception as exc:                       # noqa: BLE001
+            _append(log, f"[{_iso(now)}] [NOTIFY] not recorded: {exc}")
+
+    if not member:
+        _said(st0, "start", start)
     # Policy state (`run-reports.md` § 2).  ``last_notify`` starts at the
     # job's start, so
     # the first periodic message lands one full period in -- not immediately,
-    # which would make "every 6 hours" mean "now, then every 6 hours".
+    # which would make "every 6 hours" mean "now, then every 6 hours".  A
+    # member's counts from the last event sent for the RUN, its record.
     last_notify = start
+    warned_before = False
+    if member:
+        try:
+            sent = watched.notified()
+            if sent:
+                last_notify = max(float(e.get("at") or start) for e in sent)
+            # THE WALL WARNED OF ONCE FOR THE RUN (§ 5.11 § 7a): a
+            # `wall_near` its record holds is not sent again.
+            warned_before = any(e.get("event") == "wall_near" for e in sent)
+        except Exception as exc:                       # noqa: BLE001
+            _append(log, f"[{t0}] [NOTIFY] the run's record not read: {exc}")
     notify_period_s = max(0.0, notify.every_hours) * 3600.0
 
     # THE TIME THE JOB HAS LEFT (`run-reports.md` § 2.1b): its wall, from
@@ -2083,7 +2135,7 @@ def run_monitor(watched: "WatchedRun", *,
     step_began = start
     longest_s: Optional[float] = None
     steps_timed = 0
-    wall_warned = False
+    wall_warned = warned_before
 
     def _count_down(st: JobStatus, now: float) -> None:
         nonlocal wall, wall_settled
@@ -2193,8 +2245,8 @@ def run_monitor(watched: "WatchedRun", *,
                              f"{util_accum.summary()}")
                 _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
                              f"{measurement_provenance(basis)}")
-            if not retry:
-                _fire(st, "finish")
+            if not retry and not member:
+                _said(st, "finish", now)
             # The series' end, LAST: a GPU sample can take seconds and the
             # wrapper waits for this process only so long, so the closing
             # lines and the `finish` message go out before it.
@@ -2222,7 +2274,7 @@ def run_monitor(watched: "WatchedRun", *,
                          f"left; {steps} took "
                          f"{_fields.span_words(longest_s)} -- the step "
                          f"underway may not finish before the wall")
-            _fire(st, "wall_near")
+            _said(st, "wall_near", now)
 
         # --- the two settable triggers (`run-reports.md` § 2) ------------
         #
@@ -2235,13 +2287,13 @@ def run_monitor(watched: "WatchedRun", *,
         # step, so nothing fires and the finish message is the whole report.
         if (notify.on_scf and st.steps_done is not None
                 and st.steps_done > (prev.steps_done or 0)):
-            _fire(st, "scf_converged")
+            _said(st, "scf_converged", now)
             last_notify = now
         elif notify_period_s > 0 and now - last_notify >= notify_period_s:
             # `elif`: a step and a period landing on the same wake is one
             # thing worth saying, not two.  The step is the more informative
             # of them, so it wins and resets the clock.
-            _fire(st, "periodic")
+            _said(st, "periodic", now)
             last_notify = now
 
         prev = st
@@ -2425,6 +2477,11 @@ def main(argv=None) -> int:
         # A WARM RETRY'S OWN LAUNCH RECORD, by the one writer, which travels
         # in this file (`runrecord.retried_main`; `running-a-job.md` § 3.5).
         return _rr.retried_main(args[1:])
+    if args[:1] == ["notify"]:
+        # A RUN OF POINTS SPEAKS ONCE: its start and its finish, sent by the
+        # run's own python through this verb (`engines/vibration.md` § 5.11
+        # § 7a; `run-reports.md` § 2.6).
+        return _notify_main(args[1:])
     import argparse
     p = argparse.ArgumentParser(
         prog="mb_monitor",
@@ -2499,9 +2556,20 @@ def main(argv=None) -> int:
                    help="comma-separated report fields ("
                         + ", ".join(_fields.NAMES)
                         + "); omit for all of them, pass '' for none")
+    # A MEMBER OF A RUN OF POINTS (`run-reports.md` § 2.1b): the run's
+    # folder holds its launch record and its notification record; the
+    # walk speaks once for the run.
+    p.add_argument("--member", action="store_true", dest="member",
+                   help="this run is one call of a run of points: no start "
+                        "or finish of its own, its clock the run's")
+    p.add_argument("--launched-in", default=None, dest="launched_in",
+                   help="the run's folder, from here -- where its launch "
+                        "record and notification record lie")
     a = p.parse_args(args)
     watched = WatchedRun(names=_rf.RunNames(a.label, a.stage, a.shared),
-                         run=a.run_index, directory=Path(a.directory))
+                         run=a.run_index, directory=Path(a.directory),
+                         launched_in=(Path(a.directory) / a.launched_in
+                                      if a.launched_in else None))
     signal.signal(signal.SIGTERM, _on_stop_signal)
     if hasattr(signal, "SIGUSR1"):
         signal.signal(signal.SIGUSR1, _on_stop_signal)
@@ -2521,7 +2589,67 @@ def main(argv=None) -> int:
                     on_scf=a.notify_on_scf,
                     every_hours=a.notify_every_hours,
                     channels=_channels_from_flag(a.notify_channels),
-                    report=_report_from_flag(a.notify_report)))
+                    report=_report_from_flag(a.notify_report)),
+                member=a.member)
+    return 0
+
+
+#: THE POLICY'S CHANNELS AND REPORT, in the environment of a run of
+#: points' calls (`runwrap._monitor_block` exports them from the monitor's
+#: own flags), so the run's own python can send the run's start and finish
+#: through :func:`_notify_main` with the policy the description stated.
+NOTIFY_CHANNELS_VAR = "MB_NOTIFY_CHANNELS"
+NOTIFY_REPORT_VAR = "MB_NOTIFY_REPORT"
+
+
+def _notify_main(argv) -> int:
+    """``mb_monitor.pyz notify start|finish --label L --stage S --run N
+    --dir RUN [--state S --detail D]`` -- ONE event for a run of points,
+    sent through the channels and card the monitor uses, with the run's
+    identity, and written into the run's notification record
+    (`engines/vibration.md` § 5.11 § 7a; `run-reports.md` § 2.6).  The
+    channels and report fields are the policy's, from the environment the
+    call's run script set (:data:`NOTIFY_CHANNELS_VAR`,
+    :data:`NOTIFY_REPORT_VAR`); none set up, nothing is sent -- the record
+    says it was said all the same."""
+    import argparse
+    p = argparse.ArgumentParser(prog="mb_monitor notify")
+    p.add_argument("event", choices=("start", "finish"))
+    p.add_argument("--label", required=True)
+    p.add_argument("--stage", required=True)
+    p.add_argument("--run", type=int, required=True, dest="run_index")
+    p.add_argument("--dir", default=".", dest="directory",
+                   help="the run's folder")
+    p.add_argument("--state", default=None,
+                   help="the run's state, for a finish (the one rule over "
+                        "the run's index)")
+    p.add_argument("--detail", default=None)
+    a = p.parse_args(argv)
+    watched = WatchedRun(names=_rf.RunNames(a.label, a.stage, False),
+                         run=a.run_index, directory=Path(a.directory))
+    log = watched.path(".monitor.log")
+    now = time.time()
+    # THE RUN SPEAKS ONCE: a start the record already holds is not sent
+    # again -- whichever call's plan step asks (§ 5.11 § 7a).
+    if a.event == "start" and any(e.get("event") == "start"
+                                  for e in watched.notified()):
+        return 0
+    register_notifier(make_log_notifier(log))
+    try:
+        layout = _cards.load()
+    except _cards.LayoutError as exc:
+        _append(log, f"[{_iso(now)}] [NOTIFY] the card's layout is refused "
+                     f"-- {exc}")
+        return 1
+    _install_env_notifiers(
+        log, run_identity(watched),
+        _channels_from_flag(os.environ.get(NOTIFY_CHANNELS_VAR)),
+        _report_from_flag(os.environ.get(NOTIFY_REPORT_VAR)), layout)
+    st = JobStatus(state=(a.state or ("running" if a.event == "start"
+                                      else "finished")),
+                   detail=a.detail)
+    _fire(st, a.event)
+    watched.note(a.event, now)
     return 0
 
 

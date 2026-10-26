@@ -27,7 +27,7 @@ import re
 
 import numpy as np
 import pytest
-from support.road import molbuilder, read_request, save_both, write_request
+from support.road import molbuilder, read_request, write_request
 
 
 def _jobset(*args):
@@ -114,36 +114,3 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
     last = json.loads(ledger.read_text().splitlines()[-1])
     assert (last["verb"], last["decision"], last["stage"]) == (
         "launch", "refused", stage), last
-
-
-def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(
-        tmp_path, monkeypatch):
-    """A person renames a SIESTA vibration's ``relax`` row ``Relax`` in Task
-    setup's stage table and saves.  In any case it is one name, so the rung
-    renders the relaxation deck, and the force-constant stage takes its
-    geometry from it -- refused here only because it has not run.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the role rule matching the exact name
-    (`Relax` renders force constants); prep finding the relaxation rung by
-    the exact name (`freq` is told the ladder has no relax stage)."""
-    bundle = _described(tmp_path, monkeypatch, "siesta", "vibration")
-    task = json.loads((bundle / "task.json").read_text())
-    assert [s["name"] for s in task["stages"]] == ["relax", "freq"], task
-    task["stages"][0]["name"] = "Relax"
-    r = save_both(bundle, task, read_request(bundle))
-    assert r.status_code == 200, r.get_json()
-
-    r = _jobset("prep", "task", "--group", "1", "--bundle", bundle,
-                "--target", "this")
-    assert r.exit_code == 0, r.output
-    deck = (bundle / "01_Relax" / "H2_01_Relax.fdf").read_text()
-    run_type = re.search(r"^\s*MD\.TypeOfRun\s+(\S+)", deck, re.M | re.I)
-    assert run_type and run_type.group(1).upper() != "FC", (
-        "the relaxation rung rendered the force-constant deck: "
-        + (run_type.group(0) if run_type else "no MD.TypeOfRun"))
-
-    r = _jobset("prep", "task", "--group", "2", "--bundle", bundle,
-                "--target", "this")
-    assert r.exit_code != 0, r.output
-    assert "`freq` builds on the newest attempt of `Relax`" in r.output, \
-        r.output

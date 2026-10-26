@@ -281,7 +281,7 @@ engines' own `warm-files.toml` and the file catalogue, not by
 names the engines' own vocabularies name `scratch` — `*<suffix>` for each
 suffix any section of any shipped `molbuilder/<engine>/warm-files.toml`
 states there (`warmfiles.scratch_families`, read once a process: SIESTA's
-`*.TSGFL`, `*.TSGFR`; PySCF none). No engine is asked: no engine writes
+`*.TSGFL`, `*.TSGFR`, `*.contrib.EPSIMG`; PySCF none). No engine is asked: no engine writes
 another's files, so whether a file is scratch needs no record of the
 folder's engine, and every folder gets one answer, `warmfiles.is_scratch(name)`,
 the one every reader of the engines' scratch asks
@@ -939,7 +939,7 @@ reason:
    its save)* — the files the engines' own file vocabularies name `scratch`
    ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a, the
    `scratch` a section of `warm-files.toml` states: TranSIESTA's `*.TSGFL`,
-   `*.TSGFR`). The checkpoint judges nothing here: the vocabulary already says
+   `*.TSGFR`; an optical call's `*.contrib.EPSIMG`). The checkpoint judges nothing here: the vocabulary already says
    these are recomputed by every run, never carried and never taken over, and
    the checkpoint asks the one answer every reader asks
    (`warmfiles.is_scratch`, over the families every engine's shipped

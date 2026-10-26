@@ -1901,7 +1901,7 @@ kind = "deck"
 calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
-engines = ["pyscf"]
+engines = ["pyscf", "siesta"]
 engine_key = "(molbuilder: per-mode electronic-structure selector)"
 type = "enum"
 value = "skip"
@@ -1924,7 +1924,7 @@ kind = "deck"
 calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
-engines = ["pyscf"]
+engines = ["pyscf", "siesta"]
 engine_key = "(molbuilder: per-mode selector parameter)"
 type = "str"
 value = ""
@@ -1943,7 +1943,7 @@ kind = "deck"
 calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
-engines = ["pyscf"]
+engines = ["pyscf", "siesta"]
 engine_key = "(molbuilder: per-mode frequency filter)"
 type = "float"
 optional = true
@@ -1963,7 +1963,7 @@ kind = "deck"
 calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
-engines = ["pyscf"]
+engines = ["pyscf", "siesta"]
 engine_key = "(molbuilder: per-mode frequency filter)"
 type = "float"
 optional = true
@@ -2901,4 +2901,171 @@ WHY IT MATTERS SO MUCH.  The device never samples z.  It attaches each lead thro
 
 In the electrode plane (x, y) the leads use the shared k-point grid on the shared panel ("k-point grid"), the same as the device, and they must: TranSIESTA stops on "found incompatible k-grids" otherwise (ts_electrode.F90).
   Example: 100, the default -- the manual's ("If in doubt, use 100 k-points along the semi-infinite direction"), warned below 50 ("at least >50 should easily be reachable").  It is cheap: only the two lead runs grow with it.  To check it, run the leads again at a higher count and compare each lead's Fermi level with its own at the lower count -- the Results tab sets the two leads beside each other, which says nothing of the count (engines/transport.md 0.2).
+"""
+
+# ---- The vibration's optical phase on SIESTA (engines/vibration.md 5.11 9) ----
+# SIESTA's optical calculation (Src/optical.F, 5.4.2): eps2(w) by first-order
+# perturbation over independent Kohn-Sham states, at a single point.  Each
+# item is read against the manual, 9.1 'Optical properties'; the switch
+# Optical.Calc and the polarization type are fixed by the phase's deck
+# (siesta/vibration_deck.py::optical_block), not items.
+
+[item.optical_direction]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["vibration"]
+stages = ["optical"]
+anchor = "%block Optical.Vector"
+engine_key = "%block Optical.Vector"
+expands = ["%block Optical.Vector"]
+engine_default = { none = "no direction: Optical.PolarizationType defaults to polycrystal, which averages over directions and reads no vector", source = "SIESTA 5.4.2 manual, Optical properties: Optical.PolarizationType <polycrystal>, Optical.Vector [block]" }
+manual = "SIESTA 5.4.2 §6.20 'Optical properties' (Optical.Vector, Optical.PolarizationType)"
+type = "float3"
+value = [0.0, 0.0, 1.0]
+default = [0.0, 0.0, 1.0]
+group = "stage"
+label = "Light along"
+tier = "basic"
+help = """
+The direction of the light's electric field, ê, as three numbers in the structure's frame (x, y, z) -- SIESTA normalises them.  Every optical call of the run computes ε₂(ω) for a field along it, and the Raman strength the run gives is R(ê) = (∂α_êê/∂Q)², the polarizability along this one direction (science/vibrational-optical-response.md 3).
+The default is z: for a junction, along the transport axis.  To compare two directions, run the calculation twice.
+"""
+
+[item.optical_mesh]
+kind = "engine"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["vibration"]
+stages = ["optical"]
+anchor = "%block Optical.Mesh"
+engine_key = "%block Optical.Mesh"
+expands = ["%block Optical.Mesh"]
+engine_default = { none = "no mesh: the block states the mesh points along each reciprocal lattice vector, and the manual gives no default", source = "SIESTA 5.4.2 manual, Optical properties: Optical.Mesh [block]" }
+manual = "SIESTA 5.4.2 §6.20 'Optical properties' (Optical.Mesh)"
+type = "int3"
+optional = true
+null_label = "(the stage's k-point grid)"
+not_set = "the deck writes the stage's k-point grid (kgrid): SIESTA takes Γ alone for a cell it judges a molecule, and for a cell joined across its boundary the optical sum runs over the same k-points the SCF did"
+range = [1, 256]
+group = "stage"
+label = "Optical k-point grid"
+tier = "advanced"
+help = """
+The k-point grid the optical transitions are summed over, three counts along the cell's three axes.  Left unset, it is the stage's own k-point grid, written out -- the one choice that makes the optical sum consistent with the SCF it reads.
+For a cell joined across its boundary the optical spectrum converges more slowly with k-points than the total energy does: a denser grid here costs only the optical step, not the SCF, so it is the knob to turn when ε₂(ω) still changes with the grid (plan 1ac's measurement, R1).
+"""
+
+[item.optical_broaden]
+kind = "engine"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["vibration"]
+stages = ["optical"]
+anchor = "Optical.Broaden"
+engine_key = "Optical.Broaden"
+manual = "SIESTA 5.4.2 §6.20 'Optical properties' (Optical.Broaden)"
+type = "float"
+value = 0.002
+default = 0.002
+engine_default = { value = 0.0, source = "SIESTA 5.4.2 manual, Optical properties: the manual's default, 0 Ry -- no broadening at all, every transition a spike" }
+unit = "Ry"
+range = [0.0005, 0.1]
+above = { value = 0, why = "SIESTA spreads each transition as a Gaussian of this width on an energy grid a tenth of it (optical.F:287); 0 writes spikes on no grid" }
+group = "stage"
+label = "Optical resolution"
+tier = "advanced"
+help = """
+THE RUN'S RESOLUTION, not the width you will read the spectrum at.  SIESTA spreads every transition as a Gaussian of this width, on an energy grid a tenth of it, and writes only the spread spectrum (<label>.EPSIMG).  The width a person reads the Raman strength at -- 0.1 eV, 0.5 eV -- is applied when the result is presented (the viewer's Broadening box), by composing Gaussians: that is exact, so this number only sets the finest width you can ask for later, and the size of the file.
+0.002 Ry (0.027 eV) gives 50,001 energies up to 10 Ry: 2.7 MB of text per optical call, 320 MB over a junction's 121 calls.  Halving it doubles both.
+"""
+
+[item.optical_energy_max]
+kind = "engine"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["vibration"]
+stages = ["optical"]
+anchor = "Optical.Energy.Maximum"
+engine_key = "Optical.Energy.Maximum"
+manual = "SIESTA 5.4.2 §6.20 'Optical properties' (Optical.Energy.Maximum, Optical.Energy.Minimum)"
+type = "float"
+value = 10.0
+default = 10.0
+engine_default = { value = 10.0, source = "SIESTA 5.4.2 manual, Optical properties: the manual's default, 10 Ry" }
+unit = "Ry"
+range = [0.5, 50.0]
+group = "stage"
+label = "Optical energy range"
+tier = "advanced"
+help = """
+How far up in photon energy ε₂(ω) is computed, in rydberg (10 Ry is 136 eV).  The polarizability at a laser energy comes from ε₂ at EVERY energy through the Kramers-Kronig integral, so the range must reach well past the transitions that matter -- the default covers every valence transition of an organic molecule or a gold junction.  Cutting it short changes α(0) and the Raman strengths; it saves only file size, since the cost is in the states, not the grid.
+"""
+
+[item.optical_bands]
+kind = "engine"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["vibration"]
+stages = ["optical"]
+anchor = "Optical.NumberOfBands"
+engine_key = "Optical.NumberOfBands"
+engine_default = { none = "all bands", source = "SIESTA 5.4.2 manual, Optical properties: Optical.NumberOfBands [integer] <all bands>" }
+manual = "SIESTA 5.4.2 §6.20 'Optical properties' (Optical.NumberOfBands)"
+type = "int"
+optional = true
+null_label = "(every band)"
+not_set = "SIESTA includes every band of the basis in the optical sum (the manual: 'all bands')"
+range = [1, 100000]
+group = "stage"
+label = "Optical bands"
+tier = "advanced"
+help = """
+How many bands, counted from the lowest, enter the optical sum.  Left unset every band of the basis does, which is complete for the basis and the cost of one more diagonalisation's worth of states.  A smaller number drops the highest empty states and with them the highest transitions: it lowers α slightly and shortens the sum -- a saving only on a very large junction.
+"""
+
+# ---- The force-constant run's partial charges, fixed by the kind (L4) ----
+# What the charge each mode moves is read from (engines/vibration.md 5.3,
+# 5.10): every atom's charge at the end of every force-constant step, by
+# both partitions.  Role items: shown on the form, fixed by the rung --
+# a person reads that the run writes them and cannot turn them off.
+
+[item.charge_hirshfeld]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["vibration"]
+stages = ["force_constants"]
+role = ["vibration"]
+anchor = "Charge.Hirshfeld"
+engine_key = "Charge.Hirshfeld"
+manual = "SIESTA 5.4.2 §6.19.2 'Voronoi and Hirshfeld atomic population analysis' (Charge.Hirshfeld)"
+engine_default = { none = "the populations at the end of the run alone, never at every step", source = "SIESTA 5.4.2 manual, Voronoi and Hirshfeld atomic population analysis: computed by default only at the end of the program" }
+type = "str"
+value = "geometry"
+group = "output"
+label = "Hirshfeld charges"
+tier = "advanced"
+help = """
+Every atom's Hirshfeld charge at the end of every force-constant step -- positive where electrons left the atom.  Fixed by the kind: the infrared the result derives on request reads the charge each mode moves from these (engines/vibration.md 5.10).  A grid integration per step, no extra SCF.
+"""
+
+[item.charge_voronoi]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["vibration"]
+stages = ["force_constants"]
+role = ["vibration"]
+anchor = "Charge.Voronoi"
+engine_key = "Charge.Voronoi"
+manual = "SIESTA 5.4.2 §6.19.2 'Voronoi and Hirshfeld atomic population analysis' (Charge.Voronoi)"
+engine_default = { none = "the populations at the end of the run alone, never at every step", source = "SIESTA 5.4.2 manual, Voronoi and Hirshfeld atomic population analysis: computed by default only at the end of the program" }
+type = "str"
+value = "geometry"
+group = "output"
+label = "Voronoi charges"
+tier = "advanced"
+help = """
+Every atom's Voronoi charge at the end of every force-constant step, the second partition beside the Hirshfeld one: the result keeps both, and the infrared view says which it reads (engines/vibration.md 5.10).  Fixed by the kind.
 """

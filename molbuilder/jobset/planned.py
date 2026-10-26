@@ -25,8 +25,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from ..deck_record import without_stamps
-from ..persist import write_bytes
+# TWO WAYS, because this module travels beside a job in
+# ``mb_vibration.pyz`` (`runwrap.VIBRATION_COMPANIONS`), where the
+# package is not installed.
+try:                                       # inside molbuilder
+    from ..deck_record import without_stamps
+    from ..persist import write_bytes
+except ImportError:                        # beside a job
+    from deck_record import without_stamps
+    from persist import write_bytes
 
 
 def _at(path) -> Path:
@@ -300,4 +307,30 @@ class Plan:
         self._ops.clear()
 
 
-__all__ = ["Plan", "found"]
+def bring(plan: "Plan", names, *, into, from_dir, also=()) -> List[str]:
+    """COPY INTO A RUN FOLDER WHAT IT RUNS FROM -- each of ``names`` (a
+    file's name, or a path under the calculation) found first in
+    ``from_dir`` by its basename, else in each folder of ``also`` by the
+    name and then by its basename -- the one copy step every run folder is
+    filled by: a stage's attempt and a run of points' point on this machine
+    (`materialize.bring_files`), and a phase's call folder on the node,
+    from the stage's phase folder (`spectra.siesta_vibration`, the ``plan``
+    verb; `engines/vibration.md` § 5.11 § 3).  COPIED, never linked
+    (`project-layout.md` § 1.0: the run directory holds everything), and
+    refreshed every time: a reused unlaunched run must see the prep's deck,
+    not an earlier one's.  Returns the basenames brought, in order."""
+    into, from_dir = _at(into), _at(from_dir)
+    brought: List[str] = []
+    for fname in names:
+        bn = os.path.basename(str(fname))
+        dst = into / bn
+        for src in (from_dir / bn, *(_at(a) / str(fname) for a in also),
+                    *(_at(a) / bn for a in also)):
+            if plan.is_file(src) and src.resolve() != dst.resolve():
+                plan.copy(src, dst)
+                brought.append(bn)
+                break
+    return brought
+
+
+__all__ = ["Plan", "bring", "found"]

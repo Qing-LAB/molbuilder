@@ -78,6 +78,8 @@ _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 ROLE_CHK         = ".chk"
 ROLE_PYSCF_LOG   = ".log"                # PySCF's own log, a rung's own
 ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
+ROLE_PHASES      = ".phases.json"        # a run in phases: its calls, the index
+ROLE_NOTIFIED    = ".notified.json"      # a run's notification record
 ROLE_INITIAL     = "_initial.xyz"
 ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
@@ -1001,6 +1003,7 @@ WARM_FILES_FILE = "warm-files.toml"
 MACHINE_RECORD_FILE = "environment.json"
 JOBSET_FILE = "job-set.json"
 PREPARED_WITH_FILE = "prepared-with.json"
+COORDINATES_FILE = "coordinates.fdf"
 PLAN_FILE = "STAGE-PLAN.md"
 LEDGER_FILE = "jobset-decisions.log"
 PSEUDO_DIR = "pseudos"
@@ -1010,6 +1013,9 @@ JUNCTION_CITED_FILE = "junction.cited.fdf"
 SLOT_PROVENANCE_FILE = "slot-provenance.json"
 CALCDIR_FILE = "calcdir.json"
 LAUNCH_RECORD_FILE = "run.json"
+#: The run's notification record in a folder of the run's own, beside its
+#: launch record (`runrecord.notified_path`).
+NOTIFIED_RECORD_FILE = "notified.json"
 CONTINUED_FROM_FILE = ".continued-from"
 GATHERED_FROM_FILE = ".gathered-from"
 COPIED_FROM_FILE = ".copied-from"
@@ -1019,6 +1025,34 @@ PYSCF_BUNDLE = "mb_pyscf.pyz"
 MAKOV_PAYNE_SCRIPT = "makov_payne_correction.py"
 BENCH_RESULT_FILE = "bench-result.json"
 LAUNCH_DIR = "launch"
+
+
+def bundle_names(deck: str, finish: Optional[str]) -> "tuple[str, ...]":
+    """THE BUNDLES BESIDE A DECK, by name: the monitor's, beside every job;
+    the job's finish when it has one (`Job.finish`); beside a PySCF
+    script, the molbuilder code it imports (`engines/pyscf.md` § 3).
+    `runwrap.bundles_for` pairs each with its builder."""
+    out = [MONITOR_BUNDLE]
+    if finish is not None:
+        out.append(finish)
+    if engine_of_role(Path(deck).suffix.lower()) == "pyscf":
+        out.append(PYSCF_BUNDLE)
+    return tuple(out)
+
+
+def beside_the_deck(deck: str, finish: Optional[str], names: "RunNames"
+                    ) -> "tuple[str, ...]":
+    """THE FILES THAT TRAVEL BESIDE A DECK into every folder it runs in --
+    the one list: its bundles (:func:`bundle_names`), the post-run script a
+    charged deck's header names (:data:`MAKOV_PAYNE_SCRIPT`), its run script
+    and its header, and the coordinates file a call's deck reads
+    (:data:`COORDINATES_FILE`, `engines/vibration.md` § 5.11 § 4).  What
+    prep renders beside the deck, what a launch brings into a run
+    (`materialize.bring_files`), and what a run's own plan step brings into
+    a call it opens (`spectra.siesta_vibration`); the calculation's shared
+    package (`JobSet.shared`, the pseudopotentials) comes beside them."""
+    return (*bundle_names(deck, finish), MAKOV_PAYNE_SCRIPT,
+            names.name(".run.sh"), names.name(".sbatch"), COORDINATES_FILE)
 
 
 #: Ordered as `job-contracts.md` § 2.2 lists them: inputs, the wrapper, the
@@ -1113,6 +1147,21 @@ WRITTEN: "tuple[Artifact, ...]" = (
              listed_by="engine_index", counted_by=("geometric",)),
     # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
     # finish after the force-constant run (`engines/vibration.md` § 5.5).
+    # A RUN IN PHASES -- its index (`engines/vibration.md` § 5.11 § 7): every
+    # SIESTA call of the run, what each is, from what, how it ended; the
+    # finish's entry.
+    Artifact(ROLE_PHASES, "the index of a run in phases: every SIESTA call "
+                          "of the run -- its phase and folder, what it is "
+                          "(the relaxation; the force constants; a mode's "
+                          "side at its displacement), what it was written "
+                          "from and seeded with, how it ended, whether it "
+                          "was taken over -- and the finish's entry",
+             attempt="always", engine="siesta", calculation="vibration",
+             kind="record",
+             writer="launch, for the calls it opens (`submit`); the run's "
+                    "own python for the rest (`spectra.siesta_vibration`: "
+                    "the plan, record and finish verbs)",
+             door="siesta.vibration_phases.read_index"),
     Artifact(ROLE_SPECTRA, "the spectrum this run computed: frequencies, "
                               "the strengths the engine computes, "
                               "thermochemistry -- written by the run itself",
@@ -1376,6 +1425,22 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "retry, the run script through the monitor's bundle "
                     "(`runrecord.record_retry`)",
              door="runrecord.launch_record"),
+    # THE RUN'S NOTIFICATION RECORD -- every event sent for the run, when
+    # (`run-reports.md` § 2.6; `engines/vibration.md` § 5.11 § 7a): a run
+    # in phases speaks as one run, its `start` and `finish` sent once by
+    # its Python steps, and each member monitor's N-hour clock counts from
+    # the last event this record holds.
+    Artifact(ROLE_NOTIFIED, "the run's notification record: every event "
+                            "sent for the run -- start, a step, the "
+                            "periodic report, its wall near, finish -- "
+                            "and when",
+             attempt="shared", hierarchical=NOTIFIED_RECORD_FILE,
+             when="launch", kind="record",
+             writer="`mb_monitor.pyz notify` (the run's start and "
+                    "finish, sent by its plan and record steps, "
+                    "`runrecord.note_notified`); a member monitor that "
+                    "sends a periodic or wall report (`monitor`)",
+             door="runrecord.read_notified"),
     # AND THE RUN IT CONTINUES FROM, left by launch's one hand-over beside
     # the run -- an attempt's `.continued-from`, or where a stage's runs
     # share a folder the run's own (user, 2026-10-01: the flat layout
@@ -1541,6 +1606,21 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="`checkpoint.save_before`, before every Save and prep and a "
                     "group's first launch",
              door="checkpoint.Repo"),
+    # THE COORDINATES OF ONE SIESTA CALL, read by the deck beside it
+    # (`%block AtomicCoordinatesAndAtomicSpecies < coordinates.fdf`,
+    # `parse.fdf.read_deck`; `engines/vibration.md` § 5.11 § 4).
+    Artifact(name=COORDINATES_FILE,
+             what="the coordinate rows of one SIESTA call, which the deck "
+                  "beside it reads as its AtomicCoordinatesAndAtomicSpecies "
+                  "block -- the structure's beside each phase's deck, a "
+                  "call's own in its folder",
+             when="prep", level="stage", kind="derived", engine="siesta",
+             calculation="vibration",
+             writer="prep, beside each phase's deck "
+                    "(`siesta.deck_lines.coordinates_text`); the run's own "
+                    "python for each call (`spectra.siesta_vibration`, "
+                    "the plan verb)",
+             door="parse.fdf.read_deck"),
     Artifact(name=CALCDIR_FILE,
              what="what this folder is in its calculation — a container, "
                   "a run, or a run's scratch folder — and where the "
@@ -2006,7 +2086,9 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
       `.spectra.json` for a vibration: the deck rewrites it atomically at
       every phase boundary and it carries its own `phase_*` flags, so it is
       the live view AND the final result — there is no moment when it is the
-      wrong file to open.
+      wrong file to open.  A row of kind ``record`` naming the calculation
+      -- a run in phases' index -- is the run's own bookkeeping, listed as
+      an aspect of the run and never what a person opens first.
     * a ``"stdout"`` role is the engine's own account, and it speaks whether
       or not the run has ended (§ 5.5).  For SIESTA it IS the trajectory --
       the `.out` every geometry step is printed into -- and a parser claims
@@ -2026,7 +2108,8 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
     calculation produces is the one to open, during the run and after it.
     """
     named = [a.role for a in ON_THE_LABEL
-             if calculation and a.calculation == calculation]
+             if calculation and a.calculation == calculation
+             and a.kind != "record"]
     spoken = [a.role for a in ON_THE_LABEL
               if a.output == "stdout" and a.role not in named]
     live = [a.role for a in ON_THE_LABEL

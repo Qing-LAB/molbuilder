@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import List, Optional, Tuple
 
@@ -238,6 +239,68 @@ def launch_record_path(where: Path, names: "_rf.RunNames",
     return Path(where) / names.name(".run.json", run)
 
 
+#: The run's notification record's schema (`runfiles.ROLE_NOTIFIED`).
+NOTIFIED_SCHEMA = "molbuilder/run-notified@1"
+
+
+def stamp() -> str:
+    """THE CLOCK every record of a run is stamped with -- UTC, to the
+    second, ``Z``: the launch record's `launched_at`, the ending's
+    `asked_at`, a run in phases' index (each call's start and end, the
+    finish's; `siesta.vibration_phases`).  One spelling, so two records of
+    one run compare."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def notified_path(where, names: "_rf.RunNames", run: int) -> Path:
+    """Where run ``run``'s notification record lies: beside its launch
+    record, named by its stage's names (`runfiles.ROLE_NOTIFIED`)."""
+    return Path(where) / names.name(_rf.ROLE_NOTIFIED, run)
+
+
+def read_notified(where, names: "_rf.RunNames", run: int) -> List[dict]:
+    """Every event sent for the run, in order -- ``[{event, at}]``, ``at``
+    the epoch second -- or ``[]`` while none was (`run-reports.md` § 2.6).
+    A record that does not read is :class:`LaunchRecordError`, naming it."""
+    p = notified_path(where, names, run)
+    if not p.is_file():
+        return []
+    return read_notified_file(p)
+
+
+def read_notified_file(path) -> List[dict]:
+    """The notification record at ``path``, read -- the one reader
+    (:func:`read_notified` by the run's names, the registry's parser by the
+    file; `run-reports.md` § 2.5); refused as :class:`LaunchRecordError`
+    when it does not read as one."""
+    p = Path(path)
+    try:
+        body = _persist().read_json(p)
+        if not isinstance(body, dict):
+            raise ValueError("not a JSON object")
+        _persist().check_schema(body.get("schema"), NOTIFIED_SCHEMA,
+                                label=p.name)
+        return [dict(e) for e in body.get("sent") or []]
+    except (OSError, ValueError) as e:
+        raise LaunchRecordError(
+            f"{p} does not read as the run's notification record ({e}): "
+            f"what the run has said cannot be told from it.") from e
+
+
+def note_notified(where, names: "_rf.RunNames", run: int, event: str,
+                  at: float) -> Path:
+    """``event`` sent for the run at ``at`` (the epoch second), appended to
+    its notification record -- written whole through `persist`, so it is
+    whole or absent (`execution/architecture.md` § 2.1)."""
+    sent = read_notified(where, names, run)
+    sent.append({"event": str(event), "at": float(at)})
+    p = notified_path(where, names, run)
+    _persist().write_bytes(
+        p, _persist().json_text({"schema": NOTIFIED_SCHEMA, "sent": sent})
+        .encode("utf-8"))
+    return p
+
+
 def launched_runs(where: Path, names: "_rf.RunNames") -> List[int]:
     """The numbers of a shared folder's launched runs of this stage -- one
     per launch record, read back through the grammar (`runfiles.parse`,
@@ -354,15 +417,13 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
     then the job's, as the sequence's launch record states them; ``null``
     for a run its launch sent itself.
     """
-    from datetime import datetime, timezone
     p = launch_record_path(where, names, run)
     body = {
         "schema": RUN_LAUNCH_SCHEMA,
         "mode": mode,
         "command": list(command),
         "job_id": job_id,
-        "launched_at": launched_at or datetime.now(timezone.utc)
-                                              .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "launched_at": launched_at or stamp(),
     }
     # EVERY KEY, EVERY TIME, its null stated (`checkpointing.md` S3,
     # `job-contracts.md` § 6.1): ``continued_from`` null -- it started from
@@ -391,7 +452,6 @@ def record_ended(where, names: "_rf.RunNames", run: Optional[int], *,
     one it has forgotten (`scheduler.queue.listed`).  Written through
     `persist`, whole; a run with no record cannot be concluded and is
     refused."""
-    from datetime import datetime, timezone
     body = launch_record(where, names, run)
     if body is None:
         raise LaunchRecordError(
@@ -402,7 +462,7 @@ def record_ended(where, names: "_rf.RunNames", run: Optional[int], *,
         run = newest_run(where, names)
     body["ended"] = {
         "asked_on": asked_on,
-        "asked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "asked_at": stamp(),
         "listed": False,
         "said": said or "",
     }

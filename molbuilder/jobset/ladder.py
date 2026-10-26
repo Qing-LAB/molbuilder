@@ -3,54 +3,31 @@ floor 3 (`execution/architecture.md` § 2.1; `job-system.md` § 5.4).
 
 A stage of an independent ladder continues from the stage before it, as the
 description resolves it (an override ``restart: clean`` starts it from the
-structure); a SIESTA vibration's force-constant stage builds on its
-``relax`` (`engines/vibration.md` § 5.2a); a transport rung takes its kind's
-gather.  Read off the description and its template -- which RUN of that
-stage is taken is the layout's (`continuation.continuation_answer`).
+structure); a linked kind's stage builds on what its kind says -- a
+transport rung takes its kind's gather, a SIESTA vibration's one stage is
+one run whose calls build on each other inside the run
+(`engines/vibration.md` § 5.11).  Read off the description and its template
+-- which RUN of that stage is taken is the layout's
+(`continuation.continuation_answer`).
 """
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
-
-def force_constant_stage(task, stage: str) -> bool:
-    """A force-constant stage of a SIESTA vibration -- `freq`, or any stage
-    after `relax` in a displacement sweep, asked of its role and never of a
-    name (`pyscf.stages.vibration_render_kind`, `engines/vibration.md`
-    § 5.2a).  A PySCF vibration's one rung relaxes inside its deck."""
-    if (str(getattr(task, "engine", "")) != "siesta"
-            or getattr(task, "calculation", None) != "vibration"):
-        return False
-    from ..pyscf.stages import vibration_render_kind
-    return vibration_render_kind(stage) == "vibration"
-
-
-def relax_stage_of(task) -> Optional[str]:
-    """The ladder's relaxation rung, which every force-constant stage
-    builds on, or ``None`` -- the structure is then measured as given, and
-    must be stated relaxed (`engines/vibration.md` § 5.2a).  By the one role
-    rule, the name in any case (plan § 5w K12)."""
-    from ..pyscf.stages import vibration_render_kind
-    return next((s.name for s in task.stages
-                 if vibration_render_kind(s.name) != "vibration"), None)
+from typing import Optional
 
 
 def source_stage(task, stage: str, template_text: Optional[str] = None
-                  ) -> Tuple[Optional[str], bool]:
-    """``(the stage whose run ``stage`` builds on by default, linked)``: the
-    stage before it in an independent ladder (:func:`stage_before`), or the
-    `relax` a force-constant stage builds on (linked) -- ``(None, ...)``
-    when it builds on none."""
-    if force_constant_stage(task, stage):
-        return relax_stage_of(task), True
-    return stage_before(task, stage, template_text), False
+                  ) -> Optional[str]:
+    """The stage whose run ``stage`` builds on by default: the stage before
+    it in an independent ladder (:func:`stage_before`) -- ``None`` when it
+    builds on none, a linked kind's stage among them."""
+    return stage_before(task, stage, template_text)
 
 
 def independent(task) -> bool:
     """An INDEPENDENT ladder, whose stages continue one from another: a kind
     without rung roles (`paths.KIND_ROLES`).  A linked stage's input is
-    its kind's: a transport rung's gather (`gather.gather_sources`),
-    and a force-constant stage builds on `relax` (:func:`source_stage`)."""
+    its kind's: a transport rung's gather (`gather.gather_sources`); a
+    SIESTA vibration's one run takes nothing from another stage."""
     from ..paths import KIND_ROLES
     return task.calculation not in KIND_ROLES
 
@@ -96,26 +73,23 @@ def stage_before(task, stage: str,
     return names[i - 1]
 
 
-def fresh_stages(calculation: str, engine: str, *,
-                 already_relaxed: bool) -> tuple:
+def fresh_stages(calculation: str, engine: str) -> tuple:
     """THE LADDER A NEW DESCRIPTION STARTS WITH, before it is numbered --
     the one rule, asked by `molbuilder describe` and by the hand-over the parameter
-    tabs send (`web/handover-procedure.md`): a vibration's own ladder, read
-    from the person's one statement (`pyscf/stages.py::vibration_stages`,
-    `engines/vibration.md` § 2.2, § 5.2a); every other kind the ordinary
+    tabs send (`web/handover-procedure.md`): a vibration's own one stage
+    (`pyscf/stages.py::vibration_stages`, `engines/vibration.md` § 2.2,
+    § 5.11); every other kind the ordinary
     start -- ONE stage carrying no overrides, the calculation that is just
     the template (`engines/stages.md` § 6.5), named by the shared ladder
     vocabulary.  A transport calculation proposes nothing here: its rungs
     are fixed by the kind (`task.fixed_by_kind`)."""
     if calculation == "vibration":
         from ..pyscf.stages import vibration_stages
-        return tuple(vibration_stages(engine,
-                                      already_relaxed=bool(already_relaxed)))
+        return tuple(vibration_stages(engine))
     from ..config.stages import STAGE_NAMES
     from ..task import Stage
     return (Stage(name=STAGE_NAMES[1], overrides={}),)
 
 
-__all__ = ["force_constant_stage", "fresh_stages", "independent",
-           "relax_stage_of", "resolved_stages", "source_stage",
+__all__ = ["fresh_stages", "independent", "resolved_stages", "source_stage",
            "stage_before", "stage_config"]

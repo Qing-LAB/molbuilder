@@ -149,7 +149,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                 # points_state`): a chain that stopped is a run that ended
                 # with points not done, never one still queued.
                 st, _d, rows = points_state(newest, _names, task, upstream,
-                                            launch=_launch, products=_prod,
+                                            launch=_launch,
                                             base=base)
                 not_done = [f"{p['point']} ({p['why']})" for p in rows
                             if not p["done"]]
@@ -241,7 +241,8 @@ def ran_otherwise(once: ReadOnce, stage: str, where: Path, *, token: str,
     ran = run.deck if run is not None else None
     if ran is None:
         return ["it holds no deck"]
-    return same_calculation(once.calc.task.engine, ran.read_text(), now)
+    from ..parse.fdf import read_deck
+    return same_calculation(once.calc.task.engine, read_deck(ran), now)
 
 
 def gather_sources(calc, stage: str

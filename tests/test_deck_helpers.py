@@ -151,3 +151,37 @@ def test_a_malformed_row_names_the_block_and_the_problem(row, match, exc):
         fdf_energy_window(text, "TBT.Contour.window")
     assert "TBT.Contour.window" in str(e.value), (
         "a refusal must say which block it is about")
+
+
+def test_a_block_read_from_a_file_beside_the_deck_reads_as_one_deck(tmp_path):
+    """`engines/vibration.md` § 5.11 § 4; `parse/fdf.read_deck`: a deck whose
+    coordinate block is read from `coordinates.fdf` beside it (libfdf's
+    `%block Label < Filename`) reads, through the deck's one file reader,
+    as the same deck written inline -- its atoms, their places and every
+    scalar after the include.  The silent failure: the include line read as
+    an empty block that swallows every line after it, so every reader of the
+    deck sees no atoms and no later setting.  The text alone cannot give the
+    rows, so `read_fdf` refuses it naming the file and the reader; a file
+    not beside the deck is refused by name."""
+    from molbuilder.parse.fdf import (deck_atoms, parse_fdf_params,
+                                      read_deck, read_fdf)
+    rows = "0.0 0.0 4.6 1\n0.0 0.0 5.4 1\n"
+    head = ("SystemLabel H2\nNumberOfAtoms 2\nNumberOfSpecies 1\n"
+            "%block ChemicalSpeciesLabel\n1 1 H\n%endblock ChemicalSpeciesLabel\n"
+            "AtomicCoordinatesFormat Ang\n")
+    tail = "MeshCutoff 200 Ry\n"
+    inline = (head + "%block AtomicCoordinatesAndAtomicSpecies\n" + rows
+              + "%endblock AtomicCoordinatesAndAtomicSpecies\n" + tail)
+    deck = head + "%block AtomicCoordinatesAndAtomicSpecies < coordinates.fdf\n" + tail
+    (tmp_path / "H2.fdf").write_text(deck)
+    (tmp_path / "coordinates.fdf").write_text(rows)
+    whole = read_deck(tmp_path / "H2.fdf")
+    assert deck_atoms(whole) == deck_atoms(inline)
+    want, got = parse_fdf_params(inline), parse_fdf_params(whole)
+    assert got.coords_ang == want.coords_ang and want.coords_ang
+    assert got.mesh_cutoff_ry == want.mesh_cutoff_ry and want.mesh_cutoff_ry
+    with pytest.raises(ValueError, match="coordinates.fdf.*read_deck"):
+        read_fdf(deck)
+    (tmp_path / "coordinates.fdf").unlink()
+    with pytest.raises(ValueError, match="coordinates.fdf.*not beside"):
+        read_deck(tmp_path / "H2.fdf")

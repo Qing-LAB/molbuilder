@@ -27,10 +27,11 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`bench` (``real_h2_bench``) -- a two-trial benchmark of the same
   H2's `coarse`: one trial launched by name, then the rest by a launch of
   the benchmark under a per-trial bound;
-* :func:`relaxed_for_vibration` (``real_relaxed_for_vibration``) -- the
-  vibration kind's `relax` stage of the road's CO2, listed O O C with the
-  carbon held, so its decks are in the engine's held-first order
-  (`support.road.CO2`; plan T-CO2);
+* :func:`vibration` (``real_co2_vibration``) -- the vibration kind's one
+  run in phases of the road's CO2, listed O O C with the carbon held, so its
+  decks are in the engine's held-first order (`support.road.CO2`; plan
+  T-CO2): its `relax` call, its `fc` call and one mode's three optical
+  calls (`engines/vibration.md` § 5.11), waited on;
 * :func:`gpu` (``real_h2_gpu``) -- the same H2 asking this machine's GPU,
   one rank: its run script's dry runs, then the run, waited on;
 * :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF, flat,
@@ -85,6 +86,14 @@ class RealRun:
         from molbuilder.task import of as task_of
         task = task_of(self.bundle)
         return attempt_dir(stage_home(self.bundle, task, stage).dir, n)
+
+    def call(self, stage: str, phase: str, n: int = 0) -> Path:
+        """The SIESTA call of ``phase`` in attempt ``n`` of ``stage`` -- a
+        run in phases' point, its folder below the run as the kind names it
+        (`siesta.vibration_phases.Call.rel`): the relaxation's, the force
+        constants'."""
+        from molbuilder.siesta.vibration_phases import Call
+        return self.attempt(stage, n) / Call(phase, phase).rel
 
 
 #: Each engine's environment, and the road a run of it is made on.
@@ -492,14 +501,22 @@ def bench(tmp_path_factory) -> RealRun:
 #: literature value.
 CO2_SETTINGS = {"mixing_weight": 0.25, "mesh_cutoff": 150.0}
 
+#: THE OPTICAL PHASE ASKED FOR, on the shared run: one mode, the lower
+#: stretch -- mode 3 of four, 1-based (`spectra.selection.select_modes`) --
+#: so the run's optical calls are three, the equilibrium and the mode's two
+#: sides; the optical mesh the one point an isolated molecule's box needs.
+CO2_OPTICAL = {"es_mode_selection": "explicit", "es_explicit_indices": "3",
+               "optical_mesh": [1, 1, 1]}
 
-def co2_vibration(tree: Path, where: str = "P/freq/CO2") -> Path:
+
+def co2_vibration(tree: Path, where: str = "P/freq/CO2", *,
+                  optical: bool = False) -> Path:
     """The road's CO2 (`support.road.CO2`) described as a SIESTA vibration
-    in ``tree`` at ``where``: the kind's own ladder (`relax` then `freq`), one
-    rank, one thread (:func:`_described`), its template carrying
-    :data:`CO2_SETTINGS` as the person's (`template.with_values_set`) --
-    THE ONE MAKER of it, for the shared relaxation and for a test's own
-    calculation alike."""
+    in ``tree`` at ``where``: the kind's one stage, `freq`, one rank, one
+    thread (:func:`_described`), its template carrying :data:`CO2_SETTINGS`
+    as the person's (`template.with_values_set`) -- and, ``optical``,
+    :data:`CO2_OPTICAL` -- THE ONE MAKER of it, for the shared run and for
+    a test's own calculation alike."""
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.template import with_values_set
     from molbuilder.template_file import template_path
@@ -508,27 +525,30 @@ def co2_vibration(tree: Path, where: str = "P/freq/CO2") -> Path:
                         calculation="vibration",
                         execution={"mpi_np": 1, "omp_threads": 1})
     path = template_path(bundle, "CO2")
-    path.write_text(with_values_set(path.read_text(), SiestaConfig,
-                                    calculation="vibration",
-                                    values=CO2_SETTINGS, source="person"))
+    path.write_text(with_values_set(
+        path.read_text(), SiestaConfig, calculation="vibration",
+        values={**CO2_SETTINGS, **(CO2_OPTICAL if optical else {})},
+        source="person"))
     return bundle
 
 
-def relaxed_for_vibration(tmp_path_factory) -> RealRun:
-    """The vibration kind's `relax` stage of the road's CO2, run: the kind's
-    own ladder (`relax` then `freq`), one rank, one thread, `relax` prepared
-    and launched."""
-    from molbuilder.runs import run_answer
+def vibration(tmp_path_factory) -> RealRun:
+    """The vibration kind's one run in phases of the road's CO2
+    (`engines/vibration.md` § 5.11): the one stage `freq`, one rank, one
+    thread, its optical phase asked for one mode (:data:`CO2_OPTICAL`),
+    prepared and launched here, waited on -- its `relax` call, its `fc`
+    call and the mode's three optical calls, each a point of the run."""
     with _on_the_road(tmp_path_factory, "vibration") as tree:
-        run = RealRun(tree=tree, bundle=co2_vibration(tree))
-        _taken(run, "prep relax", "prep", "task", "--group", "1",
+        run = RealRun(tree=tree, bundle=co2_vibration(tree, optical=True))
+        _taken(run, "prep freq", "prep", "task", "--group", "1",
                "--target", "this")
-        _taken(run, "launch relax", "launch", "task", "--stage", "relax",
+        _taken(run, "launch freq", "launch", "task", "--stage", "freq",
                "--mode", "direct", "--foreground", "--yes")
     # IT REACHED ITS END, by the one status door: every reader of the run
-    # reads a relaxation that finished.
-    said = run_answer(run.attempt("relax"))
-    assert (said["state"], said["detail"]) == ("finished", "job_completed"), said
+    # reads a run that finished, every call of it done.
+    status = stage_status(run.bundle, "freq")
+    assert status.state == "finished", (status.state, status.detail)
+    assert all(p["done"] for p in status.points), status.points
     return run
 
 

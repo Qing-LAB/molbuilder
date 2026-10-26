@@ -211,13 +211,15 @@ class Point:
         return {"frame": self.frame, "of": self.of, "bias_v": self.bias_v}
 
 
-def frames_of(base) -> int:
+def frames_of(base, *, read=None) -> int:
     """How many frames the cited junction holds -- the citation's, never
     typed (`engines/transport.md` § 2a.9): the composed record's
     (`slot-provenance.json`, written at the calculation's first prep).  No
-    record yet means nothing is prepared, so no rung has points on disk: 1."""
+    record yet means nothing is prepared, so no rung has points on disk: 1.
+    ``read`` reads a path's text where the record is a prep's plan's, not
+    yet on disk."""
     from .compose import read_provenance
-    return int((read_provenance(base) or {}).get("frames") or 1)
+    return int((read_provenance(base, read=read) or {}).get("frames") or 1)
 
 
 def rung_points(task, stage: str, *, frames: int) -> Tuple[Point, ...]:
@@ -471,3 +473,55 @@ def stages_for_transport(bags=None):
             for n in TRANSPORT_STAGES]
 
 
+# --------------------------------------------------------------------- #
+#  The declaration a reader of a transport rung's points asks           #
+#  (`jobset.points`; `engines/transport.md` § 2a.11)                     #
+# --------------------------------------------------------------------- #
+
+def points_summary(pts) -> str:
+    """THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
+    § 2a.11): *k of N points done (F frames × V voltages)* -- a transport
+    rung's words for its rows (`continuation.point_rows`)."""
+    n_done = sum(p["done"] for p in pts)
+    n_frames = len({p["frame"] for p in pts})
+    n_volts = len({p["bias_v"] for p in pts})
+    return (f"{n_done} of {len(pts)} points done ({n_frames} "
+            f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
+            f"voltage{'' if n_volts == 1 else 's'})")
+
+
+def _declared_rung_points(calc, stage: str, *, read=None):
+    return rung_points(calc.task, stage, frames=frames_of(calc.base, read=read))
+
+
+def _declared_summary(rows, run, names) -> str:
+    return points_summary(rows)
+
+
+def _declared_points_in(run, task, stage: str, base):
+    return points_in(run, task, stage, base=base)
+
+
+def _declared_products(stage: str, label: str, base, point=None):
+    return products_of(stage, label, base_dir=base)
+
+
+def _declared_hands_on(stage: str, label: str, base):
+    return hands_on(stage, label, base)
+
+
+def _converges(stage: str) -> bool:
+    return STAGE_FACT.get(stage, "scf") != "product"
+
+
+from ..jobset.points import PointsOf  # noqa: E402 -- the declaration's type
+
+#: THE DECLARATION (`jobset.points.DECLARED`): a transport rung's points
+#: are a frame of the cited set and a voltage each, decided at prep.
+POINTS = PointsOf(kind="transport",
+                  rung_points=_declared_rung_points,
+                  points_in=_declared_points_in,
+                  products_of=_declared_products,
+                  hands_on=_declared_hands_on,
+                  summary=_declared_summary,
+                  converges=_converges)

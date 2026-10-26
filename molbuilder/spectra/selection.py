@@ -16,7 +16,16 @@ The three selectors (`engines/vibration.md` § 4.8):
 
 from __future__ import annotations
 
+import re
 from typing import List, Optional, Sequence
+
+
+class SelectionError(ValueError):
+    """A rule is malformed, references unknown data (e.g. a region
+    label that isn't on the Structure), or fails JSON validation."""
+
+
+_RANGE_TOKEN_RE = re.compile(r"^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$", re.ASCII)
 
 
 def select_modes(frequencies_cm1: Sequence[float], selection: str, *,
@@ -49,4 +58,43 @@ def select_modes(frequencies_cm1: Sequence[float], selection: str, *,
                      f"'skip', 'all' and 'explicit'")
 
 
-__all__ = ["select_modes"]
+def parse_index_list(expression: str, *, first: int = 0,
+                     count: Optional[int] = None) -> List[int]:
+    """Parse ``"0-35, 100, 150-200"`` into a sorted unique list of indices.
+
+    The one reader of the index-list grammar: comma-separated tokens, each
+    ``<int>`` or ``<lo>-<hi>`` (inclusive), whitespace tolerated; an empty
+    expression is an empty list.  ``first`` is where the numbering starts --
+    0 for atoms (``model/overview.md`` § 2), 1 for vibrational modes
+    (``engines/vibration.md`` § 4.8) -- and ``count``, when the number of
+    items is known, bounds it above.
+
+    Raises :class:`SelectionError` on a malformed token (a stray comma
+    included), a reversed range (``35-0``), or an index outside
+    ``[first, first + count)``.
+    """
+    if not expression or not expression.strip():
+        return []
+    out: set = set()
+    for tok in expression.split(","):
+        m = _RANGE_TOKEN_RE.fullmatch(tok)
+        if not m:
+            raise SelectionError(
+                f"invalid token {tok.strip()!r} in {expression!r}; "
+                f"expected '<int>' or '<int>-<int>'"
+            )
+        lo = int(m.group(1))
+        hi = int(m.group(2)) if m.group(2) is not None else lo
+        if hi < lo:
+            raise SelectionError(f"range {lo}-{hi} has hi < lo")
+        if lo < first:
+            raise SelectionError(
+                f"{lo} is below {first}, where the numbering starts")
+        if count is not None and hi >= first + count:
+            raise SelectionError(
+                f"range {lo}-{hi} out of [{first}, {first + count})")
+        out.update(range(lo, hi + 1))
+    return sorted(out)
+
+
+__all__ = ["SelectionError", "parse_index_list", "select_modes"]

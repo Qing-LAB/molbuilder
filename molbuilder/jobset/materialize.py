@@ -27,7 +27,7 @@ from ..pseudos import PSEUDO_DIRNAME
 from ..identity import resolve_stage_ref
 from ..runfiles import FIRST_ATTEMPT
 from .model import JobSet, warm_carry
-from .naming import (job_dir_names, ladder_homes, run_names,
+from .naming import (job_dir_names, ladder_homes, open_container, run_names,
                      stage_refs, stamp_containers)
 from ..paths import (attempt_dir, attempt_index, attempts_in,
                      bench_containers_in as _bench_containers_in)
@@ -408,36 +408,23 @@ def bring_files(jobset: JobSet, job, base, src_dir, run, names, plan
     (:func:`prepare_attempt`) and a swept run's point
     (:func:`open_sweep_run`)."""
     base, src_dir, run = Path(base), Path(src_dir), Path(run)
-    brought: List[str] = []
-
-    def _bring(fname: str) -> None:
-        bn = os.path.basename(fname)
-        dst = run / bn
-        for src in (src_dir / bn, base / fname, base / bn):
-            if plan.is_file(src) and src.resolve() != dst.resolve():
-                # REFRESHED every time: a REUSED unlaunched run must see the
-                # prep's deck, not an earlier one's.
-                plan.copy(src, dst)
-                brought.append(bn)
-                return
-
-    for fname in [job.script] + list(jobset.shared):
-        _bring(fname)
     # THE BUNDLES THAT TRAVEL BESIDE THE DECK -- the monitor's, the job's
     # finish, a PySCF script's code -- from the one list the wrapper's
     # writer reads too (`runwrap.bundles_for`): one file each, so none can
     # be half-shipped.  And makov_payne_correction.py: the post-run script a
     # CHARGED deck's own header instructs the user to run "after SIESTA
     # finishes" -- HERE, beside the .out.
-    from ..runwrap import bundles_for
-    from ..runfiles import MAKOV_PAYNE_SCRIPT
-    for extra in (*(name for name, _build in bundles_for(job.script,
-                                                        job.finish)),
-                  MAKOV_PAYNE_SCRIPT):
-        _bring(extra)
-    for wrapper in (names.name(".run.sh"), names.name(".sbatch")):
-        _bring(wrapper)
-    return brought
+    from ..runfiles import beside_the_deck
+    from .planned import bring
+    # THE ONE LIST of what travels beside a deck (`runfiles.beside_the_deck`:
+    # the bundles, the post-run script, the run script, the header, a call's
+    # coordinates file -- a folder holding none of one brings none), and the
+    # calculation's shared package.
+    names_ = ([job.script] + list(jobset.shared)
+              + list(beside_the_deck(job.script, job.finish, names)))
+    # THE ONE COPY STEP (`planned.bring`): from where prep rendered them,
+    # else the calculation's root.
+    return bring(plan, names_, into=run, from_dir=src_dir, also=(base,))
 
 
 @dataclass(frozen=True)
@@ -452,8 +439,7 @@ class SweepRun:
     fresh:  bool
 
 
-def open_sweep_run(calc, stage_name: str, *, plan,
-                   frames: Optional[int] = None) -> SweepRun:
+def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     """Open a swept stage's run -- ``run-<n>/`` -- and in it each point's
     folder, holding copies of that point's prepared files (its deck, run
     script and the shared package; :func:`bring_files`), and the run's
@@ -464,25 +450,33 @@ def open_sweep_run(calc, stage_name: str, *, plan,
     whole first (:func:`empty_run`) -- else the next (a launch again,
     `job-system.md` § 5.4, rule 3).  Each point
     folder is a run folder (`open_run`); the run above them is their
-    container.  ``frames`` is the junction's count when the caller holds it
-    (prep, composing it in the same plan); else the record's.  What the
+    container.  What the
     points take from upstream is the caller's (launch's gather), and what
     each starts from the walk's."""
-    from ..transport.stages import point_folders
+    from .points import points_of
     jobset, base, task, sh = (calc.jobset, Path(calc.base), calc.task,
                               calc.shape)
     job = jobset.job(stage_name)
     stage_dir = base / job_dir_names(jobset, sh)[job.name]
     rn = run_names(jobset, job, sh)
     run, fresh = resolve_attempt(stage_dir, rn)
-    sources = dict((pt, d) for d, pt in point_folders(base, task, stage_name,
-                                                      frames=frames))
+    # THE RUNG'S PREPARED POINTS, by its kind's declaration (`jobset.points`),
+    # its records as this plan holds them -- a prep composing the junction
+    # in the same plan has not written its record yet.
+    declared = points_of(task)
+    sources = dict((pt, stage_dir / pt.rel) for pt in declared
+                   .rung_points(calc, stage_name, read=plan.read_text))
     points = [(run / pt.rel, pt) for pt in sources]
     if not fresh:
         empty_run(run, plan)
     for pdir, pt in points:
         open_run(base, pdir, plan)
         bring_files(jobset, job, base, sources[pt], pdir, rn, plan)
+    # THE FOLDERS THE RUN HOLDS BESIDES ITS POINTS, by its kind's
+    # declaration (`points.PointsOf.containers`): a vibration's optical
+    # calls' container (`engines/vibration.md` § 5.11 § 2).
+    for rel in declared.containers(calc, stage_name):
+        open_container(base, run / rel, plan)
     # THE RUN'S SCRATCH FOLDER, opened with the run (`engines/transport.md`
     # § 2a.11): the rung declares it (`Job.scratch_dir`).
     if job.scratch_dir:

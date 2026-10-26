@@ -62,7 +62,7 @@ def test_a_value_the_engine_cannot_take_is_refused_with_its_reason(
         _d, _s, said = _prep(
             isolated_projects_root, WATER(),
             PySCFConfig(job_name="JOB", already_relaxed=True),
-            vibration_stages("pyscf", already_relaxed=True), "pyscf",
+            vibration_stages("pyscf"), "pyscf",
             calculation="vibration", before_prep=put, refused=True)
     assert f"the template sets {name} = 0.0: it must be greater than 0" \
         in said, said

@@ -2,8 +2,8 @@
 files it ships with reading one with molbuilder absent.
 
 The run is made in this pass, on the road, once for every module that reads
-it: a vibration's `relax` stage, the road's CO2 with its carbon held, run with the real
-SIESTA (`support/real_runs.py`).
+it: the `relax` call of a vibration's run in phases, the road's CO2 with its
+carbon held, run with the real SIESTA (`support/real_runs.py`).
 The monitor is then shown that run as it grew -- a copy of the run's own
 folder, its output written up to a line and grown on, under its own names
 (`process/testing.md` § 6) -- with the clock and the wakes the test's own, so
@@ -39,9 +39,11 @@ pytestmark = [
 ]
 
 @pytest.fixture(scope="module")
-def run(real_relaxed_for_vibration):
-    """The relaxation's run folder, made on the road."""
-    return real_relaxed_for_vibration.attempt("relax")
+def run(real_co2_vibration):
+    """The relaxation's folder -- the `relax` call of the run in phases,
+    made on the road (`RealRun.call`)."""
+    from molbuilder.siesta.vibration_phases import RELAX
+    return real_co2_vibration.call("freq", RELAX)
 
 
 def _ran(run: Path):

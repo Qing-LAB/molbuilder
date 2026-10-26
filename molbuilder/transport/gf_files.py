@@ -96,7 +96,8 @@ class _Deck:
 
 
 def _reads(deck_path: Path) -> _Deck:
-    return _Deck(Path(deck_path).read_text(errors="replace"))
+    from ..parse.fdf import read_deck
+    return _Deck(read_deck(deck_path))
 
 
 def k_points_time_reversed(grid: List[Tuple[int, float]]) -> int:

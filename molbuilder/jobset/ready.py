@@ -3,16 +3,14 @@ description and a run, and what a stage's first launch takes
 (`job-system.md`, *The task*; `architecture.md` § 3.2).
 
 **A stage is described, prepared or launched**, each answered here from the
-doors that already decide it.  **Described** -- not prepared: preparable,
-but a SIESTA force-constant stage while the `relax` run its deck would be
-written at has not finished (`continuation.continuation_answer`, the one
-value hand-over, `engines/vibration.md` § 5.2a).  **Prepared**, never
-launched: **ready to launch** when what its first launch takes is there,
-else **waits for** what it names -- the door that decides what it takes, the
-same one launch asks: an independent stage's continuation (the stage before
-it, its newest run finished), a transport rung's gather
-(`gather.gather_sources`, its three gates), a force-constant stage's `relax`
-run its prep took (`Job.written_at`).  **Launched**: the run doors answer.
+doors that already decide it.  **Described** -- not prepared: preparable.
+**Prepared**, never launched: **ready to launch** when what its first
+launch takes is there, else **waits for** what it names -- the door that
+decides what it takes, the same one launch asks: an independent stage's
+continuation (the stage before it, its newest run finished), a transport
+rung's gather (`gather.gather_sources`, its three gates); a SIESTA
+vibration's one run takes nothing from another stage
+(`engines/vibration.md` § 5.11).  **Launched**: the run doors answer.
 Nothing here decides a second way, and nothing is written.
 
 **A group** is the stages one number holds (`engines/stages.md` § 2),
@@ -41,8 +39,7 @@ class Readiness:
     launched: bool = False
     ready: bool = False
     #: What it takes, one line each: for a stage not prepared, what its
-    #: first launch will take, said before any run is read (a force-constant
-    #: stage, the `relax` run its deck would be written at); for one
+    #: first launch will take, said before any run is read; for one
     #: prepared, what its launch would take now.  ``[]`` for a stage that
     #: builds on nothing.
     takes: List[str] = field(default_factory=list)
@@ -52,8 +49,8 @@ class Readiness:
     #: Which wait ``why`` is, for a stage prepared and not ready to launch
     #: (`job-system.md`, *The task*): ``"waits"`` -- a run it builds on is
     #: not there yet; ``"regrouped"`` -- its job's members changed;
-    #: ``"unreadable"`` -- its launch record does not read; ``"again"`` --
-    #: it is prepared again before it can be launched.  ``None`` otherwise.
+    #: ``"unreadable"`` -- its launch record does not read.  ``None``
+    #: otherwise.
     blocked: Optional[str] = None
     #: The members of the job it is prepared in (`Job.members`, or itself
     #: alone) -- ``None`` when not prepared.
@@ -99,9 +96,8 @@ class Readiness:
         if self.prepared:
             if not self.ready:
                 return {"regrouped": "its job's members changed: ",
-                        "unreadable": "its launch record does not read: ",
-                        "again": "prepare its group again: "}.get(
-                            self.blocked, "waits for: ") + first
+                        "unreadable": "its launch record does not read: "
+                        }.get(self.blocked, "waits for: ") + first
             return ("ready to launch"
                     + (f" (prepared by {self.prepared_by})"
                        if self.prepared_by else "")
@@ -165,8 +161,7 @@ class GroupAnswer:
 
     @property
     def preparable(self) -> bool:
-        """It may be prepared now: every member preparable -- a
-        force-constant stage once its `relax` has finished -- no sequence
+        """It may be prepared now: every member preparable, no sequence
         still going holding it, and no member launched, or, on the
         hierarchical layout, a launched one prepared again for its job
         request (`execution/job-request.md` § 5)."""
@@ -472,102 +467,26 @@ def first_launch_takes(calc, stage: str, job, *,
                        cold: bool = False, verdict: bool = True):
     """``(continuation, gather, refusal)`` -- what ``stage``'s first launch
     takes (`job-system.md` § 6.0, step 1), from the one door per kind, read
-    now, every kind's refusal with it: a force-constant stage's `relax` run
-    its prep took (``job.written_at``) with that run's files -- ``cold`` and
-    ``from_attempt`` refused, its run its prep's; a transport rung's
-    gather, the three gates (`engines/transport.md` § 6.1), each point its
-    own for a rung that runs per point -- its inputs its kind's, never
-    named; an independent stage's continuation -- the stage before it's
-    newest run, which must have finished, ``from_attempt`` a run named,
-    ``cold`` none.  The continuation carries the files it would copy (the
-    pair's rule, `materialize.continuation_files`), so a run holding none is
-    refused here, before anything is sent.  ``calc`` is the calculation as
-    the verb read it (A16): every question about another stage -- prepared,
-    its newest run, its job -- is its plan's, the whole plan, never a set
+    now, every kind's refusal with it: a transport rung's gather, the three
+    gates (`engines/transport.md` § 6.1), each point its own for a rung that
+    runs per point -- its inputs its kind's, never named; a SIESTA
+    vibration's run nothing -- its calls build on each other inside the run
+    (`engines/vibration.md` § 5.11), ``cold`` and ``from_attempt`` refused
+    by the one door (`continuation.cannot_be_named`); an independent
+    stage's continuation -- the stage before it's newest run, which must
+    have finished, ``from_attempt`` a run named, ``cold`` none.  The
+    continuation carries the files it would copy (the pair's rule,
+    `materialize.continuation_files`), so a run holding none is refused
+    here, before anything is sent.  ``calc`` is the calculation as the verb
+    read it (A16): every question about another stage -- prepared, its
+    newest run, its job -- is its plan's, the whole plan, never a set
     narrowed to what one launch sends."""
     import dataclasses
-    from .continuation import Continuation, continuation_answer, read_run
-    from .ladder import force_constant_stage, relax_stage_of
+    from .continuation import continuation_answer
     from .materialize import continuation_files
     from .errors import PrepError, user_error_as_prep
     from .gather import gather_sources
-    base, task, shape = Path(calc.base), calc.task, calc.shape
-    if force_constant_stage(task, stage):
-        relax = relax_stage_of(task)
-        if cold or (from_attempt and relax is None):
-            # IT MEASURES AT THE GEOMETRY ITS `relax` REACHED, or the
-            # structure stated relaxed (§ 5.2a's table): nothing to start
-            # cold from, and no run to name.
-            from .continuation import cannot_be_named
-            return None, None, (
-                cannot_be_named(base, task, stage, from_attempt, cold)
-                or f"--cold: `{stage}` takes nothing to start cold from -- "
-                   f"it measures the structure as given.")
-        if relax is None:
-            return None, None, None
-        if from_attempt:
-            from .commands import block, command, words_for
-            from .continuation import cannot_be_named
-            # A RUN ON THE FLAT LAYOUT, which keeps none to name, is
-            # refused as such -- never told to a prep that would refuse it
-            # too.
-            if not shape.keeps_attempts_as_directories:
-                return None, None, cannot_be_named(base, task, stage,
-                                                   from_attempt, False)
-            return None, None, (
-                f"--from {from_attempt!r}: `{stage}`'s deck is written at the "
-                f"`relax` run its prep took ({job.written_at}), and its first "
-                f"launch takes that run's files -- another `relax` run is "
-                f"said at its prep (engines/vibration.md § 5.2a):\n"
-                + block([command("prep", *words_for(
-                    "task", groups=[calc.request.group_of(stage)]), base=base,
-                    flags=("--from", from_attempt))]))
-        if job.written_at is None:
-            from .commands import way_back
-            return None, None, (
-                f"`{stage}` was prepared before its prep recorded the "
-                f"`{relax}` run its deck is written at (2.7.0), so its "
-                f"launch cannot say whose files it takes.  To launch it, "
-                + way_back(stage, calc=calc, launched=False))
-        flat = not shape.keeps_attempts_as_directories
-        where = base if flat else base / job.written_at
-        # THE RUN ITS PREP TOOK, the one its record names -- on the flat
-        # layout by its name (`runfiles.parse_run_name`), never the newest.
-        from ..runfiles import parse_run_name
-        named = parse_run_name(job.written_at, task.label) if flat else None
-        if flat and named is None:
-            from .commands import way_back
-            return None, None, (
-                f"`{stage}`'s record names the `{relax}` run its deck is "
-                f"written at as {job.written_at!r}, which is no run of "
-                f"`{task.label}` in this folder.  To launch it, "
-                + way_back(stage, calc=calc, launched=False))
-        concluded, state, converged, _ = read_run(
-            base, task, relax, where, verdict=verdict,
-            run=named.run if named is not None else None)
-        cont = Continuation(stage=relax,
-                            source=None if flat else job.written_at,
-                            by_default=True, concluded=concluded,
-                            state=state, converged=converged, linked=True,
-                            run=job.written_at if flat else None)
-        if flat:
-            # WHAT IT READS is the folder's restart files, as the last run
-            # there left them (`continuation.flat_files`) -- a record of
-            # another run that does not read is the refusal, in its words.
-            from ..runrecord import LaunchRecordError
-            from .continuation import flat_files
-            try:
-                return (dataclasses.replace(flat_files(base, task, cont),
-                                            carries=()), None, None)
-            except LaunchRecordError as exc:
-                return None, None, str(exc)
-        try:
-            names = continuation_files(calc, stage, job.written_at,
-                                       named=False)
-        except ValueError as exc:
-            return None, None, str(exc)
-        return (dataclasses.replace(cont, carries=tuple(
-            n for n in names if (where / n).is_file())), None, None)
+    base, task = Path(calc.base), calc.task
     if task.calculation == "transport":
         # ITS INPUTS ARE ITS KIND'S, never named: `--from` / `--cold`
         # refused by the one door, as a swept rung's are -- but a rung of
@@ -615,9 +534,7 @@ def at_launch(calc, stage: str, *, job=None) -> List[dict]:
     when prepared; ``files`` ``None`` before) from the stage before it, by
     the pair's rule the launch copies by (`model.warm_carry`) against that
     stage's job in the calculation's plan, ``calc`` as the verb read it
-    (A16); ``[]`` for a stage that builds on nothing.  A
-    force-constant stage's is the `relax` run its deck is written at
-    (:func:`readiness`)."""
+    (A16); ``[]`` for a stage that builds on nothing."""
     task = calc.task
     if task.calculation == "transport":
         from ..transport.stages import inputs_of
@@ -650,18 +567,6 @@ def carried_from(calc, job, source: str) -> List[str]:
     return warm_carry(job, calc.job(source))
 
 
-def written_at_takes(cont, files=None) -> dict:
-    """What a force-constant stage's first launch takes -- ``{"from",
-    "files", "line"}`` as :func:`at_launch`'s items: ``files`` (its job's
-    restart files, ``None`` before it is prepared) from the `relax` run its
-    deck is written at, ``cont`` (`engines/vibration.md` § 5.2a)."""
-    return {"from": cont.stage, "files": files,
-            "line": f"at launch: takes "
-                    f"{', '.join(files) if files else 'its restart files'} "
-                    f"from the `{cont.stage}` run its deck is written at, "
-                    f"{cont.where()}"}
-
-
 def takes_sentence(items: List[dict]) -> str:
     """:func:`at_launch`'s items as one sentence -- the one item's line, or
     for several upstreams *at launch: takes <files> from <stage>; ... --
@@ -676,17 +581,14 @@ def takes_sentence(items: List[dict]) -> str:
 
 def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
     """``stage``'s answer (`job-system.md`, *The task*), each run taken by
-    default: for a force-constant stage not prepared, the `relax` run its
-    prep would write it at; for a stage prepared, what its first launch
-    would take.  ``verdict=False``
+    default: for a stage prepared, what its first launch would take.
+    ``verdict=False``
     leaves a relaxation's convergence unread -- for `status`, read far more
     often than a prep or a launch.  ``calc`` is the calculation as the verb
     opened it (`calculation.open`, A16): its description, template and
     plan, read once."""
-    from .continuation import continuation_answer
-    from .ladder import force_constant_stage
     from .materialize import ever_launched
-    task, jobset = calc.task, calc.jobset
+    jobset = calc.jobset
     group = calc.request.group_of(stage)
     job = calc.job(stage)
     if job is not None:
@@ -718,14 +620,9 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
         cont, gather, why = first_launch_takes(calc, stage, job,
                                                verdict=verdict)
         if why:
-            # A FORCE-CONSTANT STAGE PREPARED BEFORE ITS PREP RECORDED THE
-            # RUN its deck is written at is prepared again; every other
-            # refusal waits for a run it builds on.
-            again = (job.written_at is None
-                     and force_constant_stage(task, stage))
+            # A REFUSAL WAITS for a run the stage builds on.
             return Readiness(stage, group, prepared=True, why=why,
-                             blocked="again" if again else "waits",
-                             job_members=members, **since)
+                             blocked="waits", job_members=members, **since)
         return Readiness(stage, group, prepared=True, ready=True,
                          takes=_takes_lines(cont, gather),
                          job_members=members,
@@ -742,15 +639,6 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
         if hit and stage in hit[1]:
             return Readiness(stage, group, why=joined_launched(
                 calc, group, *hit))
-    if force_constant_stage(task, stage):
-        # THE ONE VALUE HAND-OVER: its deck is written at a `relax` run,
-        # which must have finished before it can be prepared.
-        cont, why = continuation_answer(calc, stage, verdict=verdict)
-        if why:
-            return Readiness(stage, group, why=why)
-        return Readiness(stage, group, ready=True,
-                         takes=([written_at_takes(cont)["line"]]
-                                if cont is not None else []))
     from .continuation import unreadable
     try:
         items = at_launch(calc, stage)
@@ -772,14 +660,13 @@ def _prepared_by_another(calc, job) -> Optional[str]:
     it, or the deck is not there to say."""
     from .. import __version__
     from ..script_emit import molbuilder_words, written_by
-    from ..transport.stages import point_folders
     from .naming import job_dir_names
+    from .points import rung_points_of
     try:
         folder = (Path(calc.base)
                   / job_dir_names(calc.jobset, calc.shape)[job.name])
-        points = (point_folders(calc.base, calc.task, job.name)
-                  if calc.task.calculation == "transport" else [])
-        text = ((points[0][0] if points else folder) / job.script
+        points = rung_points_of(calc, job.name)
+        text = ((folder / points[0].rel if points else folder) / job.script
                 ).read_text(errors="replace")
     except (OSError, ValueError, KeyError):
         return None
@@ -934,5 +821,5 @@ __all__ = ["Readiness", "GroupAnswer", "TaskState", "task_state",
            "joined_launched", "why_group_fixed", "regrouped",
            "launched_stage",
            "first_launch_takes",
-           "at_launch", "written_at_takes", "takes_sentence", "ladder", "groups", "prep_offer", "launch_offer",
+           "at_launch", "takes_sentence", "ladder", "groups", "prep_offer", "launch_offer",
            "groups_text"]

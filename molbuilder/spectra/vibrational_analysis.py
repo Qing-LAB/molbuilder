@@ -265,37 +265,36 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
                          engine: str = "") -> str:
     """THE remedy for a reference geometry that is not a stationary point
     (`engines/vibration.md` § 2.2, § 5.5, § 5.8) — one text, written by
-    `prep` at a force-constant stage, by the SIESTA finish into the result,
-    and by the PySCF deck's gradient check, so the three cannot advise
-    differently for one fact.
+    `prep`, by the SIESTA finish into the result, and by the PySCF deck's
+    gradient check, so the three cannot advise differently for one fact.
 
-    ``relaxation_stage`` is the ladder's stage that relaxed the geometry, or
+    ``relaxation_stage`` is the stage whose run relaxed the geometry, or
     ``None`` when the person stated it relaxed.  ``engine`` says what "relax
-    first" is: on SIESTA the ladder's `relax` stage before this one (`prep`
-    refuses a force-constant stage without one while the box is unticked),
-    on PySCF the deck's own relaxation phase."""
+    first" is: on SIESTA the run's `relax` call, on PySCF the deck's own
+    relaxation phase -- each on when `already_relaxed` is unticked."""
     if relaxation_stage:
-        # THE LAUNCH AS A TEXT READ LATER SAYS IT (`identity.launch_as_typed`,
-        # the decks' own wording): this remedy is written into a result and
-        # read wherever it was copied, so it names no folder, and says what
-        # the mode means rather than leaving a line `launch` refuses (W52).
-        # IN THE ORDER IT CAN BE DONE: a launched stage is not prepared
-        # again -- a redo is the state saved before its group's first launch,
-        # restored (`job-system.md`, *How the checkpoint supports you*) --
-        # and restoring it after `relax`'s new run would take that run away,
-        # so the restore comes first.  The words are `identity`'s, imported
-        # the module's two ways: this runs beside the job too, in the
-        # finish's `_stationarity`.
+        # THE RUN RELAXED FIRST and still ended off a stationary point: the
+        # relaxation needs more steps, from the state saved before the
+        # launch (a launched stage is not prepared again, `job-system.md`,
+        # *How the checkpoint supports you*), or every call of the run
+        # again from the structure (`--cold`; `engines/vibration.md`
+        # § 5.11 § 5).  THE LAUNCH AS A TEXT READ LATER SAYS IT
+        # (`identity.launch_as_typed`): this remedy is written into a
+        # result and read wherever it was copied, so it names no folder
+        # (W52).  The words are `identity`'s, imported the module's two
+        # ways: this runs beside the job too, in the finish's
+        # `_stationarity`.
         s = str(relaxation_stage)
         return (f"If this stage was launched, first go back to "
-                f"{LAUNCHED_WAY_BACK}{_RESTORE}; launch the `{s}` stage again "
-                f"from the calculation's folder -- `{launch_as_typed(s)}` "
-                f"{LAUNCH_MODE_NOTE} -- it continues from its newest "
-                f"run, at the geometry it stopped at; then prepare this "
-                f"stage's group again once it has finished.")
-    first = ("untick `already_relaxed` and add the `relax` stage before "
-             "this one (Task setup, or task.json and its group in "
-             "job-request.json)"
+                f"{LAUNCHED_WAY_BACK}{_RESTORE}; then give `{s}` more "
+                f"relaxation steps (`relax_steps`, Task setup's stage table "
+                f"or task.json), prepare its group again and launch it -- "
+                f"its run relaxes first; or launch it again cold -- "
+                f"`{launch_as_typed(s)} --cold` {LAUNCH_MODE_NOTE} -- "
+                f"every call of the run again, the relaxation from the "
+                f"structure at the steps it has.")
+    first = ("untick `already_relaxed` (Task setup, or task.json) so the "
+             "run relaxes first"
              if str(engine).lower() == "siesta" else
              "untick `already_relaxed` so the calculation relaxes first")
     return (f"Relax first -- if this stage was launched, first go back to "

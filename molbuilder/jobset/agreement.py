@@ -66,7 +66,8 @@ def check_trial_starts_cold(job_dir, job) -> None:
         # its deck fails loudly on its own; this gate's question is only
         # whether an EXISTING deck would warm-start.
         return
-    text = deck.read_text(encoding="utf-8", errors="replace")
+    from ..parse.fdf import read_deck
+    text = read_deck(deck)
     # THE RESTART GROUP, as the catalogue spells it (`[item.restart]
     # .expands`), read off the deck by the one door (`script_emit.
     # deck_values`) and each switch as fdf reads one (`parse.fdf.fdf_true`).

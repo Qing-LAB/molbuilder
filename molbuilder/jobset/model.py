@@ -387,12 +387,12 @@ class Job:
     #: § 2), in ladder order, this one among them (`project-layout.md`
     #: § 1.6.6); ``None`` for a group of one.
     members:    Optional[List[str]] = None
-    #: THE RUN ITS DECK IS WRITTEN AT: a SIESTA force-constant stage's
-    #: `relax` run, decided at its prep -- its attempt (``02_relax/run-0``),
-    #: or on the flat layout the run by its name -- whose files its first
-    #: launch copies (`engines/vibration.md` § 5.2a).  ``None`` for every
-    #: other stage, whose hand-over is taken at its first launch.
-    written_at: Optional[str] = None
+    #: THE PHASES OF A RUN IN PHASES, in the order the run walks them -- a
+    #: SIESTA vibration stage's calls as its prep switched them on
+    #: (`siesta.vibration_phases.PHASES`; `engines/vibration.md` § 5.11):
+    #: what launch opens and walks, and what the run's own python follows.
+    #: ``None`` for a stage that runs as one call.
+    phases:     Optional[List[str]] = None
     #: WHICH PROGRAM THE JOB RUNS -- what it computes, so the job's and
     #: never a resource: ``None`` is the engine's own (``siesta`` for a
     #: ``.fdf``); a transport ladder's transmission is ``tbtrans``
@@ -412,7 +412,7 @@ class Job:
     def to_dict(self) -> Dict[str, Any]:
         # EVERY KEY, EVERY JOB (`job-contracts.md` § 6.1): `point` empty for
         # a job that is no trial, `finish`, `placement`, `members` and
-        # `written_at` null where there is none, `resumes`
+        # `phases` null where there is none, `resumes`
         # true or false.
         return {
             "name": self.name,
@@ -429,7 +429,8 @@ class Job:
                           if self.placement is not None else None),
             "members": (list(self.members) if self.members is not None
                         else None),
-            "written_at": self.written_at,
+            "phases": (list(self.phases) if self.phases is not None
+                       else None),
             "program": self.program,
         }
 
@@ -461,8 +462,8 @@ class Job:
                        else None),
             members=([str(n) for n in d["members"]]
                      if d["members"] is not None else None),
-            written_at=(str(d["written_at"]) if d["written_at"] is not None
-                        else None),
+            phases=([str(p) for p in d["phases"]]
+                    if d["phases"] is not None else None),
             program=(str(d["program"]) if d["program"] is not None
                      else None),
         )
@@ -543,7 +544,7 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
 #: § 6.1) -- the one list the writer's dict and the reader's check share.
 JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
             "finish", "resumes", "scratch_dir", "placement", "members",
-            "written_at", "program")
+            "phases", "program")
 
 
 class WrittenBefore(ValueError):

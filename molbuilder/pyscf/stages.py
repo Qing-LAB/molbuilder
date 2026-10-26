@@ -13,7 +13,7 @@ if TYPE_CHECKING:                      # annotations only
 
 from typing import Dict, List
 
-from ..config.stages import VIBRATION_FREQ_STAGE, VIBRATION_RELAX_STAGE
+from ..config.stages import VIBRATION_FREQ_STAGE
 from ..jobset.model import WarmFile
 
 
@@ -108,44 +108,16 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
 VIBRATION_ENGINES = ("pyscf", "siesta")
 
 
-def vibration_stages(engine: str, *, already_relaxed: bool) -> List["Stage"]:
-    """The vibration calculation's ladder, read from the person's one
-    statement (`engines/vibration.md` § 2.2, § 5.2a).
-
-    ``freq`` alone when the structure is stated relaxed, and always on
-    PySCF, whose deck relaxes in-process (Phase 0) before the Hessian;
-    ``relax`` then ``freq`` on SIESTA otherwise, because a SIESTA run is one
-    ``MD.TypeOfRun`` and cannot relax and take force constants in one go.
-    No tier overrides on either rung: the convergence settings are the
-    template's own, recommended tight by the catalogue (`template.md`
-    § 6.3a), and a person changes them there.
+def vibration_stages(engine: str) -> List["Stage"]:
+    """The vibration calculation's ladder: ONE stage, ``freq``, on both
+    engines (`engines/vibration.md` § 2.2, § 5.11 § 1) -- PySCF's deck
+    relaxes in-process (Phase 0) before the Hessian, and a SIESTA stage is
+    one run in phases, its relaxation the run's first call, on when the
+    structure is not stated relaxed (`already_relaxed`, the phases' switch,
+    read at prep from the stage's config -- never from the ladder).  No
+    tier overrides: the convergence settings are the template's own,
+    recommended tight by the catalogue (`template.md` § 6.3a), and a
+    person changes them there.
     """
     from ..task import Stage
-    out: List[Stage] = []
-    if str(engine) == "siesta" and not already_relaxed:
-        out.append(Stage(name=VIBRATION_RELAX_STAGE, overrides={}))
-    out.append(Stage(name=VIBRATION_FREQ_STAGE, overrides={}))
-    return out
-
-
-def vibration_render_kind(stage_name: str) -> str:
-    """Which deck a vibration stage renders (`engines/vibration.md` § 5.2a):
-    the ``relax`` stage is the ordinary relaxation deck -- nothing is
-    invented for it -- and every other rung is the kind's own.  Read off the
-    rung's ROLE on the engine whose vibration is two programs, SIESTA
-    (`template.stage_role`, the one rule, plan § 5w K4)."""
-    from ..template import stage_role
-    return ("optimization"
-            if stage_role("siesta", "vibration", stage_name) == "relaxation"
-            else "vibration")
-
-
-def force_constant_stages(task) -> List[str]:
-    """The stages of a vibration description that render the kind's own
-    deck, in ladder order -- every stage but ``relax``
-    (:func:`vibration_render_kind`), WHATEVER ITS NAME.  On SIESTA each is a
-    force-constant run, and two or more are a displacement sweep
-    (`engines/vibration.md` § 5.9); each measures at the relax stage's
-    geometry (§ 5.2a)."""
-    return [s.name for s in task.stages
-            if vibration_render_kind(s.name) == "vibration"]
+    return [Stage(name=VIBRATION_FREQ_STAGE, overrides={})]

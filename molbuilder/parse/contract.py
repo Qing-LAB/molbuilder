@@ -151,7 +151,10 @@ def _force_tolerance_of(targets: Optional[Dict[str, Any]]) -> Optional[float]:
     header, `parse.engines.molwatch_grammar.parse_convergence_line`).  One stage
     nested is the run's; several is a header this run did not write alone,
     and the answer is ``None`` rather than a pick."""
-    from ..trajectory_log import keys as _K
+    try:
+        from ..trajectory_log import keys as _K
+    except ImportError:                     # beside the job
+        import keys as _K  # type: ignore[no-redef]
     leaf = _K.targets_of(targets) or {}
     v = leaf.get(_K.MAX_FORCE_TOL)
     return float(v) if isinstance(v, (int, float)) else None
@@ -284,9 +287,11 @@ def relaxation_of_output(path, traj, *,
 
 
 def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
-    from .fdf import parse_fdf_params
+    from .fdf import parse_fdf_params, read_deck
     try:
-        text = deck.read_text(encoding="utf-8")
+        # THE DECK AS THE ENGINE READS IT (`read_deck`): a block read from
+        # a file beside it -- a vibration call's coordinates -- inlined.
+        text = read_deck(deck)
     except OSError:
         return None
     from ..units import UnknownUnit
@@ -351,7 +356,10 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
 #: an engine -- a FORMAT, and reading it as an engine is exactly the
 #: substitution `running-a-job.md` § 4.2 forbids.  No `WRITTEN` row names it
 #: as an engine either.
-from ..runfiles import engines as _engines, stdout_roles as _stdout_roles
+try:                                        # inside molbuilder
+    from ..runfiles import engines as _engines, stdout_roles as _stdout_roles
+except ImportError:                         # beside the job (mb_vibration.pyz)
+    from runfiles import engines as _engines, stdout_roles as _stdout_roles  # type: ignore[no-redef]
 
 _ENGINES = _engines()
 

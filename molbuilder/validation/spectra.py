@@ -484,8 +484,8 @@ def spectra_render_checks(struct: Structure,
 
 
 def siesta_vibration_checks(struct: Structure, cfg, *,
-                            design: Optional[Structure] = None,
-                            relaxed_by: Optional[dict] = None) -> List[Issue]:
+                            design: Optional[Structure] = None
+                            ) -> List[Issue]:
     """The vibration kind's science on SIESTA -- the force-constant run.
 
     What holds on both engines is said once here and in
@@ -493,15 +493,10 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     motions survive the freeze, from the one derivation, and the
     structure's own relaxation record read against this calculation.  What
     is this route's own: at least one free atom to nudge, and the two
-    states of the person's box -- unticked the ladder's `relax` stage runs
+    states of the person's box -- unticked the run's relaxation phase runs
     first, ticked the force constants are taken at the geometry as given
-    and the job's finish measures it (`engines/vibration.md` § 2.2, § 5.8).
-
-    ``relaxed_by`` is the ladder's `relax` stage's record, at a
-    force-constant stage whose coordinates that stage left (`validate`'s
-    ``prior``).  Then the box's two states are moot -- the ladder relaxed
-    whatever it says -- and the stage is told that relaxation's outcome
-    instead (§ 5.2a, V1.36).
+    and the job's finish measures it (`engines/vibration.md` § 2.2, § 5.8,
+    § 5.11).
     """
     issues: List[Issue] = []
     n = int(struct.n_atoms)
@@ -572,31 +567,16 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     _tol = getattr(cfg, "relax_force_tol", None)
     _tol_text = (f"{float(_tol):g} eV/Å" if _tol is not None
                  else "the template's relax_force_tol")
-    if relaxed_by is not None:
-        # THE LADDER RELAXED THESE COORDINATES: its `relax` stage's outcome
-        # is this stage's fact, said in place of the box's describe-time
-        # advice and of the input's own record, and judged by the tolerance
-        # it relaxed to, as its record states it -- the finish's yardstick
-        # (`sidecar._ladder_relaxation_findings`, `engines/vibration.md`
-        # § 5.5).
-        from ..config.stages import VIBRATION_RELAX_STAGE
-        from .sidecar import check_relaxation_record
-        issues.extend(check_relaxation_record(
-            design if design is not None else struct, engine="siesta",
-            already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
-            force_tolerance_ev_ang=None,
-            relaxed_by=relaxed_by, relax_stage=VIBRATION_RELAX_STAGE))
-        return issues
     if not bool(getattr(cfg, "already_relaxed", False)):
         issues.append(Issue(
             severity="info",
             message=(
-                f"The structure is not stated to be relaxed, so the ladder "
-                f"relaxes it first: a `relax` stage runs before the "
-                f"force-constant stage, to this calculation's own force "
+                f"The structure is not stated to be relaxed, so the run "
+                f"relaxes it first: its relaxation phase runs before the "
+                f"force constants, to this calculation's own force "
                 f"tolerance ({_tol_text}, the relaxation settings on this "
                 f"form), and the force constants are taken at the relaxed "
-                f"geometry."),
+                f"geometry (engines/vibration.md 5.11)."),
             where="config.already_relaxed"))
     else:
         issues.append(Issue(

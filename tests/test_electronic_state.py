@@ -172,7 +172,7 @@ def test_the_charge_step_on_every_deck(isolated_projects_root,
         return _prep(isolated_projects_root, deprotonated_diester,
                      PySCFConfig(job_name="JOB", net_charge=net_charge,
                                  already_relaxed=vib),
-                     (vibration_stages("pyscf", already_relaxed=True) if vib
+                     (vibration_stages("pyscf") if vib
                       else default_pyscf_stages("publishable")),
                      "pyscf", calculation=kind)[2]
     blank = deck(None)
@@ -184,7 +184,7 @@ def test_the_charge_step_on_every_deck(isolated_projects_root,
         _d, _s, said = _prep(isolated_projects_root, deprotonated_diester,
                              PySCFConfig(job_name="JOB", net_charge=0,
                                          already_relaxed=True),
-                             vibration_stages("pyscf", already_relaxed=True),
+                             vibration_stages("pyscf"),
                              "pyscf", calculation="vibration", refused=True)
         assert "spin_treatment = unrestricted (detected" in said, said
         assert "charge     = -1," in blank and why in blank
@@ -324,7 +324,7 @@ def test_a_restricted_open_vibration_is_refused(isolated_projects_root):
         isolated_projects_root, METHYL(),
         PySCFConfig(job_name="JOB", already_relaxed=True,
                     spin_treatment="restricted-open"),
-        vibration_stages("pyscf", already_relaxed=True), "pyscf",
+        vibration_stages("pyscf"), "pyscf",
         calculation="vibration", refused=True)
     assert "no analytic ROHF/ROKS Hessian" in said, said
 

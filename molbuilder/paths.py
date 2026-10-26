@@ -57,27 +57,29 @@ SHAPES = ("flat", "hierarchical")
 #: plan § 5w K4): which
 #: rung of a kind reads an item, named by what the rung DOES -- the kind's
 #: own vocabulary.  Transport's roles are its five rungs, by name; a
-#: vibration's are its relaxation and its force-constant run, whatever the
-#: stages are called.  A kind absent here has no roles: every rung reads
-#: every item the kind carries (an optimization ladder is one calculation
-#: tuned N ways).  It lives HERE, beside ``SHAPES``, for the same reason:
-#: ``task`` checks a transport ladder against it (``task.fixed_by_kind``),
-#: and the catalogue (``template``) reads it too.
+#: vibration's are the three phases of its one run -- the relaxation, the
+#: force-constant run and the optical calls (`engines/vibration.md` § 5.11
+#: § 9; each `siesta.vibration_phases.PHASES` row names its role), which
+#: one SIESTA stage carries all of.  A kind absent here has no roles: every
+#: rung reads every item the kind carries (an optimization ladder is one
+#: calculation tuned N ways).  It lives HERE, beside ``SHAPES``, for the
+#: same reason: ``task`` checks a transport ladder against it
+#: (``task.fixed_by_kind``), and the catalogue (``template``) reads it too.
 KIND_ROLES: Dict[str, Tuple[str, ...]] = {
     "transport": ("seed", "electrode_L", "electrode_R", "device",
                   "transmission"),
-    "vibration": ("relaxation", "force_constants"),
+    "vibration": ("relaxation", "force_constants", "optical"),
 }
 
 #: NAMED SETS OF THOSE ROLES, which a catalogue item's ``stages`` cites by
 #: name (`engines/template.md` § 6.4) -- a fact many items share, stated
 #: once.  ``scf``: every rung that runs an SCF -- transport's seed, leads and
-#: device, a vibration's relaxation and force-constant runs -- and never the
-#: transmission, whose ``tbtrans`` runs none and has no GPU path
-#: (`engines/transport.md` § 6.1b).
+#: device, a vibration's three phases (an optical call is a single point)
+#: -- and never the transmission, whose ``tbtrans`` runs none and has no
+#: GPU path (`engines/transport.md` § 6.1b).
 ROLE_SETS: Dict[str, Tuple[str, ...]] = {
     "scf": ("seed", "electrode_L", "electrode_R", "device", "relaxation",
-            "force_constants"),
+            "force_constants", "optical"),
 }
 
 
@@ -264,8 +266,12 @@ def stages_in(root, shape: "Shape", label: str = ""
     script, its outputs) and its bench container's.  A stage the description
     no longer names still holds its number here -- gaps are honest.
     """
-    from .identity import parse_token
-    from .runfiles import parse as _rf_parse
+    try:                                    # inside molbuilder
+        from .identity import parse_token
+        from .runfiles import parse as _rf_parse
+    except ImportError:                     # beside a job (mb_vibration.pyz)
+        from identity import parse_token
+        from runfiles import parse as _rf_parse
     root = Path(root)
     try:
         entries = list(root.iterdir())
@@ -333,7 +339,10 @@ def flat_bench_token(name: str) -> Optional[str]:
     if not name.startswith(FLAT_BENCH_PREFIX):
         return None
     token = name[len(FLAT_BENCH_PREFIX):]
-    from .identity import parse_token
+    try:                                    # inside molbuilder
+        from .identity import parse_token
+    except ImportError:                     # beside a job
+        from identity import parse_token
     return token if parse_token(token) else None
 
 
@@ -374,7 +383,10 @@ def bench_containers_in(root, shape: "Optional[Shape]" = None
     except OSError:
         return out
     if shape.keeps_attempts_as_directories:
-        from .identity import parse_token
+        try:                                # inside molbuilder
+            from .identity import parse_token
+        except ImportError:                 # beside a job
+            from identity import parse_token
         for d in entries:
             if (d.is_dir() and parse_token(d.name)
                     and (d / BENCH_DIRNAME).is_dir()):

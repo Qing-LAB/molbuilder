@@ -529,7 +529,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                cell: Optional[np.ndarray] = None,
                calculation: str = "optimization",
                vibration: Optional[dict] = None,
-               relaxed_by: Optional[dict] = None,
+               part: Optional[str] = None,
                state=None,
                trial: Optional[str] = None,
                point=None, scratch_dir: Optional[str] = None,
@@ -548,16 +548,18 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     deck: a trial's is ``launch bench <stage> <trial>``, and the run's
     ``launch task <stage>`` would launch a different job (plan § 5w K12).
 
-    ``vibration`` is a force-constant deck's `vibration` block, built by
-    `prep` (`spectra.siesta_vibration.vibration_record`): placed in the
-    record as given and never read here, because only `prep` holds its facts
-    (`engines/vibration.md` § 5.3).  A force-constant deck also names the
-    bundle that finishes its run (`DeckSpec.finish`, § 5.5).
-
-    ``relaxed_by`` is the relaxation record the ladder's `relax` stage left,
-    at a force-constant stage written at its geometry -- a bench trial's
-    deck too, which carries no `vibration` block: the checks judge that
-    outcome rather than the input's (`validate`'s ``prior``; V1.36).
+    ``part`` is which phase of a vibration run the deck is
+    (`siesta.vibration_phases.PHASES`, `engines/vibration.md` § 5.11 § 4):
+    ``relax`` -- the optimisation layout under the vibration's catalogue;
+    ``fc`` -- the force-constant run; ``optical`` -- a single point with the
+    optical calculation.  A vibration deck is one of the three; every other
+    kind's deck has no part.  ``vibration`` is the force-constant deck's
+    `vibration` block, built by `prep`
+    (`spectra.siesta_vibration.vibration_record`): placed in the record as
+    given and never read here, because only `prep` holds its facts
+    (§ 5.3).  Every vibration deck names the bundle that runs its phase's
+    Python steps and finishes the run (`DeckSpec.finish`, § 5.5, § 5.11
+    § 3).
 
     ``state`` is a transport calculation's electronic state, which `prep`
     resolves ONCE on the whole junction and hands to every rung
@@ -601,7 +603,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # (§ 3.6a).
         unread = [name for name, value in (
             ("cell", cell), ("vibration", vibration),
-            ("relaxed_by", relaxed_by), ("trial", trial)) if value is not None]
+            ("part", part), ("trial", trial)) if value is not None]
         if unread:
             raise ValueError(
                 f"a transport deck reads no {', '.join(unread)} -- its cell "
@@ -621,11 +623,24 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         raise ValueError(
             f"SIESTA renders 'optimization', 'vibration' and 'transport'; "
             f"it has no {calculation!r} deck.")
-    # THE VIBRATION KIND on this engine is the force-constant run: the
-    # optimisation deck's sections minus the geometry section, plus the FC
-    # block and its one item (`siesta/vibration_deck.py`).  A render
-    # argument, like the stage token -- the seam stays one per engine.
+    # THE VIBRATION KIND on this engine is one run in phases, each phase's
+    # deck a PART of the kind (`siesta/vibration_deck.py`, `engines/
+    # vibration.md` § 5.11 § 4): the relaxation, the optimisation layout;
+    # the force-constant run, the optimisation deck's sections minus the
+    # geometry section plus the FC block; the optical single point.  A
+    # render argument, like the stage token -- the seam stays one per
+    # engine.
     _vibration = calculation == "vibration"
+    from . import vibration_deck as _vib_deck
+    if _vibration and part not in _vib_deck.PARTS:
+        raise ValueError(
+            f"a vibration deck is one of its run's parts, "
+            f"{', '.join(_vib_deck.PARTS)} (engines/vibration.md 5.11 4); "
+            f"part={part!r} is none of them.")
+    if not _vibration and part is not None:
+        raise ValueError(
+            f"a {calculation} deck has no part: the parts are a vibration "
+            f"run's phases (engines/vibration.md 5.11 4).")
     # WHAT THIS DECK WRITES is not collected here.  It is read off the
     # LAYOUT below by the framework, which is the only reading that can
     # close the check gate's loop: a list this writer kept would say what
@@ -828,17 +843,27 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # (`kmesh.mesh_for`, `engines/siesta.md` § 6.1).
     from .. import kmesh as _kmesh
     _mesh = _kmesh.mesh_for(cfg, struct.axis_kind, kind=calculation)
+    # WHAT THE PART DERIVES (`engines/vibration.md` § 5.11 § 4): the
+    # relaxation the geometry loop's keywords, as an optimisation; the
+    # force constants their range; the optical call its light and its mesh.
+    _derived: dict = {**_spin_facts(state),
+                      **_parallel_facts(cfg, _mesh),
+                      "k_mesh": _mesh}
     if _vibration:
-        from . import vibration_deck as _vib_deck
-        _derived: dict = {**_spin_facts(state),
-                          **_parallel_facts(cfg, _mesh),
-                          "k_mesh": _mesh,
-                          "fc": _vib_deck.fc_facts(struct, cfg)}
+        # THE COORDINATES IN A FILE BESIDE THE DECK (`engines/vibration.md`
+        # § 5.11 § 4): the rows the deck would hold, which it reads with
+        # `%block AtomicCoordinatesAndAtomicSpecies < coordinates.fdf` --
+        # prep writes the file (`prep.Rung.beside`), a call's own python
+        # its own.
+        from .deck_lines import coordinates_text
+        _derived["coordinates_file"] = coordinates_text(
+            struct.elements, positions, species_index)
+    if _vibration and part == _vib_deck.FC_PART:
+        _derived["fc"] = _vib_deck.fc_facts(struct, cfg)
+    elif _vibration and part == _vib_deck.OPTICAL_PART:
+        _derived["optical"] = _vib_deck.optical_facts(cfg, _mesh)
     else:
-        _derived = {**_spin_facts(state),
-                    **_parallel_facts(cfg, _mesh),
-                    "k_mesh": _mesh,
-                    **(_relaxation_facts(cfg) or {})}
+        _derived.update(_relaxation_facts(cfg) or {})
 
     def _deck_line(param):
         # ONE channel: whatever this deck has worked out so far.
@@ -881,6 +906,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                _sc.Block("the force-constant run",
                          lambda s, c: _vib_deck.fc_block(s, c, _derived)))
               if _derived.get("fc") else ()),
+            *((_sc.Block("the optical single point",
+                         lambda s, c: _vib_deck.optical_block(s, c, _derived)),
+               _layout.OPTICAL_SECTION)
+              if _derived.get("optical") else ()),
             _sc.Block("after the geometry settings",
                       lambda s, c: _after_geometry(s, c)),
             _layout.OUTPUT_SECTION,
@@ -914,15 +943,12 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # ...ON THE K-POINT MESH THIS DECK WRITES, the one the block
             # below writes (`engines/siesta.md` § 6.1).
             "k_meshes": tuple(m for m in (_derived["k_mesh"],)
-                              if m is not None),
-            # AND WHAT THE LADDER'S `relax` STAGE LEFT, at a force-constant
-            # stage that measures at its geometry: the checks judge that
-            # outcome, not the input's (`validate`'s ``prior``; V1.36).
-            **({"prior": relaxed_by}
-               if _vibration and relaxed_by is not None else {})}),
-        # A FORCE-CONSTANT RUN LEAVES FORCE CONSTANTS, NOT THE RESULT: its
-        # job is finished by the bundle that derives the modes, and the deck
-        # carries what that finish reads (`engines/vibration.md` § 5.3, 5.5).
+                              if m is not None)}),
+        # A FORCE-CONSTANT RUN LEAVES FORCE CONSTANTS, NOT THE RESULT: the
+        # run is finished by the bundle that derives the modes, and the
+        # force-constant deck carries what that finish reads; every phase's
+        # deck names the bundle, whose steps plan and record its call
+        # (`engines/vibration.md` § 5.3, 5.5, 5.11 § 3).
         vibration=(vibration if _vibration else None),
         finish=(_vibration_bundle() if _vibration else None),
     )
@@ -1014,20 +1040,21 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "killed.")
             if stage_token:
                 out.append(f"# Stage {stage_token} -- "
-                           + (_vib_deck.stage_science(cfg, _derived)
-                              if _derived.get("fc") else _stage_science(cfg)))
+                           + (_vib_deck.stage_science(cfg, _derived, part)
+                              if _vibration else _stage_science(cfg)))
                 # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE,
                 # from the same answer as its restart group: the banner is what
                 # a person reads to decide whether the ladder is chaining.
-                # A force-constant stage's start state is its kind's
-                # (`vibration_deck.start_state_lines`), not ``restart``'s.
-                if _derived.get("fc"):
+                # A force-constant call's and an optical call's start state
+                # is the kind's (`vibration_deck.start_state_lines`), not
+                # ``restart``'s.
+                if _vibration and part != _vib_deck.RELAX_PART:
                     out.append(
-                        "# This stage reads the density (.DM) it finds and "
-                        "never the geometry (.XV): a")
+                        "# This call reads the density (.DM) it finds and "
+                        "never the geometry (.XV): it")
                     out.append(
-                        "# force-constant run starts from its deck's "
-                        "coordinates (its restart keys, below).")
+                        "# starts from its own coordinates file (its "
+                        "restart keys, below).")
                 elif continues(cfg):
                     # WHERE THOSE FILES COME FROM (`job-system.md`, *What a
                     # stage takes, and when*): its group's first launch
@@ -1122,10 +1149,28 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # Coordinates
         out.append("# --- Atomic coordinates ---")
         out.append("AtomicCoordinatesFormat Ang")
-        out.append("%block AtomicCoordinatesAndAtomicSpecies")
-        for el, (x, y, z) in zip(struct.elements, positions):
-            out.append(f"{x:.10f} {y:.10f} {z:.10f} {species_index[el]}")
-        out.append("%endblock AtomicCoordinatesAndAtomicSpecies")
+        if _vibration:
+            # A VIBRATION CALL READS ITS COORDINATES FROM THE FILE BESIDE
+            # THE DECK (`engines/vibration.md` § 5.11 § 4; libfdf's own
+            # include): the structure's as prep wrote them, a call's own
+            # where its python wrote them (the relaxed geometry, a displaced
+            # frame) -- one deck for every call of a phase.
+            from ..runfiles import COORDINATES_FILE
+            if cfg.verbose_comments:
+                out.append("# The rows are read from the file beside this "
+                           "deck: the structure's as prep wrote them, or")
+                out.append("# this call's own, written by the run's python "
+                           "(engines/vibration.md 5.11).")
+            out.append(f"%block AtomicCoordinatesAndAtomicSpecies < "
+                       f"{COORDINATES_FILE}")
+        else:
+            out.append("%block AtomicCoordinatesAndAtomicSpecies")
+            # THE ONE WRITER OF A COORDINATE ROW (`siesta.deck_lines`): the
+            # TranSIESTA decks and a run's own coordinates file write it too.
+            from .deck_lines import coordinates_rows
+            out.extend(coordinates_rows(struct.elements, positions,
+                                        species_index))
+            out.append("%endblock AtomicCoordinatesAndAtomicSpecies")
         out.append("")
 
         v = cfg.verbose_comments
@@ -1222,19 +1267,22 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         """
         out: List[str] = []
 
-        if _vibration:
-            # A force-constant run's start state is the KIND's, not the
-            # description's: the density is read, the geometry never is,
-            # because the run leaves its last displacement in .XV
-            # (`vibration_deck.start_state_lines` says why, measured).
+        if _vibration and part != _vib_deck.RELAX_PART:
+            # A force-constant call's and an optical call's start state is
+            # the KIND's, not the description's: the density is read -- the
+            # seed the walk copied in (`engines/vibration.md` § 5.11 § 3)
+            # -- the geometry never is, because a force-constant run leaves
+            # its last displacement in .XV (`vibration_deck.
+            # start_state_lines` says why, measured) and every call's
+            # geometry is its own coordinates file.
             if v: out += [
                 "",
                 "# Start from: the converged density under this SystemLabel is",
-                "# read when present (the reference step starts from it, and",
-                "# every displacement from the reference step's density, saved",
-                "# and reloaded by SIESTA).  The geometry (.XV) is NEVER read: a",
-                "# force-constant run",
-                "# writes its last displacement there, not a stationary point.",
+                "# read when present -- the seed the run's walk copied in from",
+                "# the call before (the relaxation's, or the force-constant",
+                "# run's reference density).  The geometry (.XV) is NEVER read:",
+                "# a force-constant run writes its last displacement there, and",
+                "# this call's geometry is its coordinates.fdf.",
                 "# Fixed by the kind -- the description's `restart` is not",
                 "# consulted here.",
             ]

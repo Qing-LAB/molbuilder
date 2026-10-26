@@ -1196,9 +1196,7 @@ def api_task_setup_handover():
     from molbuilder.jobset.group import fresh_groups
     from molbuilder.jobset.ladder import fresh_stages
     from molbuilder.task import derive_run, fresh_varies
-    proposed = fresh_stages(calculation, engine,
-                            already_relaxed=bool(getattr(cfg, "already_relaxed",
-                                                         False)))
+    proposed = fresh_stages(calculation, engine)
     groups = fresh_groups(proposed, engine=engine, calculation=calculation,
                           template_text=template_text)
     from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA
@@ -1324,15 +1322,14 @@ def api_task_setup_prep():
     (``plan_id``) and is refused when the plan it makes now differs.
 
     **Everything else is the entry's** (W55 B3, D15): the description, the
-    groups, the machine, the `relax` run a force-constant stage is written
-    at, every refusal in its words.
+    groups, the machine, every refusal in its words.
     """
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict):
         return jsonify({"ok": False, "error": "the body is a JSON object"}), 400
     # WORDS, as the page sends them: a field of another type is refused in
     # words, never a 500.
-    for key in ("dest", "kind", "target", "from", "plan_id"):
+    for key in ("dest", "kind", "target", "plan_id"):
         if body.get(key) is not None and not isinstance(body.get(key), str):
             return jsonify({"ok": False,
                             "error": f"`{key}` is a string"}), 400
@@ -1356,11 +1353,6 @@ def api_task_setup_prep():
         return jsonify({"ok": False,
                         "error": "`stages` is the one stage a benchmark "
                                  "measures"}), 400
-    # THE `relax` RUN a force-constant stage is written at (`job-system.md`
-    # § 5.4): a run of this calculation named by its folder
-    # (`01_relax/run-0`); what any other stage takes is its launch's.
-    from_raw = body.get("from")
-    from_attempt = (str(from_raw).strip() or None) if from_raw else None
     preview = bool(body.get("plan"))
     plan_id = (str(body.get("plan_id") or "").strip() or None)
     # NOTHING IS PREPARED UNSEEN (`job-system.md` § 5.0): a Prep names the
@@ -1375,12 +1367,6 @@ def api_task_setup_prep():
                         "error": "no calculation folder given"}), 400
     try:
         dest = _resolve_within_roots(dest_raw)
-        # ...AND THE RUN `from` NAMES, a folder below it: fenced as every
-        # path the browser sends (`web/web-api.md` § 2.1), the folder it
-        # resolves to -- a link below the calculation followed -- inside
-        # the tree.
-        if from_attempt:
-            _resolve_within_roots(str(dest / from_attempt))
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
     if not dest.is_dir():
@@ -1414,7 +1400,6 @@ def api_task_setup_prep():
                             stage=(stages[0].strip() if kind == "bench"
                                    else None),
                             target=target, allocation=Resources(),
-                            from_attempt=from_attempt,
                             preview=preview, plan_id=plan_id)
     except PrepError as exc:
         # Refused, not repaired -- the reader's own words, as the terminal
@@ -2853,9 +2838,8 @@ def api_task_setup_commands():
     target = body.get("target") or None
     if target == "(this machine)":
         target = LOCAL_TARGET
-    from_at_prep = prepared = False
+    prepared = False
     if picked and kind == "task":
-        from molbuilder.jobset.ladder import force_constant_stage
         from molbuilder.calculation import open as open_calculation
         from molbuilder.jobset.ready import task_state
         try:
@@ -2863,7 +2847,6 @@ def api_task_setup_commands():
             state = task_state(calc)
         except (OSError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-        task = state.task
         # PREPARED AS DESCRIBED, the ready door's answer (`GroupAnswer`):
         # its prepared jobs hold its members.
         gs = [g for g in state.groups if g.number in groups]
@@ -2881,8 +2864,6 @@ def api_task_setup_commands():
         # ...AND A PREP NAMES EVERY GROUP IT FORMS (`GroupAnswer.prep_with`).
         if not prepared:
             groups = sorted({n for g in gs for n in g.prep_with})
-        from_at_prep = any(force_constant_stage(task, m)
-                           for g in gs for m in g.members)
     elif one_stage and kind == "bench":
         from molbuilder.calculation import open as open_calculation
         prepared = stages[0] in _folder_prepared(
@@ -2891,7 +2872,7 @@ def api_task_setup_commands():
         kind, base=dest, groups=(groups if picked else ()),
         stages=(stages if one_stage and not picked else ()),
         from_attempt=(body.get("from") or None), cold=bool(body.get("cold")),
-        target=target, prepared=prepared, from_at_prep=from_at_prep)})
+        target=target, prepared=prepared)})
 
 
 #: Each record Save writes, by the key `read_as` names it with.

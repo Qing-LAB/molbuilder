@@ -412,10 +412,11 @@ def _emit_geometry(struct: Structure,
     lines.append("")
     lines.append("AtomicCoordinatesFormat        Ang")
     lines.append("%block AtomicCoordinatesAndAtomicSpecies")
-    for el, (x, y, z) in zip(struct.elements, frame.positions):
-        lines.append(
-            f"  {x:14.8f} {y:14.8f} {z:14.8f}  {species_idx[el]}"
-        )
+    # THE ONE WRITER OF A COORDINATE ROW (`siesta.deck_lines`), the
+    # optimization and vibration deck's too.
+    from ..siesta.deck_lines import coordinates_rows
+    lines.extend(coordinates_rows(struct.elements, frame.positions,
+                                  species_idx))
     lines.append("%endblock AtomicCoordinatesAndAtomicSpecies")
     lines.append("")
     return lines

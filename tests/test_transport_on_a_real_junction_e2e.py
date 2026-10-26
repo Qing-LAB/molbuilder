@@ -237,11 +237,13 @@ def _write_junction(tree: Path) -> str:
 
 def _highest_mode(tree: Path, run: str) -> int:
     """The highest mode of vibration run ``run`` (tree-relative), as its
-    result numbers it -- the result found through the run door."""
+    result numbers it -- the result found through the one door for a
+    result on the label (`runs.on_label_at`: at the root of the run in
+    phases, `engines/vibration.md` § 5.11 § 2)."""
     from molbuilder.runfiles import ROLE_SPECTRA
-    from molbuilder.runs import run_of
+    from molbuilder.runs import on_label_at
     from molbuilder.sidecars.spectra import parse_spectra_json
-    result = run_of(tree / run).on_label(ROLE_SPECTRA)
+    result = on_label_at(tree / run, ROLE_SPECTRA)
     return int(parse_spectra_json(result).modes[-1].index_1based)
 
 
@@ -320,7 +322,7 @@ def junction(tmp_path_factory):
     from molbuilder.template_file import template_path
     from molbuilder.web.app import create_app
     from support.real_runs import RealRun, Said, _on_the_road, _taken, _typed
-    from support.road import group_words, ladder_edited
+    from support.road import group_words
 
     def seed_and_leads(on):
         # ONE GROUP, ONE JOB (`engines/stages.md` § 2): the defaults put
@@ -470,7 +472,6 @@ def junction(tmp_path_factory):
         assert r.exit_code == 0, r.output
         vib = RealRun(tree=tree, bundle=tree / "P" / "frequency" / "V")
         _run_card(vib.bundle)
-        ladder_edited({"removed": ["relax"]}, vib.bundle)
         for name, value in {**RELAXED_WITH,
                             "pulay_history": _VIBRATED_HISTORY,
                             "already_relaxed": True}.items():

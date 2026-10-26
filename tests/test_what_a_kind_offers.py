@@ -37,7 +37,7 @@ from test_fixed_and_shared_items import (_first_rung_overrides,
 
 def _siesta(root, kind, *, before_prep=None, refused=False):
     stages = (default_siesta_stages("publishable") if kind == "optimization"
-              else vibration_stages("siesta", already_relaxed=False))
+              else vibration_stages("siesta"))
     return _prep(root, WATER(), SiestaConfig(system_label="JOB"), stages,
                  "siesta", calculation=kind, before_prep=before_prep,
                  refused=refused)
@@ -45,7 +45,7 @@ def _siesta(root, kind, *, before_prep=None, refused=False):
 
 def _pyscf_vibration(root, cfg, *, refused=False):
     return _prep(root, WATER(), cfg,
-                 vibration_stages("pyscf", already_relaxed=True), "pyscf",
+                 vibration_stages("pyscf"), "pyscf",
                  calculation="vibration", refused=refused)
 
 
@@ -54,12 +54,12 @@ def _pyscf_vibration(root, cfg, *, refused=False):
 @pytest.mark.parametrize("door", ["template", "stage"])
 def test_a_vibration_relaxes_with_a_relaxer(isolated_projects_root, door):
     """SS-C4, at both doors a value arrives by: the template (`resolve`
-    refuses it, naming the template) and the relax rung's own override (the
-    description's own check, gate ③, refuses it first, naming the rung).
+    refuses it, naming the template) and the one stage's own override (the
+    description's own check, gate ③, refuses it first, naming the stage).
     Each says why a vibration does not take it, and what it does take.
 
     MUTATION THIS MUST FAIL AGAINST: the vibration's set undeclared (the
-    relax rung's deck is written with no relaxation)."""
+    relaxation's deck is written with no relaxation)."""
     def put(dest):
         if door == "template":
             _template_says(dest, "relax_type", "none")
@@ -71,7 +71,7 @@ def test_a_vibration_relaxes_with_a_relaxer(isolated_projects_root, door):
     assert "none relaxes nothing" in said, said
     assert "CG, Broyden, FIRE" in said, said
     assert ("the template sets relax_type = 'none'" if door == "template"
-            else "stage 'relax' sets relax_type = 'none'") in said, said
+            else "stage 'freq' sets relax_type = 'none'") in said, said
 
 
 def test_an_optimization_offers_no_transport_solver(isolated_projects_root):
@@ -201,10 +201,10 @@ def test_a_description_refuses_what_its_kind_does_not_offer():
     description is written, and only prep refuses it)."""
     from molbuilder import describe as D
     from molbuilder.task import Stage
-    ladder = vibration_stages("siesta", already_relaxed=False)
-    relax = ladder[0]
-    ladder = (Stage(name=relax.name, overrides={**dict(relax.overrides or {}),
-                               "relax_type": "none"}),) + tuple(ladder[1:])
+    ladder = tuple(Stage(name=st.name,
+                         overrides={**dict(st.overrides or {}),
+                                    "relax_type": "none"})
+                   for st in vibration_stages("siesta"))
     with pytest.raises(D.DescribeError) as refused:
         D.build_description(WATER(), SiestaConfig(system_label="JOB"), ladder,
                             engine="siesta", shape="hierarchical", name="JOB",

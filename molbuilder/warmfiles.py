@@ -86,12 +86,14 @@ class WarmFilesDoc:
     #: (`engines/transport.md` § 2a.11).  ``()`` where a section states none.
     along: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
     #: The third: the ENGINE'S SCRATCH at a run of that kind, by suffix --
-    #: written and re-read within one run, recomputed by the next: never
-    #: carried, never taken over into a new run (`engines/transport.md`
-    #: § 2a.11).  Not rows: a scratch file is no restart file.
+    #: written by the run for itself and written again by the next, kept by
+    #: no copy: never carried, never taken over into a new run, never saved
+    #: (`job-contracts.md` § 4.2a).  Not rows: a scratch file is no restart
+    #: file.
     scratch: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
     #: The fourth: the folder of the run's own the scratch lives in, by
-    #: section -- stated together with ``scratch`` or not at all
+    #: section -- stated only with ``scratch``; a section stating
+    #: ``scratch`` alone keeps it beside the run's own files
     #: (`job-contracts.md` § 4.2a; `engines/transport.md` § 2a.11).
     scratch_dir: Tuple[Tuple[str, str], ...] = ()
 
@@ -157,7 +159,8 @@ class WarmList:
     along: Tuple[str, ...] = ()
     #: The folder of the run's own an engine's scratch lives in (which
     #: files are scratch is :func:`is_scratch`'s, never this list's) -- the section's
-    #: ``scratch_dir`` (``tsgf``); ``None`` for a kind that states none.
+    #: ``scratch_dir`` (``tsgf``); ``None`` for a kind that states none,
+    #: whose scratch, where it has any, lies beside the run's own files.
     scratch_dir: Optional[str] = None
 
     @property
@@ -216,7 +219,8 @@ def scratch_families() -> Tuple[str, ...]:
     """THE ENGINES' SCRATCH, as families of file names -- ``*<suffix>`` for
     every suffix any section of any engine's shipped vocabulary names
     ``scratch`` (`job-contracts.md` § 4.2a: recomputed by every run, never
-    carried, never taken over): SIESTA's ``*.TSGFL``, ``*.TSGFR``.  No engine
+    carried, never taken over): SIESTA's ``*.TSGFL``, ``*.TSGFR``,
+    ``*.contrib.EPSIMG``.  No engine
     is asked for: the files are named by what wrote them, and no engine
     writes another's, so a folder needs no record of its engine for this
     answer.  The vocabularies molbuilder ships, never a calculation's own
@@ -310,13 +314,12 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
                 f"{path}: section [{name}] must hold only [[{name}.file]] "
                 f"rows and the section-level facts, `resumes`, `along`, "
                 f"`scratch` and `scratch_dir` (job-contracts.md 4.2a).")
-        if ("scratch" in body) != ("scratch_dir" in body):
+        if "scratch_dir" in body and "scratch" not in body:
             raise WarmFilesError(
-                f"{path}: [{name}] states "
-                f"{'scratch' if 'scratch' in body else 'scratch_dir'} "
-                f"without the other -- the engine's scratch and the folder "
-                f"of the run's own it lives in are stated together or not at "
-                f"all (job-contracts.md 4.2a).")
+                f"{path}: [{name}] states scratch_dir without scratch -- a "
+                f"folder of the run's own for the engine's scratch is stated "
+                f"with the scratch it holds; scratch alone lies beside the "
+                f"run's own files (job-contracts.md 4.2a).")
         if "scratch" in body:
             said = body["scratch"]
             if (not isinstance(said, list)
@@ -328,6 +331,7 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
                     f"never carried, never taken over "
                     f"(engines/transport.md 2a.11).")
             scratch.append((name, tuple(said)))
+        if "scratch_dir" in body:
             where = body["scratch_dir"]
             if (not isinstance(where, str) or not where
                     or "/" in where or where in (".", "..")):

@@ -150,9 +150,8 @@ def _ran(run_dir):
     if deck is None:
         raise RecordError(f"{run_dir} holds no deck of this calculation's "
                           f"run, so what it ran cannot be read")
-    return parse_fdf_params(deck.read_text(encoding="utf-8",
-                                           errors="replace"),
-                            source=deck.name)
+    from ..parse.fdf import read_deck
+    return parse_fdf_params(read_deck(deck), source=deck.name)
 
 
 def deck_spin(run_dir) -> str:
@@ -513,13 +512,11 @@ def _stage_facts(calc, label: str) -> List[Dict]:
                 and run != base / s.dir / s.attempt and s.points:
             from ..jobset.continuation import point_rows
             from ..runrecord import launch_record
-            from .stages import products_of
             from ..jobset.naming import stage_home
             _names = stage_home(base, task, name).names(task.shape)
             try:
                 points, _ = point_rows(
                     run, _names, task, name, launch=launch_record(run, _names),
-                    products=products_of(name, task.label, base_dir=base),
                     base=base)
             except Exception as exc:              # noqa: BLE001 -- said, never hidden
                 fact["unreadable"] = f"{run.relative_to(base)}: {exc}"
@@ -567,7 +564,9 @@ def _stage_facts(calc, label: str) -> List[Dict]:
                 # door read for this run (`point_rows`, above), never a
                 # second rule.
                 from ..jobset.continuation import points_verdict
-                fact["state"], said = points_verdict(points)
+                from .stages import points_summary
+                fact["state"], said = points_verdict(points,
+                                                     points_summary(points))
                 fact["detail"] = (f"{said}; the run the transmission "
                                   f"gathered ({fact['attempt']}); the "
                                   f"stage's newest run is "
@@ -941,8 +940,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         if key not in ended_runs:
             from ..jobset.continuation import stage_run_state
             try:
-                state, _said = stage_run_state(base, task, "transmission",
-                                               run)
+                state, _said = stage_run_state(calc, "transmission", run)
             except (OSError, ValueError, KeyError):
                 state = "unreadable"
             ended_runs[key] = state in ("finished", "failed")

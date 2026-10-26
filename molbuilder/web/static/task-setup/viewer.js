@@ -2130,7 +2130,8 @@ let _cols = null;       // every parameter this engine has  {name,label,group}
 let _colsKey = null;
 /* How this kind names its rungs' roles, handed with the columns
  * (`template.stage_role_rule`, plan § 5w K4): `{named, otherwise}`, or null
- * for a kind without roles.  Read by `roleOf` alone. */
+ * for a kind without roles.  Read by `rolesOf`, and by the pickers to
+ * know whether the kind has roles at all. */
 let _roleRule = null;
 const _colsInflight = {};   // key -> the pending fetch (see loadColumnChoices)
 /* name -> the catalogue's own item, so the table can show what a parameter
@@ -2216,24 +2217,26 @@ async function loadColumnChoices(engine) {
     try { return await p; } finally { delete _colsInflight[key]; }
 }
 
-/** The role the stage `name` plays, by the rule the columns came with
- *  (`template.stage_role_rule`) -- `null` on a kind without roles.  The
- *  rule's names are keyed in any case, as every stage name compares
- *  (`identity.stage_key`, `stages.md` § 2): a stage renamed `Relax` is
- *  still the relaxation. */
-function roleOf(name) {
+/** The roles the stage `name` plays, by the rule the columns came with
+ *  (`template.stage_role_rule`): a list -- one role for a transport rung,
+ *  every phase's for a SIESTA vibration's stage -- or `null` on a kind
+ *  without roles.  The rule's names are keyed in any case, as every stage
+ *  name compares (`identity.stage_key`, `stages.md` § 2). */
+function rolesOf(name) {
     if (!_roleRule) return null;
-    return (_roleRule.named && _roleRule.named[String(name).toLowerCase()])
-        || _roleRule.otherwise || name;
+    const got = (_roleRule.named && _roleRule.named[String(name).toLowerCase()])
+        || _roleRule.otherwise;
+    return got ? [].concat(got) : [name];
 }
 
 /** Does the stage `name` read the item `col`?  Every rung of a kind without
- *  roles does, and so does every rung of an item declaring none. */
+ *  roles does, and so does every rung of an item declaring none; else when
+ *  the item names one of the rung's roles (`template.reads`). */
 function readsHere(col, name) {
     const own = (_meta[col] && Array.isArray(_meta[col].stages))
         ? _meta[col].stages : [];
-    const role = roleOf(name);
-    return role === null || !own.length || own.includes(role);
+    const roles = rolesOf(name);
+    return roles === null || !own.length || roles.some(r => own.includes(r));
 }
 
 /** Publish a vocabulary's items into `_meta` -- the ONE place a cell's
@@ -2345,8 +2348,11 @@ function fillPicker(sel, items, taken, empty) {
         .filter(Boolean);
     for (const i of left) {
         const d = defaultText(i.name);
-        const readers = (Array.isArray(i.stages) && i.stages.length)
-            ? own.filter((n) => i.stages.indexOf(roleOf(n)) !== -1) : [];
+        // ...by the one rule (`readsHere`), named only where the kind gives
+        // its rungs roles: on a kind without them every rung reads, and
+        // nothing is worth saying.
+        const readers = (_roleRule && Array.isArray(i.stages) && i.stages.length)
+            ? own.filter((n) => readsHere(i.name, n)) : [];
         sel.appendChild(el("option", {
             value: i.name,
             title: helpText(i.name) || i.help || "",
@@ -3066,10 +3072,8 @@ function renderNext(task) {
             + "command line state one, or override the card."));
         /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): for a group of
          * one stage that continues from the stage before it -- its launch's
-         * choice -- or a force-constant stage, whose `relax` run is its
-         * prep's.  The folder's answer, the one the verb acts on. */
-        const chooser = g.members.length === 1 ? g.members[0]
-            : g.members.find((n) => (_fs.continueFrom[n] || {}).linked);
+         * choice.  The folder's answer, the one the verb acts on. */
+        const chooser = g.members.length === 1 ? g.members[0] : null;
         const cf = chooser ? _fs.continueFrom[chooser] : null;
         if (cf && !cf.error) {
             block.appendChild(continueFromChoice(task, chooser, cf));
@@ -3120,8 +3124,8 @@ function renderNext(task) {
 /** The task's Prep (`job-system.md`, *The task*; `task-setup.md` § 11):
  *  every group with its stages, as the folder's answer gives them -- not
  *  prepared; prepared and never launched, then prepared again whole;
- *  launched; a force-constant stage not preparable yet, what it waits for
- *  -- each stage's ready-door words beside it.  Every group not prepared,
+ *  launched; a group not preparable yet, what it waits for -- each
+ *  stage's ready-door words beside it.  Every group not prepared,
  *  and every prepared one whose members changed, is ticked when the folder
  *  opens; under them the command for the pick and the Preview / Prep that
  *  do what it does.  Each ticked group is one job. */
@@ -3141,13 +3145,9 @@ function taskPrepCard(task) {
     const said = {};
     for (const r of (lad.stages || [])) said[r.stage] = r;
     /* PICKABLE: a group that can be prepared, as the folder's answer says
-     * -- a launched one on the hierarchical layout, for a change of its job
-     * request (`job-request.md` § 5) -- or one never launched whose
-     * force-constant stage's Continue from names the `relax` run its deck
-     * is written at, which prep takes as said (`job-system.md` § 5.4). */
-    const pickable = (g) => g.preparable
-        || (g.state !== "launched"
-            && Object.keys(_prepFrom([g.number])).length > 0);
+     * -- a launched one on the hierarchical layout among them, for a change
+     * of its job request (`job-request.md` § 5). */
+    const pickable = (g) => g.preparable;
     /* TICKED WHEN THE FOLDER OPENS: the groups `prep task` offers -- every
      * one not prepared as described, a prepared one whose members changed
      * among them (`ready.prep_offer`). */
@@ -3300,29 +3300,13 @@ function nextSteps() {
 /** The Continue-from choice for one stage (plan W37): a select over the
  *  default, every run of the stage before it with what it was, and the
  *  structure where `--cold` is a choice -- and under it what the choice
- *  means: the default's own line, or why it is refused for now -- by its
- *  launch, or for a force-constant stage by its prep. */
+ *  means: the default's own line, or why its launch refuses it for now. */
 function continueFromChoice(task, name, cf) {
     const wrap = el("div", { class: "ts-continue-from" });
-    if (!cf.from_stage) {
-        /* NOTHING TO CHOOSE, AND WHY PREP REFUSES: a force-constant stage
-         * with no `relax` and a structure not stated relaxed -- the one
-         * hand-over door's answer, here before anything is written
-         * (`engines/vibration.md` § 5.2a). */
-        const note = el("p", { class: "hint ts-continue-note ts-keeps-lines",
-                               "data-attention": "" },
-                        String(cf.refused || ""));
-        note.setAttribute("data-state", "warn");
-        wrap.append(note);
-        return wrap;
-    }
     const sel = el("select", { "aria-label": "continue " + name + " from" });
     const add = (value, text) => sel.appendChild(el("option", { value }, text));
-    // WHAT IT BUILDS ON BY DEFAULT, in its kind's words: a force-constant
-    // stage builds on its ladder's relaxation, which is not always the
-    // stage before it (a displacement sweep's second).
-    add("", (cf.linked ? "the relaxation it builds on, " : "the stage before it, ")
-        + cf.from_stage + " — its newest run");
+    // WHAT IT CONTINUES FROM BY DEFAULT: the stage before it.
+    add("", "the stage before it, " + cf.from_stage + " — its newest run");
     for (const r of (cf.runs || [])) add(r.source, r.source + " — " + r.what);
     if (cf.cold) add("--cold", "the calculation's structure (--cold)");
     const choice = _fs.continueChoice[name] || "";
@@ -3346,8 +3330,8 @@ function continueFromChoice(task, name, cf) {
         note.textContent = "starts from the calculation's structure — nothing "
             + "is carried in";
     } else {
-        note.textContent = "named: taken as it is — "
-            + (cf.linked ? "its prep" : "its launch") + " says what it was";
+        note.textContent = "named: taken as it is — its launch says what "
+            + "it was";
     }
     wrap.append(el("label", {}, "Continue from ", sel), note);
     return wrap;
@@ -3355,8 +3339,8 @@ function continueFromChoice(task, name, cf) {
 
 /** The command lines for ``pick`` -- ``{groups}`` or ``{stages}`` -- the
  *  server's, from the terminal's own composer (`/api/task-setup/commands`,
- *  W55 B4): a group's prep as chosen (the machine, a force-constant stage's
- *  `relax` run) and its launch (what a group of one continues from); the
+ *  W55 B4): a group's prep as chosen (the machine) and its launch (what a
+ *  group of one continues from); the
  *  prep of several groups picked; a benchmark's lines; a member's launch
  *  again alone.  The block is filled when the answer lands; a block
  *  rebuilt since is no longer on the page, and its late answer fills
@@ -3398,26 +3382,15 @@ function membersOf(numbers) {
         .flatMap((g) => g.members);
 }
 
-/** The Continue-from choice a force-constant stage among ``numbers`` holds
- *  -- the `relax` run its deck is written at, its prep's to take
- *  (`engines/vibration.md` § 5.2a) -- as the prep door's field, or ``{}``. */
-function _prepFrom(numbers) {
-    const st = membersOf(numbers).find(
-        (n) => (_fs.continueFrom[n] || {}).linked && _fs.continueChoice[n]);
-    return st ? continueBody(st) : {};
-}
-
-/** What ``pick`` takes, as the command door takes it: a force-constant
- *  stage's choice goes to its group's prep; a group of one stage's, to its
- *  launch; a member launched again alone carries its own; a group's stages
- *  each start as the description says (`job-system.md` § 5.3). */
+/** What ``pick`` takes, as the command door takes it: a group of one
+ *  stage's Continue-from choice, to its launch; a member launched again alone
+ *  carries its own; a group's stages each start as the description says
+ *  (`job-system.md` § 5.3). */
 function _continueOf(kind, pick) {
     if (kind !== "task") return {};
     if (pick.stages) {
         return pick.stages.length === 1 ? continueBody(pick.stages[0]) : {};
     }
-    const linked = _prepFrom(pick.groups);
-    if (Object.keys(linked).length) return linked;
     const members = membersOf(pick.groups);
     return pick.groups.length === 1 && members.length === 1
         ? continueBody(members[0]) : {};
@@ -3726,9 +3699,6 @@ async function _prepCall(kind, picks, plan, planId) {
     // THE PREVIEW'S PLAN, NAMED: prep refuses a plan that differs from the
     // one previewed -- the folder changed between (`job-system.md` § 5.0).
     if (planId) body.plan_id = planId;
-    // THE `relax` RUN a force-constant stage's deck is written at, as
-    // chosen -- the one choice prep takes; every other is its launch's.
-    if (kind === "task") Object.assign(body, _prepFrom(picks));
     // The local machine has a NAME, not just a label: the server maps
     // `(this machine)` to it, so sending the label is enough and the two
     // surfaces keep one vocabulary.  A FOLDER SET TO ITS MACHINE names none:

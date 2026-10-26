@@ -321,7 +321,8 @@ def _run_index_block(names, stdout_role: str, target_env: str) -> str:
 
 def _monitor_block(names, notify_on_scf: bool,
                    notify_every_hours: float, notify_channels,
-                   notify_report, *, cores: str, gpu: bool) -> str:
+                   notify_report, *, cores: str, gpu: bool,
+                   member: Optional[str] = None) -> str:
     """Bash that launches the background monitor -- the SAME block for every
     engine (`running-a-job.md` § 4.1, `run-reports.md` § 2.3).
 
@@ -329,7 +330,12 @@ def _monitor_block(names, notify_on_scf: bool,
     (`runfiles.RunNames`) and the run's number launch gave it -- and never a
     path: the monitor names its log, its utilisation CSV and every file it
     reads through `runfiles`, and reads them through the framework's readers
-    that travel beside it (:data:`MONITOR_COMPANIONS`).
+    that travel beside it (:data:`MONITOR_COMPANIONS`).  ``member`` makes it
+    a MEMBER of a run of points' monitor (`run-reports.md` § 2.1b;
+    `engines/vibration.md` § 5.11 § 7a): the way from this call's folder up
+    to the run's (``..``), whose launch record it counts the wall from and
+    whose notification record its clock reads -- it sends no `start` and no
+    `finish` of its own, the run's walk speaks once.
 
     It tells it WHAT THE JOB HOLDS too (`run-reports.md` § 2.1a): ``cores``
     is the shell arithmetic for the cores this engine is launched on -- a run
@@ -344,11 +350,20 @@ def _monitor_block(names, notify_on_scf: bool,
     ``MB_MONITOR=0``.  Stopped by ``_mb_stop_monitor``; it also exits when
     this wrapper's PID (``$$``) disappears.
     """
+    from .monitor import NOTIFY_CHANNELS_VAR, NOTIFY_REPORT_VAR
     head = (
         # A '# ---' header in the EMITTED text: § 2.6's anatomy guard reads
         # blocks by these headers (D9, user decision 2026-08-13).
         "# --- Background job monitor ---------------------------\n"
         '_monitor_pid=""\n'
+        # THE POLICY, in the environment too, for a run of points' own
+        # python to send the run's start and finish with (`mb_monitor.pyz
+        # notify`, `engines/vibration.md` § 5.11 § 7a) -- the same two
+        # answers the flags below carry.
+        + ("" if notify_channels is None
+           else f'export {NOTIFY_CHANNELS_VAR}="{",".join(notify_channels)}"\n')
+        + ("" if notify_report is None
+           else f'export {NOTIFY_REPORT_VAR}="{",".join(notify_report)}"\n')
     )
     return head + (
         f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
@@ -364,6 +379,7 @@ def _monitor_block(names, notify_on_scf: bool,
         + ("--shared " if names.shared else "")
         + f'--run "$_run_n" --util --cores "{cores}" '
         + ("--gpu " if gpu else "")
+        + (f'--member --launched-in "{member}" ' if member else "")
         + '--interval "${MB_MONITOR_INTERVAL:-10}" '
         + ('--notify-on-scf ' if notify_on_scf else "")
         + (f'--notify-every-hours {notify_every_hours:g} '
@@ -398,51 +414,116 @@ def _monitor_block(names, notify_on_scf: bool,
     )
 
 
-def _finish_block(finish: Optional[str], script_name: str) -> str:
-    """The job's last step when its engine leaves no result: run the finish
-    bundle beside the deck with the job's own python (``$_mb_py``, probed by
-    the monitor block whether or not a monitor starts), after the engine
-    exited cleanly and before the conclusion is written
-    (`engines/vibration.md` § 5.5).  Its failure is the job's: the
-    conclusion records its exit status and the wrapper exits with it.
-    Empty when the job has no finish."""
-    if finish is None:
+#: The verb a job's finish bundle runs after a clean engine exit when the
+#: job states no steps of its own: the finish, on the deck and its output
+#: (`spectra.siesta_vibration.main`, `engines/vibration.md` § 5.5).
+FINISH_VERB = ("finish",)
+
+
+def _finish_block(finish: Optional[str], script_name: str, *,
+                  after: Optional[Sequence[str]] = None,
+                  failed: bool = False) -> str:
+    """The job's step after its engine: the finish bundle beside the deck,
+    run with the job's own python (``$_mb_py``, probed by the monitor block
+    whether or not a monitor starts) on the deck and its output
+    (`engines/vibration.md` § 5.5) -- the finish verb, or the job's own
+    ``after`` words (a run in phases' ``record <phase>``, § 5.11 § 3, told
+    the engine's exit code).  After a clean exit, before the conclusion is
+    written, its failure is the job's: the conclusion records its exit
+    status and the wrapper exits with it.  ``failed`` renders it for the
+    engine's failure path: run so the record says how the call ended, its
+    own failure logged, the conclusion the engine's.  Empty when the job has
+    no finish, and on the failure path when it states no steps."""
+    if finish is None or (failed and after is None):
         return ""
     # The marker's words for a failed finish, and the log line that says the
     # finish began, are their READERS' (`parse/dirs/job.py`,
     # `wrapper_log`, which travel and read them beside the job).
     from .parse.dirs.job import FINISH_FAILED
     from .wrapper_log import FINISH_STARTED
-    return (
+    words = " ".join(after if after is not None else FINISH_VERB)
+    call = (f'"$_mb_py" {finish} {words} {script_name} "$_out_file"'
+            + (' --exit "$_siesta_exit"' if after is not None else ""))
+    pad = "    " if failed else ""
+    head = (
         f"\n"
-        f"# --- The calculation's own result (engines/vibration.md 5.5) ---\n"
-        f"# The engine left what the result is derived from, not the result:\n"
-        f"# {finish}, beside this deck, derives it here with the job's own\n"
-        f"# python and writes it beside the run.  ITS FAILURE IS THE JOB'S --\n"
-        f"# the conclusion records its exit status and this wrapper exits\n"
-        f"# with it; its lines and any traceback are in this session log.\n"
-        f'_log INFO "{FINISH_STARTED} {finish} {script_name} $_out_file"\n'
-        f"set +e\n"
-        f'if [ -n "$_mb_py" ] && [ -f {finish} ]; then\n'
-        f'    "$_mb_py" {finish} {script_name} "$_out_file"\n'
-        f"    _mb_finish_rc=$?\n"
-        f"else\n"
-        f'    _log ERROR "finish: needs a python beside the job and {finish} '
+        f"{pad}# --- The calculation's own result (engines/vibration.md 5.5) ---\n"
+        f"{pad}# The engine left what the result is derived from, not the result:\n"
+        f"{pad}# {finish}, beside this deck, derives it here with the job's own\n"
+        f"{pad}# python and writes it beside the run.  ITS FAILURE IS THE JOB'S --\n"
+        f"{pad}# the conclusion records its exit status and this wrapper exits\n"
+        f"{pad}# with it; its lines and any traceback are in this session log.\n"
+        f'{pad}_log INFO "{FINISH_STARTED} {finish} {words} {script_name} $_out_file"\n'
+        f"{pad}set +e\n"
+        f'{pad}if [ -n "$_mb_py" ] && [ -f {finish} ]; then\n'
+        f"{pad}    {call}\n"
+        f"{pad}    _mb_finish_rc=$?\n"
+        f"{pad}else\n"
+        f'{pad}    _log ERROR "finish: needs a python beside the job and {finish} '
         f'beside the deck -- the result was not derived"\n'
-        f"    _mb_finish_rc=1\n"
-        f"fi\n"
-        f"set -e\n"
+        f"{pad}    _mb_finish_rc=1\n"
+        f"{pad}fi\n"
+        f"{pad}set -e\n"
+    )
+    if failed:
+        # THE ENGINE FAILED: the record step says so in the index; its own
+        # failure is logged, and the conclusion stays the engine's.
+        return head + (
+            f'{pad}[ "$_mb_finish_rc" -eq 0 ] || _log ERROR "{finish} {words} '
+            f'exited with code $_mb_finish_rc after the engine failed"\n')
+    return head + (
         f'if [ "$_mb_finish_rc" -ne 0 ]; then\n'
-        f'    echo "===== the finish ({finish}) exited with code '
+        f'    echo "===== the finish ({finish} {words}) exited with code '
         f'$_mb_finish_rc: no result -- see $_runwrap_log =====" >&2\n'
         # THE MARKER NAMES THE FAILED FINISH, so `run_status` reads the job
         # as failed although the engine's own output ended cleanly -- an
         # engine that errs after its end line (an MPI teardown) carries no
         # such words and keeps the output's verdict (`parse/dirs/job.py`).
-        f'    printf "rc=%s at %s; {FINISH_FAILED} ({finish})\\n" '
+        f'    printf "rc=%s at %s; {FINISH_FAILED} ({finish} {words})\\n" '
         f'"$_mb_finish_rc" "$(date)" '
         f'> "$_concluded"\n'
         f'    exit "$_mb_finish_rc"\n'
+        f"fi\n"
+    )
+
+
+def _before_block(finish: Optional[str], script_name: str,
+                  before: Optional[Sequence[str]],
+                  after: Optional[Sequence[str]] = None) -> str:
+    """The job's step BEFORE its engine -- a run in phases' ``plan <phase>``
+    (`engines/vibration.md` § 5.11 § 3): the finish bundle beside the deck,
+    run with the job's own python on the deck, after the bundle's load
+    check and before the engine starts.  Its failure is the job's: nothing
+    is started, the step after the engine (``after``) is told how the call
+    ended -- so the run's index says it, § 5.11 § 5 -- and the conclusion
+    records it.  Empty when the job states no step before the engine."""
+    if finish is None or not before:
+        return ""
+    from .parse.dirs.job import FINISH_FAILED
+    from .wrapper_log import FINISH_STARTED
+    words = " ".join(before)
+    return (
+        f"# --- The call planned (engines/vibration.md 5.11 3) ---------\n"
+        f"# {finish} {words}: this call's coordinates and its entry in the\n"
+        f"# run's index, written with the job's own python before the engine\n"
+        f"# starts.  ITS FAILURE IS THE JOB'S: nothing is started, and the\n"
+        f"# step after the engine records how the call ended.\n"
+        f'_log INFO "{FINISH_STARTED} {finish} {words} {script_name}"\n'
+        f"set +e\n"
+        f'"$_mb_py" {finish} {words} {script_name}\n'
+        f"_mb_plan_rc=$?\n"
+        f"set -e\n"
+        f'if [ "$_mb_plan_rc" -ne 0 ]; then\n'
+        f'    echo "===== {finish} {words} exited with code $_mb_plan_rc: '
+        f'the engine was not started -- see $_runwrap_log =====" >&2\n'
+        # THE CALL ENDED BEFORE ITS ENGINE: the step after it says so, as
+        # it says an engine's failure (`_finish_block`, its failure path).
+        + ('    _siesta_exit="$_mb_plan_rc"\n'
+           + _finish_block(finish, script_name, after=after, failed=True)
+           if after is not None else "")
+        + f'    printf "rc=%s at %s; {FINISH_FAILED} ({finish} {words})\\n" '
+        f'"$_mb_plan_rc" "$(date)" > "$_concluded"\n'
+        f'    exit "$_mb_plan_rc"\n'
         f"fi\n"
     )
 
@@ -1811,12 +1892,22 @@ def render_run_wrapper(script_path: Path, *,
                         resumes: bool = True,
                         warm: Optional[Sequence[str]] = None,
                         deck_text: Optional[str] = None,
-                        notes: Optional[list] = None) -> str:
+                        notes: Optional[list] = None,
+                        steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
+                        member: Optional[str] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     ``notes`` receives what the rendering has to say and does not refuse
     (`gpu.md` G6: the target's record lists no GPU build of SIESTA) -- the
     same out-list `prep` hands every step, so a sentence reaches its answer.
+
+    ``steps`` are a run in phases' two Python steps (`engines/vibration.md`
+    § 5.11 § 3), each the words the ``finish`` bundle is run with: before
+    the engine (``plan <phase>``) and after it, success or failure
+    (``record <phase>``, told the engine's exit code); ``None`` runs the
+    finish verb after a clean exit, as a job with a finish and no steps
+    does.  ``member`` makes the run script's monitor a member of a run of
+    points' (§ 7a): the way from the call's folder up to the run's.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.
     With the object passed whole there is no subset to choose, and *which*
@@ -1864,8 +1955,9 @@ def render_run_wrapper(script_path: Path, *,
         then says what the deck instructs is the deck's to say.
     """
     if deck_text is None:
+        from molbuilder.parse.fdf import read_deck
         try:
-            deck_text = Path(script_path).read_text()
+            deck_text = read_deck(script_path)
         except OSError:
             deck_text = None
     r = resources
@@ -1945,6 +2037,10 @@ def render_run_wrapper(script_path: Path, *,
             f"`{script_path.name}`: this launcher finishes a SIESTA job with "
             f"{', '.join(sorted(_FINISH_BUNDLES))}; it cannot finish a "
             f"{category} job with {finish!r}")
+    if steps is not None and finish is None:
+        raise WrapperError(
+            f"`{script_path.name}`: a job's Python steps run its finish "
+            f"bundle, and the job names none (engines/vibration.md 5.11)")
 
     # WHETHER THIS RUN USES THE GPU is its request -- `jobset.model.
     # gpu_request`, the one door (`execution/architecture.md` § 3.2) -- read
@@ -3271,8 +3367,12 @@ def render_run_wrapper(script_path: Path, *,
             + _monitor_block(names, notify_on_scf,
                              notify_every_hours, notify_channels,
                              notify_report,
-                             cores="$_mb_cores", gpu=gpu_mode)
+                             cores="$_mb_cores", gpu=gpu_mode,
+                             member=member)
             + _finish_check_block(finish)
+            + _before_block(finish, script_name,
+                            steps[0] if steps is not None else None,
+                            after=(steps[1] if steps is not None else None))
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
                f'_siesta_retry_max={_retries}\n'
                f'# Retry: re-exec this wrapper as the NEXT RUN -- --run N+1,\n'
@@ -3418,6 +3518,9 @@ def render_run_wrapper(script_path: Path, *,
                + '" >&2\n'
                '    fi\n'
                if _retries > 0 else "")
+            + _finish_block(finish, script_name,
+                            after=(steps[1] if steps is not None else None),
+                            failed=True)
             + '    # CONCLUDED -- an error is a conclusion (project-\n'
             '    # layout.md 1.6, "the other file"): the engine returned\n'
             '    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
@@ -3452,7 +3555,8 @@ def render_run_wrapper(script_path: Path, *,
                if _retries > 0 else "")
             + f'echo "{_prog_label} completed: $_launch_cmd {script_name} -> '
             + '$_out_file"\n'
-            + _finish_block(finish, script_name)
+            + _finish_block(finish, script_name,
+                            after=(steps[1] if steps is not None else None))
             + 'printf "rc=0 at %s\\n" "$(date)" '
             '> "$_concluded"\n'
         )
@@ -3476,7 +3580,7 @@ def render_run_wrapper(script_path: Path, *,
                              cores="$_omp_threads",
                              # the run's GPU request, read above -- its
                              # script's GPU probe runs on the same value
-                             gpu=gpus.uses)
+                             gpu=gpus.uses, member=member)
             + _last_run_block(names)
             # NOT `exec`: the shell has to outlive the engine to conclude.
             + f"set +e\n"
@@ -3754,6 +3858,9 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "runrecord.py":        "molbuilder.runrecord",
     "persist.py":          "molbuilder.persist",
     "wrapper_log.py":      "molbuilder.wrapper_log",
+    # THE ATOMS A RUN HELD, 0-based through the one numbering door, which
+    # the SIESTA reading pass states for every reader of it.
+    "engine_atom_index.py": "molbuilder.engine_atom_index",
 }
 
 
@@ -3937,6 +4044,21 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "runfiles.py":             "molbuilder.runfiles",
     "identity.py":             "molbuilder.identity",
     "constants.py":            "molbuilder.constants",
+    # A RUN IN PHASES (`engines/vibration.md` § 5.11): the plan step makes
+    # a call's folder and its files through the same doors this machine's
+    # launch uses -- the plan, the place record and the names' rules, the
+    # copier -- and picks the modes with PySCF's own selector.
+    "planned.py":              "molbuilder.jobset.planned",
+    "calcdirs.py":             "molbuilder.calcdirs",
+    "paths.py":                "molbuilder.paths",
+    "selection.py":            "molbuilder.spectra.selection",
+    "deck_lines.py":           "molbuilder.siesta.deck_lines",
+    "vibration_phases.py":     "molbuilder.siesta.vibration_phases",
+    "runrecord.py":            "molbuilder.runrecord",
+    # THE RELAXATION RECORD'S ONE FUNCTION (`parse/contract.py`, the
+    # relax call's record in the index) and the keys it reads.
+    "contract.py":             "molbuilder.parse.contract",
+    "keys.py":                 "molbuilder.trajectory_log.keys",
 }
 
 #: THE ONE FILE that finishes a SIESTA force-constant job: a Python zip
@@ -4062,12 +4184,11 @@ def bundles_for(script, finish: Optional[str] = None
     finish when it has one (`Job.finish`, `engines/vibration.md` § 5.5); and
     beside a PySCF script, the molbuilder code it imports
     (:data:`PYSCF_BUNDLE`, `engines/pyscf.md` § 3)."""
-    out = [(MONITOR_BUNDLE, monitor_bundle)]
-    if finish is not None:
-        out.append((finish, _FINISH_BUNDLES[finish]))
-    if engine_of_role(Path(script).suffix.lower()) == "pyscf":
-        out.append((PYSCF_BUNDLE, pyscf_bundle))
-    return tuple(out)
+    from .runfiles import bundle_names
+    builders = {MONITOR_BUNDLE: monitor_bundle, PYSCF_BUNDLE: pyscf_bundle,
+                **_FINISH_BUNDLES}
+    return tuple((name, builders[name])
+                 for name in bundle_names(script, finish))
 
 
 @dataclass(frozen=True)
@@ -4114,7 +4235,9 @@ def render_wrappers(script_path: Path, *,
                     finish: Optional[str] = None,
                     resumes: bool = True,
                     warm: Optional[Sequence[str]] = None,
-                    deck_text: Optional[str] = None) -> RenderedWrapper:
+                    deck_text: Optional[str] = None,
+                    steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
+                    member: Optional[str] = None) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
 
     ``deck_text`` is the deck as it will be written, for one `prep` has
@@ -4158,7 +4281,10 @@ def render_wrappers(script_path: Path, *,
     if deck_text is None:
         if not script_path.is_file():
             raise WrapperError(f"script not found: {script_path}")
-        deck_text = script_path.read_text()
+        # THE DECK WHOLE, a block read from a file beside it inlined
+        # (`parse.fdf.read_deck`).
+        from .parse.fdf import read_deck
+        deck_text = read_deck(script_path)
     r = resources
     # TOLD FIRST, READ SECOND.  The count is `len(struct.elements)`, which
     # `prep` holds when it renders a deck; reading it back out of the file we
@@ -4173,7 +4299,7 @@ def render_wrappers(script_path: Path, *,
         n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
         finish=finish, resumes=resumes, warm=warm, deck_text=deck_text,
-        notes=_notes)
+        notes=_notes, steps=steps, member=member)
     _validate_rendered_wrapper(text, script_path)
     # THE STAGE'S NAMES NAME IT (`runfiles.RunNames`), as every file of it.
     files = [(names.name(".run.sh"), text)]
@@ -4233,7 +4359,9 @@ def write_run_wrapper(script_path: Path, *,
                       finish: Optional[str] = None,
                       resumes: bool = True,
                       warm: Optional[Sequence[str]] = None,
-                      plan=None, notes: Optional[list] = None) -> Path:
+                      plan=None, notes: Optional[list] = None,
+                      steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
+                      member: Optional[str] = None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     ``plan`` (`jobset.planned.Plan`) receives the files instead of the disk,
@@ -4256,6 +4384,7 @@ def write_run_wrapper(script_path: Path, *,
     Overwrites whatever is there.
     """
     from . import script_emit as _sc_write
+    from .parse.fdf import read_deck
     rendered = render_wrappers(script_path, names=names, n_atoms=n_atoms,
                                resources=resources, program=program,
                                machine_record=machine_record,
@@ -4263,7 +4392,11 @@ def write_run_wrapper(script_path: Path, *,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir, finish=finish,
                                resumes=resumes, warm=warm,
-                               deck_text=(plan.read_text(script_path)
+                               steps=steps, member=member,
+                               # THE DECK AS THE PLAN HOLDS IT, a block
+                               # read from a file beside it inlined.
+                               deck_text=(read_deck(script_path,
+                                                    read=plan.read_text)
                                           if plan is not None else None))
     if notes is not None:
         notes.extend(n for n in rendered.notes if n not in notes)

@@ -45,7 +45,7 @@ def test_the_folder_is_emptied_as_each_round_begins_and_at_the_end(tmp_path):
              for n in ["f000/v0", "f001/v0", "f000/v0.2", "f001/v0.2"]]
     script = _walk_script("device-sweep", steps, where="the device's sweep",
                           log="walk.log", member_word="point",
-                          stop_on_failure=True, chains=[0, 1, 0, 1],
+                          needs=[None, None, 0, 1],
                           empties={0: "run-0/tsgf", 2: "run-0/tsgf"},
                           empty_at_end="run-0/tsgf")
     (tmp_path / "walk.sh").write_text(script)
@@ -61,10 +61,9 @@ def test_the_folder_is_emptied_as_each_round_begins_and_at_the_end(tmp_path):
         "tsgf/ empty",
         "-> device@f000/v0 starts",
         "-> device@f001/v0 starts",
-        "device@f001/v0 failed -- the members after it in its chain would "
-        "start from it, so they are not run",
+        "device@f001/v0 failed -- what builds on it is not run",
         "tsgf/ empty",
         "-> device@f000/v0.2 starts",
-        "device@f001/v0.2 not run -- its chain stopped at a failed member",
+        "device@f001/v0.2 not run -- what it builds on failed or did not run",
         "tsgf/ empty",
     ], said

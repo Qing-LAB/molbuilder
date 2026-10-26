@@ -103,17 +103,25 @@ def match_modes(reference, other, masses_amu) -> "tuple[list, list]":
     return index, overlap
 
 
+def sweep_stages(task) -> List[str]:
+    """The stages of a vibration description, in ladder order -- on SIESTA
+    each one run in phases, its force constants among its calls
+    (`engines/vibration.md` § 5.11); two or more are a displacement sweep
+    (§ 5.9)."""
+    return [s.name for s in task.stages]
+
+
 def stages_share_a_directory(task) -> bool:
-    """Whether two force-constant stages of ``task`` would run in one
-    directory -- the flat layout, where every stage writes the same
-    ``<label>.FC`` and ``<label>.spectra.json`` and the second overwrites the
-    first's result.  Asked of the layout (`paths.Shape.stage_dir`), the rule
-    `prep` refuses a sweep by and `summarize` reads it by."""
+    """Whether two stages of ``task`` would run in one directory -- the flat
+    layout, where every stage writes the same ``<label>.FC`` and
+    ``<label>.spectra.json`` and the second overwrites the first's result.
+    Asked of the layout (`paths.Shape.stage_dir`): `prep` refuses a SIESTA
+    vibration on it (`engines/vibration.md` § 5.11), and `summarize` reads
+    a calculation described before by it."""
     from ..jobset.naming import stage_home
     from ..paths import Shape
-    from ..pyscf.stages import force_constant_stages
     shape = Shape.named(task.shape)
-    names = force_constant_stages(task)
+    names = sweep_stages(task)
     dirs = {shape.stage_dir(stage_home(None, task, n).token) for n in names}
     return len(dirs) < len(names)
 
@@ -126,12 +134,11 @@ def why_no_sweep(task) -> Optional[str]:
     stages, or stages sharing one directory.  THE ONE RULE, asked by the
     sweep (:func:`collect_sweep`) and by what names the task's summary
     (`jobset.summarize.task_summary`)."""
-    from ..pyscf.stages import force_constant_stages
     if str(task.engine) != "siesta":
         return (f"a {task.engine} vibration's second derivatives are "
                 f"analytic: there is no displacement to sweep "
                 f"(engines/vibration.md 5.9)")
-    names = force_constant_stages(task)
+    names = sweep_stages(task)
     if len(names) < 2:
         return (f"this vibration has {len(names)} force-constant stage(s) "
                 f"({', '.join(names) or 'none'}): a sweep compares two or "
@@ -162,13 +169,13 @@ def collect_sweep(calc, *,
     from ..jobset.commands import rollback
     from ..jobset.materialize import latest_attempt
     from ..jobset.naming import stage_home
-    from ..runs import concluded
+    from ..jobset.continuation import stage_run_state
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
                                            hessian_from_fc, read_fc)
     from ..parse.errors import ParseError
-    from ..pyscf.stages import force_constant_stages
     from ..runfiles import compose
-    from ..runs import run_of
+    from ..runs import on_label_at
+    from ..siesta.vibration_phases import force_constants_call
     from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
     from ..template import catalogue, one
 
@@ -176,7 +183,7 @@ def collect_sweep(calc, *,
     why = why_no_sweep(task)
     if why:
         raise SweepError(why)
-    names = force_constant_stages(task)
+    names = sweep_stages(task)
     by_name = {s.name: s for s in task.stages}
 
     def rel(p: Path) -> str:
@@ -200,7 +207,6 @@ def collect_sweep(calc, *,
     loaded = []
     for name in names:
         home = stage_home(base, task, name)
-        token = home.token
         attempt = latest_attempt(home.dir)
         if attempt is None:
             # NOT PREPARED, in the ready door's words: ready, and what it
@@ -210,26 +216,27 @@ def collect_sweep(calc, *,
             pending.append({"stage": name, "state": r.state,
                             "detail": r.detail})
             continue
-        # THE RUN'S OWN FILES, through the run door (`runs.run_of`): a
-        # reader of a run takes its folder.
-        run = run_of(attempt, stage=token)
-        spectrum = run.on_label(".spectra.json") if run is not None else None
+        # THE RUN'S OWN RESULT, at its root, through the one door for a
+        # result on the label (`runs.on_label_at`): a reader of a run takes
+        # its folder -- a run in phases' root (`engines/vibration.md`
+        # § 5.11 § 2).
+        spectrum = on_label_at(attempt, ".spectra.json")
         if spectrum is None:
-            # THE RUN'S STATE, through the one door -- a launch record that
-            # does not read is the state `unreadable`, said (`runs.concluded`,
-            # the scheduler asked once where it can).
-            st = concluded(attempt, home.names(task.shape), base=base)
+            # THE RUN'S STATE, through the one door for any stage's run --
+            # a run of points by its points (`continuation.stage_run_state`,
+            # `engines/vibration.md` § 5.11 § 7).
+            state, detail = stage_run_state(calc, name, attempt)
             entry = {"stage": name, "attempt": rel(attempt),
-                     "state": st.state, "detail": st.detail}
-            if st.state in ("pending", "queued", "running"):
+                     "state": state, "detail": detail}
+            if state in ("pending", "queued", "running"):
                 pending.append(entry)
             else:
-                if st.state == "finished":
+                if state == "finished":
                     entry["detail"] = (
                         f"the run finished without writing {spectrum_name} "
-                        f"({st.detail}) -- its finish did not write the "
+                        f"({detail}) -- its finish did not write the "
                         f"result; the run's session log says why "
-                        f"(engines/vibration.md 5.5)")
+                        f"(engines/vibration.md 5.11)")
                 failed.append(entry)
             continue
         try:
@@ -241,7 +248,9 @@ def collect_sweep(calc, *,
                                      f"{exc}"})
             continue
         meta = dict(res.engine_metadata or {})
-        fc_file = run.on_label(".FC")
+        # THE FORCE CONSTANTS the engine left: the `fc` call's, in its
+        # folder below the run (`vibration_phases.force_constants_call`).
+        fc_file = on_label_at(force_constants_call(attempt), ".FC")
         rx = dict(res.relaxation or {})
         f_eh = rx.get("max_force_eh_bohr")
         overrides = dict(getattr(by_name[name], "overrides", None) or {})
@@ -285,12 +294,11 @@ def collect_sweep(calc, *,
                 f"{list(res.free_atom_idxs)}): not one calculation's sweep")
         # ONE GEOMETRY, or the comparison is not a displacement's: each
         # result states the geometry its force constants were taken at
-        # (`engines/vibration.md` § 6.10.3), and each stage took the relax
-        # stage's NEWEST attempt when it was prepared (§ 5.2a) -- so a
-        # relaxation re-run between two stages would be reported as the
-        # displacement's effect.  Every atom within SAME_GEOMETRY_ANG of the
-        # reference's: the stages copy one relax output, so they agree
-        # exactly, and the tolerance absorbs the two files' float formatting.
+        # (`engines/vibration.md` § 6.10.3), and each stage relaxes in its
+        # own run (§ 5.11 § 1) -- so two relaxations would be reported as
+        # the displacement's effect.  Every atom within SAME_GEOMETRY_ANG of
+        # the reference's: one geometry agrees exactly, and the tolerance
+        # absorbs the two files' float formatting.
         moved = None
         if (res.equilibrium_positions_ang is not None
                 and ref.equilibrium_positions_ang is not None):
@@ -306,11 +314,12 @@ def collect_sweep(calc, *,
                 f"geometries ({where}): "
                 f"a displacement sweep compares one geometry's force "
                 f"constants, and this would report the geometry's change as "
-                f"the displacement's.  Each force-constant stage takes the "
-                f"relax stage's newest attempt when it is prepared "
-                f"(engines/vibration.md 5.2a), and a launched stage is not "
-                f"prepared again (job-system.md 5.0): to measure them at the "
-                f"relaxation they should share, "
+                f"the displacement's.  Each stage relaxes in its own run "
+                f"(engines/vibration.md 5.11 1): to measure them at one "
+                f"geometry, state the structure relaxed (`already_relaxed`) "
+                f"-- the relaxed geometry saved from one stage's `relax` "
+                f"call -- and prepare the stages from the state saved "
+                f"before their groups' first launch: "
                 + rollback("their groups' first launch", base=base))
 
     # WHICH MODE IS WHICH, by shape, against the first stage with a result.

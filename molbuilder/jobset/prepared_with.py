@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from ..runfiles import PREPARED_WITH_FILE as FILENAME
 
@@ -31,33 +31,20 @@ def _plain(value: Any) -> Any:
     return json.loads(json.dumps(value, sort_keys=True, default=str))
 
 
-def _frames(calc, plan) -> Optional[int]:
-    """The cited set's frame count as this prep leaves it -- the citation's
-    record read through ``plan`` when the plan writes it (a calculation's
-    first prep), else ``None``: the record on disk answers
-    (`transport.stages.frames_of`)."""
-    if plan is None:
-        return None
-    from ..transport.compose import PROVENANCE_FILE
-    path = Path(calc.base) / PROVENANCE_FILE
-    if not plan.decides(path) or not plan.is_file(path):
-        return None
-    return int(json.loads(plan.read_text(path)).get("frames") or 1)
-
-
-def values_of(calc, stage: str, *, frames: Optional[int] = None
-              ) -> Dict[str, Any]:
+def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     """THE VALUES ``stage`` IS PREPARED WITH, from ``calc``'s records --
     ``settings``: every field of its configuration as resolved for it;
     ``points``: a rung of points' points, in words, else ``None``;
     ``run_card``: the job request's values that reach it (its run card,
     the calculation's allocation and notification), else ``None``.
-    ``frames`` is the cited set's frame count where the caller holds it.
+    ``calc`` holds the plan as this prep leaves it (its rows merged in);
+    ``read`` reads a path's text where a record is this prep's plan's, not
+    yet on disk (a rung of points' record, `points.PointsOf.rung_points`).
     Raises ``ValueError`` when the template does not resolve."""
     from ..resolve import resolved_ladder
     from ..identity import stage_key
-    from ..transport.stages import frames_of, rung_points
     from .engines import engine_seam
+    from .points import points_of
     task = calc.task
     ladder = resolved_ladder(calc.template_text or "", task,
                              engine_seam(task.engine).config_cls)
@@ -65,9 +52,9 @@ def values_of(calc, stage: str, *, frames: Optional[int] = None
     settings = {f.name: _plain(getattr(cfg, f.name))
                 for f in dataclasses.fields(cfg)}
     points = None
-    if task.calculation == "transport":
-        pts = rung_points(task, stage, frames=(
-            frames if frames is not None else frames_of(calc.base)))
+    declared = points_of(task)
+    if declared is not None:
+        pts = declared.rung_points(calc, stage, read=read)
         points = [pt.words() for pt in pts] or None
     request = calc.request
     run_card = None
@@ -99,10 +86,9 @@ def record(calc, stages, *, plan) -> Path:
     path = Path(calc.base) / FILENAME
     held = (json.loads(plan.read_text(path)).get("stages") or {}
             if plan.is_file(path) else {})
-    frames = _frames(calc, plan)
     for st in stages:
         held = {k: v for k, v in held.items() if stage_key(k) != stage_key(st)}
-        held[st] = values_of(calc, st, frames=frames)
+        held[st] = values_of(calc, st, read=plan.read_text)
     return plan.text(path, json_text({"schema": SCHEMA, "stages": held}))
 
 

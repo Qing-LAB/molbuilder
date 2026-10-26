@@ -61,10 +61,10 @@ def check_ladder_does_not_loosen(
     loosens" is worse than a missing one — it teaches people to ignore the
     check.
 
-    **Only rungs of one ROLE are compared** (`template.stage_role`): a ladder
-    tightens one calculation as it goes, and rungs that are different
-    programs on different cells — transport's five, a vibration's relaxation
-    and its force constants — are not one calculation tuned twice.  So a
+    **Only rungs of one ROLE are compared** (`template.stage_roles`): a
+    ladder tightens one calculation as it goes, and rungs that are different
+    programs on different cells — transport's five — are not one calculation
+    tuned twice.  So a
     transport rung's own tolerance never reads as a loosening (M11 T-F14),
     and an optimization, whose rungs have no roles, is compared whole.
 
@@ -78,12 +78,12 @@ def check_ladder_does_not_loosen(
     **No stage label.** The finding is about the description: naming one of the
     two stages would put the blame on a member for a property of the pair.
     """
-    from ..template import catalogue, reads, select, stage_role
+    from ..template import catalogue, reads, select, stage_roles
     out: List[Issue] = []
     for it in select(catalogue(), engine=engine, calculation=kind):
         if not it.tightens:
             continue
-        last: dict = {}                      # role -> (stage name, value)
+        last: dict = {}                      # roles -> (stage name, value)
         for name, cfg in resolved:
             if not reads(it, engine, kind, name):
                 continue
@@ -91,7 +91,7 @@ def check_ladder_does_not_loosen(
             if val is None:
                 continue
             val = float(val)
-            role = stage_role(engine, kind, name)
+            role = stage_roles(engine, kind, name)
             if role in last and _loosens(last[role][1], val, it.tightens):
                 prev_name, prev_val = last[role]
                 out.append(Issue(

@@ -70,7 +70,18 @@ def read_fdf(text: str, *, spelled_out: Optional[Dict[str, str]] = None
             continue
         low = line.lower()
         if low.startswith("%block"):
-            name = line[len("%block"):].strip()
+            name, _, included = _block_line(line)
+            if included:
+                # A BLOCK READ FROM A FILE BESIDE THE DECK (libfdf's
+                # ``%block Label < Filename``): its rows are that file's,
+                # which text alone cannot give -- a reader of the deck's
+                # FILE inlines them first (:func:`read_deck`).  Never
+                # swallowed as an empty block: every line after it would
+                # be read as its rows, and the deck as holding no atoms.
+                raise ValueError(
+                    f"block {name} is read from {included}, a file beside "
+                    f"the deck: read the deck through read_deck(path), "
+                    f"which inlines it")
             in_block = fdf_key(name)
             spelled.setdefault(in_block, name)
             rows = []
@@ -88,6 +99,60 @@ def read_fdf(text: str, *, spelled_out: Optional[Dict[str, str]] = None
             scalars.setdefault(fdf_key(toks[0]), toks[1:])
             spelled.setdefault(fdf_key(toks[0]), toks[0])
     return scalars, blocks
+
+
+def _block_line(line: str) -> Tuple[str, str, str]:
+    """A ``%block`` line taken apart as libfdf reads it (``fdf_read``):
+    ``(label, "<", filename)`` for ``%block Label < Filename``, the file's
+    name the token after ``<``; ``(label, "", "")`` for a block whose rows
+    follow."""
+    spec = line[len("%block"):].strip()
+    label, sep, rest = spec.partition("<")
+    return label.strip(), sep, (rest.split()[0] if rest.split() else "")
+
+
+def inline_includes(text: str, *, beside, read=None) -> str:
+    """``text`` with every ``%block Label < Filename`` replaced by the block
+    as the file beside the deck gives it -- ``%block Label``, the file's
+    lines, ``%endblock Label`` -- so one text holds the whole deck, as
+    SIESTA reads it (libfdf ``fdf_read``: the included file's lines are the
+    block's body).  ``beside`` is the deck's folder; ``read`` reads a path's
+    text (a prep's plan, where the file is not on disk yet), the file
+    itself by default.  A file that is not there is refused by name."""
+    from pathlib import Path
+    out: List[str] = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if line.lower().startswith("%block"):
+            label, _, included = _block_line(line)
+            if included:
+                path = Path(beside) / included
+                try:
+                    body = (read(path) if read is not None
+                            else path.read_text(encoding="utf-8"))
+                except FileNotFoundError:
+                    raise ValueError(
+                        f"block {label} is read from {included}, which is "
+                        f"not beside the deck in {Path(beside)}") from None
+                out.append(f"%block {label}")
+                out.extend(body.splitlines())
+                out.append(f"%endblock {label}")
+                continue
+        out.append(raw)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
+def read_deck(path, *, read=None) -> str:
+    """THE TEXT OF THE DECK AT ``path``, whole: its blocks read from files
+    beside it inlined (:func:`inline_includes`) -- what every reader of a
+    deck's file reads it through, so a deck whose coordinates lie in
+    ``coordinates.fdf`` beside it reads as one that holds them.  ``read``
+    reads a path's text where the files are a plan's, not yet on disk."""
+    from pathlib import Path
+    p = Path(path)
+    text = (read(p) if read is not None
+            else p.read_text(encoding="utf-8-sig", errors="replace"))
+    return inline_includes(text, beside=p.parent, read=read)
 
 
 def _to_float(s) -> Optional[float]:
@@ -474,4 +539,5 @@ def deck_atoms(text: str) -> DeckAtoms:
 
 __all__ = ["DeckAtoms", "FdfParams", "FDF_TRUE_WORDS", "FDF_FALSE_WORDS",
            "GEOMETRY_KEYS", "deck_atoms", "fdf_key", "fdf_true", "read_fdf",
-           "parse_fdf_params", "system_label"]
+           "inline_includes", "read_deck", "parse_fdf_params",
+           "system_label"]

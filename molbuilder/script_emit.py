@@ -495,18 +495,18 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
 
 
 def emit_vibration_record(payload: Mapping[str, Any]) -> str:
-    """The VIBRATION block: the facts a SIESTA force-constant run's finish
-    reads that no SIESTA keyword states (`engines/vibration.md` § 5.3,
-    § 5.5) -- ``force_criterion_ev_ang`` (the tolerance the
-    reference geometry was relaxed to, `prep`'s), ``temperature_K`` (the thermochemistry's, from the
-    template), ``already_relaxed`` (the person's statement, as made) and
-    ``relaxation`` (the `relax` stage's relaxation record,
-    `parse.contract.relaxation_of`, or ``None``) and ``masses_amu`` (every
-    atom's mass in the deck's order, stated by `prep`, I3).  Written by the
-    framework from :attr:`DeckSpec.vibration`; read back by
+    """The VIBRATION block, format v4: the facts a SIESTA force-constant
+    run's finish reads that no SIESTA keyword states (`engines/vibration.md`
+    § 5.3, § 5.5, § 5.11 § 4) -- ``force_criterion_ev_ang`` (the tolerance
+    the reference geometry is relaxed to, `prep`'s), ``temperature_K`` (the
+    thermochemistry's, from the template), ``already_relaxed`` (the
+    person's statement, as made), ``masses_amu`` (every atom's mass in the
+    deck's order, stated by `prep`, I3) and ``selection`` (the mode
+    selection the optical phase applies, v4).  Written by the framework
+    from :attr:`DeckSpec.vibration`; read back by
     `deck_record.extract_vibration_record`, beside the job as on the host."""
     out: List[str] = [begin_marker(BLOCK_VIBRATION),
-                      "# format: molbuilder-vibration/v3"]
+                      "# format: molbuilder-vibration/v4"]
     out.extend(f"# {line}" for line in _compact_json_lines(dict(payload)))
     out.append(end_marker(BLOCK_VIBRATION))
     return "\n".join(out)
@@ -1657,8 +1657,12 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log,
                            dest_dir=dest_dir, sources=sources)
     written = write_script(path, rendered.text, plan=plan)     # 3.10 write
-    text = (plan.read_text(written) if plan is not None
-            else written.read_text(encoding="utf-8"))
+    # THE DECK AS THE ENGINE WILL READ IT: a block read from a file beside
+    # it inlined (`parse.fdf.read_deck`, `engines/vibration.md` § 5.11 § 4)
+    # -- the file the rung wrote before this deck, in the same plan.
+    from .parse.fdf import read_deck
+    text = read_deck(written, read=(plan.read_text if plan is not None
+                                    else None))
     if log is not None:
         log.step("STEP 3.10 · WRITE")
         log.produced(written.name,

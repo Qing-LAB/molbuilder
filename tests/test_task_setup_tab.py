@@ -144,12 +144,12 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
 
 # THE PROPOSED LADDER RIDES THE HAND-OVER, numbered, made by the server's one
 # rule (`ladder.fresh_stages`, `jobset.group.numbered_fresh`): a vibration's
-# own ladder read from the box (`engines/vibration.md` § 2.2, § 5.2a), the
-# ordinary one-stage start otherwise (`engines/stages.md` § 6.5).  Until
+# one stage, whichever way the box is ticked -- on SIESTA the relaxation is
+# a phase of its run, not a stage (`engines/vibration.md` § 5.11 § 1) --
+# the ordinary one-stage start otherwise (`engines/stages.md` § 6.5).  Until
 # 2.15.3 the page derived it in JavaScript, a second copy of the rule.
 @pytest.mark.parametrize("engine,calculation,params,ladder", [
-    ("siesta", "vibration", {"system_label": "probe"},
-     [("relax", 1), ("freq", 2)]),
+    ("siesta", "vibration", {"system_label": "probe"}, [("freq", 1)]),
     ("siesta", "vibration", {"system_label": "probe", "already_relaxed": True},
      [("freq", 1)]),
     ("pyscf", "vibration", {"job_name": "probe"}, [("freq", 1)]),
@@ -424,7 +424,7 @@ def test_the_presets_come_from_the_shipped_table(web_client):
     # OFFERED PER KIND, by the columns' own membership rule (`task-setup.md`
     # § 9): a tier is offered only where every field it carries may be a
     # column.  A transport rung owns none of the relaxation fields, so its
-    # rows get no menu; a vibration ladder's relax rung owns them all.
+    # rows get no menu; a vibration's one stage owns them all.
     # Until 2026-09-24 every transport rung offered coarse/medium/tight
     # (plan W31, archived 2026-09-29), a menu whose every entry `prep` would refuse.
     t = web_client.get("/api/task-setup/presets?engine=siesta"
