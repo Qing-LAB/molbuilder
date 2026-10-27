@@ -301,7 +301,7 @@ reads the last one back through molbuilder's one XYZ reader
 (`Structure.from_xyz`); the relaxation (`relax_policy.relax`, below); and the
 run's number its run script gives it (`runtime_info.run_given`, § 2). A
 vibration script imports, besides ([`vibration.md`](?doc=engines/vibration.md)
-§ 4): the HOMO rule and its orbital window, the Hessian with dμ/dR and the GPU
+§ 4): the HOMO rule and its orbital window, the Hessian with $d\mu/dR$ and the GPU
 array bridge (`spectra/pyscf_vibration.py`); the harmonic path, the
 wavenumbers, the display form and the thermochemistry with its temperature
 grid (`spectra/normal_modes.py`) — the steps the SIESTA route takes too; the

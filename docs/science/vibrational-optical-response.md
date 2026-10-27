@@ -336,8 +336,8 @@ $$
 with the derivative in D Å$^{-1}$ amu$^{-1/2}$ (a charge of $e$ moved 1 Å is
 4.8032 D, so a derivative in $e$ amu$^{-1/2}$ is multiplied by 4.8032). A free
 molecule tumbles in the light, and its average over orientations is the
-familiar $\frac{N_A}{12\varepsilon_0 c^2}\lvert\partial\boldsymbol\mu/\partial Q\rvert^2
-= 42.256\ \mathrm{km/mol}$ per $(\mathrm D/\text{Å})^2/\mathrm{amu}$
+familiar $\frac{N_A}{12\varepsilon_0 c^2}\lvert\partial\boldsymbol\mu/\partial Q\rvert^2 = 42.256\ \mathrm{km/mol}$
+per $(\mathrm D/\text{Å})^2/\mathrm{amu}$
 [Porezag1996] — a third of the value above, since $\cos^2\theta$ between a
 dipole and the field averages to $1/3$ over orientations; held in the
 junction, it does not tumble. (Both prefactors computed from the CODATA
@@ -480,7 +480,7 @@ default) and `Optical.Energy.Maximum` (10 Ry by default). In SIESTA's words:
   $1 + \frac{2}{\pi}\int_0^\infty \varepsilon_2(\omega')/\omega'\,d\omega'$.
 
 **At the laser's frequency, the static value beside it** *(decided
-2026-10-24 — the user: "yes", to taking α at the laser the person enters
+2026-10-24 — the user: "yes", to taking $\alpha$ at the laser the person enters
 after the run)*. In the pair sum of the optical calculation each pair of
 states a gap $\Delta\varepsilon$ apart adds to $\alpha$ with the weight
 $2/\Delta\varepsilon$ at $\omega = 0$ and
@@ -1002,7 +1002,7 @@ $R_\nu$, not the junction's formulation.
 | **frame set** | one mode written as a few geometries along it, each its own frame (`engines/vibration.md` § 5.10 ③) |
 | **single point** | one SIESTA solution at one fixed geometry, nothing moved |
 | **the `electronic` kind** | the calculation kind that runs a single point at each frame of a frame set — decided, not built; not Raman's route (§ 5) |
-| **the optical phase** | the SIESTA vibration run's phase after its force constants: one single point with the optical calculation per frame — the equilibrium and ±δQ along each selected mode — each a SIESTA call in its own folder of the run ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) |
+| **the optical phase** | the SIESTA vibration run's phase after its force constants: one single point with the optical calculation per frame — the equilibrium and $\pm\delta Q$ along each selected mode — each a SIESTA call in its own folder of the run ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) |
 
 ---
 

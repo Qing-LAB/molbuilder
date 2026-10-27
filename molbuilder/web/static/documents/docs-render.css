@@ -108,6 +108,10 @@
     border-collapse: collapse;
     display: block;
     overflow-x: auto;
+    /* The anchor of what is positioned inside it -- KaTeX's hidden copy of
+     * each formula for screen readers -- so that copy scrolls with the
+     * table instead of widening the page. */
+    position: relative;
     font-size: 0.9em;
 }
 .docs-render th,
@@ -119,6 +123,16 @@
 .docs-render th {
     background: var(--dr-th-bg);
     color: var(--dr-heading);
+}
+
+/* ---- display math ---------------------------------------------- */
+
+/* A formula wider than the column scrolls in its own box, as a code block,
+ * a table and a diagram do -- never past the page's edge. */
+.docs-render .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: relative;     /* as a table's: its hidden copy scrolls with it */
 }
 
 /* ---- images & diagrams ----------------------------------------- */

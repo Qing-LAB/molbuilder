@@ -6,7 +6,7 @@
 (the `cell` / `axis_kind` fields this decides a value for — § 4 `resolve_cell`,
 § 5 capture-at-construction); [`engines/transport.md`](?doc=engines/transport.md)
 (the TranSIESTA invariants I8 / I10 / I12 that read this geometry);
-the Modify tab's **Cell page** is where `c` is set (§ 6).
+the Modify tab's **Cell page** is where $c$ is set (§ 6).
 
 When you flank a molecule with two metal slabs, something has to decide how long
 the box is along z. Get it wrong by one layer spacing and the crystal either
@@ -14,11 +14,11 @@ collides with itself or grows a contact no metal has. This document is the rule,
 the numbers behind it, and what each choice costs.
 
 **The rule in one line:** for a boundary that continues the crystal, the box
-along z is **`z_span + d`** — the atoms' extent plus **one interlayer spacing of
+along z is **$z_{\mathrm{span}} + d$** — the atoms' extent plus **one interlayer spacing of
 the electrode crystal** — never the extent alone.
 
 **Who applies it changed on 2026-08-31.** It is the number a person sets on the
-Cell page after measuring `d` with the ruler (§ 6), not one a builder adds
+Cell page after measuring $d$ with the ruler (§ 6), not one a builder adds
 behind them. This document still owns *what the right value is*; § 6 owns *how
 it gets there*.
 
@@ -26,15 +26,15 @@ it gets there*.
 
 ## 1. Why the extent alone is wrong
 
-A periodic box repeats. If `c = z_max − z_min`, then the bottom atom's image in
-the next cell sits at `z_min + c = z_max` — **exactly on top of the top atom**,
+A periodic box repeats. If $c = z_{\max} - z_{\min}$, then the bottom atom's image in
+the next cell sits at $z_{\min} + c = z_{\max}$ — **exactly on top of the top atom**,
 at zero distance. SIESTA stops with an error, and it is right to.
 
 This is not a new class of mistake. `structure-periodicity.md` § 3 already states
 it for the *in-plane* axes:
 
-> **Wrong size.** For a slab with in-plane spacing `d` and `m` repeats, the true
-> period is `m·d`, but the atoms' bbox is `(m−1)·d`-ish — short by ~one spacing,
+> **Wrong size.** For a slab with in-plane spacing $d$ and $m$ repeats, the true
+> period is $m \cdot d$, but the atoms' bbox is $(m-1) \cdot d$-ish — short by ~one spacing,
 > non-commensurate; tiling it overlaps/gaps atoms at the seam.
 
 The same sentence applies verbatim to z. An atoms' extent is a **bbox**, and
@@ -45,14 +45,14 @@ one the same doc implies: add back the spacing the bbox dropped.
 
 ## 2. The spacing, per surface
 
-`d` depends on which plane faces the molecule. For an fcc metal with cubic
-lattice constant `a`:
+$d$ depends on which plane faces the molecule. For an fcc metal with cubic
+lattice constant $a$:
 
-| plane | interlayer spacing `d` | Au, `a = 4.0782 Å` (exp.) | Au, `a = 4.157 Å` (PBE) |
+| plane | interlayer spacing $d$ | Au, $a = 4.0782\ \text{Å}$ (exp.) | Au, $a = 4.157\ \text{Å}$ (PBE) |
 |---|---|---|---|
-| (100) | `a / 2` | 2.0391 Å | 2.0785 Å |
-| (110) | `a / (2√2)` | 1.4419 Å | 1.4697 Å |
-| (111) | `a / √3` | 2.3545 Å | 2.4000 Å |
+| (100) | $a / 2$ | 2.0391 Å | 2.0785 Å |
+| (110) | $a / (2\sqrt{2})$ | 1.4419 Å | 1.4697 Å |
+| (111) | $a / \sqrt{3}$ | 2.3545 Å | 2.4000 Å |
 
 These are not asserted — they were checked against the slabs ASE actually
 builds, and agree to six decimals. Note that ASE's surface builders return
@@ -62,20 +62,20 @@ z-period to copy from ASE**; it has to be computed.
 ### 2.1 The three rows are one rule *(2026-09-22)*
 
 They look like a table of special cases and they are not. The spacing is the
-cubic `a / √(h² + k² + l²)` evaluated at the **first *allowed* reflection**
+cubic $a / \sqrt{h^2 + k^2 + l^2}$ evaluated at the **first *allowed* reflection**
 along that direction — because a centred lattice has planes between the ones
 the Miller indices name, and the real repeat is the closer one.
 
-**fcc allows `h, k, l` all of the same parity.** So:
+**fcc allows $h, k, l$ all of the same parity.** So:
 
-| plane | parity | first allowed | `d` |
+| plane | parity | first allowed | $d$ |
 |---|---|---|---|
-| (111) | all odd → allowed as written | (111) | `a / √3` |
-| (100) | mixed → forbidden | (200) | `a / 2` |
-| (110) | mixed → forbidden | (220) | `a / (2√2)` |
+| (111) | all odd → allowed as written | (111) | $a / \sqrt{3}$ |
+| (100) | mixed → forbidden | (200) | $a / 2$ |
+| (110) | mixed → forbidden | (220) | $a / (2\sqrt{2})$ |
 
-That is why (100) is `a/2` and not `a`, and (110) is `a/(2√2)` and not
-`a/√2`. **bcc allows `h + k + l` even**, which is why its close-packed plane
+That is why (100) is $a/2$ and not $a$, and (110) is $a/(2\sqrt{2})$ and not
+$a/\sqrt{2}$. **bcc allows $h + k + l$ even**, which is why its close-packed plane
 is (110) where fcc's is (111) — the same rule, a different centring.
 
 **Where it lives.** `cell.interplanar_spacing(system, plane, a)` and
@@ -86,7 +86,7 @@ prediction next to the measurement is what makes them comparable, and
 surfaces — a check neither half had while the arithmetic lived in two places.
 
 A crystal system with no rule here **refuses** rather than answering with the
-cubic formula: hexagonal needs `c/a` and Miller–Bravais indices, and a
+cubic formula: hexagonal needs $c/a$ and Miller–Bravais indices, and a
 plausible wrong number is worse than no number.
 
 **It is the backend's, and only the backend's.** Until 2026-09-22 the live
@@ -98,7 +98,7 @@ the Cell page. The browser now asks `GET /api/modify/spacings`.
 
 ### 2.2 `a` is stated, never defaulted *(user, 2026-09-22)*
 
-`a` comes from `molbuilder/data/fcc_lattice.json` — `a_experimental` and
+$a$ comes from `molbuilder/data/fcc_lattice.json` — `a_experimental` and
 `a_pbe` per metal, plus whatever the person types. (This paragraph named a
 third column, `a_pbe_siesta_psml`; schema v3 dropped it, because nothing in
 the codebase could ever write it. A constant measured in someone's own setup
@@ -109,7 +109,7 @@ belongs to **one run**, and is read from there — `POST
 word `experimental`, the word `pbe`, or a number. There is no default. The two
 references differ by ~2% for gold, which is enough to strain a junction, so a
 silently-chosen one produces an answer that cannot be checked without reading
-the source. The gap must use **the same `a` the slab was built with**, which
+the source. The gap must use **the same $a$ the slab was built with**, which
 is why the derivation reads the built slab rather than a table.
 
 **A data file the user placed is honoured or refused, never half-read.**
@@ -133,24 +133,24 @@ than built wrong.
 **Why the restriction is real and not a gap to fill in passing.** Everything
 this document says about a seam is fcc arithmetic: the stacking period (§ 3.1)
 is 3 on (111) and 2 on (100)/(110) *because* of the ABC stacking; the registry
-step is `a/√6` on fcc(111); the spacings in § 2 are `a/√3`, `a/2`,
-`a/(2√2)`. A bcc or hcp metal has a different period, different registries and
+step is $a/\sqrt{6}$ on fcc(111); the spacings in § 2 are $a/\sqrt{3}$, $a/2$,
+$a/(2\sqrt{2})$. A bcc or hcp metal has a different period, different registries and
 a different set of low-index surfaces, so it is not a table entry — it is a
 second set of rules with its own seam conditions.
 
 **What a bcc/hcp electrode would need**, if it is ever wanted: its own spacing
 and period rows in § 2 and § 3.1, its own registry step for the seam classifier
-(`cell.classify_seam`), and — for hcp — a `c/a` ratio, which fcc does not have.
+(`cell.classify_seam`), and — for hcp — a $c/a$ ratio, which fcc does not have.
 Until those exist the honest answer is a refusal that says so.
 
 ## 2c. Measuring `a` from your own relaxed bulk
 
-The spacings above are computed from a lattice constant, and the table's `a`
+The spacings above are computed from a lattice constant, and the table's $a$
 is a literature value at the level of theory it was measured at. **Yours may
-differ**, and a slab built on someone else's `a` inherits a strain the
+differ**, and a slab built on someone else's $a$ inherits a strain the
 calculation never asked for.
 
-`POST /api/modify/lattice-from-run` reads `a` back out of **your own relaxed
+`POST /api/modify/lattice-from-run` reads $a$ back out of **your own relaxed
 bulk result** — a `.xyz` or `.XV` holding one periodic cell — and reports it
 alongside what it saw: the nearest-neighbour distance, the coordination
 number, and the second-shell ratio, so an answer that does not look fcc can be
@@ -200,7 +200,7 @@ asserts ASE agrees, so the copy cannot drift from the library it describes.
 
 ## 3. Filling the gap is necessary, not sufficient
 
-Padding `c` by `d` fixes the *distance*. It does not fix the *registry* — which
+Padding $c$ by $d$ fixes the *distance*. It does not fix the *registry* — which
 atom sits over which. Two independent conditions have to hold before the seam is
 a real crystal interface.
 
@@ -214,22 +214,22 @@ Close-packed layers repeat with a period that depends on the surface:
 | (100) | ABAB | 2 | **2** |
 | (110) | ABAB | 2 | **2** |
 
-Measured across the seam of a translated slab, with `c = z_span + d`:
+Measured across the seam of a translated slab, with $c = z_{\mathrm{span}} + d$:
 
 | plane | layers/side | nearest metal across the boundary | verdict |
 |---|---|---|---|
-| (111) | 3, 6 | `a/√2` | continues the crystal |
-| (111) | 4 | `d` | eclipsed |
-| (100) | 4, 6 | `a/√2` | continues the crystal |
-| (100) | 3 | `d` | eclipsed |
-| (110) | 4, 6 | `a/√2` | continues the crystal |
-| (110) | 3 | `d` | eclipsed |
+| (111) | 3, 6 | $a/\sqrt{2}$ | continues the crystal |
+| (111) | 4 | $d$ | eclipsed |
+| (100) | 4, 6 | $a/\sqrt{2}$ | continues the crystal |
+| (100) | 3 | $d$ | eclipsed |
+| (110) | 4, 6 | $a/\sqrt{2}$ | continues the crystal |
+| (110) | 3 | $d$ | eclipsed |
 
-`a/√2` is the bulk nearest-neighbour distance; `d` is the interlayer spacing
+$a/\sqrt{2}$ is the bulk nearest-neighbour distance; $d$ is the interlayer spacing
 from § 2. "Eclipsed" means one atom sitting directly above another —
-`Δxy = (0, 0)` — separated only by `d`, which on every surface here is far
+$\Delta xy = (0, 0)$ — separated only by $d$, which on every surface here is far
 shorter than any real metal bond. The relationship is what matters and it is
-scale-free: it holds for any fcc metal at any `a`.
+scale-free: it holds for any fcc metal at any $a$.
 
 A caution about how to test this: **a distance check alone does not prove fcc**.
 At (111) with 2 or 5 layers the across-seam distance is *also* 2.8837 Å, so a
@@ -237,15 +237,15 @@ distance test passes — but the lateral step is reversed. Comparing the step th
 crystal takes inside the slab with the one it takes across the seam (allowing
 for the triangular lattice's three equivalent directions):
 
-Writing the in-slab step as **`s`** (magnitude `a/√6` on (111)):
+Writing the in-slab step as **$s$** (magnitude $a/\sqrt{6}$ on (111)):
 
 | (111), layers per slab | seam step | |
 |---|---|---|
-| 2 | `−s` | **twin** — reversed |
-| 3 | `s` rotated 120° | fcc continues |
-| 4 | `(0, 0)` | eclipsed |
-| 5 | `−s` | **twin** — reversed |
-| 6 | `s` rotated 120° | fcc continues |
+| 2 | $-s$ | **twin** — reversed |
+| 3 | $s$ rotated 120° | fcc continues |
+| 4 | $(0, 0)$ | eclipsed |
+| 5 | $-s$ | **twin** — reversed |
+| 6 | $s$ rotated 120° | fcc continues |
 
 On a triangular lattice the three 120°-separated directions are the same step,
 so the rotated form counts as a continuation while the reversed one does not.
@@ -259,7 +259,7 @@ This is the condition that is easy to miss, because every obvious symmetry
 operation fails it, and fails it identically.
 
 `add_slab(grow="-z", sequence="ABC")` places a slab by **mirroring**
-(`z → −z`). A mirror maps the slab's outermost layer to the *other* slab's
+($z \to -z$). A mirror maps the slab's outermost layer to the *other* slab's
 outermost layer — the same layer index — so both faces meeting at the cell
 boundary carry the **same in-plane registry** and are eclipsed. The deleted
 `add_electrode_slab` did this *unconditionally* for `side="-z"`, with no way
@@ -270,13 +270,13 @@ to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 > the 2026-09-15 junction walkthrough, F15 — its findings live in
 > [`engines/transport.md`](?doc=engines/transport.md) § 4).
 > `sequence` alone does **not** change the registry at the seam. With the
-> documented `ABC`/`ACB` mapping and `c = z_span + d`, every layer count this
+> documented `ABC`/`ACB` mapping and $c = z_{\mathrm{span}} + d$, every layer count this
 > document's § 3.1 table calls *continues* measures as **eclipsed** on
 > (100)/(110) and as a **twin** on (111). The control that does change it is
 > `add_slab`'s **`start_registry`**, which `--electrode` leaves at `0` on both
 > slabs and has no spec field for; giving the two sides different registries
 > (`+z = 1`, `−z = 0`) continues the crystal on both surfaces, with the
-> across-seam distance at the bulk `a/√2`. The web slab card exposes both
+> across-seam distance at the bulk $a/\sqrt{2}$. The web slab card exposes both
 > controls and returns the seam verdict at build time; the CLI took the
 > registry control on 2026-09-21 (below).
 > **This paragraph asserting the CLI was already correct is why the defect went
@@ -312,18 +312,18 @@ Measured, at (111) with 3, 4 and 6 layers per side:
 
 | operation for the `-z` slab | seam step | nearest across boundary | verdict |
 |---|---|---|---|
-| mirror `z → −z` (today) | `(0, 0)` | `d` | eclipsed |
-| C₂ about x, `(x, −y, −z)` | `(0, 0)` | `d` | eclipsed |
-| inversion `(−x, −y, −z)` | `(0, 0)` | `d` | eclipsed |
-| **translation, no flip** | one lattice step | `a/√2` | continues (when § 3.1 holds) |
+| mirror $z \to -z$ (today) | $(0, 0)$ | $d$ | eclipsed |
+| C₂ about x, $(x, -y, -z)$ | $(0, 0)$ | $d$ | eclipsed |
+| inversion $(-x, -y, -z)$ | $(0, 0)$ | $d$ | eclipsed |
+| **translation, no flip** | one lattice step | $a/\sqrt{2}$ | continues (when § 3.1 holds) |
 
-Only a lateral translation changes the registry. `c` cannot: it sets how far
+Only a lateral translation changes the registry. $c$ cannot: it sets how far
 apart the two faces are, never which sits over which.
 
 **The trade this creates.** With a mirror, the molecule sees layer 0 on both
 sides — the two contacts are equivalent, which is the point of a symmetric
 junction. With a translation, the molecule sees layer 0 on one side and layer
-N−1 on the other, so the two anchor sites differ by one registry step. A lateral
+$N-1$ on the other, so the two anchor sites differ by one registry step. A lateral
 shift can restore contact symmetry, but it moves the seam by the same step.
 With rigid slabs you cannot have both, so this is a real choice, not an
 oversight to be fixed.
@@ -375,7 +375,7 @@ It depends entirely on whether the z axis is genuinely periodic in the run.
 **A plain SIESTA run — periodic in z.** The seam is physically present. A zero
 gap is a hard error; an eclipsed gap is a head-on metal contact at 1.4–2.4 Å
 (the interlayer spacing) where the lattice wants an *offset* neighbour at
-`a/√2` — 2.88 Å on the experimental `a`, 2.94 Å on the PBE one. So the
+$a/\sqrt{2}$ — 2.88 Å on the experimental $a$, 2.94 Å on the PBE one. So the
 boundary layers carry spurious repulsion and
 a perturbed density. Freezing those layers stops forces from propagating into
 the molecule, so a **relaxation stays sound**, but the total energy is
@@ -389,8 +389,8 @@ boundary registry differs.
   transport; the semi-infinite leads enter only as self-energies Σ built from a
   *separate pristine bulk-lead run*. What lies across the device cell boundary
   is **replaced** by Σ, so the seam is not part of the transport physics.
-- **I12** — `z-vacuum ≈ 0 at the leads`: "a gap = severed lead, not a junction".
-  `c = z_span + d` satisfies this; the padding is one lattice spacing, not
+- **I12** — z-vacuum $\approx 0$ at the leads: "a gap = severed lead, not a junction".
+  $c = z_{\mathrm{span}} + d$ satisfies this; the padding is one lattice spacing, not
   vacuum.
 - **I10** — the electrode block must map atom-for-atom onto the bulk lead.
 
@@ -405,13 +405,13 @@ as a panel notice. It is not a distance check: § 3.1's
 point is that a twin has the correct bond length, so only the **registry**
 separates a continuation from a twin. The question with an answer is *which
 layer of this slab does the imaged bottom layer land on*, and in a crystal of
-period `p` that is decidable without any lattice arithmetic:
+period $p$ that is decidable without any lattice arithmetic:
 
 | the image lands on | verdict | what you are told |
 |---|---|---|
-| layer `N − p` | `continues` | the crystal carries on — the spacing and the nearest-atom gap, as numbers |
-| the top layer | `eclipsed` | stacking repeats instead of advancing — § 4's head-on contact; asked after the row above, so a stack of period one (a chain, every layer on one site, whose layer `N − 1` IS the top one) continues |
-| layer `N − 2` | `twin` | right bond length, reversed stacking — the case a distance check passes |
+| layer $N - p$ | `continues` | the crystal carries on — the spacing and the nearest-atom gap, as numbers |
+| the top layer | `eclipsed` | stacking repeats instead of advancing — § 4's head-on contact; asked after the row above, so a stack of period one (a chain, every layer on one site, whose layer $N - 1$ IS the top one) continues |
+| layer $N - 2$ | `twin` | right bond length, reversed stacking — the case a distance check passes |
 | — (an open face) | `vacuum` | **not a warning.** An open face is what a slab calculation wants |
 
 One more verdict is a *warning about the slab rather than the seam*: a boundary
@@ -433,8 +433,8 @@ and a strained or unusual slab is judged on what it is.
 ## 5. Where this lives in the code
 
 **One home, and one question.** The derivation is `cell.bulk_z_period(layer_z)`,
-returning `(z_period, d_interlayer, n_layers)` with `z_period = z_span + d`.
-`d` is **the** spacing — the one every adjacent pair of layers is *checked* to
+returning `(z_period, d_interlayer, n_layers)` with $z_{\mathrm{period}} = z_{\mathrm{span}} + d$.
+$d$ is **the** spacing — the one every adjacent pair of layers is *checked* to
 share, to within `UNIFORM_SPACING_TOL_ANG` (1e-3 Å) — and the function refuses a
 block whose layers disagree by more than that, naming the spacings. It also
 raises on a single layer, where there is no spacing to measure at all.
@@ -456,7 +456,7 @@ what the self-energy has to tile.
 > plausible spacing, a plausible period, and a deck built on a lead that is not
 > bulk. The condition to refuse cannot also be the condition to smooth over.
 > The median could not even see the case it was written for on a short lead —
-> with two spacings it *is* the mean, so `[0, 2.35, 5.35]` gave `d = 2.675` and
+> with two spacings it *is* the mean, so `[0, 2.35, 5.35]` gave $d = 2.675$ and
 > a seam 0.33 Å too wide, silently.
 >
 > The tolerance is 1e-3 Å, and it exists only for the file round trip. A frozen
@@ -475,7 +475,7 @@ what the self-energy has to tile.
 > pair, and a lead spending the whole per-atom frozen budget, when real frozen
 > atoms come back at 5e-10. Both were constructed. What remains true is that
 > this is not `FROZEN_TOL_ANG`: that is a budget per atom, this is on a
-> difference of differences of means, so a per-atom error `e` shows up as `4e`
+> difference of differences of means, so a per-atom error $e$ shows up as $4e$
 > here. Equal by coincidence of scale, not by derivation.)*
 
 **The one caller** is `transport.wizard.extract_electrode_model`, where this
@@ -484,7 +484,7 @@ z-period, with a note telling the user to confirm the layer count is a whole
 stacking period. It sits in `cell` (L1) so the rule has a home below the
 engine. *(This section named `modify.add_slab` as a second caller until
 2026-09-20. It is not one, and § 6 below says why: `add_slab` sets
-`c = z_extent` verbatim, so nothing there needs a spacing.)*
+$c = z_{\mathrm{extent}}$ verbatim, so nothing there needs a spacing.)*
 
 **And the gate around it.** `extract_electrode_model` is the one place that
 decides whether a labelled block can serve as a lead, asking in order: every
@@ -502,7 +502,7 @@ from; then **evenly spaced**, which is the call above.
 >
 > | layers | seam | nearest metal across it |
 > |---|---|---|
-> | 3 | `continues` | 2.94 Å — bulk `a/√2` |
+> | 3 | `continues` | 2.94 Å — bulk $a/\sqrt{2}$ |
 > | **4** | **`eclipsed`** | **2.40 Å — head-on Au–Au** |
 > | **5** | **`twin`** | 2.94 Å, stacking reversed |
 > | 6 | `continues` | 2.94 Å |
@@ -528,23 +528,23 @@ that only a cited relaxation reached, so a junction handed in as a finished
 **The monolayer case.** A one-layer slab has no spacing to *measure* — there
 is only one layer to measure between. This mattered while the builder PADDED
 the cell for you; § 6 retired that on 2026-08-31 and `add_slab` sets
-`c = z_extent` verbatim, so nothing needs the spacing at build time any more.
+$c = z_{\mathrm{extent}}$ verbatim, so nothing needs the spacing at build time any more.
 The probe below is how `add_electrode_slab` handled it, kept as the method
 for anyone who needs the number: ask the same ASE builder for a two-layer
 slab at the same `(m, n)` and
-`orthogonal` and reading `d` off that; using the caller's own lateral size
+`orthogonal` and reading $d$ off that; using the caller's own lateral size
 matters, since a probe at `(1, 1, 2)` would trip ASE's "second number must be
 even" constraint on orthogonal fcc(111).
 
 For a slab built through § 6's route the case does not arise as a *builder*
 problem: nobody is padding, so nothing needs a spacing it cannot measure. It
 becomes a question for the person instead — a monolayer's repeat distance is
-the crystal's `d` from § 2, which they can read off the table rather than off
+the crystal's $d$ from § 2, which they can read off the table rather than off
 their own structure.
 
 | Concern | Home |
 |---|---|
-| the rule `z_period = z_span + d`, **and the refusal when the spacings differ** | `cell.bulk_z_period` |
+| the rule $z_{\mathrm{period}} = z_{\mathrm{span}} + d$, **and the refusal when the spacings differ** | `cell.bulk_z_period` |
 | grouping atoms into layers | `cell.detect_layers` |
 | layers per stacking period, by surface | `cell.STACKING_PERIOD` |
 | **what the boundary does to the crystal** | **`cell.classify_seam`** (§ 4.1) — the measurement; the wording is `blueprints/modify.py`, the same split `_lattice_notes` uses |
@@ -563,16 +563,16 @@ rather than asserting a verdict.
 
 *(Rewritten 2026-08-31 on the user's decision. This section described a
 checkbox — "**Pad cell by one layer spacing**", on by default — that built
-`c = z_span + d` for you. The switch is gone and so is the padding.)*
+$c = z_{\mathrm{span}} + d$ for you. The switch is gone and so is the padding.)*
 
 **The builder sets what it knows and nothing else.**
 
 | | who sets it | why |
 |---|---|---|
-| `a`, `b` | the **builder** | they are the crystal's own in-plane vectors, straight from the slab ASE built. Re-deriving them by hand would be a second formula waiting to disagree with the atoms. |
-| `c` | **you** | it is a decision about the calculation — how much vacuum, or which repeat distance makes the boundary continue — and nothing in the geometry answers it. |
+| $a$, $b$ | the **builder** | they are the crystal's own in-plane vectors, straight from the slab ASE built. Re-deriving them by hand would be a second formula waiting to disagree with the atoms. |
+| $c$ | **you** | it is a decision about the calculation — how much vacuum, or which repeat distance makes the boundary continue — and nothing in the geometry answers it. |
 
-A freshly built slab therefore gets `c = z_extent`, the atoms' span verbatim.
+A freshly built slab therefore gets $c = z_{\mathrm{extent}}$, the atoms' span verbatim.
 That is not a usable cell: the top layer sits on its own periodic image, and
 `classify_seam` says so — **`collision`**. That is the point. The missing step
 is visible in the tab you are already in, and stays visible until you take it.
@@ -583,11 +583,11 @@ The principle is *measure, calculate, set* — so the tab's job is to make the
 two measurements cheap, not to make the decision:
 
 1. **The layer spacing** — pick two atoms in adjacent layers with the ruler.
-   The readout's signed `Δ = (Δx, Δy, Δz)` gives it directly.
+   The readout's signed $\Delta = (\Delta x, \Delta y, \Delta z)$ gives it directly.
 2. **The span** — the Cell page shows `z range (max − min)` for the current
    structure. Displayed rather than left to arithmetic, because it is a fact
    about the atoms and a person should not be recomputing it.
-3. **The gap** — a box beside the `c` axis: `c = z range + gap`. For a
+3. **The gap** — a box beside the $c$ axis: $c = \text{z range} + \text{gap}$. For a
    boundary meant to continue the crystal, the gap **is** the layer spacing
    from step 1. For a slab with a free surface, it is however much vacuum the
    calculation needs.
@@ -596,34 +596,34 @@ two measurements cheap, not to make the decision:
 nothing should: a slab calculation wants vacuum there, and only you know which
 you are running. What the program owes you is a verdict on what you set, and
 `classify_seam` gives one on every build and on every box the Cell page
-commits — `collision` if `c` is too small, `vacuum` if it is much larger than
+commits — `collision` if $c$ is too small, `vacuum` if it is much larger than
 a layer, `continues` if the crystal joins (§ 3). That closes the loop without
 anyone guessing. The Cell page's verdict is the slab build's, the same ids and
 words (`blueprints/modify.box_seam_notices`), measured on each fcc metal the
 builder makes that the structure holds, with the box's own collision said once;
 the plane is not known there, so the too-thin note (§ 4.1) is the build's alone
-*(built 2026-10-17, plan X3: until then committing `c` there,
+*(built 2026-10-17, plan X3: until then committing $c$ there,
 `POST /api/structure/periodicity`, answered no seam verdict)*.
 
 ### 6.2 Why the switch went
 
 It hid the decision it claimed to expose. On — the default — the builder chose
-`d` for you and the note beside the switch deliberately *did not print the
+$d$ for you and the note beside the switch deliberately *did not print the
 number*, on the grounds that quoting it would mean a second formula in
 JavaScript. So the one value that determined whether your junction was a
 crystal was computed out of sight and never shown.
 
 Measuring it with the ruler and typing it costs one gesture, puts the number on
-screen, and makes `c` a thing you decided. The second formula the old note
+screen, and makes $c$ a thing you decided. The second formula the old note
 feared is not needed either: the ruler is not a formula, it is the distance
 between two atoms you chose.
 
 **What still overwrites what.** Unchanged, and worth restating since the switch
-was tangled in it: building a slab *establishes* the in-plane lattice, so `a`
-and `b` are overwritten by a build — the slab is what defines them. A `c` you
+was tangled in it: building a slab *establishes* the in-plane lattice, so $a$
+and $b$ are overwritten by a build — the slab is what defines them. A $c$ you
 commit through the Cell page is an explicit cell and stands (`resolve_cell`
 branch 1, `structure-periodicity.md` § 4) until the next build replaces the
-in-plane pair. Editing the Cell tab is now the only way `c` is ever set, which
+in-plane pair. Editing the Cell tab is now the only way $c$ is ever set, which
 is the simplification: there is one door instead of a switch and a door.
 
 ---

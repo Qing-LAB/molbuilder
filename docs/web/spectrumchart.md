@@ -659,7 +659,7 @@ Data goes in one way; nothing comes back out but a click.
 |---|---|---|---|
 | `setModes` | an array of mode records (§ 6.1). An empty array is legal and means *an empty chart* | anything that is not an array; a record missing `index` or `freq`; the same `index` twice — the whole call, and **the chart empties** rather than leaving the last spectrum standing (§ 6.1) | nothing |
 | `setSelected` | one `index`, or `null` for *nothing chosen*. It is **remembered whether or not the current list holds it**, and drawn as soon as a list does | nothing — an index no list holds is not an error (below) | nothing |
-| `setBroadening` | a width in cm⁻¹, `≥ 0`. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.3) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
+| `setBroadening` | a width in cm⁻¹, $\ge 0$. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.3) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
 | `setDisplayFloor` | a percentage, `0`–`100`, of each channel's strongest peak; `0` hides nothing | a value outside `0`–`100` or not a number — the floor already set stands, for the same reason | nothing |
 | `refit` | — | — | nothing |
 | `dispose` | — | — | nothing; safe to call twice |
@@ -881,13 +881,12 @@ reading it:
 The sticks are the data. The envelope is a sum of Lorentzians — the narrow peak
 with long tails that a real spectral line has — one per mode with an activity:
 
-```
-                              γ²
-     y(x)  =  Σ   A_i  ·  ───────────────      γ = half the width you asked for
-              i           (x − x_i)² + γ²
-```
+$$
+y(x) = \sum_i A_i\cdot\frac{\gamma^2}{(x - x_i)^2 + \gamma^2} ,
+\qquad \gamma = \text{half the width you asked for}
+$$
 
-so each mode contributes a peak of height `A_i` at `x_i`, and the sum is what a
+so each mode contributes a peak of height $A_i$ at $x_i$, and the sum is what a
 measured spectrum looks like when lines have width.
 
 **Where the curve is sampled follows the width, not a fixed setting.** The curve

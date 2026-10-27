@@ -422,15 +422,15 @@ the curvature's sign, read off the frames, not assumed.
 
 **The spread the frames sample is the person's** *(the user, 2026-10-24)*.
 The generator (`engines/vibration.md` § 5.10 ③) takes the maximum
-displacement `d_max` — the move, at the outermost frames, of the atom that
+displacement $d_{\max}$ — the move, at the outermost frames, of the atom that
 moves most in the mode: the one with the largest $\lvert\mathbf L_A\rvert$,
-often a light atom but not always — and sets σ from it,
+often a light atom but not always — and sets $\sigma$ from it,
 $\sigma = d_{\max}/(\sqrt2\,x_{\mathrm{out}}\max_A\lvert\mathbf L_A\rvert)$
 ($x_{\mathrm{out}}$ the rule's outermost node, § 5.1: $\sqrt{3/2}$ for three
 frames, 2.0202 for five), so the frames average over a Gaussian of that
-spread. § 2 says what a given σ
-means: σ = `Q_zp` is the zero-point motion, and the thermal spread at a
-temperature T is `Q_zp·√coth(ħω/2k_BT)` — so the reference for `d_max` at
+spread. § 2 says what a given $\sigma$
+means: $\sigma = Q_{\mathrm{zp}}$ is the zero-point motion, and the thermal spread at a
+temperature $T$ is $Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT)}$ — so the reference for $d_{\max}$ at
 the experiment's temperature is
 
 $$
@@ -438,8 +438,8 @@ d_T = \sqrt2\,x_{\mathrm{out}}\;\sigma_T\,\max_A\lvert\mathbf L_A\rvert
 \qquad (\sqrt3\,\sigma_T\max_A\lvert\mathbf L_A\rvert \text{ for three frames}),
 $$
 
-the floor a driven mode adds to (§ 2a). The generator states σ beside
-`Q_zp`, and no temperature (a person's script may state one, § 8).
+the floor a driven mode adds to (§ 2a). The generator states $\sigma$ beside
+$Q_{\mathrm{zp}}$, and no temperature (a person's script may state one, § 8).
 
 ### 5.1 The Gauss–Hermite rule
 
@@ -564,7 +564,7 @@ Each is stated beside the numbers it limits, never dropped:
 3. **One distribution, one voltage at a time.** The average is taken over
    the frames at each voltage separately (`transport.md` § 2a.9, *Both
    axes*), with the same weights at every voltage — a Gaussian of the spread
-   the set states, which is the junction's equilibrium one when σ is chosen
+   the set states, which is the junction's equilibrium one when $\sigma$ is chosen
    as the thermal spread of § 2. A finite bias can heat the modes the current
    couples to, and light can pump them (§ 2a); their spread is then said by an
    effective temperature, measured, not computed here. At low bias the averaged $T(E_F)$ is the averaged conductance.

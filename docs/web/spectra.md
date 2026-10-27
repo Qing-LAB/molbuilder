@@ -155,7 +155,7 @@ charges — is not shown, nor exported to CSV (§ 9b.3).
 
 Under the table, a selected mode with excited-state data draws a **molecular
 orbital correlation diagram**: the same levels at three geometries — pushed to
-−A, at equilibrium, and pushed to +A — with **every orbital joined across the
+$-A$, at equilibrium, and pushed to $+A$ — with **every orbital joined across the
 three**, so the eye follows one level rather than comparing three separate stacks
 of dashes.
 
@@ -192,7 +192,7 @@ source of truth for every chart ([`results.md`](?doc=web/results.md) § 2.5,
 
 Beside the diagram sits a **panel of numbers**, grouped by the question
 each answers: where the levels sit, how the gap moves, and the electron–phonon
-coupling ΔE/(2A). The displacement A itself is in the panel header, since it is
+coupling $\Delta E/(2A)$. The displacement $A$ itself is in the panel header, since it is
 the input every number below depends on rather than a result among them.
 
 **A fourth, run-level tab: Thermochemistry** *(v5 artifacts)*. Beside the
@@ -208,12 +208,12 @@ contributions alone ([`engines/vibration.md`](?doc=engines/vibration.md)
 
 | `thermo.regime` | the headline | the curves | the bar |
 |---|---|---|---|
-| `rrho` — PySCF, nothing held | T, P, ZPE, `H − E_elec`, S, `G − E_elec` (kcal/mol), *full RRHO* | `H − E_elec`, `G − E_elec`, `T·S` | ZPE · U_vib · translation + rotation + pV · −T·S · `G − E_elec` |
-| `vibrational-only` — atoms held, and every SIESTA result | T, ZPE, `ZPE + U_vib`, `S_vib`, `F_vib`, *vibrational contributions only* — no pressure, which enters only the gas-phase translation | `ZPE + U_vib`, `F_vib = ZPE + U_vib − T·S_vib`, `T·S_vib` | ZPE · U_vib · −T·S_vib · `F_vib` |
+| `rrho` — PySCF, nothing held | $T$, $P$, ZPE, $H - E_{\mathrm{elec}}$, $S$, $G - E_{\mathrm{elec}}$ (kcal/mol), *full RRHO* | $H - E_{\mathrm{elec}}$, $G - E_{\mathrm{elec}}$, $T\,S$ | ZPE · $U_{\mathrm{vib}}$ · translation + rotation + $pV$ · $-T\,S$ · $G - E_{\mathrm{elec}}$ |
+| `vibrational-only` — atoms held, and every SIESTA result | $T$, ZPE, $\mathrm{ZPE} + U_{\mathrm{vib}}$, $S_{\mathrm{vib}}$, $F_{\mathrm{vib}}$, *vibrational contributions only* — no pressure, which enters only the gas-phase translation | $\mathrm{ZPE} + U_{\mathrm{vib}}$, $F_{\mathrm{vib}} = \mathrm{ZPE} + U_{\mathrm{vib}} - T\,S_{\mathrm{vib}}$, $T\,S_{\mathrm{vib}}$ | ZPE · $U_{\mathrm{vib}}$ · $-T\,S_{\mathrm{vib}}$ · $F_{\mathrm{vib}}$ |
 
 The writer's own `thermo.note` says what the numbers are good for and where
-they stop, beside them. *(Until 2026-09-28 the viewer recovered E_elec from the
-grid as `h − zpe − u_vib − k_B·T` — a `k_B·T` the vibrational sums do not
+they stop, beside them. *(Until 2026-09-28 the viewer recovered $E_{\mathrm{elec}}$ from the
+grid as `h − zpe − u_vib − k_B·T` — a $k_BT$ the vibrational sums do not
 contain, and without the translational and rotational energies the RRHO sums
 do — so both regimes' curves were shifted and neither bar summed to its total;
 and it printed `P = 1 atm` over results no pressure entered.)* The phase
@@ -273,7 +273,7 @@ the page draws what the one function answers
 
 A change to any of the three asks the load door again with them (§ 6), as the
 thermal temperature does (§ 4.1), and the door answers `infrared` — per mode
-the strength along the direction, `A(ê)` in km/mol, and the charge the mode
+the strength along the direction, $A(\hat e)$ in km/mol, and the charge the mode
 moves into or out of the set, from `spectra.infrared.infrared_view`. **The
 page computes nothing**: the modes table shows both in their columns, the
 chart's infrared lane draws the strengths (§ 2), and the CSV export follows
@@ -403,19 +403,22 @@ about shape.
 
 A quantum harmonic oscillator cannot be at rest. Localising a particle in a
 potential well costs kinetic energy, so the lowest state of every mode sits
-½ħω above the minimum, and the nuclei retain a spread even at T = 0. That spread
+$\tfrac12\hbar\omega$ above the minimum, and the nuclei retain a spread even at $T = 0$. That spread
 is the **zero-point amplitude**:
 
-```
-    ⟨Q²⟩ = ħ / 2ω           Q_rms = √( ħ / 2ω )
-```
+$$
+\langle Q^2\rangle = \hbar/2\omega ,
+\qquad
+Q_{\mathrm{rms}} = \sqrt{\hbar/2\omega}
+$$
 
-where **Q** is the mass-weighted normal coordinate. In the units a spectroscopist
-works in — a wavenumber ν̃ in cm⁻¹, since ω = 2πcν̃ — this evaluates to
+where **$Q$** is the mass-weighted normal coordinate. In the units a spectroscopist
+works in — a wavenumber $\tilde\nu$ in cm⁻¹, since $\omega = 2\pi c\tilde\nu$ — this evaluates to
 
-```
-    Q_rms = 4.106 / √( ν̃ [cm⁻¹] )        in √amu · Å
-```
+$$
+Q_{\mathrm{rms}} = 4.106 \big/ \sqrt{\tilde\nu\,[\mathrm{cm^{-1}}]}
+\qquad \text{in } \sqrt{\mathrm{amu}}\cdot\text{Å}
+$$
 
 **The tab does not compute this number.** Every mode in the file carries it
 as `zero_point_amplitude_amu12_ang`, derived from the one constant in
@@ -430,14 +433,14 @@ tab asks the door again and takes what it says. The tab holds no constant and
 computes neither size. *(A second spelling of the constant lived in the tab until
 2026-09-24.)*
 
-and the Cartesian displacement of atom *i* is `Q_rms × L_i`, with **L** the
-mass-weighted eigenvector normalised so `Σᵢ mᵢ|Lᵢ|² = 1` (`eigenvector_canonical`).
+and the Cartesian displacement of atom $i$ is $Q_{\mathrm{rms}}\times L_i$, with **$L$** the
+mass-weighted eigenvector normalised so $\sum_i m_i\lvert L_i\rvert^2 = 1$ (`eigenvector_canonical`).
 The mass carried in that normalisation is what makes the amplitude **atom-specific**:
-a heavier nucleus in the same mode moves as 1/√m.
+a heavier nucleus in the same mode moves as $1/\sqrt{m}$.
 
 Two consequences, both visible in the animation:
 
-| ν̃ | H (1 amu) | C (12) | Au (197) |
+| $\tilde\nu$ | H (1 amu) | C (12) | Au (197) |
 |---|---|---|---|
 | 100 cm⁻¹ — a torsion | 0.41 Å | 0.12 Å | 0.029 Å |
 | 1000 cm⁻¹ — a ring breath | 0.13 Å | 0.037 Å | 0.0093 Å |
@@ -446,8 +449,8 @@ Two consequences, both visible in the animation:
 *(the swing of an atom carrying the entire mode; a real mode distributes it, so
 per-atom values are smaller)*
 
-**Stiffer bonds move less** — amplitude falls as 1/√ν̃, so a C–H stretch is half a
-torsion. **Heavier atoms move less** — as 1/√m, so gold barely moves in a mode a
+**Stiffer bonds move less** — amplitude falls as $1/\sqrt{\tilde\nu}$, so a C–H stretch is half a
+torsion. **Heavier atoms move less** — as $1/\sqrt{m}$, so gold barely moves in a mode a
 hydrogen dominates. Both are why an honest animation of a stretching mode looks
 almost still, and why the exaggerated default exists.
 
@@ -456,20 +459,20 @@ almost still, and why the exaggerated default exists.
 Above absolute zero the excited vibrational states are populated too, and the
 thermal average over them raises the mean-square displacement by a factor:
 
-```
-    ⟨Q²⟩_T = ( ħ / 2ω ) · coth( ħω / 2k_BT )
-```
+$$
+\langle Q^2\rangle_T = (\hbar/2\omega)\cdot\coth(\hbar\omega/2k_BT)
+$$
 
-The amplitude therefore grows by **√coth(x)**, `x = ħω / 2k_BT`. As T → 0,
-coth → 1 and this becomes the zero-point expression exactly — the two are one
+The amplitude therefore grows by **$\sqrt{\coth(x)}$**, $x = \hbar\omega/2k_BT$. As $T \to 0$,
+$\coth \to 1$ and this becomes the zero-point expression exactly — the two are one
 formula, not two, which is the check that the limit is right.
 
 **The useful question is which modes it changes.** One wavenumber is worth
-**1.44 K**, so room temperature is only `k_BT ≈ 207 cm⁻¹`. A mode much stiffer
-than that has ħω ≫ k_BT, sits in its ground state whatever the temperature, and
+**1.44 K**, so room temperature is only $k_BT \approx 207\ \mathrm{cm^{-1}}$. A mode much stiffer
+than that has $\hbar\omega \gg k_BT$, sits in its ground state whatever the temperature, and
 is said to be **frozen out**. At 298 K, as a multiple of the zero-point swing:
 
-| ν̃ (cm⁻¹) | 50 | 100 | 300 | 1000 | 3000 |
+| $\tilde\nu$ (cm⁻¹) | 50 | 100 | 300 | 1000 | 3000 |
 |---|---|---|---|---|---|
 | ×  zero-point | 2.9 | 2.1 | 1.27 | 1.01 | 1.00 |
 | at 500 K | 3.7 | 2.6 | 1.57 | 1.06 | 1.00 |
@@ -489,7 +492,7 @@ pairs with each differs accordingly:
 | | eigenvector | its amplitude is in |
 |---|---|---|
 | exaggerated | dimensionless (max = 1) | **Å** |
-| physical | 1/√mass (`Σ mᵢ\|Lᵢ\|² = 1`) | **√amu·Å** |
+| physical | 1/√mass ($\sum m_i\lvert L_i\rvert^2 = 1$) | **√amu·Å** |
 
 Each pairing multiplies out to ångström of motion — but only within itself.
 Feeding a display eigenvector into a physical amplitude, or the reverse, produces
@@ -527,9 +530,9 @@ Each part answers a question a bare number leaves open.
 **"the motion is 91% C, 9% H" — whose mode is it.** Each element's share of the
 mode, computed as its part of the mass-weighted motion:
 
-```
-        share of atom i  =   mᵢ|Lᵢ|²  ⁄  Σₖ mₖ|Lₖ|²
-```
+$$
+\text{share of atom } i = m_i\lvert L_i\rvert^2 \Big/ \sum_k m_k\lvert L_k\rvert^2
+$$
 
 This is the **kinetic-energy distribution**, the standard way a mode is assigned
 to the atoms that carry it. For a harmonic mode the ratio is the same at every
@@ -540,7 +543,7 @@ differ by one scalar per mode, and a scalar cancels in a ratio.
 > **Why mass-weight it at all — the trap this replaced.** The line used to name
 > the atom with the largest displacement. In the benzene-dithiol result that is a
 > hydrogen in **32 of 36 modes**, including the 1648 cm⁻¹ ring stretch, where the
-> hydrogens move 18% further than the carbons (|L| = 1.15 against 0.98) and carry
+> hydrogens move 18% further than the carbons ($\lvert L\rvert$ = 1.15 against 0.98) and carry
 > **9%** of the motion. A light atom travels further for the same energy, and
 > hydrogen is the lightest thing in most molecules — so "which atom moves
 > furthest" answers *hydrogen* almost regardless of the mode, which is a true
@@ -617,7 +620,7 @@ box empty, and no reference is shown until one is typed. The value stays the
 person's. The page writes nothing itself: it asks the one generator through
 `POST /api/spectra/frameset` (§ 6), and shows its answer — each frame, named
 as the frame-set card names it (*frame 1 (of 5)* for the first, the
-display's count from 1, `model/structure.md` § 2.2e), its `q/σ`, largest atom
+display's count from 1, `model/structure.md` § 2.2e), its $q/\sigma$, largest atom
 move and weight, the pair's path, and, where an electrode atom moves, that
 transport refuses the set. The animation's amplitude (§ 4.1) is a drawing
 choice and never this input.
@@ -774,7 +777,7 @@ whole-body motions survive it**, the artifact records what was removed
 reported frequencies are those of the free atoms moving in the field of the
 fixed ones.
 
-**How many vibrations that leaves is not `3N−6`, and it is not free either.**
+**How many vibrations that leaves is not $3N-6$, and it is not free either.**
 Freezing removes the whole-body motions that would move a frozen atom — and
 leaves the ones that would not. Two frozen atoms still let the rest of the
 molecule turn about the line through them — unless the surviving turn moves no
@@ -856,7 +859,7 @@ SIESTA's route has no probe (§ 9b.3) — takes one of three answers:
 | `all` | every mode |
 | `explicit` | exactly the indices you list |
 
-*(`top_n` and `threshold` were retired by decision on 2026-09-23 and removed on 2026-09-28, V1.6. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — ∂ε/∂Q, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time; and for an engine that computes no strengths they were undefined rather than empty. The frequency window is the cost control, and `all` is cheap where it matters — 8 SCFs for CO₂.)*
+*(`top_n` and `threshold` were retired by decision on 2026-09-23 and removed on 2026-09-28, V1.6. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — $\partial\varepsilon/\partial Q$, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time; and for an engine that computes no strengths they were undefined rather than empty. The frequency window is the cost control, and `all` is cheap where it matters — 8 SCFs for CO₂.)*
 
 **The frequency window filters `all` (`skip` selects nothing) and is IGNORED by `explicit`** —
 naming a mode by index is saying *that one*, and a window that silently
