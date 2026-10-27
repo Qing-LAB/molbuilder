@@ -169,8 +169,31 @@ def test_a_box_that_changes_size_redraws_while_the_window_sits_still():
 def test_the_handle_is_the_doors_and_nothing_else():
     """§ 4 — no hidden way in; § 8.3 — nothing is read back."""
     got = drive("console.log(JSON.stringify(Object.keys(chart).sort()));")
-    assert got == ["dispose", "ok", "refit", "setBroadening", "setDisplayFloor",
-                   "setModes", "setSelected"]
+    assert got == ["dispose", "ok", "refit", "setAbsentWords", "setBroadening",
+                   "setDisplayFloor", "setModes", "setSelected"]
+
+
+def test_an_empty_lane_says_the_callers_words_until_restored():
+    """§ 8.3 setAbsentWords -- a lane with no value says the caller's reason
+    in its title in place of *not computed*, and ``null`` restores it: the
+    spectrum page's Raman lane waiting on a laser beside a drawn infrared
+    lane (`web/spectra.md` § 3.3)."""
+    got = drive(
+        "const two = await mount(globalThis.__host(), { channels: [\n"
+        "  { key: 'raman', label: 'Raman', unit: 'A4/amu', direction: 'up' },\n"
+        "  { key: 'ir', label: 'IR', unit: 'km/mol', direction: 'down' }] });\n"
+        "two.setModes([{ index: 1, freq: 100, values: { ir: 4 } },\n"
+        "              { index: 2, freq: 500, values: { ir: 9 } }]);\n"
+        "const titles = () => { const r = __calls.filter(c => c.call === 'react');\n"
+        "  const l = r[r.length - 1].layout;\n"
+        "  return Object.keys(l).filter(k => k.startsWith('yaxis'))\n"
+        "    .map(k => (l[k].title || {}).text).filter(Boolean); };\n"
+        "two.setAbsentWords('raman', 'type the laser');\n"
+        "const said = titles();\n"
+        "two.setAbsentWords('raman', null);\n"
+        "console.log(JSON.stringify({ said, restored: titles() }));")
+    assert "Raman — type the laser" in got["said"], got
+    assert "Raman — not computed" in got["restored"], got
 
 
 def test_selecting_recolours_and_does_not_redraw():

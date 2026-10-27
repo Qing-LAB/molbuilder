@@ -30,8 +30,8 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`vibration` (``real_co2_vibration``) -- the vibration kind's one
   run in phases of the road's CO2, listed O O C with the carbon held, so its
   decks are in the engine's held-first order (`support.road.CO2`; plan
-  T-CO2): its `relax` call, its `fc` call and one mode's three optical
-  calls (`engines/vibration.md` § 5.11), waited on;
+  T-CO2): its `relax` call, its `fc` call and the two stretches' five
+  optical calls (`engines/vibration.md` § 5.11), waited on;
 * :func:`gpu` (``real_h2_gpu``) -- the same H2 asking this machine's GPU,
   one rank: its run script's dry runs, then the run, waited on;
 * :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF, flat,
@@ -501,11 +501,13 @@ def bench(tmp_path_factory) -> RealRun:
 #: literature value.
 CO2_SETTINGS = {"mixing_weight": 0.25, "mesh_cutoff": 150.0}
 
-#: THE OPTICAL PHASE ASKED FOR, on the shared run: one mode, the lower
-#: stretch -- mode 3 of four, 1-based (`spectra.selection.select_modes`) --
-#: so the run's optical calls are three, the equilibrium and the mode's two
-#: sides; the optical mesh the one point an isolated molecule's box needs.
-CO2_OPTICAL = {"es_mode_selection": "explicit", "es_explicit_indices": "3",
+#: THE OPTICAL PHASE ASKED FOR, on the shared run: the two stretches --
+#: modes 3 and 4 of four, 1-based (`spectra.selection.select_modes`), the one
+#: whose oxygens move apart and the one whose oxygens move together, so the
+#: Raman view can be held to CO2's symmetry -- so the run's optical calls are
+#: five, the equilibrium and each mode's two sides; the optical mesh the one
+#: point an isolated molecule's box needs.
+CO2_OPTICAL = {"es_mode_selection": "explicit", "es_explicit_indices": "3,4",
                "optical_mesh": [1, 1, 1]}
 
 

@@ -51,15 +51,12 @@ instead of carrying their own order.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-20)*
 
-> **NOW (2026-10-25).** Two things, in this order, each the user's: **(1)
-> close 2.41.0** — the 2.40 review's decisions, built (§ 1ad.1: the
-> prepared-with record and *changed since prepared*, launch comparing nothing,
-> the periodic-start Fermi shift, the low-bias words, the rest) — its fast
-> batch, the real-junction and Task setup e2e, two review rounds, changelog,
-> commit on the user's order; the verified findings of § 1ad.2 are last-number
-> moves after it. **(2) Build § 1ae** — SIESTA's vibration as one run in
-> phases, Raman its optical phase (the user's B; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11, the
-> design; the proof of concept verified 2026-10-25) — milestone by milestone.
+> **NOW (2026-10-26).** § 1ae M1–M4 built (2.42.0–2.44.0): SIESTA's
+> vibration as one run in phases and its Raman at a laser, exported and read
+> by a script. Next, each the user's: the NetCDF self-description (the data
+> files' definitions in `model/datafiles.md` first, then the writers); M5,
+> the contract closed (§ 1ae); the verified findings of § 1ad.2, last-number
+> moves; the viewer walked on the user's server with Claude in Chrome.
 
 **Where we are.** Shipped since the last handover (2026-10-18; it is
 [`archive/2026-10-20-plan-handover.md`](?doc=archive/2026-10-20-plan-handover.md),
@@ -1153,7 +1150,7 @@ review of what it touched, its tests green, then the next.
 | M1 | **the framework** | a rung of points declared — each `RUNGS` row states where its points come from, what makes a point done, its start and its finish; every reader asking `calculation == "transport"` today asks the row (prep, the walk, `status`, `continuation`, the gather, Task setup, the record); `siesta/vibration_phases.py` — `PHASES`, the index's writer and reader, its `runfiles.WRITTEN` row and registry parser, the state rule over `points_state`; `parse/fdf.py` reads `%block Label < Filename`; `selection`, `calcdirs`, `paths` join the vibration bundle; `materialize.bring_files`' copy core split into a floor-1 function both call; `siesta/deck_lines.coordinates_rows` (one for `spec_for`, TranSIESTA, the plan); the displacement rule one function (`mode_frames` and the plan) | the fast batch and the real-junction e2e pass unchanged — nothing a transport calculation does differs |
 | M2 | **prep and launch** | `spec_for(part=)` for the relax, force-constant and optical decks; the stage's phase folders with their run scripts; `relax`'s coordinates file; the count beside the wall; `vibration_stages` one stage on both engines and the `relax` stage's rules retired (`ladder`, `ready`'s *waits before it can be prepared*, `_vibration_stage_geometry`, `first_launch_takes`' branch, § 5.2a); the phased walk at launch; the calls a warm launch takes over through `materialize.HandOver`; `warm-files.toml` per phase; the monitor's `--member` flag and `notify` verb, the run script's monitor block rendered for a member, the N-hour clock from the run's start | **built 2.42.0** — the scratch H₂ (held and free) through `describe → prep → launch --mode direct`: `01_freq/{relax,fc}/` each with its deck, `coordinates.fdf` and run script; `run-0/relax`, `run-0/fc` seeded from its `.DM`; the index with both calls, its phases and the finish; `notified.json` start + finish; the result pair at the run's root; the CO₂ e2e (`tests/test_siesta_vibration_e2e.py`) through `describe → prep → launch`: the `relax` and `fc` calls, one mode's three optical calls, the index, the result, one `start` and one `finish`, the sweep — and the relaxation's, the monitor's and the inspector's e2e on the same run |
 | M3 | **the job's Python** | `plan`, `record`, `finish` in `spectra/siesta_vibration.py`, the optical calls' record composed there; `parse/engines/siesta_epsimg_reader.py` and its registered parser `siesta_epsimg.py`; `spectra/optical_data.py` (its `Var` table, `photon_energy_ev` in `ncdata.AXES`); the result's `phase_*` on SIESTA, `raman_route` `optical`, `raman_fd_step_ang`, `optical` (schema 13; the `.nc` @7); prep's count and sizes (§ 5.11 § 9) | **built 2.43.0** — the CO₂ e2e's index, result and data file agree, each frame's geometry the displacement rule's and its spectrum its call's `.EPSIMG` through the registry; the result's phases and route right; the data file reads through its reader and `xarray.load_dataset`; the warm-relaunch e2e (a copy stopped once an optical call started) takes `relax` and `fc` over and runs only the optical calls — it caught the optical record reading a result only a run computing its own force constants writes |
-| M4 | **the view, the export and the readers** *(designed 2026-10-26, § 5.11 § 10; M4-a–e decided)* | `spectra/raman.py` — `raman_view` (KK, the width composed, the laser), its ask's reader, the `raman.nc` variable table; `phase_ir` and `ir_route` `charges` written by the finish; the viewer's gates by route (`_ramanRouteLabel` reads PySCF's `compute_raman` today), `_ramanOf`, the *Laser wavelength* and *Electronic broadening* boxes, the Raman column and lane named by their quantity, the Export buttons; the load door's `raman` ask; `spectra/export.py`, `GET /api/spectra/export`, `jobset export` for a vibration (`--laser-nm`, `--broaden-ev`), the export's shape shared with transport's; `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`' sentence; the charge switch as items (L4); Task setup's card per phase | the KK and composition API tests; the CO₂ e2e's symmetry check and its export read back through the readers and `xarray`; the viewer on the running server showing Raman and exporting it (Claude in Chrome) |
+| M4 | **the view, the export and the readers** *(designed 2026-10-26, § 5.11 § 10; M4-a–e decided)* | `spectra/raman.py` — `raman_view` (KK, the width composed, the laser), its ask's reader, the `raman.nc` variable table; `phase_ir` and `ir_route` `charges` written by the finish; the viewer's gates by route (`_ramanRouteLabel` reads PySCF's `compute_raman` today), `_ramanOf`, the *Laser wavelength* and *Electronic broadening* boxes, the Raman column and lane named by their quantity, the Export buttons; the load door's `raman` ask; `spectra/export.py`, `GET /api/spectra/export`, `jobset export` for a vibration (`--laser-nm`, `--broaden-ev`), the export's shape shared with transport's; `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`' sentence; the charge switch as items (L4); Task setup's card per phase | **built 2.44.0** — the KK and composition API tests; the CO₂ e2e's symmetry check (633 nm: 45.1 against 0.23 Å⁴/amu) and its export read back through the readers and `xarray`; the page's own e2e asking the laser and exporting in a browser; the viewer on the user's running server (Claude in Chrome) still to walk |
 | M5 | **the contract, closed** | § 5.11 becomes the rules of § 2.2, § 5.2a–§ 5.5, § 5.8, § 5.9 as built; `job-system.md` § 5.4's vibration rows; `project-layout.md` § 5 (the manifest regenerated); `job-contracts.md`'s rows; `web/results.md`; `web/spectra.md` § 3.2; `web-api.md`; the method doc's § 5 and § 7; the changelog; two review rounds | R1 measured on the toy junction through the built run (two `optical_mesh` values), its numbers in the method doc's § 3.1 |
 
 **Handover, M2 built (2026-10-26)** — what M3–M5 pick up: (a) a sweep's
@@ -1191,10 +1188,8 @@ as a step after the force-constant run alone — M5 folds § 5.11 in.
 **Open after it**: the named set's share (D-e), designed after R1; the
 `electronic` kind (§ 5.10 ④) for the response along a mode, unchanged;
 **the measured intensity as an option** (the user, 2026-10-26: "add the
-Stokes shift factor as an option later") — the scattered light's
-`(ν̃_L − ν̃_ν)⁴` and the temperature's `1/(1 − e^(−hcν̃_ν/kT))` over `ν̃_ν`
-applied to the strength when asked, on both engines, the plain strength
-beside it; contract first (`engines/vibration.md` § 5.11 § 13, M4-d).
+Stokes shift factor as an option later") — the factors of the method's
+§ 3.2a, contract first (`engines/vibration.md` § 5.11 § 13, M4-d).
 
 ## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user — the contract to write in `execution/run-reports.md` § 2, then the build)*
 

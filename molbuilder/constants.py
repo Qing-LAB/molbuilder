@@ -123,6 +123,11 @@ HZ_EV: float = 4.135667696e-15
 #: the two spellings of the same physics cannot drift.
 CM1_EV: float = HARTREE_EV / HARTREE_CM1
 
+#: h·c in eV·nm -- a light's photon energy in eV is this over its
+#: wavelength in nm: the same hc as `CM1_EV`, per nm rather than per cm.
+#: The laser a Raman view is asked at (`spectra.raman`).
+HC_EV_NM: float = CM1_EV * 1e7
+
 #: hc/k_B -- kelvin per wavenumber: a mode of ν̃ cm⁻¹ has ħω/k_BT =
 #: ν̃ · CM1_KELVIN / T.  DERIVED from the two above, so the Spectrum page,
 #: the thermal spread of a mode (`spectra.derived.thermal_spread_amu12_ang`)

@@ -244,11 +244,17 @@ def sha256_of(path) -> str:
     """The sha256 of the file at ``path``, hex -- the one digest a record
     states of a file it names (a run in phases' index: each call's deck
     and coordinates, `engines/vibration.md` § 5.11 § 7)."""
-    import hashlib
     from pathlib import Path
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return sha256_of_bytes(Path(path).read_bytes())
+
+
+def sha256_of_bytes(data: bytes) -> str:
+    """:func:`sha256_of` of bytes already read -- the digest of exactly
+    what a reader holds."""
+    import hashlib
+    return hashlib.sha256(data).hexdigest()
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "read_json",
            "json_text", "write_json", "stage_bytes", "write_bytes",
-           "sha256_of"]
+           "sha256_of", "sha256_of_bytes"]

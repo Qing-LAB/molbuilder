@@ -618,13 +618,14 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     # read two ways.
     from molbuilder.spectra.results import SpectraResults
     from molbuilder.web.app import create_app
-    from molbuilder.web.blueprints.spectra import _infrared_asked, _loaded
+    from molbuilder.spectra.infrared import read_ask
+    from molbuilder.web.blueprints.spectra import _loaded
     result = SpectraResults.from_dict(d)
     with create_app().app_context():
         along = {}
         for axis in "xyz":
-            got = _loaded(result, infrared=_infrared_asked(
-                {"infrared": {"direction": axis}}, None)).get_json()["results"]
+            got = _loaded(result, infrared=read_ask(
+                {"direction": axis})).get_json()["results"]
             assert (got["infrared_source"], got["infrared_orientation"]) == \
                 ("dipole", "held"), got.get("infrared_said")
             along[axis] = [m["intensity_km_mol"]

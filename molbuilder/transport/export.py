@@ -18,46 +18,26 @@ ROLE    :func:`export` -- the one composition the transport report's Export
 """
 from __future__ import annotations
 
-import io
-from dataclasses import dataclass
 from typing import Dict
 
-#: The forms an export takes.
-FORMATS = ("netcdf", "csv")
+from ..ncdata import ExportError, Exported
+
+#: What a transport export asks beyond its form: nothing.
+ASKS: tuple = ()
 
 
-class ExportError(ValueError):
-    """The export is refused -- the message says why, in its owner's words."""
-
-
-@dataclass(frozen=True)
-class Exported:
-    """An export: ``name`` -- the data file's (``<label>.transport.nc``), or
-    the tables' folder's (``<label>.transport-csv``) -- its ``files``, each
-    path within it and its bytes, and ``said``: the points it holds without
-    their DOS by region and how to read them, or ``""``."""
-    name: str
-    files: Dict[str, bytes]
-    said: str = ""
-
-    def as_zip(self) -> bytes:
-        """The tables as one zip, its members under :attr:`name` -- a
-        download is one file."""
-        import zipfile
-        out = io.BytesIO()
-        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-            for rel, data in self.files.items():
-                z.writestr(f"{self.name}/{rel}", data)
-        return out.getvalue()
+def _data_file_name(calc) -> str:
+    from .datafile import data_file_path
+    return data_file_path(calc.base, calc.task.label).name
 
 
 def name_of(calc, fmt: str) -> str:
-    """What an export of ``calc`` as ``fmt`` is named -- the data file's
-    name (`datafile.data_file_path`), or its tables' folder's --
-    known before anything is composed."""
-    from .datafile import data_file_path
-    name = data_file_path(calc.base, calc.task.label).name
-    return name if fmt == "netcdf" else name[:-len(".nc")] + "-csv"
+    """What an export of ``calc`` as ``fmt`` is named -- the data file
+    itself, or its tables' folder (`ncdata.export_name`) -- known before
+    anything is composed."""
+    from ..ncdata import export_name
+    name = _data_file_name(calc)
+    return export_name(name[:-len(".nc")], fmt, name)
 
 
 def missing_dos_said(record: Dict) -> str:
@@ -85,13 +65,11 @@ def export(calc, fmt: str) -> Exported:
     :class:`ExportError` names a form that is not one, a calculation that is
     not transport, and results that do not read or do not lay out on one
     grid -- in their owners' words, as the record's route says them."""
-    from ..ncdata import as_tables
+    from ..ncdata import export_format, exported
     from .compose import ComposeError
     from .datafile import DataFileError, data_file_bytes
     from .record import RecordError, collect_record, not_transport
-    if fmt not in FORMATS:
-        raise ExportError(f"an export is {' or '.join(FORMATS)}, not "
-                          f"{fmt!r}")
+    export_format(fmt)
     other = not_transport(calc)
     if other:
         raise ExportError(other)
@@ -103,14 +81,8 @@ def export(calc, fmt: str) -> Exported:
     except (RecordError, ComposeError, DataFileError, OSError,
             ValueError) as exc:
         raise ExportError(str(exc)) from exc
-    said = missing_dos_said(record)
-    if fmt == "netcdf":
-        return Exported(name, {name: data}, said)
-    tables, readme = as_tables(data, name)
-    return Exported(name_of(calc, "csv"),
-                    {**{t: text.encode("utf-8") for t, text in tables.items()},
-                     "README.txt": readme.encode("utf-8")}, said)
+    return exported({name: data}, fmt, stem=name[:-len(".nc")],
+                     one_file=True, said=missing_dos_said(record))
 
 
-__all__ = ["FORMATS", "ExportError", "Exported", "export",
-           "missing_dos_said", "name_of"]
+__all__ = ["ASKS", "export", "missing_dos_said", "name_of"]

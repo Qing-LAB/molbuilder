@@ -860,6 +860,9 @@ class SpectraResults:
     #:                          Raman's displacement loop was running
     #:                          anyway (so the dipole read was free) or
     #:                          because the analytic module is absent;
+    #:   "charges"           -- SIESTA: the force-constant run's partial
+    #:                          charges, stored; the infrared derived from
+    #:                          them on request (`spectra.infrared`);
     #:   "none"              -- IR was not requested.
     #: Older sidecars predate the field and parse as "" -- absence of a
     #: record, which the viewer must not render as a claim either way.
@@ -871,9 +874,12 @@ class SpectraResults:
     #: has no step to state.
     ir_fd_step_ang:            Optional[float] = None
     #: How dalpha/dR was obtained, for the run as a whole (engines/vibration.md § 4.6):
-    #:   "finite-difference" -- central differences of the analytic CPHF
-    #:                          polarizability over the free Cartesians,
-    #:                          the one Raman route there is;
+    #:   "finite-difference" -- PySCF: central differences of the analytic
+    #:                          CPHF polarizability over the free Cartesians;
+    #:   "optical"           -- SIESTA: its optical calls' eps2 at +dQ and
+    #:                          -dQ along each picked mode, the strength
+    #:                          derived on request at a laser
+    #:                          (`spectra.raman`);
     #:   "none"              -- Raman was not requested, or the engine
     #:                          computes no intensities.
     #: Older sidecars parse as "" -- absence of a record.

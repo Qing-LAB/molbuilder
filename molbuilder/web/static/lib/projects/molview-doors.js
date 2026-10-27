@@ -21,6 +21,7 @@
 import { chooseSavePath, confirmDestructive } from "./dialogs.js";
 import { apiUpload } from "./api.js";
 import { storeZip } from "../zip-store.js";
+import { download } from "./downloads.js";
 
 async function _postJSON(url, body) {
     const r = await fetch(url, {
@@ -31,21 +32,6 @@ async function _postJSON(url, body) {
     let payload = null;
     try { payload = await r.json(); } catch (_) { /* empty body */ }
     return { http: r.status, body: payload };
-}
-
-/* A browser download of in-memory bytes.  Four lines of DOM, and they live
- * HERE — the projects module — because § 11.2a forbids exactly these four
- * lines inside the viewer: where files may go is one module's knowledge.
- * Every page that hands a person a file asks it (`projects.download`). */
-export function download(filename, blob) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 /* WHERE and AS WHAT is the unified question (`chooseSavePath`,

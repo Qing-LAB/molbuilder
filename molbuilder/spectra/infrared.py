@@ -36,7 +36,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 
 from ..constants import DEBYE_E_ANGSTROM
-from .activity import CHANNEL_PRESENT_FLOOR_IR_KM_MOL, ir_strength_km_mol
+from .activity import (CHANNEL_PRESENT_FLOOR_IR_KM_MOL, ir_strength_km_mol,
+                       relative_to_strongest)
 from ..structure import Structure
 from .results import PARTITIONS, SpectraResults, mass_of
 
@@ -245,7 +246,16 @@ def _unit(direction: Union[str, Sequence[float]]) -> Tuple[Tuple[float, ...],
     # its norm.
     v = v / np.abs(v).max()
     v = v / np.linalg.norm(v)
-    return tuple(float(x) for x in v), ""
+    unit = tuple(float(x) for x in v)
+    # A VECTOR ALONG AN AXIS IS NAMED BY IT, as the axis typed is.
+    return unit, next((k for k, d in DIRECTIONS.items() if d == unit), "")
+
+
+def direction_name(direction: Sequence[float]) -> str:
+    """The axis a light's direction lies along, by its name (``x``, ``y``,
+    ``z``), or ``""`` for any other -- how every view names its direction
+    (the infrared's, the Raman's), by the one rule (:func:`_unit`)."""
+    return _unit(list(direction))[1]
 
 
 def _partition_named(partition: Any) -> str:
@@ -403,16 +413,17 @@ def _modes_of(rows) -> Tuple[InfraredMode, ...]:
     """Each mode's infrared from ``(mode, dmu in e/amu^½, strength, charge
     moved)``, ranked against the strongest real mode -- no rank at or below
     the infrared band floor (`engines/vibration.md` § 6.6)."""
-    strongest = max((a for m, _, a, _ in rows if not m.has_imag), default=0.0)
-    if strongest <= CHANNEL_PRESENT_FLOOR_IR_KM_MOL:
-        strongest = 0.0     # no band: every computed value is residue
+    relative = relative_to_strongest(
+        [float(a) for _m, _d, a, _q in rows],
+        [not m.has_imag for m, _d, _a, _q in rows],
+        CHANNEL_PRESENT_FLOOR_IR_KM_MOL)
     return tuple(InfraredMode(
         index_1based=int(m.index_1based),
         frequency_cm1=float(m.frequency_cm1), has_imag=bool(m.has_imag),
         dmu_dq_e_per_amu12=tuple(float(x) for x in dmu),
-        intensity_km_mol=float(a),
-        relative=(float(a) / strongest if strongest > 0.0 else None),
-        charge_moved_e_per_amu12_ang=dQ) for m, dmu, a, dQ in rows)
+        intensity_km_mol=float(a), relative=rel,
+        charge_moved_e_per_amu12_ang=dQ)
+        for (m, dmu, a, dQ), rel in zip(rows, relative))
 
 
 def dipole_absent_reason(result: SpectraResults) -> str:
@@ -459,7 +470,8 @@ def dipole_view(result: SpectraResults, *,
 __all__ = ["ASK_KEYS", "CHARGES_KEPT_SINCE", "DEFAULT_PARTITION", "DIRECTIONS",
            "FREE_SET", "FREE_SET_NAME", "ORIENTATION_FREE", "ORIENTATION_HELD",
            "SOURCE_CHARGES", "SOURCE_DIPOLE", "WHOLE_SYSTEM_NAME", "atoms_of",
-           "dipole_absent_reason", "dipole_view", "orientation_of", "sets_of",
+           "dipole_absent_reason", "dipole_view", "direction_name",
+           "orientation_of", "sets_of",
            "source_of",
 "InfraredError", "InfraredMode",
            "InfraredView", "infrared_view", "labelled_atoms", "labels_of",

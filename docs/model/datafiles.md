@@ -191,10 +191,14 @@ the version the reading began with (its size and time), and refuses one that
 changed rather than mix two. **A file opened again inside its own access is
 refused by name** (`ncdata.OpenedTwice`) — the one mistake the door can see —
 and no reader's own "this file does not read" swallows it. **Nothing is read
-whole into memory** but what molbuilder composed there itself (an export's
-bytes, laid out as tables). **The door is the only opener** of a NetCDF file
+whole into memory** but an export's bytes — what it composed, laid out as
+tables, and the data files it copies, each read once and opened from those
+same bytes (`ncdata.reading(path, data=)`), so what it copies is what was
+read. **The door is the only opener** of a NetCDF file
 in molbuilder's code — each data file's reader (`transport.datafile.
-read_data_file`, `spectra.datafile.read_spectra_data`, the digest's), the
+read_data_file`, `spectra.datafile.read_spectra_data`,
+`spectra.optical_data.read_optical_data`, `spectra.raman.read_raman_data`,
+the digest's), the
 TBtrans parser, the `.MD.nc` reader, the atom index map's reader — kept so by
 review; sisl reads an engine's other files (`.TS.HSX`, `.ORB_INDX`), which
 are not NetCDF, through its own doors. **Every reader gives the map back with
@@ -222,7 +226,9 @@ The atom axis's own table (`atom.csv`) carries both index columns.
 
 A person's script reads every data file with the functions molbuilder's own
 doors ask (`model/parse.md` § 3, *One layer*): `read_transport_data`,
-`read_spectra_data` — each with its atom index map — `atom_index_map(path)`,
+`read_spectra_data`, `read_optical_data` — each with its atom index map —
+`read_raman_data` for an exported Raman view, `infrared_view` and
+`raman_view` for the spectrum viewer's two derivations, `atom_index_map(path)`,
 `read_structure(path)` for a structure pair in the user order with the map
 of the structure it returns, `parse(path)` for an engine's file. A notebook's kernel imports the molbuilder its server
 runs ([`web/jupyter.md`](?doc=web/jupyter.md) § 7).
@@ -274,5 +280,7 @@ first; one writer through
 door that knows the atoms' columns (`model/overview.md` § 2.2b, F2); a
 `schema` string, versioned when a variable changes; its reader through
 `reading`, refusing another schema by name; its catalogue row
-(`runfiles.WRITTEN`: its role, its writer, its door, `listed_by`); and its
-chapter, which lists its variables and cites this page for the rest.
+(`runfiles.WRITTEN`: its role, its writer, its door, `listed_by`) -- a file
+written only by an export, outside every calculation (`<label>.raman.nc`),
+has none, since no run's folder holds it; and its chapter, which lists its
+variables and cites this page for the rest.

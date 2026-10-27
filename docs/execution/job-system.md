@@ -47,7 +47,7 @@ without their DOS by region said), written into a folder you name outside
 the calculation ([`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12, *Export*; since 2.32.0); a vibration calculation's data files and,
 with `--laser-nm`, its Raman view ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.11 § 10; designed 2026-10-26). On a
+§ 5.11 § 10; since 2.44.0). On a
 machine: `jobset probe` and
 `jobset machines` — its record, and the records prep can target (§ 5.3).
 

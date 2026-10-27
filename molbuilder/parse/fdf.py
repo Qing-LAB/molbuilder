@@ -234,6 +234,11 @@ class FdfParams:
     h_tolerance_ev: Optional[float] = None
     dm_energy_tolerance_ev: Optional[float] = None
     scf_energy_converge: Optional[bool] = None
+    #: THE WIDTH AN OPTICAL CALL SPREAD EACH TRANSITION BY, in Ry --
+    #: ``Optical.Broaden``, a Gaussian's (`Src/optical.F`); what a Raman
+    #: view composes its own width from (`spectra.raman`).  ``None`` where
+    #: the deck states none.
+    optical_broaden_ry: Optional[float] = None
 
 
 #: fdf's words for a logical, compared case-blind -- libfdf's own
@@ -358,6 +363,9 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
                                 source=source)
     if "paobasissize" in sc:
         p.basis_size = sc["paobasissize"][0] if sc["paobasissize"] else None
+    if "opticalbroaden" in sc:
+        p.optical_broaden_ry = _ry(sc["opticalbroaden"],
+                                   what="Optical.Broaden", source=source)
 
     # ElectronicTemperature is an energy-OR-temperature scalar; SIESTA
     # means the same physics by either, so `units.TEMPERATURE_K` carries

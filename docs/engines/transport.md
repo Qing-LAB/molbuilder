@@ -464,7 +464,7 @@ a lead's value (`validation/task.py`, `_values_in_range`), both through
 |---|---|---|
 | **one k-point along a direction the electrodes repeat in** — the shared grid, or a transmission grid the person set, at 1 along x or y while the structure repeats there. Never said for a direction that does not repeat (a chain or a wire in a box, where one point is exact), and one point is a legitimate quick first test | A single k-point in the electrode plane treats every sideways copy of the cell as in phase, so the metal's bands are seen at one place only. The warning's words name the remedy: the benchmark used 4 × 4 for a cell about 9 Å wide | with Γ alone, "a (unphysical) peak at the Fermi level" (an H₂ junction), and the conductance of benzenedithiol between gold raised from 0.24 to 0.37 G₀ [`Strange2008`]; the Γ-only error dominates the error from the cell's periodic images in a 3 × 3 supercell [`Thygesen2005`]; with TranSIESTA on an Au(111) junction the conductance was "more sensitive to the reciprocal-space sampling grid than the quality of the basis set", moving by up to a factor of five over the parameters tried [`Hoft2007`] |
 | **a transmission grid the person set coarser than the shared grid** along x or y (2026-10-13) | T(E) needs at least the k-points the density was converged on, and usually many more; most likely the shared grid was raised and the transmission's was left behind. A transmission grid left blank is three times the shared grid and is never coarser | tbtrans's sampling "should generally be much denser" [`SiestaManual542`] |
-| **a transmission grid the person set above the Γ point while the shared grid is Γ alone** (2026-10-17) | A device run at Γ alone writes its Hamiltonian with no supercell. tbtrans stops in its set-up — *"Transiesta calculation was a Gamma calculation while you request transmission k-points"* (`tbt_init.F90:166–171`; measured on the road's junction, 2026-10-16) — only when its grid's first k-point is not $k = 0$: its test reads that one point (`m_tbt_kpoint.F90`, `setup_kpoint_grid`). The grid starts at $k = 0$ whenever a count in the electrode plane is 1 or 2 (`find_kgrid.F`: the lowest index along an axis is $-(n-1)/2$, and time reversal starts one axis at 0) — 2 × 2, 1 × N, N × 1, 2 × N, N × 2 — and then tbtrans runs on, every k-point given the $k = 0$ Hamiltonian, and its T(E) is invalid; it stops only when both counts are 3 or more. Warned, never refused — what to do is the person's *(user, 2026-10-17; 2026-10-20: "warn, worded truly")*: the words say both outcomes and name sampling the shared grid in the electrode plane (x, y) and running the device again, or the transmission at 1 1 1 | the engine's own check, on the grid's first point; tbtrans's message names SIESTA's `ForceAuxCell`, which molbuilder does not write |
+| **a transmission grid the person set above the Γ point while the shared grid is Γ alone** (2026-10-17) | A device run at Γ alone writes its Hamiltonian with no supercell. tbtrans stops in its set-up — *"Transiesta calculation was a Gamma calculation while you request transmission k-points"* (`tbt_init.F90:166–171`; measured on the road's junction, 2026-10-16) — only when its grid's first k-point is not $k = 0$: its test reads that one point (`m_tbt_kpoint.F90`, `setup_kpoint_grid`). The grid starts at $k = 0$ whenever a count in the electrode plane is 1 or 2 (`find_kgrid.F`: the lowest index along an axis is $-\lfloor (n-1)/2 \rfloor$, and time reversal starts one axis at 0 — with no offset; with `kgrid_displacement` 0.5 no point is $k = 0$) — 2 × 2, 1 × N, N × 1, 2 × N, N × 2 — and then tbtrans runs on, every k-point given the $k = 0$ Hamiltonian, and its T(E) is invalid; it stops only when both counts are 3 or more. Warned, never refused — what to do is the person's *(user, 2026-10-17; 2026-10-20: "warn, worded truly")*: the words say both outcomes and name sampling the shared grid in the electrode plane (x, y) and running the device again, or the transmission at 1 1 1 | the engine's own check, on the grid's first point; tbtrans's message names SIESTA's `ForceAuxCell`, which molbuilder does not write |
 | **the leads' k-points along z outside 50–200** | outside the item's recommended range. Below 50 is under the manual's floor — a floor, not a proof of convergence: only raising the count and seeing the lead's Fermi level stay put shows it has settled. Above 200 the two lead runs cost more | "at least >50 should easily be reachable" [`SiestaManual542`] |
 
 **The Γ-device warning, by example.** Two settings meet here: `kgrid`, the
@@ -825,10 +825,13 @@ $$
 $$
 
 The first part is an equilibrium integral, and the Green's function is smooth
-away from the real axis, so it is taken on a contour in the complex plane,
-picking up the poles of the Fermi function on the way: the contour's lower
-bound must lie *"well below the lowest eigenvalue"* (the manual), and the pole
-energy and the count it gives are § 6.1c's. The second part is non-zero only
+away from the real axis, so it is not taken along the axis. TranSIESTA's
+general method takes it on a contour in the complex plane, its lower bound
+*"well below the lowest eigenvalue"* (the manual); the decks molbuilder writes
+take its continued-fraction branch instead — the Fermi function expanded in
+Ozaki's poles above the real axis, at $\mu + i\,x_p\,kT$, and one point far up it
+(the expansion's zeroth moment, $10^{10}$ eV), `m_ts_contour_eq.f90` — with no
+contour and no lower bound; the pole energy and the count it gives are § 6.1c's. The second part is non-zero only
 in the bias window, where $f_L \neq f_R$, and must be taken on the real axis, close
 to the poles of G, with a fine grid and a small broadening η. TranSIESTA
 computes ρ both ways round — referenced to R as written, and to L — and weighs
@@ -998,8 +1001,8 @@ temperature, the shared k-point grid) re-runs everything.
 | **a device point's H(V)** | the converged Hamiltonian at that bias, in real space | the same point — `.TS.HSX` | as its density | as its density |
 | **T(E, V)** | the transmission at energy E — the probability an electron crosses | tbtrans, at one bias point — `.TBT.nc`, `.TBT.AVTRANS_L-R` | that point's H(V); both leads' H, S, E_F at $\mu = \pm V/2$; the transmission k-point grid (`tbt_k_grid`); the broadenings (`tbt_elecs_eta_ev`, `tbt_contours_eta_ev`) | **any other energy**: tbtrans builds H(k) and S(k) once per k-point, then each energy from its own self-energies alone (`m_tbt_trik.F90`, the energy loop inside the k-point loop) — so T at an energy is the same whatever window it is sampled in; **the electronic temperature**, which enters only the current's Fermi functions (`m_tbt_save.F90:2015–2035`) |
 | the device DOS, the leads' spectral DOS, the eigenchannels | what tbtrans was asked for beside T (§ 6.1c) | the same `.TBT.nc` | as T(E, V) | as T(E, V) |
-| **I(V)** | the current at one bias: T integrated over the bias window with both leads' Fermi functions (§ 1.1, step 5) | tbtrans's own integral at a self-consistent point — the record's by tbtrans's rule over the joined grid at a point that shares energies (§ 2a.16); the record's from T(E, 0) under the low-bias approximation (§ 2a.10) | T(E, V) inside the bias window and its Fermi tails, $\pm(\lvert V\rvert/2 + 5\,kT)$; the electronic temperature | energies beyond those tails: they add nothing (§ 2a.10, P2) |
-| **$G = G_0 \cdot T(E_F)$** | the zero-bias conductance | the record, from T at $E - E_F = 0$ | T(E, 0) | — |
+| **I(V)** | the current at one bias: T integrated over the bias window with both leads' Fermi functions (§ 1.1, step 5) | tbtrans's own integral at a self-consistent point — the record's by tbtrans's rule over the joined grid at a point that shares energies (§ 2a.16); the record's from T(E, 0) under the low-bias approximation (§ 2a.10) | T(E, V) inside the bias window and its Fermi tails, $\pm(\lvert V\rvert/2 + 5\,kT)$; the electronic temperature | energies beyond those tails: they add little — at low bias about 1.3 % of the current, $2f(5kT)$ (§ 2a.10, P2) |
+| **$G = G_0 \cdot T(E_F)$** | the zero-bias conductance, its zero-temperature limit | the record, from T at $E - E_F = 0$ | T(E, 0) | — |
 
 #### What a change re-runs
 
@@ -1036,7 +1039,7 @@ and seconds per SCF iteration as its record states them (`model/parse.md`
 |---|---|---|
 | seed | the periodic junction's SCF, the 5 × 5 shared k-point grid | 38,388 s ≈ 10.7 h — 833 s an iteration |
 | electrode_L · electrode_R | each lead's bulk SCF, 5 × 5 × 100 k-points (`electrode_kz`, § 0.2) | 55,068 s and 55,589 s ≈ 15.3 h each — about 3,900 s an iteration |
-| device, 0 V | 4 periodic iterations, then 32 NEGF iterations, its contour's 125 energies × 13 k-points each (§ 2a.11) | 47,549 s ≈ 13.2 h — 1,214 s an NEGF iteration |
+| device, 0 V | 4 periodic iterations, then 32 NEGF iterations, its contour's 123 energies × 13 k-points each (§ 2a.11) | 47,549 s ≈ 13.2 h — 1,214 s an NEGF iteration |
 | transmission, 0 V | −2…2 eV at 401 points × the 15 × 15 grid (113 k-points), once, no iteration | 527,441 s ≈ 6.1 days — 1,315 s ≈ 22 min an energy |
 
 So on this junction **the transmission is the long step** — eleven times the
@@ -1082,7 +1085,7 @@ SIESTA file. Where the two differ:
 | the Hamiltonian | a tight-binding model: one orbital per site, its numbers chosen | Kohn–Sham DFT: kinetic energy, pseudopotentials, Hartree and exchange–correlation, on a real-space grid (`MeshCutoff`), in atomic orbitals (`PAO.BasisSize`) |
 | how H follows the density | one term, U: a molecule site's level rises 1 eV per electron it gains — standing in for Hartree and exchange–correlation | H[ρ] rebuilt from ρ on the grid, every iteration |
 | the overlap S | 1 (orthogonal orbitals) | atomic orbitals overlap: S is a matrix, and stands beside E in every inverse, $z \cdot S - H$ — nothing else changes |
-| the equilibrium density integral | on the real axis, 24,000 energies | on a contour in the complex plane with the Fermi function's poles — 123 at 300 K (§ 6.1c): the same integral, far fewer points |
+| the equilibrium density integral | on the real axis, 24,000 energies | by Ozaki's continued-fraction expansion of the Fermi function — 123 poles above the real axis at 300 K and one point far up it (§ 6.1c): the same integral, far fewer points |
 | the mixing | linear, half old and half new | Pulay (`SCF.Mixer.*`) |
 | the lead's coupling | to the next cell along z only (one site a cell) | the same rule — a principal layer (I11) — on blocks hundreds of orbitals wide |
 
@@ -1133,7 +1136,7 @@ fold is zero (`m_ts_electrode.F90`). At $E = 0$:
 |---|---|---|---|---|---|---|---|---|---|
 | coupling still to fold (eV) | 4.0 × 10³ | 2.0 × 10³ | 5.0 × 10² | 3.1 × 10¹ | 1.65 | 6.7 × 10⁻² | 1.1 × 10⁻³ | 3.1 × 10⁻⁷ | 2.4 × 10⁻¹⁴ — done |
 
-$g_s(0) = \boldsymbol{-0.500\,i}\ \mathrm{eV}^{-1}$ — the closed form for this chain, $-i/(2\lvert t\rvert)$, to 10⁻⁸.
+$g_s(0) = \boldsymbol{-0.500\,i}\ \mathrm{eV}^{-1}$ — the chain's closed form, $g_s(z) = \bigl(z - \sqrt{z^2 - 4t^2}\bigr)/(2t^2)$, which at $z = 0$ is $-i/\lvert t\rvert$; at the script's $z = i\eta$, $\eta$ = 1 meV, it is $-0.499875\,i$, matched to $10^{-10}$.
 The self-energy on the electrode block is $\Sigma(E) = H_{10} \cdot g_s(E) \cdot H_{01}$, and its
 broadening $\Gamma = i(\Sigma - \Sigma^\dagger)$:
 
@@ -1206,8 +1209,8 @@ That shift is what self-consistency is for.
 #### Step 4 · a bias point, 0.4 V → its own `.TSDE` and `.TS.HSX`
 
 At 0.4 V the left lead is filled to $\mu_L = +0.2\ \mathrm{eV}$ and the right to
-$\mu_R = -0.2\ \mathrm{eV}$, and the potential falls across the device as a ramp, +0.2 eV
-on site 0 to −0.2 eV on site 3. The leads' self-energies are computed again
+$\mu_R = -0.2\ \mathrm{eV}$, and the electrons' potential energy falls across the device as a ramp,
++0.2 eV on site 0 to −0.2 eV on site 3. The leads' self-energies are computed again
 at the shifted μ — the 0.4 V pair, `tsgf/<label>.v0.4.TSGFL` — and the cycle
 starts **from the 0 V density**, the manual's *"copy the TSDE from the
 closest, previously, calculated bias"*:
@@ -1229,7 +1232,8 @@ H(0.4 V) -> v0.4/.TS.HSX:  [[ 0.2    -1.      0.      0.    ]   rho(0.4 V) -> v0
                             [ 0.      0.     -1.     -0.2   ]]                               [-0.0842  0.1539  0.4361  1.0173]]
 ```
 
-The field pushed electrons towards the low-potential side: site 1 now holds
+The field pushed electrons towards the side of lower electron energy — the
+higher electric potential: site 1 now holds
 0.816, site 2 0.879.
 
 #### Step 5 · the transmission → `.TBT.nc`
@@ -1337,8 +1341,8 @@ density matrix, 0.684 on every diagonal element.
 `.gathered-from`: `T.DM <- 01_seed/run-0`, `T_L-electrode.TSHS <-
 02_electrode_L/run-0`, `T_R-electrode.TSHS <- 03_electrode_R/run-0`. Before
 its first iteration TranSIESTA built each lead's surface Green's function at
-the 125 energies of the 0 V contour (123 poles and two more), *"Estimated
-file size: 160.523 kB"* a lead — $16\ \mathrm{B} \times 9^2\ \text{orbitals} \times 125\ \text{energies}$, § 2a.11's
+the 123 energies of the 0 V contour, its 123 poles, *"Estimated
+file size: 160.523 kB"* a lead — $16\ \mathrm{B} \times 9^2\ \text{orbital pairs} \times (123 + 2)$, the energies and the lead's H and S, plus a small header, § 2a.11's
 formula — and then cycled: **1 periodic iteration, then 8 NEGF iterations**.
 What it left, `T.TS.HSX` and `T.TSDE`, 22 × 22 each; the bridge's rows
 (engine indices 9–12, SIESTA's atoms 10–13), columns of engine indices
@@ -1360,7 +1364,7 @@ being the device's `dQ` (§ 1.1).
 `.continued-from`: **`04_device/run-0/v0`** — it started from the 0 V
 point's `.TSDE`, so it skipped the periodic start and went straight to the
 NEGF cycle: **8 iterations**. Its own Green's functions were computed at its
-contour's 294 energies — two sets of 123 poles, one per lead's $\mu = \pm 0.1\ \mathrm{eV}$,
+contour's 292 energies — two sets of 123 poles, one per lead's $\mu = \pm 0.1\ \mathrm{eV}$,
 and a line of 46 points through the bias window, −0.229 to +0.229 eV —
 *"Estimated file size: 377.055 kB"* a lead. The bias in its Hamiltonian:
 $H(0.2\ \mathrm{V}) - H(0\ \mathrm{V})$ on the diagonal is +0.07 to +0.09 eV on the left block,
@@ -1387,7 +1391,7 @@ channel — twice the 7.747 × 10⁻⁶ A TBtrans printed, its one spin channel'
 | step | the model | SIESTA on the hydrogen chain |
 |---|---|---|
 | a lead's `.TSHS` | $H_{00} = [0]$, $H_{01} = [-2]$, $S = 1$ | 9 × 9 blocks, nearest neighbour −5.73 eV, overlap 0.62; $E_F = -6.017\ \mathrm{eV}$ |
-| the self-energy | Lopez Sancho, 17 iterations at $E = 0$ | the same doubling, at each of 125 (0 V) or 294 (0.2 V) contour energies, kept in `tsgf/` |
+| the self-energy | Lopez Sancho, 17 iterations at $E = 0$ | the same doubling, at each of 123 (0 V) or 292 (0.2 V) contour energies, kept in `tsgf/` |
 | the seed's `.DM` | 4 × 4 | 22 × 22, 5 iterations |
 | the 0 V point | 8 iterations from the seed | 1 periodic + 8 NEGF iterations from the seed |
 | the bias point | 6 from the 0 V density, 8 from the seed | 8, from the 0 V `.TSDE` (`.continued-from: v0`), no periodic start |
@@ -1405,7 +1409,9 @@ number of the model's cell and run it again. Its last four cells read the
 hydrogen chain's files above with `sisl` (in `molbuilder-jupyternb`), step
 by step — point their `B` at any transport calculation of your own. The script below is the same
 code in one piece — it runs as it is in `molbuilder-jupyternb` (numpy only),
-in about a minute, and prints every number above:
+in about a minute, and prints the SCF steps, the density matrices, G and the
+currents above (the self-energy, broadening, Lopez Sancho and T(E) tables are
+its functions' values, not printed):
 
 ```python
 import numpy as np
@@ -2730,7 +2736,7 @@ first. The lines, as the door prints them:
 | the device | the line |
 |---|---|
 | prepared, its leads not yet run | `tsgf/: one pair at a time; the size is known once the leads have run` |
-| prepared, its leads run | `tsgf/: one pair at a time, about 49.2 GiB a lead at 0 V and 115.6 GiB a lead at 0.2 V (1425 orbitals × 13 k-points × 125 and 294 energies)`. The orbital count is read from each lead's newest run's output (the reading pass's `n_orbitals`). The rest is read from the device's prepared deck — any frame's at each voltage, the decks being the same across frames: the k-grid, counted as TranSIESTA counts it (k and −k once), the pole energy and the temperature, the cutoff and the spacing, the spin. A frames-only or low-bias device has the 0 V number alone. Two leads that differ are said each: `L 49.2 GiB, R 31.0 GiB a lead at 0 V` and `(L 1425, R 1100 orbitals × …)`. A lead's output that does not give its orbital count: `tsgf/: one pair at a time; the size cannot be said -- L: <its output's name> states no orbital count` (or `does not read: <why>`). With the file switched off: `tsgf/: none -- the self-energies are kept in memory` |
+| prepared, its leads run | `tsgf/: one pair at a time, about 49.2 GiB a lead at 0 V and 115.6 GiB a lead at 0.2 V (1425 orbitals × 13 k-points × 123 and 292 energies, with the lead's H and S)`. The orbital count is read from each lead's newest run's output (the reading pass's `n_orbitals`). The rest is read from the device's prepared deck — any frame's at each voltage, the decks being the same across frames: the k-grid, counted as TranSIESTA counts it (k and −k once), the pole energy and the temperature, the cutoff and the spacing, the spin. A frames-only or low-bias device has the 0 V number alone. Two leads that differ are said each: `L 49.2 GiB, R 31.0 GiB a lead at 0 V` and `(L 1425, R 1100 orbitals × …)`. A lead's output that does not give its orbital count: `tsgf/: one pair at a time; the size cannot be said -- L: <its output's name> states no orbital count` (or `does not read: <why>`). With the file switched off: `tsgf/: none -- the self-energies are kept in memory` |
 | launched, a run going or done | `tsgf/: the v0.2 pair, 2 files, 231.3 GiB` · one file: `tsgf/: one file, AuBDT.v0.2.TSGFL, 115.6 GiB -- the round's pair being written` while the run is queued or running, `tsgf/: one file, AuBDT.v0.2.TSGFL, 115.6 GiB -- a walk that did not reach its end; yours to remove` once it has ended — the newest run's by its state as `status` reads it (`gf_files.status_line`'s `going`), an older run's, which has ended, always the second · `tsgf/: 4 files, 478.3 GiB -- AuBDT.v0.2.TSGFL, AuBDT.v0.2.TSGFR, AuBDT.v0.4.TSGFL, AuBDT.v0.4.TSGFR; the walk leaves one pair at most, so these are an edit's` · `tsgf/: empty` · `tsgf/: none -- the self-energies are kept in memory` · `tsgf/: not there (a run made before 2.22.0, whose pair lies in the run's folder)`. A file counts when the one answer names it an engine's scratch (`warmfiles.is_scratch`: `*.TSGFL`, `*.TSGFR`). A stage with several runs says each run's, newest first, each after its run's name: `run-1: tsgf/: the v0.2 pair, 2 files, 231.3 GiB; run-0: tsgf/: empty` |
 
 **The levers** — two on the device's tab, one on the device's run card
@@ -2864,8 +2870,9 @@ shift is the one printed where the chain of runs began, and the sentence names
 that run; when that run is no longer in the folder, the device's E_F is given
 alone, in TranSIESTA's frame, saying why *(the user, 2026-10-25)*. None of this
 enters T(E), G or the I–V: it places two numbers side by side. The lead
-Hamiltonians are aligned to $\mu = E_F \pm V/2$ inside TranSIESTA; T(E) is measured
-relative to the leads' E_F.
+Hamiltonians are aligned to $\mu = E_F \pm eV/2$ inside TranSIESTA; T(E)'s energies
+are measured from the device's E_F, which TBtrans subtracts (`m_tbt_hs.F90:417`) —
+under bias the leads sit at $\pm eV/2$ from it.
 
 **The device, side-on.** The transport axis is c = z; looked at down z a
 junction is a square with the molecule hidden inside it, so the report's Device
@@ -3064,7 +3071,7 @@ part — their rows, masses and average — is laid out by their post-process
 | `device_scf_charge` | frame, bias_v, scf_cycle, charge_part | raw | every NEGF row's charges, column by column, as TranSIESTA printed them |
 | `device_scf_phases` · `rung_scf_phases` | frame, bias_v · rung | state | each run's phases — periodic, negf — what each had to reach and how it ended (`scf_phases`, JSON) |
 | `rung_copied_from` | rung | state | a calculation that reuses a finished one: the run a once-run rung's newest run is a copy of |
-| `rung_state` · `rung_detail` · `rung_scf_converged` · `rung_energy_ev` · `rung_fermi_ev` · `rung_scf_cycles` | rung | state · raw | each once-run rung's state and the run door's sentence for it, convergence, energy, Fermi level — a lead's the reference every T(E) is measured against — and its SCF history's length |
+| `rung_state` · `rung_detail` · `rung_scf_converged` · `rung_energy_ev` · `rung_fermi_ev` · `rung_scf_cycles` | rung | state · raw | each once-run rung's state and the run door's sentence for it, convergence, energy, Fermi level — the device's the zero T(E)'s energies are measured from, the leads' at $\pm eV/2$ from it under bias — and its SCF history's length |
 | `rung_scf_iscf` · `rung_scf_energy_ev` · `rung_scf_delta_e_ev` · `rung_scf_ddmax` · `rung_scf_dhmax_ev` · `rung_scf_ef_ev` | rung, scf_cycle | raw | each once-run rung's SCF rows, as the device's |
 
 **Every variable says what it is**: `units` — one spelling a unit, the
@@ -3160,10 +3167,11 @@ deliverable.
   file molbuilder writes shares, so a vibration's data file lays out the same
   way).
 
-**Asked two ways, one composition** (`transport.export`), so both give the
+**Asked two ways, one composition** (`transport.export`, through the one
+composer every export shares, `ncdata.exported`), so both give the
 same files: the transport report's **Export** (*CSV* · *NetCDF*), a download
 (`GET /api/transport/export`, [`web/results.md`](?doc=web/results.md) § 2.5;
-handed over by the file layer, `projects.download`) — the tables as one zip,
+handed over by the file layer's export door, `projects.downloadExport`) — the tables as one zip,
 `<label>.transport-csv.zip` — the points whose DOS by region is not in it
 said beside the buttons; and **`molbuilder jobset export --bundle <calc>
 --format csv|netcdf --to <folder>`**, written into the folder named — the
@@ -3184,7 +3192,7 @@ records and adds the science:
 | rung | the science it reports | the symptoms it watches |
 |---|---|---|
 | seed | the converged energy and E_F of the periodic junction | as any SCF |
-| electrode_L · electrode_R | each lead's E_F — the reference for T(E), shown as its run computed it | as any SCF |
+| electrode_L · electrode_R | each lead's E_F, shown as its run computed it — T(E)'s energies are measured from the device's | as any SCF |
 | device | the **NEGF** phase's energy, E_F and iterations — never the periodic initialization's, and the energy never compared across biases or calculations (the manual: TranSIESTA's energies *"are not to be trusted"*, § 1.1); the charge distribution region by region (D · E1 · C1 · E2 · C2, below) and, at each voltage, the bridge's change against 0 V, $D(V) - D(0\ \mathrm{V})$; the contour and pole count TranSIESTA used | the device symptoms (`model/parse.md` § 5d.6) |
 | transmission | T(E_F) and the conductance — $G = G_0 \cdot T(E_F)$, or $(e^2/h) \cdot (T_\uparrow + T_\downarrow)$ per spin channel when polarized — with energies relative to E_F by TBtrans's own convention (asserted by the record, `energies_relative_to_ef`; not measured against the output — § 1.1); T(E) per spin channel; the window, points and TBT k-grid; the eigenchannels and the DOS; the I–V with its treatment named (§ 2a.10), its current **the junction's total** — see below | the run's end, and the channels it wrote |
 
@@ -3254,7 +3262,7 @@ neutral count ($150 \times 19 + 40$).
 **The current is the junction's total, and says so** *(user, 2026-10-03, Q5:
 "make sure the result presentation, data record and the summary/comments
 clearly explain what is what")*. TBtrans prints one spin channel's current —
-its Landauer integral is $I = (e/h)\int T$, with no factor 2 for spin
+its Landauer integral is $I = \frac{e}{h}\int T(E)\,[f_L(E) - f_R(E)]\,dE$, with no factor 2 for spin
 (`m_tbt_save.F90`) — while the conductance beside it is in $G_0 = 2e^2/h$, both
 channels. So the record's `current_a` is the total: **twice the printed figure
 for a non-polarized calculation**, and the sum of the two channels for a
@@ -5852,13 +5860,15 @@ as-is, no Bloch expansion in the shipped 2-terminal scope.)
 > refusal names the way out — the origin on the pair's Cell page, or
 > *Automatic* — or, centred, that the atoms span more than the cell along z: the leads' end layers meet through the periodic image, I12's collision, said by its own check with the `c` that closes the boundary to one layer spacing (§ 6.1c).
 
-> **Bias direction.** Bias is $V_{\mathrm{left}} - V_{\mathrm{right}}$; the emitter binds
-> `L-electrode` → `chem-pot Left` → $\mu = +V/2$ **by name**, and the deck states which
-> physical lead that turned out to be. **Positive** bias raises $\mu_L$ above $\mu_R$;
-> electrons flow high→low chemical potential (L→R for positive V), so conventional
-> current flows R→L. Put the `L-electrode` label on whichever lead you want as the
-> more-positive reservoir in your forward-bias measurement — under the usual
-> convention that is the low-z one. `TS.Voltage` is one value per deck — the
+> **Bias direction.** The bias $V$ is the leads' difference in electron energy,
+> $eV = \mu_L - \mu_R$; the emitter binds `L-electrode` → `chem-pot Left` →
+> $\mu = +V/2$ **by name** (`m_ts_chem_pot.F90:177`), and the deck states which
+> physical lead that turned out to be. **Positive** bias raises $\mu_L$ above
+> $\mu_R$: the left electrode is at the **lower electric potential** — the
+> negative terminal, the electron source. Electrons flow from high to low
+> chemical potential (L→R for positive V), so conventional current flows R→L.
+> Put the `L-electrode` label on whichever lead is the negative terminal in your
+> forward-bias measurement. `TS.Voltage` is one value per deck — the
 > point's bias, a `role` item the rung fixes (§ 6.1b); a bias sweep is a deck
 > per point, and its points are one run (§ 2a.11).
 
@@ -6519,11 +6529,12 @@ none of it: it was text `siesta` never read.
 **What the number is.** TranSIESTA builds the device's density from its
 Green function, integrated over energy. The equilibrium part of that
 integral is not taken along the real axis, where the Green function is
-sharp, but on a contour in the complex plane, where it is smooth — and the
-Fermi function then contributes a set of **poles up the imaginary energy
-axis**. `TS.Contours.Eq.Pole` says **how far up that axis the poles are
-taken**, and so it is an **energy**, not a count. TranSIESTA turns it into a
-count by its own rule, on the continued-fraction branch our deck shape takes
+sharp: on the continued-fraction branch our deck shape takes, TranSIESTA
+expands the Fermi function in **Ozaki's poles**, at $\mu + i\,x_p\,kT$ above
+the real axis, plus one point far up it, and sums the Green function there.
+`TS.Contours.Eq.Pole` is an **energy**, not a count, and it sets only the
+number of poles — the continued fraction places them. TranSIESTA turns it into
+a count by its own rule, on that branch
 (SIESTA 5.4.2 `Src/m_ts_chem_pot.F90`: the branch at `:299`, the rule at
 `:319`):
 
@@ -6815,13 +6826,14 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 
 Three corrections that catch real mistakes:
 
-- **Electrode thickness.** The geometric repeat (3 Au(111) layers) is **too thin**
-  electronically: with `PAO.EnergyShift 0.01 Ry` the diffuse Au 6s reaches ~6–7 Å
-  while the interlayer spacing is ~2.36 Å, so H/S span ~3 layers and the
-  density-matrix range is longer. Size the electrode from the orbital range
-  (~6 layers) so TranSIESTA's **principal layer** — the slab thickness beyond which
-  a lead layer couples only to its immediate neighbour — is satisfied
-  [Papior 2017; Soler 2002 for the EnergyShift↔range link]. Separately, the
+- **Electrode thickness.** TranSIESTA's **principal layer** — the slab thickness
+  beyond which a lead layer couples only to its immediate neighbour — is
+  checked by TranSIESTA itself, and is the measure: on AuBDTAu the geometric
+  repeat, 3 Au(111) layers ($c$ = 7.193 Å), passed it (*"L principal cell is
+  perfect!"*) even with the diffuse `PAO.EnergyShift 0.005 Ry`, whose Au 6s
+  radius is 6.64 Bohr (3.5 Å) against the 2.36 Å interlayer spacing
+  [Papior 2017; Soler 2002 for the EnergyShift↔range link]. Read that line in
+  the device's output rather than assume it. Separately, the
   electrostatic potential must reach its **bulk value at the lead boundary** (else Σ
   is applied where the molecule still perturbs the metal): TranSIESTA prints the
   boundary potential — **verify it is flat**, and add Au layers if not. Six
@@ -7000,8 +7012,8 @@ single-point, or a relaxation if those layers are not frozen.
 ## 9. References
 
 - **TranSIESTA / NEGF** — Brandbyge, Mozos, Ordejón, Taylor, Stokbro, *Phys. Rev.
-  B* **65**, 165401 (2002). §III defines the L/R/scattering partition; §IV the NEGF
-  contour. doi:[10.1103/PhysRevB.65.165401](https://doi.org/10.1103/PhysRevB.65.165401)
+  B* **65**, 165401 (2002). §II defines the L/R/scattering partition; §III.B the
+  equilibrium contour. doi:[10.1103/PhysRevB.65.165401](https://doi.org/10.1103/PhysRevB.65.165401)
   · arXiv:[cond-mat/0110650](https://arxiv.org/abs/cond-mat/0110650)
 - **Modern TranSIESTA** (electrode / principal-layer requirements, multi-electrode
   chemical potentials) — Papior, Lorente, Frederiksen, García, Brandbyge, *Comput.
@@ -7020,6 +7032,4 @@ single-point, or a relaxation if those layers are not frozen.
   Xu, Tao, *Nano Lett.* **4**, 267 (2004).
   doi:[10.1021/nl035000m](https://doi.org/10.1021/nl035000m)
 - **Au-BDT-Au geometry + the Au-electrode mesh requirement (≥ 250–300 Ry)** — Stokbro et al., *Comp. Mat. Sci.*
-  **27**, 151 (2003). **Asymmetric / STM junctions** (the `interface` sub-label) —
-  Reed et al., *JACS* **128**, 14328 (2006); Solomon et al., *J. Chem. Phys.* **129**,
-  054701 (2008).
+  **27**, 151 (2003).

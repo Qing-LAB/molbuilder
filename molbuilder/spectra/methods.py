@@ -191,6 +191,13 @@ def _with_sentence(methods_md: str, sentence: str) -> str:
     return f"{methods_md.rstrip()} {sentence}\n"
 
 
+def _direction_words(view: Mapping[str, Any]) -> str:
+    """The light's direction a view names -- its axis name, or the vector
+    itself where it is none."""
+    return view.get("direction_name") or "(" + ", ".join(
+        f"{float(x):g}" for x in view["direction"]) + ")"
+
+
 def infrared_view_sentence(view: Mapping[str, Any]) -> str:
     """The sentence naming the infrared a page shows of a SIESTA result
     (`web/spectra.md` § 3.2): the atoms, the partition and how the molecule
@@ -208,9 +215,8 @@ def infrared_view_sentence(view: Mapping[str, Any]) -> str:
         return (f"{head}, averaged over orientations: no atom is held, so the "
                 f"molecule tumbles, as a free molecule's infrared intensity "
                 f"reports.")
-    direction = view.get("direction_name") or "(" + ", ".join(
-        f"{x:g}" for x in view["direction"]) + ")"
-    return (f"{head}, for light polarized along {direction}: atoms are held, "
+    return (f"{head}, for light polarized along {_direction_words(view)}: "
+            f"atoms are held, "
             f"so the molecule meets the light in one orientation -- three "
             f"times the orientation average a free molecule's infrared "
             f"intensity reports.")
@@ -220,6 +226,54 @@ def with_infrared_view(methods_md: str, view: Mapping[str, Any]) -> str:
     """``methods_md`` with :func:`infrared_view_sentence` placed in the
     paragraph -- composed at load, as the view is."""
     return _with_sentence(methods_md, infrared_view_sentence(view))
+
+
+def raman_view_sentence(view: Mapping[str, Any]) -> str:
+    """The sentence naming the Raman a page shows of a SIESTA result
+    (`engines/vibration.md` § 5.11 § 10): the route, the light's direction,
+    ``δ``, the laser, the width, and that the dielectric function is of
+    independent states with no local field
+    (`science/vibrational-optical-response.md` § 3.3)."""
+    return (f"The Raman strengths shown are R = |∂α/∂Q|², the squared "
+            f"modulus of the polarizability's change along each mode for "
+            f"light polarized along {_direction_words(view)} [Gillet2013]: "
+            f"α from SIESTA's "
+            f"dielectric function of independent states, with no local "
+            f"field, at ±δQ along each mode (the atom that moves most moved "
+            f"by {float(view['delta_ang']):g} Å), complex at the laser's "
+            f"{float(view['laser_nm']):g} nm "
+            f"({float(view['photon_energy_ev']):.4f} eV) -- its real part by "
+            f"Kramers–Kronig, its imaginary part the absorption there -- "
+            f"the spectrum broadened as SIESTA's Optical.Broaden, a Gaussian "
+            f"exp(-(E/s)²) of s = {float(view['broaden_ev']):.4g} eV, the "
+            f"run's own s being {float(view['run_broaden_ev']):.4g} eV. "
+            f"They are strengths, not intensities: no laser-frequency or "
+            f"temperature factor is applied.")
+
+
+def siesta_raman_sentence(raman_route: str) -> str:
+    """The Methods paragraph's Raman sentence on SIESTA's route, by the
+    route the run took (`engines/vibration.md` § 5.11 § 8): its optical
+    calls planned -- the strengths derived on request at a laser -- or
+    none."""
+    if raman_route == "optical":
+        return ("Raman strengths are derived on request, at a laser the "
+                "reader names, from SIESTA's optical calculation "
+                "(independent states, no local field) at ±δQ along each "
+                "picked mode.")
+    return "Raman strengths were not requested in this run."
+
+
+def with_siesta_raman_route(methods_md: str, raman_route: str) -> str:
+    """``methods_md`` with :func:`siesta_raman_sentence` placed in the
+    paragraph."""
+    return _with_sentence(methods_md, siesta_raman_sentence(raman_route))
+
+
+def with_raman_view(methods_md: str, view: Mapping[str, Any]) -> str:
+    """``methods_md`` with :func:`raman_view_sentence` placed in the
+    paragraph -- composed at load, as the view is."""
+    return _with_sentence(methods_md, raman_view_sentence(view))
 
 
 #: Each partition the force-constant run's charges may be taken by, as the
@@ -246,12 +300,14 @@ def siesta_methods_text(*, displacement_bohr: float, n_free: int,
                if n_rigid else "")
     ver = f" (SIESTA {siesta_version})" if siesta_version else ""
     named = [CHARGE_PARTITION_WORDS[p] for p in charge_partitions]
+    # THE RAMAN SENTENCE IS THE RUN'S ROUTE'S (`with_siesta_raman_route`),
+    # added once the run knows whether its optical calls were planned.
     intensities = (
         f" {' and '.join(named)} atomic charges were recorded at every "
         f"displacement, from which the infrared of a chosen set of atoms is "
-        f"derived; Raman intensities are not computed on this route."
+        f"derived."
         if named else
-        " Infrared and Raman intensities are not computed on this route.")
+        " Infrared intensities are not computed on this route.")
     return (
         "## Methods\n\n"
         f"Harmonic force constants were obtained by central finite "

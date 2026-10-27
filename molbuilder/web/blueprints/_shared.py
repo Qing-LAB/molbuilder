@@ -474,6 +474,21 @@ def err(msg: str, code: int = 400):
     return jsonify({"ok": False, "error": msg}), code
 
 
+def sent_export(got):
+    """An export (`ncdata.Exported`) as one attachment -- its data file, or
+    its files as one zip -- what it holds without said in the response's
+    ``X-Molbuilder-Said`` header: every export route's answer (the
+    transport report's and the spectrum viewer's)."""
+    import io
+    from flask import send_file
+    body, name, mime = got.download()
+    out = send_file(io.BytesIO(body), mimetype=mime, as_attachment=True,
+                    download_name=name)
+    if got.said:
+        out.headers["X-Molbuilder-Said"] = got.said
+    return out
+
+
 def finite_float(name: str, value: Any, default: float = 0.0) -> float:
     """Coerce ``value`` to a finite float or raise ``ValueError`` with
     a request-facing message.  Used by the /api/modify/* float fields
@@ -960,6 +975,7 @@ __all__ = [
     "ok_structure_response",
     "workspace_payload",
     "err",
+    "sent_export",
     "finite_float",
     "catalogue_to_form_schema",
     "config_from_params",

@@ -610,12 +610,12 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
 #  Read                                                                   #
 # --------------------------------------------------------------------- #
 
-def read_spectra_data(path) -> Dict[str, Any]:
+def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
     """``<label>.spectra.nc`` back as the payload the JSON holds -- the
     file's door (`runfiles.WRITTEN`); a schema it does not read
     (:data:`READABLE_DATA_SCHEMAS`) refused by name."""
     out: Dict[str, Any] = {}
-    with reading(path) as ds:
+    with reading(path, data=data) as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
         if attrs.get("schema") not in READABLE_DATA_SCHEMAS:
             raise SpectraDataError(

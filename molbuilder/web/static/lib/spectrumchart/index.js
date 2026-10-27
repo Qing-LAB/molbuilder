@@ -3,7 +3,7 @@
  * CALLERS: any page that wants a vibrational spectrum. Today: the Spectrum tab.
  *
  * `mount` is the whole importable surface of this module. Everything else here
- * is reached through the object it hands back: five doors in, one callback out.
+ * is reached through the object it hands back: seven doors in, one callback out.
  * The modes, the selection and the broadening each live here once; the drawing
  * library is not visible from this file at all.
  *
@@ -145,6 +145,9 @@ export async function mount(host, options = {}) {
      * DRAWN and nothing else -- no mode leaves the list, so the rug
      * still carries every one of them. */
     let floorPct = 0;
+    /* What a lane with no value says in place of "not computed", by
+     * channel key -- the caller's words (§ 8.3 setAbsentWords). */
+    const absentWords = {};
     let band = bandHalfWidth(0);     // how close counts, in cm⁻¹, from the maths
     let painted = [];                // the states last handed down, to skip repeats
     let readout = "";                // the line naming the mode nearest the pointer
@@ -269,7 +272,8 @@ export async function mount(host, options = {}) {
                  * with no numbers yet still names itself: an anonymous
                  * axis beside a named one reads as a second unit nobody
                  * declared. */
-                title: !known ? `${c.label} — not computed`
+                title: !known ? `${c.label} — ${absentWords[c.key]
+                                                  || "not computed"}`
                     : !hasBand ? `${c.label} — no band`
                     : `${c.label} (${c.unit})`.replace(" ()", ""),
                 known,
@@ -456,6 +460,21 @@ export async function mount(host, options = {}) {
             if (disposed) return;
             if (!isFiniteNumber(pct) || pct < 0 || pct > 100) return;
             floorPct = pct;
+            redraw();
+        },
+
+        /* § 8.3 -- what a lane with no value says in place of "not
+         * computed": the caller's reason, drawn as given; null restores.
+         * The same words again draw nothing. */
+        setAbsentWords(key, words) {
+            if (disposed) return;
+            if (words === null) {
+                if (!(key in absentWords)) return;
+                delete absentWords[key];
+            } else if (typeof words === "string" && words) {
+                if (absentWords[key] === words) return;
+                absentWords[key] = words;
+            } else return;
             redraw();
         },
 

@@ -105,8 +105,9 @@ def _run_with_results(
     if dot_phases is None:
         dot_phases = ["frequencies", "raman", "es"]
     fn = _extract_fn_source("updatePhaseIndicator")
-    # the route question it asks of the file (web/spectra.md § 3)
-    route = _extract_fn_source("_routeHas")
+    # the route questions it asks of the file (web/spectra.md § 3, § 3.3)
+    route = "\n".join(_extract_fn_source(n) for n in
+                      ("_routeHas", "_ramanOptical", "_ramanRoute", "_irRoute"))
     stub = _make_phase_indicator_stub(dot_phases=dot_phases)
     bootstrap = f"""
         // ===== Stub the ``els.phaseIndicator`` element =====

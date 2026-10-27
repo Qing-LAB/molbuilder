@@ -263,15 +263,18 @@ const WORKSPACE_TAG = "results:transport";
     /* THE EXPORT -- every result as it stands, as the data file or its
      * tables (`engines/transport.md` § 2a.12, *Export*): composed by the
      * server from what is already there, no data file read, and handed over
-     * by the file layer's one download (`projects.download`); beside the
-     * buttons the server's own sentence -- the points it holds without their
-     * DOS by region and how to read them (its `X-Molbuilder-Said`) -- or a
-     * refusal, and the post-processing document's link. */
+     * by the file layer's one export door (`projects.downloadExport`);
+     * beside the buttons the server's own sentence -- the points it holds
+     * without their DOS by region and how to read them -- or a refusal,
+     * through the one status writer, and the post-processing document's
+     * link. */
     function _exportBar(file) {
         const bar = _el("div", "fdf-actions transport-export");
         bar.appendChild(_el("span", "hint",
                             "Export every result as it stands:"));
-        const msg = _el("span", "hint");
+        const msg = _el("span", "status");
+        msg.setAttribute("role", "status");
+        const say = (text, kind) => root.molbuilder.status.set(msg, text, kind);
         const buttons = [["CSV", "csv"], ["NetCDF", "netcdf"]].map(
             ([label, fmt]) => {
                 const b = _el("button", null, label);
@@ -282,30 +285,12 @@ const WORKSPACE_TAG = "results:transport";
             });
         const run = async (fmt) => {
             buttons.forEach((b) => { b.disabled = true; });
-            msg.textContent = "Composing the export.";
-            try {
-                const r = await fetch("/api/transport/export?path="
-                    + encodeURIComponent(file) + "&format=" + fmt);
-                if (!r.ok) {
-                    let why = "HTTP " + r.status;
-                    try { why = (await r.json()).error || why; }
-                    catch (_) { /* the status is the answer */ }
-                    msg.textContent = why;
-                    return;
-                }
-                // THE NAME THE SERVER GAVE IT, as the header states it.
-                const said = r.headers.get("Content-Disposition") || "";
-                const utf = said.match(/filename\*=UTF-8''([^;]+)/i);
-                const plain = said.match(/filename="?([^";]+)"?/i);
-                const name = utf ? decodeURIComponent(utf[1])
-                    : plain ? plain[1] : "export";
-                root.molbuilder.projects.download(name, await r.blob());
-                msg.textContent = r.headers.get("X-Molbuilder-Said") || "";
-            } catch (e) {
-                msg.textContent = String((e && e.message) || e);
-            } finally {
-                buttons.forEach((b) => { b.disabled = false; });
-            }
+            say("Composing the export.", "muted");
+            const got = await root.molbuilder.projects.downloadExport(
+                "/api/transport/export?" + new URLSearchParams(
+                    { path: file, format: fmt }).toString());
+            buttons.forEach((b) => { b.disabled = false; });
+            say(got.ok ? got.said : got.error, got.ok ? "muted" : "warn");
         };
         bar.appendChild(msg);
         const how = _el("a", null, "How to read these in Python");

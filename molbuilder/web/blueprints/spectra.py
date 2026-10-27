@@ -6,6 +6,9 @@ Routes:
     POST /api/spectra/load              parse an uploaded <job>.spectra.json
                                         (or read JSON body) into the typed
                                         SpectraResults shape
+    GET  /api/spectra/export            a vibration result's data files and
+                                        its Raman view at a laser, as
+                                        NetCDF or as tables -- one zip
 
 The tab's compute half renders the CATALOGUE's vibration form (``GET /api/build/schema/pyscf?calculation=
 vibration``, build.py) and hands the description to Task setup
@@ -107,19 +110,19 @@ def _temperature_k(body, form, key: str = "temperature_k"):
     return checked_temperature_k(raw)
 
 
-def _infrared_asked(body, form) -> Optional[Dict[str, Any]]:
-    """What the tab asks of a SIESTA result's charges (`web/spectra.md`
-    § 3.2) -- ``infrared: {atoms, direction, partition}`` in the JSON body,
-    or as JSON text in the upload's form, read by the one reading every
-    door shares (`spectra.infrared.read_ask`).  ``None`` when not asked; a
+def _view_asked(body, form, key: str, read_ask) -> Optional[Dict[str, Any]]:
+    """What the tab asks of a view of the result (`web/spectra.md` § 3.2,
+    § 3.3) -- ``key`` in the JSON body, or as JSON text in the upload's
+    form, read by the one reading every door of that view shares
+    (``read_ask``: `spectra.infrared.read_ask` for ``infrared``,
+    `spectra.raman.read_ask` for ``raman``).  ``None`` when not asked; a
     malformed ask is refused with the reason (a 400)."""
-    from molbuilder.spectra.infrared import read_ask
-    raw = (body or {}).get("infrared")
-    if raw is None and form is not None and form.get("infrared"):
+    raw = (body or {}).get(key)
+    if raw is None and form is not None and form.get(key):
         try:
-            raw = json.loads(form.get("infrared"))
+            raw = json.loads(form.get(key))
         except json.JSONDecodeError as exc:
-            raise ValueError(f"infrared is a JSON object: {exc}") from None
+            raise ValueError(f"{key} is a JSON object: {exc}") from None
     if raw is None:
         return None
     return read_ask(raw)
@@ -128,7 +131,8 @@ def _infrared_asked(body, form) -> Optional[Dict[str, Any]]:
 def _loaded(results, run: Optional[Dict[str, Any]] = None,
             temperature_k: Optional[float] = None,
             infrared: Optional[Dict[str, Any]] = None,
-            reference_temperature_k: Optional[float] = None):
+            reference_temperature_k: Optional[float] = None,
+            raman: Optional[Dict[str, Any]] = None, path=None):
     """The one success reply for /api/spectra/load — the typed results as a
     dict, plus what only the server can work out.
 
@@ -150,6 +154,14 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     stored vector -- is ``results.infrared_said``, the refusal in its words,
     and the result still loads: the tab sends the person's remembered
     choice with every load, and another result need not hold it.
+
+    ``raman`` is what the tab asks of a SIESTA result's optical calls --
+    the laser and the width (`engines/vibration.md` § 5.11 § 10):
+    ``results.raman``, the view from the one derivation
+    (`spectra.raman.raman_view_of`), over the optical calls' data file
+    beside the result at ``path``; a view the result cannot give -- no
+    optical route, a result opened without its folder, a width below the
+    run's -- ``results.raman_said``, and the result still loads.
 
     WHY THE PAYLOAD IS NOT SIMPLY ``to_dict()``.  ``to_dict`` is the ON-DISK
     format: ``from_dict(to_dict(x)) == x``, byte-equal modulo float
@@ -286,6 +298,32 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
         if payload.get("methods_text"):
             payload["methods_text"] = with_infrared_view(
                 payload["methods_text"], payload["infrared"])
+    # THE RAMAN AT THE LASER ASKED, from the optical calls' data file beside
+    # the result -- one opened from its folder (`engines/vibration.md`
+    # § 5.11 § 10).
+    if raman is not None:
+        from molbuilder.spectra.methods import with_raman_view
+        from molbuilder.spectra.raman import (RamanError, raman_view_of,
+                                              require_optical_route)
+        try:
+            require_optical_route(results)
+            if path is None:
+                raise RamanError(
+                    "this result was opened without its folder, so the "
+                    "optical calls' data file beside it cannot be read -- "
+                    "open it from its run")
+            payload["raman"] = raman_view_of(path, result=results,
+                                             **raman).to_wire()
+        except (ValueError, OSError) as exc:
+            payload["raman_said"] = str(exc)
+        else:
+            if payload.get("methods_text"):
+                # THE KEYS ARE THE PARAGRAPH'S, its new citation with them.
+                from molbuilder.spectra.methods import extract_citation_keys
+                payload["methods_text"] = with_raman_view(
+                    payload["methods_text"], payload["raman"])
+                payload["bibliography_keys"] = extract_citation_keys(
+                    payload["methods_text"])
     # HOW THE RUN THE FILE BELONGS TO IS DOING -- the one door's answer, which
     # the viewer follows; ``None`` for an upload or an inline result, which
     # belong to no run (`web/results.md` § 4.1).
@@ -333,8 +371,11 @@ def api_spectra_load():
         reference_temperature_k = _temperature_k(
             request.get_json(silent=True), request.form,
             "reference_temperature_k")
-        infrared = _infrared_asked(request.get_json(silent=True),
-                                   request.form)
+        from molbuilder.spectra import infrared as _ir, raman as _raman
+        infrared = _view_asked(request.get_json(silent=True), request.form,
+                               "infrared", _ir.read_ask)
+        raman = _view_asked(request.get_json(silent=True), request.form,
+                            "raman", _raman.read_ask)
     except ValueError as exc:
         return jsonify({"ok": False, "kind": "field", "error": str(exc)}), 400
     # ---- multipart upload ---------------------------------------- #
@@ -360,7 +401,7 @@ def api_spectra_load():
         except SpectraJsonError as exc:
             return _err_load(exc)
         return _loaded(results, temperature_k=temperature_k,
-                       infrared=infrared,
+                       infrared=infrared, raman=raman,
                        reference_temperature_k=reference_temperature_k)
 
     # ---- JSON body (path or inline JSON) ------------------------- #
@@ -393,7 +434,7 @@ def api_spectra_load():
         except SpectraJsonError as exc:
             return _err_load(exc)
         return _loaded(results, run=run, temperature_k=temperature_k,
-                       infrared=infrared,
+                       infrared=infrared, raman=raman, path=path,
                        reference_temperature_k=reference_temperature_k)
     if inline is not None:
         if not isinstance(inline, dict):
@@ -405,7 +446,7 @@ def api_spectra_load():
         except SpectraJsonError as exc:
             return _err_load(exc)
         return _loaded(results, temperature_k=temperature_k,
-                       infrared=infrared,
+                       infrared=infrared, raman=raman,
                        reference_temperature_k=reference_temperature_k)
 
     return jsonify({
@@ -469,6 +510,38 @@ def api_spectra_frameset():
     except ValueError:
         wire = got.to_wire()
     return jsonify({"ok": True, **wire})
+
+
+@bp.route("/api/spectra/export", methods=["GET"])
+def api_spectra_export():
+    """A VIBRATION RESULT'S DATA FILES AND ITS RAMAN VIEW, for the person to
+    keep (`engines/vibration.md` § 5.11 § 10) -- ``?path=`` the result the
+    viewer shows, its folder, or the calculation's folder; ``format=``
+    ``netcdf`` or ``csv``; ``laser_nm=`` and ``broaden_ev=`` for the view --
+    one zip, composed on request (`spectra.export`), nothing written into
+    the calculation; a view not in it said in ``X-Molbuilder-Said``.  400
+    names what is refused."""
+    from molbuilder.calculation import NotACalculation, at
+    from molbuilder.ncdata import ExportError
+    from molbuilder.spectra.export import export
+    from molbuilder.spectra.raman import ASK_KEYS
+    from ._shared import finite_float, sent_export
+    from .files import _PickerError, _resolve_within_roots
+    raw_path = str(request.args.get("path") or "")
+    try:
+        path = _resolve_within_roots(raw_path)
+        calc = at(path)
+        asked = {key: finite_float(key, request.args.get(key))
+                 for key in ASK_KEYS if request.args.get(key) not in (None, "")}
+        got = export(calc, str(request.args.get("format") or ""),
+                     folder=path if path.is_dir() else path.parent, **asked)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    except FileNotFoundError:
+        return jsonify({"ok": False, "error": f"nothing at {raw_path}"}), 404
+    except (NotACalculation, ExportError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return sent_export(got)
 
 
 def _err_load(exc: SpectraJsonError):

@@ -101,9 +101,11 @@
     gap: var(--space-xs);
     min-width: 0;          /* a grid item may shrink below its content */
 }
-/* The infrared row's labels are the same component (web/spectra.md § 3.2). */
+/* The infrared and Raman rows' labels are the same component
+ * (web/spectra.md § 3.2, § 3.3). */
 .spectrum-controls .inline-label,
-.ir-controls .inline-label {
+.ir-controls .inline-label,
+.raman-controls .inline-label {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
@@ -198,15 +200,19 @@
  * read by role, from the file's own config -- and the cells go with their
  * headers.  Within a route an absent value stays a "—" in its cell. */
 .modes-table.route-no-raman .raman-col,
+.modes-table.route-no-raman-static .raman-static-col,
 .modes-table.route-no-ir .ir-col,
 .modes-table.route-no-charge .charge-col,
 .modes-table.route-no-es .es-col { display: none; }
 
-/* The infrared controls of a SIESTA result (web/spectra.md § 3.2): the
- * table-controls row, its explanation on a line of its own beneath. */
+/* The infrared and Raman controls of a SIESTA result (web/spectra.md
+ * § 3.2, § 3.3): table-controls rows, the infrared's explanation on a line
+ * of its own beneath. */
 .ir-controls[hidden],
+.raman-controls[hidden],
 .ir-controls .inline-label[hidden] { display: none; }
-.ir-controls input[type="number"] { width: var(--sp-number-w); }
+.ir-controls input[type="number"],
+.raman-controls input[type="number"] { width: var(--sp-number-w); }
 .ir-explain {
     flex-basis: 100%;
     margin: 0;

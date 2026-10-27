@@ -209,6 +209,12 @@
             irDirection:       "z",         // x, y, z, or "vector"
             irVector:          "0 0 1",     // its three numbers, when a vector
             irPartition:       "hirshfeld",
+            // WHAT IS ASKED OF A SIESTA RESULT'S OPTICAL CALLS
+            // (web/spectra.md § 3.3): the laser's wavelength in nm -- none
+            // until the person types one -- and the electronic broadening
+            // in eV, the run's own while empty.  Text, as the boxes hold it.
+            ramanLaserNm:      "",
+            ramanBroadenEv:    "",
         },
 
         lifecycle: {
@@ -216,6 +222,8 @@
             watchInFlight: false,
             watchAbort:    null,
             loadAbort:     null,
+            // The views asked again (`_refreshViews`), in flight.
+            viewsAbort:    null,
             // Consecutive transient-error counter.  After
             // WATCH_MAX_ERRORS in a row, transition to ERROR.
             watchErrors:   0,
@@ -328,6 +336,8 @@
         const vec = _vectorOf(u.irVector);
         if (vec) [els.irVecX, els.irVecY, els.irVecZ].forEach(
             (el, i) => put(el, vec[i]));
+        put(els.ramanLaser,       u.ramanLaserNm);
+        put(els.ramanBroaden,     u.ramanBroadenEv);
         // The mode pairing owns more than its own value: it decides whether the
         // temperature box or the size slider is the one on screen.  Re-run the
         // handler init() runs, for the same reason init() runs it.
@@ -399,7 +409,17 @@
         if (k === "animTemperature") return v >= 0;
         if (k === "irVector") return _vectorOf(v) !== null;
         if (k === "irAtoms") return v === "" || _setOf(v) !== null;
+        if (k === "ramanLaserNm" || k === "ramanBroadenEv")
+            return v === "" || _positiveOf(v) !== null;
         return true;
+    }
+
+    /* A POSITIVE NUMBER AS A BOX HOLDS IT, or null -- the door's rule for a
+     * laser's wavelength and a broadening (`spectra.raman.read_ask`). */
+    function _positiveOf(text) {
+        const s = String(text == null ? "" : text).trim();
+        const v = Number(s);
+        return (s !== "" && Number.isFinite(v) && v > 0) ? v : null;
     }
 
     /* A DIRECTION GIVEN AS THREE NUMBERS -- "x y z", the remembered form --
@@ -447,6 +467,8 @@
         prefAlias("irDirection");
         prefAlias("irVector");
         prefAlias("irPartition");
+        prefAlias("ramanLaserNm");
+        prefAlias("ramanBroadenEv");
         alias("watchTimer",     "lifecycle");
         alias("watchInFlight",  "lifecycle");
         alias("watchAbort",     "lifecycle");
@@ -483,6 +505,7 @@
     function transition(target, payload) {
         payload = payload || {};
         if (target === "LOADING") {
+            _abortViews();
             if (state.lifecycle.loadAbort) {
                 try { state.lifecycle.loadAbort.abort(); } catch (_) {}
                 state.lifecycle.loadAbort = null;
@@ -511,6 +534,7 @@
             return;
         }
         if (target === "IDLE") {
+            _abortViews();
             if (state.lifecycle.loadAbort) {
                 try { state.lifecycle.loadAbort.abort(); } catch (_) {}
                 state.lifecycle.loadAbort = null;
@@ -618,8 +642,12 @@
             // Each field is written when the payload carries it: the results
             // by `renderResults`, how the run is doing by the load and the
             // tick that fetched them.
-            if (payload.results !== undefined)
+            // NEW RESULTS REPLACE THE ONES A VIEWS ASK WAS MADE OF: its
+            // answer is for those, so it goes (`_refreshViews`).
+            if (payload.results !== undefined) {
+                if (payload.results !== state.fileState.results) _abortViews();
                 state.fileState.results = payload.results;
+            }
             if (payload.run !== undefined)
                 state.fileState.run = payload.run;
             return;
@@ -1130,8 +1158,8 @@
         return { path: path, body: await r.json() };
     }
 
-    /* WHAT EVERY LOAD ASKS beside the file: the temperature and the
-     * infrared (web/spectra.md § 3.2, § 4.1). */
+    /* WHAT EVERY LOAD ASKS beside the file: the temperature, the infrared
+     * and the Raman at a laser (web/spectra.md § 3.2, § 3.3, § 4.1). */
     let _lastAsk = null;
     function _askOf() {
         // THE REFERENCE'S TEMPERATURE, where the frame-set dialog named one
@@ -1140,7 +1168,7 @@
         const ref = (_refTemp && _refTemp.path === state.fileState.path)
             ? { reference_temperature_k: _refTemp.t } : {};
         return Object.assign({ temperature_k: state.animTemperature },
-                             _infraredAsk(), ref);
+                             _infraredAsk(), _ramanAsk(), ref);
     }
     let _refTemp = null;
 
@@ -1364,8 +1392,10 @@
         // `not requested` is terminal (vibration.md § 4.9): nothing is
         // computing for a phase the description never asked for.
         const done = (v) => v === "complete" || v === "not requested";
-        if (results.config && results.config.compute_raman && !done(r))
-            return "Computing Raman activities (polarizability derivatives)";
+        if (_ramanAsked(results) && !done(r))
+            return _ramanOptical(results)
+                ? "Computing Raman (SIESTA's optical calls at \u00b1\u03b4Q)"
+                : "Computing Raman activities (polarizability derivatives)";
         // A file from before the flag carries "" -- no record, not a phase
         // still to come (vibration.md § 4.9).
         const ir = results.phase_ir;
@@ -1394,7 +1424,7 @@
         if (results.phase_frequencies !== "complete") return false;
         const cfg = results.config || {};
         const done = (v) => v === "complete" || v === "not requested";
-        if (cfg.compute_raman && !done(results.phase_raman)) return false;
+        if (_ramanAsked(results) && !done(results.phase_raman)) return false;
         // "" is a file written before the infrared flag: no record, and
         // no reason to wait (vibration.md § 4.9).
         if (cfg.compute_ir && results.phase_ir && !done(results.phase_ir))
@@ -1411,11 +1441,12 @@
         dots.forEach(dot => {
             const ph = dot.dataset.phase;   // relaxation|frequencies|raman|ir|es
             // A phase the file's route does not have shows no dot at all
-            // (web/spectra.md § 3): SIESTA's has no Raman, no infrared phase
-            // (its infrared is the charges', derived at load) and no probe.  Infrared's flag is "" in a file written before it
+            // (web/spectra.md § 3), read by route: SIESTA's Raman is its
+            // optical calls', its infrared its charges', and it has no
+            // probe.  Infrared's flag is "" in a file written before it
             // existed -- no record, so no dot rather than one left empty.
-            const has = ph === "raman" ? _routeHas(results, "compute_raman")
-                      : ph === "ir" ? (_routeHas(results, "compute_ir")
+            const has = ph === "raman" ? _ramanRoute(results)
+                      : ph === "ir" ? (_irRoute(results)
                                        && results.phase_ir !== "")
                       : ph === "es" ? _routeHas(results, "es_mode_selection")
                       : true;
@@ -1505,7 +1536,7 @@
      * would title a positions picture "Spectrum". */
     function _anyStrength(r) {
         return ((r && r.modes) || []).some(m => !m.has_imag
-            && (Number.isFinite(m.raman_activity_a4_amu)
+            && (Number.isFinite(_ramanOf(m, r))
                 || Number.isFinite(_irOf(m, r))));
     }
 
@@ -1528,6 +1559,99 @@
     function _chargeMovedOf(m, r) {
         const v = _irModeOf(m, r || state.results);
         return v ? v.charge_moved_e_per_amu12_ang : null;
+    }
+    /* A RESULT'S RAMAN, BY ITS ROUTE (engines/vibration.md § 5.11 § 8):
+     * SIESTA's optical calls state `raman_route` `optical` once planned --
+     * the strength derived at a laser the person names; PySCF's switch is
+     * in the file's config, its route stated only when the sweep ends. */
+    function _ramanOptical(r) {
+        return !!(r && r.raman_route === "optical");
+    }
+    /* Whether the run asked for Raman -- a phase still to finish. */
+    function _ramanAsked(r) {
+        return _ramanOptical(r) || !!(r && r.config && r.config.compute_raman);
+    }
+    /* Whether the route has a Raman column and a phase dot at all. */
+    function _ramanRoute(r) {
+        return _ramanOptical(r) || _routeHas(r, "compute_raman");
+    }
+    /* A MODE'S RAMAN, ONE ACCESSOR (web/spectra.md § 3.3): the strength at
+     * the laser the load door derived from a SIESTA result's optical calls,
+     * where it answered one; otherwise the activity the file states
+     * (PySCF's).  The page computes neither -- `_irOf`'s pattern. */
+    function _ramanModeOf(m, r) {
+        const view = r && r.raman;
+        if (!view || !Array.isArray(view.modes)) return null;
+        return view.modes.find(x => x.index_1based === m.index_1based) || null;
+    }
+    function _ramanOf(m, r) {
+        r = r || state.results;
+        const v = _ramanModeOf(m, r);
+        if (v) return v.strength_laser_a4_amu;
+        return (r && r.raman) ? null : m.raman_activity_a4_amu;
+    }
+    function _ramanStaticOf(m, r) {
+        const v = _ramanModeOf(m, r || state.results);
+        return v ? v.strength_static_a4_amu : null;
+    }
+    /* A PICKED MODE'S RAMAN NOT GIVEN: the view's state for it -- a side
+     * still pending or failed -- with its reason, or null where the view
+     * gave a number or holds no such mode (engines/vibration.md § 5.11
+     * § 10). */
+    function _ramanStateOf(m, r) {
+        const v = _ramanModeOf(m, r || state.results);
+        return v && v.state !== "finished" ? v : null;
+    }
+    /* A WIDTH AS SHOWN, eV: six significant digits, rounded UP -- the run's
+     * own width typed back as shown is then never narrower than the run's,
+     * which the door refuses (web/spectra.md § 3.3). */
+    function _widthWords(ev) {
+        const x = Number(ev);
+        let s = x.toPrecision(6);
+        if (Number(s) < x)
+            s = (Number(s) + Math.pow(10, Math.floor(Math.log10(x)) - 5))
+                .toPrecision(6);
+        return String(Number(s));
+    }
+    /* WHAT A RAMAN VIEW IS, in words -- the column and the summary
+     * (web/spectra.md § 3.3): the light's direction, the laser, the width;
+     * the static number names no laser, it does not depend on one. */
+    function _ramanViewWords(view, laser = true) {
+        return "light along " + _alongWords(view)
+             + (laser ? ", " + view.laser_nm + " nm" : "")
+             + ", " + _widthWords(view.broaden_ev) + " eV";
+    }
+    /* The same, in a CSV column's name. */
+    function _ramanCsvWords(view, laser = true) {
+        return ["along", _directionWords(view, "_")]
+            .concat(laser ? [view.laser_nm + "nm"] : [])
+            .concat([_widthWords(view.broaden_ev) + "eV"]).join("_");
+    }
+    /* THE LINE ASKING FOR THE LASER, said beside the boxes and in the
+     * chart's Raman lane (web/spectra.md § 3.3). */
+    const RAMAN_PROMPT =
+        "type the laser's wavelength \u2014 the strength depends on it";
+    /* WHAT A SIESTA RAMAN SHOWING NO VIEW SAYS, in one wording for the line
+     * beside the boxes and the chart's lane: the door's reason where it
+     * refused the ask, else the laser asked for; null where a view is
+     * shown, or the Raman is not the optical calls'. */
+    function _ramanWait(r) {
+        if (!_ramanOptical(r) || r.raman) return null;
+        return r.raman_said
+            ? { words: "not given: " + r.raman_said, kind: "warn" }
+            : { words: RAMAN_PROMPT, kind: "muted" };
+    }
+    /* WHAT EVERY LOAD ASKS OF THE RAMAN (web/spectra.md § 3.3): once a
+     * laser is typed, it and the width -- the run's own while the width's
+     * box is empty; nothing before, since no number is shown until the
+     * laser is named. */
+    function _ramanAsk() {
+        const nm = _positiveOf(state.ramanLaserNm);
+        if (nm === null) return {};
+        const ask = { laser_nm: nm };
+        const w = _positiveOf(state.ramanBroadenEv);
+        if (w !== null) ask.broaden_ev = w;
+        return { raman: ask };
     }
     /* WHAT EVERY LOAD ASKS OF THE INFRARED (web/spectra.md § 3.2): the
      * light's direction always -- a held engine's dipole change is read
@@ -1560,18 +1684,25 @@
      * being computed; the run asked and recorded none. */
     function _noSpectrumSentence(r) {
         if (!_routeHas(r, "compute_raman") && !_routeHas(r, "compute_ir")) {
-            // A SIESTA RESULT STATING ITS CHARGES has the infrared of the
-            // atoms the person names (web/spectra.md § 3.2).
-            if (r.partial_charges) {
-                return r.infrared_said
-                    ? "Each line marks where a mode is -- the infrared asked "
-                      + "of the run's charges could not be given (why: above "
-                      + "the modes table); this route computes no Raman "
-                      + "intensities.  Click a line to pick its mode."
-                    : "Each line marks where a mode is -- name the atoms "
-                      + "above the modes table for their infrared, from the "
-                      + "run's charges; this route computes no Raman "
-                      + "intensities.  Click a line to pick its mode.";
+            // A SIESTA RESULT: its infrared is the charges', of the atoms
+            // the person names (web/spectra.md § 3.2); its Raman the optical
+            // calls', at the laser the person types (§ 3.3).
+            if (r.partial_charges || _ramanOptical(r)) {
+                const ir = !r.partial_charges ? ""
+                    : r.infrared_said
+                        ? "the infrared asked of the run's charges could not "
+                          + "be given (why: above the modes table)"
+                        : "name the atoms above the modes table for their "
+                          + "infrared, from the run's charges";
+                const raman = !_ramanOptical(r)
+                    ? "no Raman was requested in this run"
+                    : r.raman_said
+                        ? "the Raman asked of the run's optical calls could "
+                          + "not be given (why: above the modes table)"
+                        : RAMAN_PROMPT + " (above the modes table)";
+                return "Each line marks where a mode is -- "
+                     + [ir, raman].filter(Boolean).join("; ")
+                     + ".  Click a line to pick its mode.";
             }
             return "Each line marks where a mode is -- this result carries "
                  + "the frequencies and the mode shapes, no infrared or "
@@ -1605,15 +1736,24 @@
         return view.direction_name
             || view.direction.map(x => String(Number(x.toFixed(3)))).join(sep);
     }
+    /* The light's direction in words: its axis, or the vector bracketed. */
+    function _alongWords(view) {
+        return view.direction_name || "(" + _directionWords(view, ", ") + ")";
+    }
     function _irViewWords(view) {
         const how = view.orientation === "free"
             ? "averaged over orientations"
-            : "along " + (view.direction_name
-                          || "(" + _directionWords(view, ", ") + ")");
+            : "along " + _alongWords(view);
         // A stored dipole change is the whole system's, of no partition.
         return view.atoms_label + ", " + how
              + (view.source === "dipole" ? ""
                 : ", " + _partitionName(view.partition));
+    }
+    /* Whether the route has an infrared column and a phase dot at all --
+     * PySCF's switch, or a SIESTA result's charges (web/spectra.md § 3.2):
+     * `_ramanRoute`'s twin. */
+    function _irRoute(r) {
+        return _routeHas(r, "compute_ir") || !!(r && r.partial_charges);
     }
     /* A FREE MOLECULE -- the result holds no atom -- meets the light
      * tumbling: no direction is asked (the door's `infrared_orientation`). */
@@ -1662,6 +1802,47 @@
         }
     }
 
+    /* The run summary's Raman line by ROUTE, like the infrared line --
+     * module scope, so a change of the Raman view rewrites it without
+     * rebuilding the page.  A phase flag says a step finished, not whether
+     * it computed anything. */
+    function _ramanRouteLabel(r) {
+        // SIESTA'S OPTICAL CALLS (web/spectra.md § 3.3): the route, δ,
+        // and the view at the laser and width asked -- or why none.
+        if (_ramanOptical(r)) {
+            const head = "SIESTA's optical calculation at \u00b1\u03b4Q "
+                + "along each picked mode, \u03b4 = "
+                + r.raman_fd_step_ang + " \u00c5";
+            const v = r.raman;
+            if (v) return head + "; at " + v.laser_nm + " nm, broadened to "
+                + _widthWords(v.broaden_ev) + " eV (the run's "
+                + _widthWords(v.run_broaden_ev) + " eV)";
+            if (r.phase_raman !== "complete" && !r.raman_said)
+                return head + " \u2014 " + r.phase_raman;
+            return head + " \u2014 " + _ramanWait(r).words;
+        }
+        // By ROLE, not by engine name: a file whose config never asked
+        // (SIESTA carries no `compute_raman`) and whose route is `none` ran
+        // no optical calls -- none requested; a PySCF file that asked and
+        // was answered `none` computed none.
+        const asked = r.config && ("compute_raman" in r.config);
+        if (!asked && r.raman_route === "none") return "not requested";
+        if (!r.config || !r.config.compute_raman) return "not requested";
+        switch (r.raman_route) {
+            case "finite-difference":
+                return "computed \u2014 finite-difference polarizabilities"
+                     + (r.raman_fd_step_ang != null
+                        ? " (\u00b1" + r.raman_fd_step_ang + " \u00c5)" : "");
+            case "none":
+                return "not computed";
+            case "":
+            case undefined:
+                return r.phase_raman === "complete"
+                     ? "computed \u2014 route not recorded" : r.phase_raman;
+            default:
+                return "computed \u2014 " + r.raman_route;
+        }
+    }
     /* THE INFRARED CONTROLS (web/spectra.md § 3.2): shown for a result that
      * states its charges, the labels the door served as the atoms' choices,
      * the door's reason when it could not answer, and the infrared column
@@ -1679,8 +1860,8 @@
         if (els.irAtomsRow) els.irAtomsRow.hidden = !charges;
         if (els.irPartitionRow) els.irPartitionRow.hidden = !charges;
         if (els.irExplain) els.irExplain.hidden = !charges;
-        if (els.irDirectionRow) els.irDirectionRow.hidden = free;
-        if (els.irVector) els.irVector.hidden = free
+        if (els.irDirectionRow) els.irDirectionRow.hidden = free || !has;
+        if (els.irVector) els.irVector.hidden = free || !has
             || state.irDirection !== "vector";
         // WHY A RESULT OF THIS ROUTE HAS NO CHARGES is the door's sentence
         // (`spectra.infrared.no_charges_reason`), shown where it says one.
@@ -1718,6 +1899,59 @@
             : "Charge moved (e/(√amu·Å))";
     }
 
+    /* THE RAMAN CONTROLS (web/spectra.md § 3.3): a row of their own, shown
+     * for a result whose Raman is SIESTA's optical calls -- the laser and
+     * the width; on the line beside them the run's own width once the door
+     * has said it, the door's reason where it could not answer, and until a
+     * laser is typed the line asking for one; the Raman columns titled by
+     * what was asked. */
+    function _renderRamanControls(results) {
+        const optical = _ramanOptical(results);
+        if (els.ramanControls) els.ramanControls.hidden = !optical;
+        const view = results && results.raman;
+        // THE STATIC STRENGTH stands beside the laser's where a view
+        // answered one -- set with the view, whenever it changes.
+        if (els.modesTable) els.modesTable.classList.toggle(
+            "route-no-raman-static", !view);
+        if (optical) {
+            const wait = _ramanWait(results);
+            setStatus(els.ramanStatus, wait ? wait.words
+                      : "the run's own broadening: "
+                        + _widthWords(view.run_broaden_ev) + " eV",
+                      wait ? wait.kind : "muted");
+        }
+        // THE QUANTITY NAMED AS WHAT IT IS: SIESTA's strength at a laser,
+        // PySCF's tumbling-molecule activity -- never one name for both.
+        if (els.ramanColHead) els.ramanColHead.textContent = view
+            ? "Raman strength, " + _ramanViewWords(view) + " (Å⁴/amu)"
+            : optical ? "Raman strength (Å⁴/amu)" : "Raman activity (Å⁴/amu)";
+        if (els.ramanStaticColHead) els.ramanStaticColHead.textContent = view
+            ? "Raman strength, static, " + _ramanViewWords(view, false)
+              + " (Å⁴/amu)"
+            : "Raman strength, static (Å⁴/amu)";
+    }
+
+    function onRamanChange() {
+        const laser = els.ramanLaser ? els.ramanLaser.value.trim() : "";
+        const width = els.ramanBroaden ? els.ramanBroaden.value.trim() : "";
+        // A BOX HOLDS A POSITIVE NUMBER OR NOTHING -- the door's rule;
+        // typed otherwise, the line beside the boxes says so and nothing is
+        // asked.
+        if (laser !== "" && _positiveOf(laser) === null) {
+            setStatus(els.ramanStatus, "a wavelength is a positive number "
+                      + "of nm", "warn");
+            return;
+        }
+        if (width !== "" && _positiveOf(width) === null) {
+            setStatus(els.ramanStatus, "a broadening is a positive number "
+                      + "of eV, the run's own or more", "warn");
+            return;
+        }
+        state.ramanLaserNm = laser;
+        state.ramanBroadenEv = width;
+        _refreshViews(els.ramanStatus);
+    }
+
     function onInfraredChange() {
         state.irAtoms = els.irAtoms ? els.irAtoms.value : "";
         state.irDirection = els.irDirection ? els.irDirection.value : "z";
@@ -1737,32 +1971,54 @@
         }
         state.irPartition = els.irPartition ? els.irPartition.value
                                             : "hirshfeld";
-        _refreshInfrared();
+        _refreshViews(els.irStatus);
     }
 
-    /* THE VIEW ASKED AGAIN (web/spectra.md § 3.2): the door answers with the
-     * new choices, and what it says of the infrared replaces what the page
-     * holds -- the file has not changed, so the chart and the table are
-     * drawn again and nothing else. */
-    let _infraredAbort = null;
-    async function _refreshInfrared() {
+    /* THE VIEWS ASKED AGAIN (web/spectra.md § 3.2, § 3.3): the door answers
+     * with the new choices, and what it says of the infrared and the Raman
+     * replaces what the page holds -- the file has not changed, so the
+     * chart and the table are drawn again and nothing else.  The answer is
+     * taken only while the results it was asked of are still the page's: a
+     * load, or a watch tick that brought new ones, aborts it (`transition`).
+     * A failure is said on ``line``, the line beside the controls that
+     * asked. */
+    async function _refreshViews(line) {
         const path = state.fileState.path, held = state.fileState.results;
         if (!path || !held) return;
-        if (_infraredAbort) _infraredAbort.abort();
-        _infraredAbort = new AbortController();
+        _abortViews();
+        const asked = new AbortController();
+        state.lifecycle.viewsAbort = asked;
         let body;
         try {
-            body = (await fetchResults(path, _infraredAbort.signal)).body;
+            body = (await fetchResults(path, asked.signal)).body;
         } catch (exc) {
+            if (!asked.signal.aborted)
+                setStatus(line, String((exc && exc.message) || exc), "warn");
             return;
         }
-        if (path !== state.fileState.path || !body.ok || !body.results) return;
+        if (asked.signal.aborted || held !== state.fileState.results) return;
+        state.lifecycle.viewsAbort = null;
+        if (!body.ok || !body.results) {
+            setStatus(line, body.error || "the load door answered no results",
+                      "warn");
+            return;
+        }
         held.infrared = body.results.infrared || null;
         held.infrared_said = body.results.infrared_said || null;
+        held.raman = body.results.raman || null;
+        held.raman_said = body.results.raman_said || null;
         held.methods_text = body.results.methods_text || held.methods_text;
         _renderInfraredControls(held);
+        _renderRamanControls(held);
         _renderStrengths(held);
         _renderMethods(held);
+    }
+
+    function _abortViews() {
+        if (state.lifecycle.viewsAbort) {
+            try { state.lifecycle.viewsAbort.abort(); } catch (_) {}
+            state.lifecycle.viewsAbort = null;
+        }
     }
 
     /* THE METHODS PARAGRAPH, as the door composed it -- the infrared view's
@@ -1790,14 +2046,19 @@
         }
         if ((results.modes || []).length) renderSpectrumChart(results.modes);
         renderModesTable();
-        // THE SUMMARY'S INFRARED LINE says what the view now is.
+        // THE SUMMARY'S INFRARED AND RAMAN LINES say what the views now are.
         if (els.resultsMeta) {
-            const dt = [...els.resultsMeta.querySelectorAll("dt")]
-                .find(x => x.textContent === "IR intensities");
-            if (dt && dt.nextElementSibling)
-                dt.nextElementSibling.textContent = _irRouteLabel(results);
+            for (const [key, , words] of VIEW_LINES) {
+                const dd = els.resultsMeta.querySelector(
+                    'dd[data-view="' + key + '"]');
+                if (dd) dd.textContent = words(results);
+            }
         }
     }
+    /* THE RUN SUMMARY'S LINES A VIEW CHANGES -- each keyed, so a change of
+     * view rewrites its line, never found by its label. */
+    const VIEW_LINES = [["ir",    "IR intensities", r => _irRouteLabel(r)],
+                        ["raman", "Raman",          r => _ramanRouteLabel(r)]];
 
     function renderResults(results, path) {
         if (results && results.constants) Object.assign(K, results.constants);
@@ -1881,32 +2142,6 @@
                 ? "the free atoms only (" + n + " of " + N + ")"
                 : "every atom (" + N + ")";
         }
-        /* The Raman line by ROUTE, like the infrared line: a phase flag says
-         * a step finished, not whether it computed anything, and a SIESTA
-         * file's phase_raman is 'complete' with nothing behind it. */
-        function _ramanRouteLabel(r) {
-            // By ROLE, not by engine name: a file whose config never asked
-            // (SIESTA carries no `compute_raman`) and whose route is `none`
-            // computed nothing on that route; a PySCF file that asked and
-            // was answered `none` was not requested.
-            const asked = r.config && ("compute_raman" in r.config);
-            if (!asked && r.raman_route === "none") return "not computed on this route";
-            if (!r.config || !r.config.compute_raman) return "not requested";
-            switch (r.raman_route) {
-                case "finite-difference":
-                    return "computed \u2014 finite-difference polarizabilities"
-                         + (r.raman_fd_step_ang != null
-                            ? " (\u00b1" + r.raman_fd_step_ang + " \u00c5)" : "");
-                case "none":
-                    return "not computed";
-                case "":
-                case undefined:
-                    return r.phase_raman === "complete"
-                         ? "computed \u2014 route not recorded" : r.phase_raman;
-                default:
-                    return "computed \u2014 " + r.raman_route;
-            }
-        }
         /* The per-mode orbital energies by the same rule as the two
          * strengths: a route with no switch for the probe computed nothing
          * there, and names nothing it could not have asked for. */
@@ -1937,8 +2172,8 @@
             ["Host",               rt.hostname || "—"],
             ["Relaxation",                _relaxSummary(results)],
             ["Frequencies (Hessian)",     results.phase_frequencies],
-            ["IR intensities",            _irRouteLabel(results)],
-            ["Raman activities",           _ramanRouteLabel(results)],
+            ...VIEW_LINES.map(([key, label, words]) =>
+                [label, words(results), key]),
             ["Per-mode orbital energies",  _esRouteLabel(results)],
         ];
         // The Methods paragraph is composed during the run and grows as
@@ -1950,10 +2185,11 @@
 
         // Built, not written: the values are the results file's own strings
         // (engine, version, host), set as text.
-        els.resultsMeta.replaceChildren(...meta.flatMap(([k, v]) => {
+        els.resultsMeta.replaceChildren(...meta.flatMap(([k, v, view]) => {
             const dt = document.createElement("dt");
             dt.textContent = String(k);
             const dd = document.createElement("dd");
+            if (view) dd.dataset.view = view;
             dd.textContent = String(v);
             return [dt, dd];
         }));
@@ -2003,14 +2239,14 @@
                 : _noSpectrumSentence(results);
         }
         _renderInfraredControls(results);
+        _renderRamanControls(results);
         if (els.modesTable) {
             els.modesTable.classList.toggle("route-no-raman",
-                                            !_routeHas(results, "compute_raman"));
+                                            !_ramanRoute(results));
             // A SIESTA RESULT'S INFRARED is its charges' (web/spectra.md
             // § 3.2): the column stands where the result states them.
             els.modesTable.classList.toggle("route-no-ir",
-                                            !_routeHas(results, "compute_ir")
-                                            && !results.partial_charges);
+                                            !_irRoute(results));
             els.modesTable.classList.toggle("route-no-charge",
                                             !results.partial_charges);
             els.modesTable.classList.toggle("route-no-es",
@@ -2108,6 +2344,15 @@
             esBits,
             _freqSum(),
             _actSum("raman_activity_a4_amu"),
+            // WHAT WAS ASKED OF THE OPTICAL CALLS, and the door's answer
+            // (web/spectra.md § 3.3).
+            results.raman
+                ? _ramanViewWords(results.raman) + "/" + results.raman.modes
+                    .map(m => m.state + ":" + m.strength_laser_a4_amu
+                         + ":" + m.strength_static_a4_amu)
+                    .join(",")
+                : "",
+            results.raman_said || "",
             _actSum("ir_intensity_km_mol"),
             // WHAT WAS ASKED OF THE CHARGES, and the door's answer
             // (web/spectra.md § 3.2): another view is another picture.
@@ -2136,10 +2381,7 @@
             // descending if available.
             const withES = modes.filter(m => !!m.electronic_structure);
             if (withES.length) {
-                withES.sort((a, b) =>
-                    (b.raman_activity_a4_amu || 0) -
-                    (a.raman_activity_a4_amu || 0)
-                );
+                withES.sort((a, b) => (_ramanOf(b) || 0) - (_ramanOf(a) || 0));
                 return withES[0].index_1based;
             }
         }
@@ -2148,8 +2390,8 @@
         const real = modes.filter(m => !m.has_imag);
         const pool = real.length ? real : modes;
         const ranked = pool
-            .filter(m => m.raman_activity_a4_amu != null)
-            .sort((a, b) => b.raman_activity_a4_amu - a.raman_activity_a4_amu);
+            .filter(m => _ramanOf(m) != null)
+            .sort((a, b) => _ramanOf(b) - _ramanOf(a));
         return (ranked[0] || pool[0]).index_1based;
     }
 
@@ -2218,8 +2460,9 @@
         const vals = [
             String(m.index_1based),
             Number(m.frequency_cm1).toFixed(1),
-            m.raman_activity_a4_amu != null
-                ? Number(m.raman_activity_a4_amu).toFixed(2) : "",
+            _ramanOf(m) != null ? Number(_ramanOf(m)).toFixed(2) : "",
+            _ramanStaticOf(m) != null ? Number(_ramanStaticOf(m)).toFixed(2)
+                                      : "",
             _irOf(m) != null ? Number(_irOf(m)).toFixed(2) : "",
             _chargeMovedOf(m) != null ? Number(_chargeMovedOf(m)).toFixed(4)
                                       : "",
@@ -2241,7 +2484,8 @@
         switch (col) {
             case "index_1based":          return m.index_1based;
             case "frequency_cm1":         return m.frequency_cm1;
-            case "raman_activity_a4_amu": return m.raman_activity_a4_amu;
+            case "raman_activity_a4_amu": return _ramanOf(m);
+            case "raman_static":          return _ramanStaticOf(m);
             case "ir_intensity_km_mol":   return _irOf(m);
             case "charge_moved":          return _chargeMovedOf(m);
             case "has_imag":              return m.has_imag ? 1 : 0;
@@ -2288,9 +2532,13 @@
     function _renderModeRow(m, anyES) {
         // Returns an HTMLTableRowElement; caller appends to tbody.
         const fmt = (v, dp) => v == null ? "—" : Number(v).toFixed(dp);
-        const raman = (m.raman_activity_a4_amu == null)
-            ? "—"
-            : Number(m.raman_activity_a4_amu).toFixed(2);
+        // A PICKED MODE WHOSE SIDES ARE NOT BOTH DONE names its state, the
+        // reason on hover -- never the "—" of a mode no call was made for.
+        const notGiven = _ramanStateOf(m);
+        const raman = notGiven ? notGiven.state
+            : (_ramanOf(m) == null) ? "—" : Number(_ramanOf(m)).toFixed(2);
+        const ramanStatic = (_ramanStaticOf(m) == null) ? "—"
+            : Number(_ramanStaticOf(m)).toFixed(2);
         /* The Raman, IR and orbital cells carry their column's class, so a
          * column the route cannot compute goes with its header
          * (`.route-no-*`, web/spectra.md § 9b.3). */
@@ -2314,6 +2562,8 @@
         addCell(String(m.index_1based));
         addCell(Number(m.frequency_cm1).toFixed(1));
         addCell(raman, "raman-col");
+        if (notGiven) tr.lastChild.title = notGiven.why;
+        addCell(ramanStatic, "raman-col raman-static-col");
         addCell(ir, "ir-col");
         addCell(moved, "charge-col");
         addCell(m.has_imag ? "✓" : "");
@@ -2426,6 +2676,34 @@
         _withChart(c => c.setSelected(state.selectedMode));
     }
 
+    // ----- The calculation's data files --------------------------
+    /* THE CALCULATION'S DATA FILES, downloaded (web/spectra.md § 3.3;
+     * engines/vibration.md § 5.11 § 10): its vibration data files as they
+     * are and, when a laser is typed, the Raman view at the boxes' laser and
+     * width -- composed by the server (`GET /api/spectra/export`), one zip;
+     * a refusal in its words beside the buttons, and what the export holds
+     * without.  The table's own CSV, below, stays the rows on screen. */
+    async function exportDataFiles(fmt) {
+        const path = state.fileState.path;
+        if (!path) return;
+        const q = new URLSearchParams({ path: path, format: fmt });
+        const ask = _ramanOptical(state.results) ? _ramanAsk().raman : null;
+        if (ask) {
+            q.set("laser_nm", String(ask.laser_nm));
+            if (ask.broaden_ev != null)
+                q.set("broaden_ev", String(ask.broaden_ev));
+        }
+        const buttons = [els.exportCsv, els.exportNetcdf];
+        buttons.forEach(b => { if (b) b.disabled = true; });
+        setStatus(els.exportStatus, "Composing the export.", "muted");
+        // THE FILE LAYER'S ONE EXPORT DOOR (`projects.downloadExport`).
+        const got = await root.molbuilder.projects.downloadExport(
+            "/api/spectra/export?" + q.toString());
+        buttons.forEach(b => { if (b) b.disabled = false; });
+        setStatus(els.exportStatus, got.ok ? got.said : got.error,
+                  got.ok ? "muted" : "warn");
+    }
+
     // ----- CSV export ------------------------------------------
     function exportCSV() {
         if (!state.results) return;
@@ -2433,9 +2711,9 @@
         // BOTH channels, beside each other.
         // THE EXPORT FOLLOWS THE TABLE: a column the route cannot compute
         // is left out of both (web/spectra.md § 9b.3).
-        const hasRaman = _routeHas(state.results, "compute_raman");
-        const hasIr = _routeHas(state.results, "compute_ir")
-            || !!state.results.partial_charges;
+        const hasRaman = _ramanRoute(state.results);
+        const ramanView = state.results.raman;
+        const hasIr = _irRoute(state.results);
         const view = state.results.infrared;
         const hasCharge = !!state.results.partial_charges;
         const hasEs = _routeHas(state.results, "es_mode_selection");
@@ -2447,8 +2725,18 @@
                                  : "_along_" + _directionWords(view, "_"))
                               + (view.partition ? "_" + view.partition : "")
                             : "ir_intensity_km_mol";
+        // A SIESTA STRENGTH IS NAMED AS WHAT IT IS (web/spectra.md § 3.3),
+        // never under PySCF's activity: the laser and the width with it --
+        // the static one the width alone.
+        const ramanHeads = !hasRaman ? []
+            : ramanView
+                ? ["raman_strength_a4_amu_" + _ramanCsvWords(ramanView),
+                   "raman_strength_static_a4_amu_"
+                   + _ramanCsvWords(ramanView, false)]
+                : _ramanOptical(state.results) ? ["raman_strength_a4_amu"]
+                : ["raman_activity_a4_amu"];
         const headers = ["index_1based", "frequency_cm1"]
-            .concat(hasRaman ? ["raman_activity_a4_amu"] : [])
+            .concat(ramanHeads)
             .concat(hasIr ? [irHead] : [])
             .concat(hasCharge ? [view
                 ? "charge_moved_e_per_amu12_ang_"
@@ -2462,8 +2750,10 @@
         const lines = [headers.join(",")];
         for (const m of _modesForTable()) {
             const row = [m.index_1based, Number(m.frequency_cm1).toFixed(4)];
-            if (hasRaman) row.push(m.raman_activity_a4_amu == null ? ""
-                : Number(m.raman_activity_a4_amu).toFixed(4));
+            if (hasRaman) row.push(_ramanOf(m) == null ? ""
+                : Number(_ramanOf(m)).toFixed(4));
+            if (ramanView) row.push(_ramanStaticOf(m) == null ? ""
+                : Number(_ramanStaticOf(m)).toFixed(4));
             if (hasIr) row.push(_irOf(m) == null ? ""
                 : Number(_irOf(m)).toFixed(4));
             if (hasCharge) row.push(_chargeMovedOf(m) == null ? ""
@@ -3696,7 +3986,10 @@
     const CHART_CHANNELS = [
         // `floorKey`: the page constant naming the channel's band floor
         // (spectra/activity.py), handed to the chart at mount.
-        { key: "raman", label: "Raman activity",  unit: "Å⁴/amu", direction: "up",
+        // "Raman", not "Raman activity": the lane draws PySCF's activity or
+        // SIESTA's strength at a laser, and the column beside it names
+        // which (web/spectra.md § 3.3).
+        { key: "raman", label: "Raman",           unit: "Å⁴/amu", direction: "up",
           floorKey: "raman_present_floor_a4_amu" },
         { key: "ir",    label: "IR absorption",   unit: "arb. units",
           valueUnit: "km/mol", direction: "down", relative: true,
@@ -3714,8 +4007,7 @@
             index:     m.index_1based,
             freq:      m.frequency_cm1,
             values: {
-                raman: Number.isFinite(m.raman_activity_a4_amu)
-                    ? m.raman_activity_a4_amu : null,
+                raman: Number.isFinite(_ramanOf(m)) ? _ramanOf(m) : null,
                 ir: Number.isFinite(_irOf(m)) ? _irOf(m) : null,
             },
             cls:       m.activity_class || "partial",
@@ -3899,6 +4191,10 @@
         chartReady.then((handle) => {
             if (!handle) return;
             handle.setModes(_chartModes(modes));
+            // A SIESTA STRENGTH WAITS ON THE LASER (web/spectra.md § 3.3):
+            // its lane says so, or the door's reason -- the line's words.
+            const wait = _ramanWait(state.results);
+            handle.setAbsentWords("raman", wait ? wait.words : null);
             handle.setBroadening(state.broadeningFWHM || 0);
             handle.setSelected(state.selectedMode == null ? null : state.selectedMode);
         });
@@ -4002,6 +4298,15 @@
         els.irAbsent            = $("ir-absent");
         els.chargeColHead       = $("charge-col-head");
         els.irColHead           = $("ir-col-head");
+        els.ramanControls       = $("raman-controls");
+        els.ramanLaser          = $("raman-laser");
+        els.ramanBroaden        = $("raman-broaden");
+        els.ramanStatus         = $("raman-status");
+        els.ramanColHead        = $("raman-col-head");
+        els.ramanStaticColHead  = $("raman-static-col-head");
+        els.exportCsv           = $("spectra-export-csv");
+        els.exportNetcdf        = $("spectra-export-netcdf");
+        els.exportStatus        = $("spectra-export-status");
 
         // --- Generate-side wiring (only present on /spectra) -------
         //
@@ -4088,6 +4393,10 @@
             _on(els.irVecY,        "change", onInfraredChange);
             _on(els.irVecZ,        "change", onInfraredChange);
             _on(els.irPartition,   "change", onInfraredChange);
+            _on(els.ramanLaser,    "change", onRamanChange);
+            _on(els.ramanBroaden,  "change", onRamanChange);
+            _on(els.exportCsv,     "click", () => exportDataFiles("csv"));
+            _on(els.exportNetcdf,  "click", () => exportDataFiles("netcdf"));
         }
 
         if (hasGenerateSide) {

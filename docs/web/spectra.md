@@ -114,9 +114,11 @@ Two special cases are worth knowing:
   picks the mode exactly as on a spectrum. One sentence above the lines says
   which of four cases it is: **the route computes none** (SIESTA — where the
   result states its charges, *name the atoms above the modes table for their
-  infrared, from the run's charges; this route computes no Raman
-  intensities*, and where it states none, *this result carries the
-  frequencies and the mode shapes, no infrared or Raman intensities*);
+  infrared, from the run's charges*; where its optical calls ran, *type the
+  laser's wavelength — the strength depends on it (above the modes table)*,
+  or the door's reason where it refused the laser, else *no Raman was
+  requested in this run*; and where it states neither, *this result carries
+  the frequencies and the mode shapes, no infrared or Raman intensities*);
   **the run asked for none** (a PySCF run with both strengths
   off); **they are still being computed** (a PySCF run before its first
   strength lands — its `phase_raman` or `phase_ir` still to finish, § 7 —
@@ -147,9 +149,10 @@ filter**, export to CSV, and click a row to select a mode. Four more columns
 give that check's numbers: the HOMO, the LUMO, the gap and the gap's largest
 shift along the mode. **The columns follow the file's route, never its data**:
 a column the route can compute stays in the header and its cells fill in as
-the numbers land, and a column the route cannot compute — Raman and the four
-orbital columns on SIESTA, and its infrared where the result states no
-charges — is not shown, nor exported to CSV (§ 9b.3).
+the numbers land, and a column the route cannot compute — the four orbital
+columns on SIESTA, its infrared where the result states no charges, and its
+Raman where no optical calls ran — is not shown, nor exported to CSV
+(§ 9b.3).
 
 ### 3.1 The level diagram — and why it has to zoom
 
@@ -220,8 +223,8 @@ and it printed `P = 1 atm` over results no pressure entered.)* The phase
 indicator gained a **Relaxation** dot the same way (data-driven off
 `phase_relaxation`), and an **Infrared** dot off `phase_ir` (2026-09-28 — the
 flag existed and was waited on, and no dot showed it); it shows no dot for a
-phase the file's route does not have (Raman, infrared and the probe on
-SIESTA), nor for infrared in a file written before its flag (`""`, no
+phase the file's route does not have, read by route (on SIESTA the probe,
+and Raman where no optical calls were asked), nor for infrared in a file written before its flag (`""`, no
 record); a v4 file simply shows it empty and hides the thermo tab.
 
 ### 3.2 The infrared of a set of atoms, on a SIESTA result *(built 2.36.0)*
@@ -294,7 +297,7 @@ real value is at or below the infrared band floor — every value residue, as
 for a set whose dipole the direction cannot see — draws no band and says *no
 band* (`spectrumchart.md`; `engines/vibration.md` § 6.6), and no mode is
 ranked; the rug keeps the file's classes, a SIESTA mode staying `partial`,
-its Raman not computed. The three choices are remembered with the other view
+its strengths derived at load and never classified into the file. The three choices are remembered with the other view
 preferences (§ 7) and sent with every load — the first load of a page
 included, once the remembered choices are read: a result that cannot answer
 them — another result's label — loads all the same, the door's reason beside
@@ -319,41 +322,66 @@ named *IR — the whole system, along z (km/mol)*. A held PySCF result written
 before schema 12 keeps no vector: the column stays the orientation average,
 and the line beside *Light along* says the direction cannot be applied to it.
 
-### 3.3 The Raman of a SIESTA result, at a laser *(designed 2026-10-26, M4)*
+### 3.3 The Raman of a SIESTA result, at a laser *(designed 2026-10-26, M4; built 2.44.0)*
 
 A SIESTA result whose Raman route is `optical` — its optical calls ran
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) — offers
-two boxes beside *Light along*:
+two boxes, a row of their own under the infrared's:
 
 - **Laser wavelength (nm)** — empty until the person types one, with 532,
   633 and 785 nm offered: the strength depends on the laser, so no number is
   shown before one is named, and the Raman lane says *type the laser's
   wavelength — the strength depends on it*;
 - **Electronic broadening (eV)** — the width the absorption spectrum is
-  smoothed to before the polarizability is taken, starting at the run's own
-  (`Optical.Broaden`) and refused below it, the run's said. It is not the
-  chart's *Lorentzian FWHM (cm⁻¹)*, the lines' width on the frequency axis.
+  smoothed to before the polarizability is taken: empty for the run's own
+  (`Optical.Broaden`), which the line beside the boxes says once a view is
+  shown — *the run's own broadening: 0.0272114 eV*, six significant digits
+  rounded up, so that typed back it is never narrower — and refused below
+  it. It is not the chart's *Lorentzian FWHM (cm⁻¹)*, the lines' width on
+  the frequency axis.
+
+A box holds a positive number or nothing; typed otherwise, the line beside
+the boxes says so and nothing is asked.
 
 A change to either asks the load door again (§ 6), and the door answers
 `raman` from `spectra.raman.raman_view`. **The page computes nothing**: the
 modes table's Raman column shows $R(\hat e)$ at the laser, its heading the
-quantity's name — *Raman strength, light along z, 633 nm, 0.027 eV
-(Å⁴/amu)* — with the static value beside it; the chart's Raman lane draws
-those strengths with the chart's own line width; the run summary says *Raman:
+quantity's name — *Raman strength, light along z, 633 nm, 0.0272114 eV
+(Å⁴/amu)* — with the static value beside it, *Raman strength, static, light
+along z, 0.0272114 eV*: the width, not the laser, since the static number
+reads the smoothed spectrum and no laser. A picked mode whose two sides are
+not both done reads its state in the cell — `pending` or `failed` — the
+reason on hover; a mode no call was made for, `—`. The table's CSV names the
+two columns the same way, `raman_strength_a4_amu_along_z_633nm_0.0272114eV`
+and `raman_strength_static_a4_amu_along_z_0.0272114eV` — a PySCF result's
+stays `raman_activity_a4_amu`. The chart's lane, named *Raman* for both
+engines, draws those
+strengths with the chart's own line width; the run summary says *Raman:
 SIESTA's optical calculation at $\pm\delta Q$ along each picked mode, $\delta$ = … Å; at …
 nm, broadened to … eV (the run's … eV)*. A PySCF result's column stays its
 *Raman activity*, the stored tumbling-molecule number — the two quantities
 never share a name. **Every Raman gate reads the result's route**
-(`raman_route`), never PySCF's switch: the phase dots, *all phases
-complete*, the table's columns, the running phrase. The laser and the width
-are remembered with the other view preferences (§ 7).
+(`raman_route`): the phase dots, *all phases complete*, the table's columns,
+the running phrase — and, on PySCF, whose route is stated only when its
+polarizability sweep ends (`raman_route` `none` until then), the switch its
+file's `config` holds, so a run still sweeping reads as asked. While no view
+is shown, the chart's Raman lane and the line beside the boxes say the same
+words: *type the laser's wavelength — the strength depends on it*, or *not
+given:* and the door's reason where it refused the ask (`spectrumchart.md`
+§ 8.3, `setAbsentWords`). A result opened without its folder — an upload —
+gets no view: the optical calls' data file beside it cannot be read, and the
+door says so. **The Methods paragraph** gains the view's sentence at load —
+the route, $\hat e$, $\delta$, the laser, the width, *independent states, no
+local field* — its citation among the result's keys (§ 9b.3). The laser and
+the width are remembered with the other view preferences (§ 7).
 
-**Export** — in the page's header, *CSV* · *NetCDF*, for a result on disk:
-the calculation's vibration data files and, when a laser is typed, the Raman
-view at the boxes' laser and width, downloaded
-(`GET /api/spectra/export`; what is in it, § 5.11 § 10 of the vibration
-contract); a refusal in its words beside the buttons. The table's own *CSV*
-of the rows on screen stays as it is.
+**Export** — in the Results section's header, *CSV* · *NetCDF*: the
+calculation's vibration data files and, when a laser is typed, the Raman view
+at the boxes' laser and width, downloaded through the projects module's one
+export door (`projects.downloadExport`, `GET /api/spectra/export`; what is in
+it, § 5.11 § 10 of the vibration contract); beside the buttons the server's
+sentence — the view not in it, where no laser is typed — or a refusal in its
+words. The table's own *CSV* of the rows on screen stays as it is.
 
 ## 4. Clicking a mode — the 3D animation
 
@@ -449,8 +477,8 @@ Two consequences, both visible in the animation:
 *(the swing of an atom carrying the entire mode; a real mode distributes it, so
 per-atom values are smaller)*
 
-**Stiffer bonds move less** — amplitude falls as $1/\sqrt{\tilde\nu}$, so a C–H stretch is half a
-torsion. **Heavier atoms move less** — as $1/\sqrt{m}$, so gold barely moves in a mode a
+**Stiffer bonds move less** — amplitude falls as $1/\sqrt{\tilde\nu}$, so a C–H stretch moves about a
+fifth as far as a torsion. **Heavier atoms move less** — as $1/\sqrt{m}$, so gold barely moves in a mode a
 hydrogen dominates. Both are why an honest animation of a stretching mode looks
 almost still, and why the exaggerated default exists.
 
@@ -677,16 +705,18 @@ run, so the launch is the last step on both engines
 
 ## 6. The API door
 
-Two spectra routes — the ARTIFACT reader and the frame generator's door (full shape in
+Three spectra routes — the ARTIFACT reader, the export and the frame generator's door (full shape in
 [`web-api.md`](?doc=web/web-api.md)); the compute half goes through the
 catalogue schema + hand-over doors (§ 5):
 
 | Route | Does | Returns |
 |---|---|---|
-| `POST /api/spectra/load` | parses an existing `.spectra.json` into display data — with `temperature_k`, each mode's thermal spread and reference maximum displacement at it (§ 4.1, § 4.3); with `infrared: {atoms, direction, partition}`, the infrared of that label's atoms (§ 3.2) | `{ok, results}`, `results.infrared` the view when asked — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
+| `POST /api/spectra/load` | parses an existing `.spectra.json` into display data — with `temperature_k`, each mode's thermal spread and reference maximum displacement at it (§ 4.1, § 4.3); with `infrared: {atoms, direction, partition}`, the infrared of that label's atoms (§ 3.2); with `raman: {laser_nm, broaden_ev?}`, the Raman at that laser (§ 3.3) | `{ok, results}`, `results.infrared` and `results.raman` the views when asked, `infrared_said` and `raman_said` the door's reason where it could not give one — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
+| `GET /api/spectra/export` | `?path=` the result the viewer shows, `format=` `netcdf` or `csv`, `laser_nm=` and `broaden_ev=` the view's — the calculation's vibration data files and the Raman view, one zip (§ 3.3) | the zip, its name the server's, a sentence beside it in `X-Molbuilder-Said` — or `{ok: false, error}`, 400 naming what is refused, 404 for nothing there |
 | `POST /api/spectra/frameset` | `{run, mode, max_displacement_ang, nodes, out}` — the vibration run's folder (the loaded result's) and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the one generator (`engines/vibration.md` § 5.10 ③) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the generator's refusal in its words |
 
-Both follow the app's `{ok: …}` envelope convention. The form schema comes
+Each follows the app's `{ok: …}` envelope convention, the export's file
+aside. The form schema comes
 from the catalogue door (`GET /api/build/schema/<engine>?calculation=vibration`, once per engine);
 (the old `GET /api/build/schema/spectra` route retired at P3; frozen atoms
 travel with the structure now — § 8).
@@ -721,7 +751,8 @@ of the same file — the same reset a file-switch does. The full "which state
 resets what" rules live in [`results.md § 4`](?doc=web/results.md). One thing
 specific here: your view **preferences** (the broadening width, the animation
 amplitude and speed and its pairing, the thermal temperature, the table's sort
-and filter, and the infrared's atoms, direction and partition of § 3.2)
+and filter, the infrared's atoms, direction and partition of § 3.2, and the
+Raman's laser and width of § 3.3)
 **survive a page reload**, not just a file-switch (shipped 2026-09-10; a
 documented follow-up until then). **Read back, they are the file's ask**: the
 read is async, so once it lands the file on screen is loaded again with them
@@ -919,8 +950,9 @@ molecules, SIESTA for slabs and junctions — where the point is consistency,
 the same pseudopotentials, orbitals and functional as the transport the modes
 will be displaced for. SIESTA yields **frequencies, mode shapes and every atom's charge at every
 force-constant step** — the infrared of the atoms a person names derived from
-them (§ 3.2) — and no Raman ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.6). So the file has to carry a result with pieces missing, and say so.
+them (§ 3.2) — and, where its optical calls ran, the Raman at a laser the
+person names (§ 3.3; [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.11 § 10). So the file has to carry a result with pieces missing, and say so.
 
 **One file, every engine; a missing number is ABSENT, never zero.** `engine`
 names who produced the file. A key an engine cannot produce is absent or
@@ -933,11 +965,11 @@ compute a channel and for a run that did not ask for one:
 |---|---|
 | the chart | **mode positions, not a spectrum**, when no mode carries a strength — a SIESTA result with no infrared asked of it (§ 3.2): one line of one height at each mode, no curve, no height scale, no width or display-floor control, and one sentence above them saying which case it is (§ 2) *(user, 2026-09-28)*. With some strengths computed — a SIESTA result's infrared of a set of atoms among them — a lane whose channel is missing is titled *not computed* |
 | the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked |
-| the modes table | **a column the file's route cannot compute is not shown** — Raman and the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them; the IR column and the charge-moved column on SIESTA only where the result states its charges (§ 3.2). Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
+| the modes table | **a column the file's route cannot compute is not shown** — the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them; the IR column and the charge-moved column on SIESTA only where the result states its charges (§ 3.2); the Raman column where its route is `optical` (§ 3.3). Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
 | the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names PySCF's `es_mode_selection`, which a SIESTA run has no way to set. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
-| the run summary | *not computed on this route* for every channel the route lacks — Raman and the per-mode orbital energies on SIESTA — by the same rule; *not requested* only where the run could have asked; a SIESTA result's infrared, where it states its charges, *from the run's charges* — the view (*BDT, along z, Hirshfeld*), *not given:* and the door's reason, or *name the atoms above the modes table* — and where it states none, *none in this result — it states no charges*, the reason itself said once, above the modes table (§ 3.2) |
+| the run summary | *not computed on this route* for every channel the route lacks — the per-mode orbital energies on SIESTA — by the same rule; *not requested* only where the run could have asked, a SIESTA run whose selector picked no modes for Raman among them; a SIESTA result's Raman, where its optical calls ran, the route and $\delta$ with the view at the laser, *not given:* and the door's reason, or the laser asked for (§ 3.3); a SIESTA result's infrared, where it states its charges, *from the run's charges* — the view (*BDT, along z, Hirshfeld*), *not given:* and the door's reason, or *name the atoms above the modes table* — and where it states none, *none in this result — it states no charges*, the reason itself said once, above the modes table (§ 3.2) |
 | the thermochemistry tab | labelled by its regime (§ 3): on SIESTA the vibrational contributions alone, with what they are good for and where they stop ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.7) |
-| the write-up | names what was computed — on SIESTA the charges recorded, and at load the infrared view shown (§ 3.2); the file and the viewer name what was not, so an absence cannot be read as a zero |
+| the write-up | names what was computed — on SIESTA the charges recorded and the Raman route, its optical calls or none requested; at load the infrared and Raman views shown, their citations among the result's keys (§ 3.2, § 3.3); the file and the viewer name what was not, so an absence cannot be read as a zero |
 
 **What the file carries for each engine** — the molecular-orbital block
 optional as a whole, the intensities `null` on every SIESTA mode, the routes

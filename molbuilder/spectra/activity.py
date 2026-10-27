@@ -256,6 +256,21 @@ def classify_modes(
     ]
 
 
+def relative_to_strongest(strengths: Sequence[Optional[float]],
+                          real: Sequence[bool],
+                          floor: float) -> List[Optional[float]]:
+    """EACH STRENGTH OVER THE STRONGEST REAL MODE'S -- the one ranking every
+    view of a channel gives (`engines/vibration.md` § 6.6): ``None`` for a
+    strength not computed, and for every one when the strongest real
+    strength is at or below the channel's band ``floor`` -- no band, every
+    value residue."""
+    strongest = max((s for s, r in zip(strengths, real)
+                     if r and s is not None), default=0.0)
+    if strongest <= floor:
+        return [None] * len(strengths)
+    return [None if s is None else s / strongest for s in strengths]
+
+
 def ir_strength_km_mol(dmu_dq_debye: Sequence[float],
                        direction: Optional[Sequence[float]] = None) -> float:
     """A MODE'S INFRARED STRENGTH, in km/mol, from its dipole change

@@ -56,6 +56,7 @@ from flask import Blueprint, jsonify, request
 from ._shared import (
     catalogue_to_form_schema,
     issues_to_json as _issues_to_json,
+    sent_export,
 )
 
 
@@ -474,26 +475,22 @@ def api_transport_record() -> Any:
 
 def _transport_calc(raw: str):
     """``(calc, refusal)`` -- the transport calculation a path names: its
-    ``task.json``, its folder, or a folder below it, opened through its one
-    door (`calculation.open`, A16) at its root (`calcdirs.where`); or the
-    refusal: 400 for a path outside the projects tree or not a transport
-    calculation's, 404 for nothing there."""
-    from pathlib import Path
-    from molbuilder import calcdirs
-    from molbuilder.calculation import NotACalculation, open as open_calc
+    ``task.json``, its folder, or a folder below it, through the one door
+    for that (`calculation.at`, A16); or the refusal: 400 for a path outside
+    the projects tree or not a transport calculation's, 404 for nothing
+    there."""
+    from molbuilder.calculation import NotACalculation, at
     from .files import _PickerError, _resolve_within_roots
     try:
         path = _resolve_within_roots(raw)
     except _PickerError as exc:
         return None, (jsonify({"ok": False, "error": exc.message}),
                       exc.status)
-    if not path.exists():
+    try:
+        calc = at(path)
+    except FileNotFoundError:
         return None, (jsonify({"ok": False, "error": f"nothing at {raw}"}),
                       404)
-    base = Path(path) if path.is_dir() else Path(path).parent
-    root = calcdirs.where(base).root
-    try:
-        calc = open_calc(root if root is not None else base)
     except (NotACalculation, OSError, ValueError) as exc:
         return None, (jsonify({"ok": False, "error": str(exc)}), 400)
     from molbuilder.transport.record import not_transport
@@ -561,27 +558,16 @@ def api_transport_export() -> Any:
     data file read and nothing written into the calculation's folder; the
     points it holds without their DOS by region said in the response's
     ``X-Molbuilder-Said`` header.  400 names what is refused."""
-    import io
-    from flask import send_file
-    from molbuilder.transport.export import ExportError, export
+    from molbuilder.ncdata import ExportError
+    from molbuilder.transport.export import export
     calc, refusal = _transport_calc(str(request.args.get("path") or ""))
     if refusal is not None:
         return refusal
-    fmt = str(request.args.get("format") or "")
     try:
-        got = export(calc, fmt)
+        got = export(calc, str(request.args.get("format") or ""))
     except ExportError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    if fmt == "netcdf":
-        body, name, mime = (got.files[got.name], got.name,
-                            "application/x-netcdf")
-    else:
-        body, name, mime = got.as_zip(), got.name + ".zip", "application/zip"
-    out = send_file(io.BytesIO(body), mimetype=mime, as_attachment=True,
-                    download_name=name)
-    if got.said:
-        out.headers["X-Molbuilder-Said"] = got.said
-    return out
+    return sent_export(got)
 
 
 @bp.route("/api/transport/pdos", methods=["GET"])

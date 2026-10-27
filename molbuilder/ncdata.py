@@ -21,9 +21,10 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         file opened again inside its own access); :func:`read_variables` /
         :func:`read_atom_index_map` -- a group's variables and the map of its
         atom axis, read back; :func:`as_tables` -- a data file as long CSV
-        tables and a README, every word the file's own (an export)
+        tables and a README, every word the file's own; :class:`Exported`
+        -- an export's one shape, the data files or their tables
 USED-BY the transport data file (`transport.datafile`: written and read) and
-        its export (`transport.export`, the tables); the vibration result's
+        the exports (`transport.export`, `spectra.export`); the vibration result's
         data file (`spectra.datafile`), beside the job in both bundles
         (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`); a
         TBtrans data file and its digest (`parse.engines.tbtrans_nc`); a
@@ -342,7 +343,7 @@ class OpenedTwice(Exception):
 
 
 @contextlib.contextmanager
-def reading(path, *, sile: bool = False):
+def reading(path, *, sile: bool = False, data: Optional[bytes] = None):
     """THE ONE DOOR FOR EVERY NETCDF FILE molbuilder opens
     (`model/datafiles.md` § 4): ``with reading(path) as ds:`` -- the process's
     one lock held (:data:`NC_LOCK`), the file opened read-only -- a
@@ -355,7 +356,11 @@ def reading(path, *, sile: bool = False):
     and a door that never makes a second handle cannot reach it.  A file
     opened again inside its own access is refused by name -- the one
     mistake the door can see.  Nothing is read but what the reader reads;
-    a long reading is a series of accesses."""
+    a long reading is a series of accesses.  ``data``, the file's bytes
+    already in hand, is opened from memory -- the one read a caller hashes
+    is the one it reads."""
+    if data is not None and sile:
+        raise ValueError("a sisl sile is read from its file, not from bytes")
     key = str(Path(path).resolve())
     with NC_LOCK:
         if key in _OPEN:
@@ -368,7 +373,10 @@ def reading(path, *, sile: bool = False):
                 import sisl
                 handle = sisl.get_sile(str(path))
             else:
-                handle = netCDF4.Dataset(str(path), mode="r")
+                handle = (netCDF4.Dataset(Path(path).name, mode="r",
+                                          memory=data)
+                          if data is not None
+                          else netCDF4.Dataset(str(path), mode="r"))
             try:
                 yield handle
             finally:
@@ -496,7 +504,7 @@ def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
     # THE FILE READ under the lock every NetCDF access holds; its tables
     # written out of it.
     read_groups: List[Dict[str, Any]] = []
-    with NC_LOCK, netCDF4.Dataset("data", mode="r", memory=data) as ds:
+    with reading(name, data=data) as ds:
         read(ds, "", {}, {}, read_groups)
 
     def header(var: str, info: Dict[str, Any]) -> str:
@@ -553,8 +561,104 @@ def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
     return tables, "\n".join(lines) + "\n"
 
 
+#: THE FORMS AN EXPORT TAKES -- a calculation's data files as they are, or
+#: their tables (:func:`as_tables`): a transport calculation's and a
+#: vibration's alike (`engines/transport.md` § 2a.12, *Export*;
+#: `engines/vibration.md` § 5.11 § 10).
+EXPORT_FORMATS = ("netcdf", "csv")
+
+
+class ExportError(ValueError):
+    """The export is refused -- the message says why, in its owner's words."""
+
+
+@dataclass(frozen=True)
+class Exported:
+    """An export: ``name`` -- the one data file's, where the export is that
+    file (a transport calculation's ``<label>.transport.nc``), else the
+    folder its files lie in -- its ``files``, each path within that folder
+    (or the one file's own name) and its bytes, and ``said``: what it holds
+    without, and how to get it, or ``""``."""
+    name: str
+    files: Dict[str, bytes]
+    said: str = ""
+
+    @property
+    def single(self) -> bool:
+        """The export is one data file, :attr:`name` itself."""
+        return list(self.files) == [self.name]
+
+    def as_zip(self) -> bytes:
+        """The files as one zip, its members under :attr:`name`."""
+        import io
+        import zipfile
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+            for rel, data in self.files.items():
+                z.writestr(f"{self.name}/{rel}", data)
+        return out.getvalue()
+
+    def download(self) -> Tuple[bytes, str, str]:
+        """``(bytes, name, media type)`` -- a download is one file: the data
+        file itself where the export is one, else its files as one zip."""
+        if self.single:
+            return self.files[self.name], self.name, "application/x-netcdf"
+        return self.as_zip(), f"{self.name}.zip", "application/zip"
+
+    def paths_in(self, folder) -> Dict[Path, bytes]:
+        """Where each file lies when the export is written into ``folder``:
+        the one data file at ``folder/<name>``, else each below
+        ``folder/<name>/``."""
+        if self.single:
+            return {Path(folder) / self.name: self.files[self.name]}
+        return {Path(folder) / self.name / rel: data
+                for rel, data in self.files.items()}
+
+
+def export_format(fmt: str) -> str:
+    """``fmt`` when it is one of :data:`EXPORT_FORMATS`, else refused
+    (:class:`ExportError`) -- asked before anything costly is composed."""
+    if fmt not in EXPORT_FORMATS:
+        raise ExportError(f"an export is {' or '.join(EXPORT_FORMATS)}, not "
+                          f"{fmt!r}")
+    return fmt
+
+
+def export_name(stem: str, fmt: str, one_file: Optional[str] = None) -> str:
+    """What an export is named, known before it is composed: the one data
+    file itself (``one_file``) as NetCDF, else ``<stem>-<fmt>`` -- the
+    folder its files lie in."""
+    if fmt == "netcdf" and one_file:
+        return one_file
+    return f"{stem}-{fmt}"
+
+
+def exported(files: Mapping[str, bytes], fmt: str, *, stem: str,
+             one_file: bool = False, said: str = "") -> Exported:
+    """AN EXPORT, IN ITS ONE SHAPE -- a calculation's data files ``files``
+    (each name and its bytes) as ``fmt``: NetCDF, the one data file itself
+    (``one_file``) or the files in a folder; CSV, each file's tables and
+    README (:func:`as_tables`) in a folder -- flat for one file, a folder
+    each for several.  Named by :func:`export_name`; a form that is not one
+    of :data:`EXPORT_FORMATS` is refused (:func:`export_format`)."""
+    export_format(fmt)
+    names = list(files)
+    name = export_name(stem, fmt, names[0] if one_file else None)
+    if fmt == "netcdf":
+        return Exported(name, dict(files), said)
+    out: Dict[str, bytes] = {}
+    for file_name, data in files.items():
+        tables, readme = as_tables(data, file_name)
+        where = "" if len(names) == 1 else f"{Path(file_name).stem}/"
+        out.update({f"{where}{t}": text.encode("utf-8")
+                    for t, text in tables.items()})
+        out[f"{where}README.txt"] = readme.encode("utf-8")
+    return Exported(name, out, said)
+
+
 __all__ = ["Var", "Axis", "AXES", "check_axes", "ATOM_AXIS", "FLAG_FILL", "NC_LOCK", "as_tables", "empty",
            "read_atom_index_map", "size_of", "flag", "unflag", "number_attr",
            "reading", "OpenedTwice",
            "unnumber_attr", "json_attr", "write_group", "in_memory",
-           "as_bytes", "read_variables"]
+           "as_bytes", "read_variables", "EXPORT_FORMATS", "ExportError",
+           "Exported", "export_format", "export_name", "exported"]

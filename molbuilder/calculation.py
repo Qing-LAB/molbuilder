@@ -133,6 +133,21 @@ def open(base) -> Calculation:
     return calc
 
 
+def at(path) -> Calculation:
+    """THE CALCULATION A PATH NAMES -- its folder, or any file or folder
+    below it, as a page names the file it shows: opened at its root
+    (`calcdirs.where`) through :func:`open`.  A path that is not there is
+    refused (``FileNotFoundError``); one in no calculation, or whose
+    records do not read, as :func:`open` refuses it."""
+    from . import calcdirs
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"nothing at {path}")
+    folder = p if p.is_dir() else p.parent
+    root = calcdirs.where(folder).root
+    return open(root if root is not None else folder)
+
+
 def _open(base) -> Optional[Calculation]:
     """The calculation, or ``None`` when ``base`` holds no description, no
     template or no job request -- one look at each record."""

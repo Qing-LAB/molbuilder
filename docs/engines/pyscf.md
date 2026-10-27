@@ -249,8 +249,9 @@ handed. Promoting early hands it an incomplete one. `.newton()` is applied
 > point, which was not.
 
 > **The Raman block runs on the CPU even with the GPU on, and that is not a
-> fallback.** gpu4pyscf exposes no analytic CPHF polarizability, so that one
-> computation has no GPU implementation. § 3a's G-5 governs *availability* —
+> fallback.** molbuilder's Raman block calls PySCF's CPU CPHF polarizability;
+> gpu4pyscf ships one too (`gpu4pyscf.properties.polarizability`, 1.8.1),
+> which molbuilder does not call. § 3a's G-5 governs *availability* —
 > whether the GPU you asked for is there — not *coverage*, which is which
 > operations the engine can run on it.
 
@@ -957,7 +958,7 @@ filled the D3BJ default — a person who switched dispersion off ran D3BJ.
 |---|---|---|
 | optimization `mf` | chkfile + continuation read; GPU promotion; `newton()` wrap; `on_nonconvergence` per config | as today (§ 7) |
 | vibration equilibrium | chkfile WRITE; GPU promotion; `newton()` wrap; halts UNCONDITIONALLY on non-convergence — `on_nonconvergence` is the RELAXATION phase's policy (proceed / continue / halt on geomeTRIC, per its own help text), not an SCF one; a mis-wiring that read it at this site lived for part of 2026-08-21 and this row is its correction | the equilibrium density feeds the Hessian, every intensity and the thermochemistry — no policy makes it optional |
-| vibration displaced point | `scf_init_guess` applies in full (measured 2026-08-21: the lifted code does NOT seed from the equilibrium density — `kernel()` is called bare; `dm0` seeding is a recorded future improvement, not a present fact); **no** chkfile (one file per point is churn); a failed point always halts | a silently-unconverged point poisons one Hessian column; frequencies from it are not frequencies |
+| vibration displaced point | `scf_init_guess` applies in full (measured 2026-08-21: the lifted code does NOT seed from the equilibrium density — `kernel()` is called bare; `dm0` seeding is a recorded future improvement, not a present fact); **no** chkfile (one file per point is churn); a failed point always halts | a silently-unconverged point poisons one column of the intensity derivatives ($d\alpha/dR$, $d\mu/dR$) and the per-mode probe — every mode's infrared and Raman from it are wrong; the frequencies, from the analytic Hessian, are not touched |
 | vibration relaxation | GPU promotion; `newton()` wrap; frozen atoms ride a geomeTRIC `$freeze` constraints file exactly as on the optimization deck (frozen means frozen through every phase — user ruling 2026-08-21); the `on_nonconvergence` policy applies HERE, through the one relaxation function of § 3 (halt stops before the Hessian; continue re-enters from the geometry reached; proceed takes it, with a warning in the artifact beside `converged`, the judged force's verdict) | the policy's own help text names geomeTRIC's criteria — this is the phase it governs |
 
 **The gate that keeps this true**: the honesty test (every parameter the

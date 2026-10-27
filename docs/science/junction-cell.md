@@ -27,8 +27,10 @@ it gets there*.
 ## 1. Why the extent alone is wrong
 
 A periodic box repeats. If $c = z_{\max} - z_{\min}$, then the bottom atom's image in
-the next cell sits at $z_{\min} + c = z_{\max}$ — **exactly on top of the top atom**,
-at zero distance. SIESTA stops with an error, and it is right to.
+the next cell sits at $z_{\min} + c = z_{\max}$, the top atom's height — **exactly on
+top of it**, at zero distance, where the two layers are stacked alike, and SIESTA
+stops with an error, rightly; on a 3n-layer (111) slab it lands $a/\sqrt 6 \approx 1.66$ Å
+beside it instead, still far closer than any bond.
 
 This is not a new class of mistake. `structure-periodicity.md` § 3 already states
 it for the *in-plane* axes:

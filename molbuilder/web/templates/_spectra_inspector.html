@@ -66,6 +66,17 @@
     <div id="results-summary" class="spectra-section results-summary" hidden>
       <header class="spectra-section-header">
         <h2>Results</h2>
+        {#- THE CALCULATION'S DATA FILES (docs/web/spectra.md § 3.3): the
+            vibration data files as they are, and the Raman view at the
+            laser typed -- composed by the server, one zip; a refusal in its
+            words beside the buttons. -#}
+        <div id="spectra-export" class="spectra-inline-row">
+          <span>Export the data files:</span>
+          <button id="spectra-export-csv" type="button">CSV</button>
+          <button id="spectra-export-netcdf" type="button">NetCDF</button>
+          <span id="spectra-export-status" class="status muted" role="status"
+                aria-live="polite"></span>
+        </div>
       </header>
       <dl id="results-summary-list" class="results-meta"></dl>
 
@@ -223,6 +234,28 @@
             target="_blank" rel="noopener">the method, § 1a</a>.</em></p>
         </div>
         <p id="ir-absent" class="status muted ir-absent" hidden></p>
+        {#- THE RAMAN OF A SIESTA RESULT AT A LASER (docs/web/spectra.md
+            § 3.3), a row of its own: no laser until the person types one --
+            the strength depends on it; the width the run's own while empty,
+            never below it, the run's said on the line beside.  Not the
+            chart's line width, on the frequency axis. -#}
+        <div id="raman-controls" class="modes-table-controls raman-controls" hidden>
+          <label class="inline-label"><span>Laser wavelength (nm)</span>
+            <input id="raman-laser" type="number" step="any" min="0"
+                   list="raman-lasers" placeholder="532, 633, 785…">
+            <datalist id="raman-lasers">
+              <option value="532"></option>
+              <option value="633"></option>
+              <option value="785"></option>
+            </datalist>
+          </label>
+          <label class="inline-label"><span>Electronic broadening (eV)</span>
+            <input id="raman-broaden" type="number" step="any" min="0"
+                   placeholder="the run's own">
+          </label>
+          <span id="raman-status" class="status muted" role="status"
+                aria-live="polite"></span>
+        </div>
         <div class="modes-table-controls">
           <input id="modes-filter" type="text"
                  placeholder="Filter (matches any visible column)"
@@ -242,7 +275,11 @@
               <tr id="modes-thead-row">
                 <th data-col="index_1based"          data-numeric="1">#</th>
                 <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
-                <th data-col="raman_activity_a4_amu" data-numeric="1" class="raman-col">Raman (Å⁴/amu)</th>
+                {#- THE QUANTITY NAMED AS WHAT IT IS (docs/web/spectra.md
+                    § 3.3): PySCF's activity, or SIESTA's strength at the
+                    laser asked, the static strength beside it. -#}
+                <th data-col="raman_activity_a4_amu" data-numeric="1" class="raman-col" id="raman-col-head">Raman activity (Å⁴/amu)</th>
+                <th data-col="raman_static" data-numeric="1" class="raman-col raman-static-col" id="raman-static-col-head">Raman strength, static (Å⁴/amu)</th>
                 {#- IR SITS BESIDE RAMAN because they are two readings of ONE
                     mode, not two spectra: one Hessian, two property
                     derivatives on the same eigenvectors. -#}

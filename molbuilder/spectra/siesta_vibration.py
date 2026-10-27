@@ -82,7 +82,8 @@ try:                                        # inside molbuilder
     from ..sidecars.spectra import dump_spectra_json
     from ..wrapper_log import (LOG_CLOCK, LOG_LINE, log_of_run,
                                read_wrapper_log)
-    from .methods import extract_citation_keys, siesta_methods_text
+    from .methods import (extract_citation_keys, siesta_methods_text,
+                          with_siesta_raman_route)
     from .results import (FC_STEP_PATTERN, PHASE_COMPLETE,
                           PHASE_NOT_REQUESTED, PHASE_RUNNING, SpectraResults)
     from .vibrational_analysis import vibrational_analysis
@@ -126,7 +127,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from spectra_sidecar import dump_spectra_json
     from wrapper_log import (LOG_CLOCK, LOG_LINE,  # type: ignore[no-redef]
                              log_of_run, read_wrapper_log)
-    from methods import extract_citation_keys, siesta_methods_text
+    from methods import (extract_citation_keys,  # type: ignore[no-redef]
+                         siesta_methods_text, with_siesta_raman_route)
     from results import (FC_STEP_PATTERN, PHASE_COMPLETE,  # type: ignore[no-redef]
                          PHASE_NOT_REQUESTED, PHASE_RUNNING, SpectraResults)
     from vibrational_analysis import vibrational_analysis
@@ -515,9 +517,32 @@ def result_of(run: ForceConstantRun,
         n_rigid=int(res.removed_motions["count"]),
         siesta_version=run.siesta_version,
         charge_partitions=tuple(charges["charges_e"]) if charges else ())
+    # THE INFRARED IS THE CHARGES', derived on request from them -- done
+    # once they are stored (`engines/vibration.md` § 5.11 § 8).
     return replace(res, methods_text=methods,
                    bibliography_keys=extract_citation_keys(methods),
-                   partial_charges=charges)
+                   partial_charges=charges,
+                   phase_ir=(PHASE_COMPLETE if charges
+                             else PHASE_NOT_REQUESTED),
+                   ir_route="charges" if charges else "none")
+
+
+def _with_raman_phase(res, run, optical, phase: str):
+    """``res`` with its Raman phase -- the optical calls' citation
+    ``optical`` (``None`` where the run planned none), the phase ``phase``
+    where it has calls, the route, the step ``delta`` and the Methods
+    paragraph's sentence for that route -- one composition for the force
+    constants' record step and the finish (`engines/vibration.md` § 5.11
+    § 8)."""
+    route = "optical" if optical is not None else "none"
+    methods = with_siesta_raman_route(res.methods_text, route)
+    return replace(
+        res, optical=optical, raman_route=route,
+        phase_raman=phase if optical is not None else PHASE_NOT_REQUESTED,
+        raman_fd_step_ang=(float(run.fc.displacement_ang)
+                           if optical is not None else None),
+        methods_text=methods,
+        bibliography_keys=extract_citation_keys(methods))
 
 
 def finish(deck, output) -> Path:
@@ -1117,14 +1142,7 @@ def _finish_run(here: _CallHere, index: dict) -> None:
         # THE OPTICAL CALLS' RECORD, final, and its citation: the phase
         # complete once every call has ended (§ 5.11 § 8).
         optical = _write_optical(here, index, res)
-        res = replace(
-            res,
-            phase_raman=(PHASE_NOT_REQUESTED if optical is None else
-                         PHASE_COMPLETE),
-            raman_route=("optical" if optical is not None else "none"),
-            raman_fd_step_ang=(float(run.fc.displacement_ang)
-                               if optical is not None else None),
-            optical=optical)
+        res = _with_raman_phase(res, run, optical, PHASE_COMPLETE)
         dump_spectra_json(res, out)
         code = 0
         _say("INFO", f"vibration: the finish wrote {out.name}")
@@ -1211,13 +1229,7 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
                 # result's citation of it: the Raman phase running (§ 8).
                 optical = (_write_optical(here, index, res) if planned
                            else None)
-                res = replace(
-                    res, phase_raman=(PHASE_RUNNING if planned
-                                      else PHASE_NOT_REQUESTED),
-                    raman_route=("optical" if planned else "none"),
-                    raman_fd_step_ang=(float(run.fc.displacement_ang)
-                                       if planned else None),
-                    optical=optical)
+                res = _with_raman_phase(res, run, optical, PHASE_RUNNING)
                 dump_spectra_json(res, out)
                 add_call(index, call, modes=len(res.modes))
                 write_index(here.index, index)

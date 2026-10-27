@@ -364,9 +364,10 @@ real rather than aspirational.
 
 ### 6.2 Heights only where strengths exist — decided by the data, not by a setting
 
-A run computes frequencies before it computes intensities, and some routes
-compute none (SIESTA's, [`engines/vibration.md`](?doc=engines/vibration.md)
-§ 1.3), so a result can arrive with some strengths or with none:
+A run computes frequencies before it computes intensities, and some results
+carry none until a person asks for a view (SIESTA's, whose infrared and
+Raman are derived on request, [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.10 ②, § 5.11 § 10), so a result can arrive with some strengths or with none:
 
 ```
   SOME STRENGTHS KNOWN
@@ -599,7 +600,7 @@ if (chart.ok) {                   // the one branch every caller makes (§ 7)
 </script>
 ```
 
-That is the whole surface: **six doors and one callback.** The page above styles
+That is the whole surface: **seven doors and one callback.** The page above styles
 a box, hands over four numbers per mode, and gets a spectrum it can click. There
 is no stylesheet `<link>` and no library `<script>` — the module brings both
 (§ 4) — so this really is the whole page.
@@ -644,11 +645,14 @@ setDisplayFloor(pct)         hide bands below this percentage of the
                              because one control serves two incommensurate
                              units.  Changes what is DRAWN and nothing
                              else; the rug is never filtered
+setAbsentWords(key, words)   what a lane with no value says in its title in
+                             place of "not computed" -- the caller's reason,
+                             such as what the person must name first
 refit()                      re-measure the box and redraw at its size
 dispose()                    release, disconnect, empty
 ```
 
-Six doors, and **every fact the chart holds arrives through exactly one of
+Seven doors, and **every fact the chart holds arrives through exactly one of
 them.** There is no property to assign, no options object to mutate after the
 fact, no global to publish into, and no second path that "also" sets something.
 Data goes in one way; nothing comes back out but a click.
@@ -661,6 +665,7 @@ Data goes in one way; nothing comes back out but a click.
 | `setSelected` | one `index`, or `null` for *nothing chosen*. It is **remembered whether or not the current list holds it**, and drawn as soon as a list does | nothing — an index no list holds is not an error (below) | nothing |
 | `setBroadening` | a width in cm⁻¹, $\ge 0$. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.3) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
 | `setDisplayFloor` | a percentage, `0`–`100`, of each channel's strongest peak; `0` hides nothing | a value outside `0`–`100` or not a number — the floor already set stands, for the same reason | nothing |
+| `setAbsentWords` | a channel's key and the words its lane's title says while no mode has a value in it — *Raman — type the laser's wavelength …* where the strength waits on what the person names (`web/spectra.md` § 3.3); `null` restores *not computed*; the words already set, given again, draw nothing. The module names no quantity and knows no reason: the caller's words, drawn as given | words that are not a non-empty string or `null` — the words already set stand | nothing |
 | `refit` | — | — | nothing |
 | `dispose` | — | — | nothing; safe to call twice |
 

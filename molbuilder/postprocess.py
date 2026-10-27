@@ -7,10 +7,13 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         registry's); ``read_structure`` -- a structure pair, in the user
         order; ``atom_index_map`` -- which index a file's
         atoms are listed by, and both indices of each (`atom_index`);
-        ``read_transport_data`` / ``read_spectra_data`` -- the two data files
-        molbuilder writes, each with its atom index map;
-        ``infrared_view`` -- the infrared of a set of atoms from a SIESTA
-        vibration result's charges (`spectra.infrared`), and
+        ``read_transport_data`` / ``read_spectra_data`` /
+        ``read_optical_data`` -- the data files a calculation writes, each
+        with its atom index map, and ``read_raman_data`` -- an exported
+        Raman view; ``infrared_view`` -- the infrared of a set of atoms from
+        a SIESTA vibration result's charges (`spectra.infrared`);
+        ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
+        optical calls (`spectra.raman`); and
         ``reference_max_displacement`` -- a mode's reference displacement
         at a temperature (`mode_frames`)
 USED-BY a notebook's kernel, which imports the molbuilder its server runs
@@ -90,6 +93,38 @@ def read_spectra_data(path) -> Dict[str, Any]:
     return {**_read(path), MAP_KEY: atom_index_map(path)}
 
 
+def read_optical_data(path) -> Dict[str, Any]:
+    """A SIESTA vibration's optical calls, ``<label>.optical.nc``, back as
+    the payload it was written from (`spectra.optical_data.
+    read_optical_data`): each frame's eps2 over the photon energies and
+    spin, its state, mode and side, the optical deck's settings and text,
+    the reference structure -- and ``atom_index_map``, its atoms listed by
+    user index (`engines/vibration.md` § 5.11 § 8)."""
+    from .spectra.optical_data import read_optical_data as _read
+    return {**_read(path), MAP_KEY: atom_index_map(path)}
+
+
+def read_raman_data(path) -> Dict[str, Any]:
+    """An exported Raman view, ``<label>.raman.nc``, back as data
+    (`spectra.raman.read_raman_data`): the laser, the widths, the light's
+    direction, ``δ``, the files it was derived from by name and sha256,
+    frame 0's polarizability and each mode's row (`engines/vibration.md`
+    § 5.11 § 10)."""
+    from .spectra.raman import read_raman_data as _read
+    return _read(path)
+
+
+def raman_view(path, *, laser_nm: float, broaden_ev: "float | None" = None):
+    """THE RAMAN of a SIESTA vibration result ``<label>.spectra.json`` at a
+    laser, as the spectrum viewer asks it (`spectra.raman.raman_view_of`):
+    ``laser_nm`` the laser's wavelength, ``broaden_ev`` the electronic
+    broadening -- the run's own when unsaid, never below it; from the
+    optical calls' data file beside the result, both files named with their
+    sha256 in ``derived_from``."""
+    from .spectra.raman import raman_view_of
+    return raman_view_of(path, laser_nm=laser_nm, broaden_ev=broaden_ev)
+
+
 def infrared_view(path, *, direction, atoms=None,
                   partition: "str | None" = None):
     """THE INFRARED of a vibration result ``<label>.spectra.json``, as the
@@ -142,5 +177,6 @@ def reference_max_displacement(path, *, mode: int, temperature_k: float,
 
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "atom_index_map",
-           "infrared_view", "parse", "read_spectra_data", "read_structure",
+           "infrared_view", "parse", "raman_view", "read_optical_data",
+           "read_raman_data", "read_spectra_data", "read_structure",
            "read_transport_data", "reference_max_displacement"]

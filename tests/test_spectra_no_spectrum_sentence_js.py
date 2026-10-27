@@ -62,7 +62,8 @@ def _judge(files):
     if node is None:
         pytest.skip("node not available")
     src = "\n".join(_extract_fn_source(n) for n in
-                    ("_routeHas", "_noSpectrumSentence", "allPhasesComplete"))
+                    ("_routeHas", "_ramanOptical", "_ramanAsked",
+                     "_noSpectrumSentence", "allPhasesComplete"))
     script = (f"{src}\nconst files = {json.dumps(files)};\n"
               "console.log(JSON.stringify(files.map(f => ({"
               "sentence: _noSpectrumSentence(f), "

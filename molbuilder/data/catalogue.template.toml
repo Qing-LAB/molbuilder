@@ -605,7 +605,7 @@ tier = "advanced"
 help = """
 How far each free atom is nudged, in Bohr, along x, y and z both ways, to measure the force constants by central differences -- SIESTA's own default is 0.04 Bohr (about 0.02 Å).
 Smaller nudges follow the harmonic curvature more closely but push the force difference toward the SCF's noise floor (tighten DM.Tolerance if you go below 0.02 Bohr); larger ones pick up anharmonic terms.  The run nudges the FREE atoms only: the held atoms are written into Geometry.Constraints and sit outside the FC.First..FC.Last range, so holding atoms reduces the run in proportion (6 force evaluations per free atom, each a whole-system SCF).
-The force constants land in <SystemLabel>.FC in eV/Å²; the job itself then turns them into modes (mb_vibration.pyz, run by the wrapper after SIESTA) through the same projection and diagonalisation the PySCF route runs, and writes <SystemLabel>.spectra.json beside the run (engines/vibration.md 5.5).  Every atom's Hirshfeld and Voronoi charge is recorded at every nudge, from which the spectrum viewer gives the infrared of the atoms you name; Raman intensities are not computed on this route (engines/vibration.md 5.10).
+The force constants land in <SystemLabel>.FC in eV/Å²; the job itself then turns them into modes (mb_vibration.pyz, run by the wrapper after SIESTA) through the same projection and diagonalisation the PySCF route runs, and writes <SystemLabel>.spectra.json beside the run (engines/vibration.md 5.5).  Every atom's Hirshfeld and Voronoi charge is recorded at every nudge, from which the spectrum viewer gives the infrared of the atoms you name (engines/vibration.md 5.10); the Raman of the modes the selector picks is derived from the run's optical calls at a laser you name (engines/vibration.md 5.11 § 10).
 """
 
 [item.continue_retries]
@@ -1916,7 +1916,7 @@ Which vibrational modes get the displaced-geometry orbital-energy probe -- a loo
   all       -- every mode inside the frequency window (cost ~ 2 N modes).
   explicit  -- you list specific mode numbers.
 Each chosen mode costs two extra SCF calculations (one at +A, one at -A along the mode), so this is the most expensive part of the run and its cost scales linearly with how many modes you pick; the frequency window is the cost control.
-The probe is PySCF's: a SIESTA vibration computes the modes only, and the electrons' response along a mode there is the projected density of states at displaced structures, planned (engines/vibration.md 5.10).
+On SIESTA the same choice picks the modes whose Raman is derived: each chosen mode costs two optical calculations at +δQ and -δQ, and skip runs none, so the result's Raman reads not requested (engines/vibration.md 5.11 § 8).  The orbital-energy probe itself is PySCF's: on SIESTA the electrons' response along a mode is the projected density of states at displaced structures, planned (engines/vibration.md 5.10).
 """
 
 [item.es_explicit_indices]
@@ -2928,7 +2928,7 @@ group = "stage"
 label = "Light along"
 tier = "basic"
 help = """
-The direction of the light's electric field, ê, as three numbers in the structure's frame (x, y, z) -- SIESTA normalises them.  Every optical call of the run computes ε₂(ω) for a field along it, and the Raman strength the run gives is R(ê) = (∂α_êê/∂Q)², the polarizability along this one direction (science/vibrational-optical-response.md 3).
+The direction of the light's electric field, ê, as three numbers in the structure's frame (x, y, z) -- SIESTA normalises them.  Every optical call of the run computes ε₂(ω) for a field along it, and the Raman strength derived from the run at a laser is R(ê) = |∂α_êê/∂Q|², the polarizability along this one direction -- complex at the laser, its imaginary part the absorption there (science/vibrational-optical-response.md 3).
 The default is z: for a junction, along the transport axis.  To compare two directions, run the calculation twice.
 """
 
@@ -2976,7 +2976,7 @@ group = "stage"
 label = "Optical resolution"
 tier = "advanced"
 help = """
-THE RUN'S RESOLUTION, not the width you will read the spectrum at.  SIESTA spreads every transition as a Gaussian of this width, on an energy grid a tenth of it, and writes only the spread spectrum (<label>.EPSIMG).  The width a person reads the Raman strength at -- 0.1 eV, 0.5 eV -- is applied when the result is presented (the viewer's Broadening box), by composing Gaussians: that is exact, so this number only sets the finest width you can ask for later, and the size of the file.
+THE RUN'S RESOLUTION, not the width you will read the spectrum at.  SIESTA spreads every transition as a Gaussian of this width, on an energy grid a tenth of it, and writes only the spread spectrum (<label>.EPSIMG).  The width a person reads the Raman strength at -- 0.1 eV, 0.5 eV -- is applied when the result is presented (the Spectra page's Electronic broadening (eV) box) by spreading SIESTA's spectrum with one more Gaussian: two Gaussians compose into one, so it is the spectrum SIESTA would have written at that width, but for the few widths nearest the ends of its energy grid.  This number only sets the finest width you can ask for later, and the size of the file.
 0.002 Ry (0.027 eV) gives 50,001 energies up to 10 Ry: 2.7 MB of text per optical call, 320 MB over a junction's 121 calls.  Halving it doubles both.
 """
 

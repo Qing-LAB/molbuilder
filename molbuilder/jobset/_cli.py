@@ -30,7 +30,7 @@ from typing import Optional
 import click
 
 from .ledger import record as _ledger
-from ..transport.export import FORMATS as _EXPORT_FORMATS
+from ..ncdata import EXPORT_FORMATS as _EXPORT_FORMATS
 from .model import JobSet
 from .errors import PrepError
 from .submit import SubmitError
@@ -2801,29 +2801,61 @@ def migrate_cmd(bundle: str) -> None:
         click.echo(f"  {line}")
 
 
+#: Each kind's export, by the calculation's kind: a module with
+#: ``export(calc, fmt, **asks)``, ``name_of(calc, fmt)`` and ``ASKS``.
+_EXPORTS = {"transport": "molbuilder.transport.export",
+            "vibration": "molbuilder.spectra.export"}
+
+
+def _export_of(calc):
+    """The export module of ``calc``'s kind (:data:`_EXPORTS`), or refused
+    naming the kinds that export."""
+    import importlib
+    kind = calc.task.calculation
+    if kind not in _EXPORTS:
+        raise click.ClickException(
+            f"a {kind} calculation has no export -- {' and '.join(_EXPORTS)} "
+            f"calculations do")
+    return importlib.import_module(_EXPORTS[kind])
+
+
 @jobset_group.command("export",
-                      short_help="a transport calculation's every result, "
-                                 "as NetCDF or as CSV tables")
+                      short_help="a transport or vibration calculation's "
+                                 "results, as NetCDF or as CSV tables")
 @click.option("--format", "fmt", required=True,
               type=click.Choice(list(_EXPORT_FORMATS)),
-              help="netcdf: the data file, every variable saying what it "
-                   "is; csv: its tables, one per set of axes, and a README.")
+              help="netcdf: the data files, every variable saying what it "
+                   "is; csv: their tables, one per set of axes, and a "
+                   "README each.")
 @click.option("--to", "to", required=True, type=click.Path(file_okay=False),
               help="the folder it is written into -- never one inside the "
                    "calculation.")
+@click.option("--laser-nm", "laser_nm", type=float, default=None,
+              help="a SIESTA vibration with optical calls: the laser's "
+                   "wavelength in nm the Raman view is composed at, added "
+                   "as <label>.raman.nc.")
+@click.option("--broaden-ev", "broaden_ev", type=float, default=None,
+              help="with --laser-nm: the electronic broadening in eV the "
+                   "view is taken at -- the run's own when omitted, never "
+                   "below it.")
 @_bundle_option()
-def export_cmd(bundle: str, fmt: str, to: str) -> None:
-    """Every result of a transport calculation as it stands -- its data
-    file, ``<label>.transport.nc``, or the same as tables,
+def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
+               broaden_ev: Optional[float]) -> None:
+    """A calculation's results as they stand, written into the folder named,
+    never into the calculation.  A TRANSPORT calculation: every result, its
+    data file ``<label>.transport.nc`` or the same as tables,
     ``<label>.transport-csv/`` -- from what is already there, no data file
-    read: the points without their DOS by region said, and written into the
-    folder named, never into the calculation (engines/transport.md 2a.12,
-    *Export*).  A ladder in progress exports what exists, a point not done
-    an empty cell; what is there already under that name is refused before
-    anything is composed, naming it."""
+    read: the points without their DOS by region said; a ladder in progress
+    exports what exists, a point not done an empty cell
+    (engines/transport.md 2a.12, *Export*).  A VIBRATION calculation: its
+    stage's newest result's data files as they are, and with ``--laser-nm``
+    the Raman view at that laser, ``<label>.vibration-netcdf/`` or
+    ``<label>.vibration-csv/`` (engines/vibration.md 5.11 10).  What is
+    there already under that name is refused before anything is composed,
+    naming it."""
     from pathlib import Path as _P
+    from ..ncdata import ExportError
     from ..persist import write_bytes
-    from ..transport.export import ExportError, export, name_of
     from ..units import size_words
     calc = _calc_of(_P(bundle))
     base, dest_dir = _P(calc.base).resolve(), _P(to).resolve()
@@ -2832,17 +2864,28 @@ def export_cmd(bundle: str, fmt: str, to: str) -> None:
             f"{to} is inside the calculation -- an export is written "
             f"outside it, its own records untouched; name another folder "
             f"with --to")
-    dest = dest_dir / name_of(calc, fmt)
+    # THE KIND'S EXPORT (`_EXPORTS`): what it asks beyond its form, and its
+    # name, known before anything is composed.
+    module = _export_of(calc)
+    asks = {k: v for k, v in (("laser_nm", laser_nm),
+                              ("broaden_ev", broaden_ev)) if v is not None}
+    stray = [k for k in asks if k not in module.ASKS]
+    if stray:
+        raise click.ClickException(
+            f"{', '.join('--' + k.replace('_', '-') for k in stray)} ask a "
+            f"vibration's Raman view; {_P(calc.base).name} is a "
+            f"{calc.task.calculation} calculation")
+    name = module.name_of(calc, fmt)
+    dest = dest_dir / name
     if dest.exists():
         raise click.ClickException(
             f"{dest} is there already -- move it aside, or name another "
             f"folder with --to; nothing was written")
     try:
-        got = export(calc, fmt)
+        got = module.export(calc, fmt, **asks)
     except ExportError as exc:
         raise click.ClickException(str(exc)) from None
-    files = ({dest: got.files[got.name]} if fmt == "netcdf" else
-             {dest / rel: data for rel, data in got.files.items()})
+    files = got.paths_in(dest_dir)
     # WRITTEN OUTSIDE THE CALCULATION: an export changes nothing of it, so
     # its ledger has no line of it.  A group's tables in its own folder.
     try:
@@ -2855,8 +2898,9 @@ def export_cmd(bundle: str, fmt: str, to: str) -> None:
             f"whole export; remove it and export again") from None
     size = sum(len(d) for d in files.values())
     click.echo(f"wrote {dest} ({size_words(size)}"
-               + (f", {len(files) - 1} tables and README.txt)"
-                  if fmt == "csv" else ")"))
+               + ("" if got.single else
+                  f", {len(files)} file{'s' if len(files) != 1 else ''}")
+               + ")")
     if got.said:
         click.echo(f"note: {got.said}")
 

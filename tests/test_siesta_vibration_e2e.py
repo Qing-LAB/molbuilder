@@ -6,7 +6,7 @@ one run in phases.
 road's CO2 (`support.road.CO2`), listed O O C with the carbon held.  The one
 stage `freq` runs as ONE RUN IN PHASES (`engines/vibration.md` § 5.11): its
 `relax` call, its `fc` call nudging the two oxygens at the geometry the
-relaxation reached, and -- one mode picked -- its optical calls, each a
+relaxation reached, and -- the two stretches picked -- its optical calls, each a
 SIESTA call in a folder of its own below the run, walked by one job; the
 modes derived BY THE JOB -- the `fc` call's record step, `mb_vibration.pyz`,
 run by each call's run script with the job's own python, which cannot import
@@ -77,9 +77,11 @@ pytestmark = [
 _ZERO_POINT = 1.054571817e-34 / (4 * np.pi * 2.99792458e10
                                  * 1.66053906660e-27 * 1e-20)
 
-#: The mode the shared run's optical phase is asked for -- the lower stretch,
-#: mode 3 of four, 1-based (`support.real_runs.CO2_OPTICAL`).
-_PICKED_MODE = 3
+#: The modes the shared run's optical phase is asked for -- the two
+#: stretches, modes 3 and 4 of four, 1-based (`support.real_runs.CO2_OPTICAL`).
+_PICKED_MODES = [3, 4]
+#: Its optical calls' folders: frame 0, then each mode's two sides.
+_OPTICAL_CALLS = ("f000", "f001", "f002", "f003", "f004")
 
 
 @pytest.fixture(scope="module")
@@ -428,8 +430,8 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     """The box unticked (the default `describe` writes): the one run's
     calls are the relaxation, then the force constants at the geometry it
     reached -- in the held-first order its deck states, written beside that
-    deck by the run's own plan step -- then the picked mode's three optical
-    calls, each planned by the `fc` call's record step; the modes come out
+    deck by the run's own plan step -- then the two picked stretches' five
+    optical calls, each planned by the `fc` call's record step; the modes come out
     in the user order with the reference forces within the stage's own
     tolerance (`engines/vibration.md` § 5.11 §§ 1–3, § 5.5); the index
     lists every call with how it ended, the selection as asked and applied,
@@ -442,11 +444,11 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     from molbuilder.siesta.vibration_phases import FC, OPTICAL, RELAX
     run = real_co2_vibration
     status, folder = _the_run(run)
-    assert status.detail == "relax done · fc done · optical 3 of 3", \
+    n = len(_OPTICAL_CALLS)
+    assert status.detail == f"relax done · fc done · optical {n} of {n}", \
         status.detail
     calls = {(p["phase"], p["call"]): p for p in status.points}
-    assert [k[0] for k in calls] == [RELAX, FC, OPTICAL, OPTICAL, OPTICAL], \
-        list(calls)
+    assert [k[0] for k in calls] == [RELAX, FC] + [OPTICAL] * n, list(calls)
     # the ordinary relaxation deck, from the same held-first copy: Broyden
     # to the kind's recommended 0.01 eV/A, the held carbon -- SIESTA's atom 1
     # after the sort -- constrained
@@ -475,16 +477,16 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     index = _index_of(run)
     assert index["phases"] == [RELAX, FC, OPTICAL]
     assert [(c["phase"], c["exit"]) for c in index["calls"]] == \
-        [(RELAX, 0), (FC, 0)] + [(OPTICAL, 0)] * 3, index["calls"]
-    assert index["selection"]["applied"] == [_PICKED_MODE], index["selection"]
+        [(RELAX, 0), (FC, 0)] + [(OPTICAL, 0)] * n, index["calls"]
+    assert index["selection"]["applied"] == _PICKED_MODES, index["selection"]
     assert index["finish"]["exit"] == 0, index["finish"]
-    # the three optical calls: the equilibrium, then the mode's two sides,
+    # the optical calls: the equilibrium, then each mode's two sides,
     # each a folder below the run's `optical/` holding the optical deck and
     # what SIESTA left (`vibration_phases.calls_of`, `Call.rel`)
     from molbuilder.siesta.vibration_phases import calls_of
     optical_calls = [c for c in calls_of(index) if c.phase == OPTICAL]
-    assert [(c.mode, c.side) for c in optical_calls] == \
-        [(None, 0), (_PICKED_MODE, 1), (_PICKED_MODE, -1)], optical_calls
+    assert [(c.mode, c.side) for c in optical_calls] == [(None, 0)] + [
+        (m, side) for m in _PICKED_MODES for side in (1, -1)], optical_calls
     for c in optical_calls:
         optical = _deck_of(folder / c.rel)
         assert _said(optical, "OpticalCalculation") == [".true."], c
@@ -518,7 +520,7 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
 def test_the_optical_calls_are_one_data_file_the_result_cites(
         real_co2_vibration):
     """THE RAMAN PHASE'S RECORD (`engines/vibration.md` § 5.11 § 8, § 6.2):
-    the shared run's three optical calls -- the reference geometry, then the
+    the shared run's five optical calls -- the reference geometry, then each
     picked mode's two sides -- in one data file at the run's root that the
     index and the result agree with (:func:`_the_optical_record`), each
     computed in this run; the light along the optical deck's
@@ -536,26 +538,158 @@ def test_the_optical_calls_are_one_data_file_the_result_cites(
     from molbuilder.parse.fdf import fdf_key
     run = real_co2_vibration
     d, data, calls = _the_optical_record(
-        run, computed_in=dict.fromkeys(("f000", "f001", "f002"),
-                                       "01_freq/run-0"))
-    assert data["settings"]["selection"]["applied"] == [_PICKED_MODE]
+        run, computed_in=dict.fromkeys(_OPTICAL_CALLS, "01_freq/run-0"))
+    assert data["settings"]["selection"]["applied"] == _PICKED_MODES
     optical = _deck_of(run.attempt("freq") / calls[0].rel)
     vector = optical[1][fdf_key("Optical.Vector")]
     assert data["settings"]["direction"] == [float(x) for x in vector[0][:3]]
-    reference, plus, minus = data["frames"]
+    reference, *sides = data["frames"]
     r0 = np.asarray(reference["position_ang"])
     assert np.allclose(r0, d["structure"]["positions"], atol=1e-5)
-    mode = d["modes"][_PICKED_MODE - 1]
-    assert plus["frequency_cm1"] == mode["frequency_cm1"], (plus, mode)
-    vec = np.zeros_like(r0)
-    vec[d["free_atom_idxs"]] = np.asarray(mode["eigenvector_canonical"])
     delta = d["engine_metadata"]["fc_displacement_ang"]
-    for f in (plus, minus):
+    assert [f["mode"] for f in sides] == [m for m in _PICKED_MODES
+                                          for _side in (1, -1)], sides
+    for f in sides:
+        mode = d["modes"][f["mode"] - 1]
+        assert f["frequency_cm1"] == mode["frequency_cm1"], (f, mode)
+        vec = np.zeros_like(r0)
+        vec[d["free_atom_idxs"]] = np.asarray(mode["eigenvector_canonical"])
         move = np.asarray(f["position_ang"]) - r0
         assert np.allclose(move, f["side"] * f["dq_amu12_ang"] * vec,
-                           atol=1e-5), (f["side"], move)
+                           atol=1e-5), (f["mode"], f["side"], move)
         assert np.linalg.norm(move, axis=1).max() == pytest.approx(
             delta, abs=1e-5), move
+
+
+#: The laser a Raman view is asked at, nm -- a helium-neon's.
+_LASER_NM = 633.0
+
+
+def _stretches(d):
+    """The two picked stretches by how their oxygens move along z, the
+    molecule's axis: ``(apart, together)`` -- the mode whose oxygens move in
+    opposite directions, both bonds lengthening at once, and the one whose
+    oxygens move the same way, one bond lengthening as the other shortens."""
+    by = {}
+    for m in _PICKED_MODES:
+        oxygens = np.asarray(d["modes"][m - 1]["eigenvector_canonical"])
+        by["apart" if oxygens[0][2] * oxygens[1][2] < 0 else "together"] = m
+    return by["apart"], by["together"]
+
+
+def _listing(folder):
+    return sorted(str(f.relative_to(folder)) for f in Path(folder).rglob("*")
+                  if ".git" not in f.parts and ".binsnapshots" not in f.parts)
+
+
+def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
+        real_co2_vibration, monkeypatch, tmp_path):
+    """THE RAMAN AT A LASER (`engines/vibration.md` § 5.11 § 10, § 14): the
+    load door's view of the shared run at 633 nm, broadened to the run's own
+    width -- **CO2's symmetry**: the held carbon is the molecule's centre of
+    inversion, so the polarizability is the same at +dQ and -dQ of the
+    stretch whose oxygens move together and its strength is ~0, against the
+    one whose oxygens move apart, a band; the script's door
+    (`postprocess.raman_view`) gives the same view.  **The export at that
+    laser** through `jobset export`, NetCDF and CSV: the run's two data
+    files byte for byte and the view composed now, read back through
+    `postprocess.read_raman_data` and `xarray` equal to the door's, citing
+    the result and the optical calls' data file by their sha256; nothing is
+    written into the calculation.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a mode's derivative taken from
+    another mode's side (the together stretch then reads a band); an export
+    holding a number the page does not show; a view citing a file by a
+    checksum that is not its bytes'; an export writing into the
+    calculation's folder."""
+    import csv
+    import xarray
+    from molbuilder.persist import sha256_of
+    from molbuilder.postprocess import raman_view as script_view
+    from molbuilder.postprocess import read_raman_data
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.runfiles import ROLE_OPTICAL, ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    from molbuilder.spectra.activity import CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU
+    from molbuilder.task import of as task_of
+    from molbuilder.web.app import create_app
+    from support.road import jobset
+    run = real_co2_vibration
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
+    d = _the_result(run)
+    folder = run.attempt("freq")
+    result = on_label_at(folder, ROLE_SPECTRA)
+    optical = on_label_at(folder, ROLE_OPTICAL)
+    label = task_of(run.bundle).label
+
+    # THE LOAD DOOR, asked as the page asks it.
+    got = create_app(config={}).test_client().post(
+        "/api/spectra/load",
+        json={"path": str(result), "raman": {"laser_nm": _LASER_NM}}
+    ).get_json()
+    assert got["ok"] and "raman_said" not in got["results"], got
+    view = got["results"]["raman"]
+    assert view["laser_nm"] == _LASER_NM, view
+    assert view["broaden_ev"] == view["run_broaden_ev"], view
+    assert view["direction_name"] == "z", view
+    rows = {m["index_1based"]: m for m in view["modes"]}
+    assert sorted(rows) == _PICKED_MODES, rows
+    assert {rows[m]["state"] for m in _PICKED_MODES} == {"finished"}, rows
+    apart, together = _stretches(d)
+    for key in ("strength_laser_a4_amu", "strength_static_a4_amu"):
+        assert rows[apart][key] > CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU, rows
+        assert rows[together][key] < 1e-2 * rows[apart][key], rows
+    assert rows[apart]["relative"] == pytest.approx(1.0), rows
+    assert script_view(result, laser_nm=_LASER_NM).to_wire() == view
+
+    # THE EXPORT AT THAT LASER, both forms, outside the calculation.
+    before = _listing(run.bundle)
+    for fmt in ("netcdf", "csv"):
+        said = jobset("export", "--bundle", run.bundle, "--format", fmt,
+                      "--to", tmp_path, "--laser-nm", _LASER_NM)
+        assert said.exit_code == 0, said.output
+    assert _listing(run.bundle) == before, "nothing written in it"
+    spectra_nc = result.with_name(f"{label}.spectra.nc")
+    out = tmp_path / f"{label}.vibration-netcdf"
+    assert sorted(f.name for f in out.iterdir()) == sorted(
+        [spectra_nc.name, optical.name, f"{label}.raman.nc"])
+    for kept in (spectra_nc, optical):
+        assert (out / kept.name).read_bytes() == kept.read_bytes(), kept
+    # THE OPTICAL CALLS' FILE, exported, reads through the script's door
+    # with its atom index map (§ 10's table): the run's own frames.
+    from molbuilder.postprocess import read_optical_data
+    from molbuilder.spectra.optical_data import read_optical_data as own
+    got = read_optical_data(out / optical.name)
+    assert [f["call"] for f in got["frames"]] == [
+        f["call"] for f in own(optical)["frames"]]
+    assert got["atom_index_map"] is not None
+    data = read_raman_data(out / f"{label}.raman.nc")
+    assert data["derived_from"] == [
+        {"name": result.name, "sha256": sha256_of(result)},
+        {"name": optical.name, "sha256": sha256_of(optical)}]
+    assert (data["laser_nm"], data["broaden_ev"]) == (
+        view["laser_nm"], view["broaden_ev"])
+    keys = ("strength_laser_a4_amu", "strength_static_a4_amu",
+            "dalpha_dq_laser_real_a2_per_amu12",
+            "dalpha_dq_laser_imag_a2_per_amu12",
+            "dalpha_dq_static_a2_per_amu12")
+    for row in data["modes"]:
+        for key in keys:
+            assert row[key] == pytest.approx(rows[row["mode"]][key],
+                                             rel=1e-12), (row, key)
+    with xarray.open_dataset(out / f"{label}.raman.nc", group="modes") as ds:
+        assert [rows[int(m)]["strength_laser_a4_amu"]
+                for m in ds["mode"].values] == pytest.approx(
+            ds["strength_laser_a4_amu"].values.tolist(), rel=1e-12)
+    tables = tmp_path / f"{label}.vibration-csv" / f"{label}.raman"
+    assert (tables / "README.txt").is_file()
+    with (tables / "modes" / "mode.csv").open() as fh:
+        table = list(csv.DictReader(fh))
+    column = next(k for k in table[0]
+                  if k.startswith("strength_laser_a4_amu"))
+    assert {int(r["mode"]): float(r[column]) for r in table} == \
+        pytest.approx({m: rows[m]["strength_laser_a4_amu"]
+                       for m in _PICKED_MODES}, rel=1e-12)
 
 
 def test_ticked_the_run_measures_at_the_geometry_as_given(ticked):
@@ -627,7 +761,9 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
       sentence saying which case it is -- a result stating its charges: name
       the atoms for their infrared (§ 2; `spectrumchart.md` § 6.2);
     * the modes table without the columns the route cannot compute, and the
-      run summary saying *not computed on this route* for each (§ 9b.3);
+      run summary saying the Raman was *not requested* -- the box unticked
+      ran no optical calls -- and the probe *not computed on this route*
+      (§ 9b.3);
     * no phase dot for Raman or the probe (§ 3);
     * the electronic-structure tab naming the planned projected density of
       states, never PySCF's ``es_mode_selection`` (§ 9b.3);
@@ -720,9 +856,10 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
             dl.querySelectorAll("dt").forEach(dt => {
                 out[dt.textContent] = dt.nextElementSibling.textContent; });
             return out; }""")
-        for line in ("Raman activities", "Per-mode orbital energies"):
-            assert summary[line].startswith("not computed on this route"), \
-                (line, summary[line])
+        assert summary["Raman"] == "not requested", summary["Raman"]
+        assert summary["Per-mode orbital energies"].startswith(
+            "not computed on this route"), summary["Per-mode orbital energies"]
+        assert not _shown(page, "#raman-controls")
         assert summary["IR intensities"] == (
             "from the run's charges — name the atoms above the modes "
             "table"), summary["IR intensities"]
@@ -745,14 +882,16 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
         assert said == ("from the run's charges — frozen_atoms, along "
                         "z, Hirshfeld"), said
 
-        # NO DOT FOR A PHASE THE ROUTE DOES NOT HAVE (§ 3).
+        # A DOT FOR EACH PHASE THE RUN HAS, BY ROUTE (§ 3;
+        # `engines/vibration.md` § 5.11 § 8): no Raman -- no optical calls
+        # were asked -- and no probe; the infrared complete, its charges
+        # stored (`ir_route` `charges`).
         assert _shown(page, '.spectra-phase-dot[data-phase="frequencies"]')
         assert not _shown(page, '.spectra-phase-dot[data-phase="raman"]')
         assert not _shown(page, '.spectra-phase-dot[data-phase="es"]')
-        # the Infrared dot exists in the partial and, SIESTA computing no
-        # intensities, is not shown (web/spectra.md § 3)
-        assert page.locator('.spectra-phase-dot[data-phase="ir"]').count() == 1
-        assert not _shown(page, '.spectra-phase-dot[data-phase="ir"]')
+        assert _shown(page, '.spectra-phase-dot[data-phase="ir"]')
+        assert "spectra-phase-complete" in page.get_attribute(
+            '.spectra-phase-dot[data-phase="ir"]', "class")
 
         # THE ELECTRONS' RESPONSE: planned, and named as what it will be.
         page.click("#mode-tabbtn-es")
@@ -784,6 +923,127 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
         assert sum(y[:-1]) == pytest.approx(y[-1], abs=1e-9), y
         assert y[-1] == pytest.approx(d["thermo"]["g_eh"] * kcal, abs=1e-6)
         assert y[0] == pytest.approx(d["thermo"]["zpe_eh"] * kcal, abs=1e-6)
+
+    unexpected = [e for e in errors if _PLOTLY_HIDDEN_RESIZE not in e]
+    assert unexpected == [], f"the page reported JS errors: {unexpected}"
+
+
+def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
+        real_co2_vibration, page, monkeypatch):
+    """**The shared run's Raman, on its page** (`web/spectra.md` § 3.3),
+    opened as a person opens it, through the Results tab's dropdown:
+
+    * before a laser is typed, no Raman number -- the Raman column titled
+      *Raman strength* with a dash in every cell, the line beside the boxes
+      asking for the laser, the run summary saying the same;
+    * the laser typed, 633 nm: the column titled by what was asked (the
+      light's direction, the laser, the width -- the run's own), a number for
+      each picked mode and a dash for the others, the static strength beside
+      it, the width box offering the run's own width, the run summary naming
+      the route, the laser and the width;
+    * the Raman dot complete -- the route has the phase;
+    * Export as NetCDF hands over one zip holding the run's two data files
+      and the view at that laser.
+
+    The silent failure: a page showing a number before the laser is named,
+    titling SIESTA's strength as PySCF's activity, or exporting another view
+    than it shows."""
+    import io
+    import zipfile
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.runfiles import ROLE_OPTICAL, ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    from molbuilder.task import of as task_of
+    from support.live_server import serve
+    run = real_co2_vibration
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
+    d = _the_result(run)
+    attempt = run.attempt("freq")
+    result = on_label_at(attempt, ROLE_SPECTRA)
+    optical = on_label_at(attempt, ROLE_OPTICAL)
+    label = task_of(run.bundle).label
+
+    def column(selector):
+        return page.eval_on_selector_all(
+            f"#modes-tbody td{selector}", "ts => ts.map(t => t.textContent)")
+
+    def summary(line):
+        return page.evaluate("""(line) => {
+            const dt = [...document.querySelectorAll(
+                "#results-summary-list dt")].find(x => x.textContent === line);
+            return dt ? dt.nextElementSibling.textContent : null; }""", line)
+
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: (errors.append(m.text)
+                                  if m.type == "error" else None))
+    with serve() as base:
+        page.add_init_script(
+            "try { sessionStorage.setItem('molbuilder.current_dir', "
+            f"{json.dumps(str(attempt))}); }} catch (_) {{}}")
+        page.goto(f"{base}/results")
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=str(result), timeout=20000)
+        page.select_option("#results-file-picker-select", value=str(result))
+        page.wait_for_selector("#modes-tbody tr", state="attached",
+                               timeout=30000)
+
+        # NO NUMBER BEFORE THE LASER IS NAMED.
+        assert _shown(page, "#raman-laser") and _shown(page, "#raman-broaden")
+        assert page.inner_text("#raman-col-head") == "Raman strength (Å⁴/amu)"
+        assert set(column(".raman-col:not(.raman-static-col)")) == {"—"}
+        assert not _shown(page, "#raman-static-col-head")
+        assert page.inner_text("#raman-status") == (
+            "type the laser's wavelength — the strength depends on it")
+        assert summary("Raman").endswith(
+            "type the laser's wavelength — the strength depends on it"), \
+            summary("Raman")
+        assert _shown(page, '.spectra-phase-dot[data-phase="raman"]')
+        assert "spectra-phase-complete" in page.get_attribute(
+            '.spectra-phase-dot[data-phase="raman"]', "class")
+
+        # THE LASER TYPED: the door answers, the page draws its answer.
+        page.fill("#raman-laser", str(int(_LASER_NM)))
+        page.locator("#raman-laser").dispatch_event("change")
+        page.wait_for_function(
+            "() => document.getElementById('raman-col-head').textContent"
+            "  .startsWith('Raman strength, light along z, 633 nm, ')",
+            timeout=20000)
+        # THE RUN'S OWN WIDTH, said beside the boxes, names both columns.
+        said = page.inner_text("#raman-status")
+        assert said.startswith("the run's own broadening: ") and \
+            said.endswith(" eV"), said
+        width = said[len("the run's own broadening: "):-len(" eV")]
+        assert page.inner_text("#raman-col-head") == (
+            f"Raman strength, light along z, 633 nm, {width} eV (Å⁴/amu)")
+        assert page.inner_text("#raman-static-col-head") == (
+            f"Raman strength, static, light along z, {width} eV (Å⁴/amu)")
+        laser = column(".raman-col:not(.raman-static-col)")
+        static = column(".raman-static-col")
+        assert _shown(page, "#raman-static-col-head")
+        picked = [m["index_1based"] in _PICKED_MODES for m in d["modes"]]
+        assert [c != "—" for c in laser] == picked, laser
+        assert [c != "—" for c in static] == picked, static
+        assert summary("Raman").startswith(
+            "SIESTA's optical calculation at ±δQ along each picked mode"), \
+            summary("Raman")
+        assert "; at 633 nm, broadened to " in summary("Raman"), \
+            summary("Raman")
+
+        # EXPORT: the run's data files and the view the page shows.
+        with page.expect_download() as caught:
+            page.click("#spectra-export-netcdf")
+        download = caught.value
+        assert download.suggested_filename == \
+            f"{label}.vibration-netcdf.zip", download.suggested_filename
+        with zipfile.ZipFile(io.BytesIO(Path(download.path()).read_bytes())) \
+                as z:
+            names = sorted(z.namelist())
+        folder = f"{label}.vibration-netcdf"
+        assert names == sorted(f"{folder}/{n}" for n in (
+            f"{label}.spectra.nc", optical.name, f"{label}.raman.nc")), names
 
     unexpected = [e for e in errors if _PLOTLY_HIDDEN_RESIZE not in e]
     assert unexpected == [], f"the page reported JS errors: {unexpected}"
@@ -945,17 +1205,19 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     assert ended[RELAX]["done"] and ended[FC]["done"], run.stopped.points
     finished = {p["call"] for p in run.stopped.points
                 if p["phase"] == OPTICAL and p["done"]}
-    assert 0 < len(finished) < 3, run.stopped.points
+    assert 0 < len(finished) < len(_OPTICAL_CALLS), run.stopped.points
     before = {r["name"]: r for r in run.stopped_index["calls"]}
     said = run.said["launch freq warm"]
     assert said.exit_code == 0, said.output
     assert ("takes over the relaxation, the force constants, frame 0, the "
             "equilibrium" in said.output
             and f"done in run-1; runs the optical calls below run-2/optical/ "
-                f"({3 - len(finished)} to run again)" in said.output), \
+                f"({len(_OPTICAL_CALLS) - len(finished)} to run again)"
+            in said.output), \
         said.output
     status, _folder = _the_run(run, n=2)
-    assert status.detail == (f"relax done · fc done · optical 3 of 3 "
+    n = len(_OPTICAL_CALLS)
+    assert status.detail == (f"relax done · fc done · optical {n} of {n} "
                              f"({len(finished)} taken over)"), status.detail
     run1 = run.attempt("freq", 1).relative_to(run.bundle).as_posix()
     run2 = run.attempt("freq", 2).relative_to(run.bundle).as_posix()
@@ -975,5 +1237,5 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     assert _notified(run, n=2) == ["start", "finish"]
     d, _data, _calls = _the_optical_record(
         run, n=2, computed_in={name: (run1 if name in finished else run2)
-                               for name in ("f000", "f001", "f002")})
+                               for name in _OPTICAL_CALLS})
     _common_assertions(d, optical=True)

@@ -473,6 +473,9 @@ gathers what is already there, one import for a person's script:
 | `read_transport_data(path)` | a transport calculation's data file, `<label>.transport.nc` (`transport.datafile.read_data_file`), with its atom index map |
 | `read_spectra_data(path)` | a vibration result's data file, `<label>.spectra.nc` (`spectra.datafile.read_spectra_data`), with its atom index map |
 | `infrared_view(path, atoms=, direction=, partition=)` | the infrared of a set of atoms — a label by name, or user indices — from a SIESTA vibration result's charges: the spectrum viewer's one derivation (`spectra.infrared.infrared_view`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ②) |
+| `read_optical_data(path)` | a SIESTA vibration's optical calls' data file, `<label>.optical.nc` (`spectra.optical_data.read_optical_data`), with its atom index map |
+| `raman_view(path, *, laser_nm, broaden_ev=None)` | the Raman of a SIESTA vibration result at a laser, from its optical calls' data file: the spectrum viewer's one derivation (`spectra.raman.raman_view_of`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) |
+| `read_raman_data(path)` | an exported Raman view, `<label>.raman.nc` (`spectra.raman.read_raman_data`) |
 | `reference_max_displacement(path, *, mode, temperature_k, nodes=3)` | a vibration result's mode — by its number — and its reference maximum displacement at a temperature, in Å, read through the result's reader (`mode_frames.reference_max_displacement`, [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5); `None` for an imaginary mode, a temperature not kelvin 0 or more refused |
 
 `from molbuilder.postprocess import parse, atom_index_map,

@@ -294,7 +294,7 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
     same = len(set(orbitals.values())) == 1
     sizes, energies = [], []
     for v, deck in read:
-        energies.append(energy_points(deck) + 2)
+        energies.append(energy_points(deck))
         if same:
             sizes.append(f"{size_words(file_bytes(orbitals['L'], deck))} a lead at {v:g} V")
         else:
@@ -307,7 +307,8 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
     return (f"{scratch_dir}/: one pair at a time, about "
             + " and ".join(sizes)
             + f" ({orbs} × {k} k-point{'s' if k != 1 else ''} × "
-            + " and ".join(str(e) for e in energies) + " energies)")
+            + " and ".join(str(e) for e in energies)
+            + " energies, with the lead's H and S)")
 
 
 __all__ = ["status_line", "estimate_from", "k_points_time_reversed",

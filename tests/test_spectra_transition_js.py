@@ -94,6 +94,8 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         }};
         {lifted(MODULE, "    function transition(target, payload) {",
                 "\n    function ")}
+        {lifted(MODULE, "    function _abortViews() {", "\n    }")}
+        }}
         {lifted(MODULE, "    function _settlePostLoad() {", "\n    }")}
         }}
         {lifted(MODULE, "    async function watchTick() {",

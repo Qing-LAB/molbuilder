@@ -594,9 +594,10 @@ and step by step in § 4b.6:
 force constants by central differences of SIESTA's forces over the free atoms
 only, derived by the job itself right after the run (`vibration.md` § 5.5) through the same harmonic path.
 Its infrared comes from the run's own charges, for the atoms a person names;
-Raman is not computed on it (§ 4a.6).
+its Raman from SIESTA's optical calculation at displaced geometries, at a
+laser the person names (§ 4a.6).
 
-### 4a.6 SIESTA: the infrared from the run's charges, Raman not offered
+### 4a.6 SIESTA: the infrared from the run's charges, Raman from its optical calls
 
 The SIESTA path (§ 3.1a, and the design document) computes **frequencies and
 mode shapes**, and records **every atom's Hirshfeld and Voronoi charge at every
@@ -606,13 +607,15 @@ change along each mode, for light in vacuum along a direction the person
 picks ([`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
 § 2; `vibration.md` § 5.10 ②). Born effective charges from the Berry-phase
 polarisation are the route for an insulating crystal, and SIESTA computes them
-for an insulator only; a junction is metallic. **A Raman control is not
-drawn** when SIESTA is the engine — not drawn rather than defaulted off,
-because a control that silently does nothing is worse than an absent one: the
-user believes they asked for something. Its design is
-[`vibration.md`](?doc=engines/vibration.md) § 5.11, its science
+for an insulator only; a junction is metallic. **Raman is the run's optical
+phase**: SIESTA's optical calculation at $\pm\delta Q$ along each mode the
+selector picks, and the strength — the squared change of the polarizability
+along the light — derived at a laser the person names after the run
+([`vibration.md`](?doc=engines/vibration.md) § 5.11 § 10, its science
 [`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
-§ 3 — not built (problem 5 of § 4b.7 below).
+§ 3; problem 5 of § 4b.7 below). PySCF's *Compute Raman* is not drawn when
+SIESTA is the engine — not drawn rather than defaulted off, because a control
+that silently does nothing is worse than an absent one.
 
 **And for the junction work the more useful quantity is a different one again.**
 What modulates a current is not how a mode couples to light but how it couples
@@ -804,7 +807,7 @@ labour is reproduced here with a third column — what this tool does today.
 | δ convergence | none for the Hessian | required | `fc_displacement` is a stage item, so a ladder of δ runs is describable, and `jobset summarize task` compares the stages into `<label>.fc-sweep.json` (§ 4b.6 C; `spectra/displacement_sweep.py`). PySCF's strengths and its probe are finite differences with steps of their own (§ 4b.5) |
 | active-region convergence | useful | strongly recommended | two structures, two runs; the artifact records the free set; no matching tool (§ 4b.9) |
 | normal modes | yes | yes | one function for both, with the rank rule in front of the eigenproblem (§ 4b.1) |
-| infrared and Raman | molecular response calculations | hard at a metal surface | PySCF: built (§ 4a); SIESTA: the infrared of a named set of atoms from the run's charges, Raman not built (§ 4a.6, § 4b.7) |
+| infrared and Raman | molecular response calculations | hard at a metal surface | PySCF: built (§ 4a); SIESTA: the infrared of a named set of atoms from the run's charges, Raman from its optical calls at a laser (§ 4a.6, § 4b.7) |
 | frontier-orbital modulation | natural | use projected densities of states and resonances instead | the PySCF probe is built, two points per mode (§ 4b.5 G); nothing on SIESTA |
 | surface modes | a finite-cluster approximation | natural | — |
 | transport $T(E, Q)$ | not its strength | TranSIESTA / TBtrans | built: a mode's frame set, and transport at every frame (`vibration.md` § 5.10 ③; `transport.md` § 2a.9) |
@@ -1184,8 +1187,8 @@ more the discussion adds: the
 local optical field at the molecule is not the incident field — the infrared
 is for light in vacuum, the field at the molecule taken as the incident one,
 an assumption the method states — and Raman brings in the metal's
-frequency-dependent dielectric response: its route is designed
-([`vibration.md`](?doc=engines/vibration.md) § 5.11), not built, and how the
+frequency-dependent dielectric response: its route is built
+([`vibration.md`](?doc=engines/vibration.md) § 5.11), and how the
 metal's part behaves is measured with it (plan § 1ac, R1).
 
 **6. What this means for a held atom on PySCF — a correction to § 4a.5.**
@@ -1450,7 +1453,7 @@ noise — the large-minus-large problem of § 4b.7 point 2, in $T$ and $\varepsi
 of the density. The thermal nodes are as large as the physics makes them.
 
 Two cautions, each **stated per frame rather than enforced**. *Soft modes:*
-$\sigma$ grows as $1/\sqrt{\omega}$ and `coth` adds more (× 2.9 at 50 cm⁻¹ and 298 K,
+$\sigma$ grows as $1/\sqrt{\omega}$ and the thermal factor $\sqrt{\coth}$ adds more (× 2.9 at 50 cm⁻¹ and 298 K,
 `web/spectra.md` § 4.1), so the outer frames of a torsion can stretch bonds far
 past the harmonic region, where neither the mode nor the average means what it
 says; each frame states its largest atomic displacement against that atom's
@@ -1774,7 +1777,7 @@ changes the pair's reduced mass from
 
 $$
 \begin{aligned}
-\text{free:}\quad \mu &= m_S\,m_H/(m_S + m_H) = 0.977278\ \mathrm{amu}\\
+\text{free:}\quad \mu &= m_S\,m_H/(m_S + m_H) = 0.977273\ \mathrm{amu}\\
 \text{held:}\quad \mu &= m_H = 1.008000\ \mathrm{amu}
 \end{aligned}
 $$
@@ -1786,7 +1789,7 @@ so the frequency must fall by $\sqrt{\mu_{\mathrm{free}}/\mu_{\mathrm{held}}}$:
 | 3285.2349 | 3234.8834 | 0.984673 |
 | 3285.3623 | 3234.9786 | 0.984664 |
 
-Predicted **0.984643**; measured differs by **3 × 10⁻⁵**. The two-body limit is
+Predicted **0.984641**; measured differs by **3 × 10⁻⁵**. The two-body limit is
 crude and the agreement is not — which is the point: the held atom really is
 being treated as infinitely heavy, exactly as a partial Hessian assumes.
 

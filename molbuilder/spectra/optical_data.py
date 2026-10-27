@@ -262,12 +262,13 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
     return p
 
 
-def read_optical_data(path) -> Dict[str, Any]:
+def read_optical_data(path, *, data=None) -> Dict[str, Any]:
     """``<label>.optical.nc`` back as the payload it was written from -- the
     file's door (`runfiles.WRITTEN`); a schema it does not read refused by
-    name.  A frame not run reads its fills as ``None``."""
+    name.  A frame not run reads its fills as ``None``.  ``data``, the
+    file's bytes already in hand, is read from memory (`ncdata.reading`)."""
     out: Dict[str, Any] = {}
-    with reading(path) as ds:
+    with reading(path, data=data) as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
         if attrs.get("schema") not in READABLE_DATA_SCHEMAS:
             raise OpticalDataError(

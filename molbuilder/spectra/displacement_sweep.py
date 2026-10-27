@@ -167,13 +167,13 @@ def collect_sweep(calc, *,
     from .results import mass_of
     from ..engine_atom_index import convert_from_engine_numbering
     from ..jobset.commands import rollback
-    from ..jobset.materialize import latest_attempt
+    from ..jobset.materialize import newest_on_label
     from ..jobset.naming import stage_home
     from ..jobset.continuation import stage_run_state
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
                                            hessian_from_fc, read_fc)
     from ..parse.errors import ParseError
-    from ..runfiles import compose
+    from ..runfiles import ROLE_SPECTRA, compose
     from ..runs import on_label_at
     from ..siesta.vibration_phases import force_constants_call
     from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
@@ -197,7 +197,7 @@ def collect_sweep(calc, *,
         it = one(_items, item, engine="siesta")
         return getattr(it, "unit", None) or None
 
-    spectrum_name = compose(task.label, ".spectra.json")
+    spectrum_name = compose(task.label, ROLE_SPECTRA)
     stages: List[Dict[str, Any]] = []
     # A STAGE WITHOUT A RESULT, in the words its attempt's `run_status`
     # gives: still to come is pending, never a failure; a run that failed,
@@ -207,7 +207,10 @@ def collect_sweep(calc, *,
     loaded = []
     for name in names:
         home = stage_home(base, task, name)
-        attempt = latest_attempt(home.dir)
+        # THE RUN'S OWN RESULT, at its root, through the one door for a
+        # stage's result (`materialize.newest_on_label`): a run in phases'
+        # root (`engines/vibration.md` § 5.11 § 2).
+        attempt, spectrum = newest_on_label(home.dir, ROLE_SPECTRA)
         if attempt is None:
             # NOT PREPARED, in the ready door's words: ready, and what it
             # takes, or waiting, and what for (`jobset.ready`).
@@ -216,11 +219,6 @@ def collect_sweep(calc, *,
             pending.append({"stage": name, "state": r.state,
                             "detail": r.detail})
             continue
-        # THE RUN'S OWN RESULT, at its root, through the one door for a
-        # result on the label (`runs.on_label_at`): a reader of a run takes
-        # its folder -- a run in phases' root (`engines/vibration.md`
-        # § 5.11 § 2).
-        spectrum = on_label_at(attempt, ".spectra.json")
         if spectrum is None:
             # THE RUN'S STATE, through the one door for any stage's run --
             # a run of points by its points (`continuation.stage_run_state`,

@@ -27,7 +27,7 @@ Everything a tab uses is on **`window.molbuilder.projects`**. Tabs call that and
 subscribe to it; they never reach into the sidebar's HTML. (A tab waits for it
 with `runtime.whenReady("projects")` instead of polling.)
 
-Behind that one door are ten small files, each with one concern:
+Behind that one door are eleven small files, each with one concern:
 
 | File | What it does |
 |---|---|
@@ -41,6 +41,7 @@ Behind that one door are ten small files, each with one concern:
 | `checkpoint.js` | the run-history panel (git snapshots of a run folder) |
 | `parser.js` | the **one** door that understands molecules — open and save |
 | `molview-doors.js` | the `files` door every MolView mount hands in — export to project or download |
+| `downloads.js` | a file handed to the person as a browser download — bytes a page holds, or an export a server route composed |
 
 There are really **two layers**: a **content-blind file layer** (read/write raw
 bytes, list folders, rename — it doesn't care what's in a file) that every tab
@@ -447,10 +448,19 @@ MolView holds no file route; this door is where its exports become files.
 **A file handed to the person — `projects.download(filename, blob)`**
 *(2026-10-22)*: the one browser download of bytes a page holds — the four
 lines of DOM that make one, in this module because where files may go is its
-knowledge. `molviewFiles` hands its exports over through it, the transport
-report its export ([`engines/transport.md`](?doc=engines/transport.md)
-§ 2a.12, *Export*), named as the server named the file, the spectra viewer
-its modes' CSV and the trajectory viewer its plots' CSV.
+knowledge. `molviewFiles` hands its exports over through it, the spectra
+viewer its modes' CSV and the trajectory viewer its plots' CSV.
+
+**An export a server composes — `projects.downloadExport(url)`**
+*(2026-10-26)*: a GET route answering the file itself, named in its
+Content-Disposition, handed to the person under that name through
+`projects.download` — resolves `{ok: true, said}`, `said` the server's
+sentence beside the file (`X-Molbuilder-Said`) or `""`; or `{ok: false,
+error}` with the route's own refusal, the HTTP status where it said none, or
+why the request failed. A file the route did not name is refused, never
+named by the page. Every report's Export asks it: the transport report
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *Export*) and
+the vibration result ([`web/spectra.md`](?doc=web/spectra.md) § 3.3).
 
 **The unified save-where question — `projects.chooseSavePath(opts)`**
 *(2026-08-19, user)*: the move-to dialog composed with the name dialog, from

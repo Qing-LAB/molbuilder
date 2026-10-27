@@ -31,7 +31,8 @@ import {
 import { initForms } from "./mutation-bar.js";
 import { initPreview, showPreview } from "./preview.js";
 import { parser } from "./parser.js";
-import { download, molviewFiles } from "./molview-doors.js";
+import { molviewFiles } from "./molview-doors.js";
+import { download, downloadExport } from "./downloads.js";
 import { chooseSavePath } from "./dialogs.js";
 import { initCheckpointPanel,
          status as ckStatus, init as ckInit, saveState as ckSaveState }
@@ -50,6 +51,9 @@ projects.molviewFiles = molviewFiles;
 // A file handed to the person -- the one browser download every page asks
 // (`docs/web/projects.md` § 5): where files may go is this module's.
 projects.download = download;
+// An export a server route composes and names, handed to the person -- every
+// report's Export asks it (projects.md § 5).
+projects.downloadExport = downloadExport;
 // The unified "save it WHERE, as WHAT" question (projects.md § 5): one door
 // for every flow that deposits artifacts under the project root -- MolView's
 // exports today, multi-result consolidation (e.g. transport inputs) tomorrow.

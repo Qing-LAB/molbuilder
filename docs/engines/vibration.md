@@ -151,7 +151,7 @@ throughout this document; the full statements and their reasons are
 | basis | Gaussian functions | numerical atomic orbitals |
 | how it gets $H_{AA}$ | **analytic** second derivatives, for the free atoms (§ 4.4) | **central differences** of its analytic forces: nudge each free atom, read every force (§ 5) |
 | frequencies + mode shapes | yes | yes |
-| infrared / Raman strengths | yes (§ 4.6) | infrared from the run's charges, for the atoms the person names (§ 5.10 ②); Raman from the run's optical phase (§ 5.11) — its calls run, the spectrum's reader and view to come (plan § 1ae M3–M4) |
+| infrared / Raman strengths | yes (§ 4.6) | infrared from the run's charges, for the atoms the person names (§ 5.10 ②); Raman from the run's optical phase (§ 5.11), at a laser the person names after the run (§ 5.11 § 10) |
 | thermochemistry | full RRHO (rigid-rotor harmonic-oscillator) for a free molecule; vibrational sums with atoms held | vibrational sums |
 | per-mode electronic structure | yes (§ 4.8) | no |
 | a gold electrode | must be faked as a finite cluster | its natural home — and the same pseudopotentials, orbitals and k-points as the transport step (§ 5.6) |
@@ -873,9 +873,9 @@ $d\mu/dR$ differs by 8.4·10⁻⁵, its transpose by 5.2·10⁻¹.
 each displaced geometry, and its **derivative** is a central difference over
 the free Cartesian coordinates at ±`RAMAN_FD_STEP_ANG` = 0.005 Å (the step
 Gaussian and ORCA use for static polarizability derivatives). PySCF reports the
-polarizability in atomic units (Bohr³), so one global factor $(\mathrm{Bohr}/\text{Å})^6 \approx 0.02197$ is applied on the final scalar, and the stored value is genuine Å⁴/amu,
+polarizability in atomic units (Bohr³), so one global factor $(\mathrm{Bohr}/\text{Å})^6 \approx 0.021959$ is applied on the final scalar, and the stored value is genuine Å⁴/amu,
 comparable to Gaussian's and ORCA's activity columns — without it the
-spectrum's shape is right and every absolute activity is about 50× too small. The run records the
+spectrum's shape is right and every absolute activity is about 45.5× too large. The run records the
 route as `raman_route = 'finite-difference'` with `raman_fd_step_ang` (§ 10 for
 status), and the Methods text states the method one way: analytic
 polarizability, finite-difference derivative.
@@ -1088,10 +1088,12 @@ phase_relaxation   empty → running (step count, max force ticking) → complet
                                                                                  ticked: the force-constant run itself relaxes nothing)
 phase_frequencies  empty → running → complete
 phase_raman        empty → running → complete      (`not requested` from the first write when the description
-                                                    asked for no Raman sweep, and on SIESTA, whose route has none)
+                                                    asked for no Raman sweep; on SIESTA, running while the optical
+                                                    calls run, `not requested` when the selector picks none, § 5.11 § 8)
 phase_ir           empty → running → complete      (running with the Raman sweep, which carries the dipole, or through
-                                                    the dipole sweep alone; `not requested` when no infrared was asked for,
-                                                    and on SIESTA; `""` in a file written before 2026-09-28 -- no record,
+                                                    the dipole sweep alone; `not requested` when no infrared was asked for;
+                                                    on SIESTA `complete` once the run's charges are stored, § 5.11 § 8;
+                                                    `""` in a file written before 2026-09-28 -- no record,
                                                     which a reader must not take for a phase still to come)
 phase_es           empty → running → complete      (per-mode entries fill in one at a time; `not requested` under
                                                     `es_mode_selection = skip`, and on SIESTA)
@@ -1583,14 +1585,16 @@ wavenumbers from the tolerance. The δ ladder is § 9's second table.
 
 ### 5.6 What is absent, never zero — and the transport connection
 
-**Raman is not offered on SIESTA**, and its control is **not drawn** for it
-rather than defaulted off — a control that silently does nothing is worse than
-an absent one, because the person believes they asked for something. Its
-design is § 5.11 — the optical phase of the one vibration run — the method's § 3
-([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md))
-— its calls and their record built (§ 5.11 § 3, § 8), the reading of
-their response into a spectrum and the form's control the plan's § 1ae M4; how its polarizability behaves in a cell
-holding metal is measured with it (the plan's § 1ac, R1). **The infrared comes from the force-constant run's own
+**Raman on SIESTA is the optical phase of the one vibration run** (§ 5.11),
+the method's § 3
+([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)):
+the modes the selector picks, SIESTA's optical calculation at $\pm\delta Q$
+along each, and the strength derived at a laser the person names after the run
+(§ 5.11 § 10). PySCF's *Compute Raman* is **not drawn** for it rather than
+defaulted off — a control that silently does nothing is worse than an absent
+one, because the person believes they asked for something. How its
+polarizability behaves in a cell holding metal is measured with it (the
+plan's § 1ac, R1). **The infrared comes from the force-constant run's own
 charges** (§ 5.10 ②): every atom's Hirshfeld and Voronoi charge at every
 nudge, from which the spectrum viewer gives the infrared of the atoms the
 person names — the dipole of a molecule in the junction by its atoms' charges
@@ -1665,8 +1669,8 @@ reported (R7), and the statement that the held atoms sit outside the FC range
 so no force constant is taken with respect to them, that frequencies are those
 of the free atoms in the static field of the held ones, that thermochemistry
 is vibrational-only, that every atom's charge is recorded at every nudge
-(the infrared of the atoms the person names, § 5.10 ②) and that Raman is not
-computed; the precondition
+(the infrared of the atoms the person names, § 5.10 ②) and that Raman comes
+from the optical calls the mode selector asks for (§ 5.11 § 10); the precondition
 (§ 2.2): with the box unticked, an info line that the ladder relaxes first, to
 the template's force tolerance, before the force constants; with it ticked, a
 **warning** that the frequencies will be off if the structure is not relaxed
@@ -2043,7 +2047,7 @@ rigid-shift estimate against the explicit curvature.
 | D7 | the amplitude rule — where the displaced structures the electronic and transport runs compute on sit (not the animation) | **decided 2026-09-28, its input the user's 2026-10-24**: the Gauss–Hermite nodes of a Gaussian along the mode, three by default, its spread set by the person's maximum displacement — the largest atom's move at the outermost frames — and no temperature stated (§ 5.10 ③) | the same frames give the curvature and the average (science § 4c.5); the zero-point and thermal spreads are what a person compares $\sigma$ with |
 | D8 | the PySCF probe — how far its per-mode orbital check pushes the molecule (not the animation) | **decided 2026-09-28**: the same nodes; `electronic_structure.amplitude_ang` gives way to the node record | one amplitude rule on both engines, and a curvature needs frames above the noise |
 
-### 5.11 One run in phases — relaxation, force constants and Raman, each SIESTA call a point of the run *(designed 2026-10-25, the user's choice B; verified by the proof of concept of § 12; the gap review of 2026-10-25 folded in; §§ 1–7a and § 9 built 2.42.0 — prep, the walk, the member monitor — and § 8's records — the data file and the result's Raman fields — and prep's count and sizes (§ 9) 2.43.0; not yet built: § 8's viewer gates, `phase_ir` and `ir_route` on SIESTA, with § 10's view (the plan's § 1ae M4), a sweep's take-over of the first stage's `relax` call (§ 6) and a transport sweep's one start and finish (§ 7a))*
+### 5.11 One run in phases — relaxation, force constants and Raman, each SIESTA call a point of the run *(designed 2026-10-25, the user's choice B; verified by the proof of concept of § 12; the gap review of 2026-10-25 folded in; §§ 1–7a and § 9 built 2.42.0 — prep, the walk, the member monitor — and § 8's records — the data file and the result's Raman fields — and prep's count and sizes (§ 9) 2.43.0; § 8's viewer gates, `phase_ir` and `ir_route` on SIESTA, and § 10's view and export 2.44.0; not yet built: a sweep's take-over of the first stage's `relax` call (§ 6) and a transport sweep's one start and finish (§ 7a))*
 
 > **The user, 2026-10-25**: *"i don't see why pyscf can do all this in one
 > run, while you struggle so much. there is no intrinsic difference"*; *"i
@@ -2426,14 +2430,17 @@ panel naming the phase and the call that is running.
 #### 8. The result — the structure PySCF's has, SIESTA's values in it
 
 **One result type, two routes** (§ 6): a SIESTA result is a `SpectraResults`
-like a PySCF result, and the viewer reads both **by route, never by the
-engine's name and never by a switch's presence** — the gates that read
-`compute_raman` or `es_mode_selection` out of `config` today
-(`_ramanRouteLabel`, `allPhasesComplete`, the phase dots, the table's
-columns, `hasRaman`, `_esRouteLabel`, the running phrase) read the result's
-`raman_route`, `ir_route` and `phase_es` instead; *not requested* is a route
-`none` beside a switch the file's `config` holds, *not computed on this
-route* a route `none` with none. A SIESTA result's `config` carries the
+like a PySCF result, and the viewer reads both **by role, never by the
+engine's name** ([`web/spectra.md`](?doc=web/spectra.md) § 3.3, § 9b.3):
+**Raman** by the result's `raman_route` — `optical` is SIESTA's route — and,
+on PySCF, whose route is stated only when its polarizability sweep ends, by
+the switch its `config` holds, so a run still sweeping reads as asked;
+**infrared** by PySCF's `compute_ir` or a SIESTA result's charges
+(`partial_charges`); **the probe** by PySCF's `es_mode_selection`, which a
+SIESTA `config` never holds. A capability whose switch the file's `config`
+lacks is *not computed on this route*; a route `none` beside a switch it
+holds is *not requested*, and so is a SIESTA run that made no optical calls —
+the selector at `skip`. A SIESTA result's `config` carries the
 engine, the kind and the stage (§ 6.2) — the selection as asked and as
 applied is the optical citation's and the index's; its
 `phase_es` stays `not requested` — the selector picks Raman's modes on
@@ -2458,17 +2465,13 @@ puts its frames in the user order by the reference the run's `fc` call
 gives — its structure, atom index map and masses — read from that call's
 own files as the finish reads them, whether this run computed it or took it
 over (§ 6): a run that took its force constants over has no result at its
-root until its finish. Through the data-file framework
-([`model/datafiles.md`](?doc=model/datafiles.md)):
+root until its finish.
 
-| group | what |
-|---|---|
-| `/` | what the calculation is, in words — *SIESTA's optical calculation: ε₂(ω) for a field along ê, first-order perturbation over independent states, at the equilibrium geometry and at ±δQ along each selected mode*; the run; SIESTA's version; the molbuilder that prepared it |
-| `/settings` | every optical keyword as the stage's optical deck writes it, its unit in its value; the light's direction; the selection as asked and as applied; $\delta$; the optical deck's whole text and sha256 — every SIESTA parameter the calls read |
-| `/structure` | the reference geometry: atoms (the atom axis as its map), elements, positions, cell, held atoms |
-| `/frames` | over `frame`: the mode (none for frame 0), its frequency, the side, $\delta Q$, the positions; the call's state and run; from the output the SCF iterations, the energies, the Fermi level, the wall time; from the `.EPSIMG` header the f-sum and $\omega_p^2$; `eps2` over `frame` × `photon_energy_ev` × `spin`, raw, its source `<label>.EPSIMG` |
-
-**Its variables** (`spectra/optical_data.py`, schema
+**Its variables** — the calculation in words at its root: *SIESTA's optical
+calculation: ε₂(ω) for a field along ê, first-order perturbation over
+independent states, at the equilibrium geometry and at ±δQ along each
+selected mode*; every SIESTA parameter the calls read under `/settings`
+(`spectra/optical_data.py`, schema
 `molbuilder/optical-data@1`; the framework's rules are
 [`model/datafiles.md`](?doc=model/datafiles.md)):
 
@@ -2555,7 +2558,7 @@ an unmigrated one naming migrate, as it refuses a retired item
 (`template.RETIRED_ITEMS`). `status` and the Results ladder read an old
 calculation's two stages by their folders, as today.
 
-#### 10. Raman, presented — at the laser and the width a person asks *(designed 2026-10-26, M4; the user: "agree with your M4 recommendations … need export, and api to support netcdf file reading")*
+#### 10. Raman, presented — at the laser and the width a person asks *(designed 2026-10-26, M4, built 2.44.0; the user: "agree with your M4 recommendations … need export, and api to support netcdf file reading")*
 
 **What it is**: after a SIESTA vibration whose optical phase ran, each picked
 mode's Raman strength at a laser the person names, derived when asked from
@@ -2564,97 +2567,114 @@ laser is a new number in a second. Nothing derived is written into the
 calculation: the result keeps a SIESTA mode's `raman_activity_a4_amu`
 null (§ 8), and the view is served beside it.
 
-**The one derivation** — `spectra/raman.raman_view(result, laser_nm,
-broaden_ev)`, the pattern of `infrared_view` (§ 5.10 ②), over the data file
-read through its one reader (`spectra.optical_data.read_optical_data`,
-through `ncdata.reading`). Per frame:
+**The one derivation** — `spectra/raman.raman_view(result, optical, *,
+laser_nm, broaden_ev)`, the pattern of `infrared_view` (§ 5.10 ②), over the
+data file read through its one reader (`spectra.optical_data.read_optical_data`,
+through `ncdata.reading`); `raman_view_of(path, *, laser_nm, broaden_ev)`
+reads the result at `path` and the data file it cites beside it, and names
+both by their sha256 — the one door the load door, the export and
+`postprocess` ask. **The physics, each formula, is the method's § 3.2a**
+([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md));
+here, the numerical choices and the refusals. The laser and the width are
+each a positive number (`read_ask`); a laser whose photon energy lies
+outside the stored spectrum is refused, naming its ends. Per frame:
 
 1. **The spectrum**, the spin channels summed, on the run's photon-energy
    grid.
 2. **Broadened to the width asked** — a Gaussian of
-   $\sqrt{\sigma^2-\sigma_{\mathrm{run}}^2}$, since two Gaussians make one
-   (exact, § 12), in SIESTA's own convention of `Optical.Broaden`;
-   $\sigma_{\mathrm{run}}$ the optical deck's, read from the data file's
-   `/settings`. The run's own width is the narrowest there is: a smaller one
+   $\sqrt{\sigma^2-\sigma_{\mathrm{run}}^2}$, since two Gaussians make one,
+   in SIESTA's own convention of `Optical.Broaden` — $\sigma$ the $s$ of
+   $e^{-(E/s)^2}$, its full width at half height $2\sqrt{\ln 2}\,s \approx 1.665\,s$;
+   exact for a transition a few widths above zero (§ 12), and not below:
+   SIESTA stores only the part of each line above zero, so a line within a
+   few widths of zero — a metal's near-Fermi pairs — keeps less weight when
+   widened after the run than a run at the wider width would;
+   $\sigma_{\mathrm{run}}$ the optical deck's, from the optical keywords the data
+   file's `/settings` keeps, read by the deck's reader (`parse_fdf_params`). The run's own width is the narrowest there is: a smaller one
    is refused, saying the run's.
-3. **$\varepsilon_1$ by Kramers–Kronig**, at the laser's energy
-   $\hbar\omega_L = 1239.84198/\lambda[\mathrm{nm}]$ eV and at zero:
-
-   $$
-   \varepsilon_1(\omega) - 1 = \frac{2}{\pi}\,\mathrm{P}\!\int_0^{E_{\max}}
-   \frac{\omega'\,\varepsilon_2(\omega')}{\omega'^2-\omega^2}\,d\omega' ,
-   $$
-
-   the principal value taken by subtracting the pole's value and adding its
+3. **$\varepsilon_1$ by Kramers–Kronig** (the method's step 3), at the laser's
+   energy (step 1, `constants.HC_EV_NM`) and at zero: the principal value
+   taken by subtracting the pole's value — and its slope at a grid point —
+   read from a cubic spline through the spectrum, and adding its
    closed-form integral, the trapezoid on the run's uniform grid up to its
    `Optical.Energy.Maximum`; the static integrand from the grid's first
    energy above zero.
-4. **$\alpha_{\hat e\hat e}(\omega) = \frac{V}{4\pi}\,[\varepsilon_1(\omega) - 1]$**
-   in Å³, $V$ the reference structure's cell volume.
+4. **$\alpha$** (step 4) in Å³, $V$ the reference structure's cell volume —
+   a data file whose structure has none is refused; complex at the laser,
+   its imaginary part read from the same spline; static, real.
 
-Per picked mode, from its two frames:
-
-$$
-\frac{\partial\alpha}{\partial Q} = \frac{\alpha(+\delta Q) - \alpha(-\delta Q)}{2\,\delta Q}
-\quad[\text{Å}^2/\mathrm{amu}^{1/2}],
-\qquad
-R(\hat e) = \Bigl(\frac{\partial\alpha}{\partial Q}\Bigr)^2
-\quad[\text{Å}^4/\mathrm{amu}],
-$$
-
-at the laser and static;
-ranked by the laser's against the strongest real mode, no rank at or below
-the Raman channel's band floor (`activity.CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU`).
-Frame 0's $\alpha$, at the laser and static, is said once. A mode with a side not
-done is a row naming the side and why — never a number from one side. **It
-answers**: the laser, the width asked and the run's, $\hat e$, $\delta$, the
-equilibrium $\alpha$, and per mode its frequency, $\delta Q$,
-$\partial\alpha/\partial Q$ and $R$ at the laser and static, its rank and
-its state.
+Per picked mode, from its two frames, $\partial\alpha/\partial Q$ and
+$R(\hat e) = \lvert\partial\alpha/\partial Q\rvert^2$ (steps 5–6), at
+the laser and static — the squared modulus of the complex polarizability's
+change, as a Raman tensor at a laser is [Gillet2013] (the user, 2026-10-26:
+*"Full complex"*); ranked by the laser's against the strongest real mode,
+no rank at or below the Raman channel's band floor
+(`activity.CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU`, $10^{-3}$ Å⁴/amu — set on the
+activity's scale, $45a'^2+7\gamma'^2$, 45–79 times the orientation-averaged
+$R$ (the method's § 3.2); as a gate of whether there is a band at all it serves $R$ too).
+Frame 0's $\alpha$, at the laser and static, is said once. A mode with a side
+not done is a row naming the side and its state — `pending`, or `failed` —
+never a number from one side. **It answers**: the laser, the width asked and
+the run's, $\hat e$, $\delta$, the equilibrium $\alpha$, and per mode its
+frequency, $\delta Q$, $\partial\alpha/\partial Q$ and $R$ at the laser
+and static, its rank and its state.
 
 **What the person sees** (the decisions, § 13): **the laser is the person's
 to name** — no default; until one is typed the Raman lane says *type the
 laser's wavelength — the strength depends on it*, with 532, 633 and 785 nm
 offered (M4-b); **the width starts at the run's own** — any other starting
 number would be one molbuilder invented (M4-a); **the quantity is named as
-what it is** — *Raman strength, light along z (Å⁴/amu)*, the static value
-beside it — never under PySCF's *Raman activity*, the tumbling molecule's
-$45a'^2 + 7\gamma'^2$, a different number (the method's § 3.2, M4-c); **strengths,
-not intensities** — the laser-frequency and temperature factors of a measured
-intensity are not applied, on either engine (M4-d). Every number states its
-laser and width: near a resonance, and for a metal's near-Fermi transitions,
-the width changes $\alpha$. The Methods paragraph gains its sentence: the route,
-$\hat e$, $\delta$, the laser, the width, and *independent states, no local field*
-(the method's § 3.3).
+what it is** — *Raman strength, light along z, 633 nm, 0.0272114 eV
+(Å⁴/amu)*, the static value beside it, *Raman strength, static, light along
+z, 0.0272114 eV* — never under PySCF's *Raman activity*, the tumbling
+molecule's $45a'^2 + 7\gamma'^2$, a different number (the method's § 3.2,
+M4-c); **strengths, not intensities** — the laser-frequency and temperature
+factors of a measured intensity are not applied, on either engine (M4-d).
+Every number states its width, and the laser's its laser: near a resonance,
+and for a metal's near-Fermi transitions, the width changes $\alpha$ — the
+static one too, since the static integral reads the smoothed spectrum. **The
+Methods paragraph**: the result's, written by the run, says the route — its
+optical calls, the strengths derived on request at a laser — or that none
+were requested (`methods.siesta_raman_sentence`); a view shown adds its
+sentence at load — the route, $\hat e$, $\delta$, the laser, the width, and
+*independent states, no local field* (the method's § 3.3,
+`methods.raman_view_sentence`) — and its citation joins the result's
+`bibliography_keys`.
 
 **The doors** — one derivation, asked four ways:
 
 | door | asks | answers |
 |---|---|---|
-| the load door, `POST /api/spectra/load` | `raman: {laser_nm, broaden_ev?}` beside `infrared`, read by `spectra.raman.read_ask` | `results.raman`, the view; a view the result cannot give — no optical route, a width below the run's — `results.raman_said`, the result still loading |
+| the load door, `POST /api/spectra/load` | `raman: {laser_nm, broaden_ev?}` beside `infrared`, read by `spectra.raman.read_ask` | `results.raman`, the view; a view the result cannot give — no optical route, a width below the run's, a laser outside the stored spectrum, a data file with no cell, a result opened without its folder (an upload: the data file beside it cannot be read) — `results.raman_said`, the result still loading |
 | the export, `GET /api/spectra/export` and `molbuilder jobset export` | `format` `netcdf` or `csv`; `laser_nm`, `broaden_ev` (the page's boxes; the command's `--laser-nm`, `--broaden-ev`) | the calculation's vibration data files as they are, and the view composed now (below) |
-| a script, `molbuilder.postprocess` | `raman_view(path, laser_nm=, broaden_ev=None)`; `read_optical_data(path)`; `read_raman_data(path)` | the same view; the optical calls' data file as data; an exported view as data — each with its atom index map |
+| a script, `molbuilder.postprocess` | `raman_view(path, laser_nm=, broaden_ev=None)`; `read_optical_data(path)`; `read_raman_data(path)` | the same view; the optical calls' data file as data, with its atom index map; an exported view as data |
 | a notebook, with no molbuilder | `xarray.open_dataset(path, group="frames")` | every data file reads as NetCDF-4 alone (`model/datafiles.md` § 0) |
 
 **The export of a vibration calculation** — one composition,
-`spectra/export.export(calc, fmt, *, laser_nm=None, broaden_ev=None)`, the
-shape and the zip the transport export has (`Exported`, one shape for both,
-moved where both reach it) — **what is already there, and the view at the
+`spectra/export.export(calc, fmt, *, folder=None, laser_nm=None,
+broaden_ev=None)` of the calculation (`calculation.at` of the path asked)
+and the result it holds — the one in `folder`, the run the viewer shows;
+else its stage's newest run's (`result_path`) — through the one composer
+both exports share (`ncdata.exported`, one `Exported` shape for both) —
+**what is already there, and the view at the
 laser named**: `<label>.spectra.nc` and, on a SIESTA run with an optical
 phase, `<label>.optical.nc`, each copied as its writer wrote it, and, when a
 laser is named, `<label>.raman.nc`, the view composed now through the
 data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 1,
 `molbuilder/raman-view@1`), citing the two files it was derived from by name
 and sha256. **NetCDF**: the files; **CSV**: each file's tables and README
-(`ncdata.as_tables`), a folder each. A download is one zip
+(`ncdata.as_tables`) — flat for one file, a folder each for several. A
+download is one zip
 (`<label>.vibration-netcdf.zip`, `<label>.vibration-csv.zip`); the command
 writes into the folder named, outside the calculation, refused where the
 name is there already. No laser named on a SIESTA result with optical calls:
 the export holds the data files and says the view is not in it. **Refused by
-name**: a form not one of the two; a calculation with no result yet; a laser
+name**: a form not one of the two; a calculation of another kind, or with no
+run or no result yet; a displacement sweep named by its calculation, whose
+several stages each hold a result; a width named with no laser; a laser
 named for a result whose Raman is not the optical route (a PySCF result
-stores its activity); a width below the run's; a data file that does not
-read, in its reader's words. Nothing is written into the calculation, and the
+stores its activity); the view's own refusals (above); a data file that does
+not read, in its reader's words. Nothing is written into the calculation, and the
 ledger has no line of it.
 
 **`<label>.raman.nc`** (`spectra/raman.py`'s variable table; written only by
@@ -2663,13 +2683,18 @@ an export):
 ```text
 /            attributes: schema, label, what -- the Raman strengths of a
              SIESTA vibration's picked modes at a laser, derived from its
-             optical calls' eps2; laser_nm, broaden_ev, run_broaden_ev,
-             direction, delta_ang, derived_from (JSON: each data file's
-             name and sha256), molbuilder_version
-/equilibrium alpha_static_a3, alpha_laser_a3 -- frame 0's
+             optical calls' eps2; laser_nm, photon_energy_ev, broaden_ev,
+             run_broaden_ev, direction, delta_ang, cell_volume_a3, spins
+             (the channels summed), band_floor_a4_amu, run, siesta_version,
+             derived_from (JSON: each data file's name and sha256),
+             molbuilder_version
+/equilibrium what; alpha_static_a3, alpha_laser_real_a3,
+             alpha_laser_imag_a3 -- frame 0's
 /modes       mode(mode) -- the result's numbering
              frequency_cm1(mode)  dq_amu12_ang(mode)
-             dalpha_dq_static_a2_per_amu12(mode)  dalpha_dq_laser_a2_per_amu12(mode)
+             dalpha_dq_static_a2_per_amu12(mode)
+             dalpha_dq_laser_real_a2_per_amu12(mode)
+             dalpha_dq_laser_imag_a2_per_amu12(mode)
              strength_static_a4_amu(mode)  strength_laser_a4_amu(mode)
              relative(mode)  state(mode)  why(mode)
 ```
@@ -2731,8 +2756,8 @@ Not measured here: a junction's optical cost and its `.contrib.EPSIMG` size
 | C4 | prep stating the count and the sizes beside the wall (§ 9) | **decided 2026-10-26, as recommended**: built with M3, beside the `.EPSIMG` size |
 | M4-a | the width the page starts at | **decided 2026-10-26, as recommended**: the run's own (`Optical.Broaden`, 0.027 eV by default) — a value the run states; wider is a keystroke, narrower impossible |
 | M4-b | the laser before the person names one | **decided 2026-10-26, as recommended**: none — no Raman numbers until one is typed, 532, 633 and 785 nm offered |
-| M4-c | what SIESTA's Raman column shows | **decided 2026-10-26, as recommended**: $R(\hat e)$ at the laser, named *Raman strength, light along …*, the static value beside it — never under PySCF's *activity* |
-| M4-d | the measured intensity's laser and temperature factors | **decided 2026-10-26, as recommended**: not applied in M4 — strengths on both engines; **an option later** (the user, 2026-10-26: "add the Stokes shift factor as an option later"): the scattered light's $(\tilde\nu_L - \tilde\nu_\nu)^4$ and the temperature's $1/\bigl(1 - e^{-hc\tilde\nu_\nu/kT}\bigr)$ over $\tilde\nu_\nu$, applied to the strength on request, on both engines, the plain strength kept beside it (plan § 1ae, *Open after it*) |
+| M4-c | what SIESTA's Raman column shows | **decided 2026-10-26, as recommended**: $R(\hat e)$ at the laser, named *Raman strength, light along …, the laser, the width*, the static value beside it — never under PySCF's *activity* |
+| M4-d | the measured intensity's laser and temperature factors | **decided 2026-10-26, as recommended**: not applied in M4 — strengths on both engines; **an option later** (the user, 2026-10-26: "add the Stokes shift factor as an option later"): the measured intensity's factors, the method's § 3.2a, applied to the strength on request, on both engines, the plain strength kept beside it |
 | M4-e | an export and a script's reading of the Raman data | **asked by the user, 2026-10-26** ("need export, and api to support netcdf file reading"): the vibration calculation's export (§ 10) and `postprocess`'s three readers |
 
 #### 14. Tests — each with the silent failure it catches
@@ -2742,7 +2767,7 @@ Not measured here: a junction's optical cost and its `.contrib.EPSIMG` size
 | CO₂, carbon held, not stated relaxed, selector `all`, through `jobset init → prep → launch` — the SIESTA vibration e2e | e2e | a phase not joined to the one before (the index's `fc` coordinates' sha256 is `relax`'s output's); a call not made through its run script (its output, session log, monitor log and conclusion in its folder, each read by the run door as a point); the index, the result and the data file disagreeing; the data file not reading (its reader and `xarray.load_dataset`); the result's phases and route wrong for the run (`phase_relaxation` complete, `phase_raman` complete, `raman_route` `optical`); the run's state read *queued* before the first call and *finished* only with the finish's entry; one `start` and one `finish` in the index's notification record; **the symmetry**: the stretch whose oxygens move together reads $R(\hat z)$ ≈ 0 against the one whose oxygens move apart — CO₂'s mutual exclusion |
 | the same, launched again warm after the person stopped it once an optical call started (`molbuilder jobs stop`) — a copy of it launched again cold, stopped, then launched warm | e2e | a relaunch running a done call again (`relax` and `fc` taken over, each `.continued-from` and index entry naming the run that computed it, its start and end that run's; the launch runs only the optical calls); an optical call's record standing on what only a run computing its own force constants writes |
 | `raman_view`'s Kramers–Kronig on a Lorentz oscillator's $\varepsilon_2$ (closed-form $\varepsilon_1$); Gaussian sticks spread at $\sigma_{\mathrm{run}}$ then to $\sigma_{\mathrm{view}}$ equal the same spread at $\sigma_{\mathrm{view}}$ | API | the principal value, the units or the broadening's composition wrong |
-| the CO₂ run exported at a laser — NetCDF and CSV — its files read back through `postprocess.read_optical_data` and `read_raman_data` and through `xarray`: the view read back equals the load door's for the same laser and width, `derived_from` names the two files by their sha256, and the symmetric stretch's $R(\hat z)$ reads ≈ 0 | e2e (the CO₂ run) | an export that writes another number than the page shows; a data file a notebook cannot open; a view cut from its source |
+| the CO₂ run exported at a laser — NetCDF and CSV — its files read back through `postprocess.read_optical_data` and `read_raman_data` and through `xarray`: the view read back equals the load door's for the same laser and width, `derived_from` names the two files by their sha256, and the stretch whose oxygens move together reads $R(\hat z)$ ≈ 0 | e2e (the CO₂ run) | an export that writes another number than the page shows; a data file a notebook cannot open; a view cut from its source |
 | a deck with `%block … < coordinates.fdf` read through the fdf reader equals the same deck written inline; `deck_atoms` on it | API | the include not read: every deck reader would see no atoms |
 | **retired**: the two-stage road's tests — `test_siesta_vibration_e2e.py`'s *unticked, the ladder relaxes first* and the sweep at the relaxed geometry rows; `test_vibration_render_gate.py` and `test_siesta_vibration_deck.py`'s `vibration_stages` / `stage_role` rows | — | each replaced by the phase's row above |
 
@@ -2754,7 +2779,9 @@ One file, every engine, **written by the job itself** — by the PySCF deck,
 and on SIESTA by the finish the wrapper runs after the force-constant run
 (§ 5.5); read by `sidecars.spectra.parse_spectra_json` →
 `SpectraResults.from_dict` (`spectra/results.py`), and served to the browser by
-`POST /api/spectra/load` with one derived field added at load (§ 6.6). It is
+`POST /api/spectra/load` with one derived field added at load (§ 6.6) and the
+views a person asks beside it — the infrared of named atoms, the Raman at a
+laser (§ 5.10 ②, § 5.11 § 10). It is
 registered in [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 § 6.1.
 
@@ -2793,13 +2820,13 @@ refused by name.
 | `modes[]` | both | ascending frequency; every entry a vibration (§ 6.3) |
 | `removed_motions.{count, patterns}` | both | what the harmonic analysis removed before diagonalising: the count and the orthonormal Cartesian patterns over the free atoms; `len(modes) = 3·n_free − count` by construction |
 | `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
-| `ir_route` · `ir_fd_step_ang` · `raman_route` · `raman_fd_step_ang` | both | which route produced each strength and the step of a difference (§ 4.6); `none` when not computed; an older file reads `""` — absence of a record, never a claim (`raman_*`: § 10) |
+| `ir_route` · `ir_fd_step_ang` · `raman_route` · `raman_fd_step_ang` | both | which route produced each strength and the step of a difference (§ 4.6) — on SIESTA `ir_route` `charges` (the infrared derived from the stored charges, § 5.10 ②) and `raman_route` `optical` (§ 5.11 § 10); `none` when not computed; an older file reads `""` — absence of a record, never a claim (`raman_*`: § 10) |
 | `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_ir` · `phase_es` | both | `empty` · `running` · `complete` · `not requested` (§ 4.9), and `phase_ir` `""` in a file written before 2026-09-28; the SIESTA writer writes `complete` for the frequencies, `not requested` for the probe, and for Raman `running` once its optical calls are planned and `complete` at the finish — `not requested` where none was (§ 5.11 § 8); for the relaxation `complete` when the run's `relax` call ran (its record's `n_steps` in `relaxation.n_steps`, `enabled` true) or `not requested` when the box was ticked |
 | `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3), and `converged` is its verdict against the criterion on every route — after the relaxation, under the person's statement, at SIESTA's reference step (§ 4.2, § 4.3, § 5.5); SIESTA writes `enabled` true when the run's `relax` call ran — its relaxation record, from the run's index (§ 5.11 § 3), gives `n_steps` — and false when the box was ticked, `already_relaxed` as the person's statement, the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
 | `thermo` | both | `regime`, the headline temperature — and pressure for `rrho`, `null` for `vibrational-only` — with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
 | `config` | both | what the description held (the PySCF config as a dict; on SIESTA the engine, kind and stage) |
-| `methods_text` · `bibliography_keys` | both | the composed paragraph and the keys it cites (§ 4.10) |
+| `methods_text` · `bibliography_keys` | both | the composed paragraph and the keys it cites (§ 4.10) — at load, a view shown adds its sentence (§ 5.10 ②, § 5.11 § 10), the Raman's with its citation among the keys |
 | `engine_metadata` | both | engine-specific facts; SIESTA: `fc_file`, `fc_displacement_ang`, `fc_range_engine_1based`, `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` (§ 5.5). `fc_range_engine_1based` is `FC.First … FC.Last` in SIESTA's numbering — the deck's held-first order, 1-based — named as the engine's here and in `fc-sweep.json`'s stage rows: an engine fact, not an atom's identity ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
 | `optical` | SIESTA, from v13 | `{data_file, data_sha256, direction, displacement_ang, selection, reference, modes}` — the optical calls' citation (§ 5.11 § 8): `data_file` the calls' data file at the run's root and `data_sha256` its bytes', `direction` the light's three components (`Optical.Vector`), `displacement_ang` $\delta$, `selection` `{asked, applied}`, `reference` frame 0's state, `modes[]` `{mode, frequency_cm1, dq_amu12_ang, plus, minus}` — each side's state `finished`, `failed` or `pending`, by the run's one done rule. `null` where no optical call was planned, and on PySCF; refused when a key is not one of these or a state not one of the three |
 | `partial_charges` | SIESTA, from v11 | `{displacement_ang, steps, charges_e}` — the force-constant run's steps in SIESTA's order (§ 5.4): `steps[i]` is `{atom, axis, side}`, the displaced atom by user index, `x`/`y`/`z`, −1 or +1, step 0 the reference `{null, null, 0}`; `charges_e.hirshfeld[i]` and `charges_e.voronoi[i]` every atom's charge at step `i`, in e, positive where electrons left the atom, in the user order (§ 5.10 ②). `null` when the run printed none, and on PySCF |
@@ -2841,7 +2868,7 @@ tests can meaningfully guard:
 | `modes[].eigenvector_display` | — | **derived** — per-mode rescale to $\max\lvert L\rvert = 1$ | dimensionless |
 | `modes[].ir_intensity_km_mol` | $d\mu/dR$ (analytic response, or dipoles at displaced geometries) | **derived** — $d\mu/dQ = \sum (d\mu/dR)\cdot L_{\mathrm{canonical}}$ (`einsum('kai,ka->i', DMU_DR, L_canonical)`), then $42.2561\cdot\lvert d\mu/dQ\rvert^2$ | km/mol |
 | `modes[].dipole_derivative_d_per_ang_amu12` | the same $d\mu/dR$ | **derived** — $d\mu/dQ = \sum (d\mu/dR)\cdot L_{\mathrm{canonical}}$, the vector itself, before it is squared (§ 4.6) | D/(Å·√amu) |
-| `modes[].raman_activity_a4_amu` | polarizabilities at displaced geometries, in Bohr³ | **derived** — central differences, the Placzek scalar, one global $(\mathrm{Bohr}/\text{Å})^6 \approx 0.02197$ | Å⁴/amu |
+| `modes[].raman_activity_a4_amu` | polarizabilities at displaced geometries, in Bohr³ | **derived** — central differences, the Placzek scalar, one global $(\mathrm{Bohr}/\text{Å})^6 \approx 0.021959$ | Å⁴/amu |
 | `modes[].zero_point_amplitude_amu12_ang` · `zero_point_displacement_ang` | the mode's frequency and canonical vector | **derived** by the one function both writers call (§ 6.6) — $\sqrt{16.858/\tilde\nu}$, times $L_{\mathrm{canonical}}$ per free atom (§ 6.3) | amu^½·Å · Å |
 | `relaxation.max_force_eh_bohr` (SIESTA) | the first `siesta: Atomic forces` block of the run's output, its FC step 0 | **read** by the finish (§ 5.5) — the largest over the free atoms, eV/Å → Eh/Bohr; `converged` against the tolerance the reference geometry was relaxed to (§ 5.5) | Eh/Bohr |
 | `engine_metadata.fc_asymmetry_max_ev_ang2` (SIESTA) | the `.FC` file | **derived** — $\max\lvert H_{ij} - H_{ji}\rvert$ over the free block before symmetrisation (§ 5.5) | eV/Å² |
@@ -2876,7 +2903,7 @@ way `homo_index` did.
 | `modes[].ir_intensity_km_mol`, `raman_activity_a4_amu` | numbers, or `null` when not requested | **`null` on every mode** |
 | `modes[].dipole_derivative_d_per_ang_amu12` | the vector, where infrared was computed (v12) | `null` — the infrared of a set is derived from `partial_charges` |
 | `modes[].electronic_structure` | present on selected modes | `null` |
-| `ir_route` / `raman_route` | `analytic` · `finite-difference` · `none` | `ir_route` `none`; `raman_route` `optical` where the run's optical calls were planned (§ 5.11 § 8), else `none` |
+| `ir_route` / `raman_route` | `analytic` · `finite-difference` · `none` | `ir_route` `charges` once the charges are stored, else `none`; `raman_route` `optical` where the run's optical calls were planned (§ 5.11 § 8), else `none` |
 | `thermo.regime` | `rrho` or `vibrational-only` | `vibrational-only`, the vibrational contributions alone (no total energy is reported, so `h_eh` and `g_eh` are sums above an electronic minimum taken as zero) |
 | `relaxation` | the tracked phase | the force-constant run relaxes nothing: `enabled` says whether the run's `relax` call did (§ 5.11 § 3), and the verdict is the force at FC step 0 (§ 5.5) |
 | `hessian_density_fit` | `true` / `false` | `null` |
@@ -2884,7 +2911,7 @@ way `homo_index` did.
 | `modes[].ir_active` · `raman_active` · `activity_class` | from the strengths computed | `partial` — no strength is computed (§ 6.6) |
 | `engine_metadata` | `{}` | `fc_file`, `fc_displacement_ang`, `fc_range_engine_1based` (SIESTA's numbering), `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` |
 | `partial_charges` | `null` — the infrared is the dipole's own | every atom's charge at every force-constant step (v11): the infrared of a set of atoms along a direction is derived from them when asked (§ 5.10 ②), `ir_intensity_km_mol` staying `null` |
-| what the viewer shows | the spectrum of the strengths computed, the modes table, the animation, the probe's level diagrams, the thermochemistry | **the mode positions** — one line of one height at each mode, picked like a stick, with no width ([`web/spectrumchart.md`](?doc=web/spectrumchart.md) § 6.2) — and, where the result states its charges, the infrared lane and columns of the atoms the person names ([`web/spectra.md`](?doc=web/spectra.md) § 3.2); the modes table and the animation; the electronic-structure tab says the route's electronic response is the projected density of states along a mode, planned (§ 5.10); the thermochemistry as vibrational contributions ([`web/spectra.md`](?doc=web/spectra.md) § 2, § 9b.3) |
+| what the viewer shows | the spectrum of the strengths computed, the modes table, the animation, the probe's level diagrams, the thermochemistry | **the mode positions** — one line of one height at each mode, picked like a stick, with no width ([`web/spectrumchart.md`](?doc=web/spectrumchart.md) § 6.2) — and, where the result states its charges, the infrared lane and columns of the atoms the person names ([`web/spectra.md`](?doc=web/spectra.md) § 3.2); on a run with optical calls, the laser and width boxes, the Raman column and lane at the laser named, and the export of its data files ([`web/spectra.md`](?doc=web/spectra.md) § 3.3); the modes table and the animation; the electronic-structure tab says the route's electronic response is the projected density of states along a mode, planned (§ 5.10); the thermochemistry as vibrational contributions ([`web/spectra.md`](?doc=web/spectra.md) § 2, § 9b.3) |
 
 **A missing number is absent, never zero.** A key an engine cannot produce is
 `null`, and a reader treats it as *not computed* — a different statement from
@@ -2917,8 +2944,8 @@ re-derivation of files already written. Whether a band is active is decided,
 not read, because a symmetry-forbidden mode's stored strength is
 floating-point residue (measured on CO₂: 4.8·10⁻⁹ to 7.5·10⁻⁸ beside bands of
 32.85 and 613.04 km/mol). The rule: a mode whose channel was not computed is
-`partial` — every SIESTA mode, whose route computes no Raman (§ 6.5), and
-whose infrared view is derived at load and never classified into the file;
+`partial` — every SIESTA mode, whose infrared and Raman are derived at load
+from what the run stored, never classified into the file (§ 6.5);
 otherwise, per channel, divide every mode by the channel's strongest, sort on
 a log scale, and cut at the widest gap between neighbours when that gap is at
 least two decades wide and sits below a thousandth of the peak; when the
@@ -3369,7 +3396,13 @@ Each names where it holds and what pins it.
 | `molbuilder/spectra/activity.py` | the active/inactive decision per channel (§ 6.6); travels in both bundles |
 | `molbuilder/spectra/derived.py` | the derived per-mode values — the activity classes and the zero-point amplitude and displacement — computed once for both writers and the reader's check (§ 6.6); travels in both bundles |
 | `molbuilder/spectra/selection.py` | the mode selectors and the window (§ 4.8) |
-| `molbuilder/spectra/methods.py` | `render_methods_md`, `with_ir_route`, `extract_citation_keys` (§ 4.10); `siesta_methods_text`, the force-constant route's paragraph (§ 5.5) |
+| `molbuilder/spectra/methods.py` | `render_methods_md`, `with_ir_route`, `extract_citation_keys` (§ 4.10); `siesta_methods_text`, the force-constant route's paragraph (§ 5.5), and its Raman sentence, `siesta_raman_sentence`; the views' sentences at load, `with_infrared_view` and `with_raman_view` (§ 5.10 ②, § 5.11 § 10) |
+| `molbuilder/spectra/infrared.py` | the infrared of a set of atoms from the run's charges, or of a held PySCF molecule from its dipole change — `infrared_view`, `read_ask` (§ 5.10 ②) |
+| `molbuilder/spectra/optical_data.py` | the optical calls' data file, `<label>.optical.nc` — its variable table, writer and reader, `read_optical_data` (§ 5.11 § 8) |
+| `molbuilder/spectra/raman.py` | the Raman at a laser — `raman_view`, `raman_view_of`, `read_ask`; `<label>.raman.nc`'s variable table and `read_raman_data` (§ 5.11 § 10) |
+| `molbuilder/spectra/export.py` | a vibration calculation's export — `export`, `result_path`, `name_of` (§ 5.11 § 10) |
+| `molbuilder/siesta/vibration_phases.py` | the phases of a SIESTA vibration run — `PHASES`, `Call`, the index and each call's state (§ 5.11 § 2, § 7) |
+| `molbuilder/postprocess.py` | a script's doors — `infrared_view`, `raman_view`, `read_spectra_data`, `read_optical_data`, `read_raman_data`, `reference_max_displacement` |
 | `molbuilder/spectra/vibrational_analysis.py` | the analysis, engine-neutral: `vibrational_analysis` — a free-atom block, masses, geometry, held set and frame → `SpectraResults` (§ 5.5) |
 | `molbuilder/spectra/siesta_vibration.py` | the SIESTA route's finish: `read_force_constant_run`, `finish`, and `main`, the entry of `mb_vibration.pyz` (§ 5.5) |
 | `molbuilder/spectra/displacement_sweep.py` | a SIESTA displacement sweep's summary: `match_modes` (by shape), `stages_share_a_directory` (the layout rule `prep` refuses by), `collect_sweep`, `sweep_path`, `write_sweep`, `sweep_table_text` — `<label>.fc-sweep.json` (§ 5.9); which stages take part is `pyscf/stages.force_constant_stages` |
@@ -3385,7 +3418,7 @@ Each names where it holds and what pins it.
 | `molbuilder/validation/spectra.py` · `validation/__init__.py` | the two kinds' checks and the dispatch (§ 3.3) |
 | `molbuilder/jobset/prep.py` · `jobset/_cli.py` · `jobset/materialize.py` | the sort at prep, the relax stage's record into the deck's `vibration` block, the finish onto the stage's job; `molbuilder describe`'s kind gate; the bundle brought into each attempt |
 | `molbuilder/runwrap.py` | the run wrapper — its banner names the held atoms from the deck's one spelling, and it runs the finish after a force-constant run; `VIBRATION_BUNDLE` / `VIBRATION_COMPANIONS`, what travels for the finish (§ 5.5); `PYSCF_BUNDLE` / `PYSCF_COMPANIONS`, what the PySCF script imports (`engines/pyscf.md` § 3); `bundles_for`, the one list of what travels beside a deck |
-| `molbuilder/web/blueprints/spectra.py` · `build.py` | the tab page, `/api/spectra/load` and `_loaded`; the schema, preflight and hand-over doors |
+| `molbuilder/web/blueprints/spectra.py` · `build.py` | the tab page, `/api/spectra/load` and `_loaded`, `/api/spectra/export`; the schema, preflight and hand-over doors |
 | `molbuilder/web/static/lib/inspectors/fc-sweep.js` | the sweep record's presenter on the Results tab (§ 5.9) |
 | `molbuilder/web/static/spectra/viewer.js` · `lib/spectra/core.js` · `lib/inspectors/spectra.js` · `lib/spectrumchart/` · `lib/vibrationview/` · `lib/task-handover.js` · `task-setup/viewer.js` | the tab, the shared engine, the presenter, the chart, the animation, the hand-over, the rung tab that prints the commands |
 
@@ -3408,7 +3441,7 @@ flowchart TB
     SR["SIESTA's run in phases, one job (§ 5.11):<br/>its relax call (box unticked) → its fc call,<br/>the relaxed geometry written by the plan step →<br/>SCF + 6·n_free displaced SCFs → .FC"]
   end
   SUM["the record step after the fc call (SIESTA):<br/>mb_vibration.pyz — read .FC → H_AA → vibrational_modes →<br/>invert the permutation → .spectra.json"]
-  LOAD["POST /api/spectra/load → SpectraResults.from_dict<br/>+ with_ir_route + motion_share_by_element"]
+  LOAD["POST /api/spectra/load → SpectraResults.from_dict<br/>+ with_ir_route + motion_share_by_element<br/>+ the views asked: infrared_view, raman_view_of"]
   VIEW["Results tab: chart · table · animation ·<br/>electronic structure · thermochemistry"]
   ST --> G; CAT --> G; TJ --> G; G --> SORT --> D; G --> D
   D --> PY; D --> SR
@@ -3426,7 +3459,9 @@ flowchart TB
 | `POST /api/structure/analyze` | the charge and spin each form's vibration will carry — the one electronic state, for exactly what the form says, about the structure the viewer holds; the chemistry card shows it and fills nothing in |
 | `POST /api/task-setup/handover` | render `<label>.template.toml` and `task.1st.json` for the kind; the browser writes them where the person chose |
 | `POST /api/task-setup/save` · `/prep` | write `task.json` and `job-request.json`; run `prep` for the groups picked, each one job, on a named machine — the function the terminal's `prep task` runs |
-| `POST /api/spectra/load` | parse an existing `.spectra.json` into display data; typed errors |
+| `POST /api/spectra/load` | parse an existing `.spectra.json` into display data, with the infrared and Raman views asked (§ 5.10 ②, § 5.11 § 10); typed errors |
+| `GET /api/spectra/export` · `molbuilder jobset export` | a vibration calculation's data files and its Raman view at a laser, one zip or a folder (§ 5.11 § 10) |
+| `molbuilder.postprocess` | a script's readers of the result, its data files and the views (§ 5.11 § 10) |
 | `molbuilder describe / prep / launch` | the same road from a terminal (§ 2.1); the run ends with the result |
 | `molbuilder jobset summarize task [--tolerance-cm1 X]` | a SIESTA displacement sweep's comparison, `<label>.fc-sweep.json` (§ 5.9) |
 
@@ -3591,7 +3626,7 @@ nothing is in that state as of 2026-09-28.
 | the force-constant stage leaves the input's relaxation record behind; its calculation record stays | **built 2026-09-29** — V1.35 | § 5.2a |
 | what a force-constant stage says about its geometry after the ladder's relax: the relax stage's outcome and its remedy, not the describe-time box and record advice | **built 2026-09-29** — V1.36, the user's word the same day | § 5.2a, § 5.8 |
 | the response screen — which mode to take to transport: each mode's character, the charge it moves, the frame set at thermal nodes, an `electronic` kind, the per-mode response record and its ranking table | the frame set **built 2.35.0** (③), the charges' infrared and the charge a mode moves **built 2.36.0** (②); the rest **decided 2026-09-28, not built** (D1–D5, D7, D8; D6 as recommended; E3 owed) — V1.34, W42 | § 5.10; `science/normal-modes.md` § 4c |
-| one SIESTA vibration run in phases — relaxation, force constants, Raman's optical single points, each SIESTA call a point of the run — the `relax` stage retired | **designed 2026-10-25 (the user's B), the SIESTA side verified by a proof of concept on H₂ (§ 5.11 § 12), not built**; R-a, R-c and R1 the user's (plan § 1ac) | § 5.11; `science/vibrational-optical-response.md` § 3 |
+| one SIESTA vibration run in phases — relaxation, force constants, Raman's optical single points, each SIESTA call a point of the run — the `relax` stage retired | **built** — the run 2.42.0, its records 2.43.0, the Raman at a laser and the export 2.44.0; owed: a sweep's take-over of the first stage's `relax` call and a transport sweep's one start and finish (§ 5.11 heading) | § 5.11; `science/vibrational-optical-response.md` § 3 |
 
 ---
 
@@ -3615,7 +3650,7 @@ test and the teaching case.
 geometry, 14 atoms. Free: $3\cdot14 - 6 = 36$ modes. Held: one surviving turn
 about the S···S line (the sulfurs sit *on* it), $3\cdot12 - 1 = 35$ modes. The
 ring C–H stretches agree to 0.001 cm⁻¹ between the two runs; the S–H
-stretches fall by $\sqrt{\mu_{\mathrm{free}}/\mu_{\mathrm{held}}} = 0.984643$ (measured 0.984673 and
+stretches fall by $\sqrt{\mu_{\mathrm{free}}/\mu_{\mathrm{held}}} = 0.984641$ (measured 0.984673 and
 0.984664); the 36th number of the old two-branch code was the turn, at
 −0.93 cm⁻¹ at the minimum and **96.78 cm⁻¹ off it**, in the middle of the real
 vibrations, which is why it is removed before the solve and never spotted
@@ -3698,7 +3733,8 @@ Cited by key; entries and their verification records are in
 document's § 11 annotates the ones the rules rest on. Used here:
 [Head1997], [LiJensen2002], [Besley2008], [Ghysels2008], [Vester2024],
 [Tao2021], [QChemPHVA], [ASE2017], [Ghysels2010], [Wilson1955],
-[Komornicki1979] (dipole and polarizability derivatives), [Grimme2011]
-(the D3 dispersion correction), [Sun2018], [Sun2020] (PySCF),
+[Komornicki1979] (dipole and polarizability derivatives), [Grimme2010]
+(the D3 dispersion correction), [Grimme2011] (its Becke–Johnson damping), [Sun2018], [Sun2020] (PySCF),
 [Galperin2007], [Frederiksen2007] (vibrations in molecular junctions and
-inelastic transport, the transport connection of § 5.6).
+inelastic transport, the transport connection of § 5.6), [Gillet2013] (the
+Raman tensor at a laser, complex, § 5.11 § 10).

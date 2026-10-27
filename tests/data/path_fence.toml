@@ -443,6 +443,14 @@ name = "path"
 request = { json = { path = "{outside_file}" } }
 
 [[route]]
+rule = "/api/spectra/export"
+method = "GET"
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}", format = "csv" } }
+
+[[route]]
 rule = "/api/spectra/frameset"
 method = "POST"
 [[route.path]]

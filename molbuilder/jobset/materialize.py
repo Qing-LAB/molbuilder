@@ -253,6 +253,19 @@ def latest_attempt(stage_dir: Path) -> Optional[Path]:
     return attempt_dir(stage_dir, ns[-1]) if ns else None
 
 
+def newest_on_label(stage_dir: Path, role: str
+                    ) -> Tuple[Optional[Path], Optional[Path]]:
+    """THE STAGE'S NEWEST ATTEMPT AND ITS FILE IN ``role`` on the label
+    (`runs.on_label_at`: a run's own folder, or a run in phases' root) --
+    ``(None, None)`` before its first attempt, ``(attempt, None)`` where it
+    holds none yet.  The one answer to *this stage's result*."""
+    attempt = latest_attempt(stage_dir)
+    if attempt is None:
+        return None, None
+    from ..runs import on_label_at
+    return attempt, on_label_at(attempt, role)
+
+
 def run_dir(container: Path) -> Path:
     """**The directory a stage or trial actually uses** — its newest attempt
     when the shape keeps them, the container itself when it does not.
