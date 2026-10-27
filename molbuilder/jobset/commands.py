@@ -22,26 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-#: The program as a person types it.
-PROG = "molbuilder jobset"
-
-#: THE KINDS a verb acts on (`job-system.md` § 5.3): the calculation as a
-#: TASK, its groups named with ``--group`` and a stage alone with
-#: ``--stage``; a BENCHMARK of one stage, named by position.
-TASK, BENCH = "task", "bench"
-
-
-def words_for(kind: str, *stages, groups=()) -> tuple:
-    """A verb's words for ``kind`` and what it names -- the ONE spelling
-    every printed line takes: ``task --group 1 --group 2`` (a task's
-    groups, the answer to the question its verbs ask), ``task --stage a``
-    (a member launched again alone, D4), ``bench a [trial]`` (a benchmark's
-    stage and trial by position).  A stage that is ``None`` is left out."""
-    named = [s for s in stages if s is not None]
-    if kind == TASK:
-        return (TASK, *(x for g in groups for x in ("--group", str(g))),
-                *(x for s in named for x in ("--stage", s)))
-    return (kind, *named)
+#: The program as a person types it, the kinds and the grammar every line
+#: takes -- the naming module's (`identity`), which a text read later says
+#: too.
+from ..identity import BENCH, JOBSET_PROG as PROG, TASK, words_for
 
 
 def stage_group(request, stage: str) -> Optional[int]:

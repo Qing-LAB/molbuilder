@@ -271,16 +271,9 @@ def _sent_by(calc, stages, job) -> bool:
     """Whether a member of ``stages`` has a newest run the sequence job
     ``job`` sent -- its launch record naming that sequence, and that job by
     its id (a queue job) or launched after it went (a walk run here)."""
-    from datetime import datetime
-    from ..runrecord import LaunchRecordError
+    from ..runrecord import LaunchRecordError, stamp_time
     from .materialize import newest_launch
-
-    def when(text):
-        try:
-            return datetime.fromisoformat(str(text).replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    went = when(job.launched_at)
+    went = stamp_time(job.launched_at)
     for st in stages:
         row = calc.job(st)
         if row is None:
@@ -295,7 +288,7 @@ def _sent_by(calc, stages, job) -> bool:
             if str(rec.get("job_id")) == str(job.job_id):
                 return True
         else:
-            at = when(rec.get("launched_at"))
+            at = stamp_time(rec.get("launched_at"))
             if at is not None and went is not None and at >= went:
                 return True
     return False

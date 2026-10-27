@@ -14,6 +14,7 @@ as its broadening, 10⁻⁴ eV at the catalogue's defaults).
 from __future__ import annotations
 
 import bisect
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -31,12 +32,39 @@ SHARED_DIR = "shared"
 from ..deck_record import BLOCK_SHARED  # noqa: E402
 
 
+def spacing(window: Tuple[float, float, int]) -> float:
+    """A window's spacing, ``(to − from) / points`` -- the distance between
+    its mid-rule energies, and each energy's weight in TBtrans's integral of
+    the current (`m_integrate.f90`, `m_tbt_save.F90`)."""
+    lo, hi, n = window
+    return (float(hi) - float(lo)) / int(n)
+
+
 def grid(emin: float, emax: float, points: int) -> List[float]:
     """The energies a window computes: ``points`` mid-rule energies, half a
     spacing inside each end (`m_integrate.f90`; the deck's ``method
     mid-rule``)."""
-    h = (float(emax) - float(emin)) / int(points)
+    h = spacing((emin, emax, points))
     return [float(emin) + (i + 0.5) * h for i in range(int(points))]
+
+
+#: A transmission deck's own window (`transport.deck._emit_tbt_window`).
+_WINDOW_LINE = re.compile(
+    r"%block[ \t]+TBT\.Contour\.window.*?from[ \t]+(\S+)[ \t]+eV[ \t]+to"
+    r"[ \t]+(\S+)[ \t]+eV.*?points[ \t]+(\d+)", re.S | re.I)
+
+
+def deck_window(text: str) -> Optional[Tuple[float, float, int]]:
+    """The grid a transmission deck describes -- ``(from, to, points)``, the
+    numbers tbtrans computed its energies from: its sharing record's
+    (:class:`Contours`), or its window's own block; ``None`` for a deck
+    stating neither."""
+    c = Contours.of_deck(text)
+    if c is not None:
+        return c.window
+    m = _WINDOW_LINE.search(text)
+    return ((float(m.group(1)), float(m.group(2)), int(m.group(3)))
+            if m else None)
 
 
 def _index(sorted_energies: Sequence[float], e: float) -> Optional[int]:
@@ -189,14 +217,28 @@ def joined(folder: Path, read: Callable[[Path], Dict]) -> Dict:
     return out
 
 
-def sharing_of(folder: Path) -> Optional[Contours]:
-    """The sharing the deck of the point in ``folder`` records -- read
-    through the run door (`runs.run_of`) -- or ``None``."""
+def _deck_text(folder: Path) -> Optional[str]:
+    """The deck of the point in ``folder``, read through the run door
+    (`runs.run_of`), or ``None``."""
+    from ..parse.fdf import read_deck
     from ..runs import run_of
     run = run_of(folder)
     deck = run.deck if run is not None else None
-    from ..parse.fdf import read_deck
-    return Contours.of_deck(read_deck(deck)) if deck is not None else None
+    return read_deck(deck) if deck is not None else None
+
+
+def sharing_of(folder: Path) -> Optional[Contours]:
+    """The sharing the deck of the point in ``folder`` records, or
+    ``None``."""
+    text = _deck_text(folder)
+    return Contours.of_deck(text) if text is not None else None
+
+
+def window_of(folder: Path) -> Optional[Tuple[float, float, int]]:
+    """The grid the deck of the point in ``folder`` describes
+    (:func:`deck_window`), or ``None``."""
+    text = _deck_text(folder)
+    return deck_window(text) if text is not None else None
 
 
 def _pick(a, b, rows, na: int, nb: int):
@@ -254,6 +296,7 @@ def held(folder: Path, label: str) -> List[float]:
                   ["energy_ev"])
 
 
-__all__ = ["SAME_ENERGY_EV", "SHARED_DIR", "BLOCK_SHARED", "grid",
-           "same_grid", "in_common",
-           "Contours", "shared_contours", "joined", "sharing_of", "held"]
+__all__ = ["SAME_ENERGY_EV", "SHARED_DIR", "BLOCK_SHARED", "spacing",
+           "grid", "deck_window", "same_grid", "in_common",
+           "Contours", "shared_contours", "joined", "sharing_of",
+           "window_of", "held"]

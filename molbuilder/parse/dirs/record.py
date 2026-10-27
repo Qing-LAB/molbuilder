@@ -329,7 +329,8 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
         entry = dict(sp)
         path = f.directory / sp["file"]
         if path.is_file():
-            entry["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+            from ...persist import sha256_of
+            entry["sha256"] = sha256_of(path)
             from ...pseudos import parse_psml_header
             info = parse_psml_header(path)
             for key in ("xc_family", "xc_authors", "relativistic",

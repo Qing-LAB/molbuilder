@@ -20,7 +20,6 @@ disk where.
 """
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
@@ -29,6 +28,7 @@ import numpy as np
 
 from ..cell import entering
 from ..parse.fdf import read_deck
+from ..persist import sha256_of
 from ..structure import (SAME_PLACE_ANG, Structure, farthest_apart,
                          frame_words)
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE, SortError,
@@ -149,9 +149,6 @@ class ComposedJunction:
     #: (:func:`write_compose_record`).  ``False`` for every other junction.
     order_found: bool = False
 
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -766,7 +763,7 @@ def _pair_parts(cited: CitedPair, swap_electrodes: bool):
         raise ComposeError(
             f"the cited pair {cited.path.name} {_bad} -- a junction needs its "
             f"lattice (science/junction-cell.md).")
-    files = {f.name: _sha256(f) for f in (cited.path, cited.sidecar)}
+    files = {f.name: sha256_of(f) for f in (cited.path, cited.sidecar)}
     return struct, None, None, files, {"frames": cited.n_frames}
 
 
@@ -805,7 +802,7 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
         raise ComposeError(
             f"the cited relaxation in {cited.path} {_bad} -- a junction "
             f"needs its lattice (science/junction-cell.md).")
-    files = {f.name: _sha256(f) for f in (output, deck)}
+    files = {f.name: sha256_of(f) for f in (output, deck)}
     said = {
         # HOW THE CITED RUN ENDED -- its record's line -- and what it
         # converged, the run door's reading of its output (§ 3.1): a
@@ -866,7 +863,7 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
     is a data set, made once by the script that writes it."""
     pinned = provenance.get("files") or {}
     changed = [f.name for f in (cited.path, cited.sidecar)
-               if pinned.get(f.name) != _sha256(f)]
+               if pinned.get(f.name) != sha256_of(f)]
     if changed:
         raise ComposeError(
             f"the cited pair {citation!r} has changed since this calculation "

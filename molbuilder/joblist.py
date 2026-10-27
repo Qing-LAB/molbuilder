@@ -21,9 +21,10 @@ import socket
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+from .runrecord import stamp
 
 #: Every job's file, at one major (`persist.check_schema`).
 JOB_SCHEMA = "molbuilder/job@1"
@@ -165,10 +166,6 @@ def signal_here(job: Job) -> None:
         os.killpg(job.pid, signal.SIGTERM)
     except ProcessLookupError:
         raise NotGoing(f"{job.id} has ended") from None
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _dir() -> Path:
@@ -331,14 +328,27 @@ def is_going(job: "Job", here: "Asked") -> "Tuple[Optional[bool], str]":
                    else "the scheduler no longer lists it")
 
 
+#: A RUN HERE'S ID -- its node and its process: the one composition, for
+#: its address (:func:`run_here`) and for a walk that types it where its
+#: shell knows the two (`jobset.submit`, a sequence of groups' ``--in-job``;
+#: `job-system.md` § 6.0).
+HERE_ID = "{host}-{pid}"
+
+
+def here_id(host, pid) -> str:
+    """A run here's id (:data:`HERE_ID`) -- ``host`` and ``pid`` as values,
+    or as the shell's own words for them (``$(hostname)``, ``$$``)."""
+    return HERE_ID.format(host=host, pid=pid)
+
+
 def run_here(*, pid: int, background: bool, calculation,
              members: Dict[str, Dict[str, str]],
              sequence: Optional[dict] = None) -> Job:
     """The address of a run here whose process exists."""
     host = this_host()
-    return Job(id=f"{host}-{pid}", how="here", host=host,
+    return Job(id=here_id(host, pid), how="here", host=host,
                calculation=str(Path(calculation).resolve()),
-               members=members, launched_at=_now(),
+               members=members, launched_at=stamp(),
                background=background, pid=pid, started=started_of(pid),
                sequence=sequence)
 
@@ -349,7 +359,7 @@ def queue_job(*, job_id: str, cluster: Optional[str], calculation,
     """The address of a job the scheduler took, by its id."""
     return Job(id=str(job_id), how="queue", host=this_host(),
                calculation=str(Path(calculation).resolve()),
-               members=members, launched_at=_now(),
+               members=members, launched_at=stamp(),
                job_id=str(job_id), cluster=cluster, sequence=sequence)
 
 

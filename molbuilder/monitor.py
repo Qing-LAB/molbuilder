@@ -114,6 +114,7 @@ try:                                        # inside molbuilder
     from .parse.engines import _run_ending as _ending
     from . import report_cards as _cards
     from . import report_fields as _fields
+    from .runtime_info import JOB_STARTED_VAR
     from . import runfiles as _rf
     from . import runrecord as _rr
     from .parse.dirs.job import LIVE_STATES, MONITOR_ENDED, run_status
@@ -126,6 +127,7 @@ except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_cards as _cards
     import report_fields as _fields
+    from runtime_info import JOB_STARTED_VAR
     import runfiles as _rf
     import runrecord as _rr
     from job import LIVE_STATES, MONITOR_ENDED, run_status
@@ -2008,8 +2010,8 @@ def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
 
 #: The variable a job's header sets once, when the job starts, for
 #: everything it runs (`runwrap.render_sbatch`): the epoch second each run's
-#: monitor counts the job's wall down from (`run-reports.md` § 2.1b).
-JOB_STARTED_VAR = "MB_JOB_STARTED"
+#: monitor counts the job's wall down from (`run-reports.md` § 2.1b) -- by
+#: its one name (`runtime_info.JOB_STARTED_VAR`), imported above.
 
 
 def run_monitor(watched: "WatchedRun", *,
@@ -2654,7 +2656,6 @@ def _notify_main(argv) -> int:
 
 
 __all__ = [
-    "JOB_STARTED_VAR",
     "JobStatus",
     "WatchedRun",
     "LIVE_READERS",

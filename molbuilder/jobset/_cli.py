@@ -1930,15 +1930,15 @@ def summarize_cmd(kind: str, words, bundle: str,
     stage = _described_stage(stage, calc)
     js, container = _load_bench_set(calc, stage, "summarize")
     _check_kind(kind, js)
-    from .summarize import (run_summarize_jobset,
-                                   summary_text, utc_now_iso)
+    from ..runrecord import stamp
+    from .summarize import run_summarize_jobset, summary_text
     # The container's job-set holds ONLY this stage's trials (U1), so the
     # SET is the scope and the verdict goes back where they live -- there
     # is no name filter anywhere (U12).
     from ..runfiles import BENCH_RESULT_FILE
     res, out_path, report = run_summarize_jobset(
         calc, js, out=container / BENCH_RESULT_FILE,
-        now_iso=utc_now_iso(), stage=stage)
+        now_iso=stamp(), stage=stage)
     click.echo(summary_text(res, out_path, report=report, stage=stage,
                             base=base, request=calc.request))
     _ledger(base, "summarize", "verdict-written", stage=stage,

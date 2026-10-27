@@ -1404,9 +1404,10 @@ def _pyscf(cuda_version: str) -> Recipe:
                      "(pyscf.prop.infrared)' if ok else "
                      "'  IR: WARNING -- pyscf.prop.infrared missing; the deck "
                      "falls back to finite-difference dipoles (6N extra SCFs "
-                     "per run, same intensities).  Repair: bash "
-                     "scripts/install-env.sh repair molbuilder-pySCF "
-                     "--include-optional')"),
+                     "per run, same intensities).  Repair: "
+                     + _hints.fix_cmd("repair", DEFAULT_ENV_NAMES["pyscf"],
+                                      "--include-optional")
+                     + "')"),
         verify_expect_contains="prop: polarizability OK",
         # NOT A NOTEBOOK KERNEL, DELIBERATELY: being a kernel would cost this
         # env `debugpy`,

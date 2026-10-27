@@ -178,10 +178,12 @@ def render_correction_script(
         The complete script text.  `prep` writes this to
         ``makov_payne_correction.py`` next to the ``.fdf``.
     """
-    # The script is deliberately self-contained — it doesn't import
-    # anything from the molbuilder package — so a user who copies
-    # the SIESTA bundle to a cluster without molbuilder installed
-    # can still run it.  All physical constants are inlined.
+    # The script runs where molbuilder may not be installed -- beside a
+    # finished run -- so it imports nothing from the package.  It READS the
+    # output with SIESTA's one reading pass, from the monitor's bundle that
+    # lies beside it in every run (`runfiles.MONITOR_BUNDLE`), so the energy,
+    # the cell and SIESTA's own term are read as every reader of a run reads
+    # them; the physical constants are inlined.
     #
     # SO THE FORMULA IS WRITTEN TWICE, ON PURPOSE.  `compute_correction`
     # above is the one molbuilder calls; the copy below is the one that runs
@@ -199,6 +201,7 @@ def render_correction_script(
     # `mb_pyscf.pyz` (`runwrap._zip_bundle`, `engines/pyscf.md` § 3).  That is
     # the moment, not before: a bundle is more moving parts than four lines
     # of arithmetic.
+    from ..runfiles import MONITOR_BUNDLE as monitor_bundle
     return f'''#!/usr/bin/env python3
 """Makov-Payne post-process correction for SIESTA total energy.
 
@@ -250,7 +253,6 @@ See Makov & Payne, Phys. Rev. B 51, 4014 (1995).
 
 import argparse
 import math
-import re
 import sys
 from pathlib import Path
 
@@ -265,90 +267,26 @@ HARTREE_EV   = {HARTREE_EV!r}
 BOHR_ANGSTROM= {BOHR_ANGSTROM!r}
 
 
-def parse_total_energy(text):
-    """Extract the converged total energy in eV from a SIESTA .out.
-
-    SIESTA prints the converged total energy as a line like
-
-        siesta: E_KS(eV) =          -12345.67
-
-    near the end of the .out.  We take the LAST occurrence so a
-    multi-stage run (geometry opt then single-point) reports the
-    final value.
-    """
-    pat = re.compile(r"siesta:\\s*E_KS\\(eV\\)\\s*=\\s*(-?\\d+\\.?\\d*)")
-    m = pat.findall(text)
-    if not m:
-        return None
-    return float(m[-1])
-
-
-def parse_lattice_vectors_angstrom(text):
-    """Extract the final lattice vectors (Å) from a SIESTA .out.
-
-    SIESTA echoes the lattice as
-
-        outcell: Unit cell vectors (Ang):
-                a1x  a1y  a1z
-                a2x  a2y  a2z
-                a3x  a3y  a3z
-
-    Tolerates the case variants real SIESTA builds produce
-    (``outcell`` / ``OUTCELL``) and skips blank/comment lines
-    between the marker and the lattice rows — molbuilder's
-    first-class SIESTA parser already handles both
-    (``parse/engines/siesta.py``); the post-process script mirrors that
-    leniency so it doesn't fail on a perfectly-good .out from a
-    build that prints a blank line after the marker.
-    """
-    # Case-insensitive marker search via re.IGNORECASE on a plain
-    # substring — cheaper than lowercasing the whole text.
-    pat = re.compile(
-        r"outcell:\\s*Unit cell vectors \\(Ang\\):", re.IGNORECASE)
-    matches = list(pat.finditer(text))
-    if not matches:
-        return None
-    idx_end = matches[-1].end()
-    # Walk forward, skipping blanks / comments / continuation
-    # whitespace until we accumulate 3 rows of 3+ floats each.
-    rows = []
-    for line in text[idx_end:].splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith("#"):
-            continue
-        parts = line.split()
-        if len(parts) < 3:
-            # If we already have rows but hit a non-data line, the
-            # block is malformed.  If we have no rows yet, keep
-            # walking — some printers add a header row before the
-            # data.
-            if rows:
-                return None
-            continue
-        try:
-            row = [float(parts[0]), float(parts[1]), float(parts[2])]
-        except ValueError:
-            if rows:
-                return None
-            continue
-        rows.append(row)
-        if len(rows) == 3:
-            break
-    return rows if len(rows) == 3 else None
-
-
-def parse_emadel(text):
-    """SIESTA's own monopole correction in eV -- the LAST
-    ``siesta: Emadel  =`` line of the energy decomposition -- or None when
-    the output has none.  Zero when SIESTA did not apply it."""
-    pat = re.compile(
-        r"siesta:\\s*Emadel\\s*=\\s*(-?\\d+\\.?\\d*(?:[eEdD][-+]?\\d+)?)")
-    m = pat.findall(text)
-    if not m:
-        return None
-    return float(m[-1].replace("d", "e").replace("D", "e"))
+def read_siesta_output(path):
+    """``(E_KS in eV, the final cell's rows in Angstrom, SIESTA's own
+    Emadel in eV or None)`` -- the output read by SIESTA's one reading pass,
+    from the monitor's bundle beside this script ({monitor_bundle}, put in
+    every run by its launch): the last step's energy, the last cell the
+    output printed, and SIESTA's monopole term."""
+    bundle = Path(__file__).resolve().with_name("{monitor_bundle}")
+    if not bundle.is_file():
+        print(f"error: {{bundle.name}} is not beside this script -- run it "
+              f"in the run's folder, where the launch put both.",
+              file=sys.stderr)
+        sys.exit(1)
+    sys.path.insert(0, str(bundle))
+    from siesta_reader import read_output
+    reading = read_output(path).finish()
+    steps = [st for st in reading.get("steps") or []
+             if st.get("energy") is not None]
+    return ((steps[-1]["energy"] if steps else None),
+            reading.get("lattice"),
+            (reading.get("runtime_info") or {{}}).get("emadel_ev"))
 
 
 def lattice_volume_angstrom3(cell):
@@ -398,23 +336,18 @@ def main():
     if not out_path.is_file():
         print(f"error: {{out_path}} not found.", file=sys.stderr)
         sys.exit(1)
-    text = out_path.read_text(errors="replace")
-
-    E_raw = parse_total_energy(text)
+    E_raw, cell, emadel = read_siesta_output(out_path)
     if E_raw is None:
-        print(f"error: could not find a converged 'siesta: E_KS(eV)' "
-              f"line in {{out_path}} (incomplete or failed run?)",
-              file=sys.stderr)
+        print(f"error: {{out_path}} states no energy of a finished step "
+              f"(incomplete or failed run?)", file=sys.stderr)
         sys.exit(1)
 
     # SIESTA'S OWN TERM FIRST: when it applied the correction, E_KS already
     # carries it, and adding ours would count the image energy twice.
-    emadel = parse_emadel(text)
     by_siesta = emadel is not None and abs(emadel) > 1e-6
     if by_siesta:
         dE = 0.0
     else:
-        cell = parse_lattice_vectors_angstrom(text)
         if cell is None:
             print(f"error: could not parse 'outcell: Unit cell vectors' "
                   f"from {{out_path}}", file=sys.stderr)

@@ -21,7 +21,6 @@ The deck is the run's own, handed by its caller (`runs.declared(run).deck`,
 """
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -335,11 +334,15 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
     # to cite, whatever its state or its mixer.
     if not set(contract) - set(STATE_RECORD_KEYS) - set(SCF_RECORD_KEYS):
         return None
+    try:                                    # inside molbuilder
+        from ..persist import sha256_of
+    except ImportError:                     # beside the job (mb_vibration.pyz)
+        from persist import sha256_of
     return {
         "engine": "siesta",
         "contract": contract,
         "source": deck.name,
-        "source_sha256": hashlib.sha256(deck.read_bytes()).hexdigest(),
+        "source_sha256": sha256_of(deck),
     }
 
 

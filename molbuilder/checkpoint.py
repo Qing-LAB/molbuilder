@@ -367,11 +367,14 @@ def _run_git(argv: List[str], cwd: str, *,
             check=check,
         )
     except FileNotFoundError as e:
+        # MOLBUILDER'S ENVIRONMENT BY ITS RECIPE'S NAME (`runwrap.
+        # host_env_name`), never a name typed here.
+        from .runwrap import host_env_name
         raise GitNotInstalledError(
             "git is not on PATH.  molbuilder requires git ≥ 2.20; "
-            "install via your distro's package manager OR activate the "
-            "molbuilder conda env (`conda activate molbuilder-host` -- "
-            "every molbuilder env ships git as a conda_packages entry)."
+            "install it with your distro's package manager, or activate "
+            f"molbuilder's environment, {host_env_name()} -- every "
+            "molbuilder env ships git as a conda_packages entry."
         ) from e
     except subprocess.CalledProcessError as e:
         # Re-raise with stderr surfaced so callers can wrap.

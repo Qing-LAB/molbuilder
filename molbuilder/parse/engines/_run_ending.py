@@ -304,6 +304,49 @@ def _one_reader_per_role(readers) -> None:
 _one_reader_per_role(READERS)
 
 
+def verdict_of(endings) -> Optional[Tuple[str, bool]]:
+    """WHAT A RUN SAYS IT CONVERGED, from its outputs' endings, the
+    speaking output's first -- ``("geometry", ok)`` for a relaxation, else
+    ``("SCF", ok)`` -- or ``None`` when they say neither yet: the one rule,
+    asked by the status door (`parse.dirs.job.RunStatus.verdict`) and by a
+    SIESTA vibration's own record step for each call
+    (`engines/vibration.md` § 5.11 § 6).  A PySCF relaxation states its
+    verdict in its progress log's footer beside a stdout that states none
+    (`model/parse.md` § 2b, P-S1)."""
+    said = list(endings)
+    for key, words in (("relaxed", "geometry"), ("scf_converged", "SCF")):
+        ok = next((getattr(e, key) for e in said
+                   if getattr(e, key) is not None), None)
+        if ok is not None:
+            return (words, bool(ok))
+    return None
+
+
+def verdict_words(verdict: Optional[Tuple[str, bool]]) -> Optional[str]:
+    """A verdict in the words a row shows it -- ``geometry yes``, ``SCF
+    NO`` -- or ``None`` for none."""
+    if verdict is None:
+        return None
+    return f"{verdict[0]} " + ("yes" if verdict[1] else "NO")
+
+
+def not_done_why(verdict: Optional[Tuple[str, bool]], *, counts: bool,
+                 missing) -> Optional[str]:
+    """WHY A RUN THAT FINISHED IS NOT DONE -- its verdict said NO where it
+    counts (*finished, not converged (SCF NO)*), or it lacks a product it
+    must hold (*finished without <file>*) -- or ``None``: the one rule and
+    its words, asked by the done door (`jobset.continuation.done`) and by a
+    SIESTA vibration's own record step (`engines/vibration.md` § 5.11
+    § 6).  ``missing`` the products not held, each as its message names
+    it."""
+    if counts and verdict is not None and not verdict[1]:
+        return f"finished, not converged ({verdict_words(verdict)})"
+    missing = list(missing)
+    if missing:
+        return f"finished without {', '.join(missing)}"
+    return None
+
+
 def ending_of(path, *, stderr=None) -> RunEnding:
     """How the run that wrote *path* ended -- dispatched on the file's ROLE.
 

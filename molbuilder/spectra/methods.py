@@ -336,8 +336,11 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
     if struct is not None:
         n_atoms = _count_structure_atoms(struct)
         if n_atoms:
-            n_free = _count_free_atoms(struct, cfg)
-            n_modes, n_rigid = _mode_count(struct, cfg)
+            # THE ONE COUNT prep's check states (`validation.spectra.
+            # modes_of`), imported here because this paragraph is written on
+            # this machine alone -- the module travels for SIESTA's.
+            from ..validation.spectra import modes_of
+            n_free, n_rigid, n_modes = modes_of(struct, "pyscf")
             removed = (f" after projecting out the {n_rigid} whole-body "
                        f"motion(s) the geometry permits" if n_rigid
                        else "")
@@ -445,49 +448,6 @@ def _count_structure_atoms(struct: Structure) -> int:
     until 2026-10-18)."""
     return len(struct.elements)
 
-
-
-def _mode_count(struct: Structure, cfg: "VibrationConfigView"):
-    """How many vibrations this system has, and how many motions were removed.
-
-    Returns ``(n_modes, n_rigid)``.
-
-    The count is R2 -- ``3 N_free - n_rigid`` -- with
-    ``n_rigid`` from the one derivation (R1): the rank rule in
-    ``spectra.normal_modes``, the same function the deck imports, so the
-    paragraph written into the deck header and the list the run produces
-    agree by construction.  Straight molecules, a lone atom, held atoms
-    on a line: none is a case here, because none is a case there.
-    """
-    from .normal_modes import rigid_motions
-    n_free = _count_free_atoms(struct, cfg)
-    positions = struct.positions
-    frozen = [int(i) for i in (cfg.frozen_indices or [])
-              if 0 <= int(i) < len(positions)]
-    # ON THE AXES THE DECK COMPUTES ON -- the view's (`cell.engine_axis_kinds`).
-    n_rigid = len(rigid_motions(
-        positions, frozen, cfg.axis_kind,
-        cell=getattr(struct, "cell", None)))
-    return 3 * n_free - n_rigid, n_rigid
-
-
-def _count_free_atoms(struct: Structure, cfg: "VibrationConfigView") -> int:
-    """The count of unfrozen atoms: the total less the frozen indices in
-    range.  Returns the total atom count when no atom is frozen."""
-    n_total = _count_structure_atoms(struct)
-    if n_total == 0:
-        return 0
-    # FROZEN ATOMS ARE NAMED BY INDEX, and only by index.  The region store
-    # holds indices, and the deck writes those indices into geomeTRIC's
-    # constraints file.
-    if not cfg.frozen_indices:
-        return n_total
-    frozen: set = set()
-    if cfg.frozen_indices:
-        for i in cfg.frozen_indices:
-            if 0 <= int(i) < n_total:
-                frozen.add(int(i))
-    return max(0, n_total - len(frozen))
 
 
 __all__ = ["render_methods_md", "extract_citation_keys"]

@@ -76,7 +76,7 @@ name = "SIESTA on a GPU whose target's record lists no GPU build of it is prepar
 run = { use_gpu = true, gpu_count = 1 }
 record = { conda_envs = ["molbuilder-siesta"] }
 said = ["lists no ``molbuilder-siesta-gpu`` environment",
-        "python -m molbuilder envs install molbuilder-siesta-gpu"]
+        "bash scripts/install-env.sh install molbuilder-siesta-gpu"]
 run_sh = ["molbuilder-siesta-gpu"]
 
 [[case]]

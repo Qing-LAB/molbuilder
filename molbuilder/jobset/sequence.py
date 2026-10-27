@@ -130,10 +130,9 @@ def sent(path, *, job_id: Optional[str]) -> Path:
     it (``None`` run here, or an id not read): written by the one sender the
     moment it goes, as a run's launch record is."""
     import dataclasses
-    from datetime import datetime, timezone
+    from ..runrecord import stamp
     return write_record(path, dataclasses.replace(
-        read_record(path),
-        launched_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        read_record(path), launched_at=stamp(),
         job_id=str(job_id) if job_id is not None else None))
 
 

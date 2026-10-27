@@ -619,7 +619,7 @@ do so")*. The API indexes frames from 0, as MolView's does (`frame_at(0)`,
 molbuilder writes, said as an index — *frame index 1 (of 3)*
 (`structure.frame_words`), **a folder name included**: a transport point's
 frame level is `f001` for frame index 1 (`engines/transport.md` § 2a.11,
-`transport.stages.frame_token`). Only the UI's own display counts from 1 — the
+`paths.frame_token`, a vibration's optical calls' too). Only the UI's own display counts from 1 — the
 frame bar's `1 / F`, the Modify tab's frame picker, the Customized heading's
 *Frame 2 of 3* — through MolView's `toDisplay` / `fromDisplay`
 (`web/molview.md` § 11.5), the atom index's own convention

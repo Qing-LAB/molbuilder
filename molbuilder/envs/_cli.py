@@ -623,7 +623,8 @@ def cmd_repair(name: str, include_optional: bool,
                     "[repair]     salloc -p htc -q public -t 00:30:00 "
                     "-c 4 --mem=16G\n"
                     "[repair]   then, in that shell, the same "
-                    "`python -m molbuilder envs repair ...` again.",
+                    f"`{_fix_cmd('repair', recipe.name)}` again, with the "
+                    "flags you gave it.",
                     err=True)
     # PIP REPAIR GOES THROUGH THE INSTALLER'S OWN DOOR: each package is
     # turned into a step by `pip_step_for` and run by `run_step`, so force
@@ -1025,7 +1026,7 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
     if not caps.env_available(effective):
         click.echo(
             f"env `{effective}` is not present.  Install it first:\n"
-            f"  molbuilder envs install {name}",
+            f"  {_fix_cmd('install', name)}",
             err=True,
         )
         sys.exit(2)

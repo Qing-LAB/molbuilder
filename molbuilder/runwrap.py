@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .diagnostics import get_capabilities
+from .envs import hints as _hints
 from .runfiles import (RANK_LAUNCHER, RUN_COUNTER_GLOB, deck_roles,
                        engine_of_role)
 # The channel-name rule, from the module that owns the file those names
@@ -39,10 +40,16 @@ from .identity import way_back_words
 from .jobset.errors import WrapperError
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
-from .runtime_info import THREAD_SOURCES
+from .runrecord import conclude_line
+from .runtime_info import (JOB_STARTED_VAR, NODE_CORES_VAR, RUN_NUMBER,
+                           THREAD_SOURCES, WALL_SLACK_VAR, WALL_VAR)
 # THE SESSION LOG'S LINES are its one module's, which travels beside the
 # job: the wrapper renders them, every reader reads with them.
-from .wrapper_log import LOG_CLOCK, LOG_LINE, RUN_INDEX_LINE, WRAPPER_LOG_START
+from .wrapper_log import (BINARY_LABEL, CONDA_ENV_LABEL, CWD_LABEL,
+                          HOSTNAME_LABEL, LOG_CLOCK, LOG_LINE, NODE_LINE,
+                          PYTHON_LABEL, RANKS_OMP_LINE, RUN_INDEX_LINE,
+                          USER_LABEL, VERSION_LABEL, WALL_LINE,
+                          WRAPPER_LOG_START)
 
 if TYPE_CHECKING:                       # floor 5 reading floor 3's object
     # Under TYPE_CHECKING because the annotation is all this module needs:
@@ -86,10 +93,11 @@ def _phys_cores_probe_block() -> str:
     ``-h`` could print usage (R9).
 
     Shared by both engines.  SIESTA's GPU rank policy divides the socket
-    among MPI ranks; PySCF has no MPI and uses ``_phys_cores`` as the
-    last-resort thread count when no allocation states one.  One probe,
-    because "how many cores does this machine have" has one answer and
-    two engines asking it separately is how they come to disagree.
+    among MPI ranks; a PySCF script reports the count, exported to it
+    (`runtime_info.NODE_CORES_VAR`).  One probe, because "how many cores
+    does this machine have" has one answer and two engines -- or a run
+    script and its engine's python -- asking it separately is how they
+    come to disagree.
     """
     return (
         '_phys_cores=$(LANG=C lscpu -p=Core,Socket 2>/dev/null '
@@ -106,11 +114,14 @@ def _phys_cores_probe_block() -> str:
         'then _n_sockets=1; fi\n'
         '_cps=$(( _phys_cores / _n_sockets ))\n'
         '[ "$_cps" -lt 1 ] && _cps=1\n'
+        # THE RUN'S ONE COUNT, handed to its engine's own python
+        # (`runtime_info.physical_core_count`), which reports it.
+        f'export {NODE_CORES_VAR}="$_phys_cores"\n'
         # ONE PROBE, ONE REPORT: whoever measures it says what it
         # measured, so a CPU sweep records its node shape too
         # (`bench/result.py`'s `node_phys_cores`).
-        'echo "molbuilder: detected phys_cores=$_phys_cores, '
-        'n_sockets=$_n_sockets, cores_per_socket=$_cps" >&2\n'
+        'echo "' + NODE_LINE.format(phys="$_phys_cores", sockets="$_n_sockets",
+                                    cps="$_cps") + '" >&2\n'
     )
 
 
@@ -228,8 +239,8 @@ def _history_block(names, deck_text: Optional[str]) -> str:
         '        echo "ERROR: $1 is a file: SIESTA appends its history to '
         'it, and this run keeps its own ($2).  The engine was not '
         'started; move $1 aside and launch again." >&2\n'
-        '        printf "rc=1 at %s; SIESTA\'s history name holds a file '
-        '(%s)\\n" "$(date)" "$1" > "$_concluded"\n'
+        + "        " + conclude_line(
+            1, "SIESTA's history name holds a file (%s)", '"$1"') + "\n"
         "        exit 1\n"
         "    fi\n"
         '    rm -f "$1"\n'
@@ -290,13 +301,14 @@ def _run_index_block(names, stdout_role: str, target_env: str) -> str:
         f"# (--run N): every file of the run carries it -- its output\n"
         f"# is {out} -- and the script never counts it\n"
         f"# itself (project-layout.md 1.6.1).\n"
-        f'case "$_run_n" in\n'
-        f"    ''|*[!0-9]*|0[0-9]*)\n"
+        # A WHOLE NUMBER, NO LEADING ZERO: the one pattern
+        # (`runtime_info.RUN_NUMBER`), a PySCF script's own check too.
+        f'if ! [[ "$_run_n" =~ ^({RUN_NUMBER})$ ]]; then\n'
         f'        echo "ERROR: {names.name(".run.sh")} needs its run\'s number, --run N --" >&2\n'
         f'        echo "  \'molbuilder jobset launch\' decides it and gives it to every" >&2\n'
         f'        echo "  run it starts.  Launch via \'molbuilder jobset launch\'." >&2\n'
-        f"        exit 2 ;;\n"
-        f"esac\n"
+        f"        exit 2\n"
+        f"fi\n"
         f'_out_file="{out}"\n'
         # THE RUN'S CONCLUSION MARKER, named once -- every writer of it
         # below writes this one name (`project-layout.md` § 1.6.3).
@@ -308,12 +320,14 @@ def _run_index_block(names, stdout_role: str, target_env: str) -> str:
         f'CONDA_PREFIX is ${{CONDA_PREFIX:-<unset>}}, and '
         f'${{_mb_py:-<no python>}} is not there.  The activation did not '
         f'take, or the env holds no python of its own: rebuild it on this '
-        f'machine (molbuilder envs install).  Nothing was started." >&2\n'
-        f'    printf "rc=1 at %s; {NO_ENV_PYTHON} (%s)\\n" "$(date)" '
-        f'"${{_mb_py:-${{CONDA_PREFIX:-no CONDA_PREFIX}}}}" > "$_concluded"\n'
-        f"    exit 1\n"
-        f"fi\n"
-        f"\n"
+        f'machine ({_hints.fix_cmd("install", env_name)}).  Nothing was '
+        f'started." >&2\n'
+        + "    " + conclude_line(
+            1, f"{NO_ENV_PYTHON} (%s)",
+            '"${_mb_py:-${CONDA_PREFIX:-no CONDA_PREFIX}}"') + "\n"
+        "    exit 1\n"
+        "fi\n"
+        "\n"
     )
 
 
@@ -477,11 +491,11 @@ def _finish_block(finish: Optional[str], script_name: str, *,
         # as failed although the engine's own output ended cleanly -- an
         # engine that errs after its end line (an MPI teardown) carries no
         # such words and keeps the output's verdict (`parse/dirs/job.py`).
-        f'    printf "rc=%s at %s; {FINISH_FAILED} ({finish} {words})\\n" '
-        f'"$_mb_finish_rc" "$(date)" '
-        f'> "$_concluded"\n'
-        f'    exit "$_mb_finish_rc"\n'
-        f"fi\n"
+        + "    " + conclude_line('"$_mb_finish_rc"',
+                                  f"{FINISH_FAILED} ({finish} {words})")
+        + "\n"
+        '    exit "$_mb_finish_rc"\n'
+        "fi\n"
     )
 
 
@@ -519,10 +533,11 @@ def _before_block(finish: Optional[str], script_name: str,
         + ('    _siesta_exit="$_mb_plan_rc"\n'
            + _finish_block(finish, script_name, after=after, failed=True)
            if after is not None else "")
-        + f'    printf "rc=%s at %s; {FINISH_FAILED} ({finish} {words})\\n" '
-        f'"$_mb_plan_rc" "$(date)" > "$_concluded"\n'
-        f'    exit "$_mb_plan_rc"\n'
-        f"fi\n"
+        + "    " + conclude_line('"$_mb_plan_rc"',
+                                  f"{FINISH_FAILED} ({finish} {words})")
+        + "\n"
+        '    exit "$_mb_plan_rc"\n'
+        "fi\n"
     )
 
 
@@ -552,10 +567,10 @@ def _finish_check_block(finish: Optional[str]) -> str:
         f'library, numpy and netCDF4, which the job env carries '
         f'(envs/recipes.py)." >&2\n'
         f'    [ -n "$_mb_fin_said" ] && echo "$_mb_fin_said" >&2\n'
-        f'    printf "rc=1 at %s; {FINISH_CANNOT_LOAD} ({finish})\\n" '
-        f'"$(date)" > "$_concluded"\n'
-        f"    exit 1\n"
-        f"fi\n"
+        + "    " + conclude_line(1, f"{FINISH_CANNOT_LOAD} ({finish})")
+        + "\n"
+        "    exit 1\n"
+        "fi\n"
     )
 
 
@@ -1362,8 +1377,7 @@ def _siesta_resolved_log_block(script_name: str, gpu_mode: bool) -> str:
         f'_log INFO "resolved launch : $_launch_cmd {script_name} '
         f'> $_out_file"\n'
         f'_log INFO "launch mode     : $_launch_note"\n'
-        f'_log INFO "ranks / omp     : $_mpi_np ranks x $_omp_threads '
-        f'OMP threads"\n'
+        f'_log INFO "{RANKS_OMP_LINE.format(ranks="$_mpi_np", threads="$_omp_threads")}"\n'
         + (
             '_log INFO "gpu placement   : ${_ngpu:-0} GPU(s), '
             '${_ranks_per_gpu:-?} rank(s)/GPU, '
@@ -2035,9 +2049,9 @@ def env_bootstrap(machine_record, env_name: str, *,
         # runs is this one, checked after (:func:`env_python_check`).
         + JOB_PYTHON
         + on
-        + f'{ind}_log INFO "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
+        + f'{ind}_log INFO "{CONDA_ENV_LABEL}${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
         + f'{ind}_log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
-        + f'{ind}_log INFO "job python: '
+        + f'{ind}_log INFO "{PYTHON_LABEL} '
           f'${{_mb_py:-(none: no CONDA_PREFIX after activation)}}"\n'
         + off
         + "\n")
@@ -2206,7 +2220,7 @@ def render_run_wrapper(script_path: Path, *,
                 f"the job states no {_it.name} -- every job carries it, its "
                 f"run card's or the catalogue's default, laid at prep "
                 f"(engines/template.md 5.4); prepare it again.")
-    _slack_export = f"export MB_WALL_SLACK_S={int(wall_slack)}\n"
+    _slack_export = f"export {WALL_SLACK_VAR}={int(wall_slack)}\n"
     # A FINISH THE LAUNCHER CANNOT HONOUR IS REFUSED, never dropped: a job
     # told to finish that ran without finishing would conclude rc=0 with no
     # result (`engines/vibration.md` § 5.5).  Only a SIESTA job has one today
@@ -2335,8 +2349,9 @@ def render_run_wrapper(script_path: Path, *,
             f"(``Diag.ELPA.GPU .true.``), and {_where} lists no "
             f"``{target_env}`` environment.  The run script enters it at "
             f"its start and stops there if it is absent -- so install it "
-            f"before launching, {_there}: ``python -m molbuilder envs install "
-            f"{target_env}`` (a source build, ~10 minutes; the packaged "
+            f"before launching, {_there}: "
+            f"``{_hints.fix_cmd('install', target_env)}`` (a source build, "
+            f"~10 minutes; the packaged "
             f"SIESTA's ELPA has no GPU entry, and some HPC sites allow no "
             f"build) -- or turn off the SIESTA ``Use GPU`` toggle and prep "
             f"again.  ``Diag.Algorithm ELPA-1stage/ELPA-2stage`` is fine "
@@ -2854,7 +2869,7 @@ def render_run_wrapper(script_path: Path, *,
         _wall_array = " ".join(
             '"' + w.replace("{left}", "${_mb_wall_left}")
                    .replace("{slack}",
-                            "${MB_WALL_SLACK_S}")
+                            "${" + WALL_SLACK_VAR + "}")
             + '"'
             for w in _wall_words)
         env_prefix += (
@@ -3034,8 +3049,8 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  Host          : $(hostname)"\n'
             f'echo "  Cwd           : $(pwd)"\n'
             f'echo "  Conda env     : ${{CONDA_DEFAULT_ENV:-?}}"\n'
-            f'echo "  {_prog_label + " binary":<14}: $_siesta_bin_path"\n'
-            f'echo "  {_prog_label + " version":<14}: ${{_siesta_ver:-unknown}}"\n'
+            f'echo "  {_prog_label + " " + BINARY_LABEL:<14}: $_siesta_bin_path"\n'
+            f'echo "  {_prog_label + " " + VERSION_LABEL:<14}: ${{_siesta_ver:-unknown}}"\n'
             f'echo "  Build paral.  : ${{_siesta_par:-unknown}}"\n'
             f'echo "  Launch mode   : $_launch_note"\n'
             # WHAT A RETRY WILL ACTUALLY DO ON THIS DECK.  The budget is the user's (it travels; see the note in
@@ -3091,9 +3106,9 @@ def render_run_wrapper(script_path: Path, *,
             # WHAT THE PROGRAM DOES WITH THE WALL: stops before it in the
             # catalogue's words, or -- a program the item does not name
             # (tbtrans) -- checks no clock and runs to it.
-            + 'if [ -n "${MB_WALL_S:-}" ]; then '
-              'echo "  Wall          : ${MB_WALL_S}s from the job\'s start; '
-            + (f'{_prog_label} stops ${{MB_WALL_SLACK_S}}s '
+            + f'if [ -n "${{{WALL_VAR}:-}}" ]; then '
+              f'echo "  Wall          : ${{{WALL_VAR}}}s from the job\'s start; '
+            + (f'{_prog_label} stops ${{{WALL_SLACK_VAR}}}s '
                f'before it ' if _wall_words
                else f'{_prog_label} checks no clock and runs to it ')
             + '(running-a-job.md 3.6)"; '
@@ -3382,9 +3397,9 @@ def render_run_wrapper(script_path: Path, *,
         f"\n"
         f"_log STAGE \"{WRAPPER_LOG_START}\"\n"
         f'_log INFO "timestamp:  $(date \'+%Y-%m-%d %H:%M:%S %Z\')"\n'
-        f'_log INFO "hostname:   $(hostname)"\n'
-        f'_log INFO "user:       ${{USER:-?}}"\n'
-        f'_log INFO "cwd:        $(pwd)"\n'
+        f'_log INFO "{HOSTNAME_LABEL:<12}$(hostname)"\n'
+        f'_log INFO "{USER_LABEL:<12}${{USER:-?}}"\n'
+        f'_log INFO "{CWD_LABEL:<12}$(pwd)"\n'
         f'_log INFO "script:     $0"\n'
         f'_log INFO "argv:       $0 $*"\n'
         f'_log INFO "log file:   $_runwrap_log"\n'
@@ -3470,12 +3485,12 @@ def render_run_wrapper(script_path: Path, *,
             # this program (`launch`, template.md § 5) -- the deck, written
             # at prep, never carries a wall the launch stated after it.
             + "_mb_wall_args=()\n"
-            + (f'if [ -n "${{MB_WALL_S:-}}" ] && [ -n "${{MB_JOB_STARTED:-}}" ]; then\n'
-               f"    _mb_wall_left=$(( MB_WALL_S - ( $(date +%s) - MB_JOB_STARTED ) ))\n"
+            + (f'if [ -n "${{{WALL_VAR}:-}}" ] && [ -n "${{{JOB_STARTED_VAR}:-}}" ]; then\n'
+               f"    _mb_wall_left=$(( {WALL_VAR} - ( $(date +%s) - {JOB_STARTED_VAR} ) ))\n"
                f'    [ "$_mb_wall_left" -lt 1 ] && _mb_wall_left=1\n'
                f"    _mb_wall_args=({_wall_array})\n"
-               f'    _log INFO "wall: ${{_mb_wall_left}}s left of ${{MB_WALL_S}}s; '
-               f'{_prog_label} stops ${{MB_WALL_SLACK_S}}s '
+               f'    _log INFO "wall: ${{_mb_wall_left}}s left of ${{{WALL_VAR}}}s; '
+               f'{_prog_label} stops ${{{WALL_SLACK_VAR}}}s '
                f'before it (running-a-job.md 3.6)"\n'
                f"fi\n" if _wall_words else "")
             + f"_t_start=$(date +%s.%N)\n"
@@ -3500,7 +3515,7 @@ def render_run_wrapper(script_path: Path, *,
             f'    _n_scf=0   # the engine stopped before any SCF row\n'
             f'fi\n'
             f'case "$_n_scf" in ""|*[!0-9]*) _n_scf=0 ;; esac\n'
-            f'_log INFO "benchmark: {_prog_label} wall ${{_siesta_wall}}s, '
+            f'_log INFO "{WALL_LINE.format(program=_prog_label, seconds="${_siesta_wall}")}, '
             f'${{_n_scf}} SCF rows in $_scf_timing_log"\n'
             f"\n"
             f'if [ "$_siesta_exit" -ne 0 ]; then\n'
@@ -3586,8 +3601,7 @@ def render_run_wrapper(script_path: Path, *,
             '    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
             '    # never the cleanup trap: a walltime SIGTERM runs the\n'
             '    # trap, and a forced stop must leave NO marker.\n'
-            '    printf "rc=%s at %s\\n" "$_siesta_exit" "$(date)" '
-            '> "$_concluded"\n'
+            + "    " + conclude_line('"$_siesta_exit"') + "\n"
             + '    exit "$_siesta_exit"\n'
             "fi\n"
             + (f"\n"
@@ -3617,8 +3631,7 @@ def render_run_wrapper(script_path: Path, *,
             + '$_out_file"\n'
             + _finish_block(finish, script_name,
                             after=(steps[1] if steps is not None else None))
-            + 'printf "rc=0 at %s\\n" "$(date)" '
-            '> "$_concluded"\n'
+            + conclude_line(0) + "\n"
         )
     else:
         launch_block = (
@@ -3652,9 +3665,8 @@ def render_run_wrapper(script_path: Path, *,
             f'    # process gets to say goodbye.  MAIN LINE ONLY, never the\n'
             f'    # cleanup trap: a walltime SIGTERM runs the trap, and a\n'
             f'    # forced stop must leave NO marker.\n'
-            f'printf "rc=%s at %s\\n" "$_pyscf_exit" "$(date)" '
-            f'> "$_concluded"\n'
-            f'exit "$_pyscf_exit"\n'
+            + conclude_line('"$_pyscf_exit"') + "\n"
+            'exit "$_pyscf_exit"\n'
         )
 
     # Engine-specific output role, ASKED rather than branched on.  The
@@ -3788,10 +3800,10 @@ def render_run_wrapper(script_path: Path, *,
         # slack travels to the engine beside it -- SIESTA on its command
         # line below, a PySCF deck from its environment.
         f"# The wall: the launch told this job the seconds it was sent with\n"
-        f"# (MB_WALL_S); its start is the header's, or now; the engine stops\n"
-        f"# itself MB_WALL_SLACK_S before the wall (running-a-job.md 3.6).\n"
-        f': "${{MB_JOB_STARTED:=$(date +%s)}}"\n'
-        f"export MB_JOB_STARTED\n"
+        f"# ({WALL_VAR}); its start is the header's, or now; the engine stops\n"
+        f"# itself {WALL_SLACK_VAR} before the wall (running-a-job.md 3.6).\n"
+        f': "${{{JOB_STARTED_VAR}:=$(date +%s)}}"\n'
+        f"export {JOB_STARTED_VAR}\n"
         f"{_slack_export}"
         f"\n"
         f"# --- Per-run log file (current directory; see docs/execution/running-a-job.md § 5) -\n"
@@ -3916,6 +3928,12 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "report_cards.py":     "molbuilder.report_cards",
     "job.py":              "molbuilder.parse.dirs.job",
     "runrecord.py":        "molbuilder.runrecord",
+    # THE JOB'S CLOCK'S NAMES (`runtime_info.JOB_STARTED_VAR`), which the
+    # monitor reads.
+    "runtime_info.py":     "molbuilder.runtime_info",
+    # THE WALL'S ONE READER, for the wall a launch record states
+    # (`runrecord.sent_wall_s`).
+    "quantities.py":       "molbuilder.scheduler.quantities",
     "persist.py":          "molbuilder.persist",
     "wrapper_log.py":      "molbuilder.wrapper_log",
     # THE ATOMS A RUN HELD, 0-based through the one numbering door, which
@@ -4123,6 +4141,11 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     # relax call's record in the index); the keys it reads are a member
     # above.
     "contract.py":             "molbuilder.parse.contract",
+    # A CALL'S VERDICT AND ITS DONE RULE, the status door's own
+    # (`_run_ending.verdict_of`, `not_done_why`; § 5.11 § 6), with the end
+    # lines its dispatch imports.
+    "_run_ending.py":          "molbuilder.parse.engines._run_ending",
+    "end_lines.py":            "molbuilder.pyscf.end_lines",
 }
 
 #: THE ONE FILE that finishes a SIESTA force-constant job: a Python zip
@@ -4639,7 +4662,6 @@ def render_sbatch(names, *, scheduler,
         exclusive = bool(exclusive)
     else:
         exclusive = False  # CPU jobs never request a whole node here
-    from .monitor import JOB_STARTED_VAR
     from .runfiles import SCHEDULER_STDERR, SCHEDULER_STDOUT
     from .scheduler.kinds import kind as _kind_named
     kind = _kind_named(scheduler.kind)

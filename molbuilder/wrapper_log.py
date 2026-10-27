@@ -48,33 +48,67 @@ WRAPPER_LOG_START = "===== molbuilder wrapper start ====="
 #: output that ended, beside this line and no conclusion yet, is a job still
 #: deriving its result, not a finished one (`running-a-job.md` § 4.2).
 FINISH_STARTED = "finish started:"
+#: THE WRAPPER'S LABELLED LINES -- each fact's one spelling: `runwrap`
+#: writes the label (or fills the template) and the patterns below are built
+#: on the same text, so a label reworded is reworded for its reader too.
+HOSTNAME_LABEL = "hostname:"
+USER_LABEL = "user:"
+CWD_LABEL = "cwd:"
+CONDA_ENV_LABEL = "CONDA_DEFAULT_ENV="
+PYTHON_LABEL = "job python:"
+#: The run-script banner's program lines -- ``<Program> binary  : <path>``.
+BINARY_LABEL = "binary"
+VERSION_LABEL = "version"
+#: ``molbuilder: detected phys_cores=48, n_sockets=2, cores_per_socket=24`` --
+#: the NODE's physical cores (`lscpu -p=Core,Socket` ignores the affinity mask,
+#: verified), not the allocation's.
+NODE_LINE = ("molbuilder: detected phys_cores={phys}, n_sockets={sockets}, "
+             "cores_per_socket={cps}")
+#: Written BEFORE the launch, so its ranks are what was ASKED; the thread
+#: count is written nowhere else.
+RANKS_OMP_LINE = "ranks / omp     : {ranks} ranks x {threads} OMP threads"
+#: The engine's own wall, launch to exit.
+WALL_LINE = "benchmark: {program} wall {seconds}s"
+
+
+def _pattern(template: str, **groups: str) -> "re.Pattern":
+    """``template``'s pattern: its text as written, each ``{name}`` the
+    group ``groups[name]``."""
+    out = re.escape(template)
+    for name, group in groups.items():
+        out = out.replace(re.escape("{" + name + "}"), group)
+    return re.compile(out)
+
+
 #: ``(key, pattern)`` for the header lines -- the ``_log INFO`` lines of
-#: ``env_activation``, the run-index line, the banner's program lines.
+#: ``env_activation``, the banner's program lines.
 _WRAPPER_LOG_LINES = (
-    ("hostname",       re.compile(r"\] hostname:\s+(\S+)")),
-    ("user",           re.compile(r"\] user:\s+(\S+)")),
-    ("cwd",            re.compile(r"\] cwd:\s+(.+?)\s*$")),
-    ("conda_env",      re.compile(r"\] CONDA_DEFAULT_ENV=(\S+)")),
-    ("python",         re.compile(r"\] job python:\s+(\S+)")),
-    ("binary",         re.compile(r"^\s+(?:SIESTA|TBtrans) binary\s*:\s*(\S+)")),
-    ("engine_version", re.compile(r"^\s+(?:SIESTA|TBtrans) version\s*:\s*(\S+)")),
+    ("hostname",       re.compile(r"\] " + re.escape(HOSTNAME_LABEL)
+                                  + r"\s+(\S+)")),
+    ("user",           re.compile(r"\] " + re.escape(USER_LABEL)
+                                  + r"\s+(\S+)")),
+    ("cwd",            re.compile(r"\] " + re.escape(CWD_LABEL)
+                                  + r"\s+(.+?)\s*$")),
+    ("conda_env",      re.compile(r"\] " + re.escape(CONDA_ENV_LABEL)
+                                  + r"(\S+)")),
+    ("python",         re.compile(r"\] " + re.escape(PYTHON_LABEL)
+                                  + r"\s+(\S+)")),
+    ("binary",         re.compile(r"^\s+(?:SIESTA|TBtrans) "
+                                  + re.escape(BINARY_LABEL)
+                                  + r"\s*:\s*(\S+)")),
+    ("engine_version", re.compile(r"^\s+(?:SIESTA|TBtrans) "
+                                  + re.escape(VERSION_LABEL)
+                                  + r"\s*:\s*(\S+)")),
 )
 #: ``[molbuilder] run index: <N>  ->  <out>`` -- which run the section is,
 #: written by the run script (`runwrap`).
 RUN_INDEX_LINE = "[molbuilder] run index:"
 _WRAP_RUN_INDEX = re.compile("^" + re.escape(RUN_INDEX_LINE) + r"\s*(\d+)")
-#: ``molbuilder: detected phys_cores=48, n_sockets=2, cores_per_socket=24`` --
-#: the NODE's physical cores (`lscpu -p=Core,Socket` ignores the affinity mask,
-#: verified), not the allocation's.
-_WRAP_NODE = re.compile(
-    r"detected\s+phys_cores=(\d+),\s*n_sockets=(\d+),\s*"
-    r"cores_per_socket=(\d+)")
-#: ``ranks / omp : <N> ranks x <M> OMP threads`` -- written BEFORE the launch,
-#: so its ranks are what was ASKED; the thread count is written nowhere else.
-_WRAP_RANKS_OMP = re.compile(
-    r"ranks\s*/\s*omp\s*:\s*(\d+)\s+ranks\s+x\s+(\d+)\s+OMP threads")
-#: ``benchmark: <Program> wall <s>s`` -- the engine's own wall, launch to exit.
-_WRAP_WALL = re.compile(r"benchmark:\s+\S+\s+wall\s+([0-9.]+)s")
+_WRAP_NODE = _pattern(NODE_LINE, phys=r"(\d+)", sockets=r"(\d+)",
+                      cps=r"(\d+)")
+_WRAP_RANKS_OMP = _pattern(RANKS_OMP_LINE, ranks=r"(\d+)",
+                           threads=r"(\d+)")
+_WRAP_WALL = _pattern(WALL_LINE, program=r"\S+", seconds=r"([0-9.]+)")
 
 
 def read_wrapper_log(text: str) -> List[Dict[str, Any]]:

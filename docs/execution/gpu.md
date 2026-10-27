@@ -161,7 +161,8 @@ environment, and whether the target has it is the target's record's to say —
 the record is shown, never a veto (the user, 2026-10-17): when the record lists no `molbuilder-siesta-gpu`, **prep prepares the job as
 asked and says so** in its notes — the env the run script enters at its
 start and stops without, and the command that installs it
-(`python -m molbuilder envs install molbuilder-siesta-gpu`); the person
+(`bash scripts/install-env.sh install molbuilder-siesta-gpu`, the one
+spelling of an env command, `envs.hints.fix_cmd`); the person
 installs it, or turns `Use GPU` off and preps again. PySCF's GPU is a device,
 checked at run start: the script exits with the reason. A CPU-ELPA deck
 writes `Diag.ELPA.GPU .false.` **explicitly**, never left to the engine's

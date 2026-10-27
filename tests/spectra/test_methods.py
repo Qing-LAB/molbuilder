@@ -320,10 +320,14 @@ class TestRenderMethodsMdWithStruct:
         from molbuilder.structure import Structure
 
         # 4 Au + 3 organic = 7 atoms; freeze the four Au -> n_free = 3.
+        # ONE STRUCTURE for the deck's view and its paragraph, as the deck
+        # renders them (`vibration_deck`: the view is built from the
+        # structure the paragraph is given).
         struct = Structure(
             elements=["Au", "Au", "Au", "Au", "C", "H", "H"],
-            positions=np.array([[float(i), 0.0, 0.0] for i in range(7)]))
-        cfg = _spectra_cfg(struct=struct, frozen_indices=[0, 1, 2, 3])
+            positions=np.array([[float(i), 0.0, 0.0] for i in range(7)]),
+            frozen_atoms=[0, 1, 2, 3])
+        cfg = _spectra_cfg(struct=struct)
         md = render_methods_md(cfg, struct=struct)
         assert "3 free" in md
         assert "4 frozen" in md
@@ -398,15 +402,17 @@ class TestRenderMethodsMdWithStruct:
         the free count."""
         from molbuilder.spectra import render_methods_md
         from molbuilder.structure import Structure
+        # Frozen atoms are INDICES -- the TWO Au atoms are 0 and 1 -- on
+        # the one structure the view and the paragraph are given.
         struct = Structure(
             elements  = ["Au", "Au", "C", "H"],
             positions = np.array([[0., 0., 0.],
                                   [2., 0., 0.],
                                   [4., 0., 0.],
                                   [5., 0., 0.]]),
+            frozen_atoms=[0, 1],
         )
-        # Frozen atoms are INDICES -- the TWO Au atoms are 0 and 1.
-        cfg = _spectra_cfg(struct=struct, frozen_indices=[0, 1])
+        cfg = _spectra_cfg(struct=struct)
         md = render_methods_md(cfg, struct=struct)
         assert "2 free" in md
         assert "2 frozen" in md

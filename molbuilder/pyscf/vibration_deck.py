@@ -39,7 +39,7 @@ from __future__ import annotations
 from typing import List
 
 from .. import script_emit as _sc
-from ..structure import FROZEN_LABEL, Structure
+from ..structure import Structure
 from .input import (emit_bundle_imports,
                     emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
                     emit_run_settings_block, emit_runtime_facts,
@@ -89,13 +89,8 @@ class VibrationConfigView:
         type(self).__dataclass_fields__ = PySCFConfig.__dataclass_fields__
         type(self).__dataclass_params__ = PySCFConfig.__dataclass_params__
         self._cfg = cfg
-        frozen = ()
-        try:
-            frozen = tuple(int(i) for i in
-                           (struct.regions or {}).get(FROZEN_LABEL, ()))
-        except Exception:  # noqa: BLE001 -- absent store reads as none frozen
-            frozen = ()
-        self.frozen_indices = list(frozen)
+        # THE HELD ATOMS, by the structure's one read of them.
+        self.frozen_indices = [int(i) for i in (struct.frozen_atoms or [])]
         self._struct = struct
         self._state = None
 
@@ -156,6 +151,7 @@ def _vib_constants(cfg, names) -> List[str]:
     from ..spectra.pyscf_vibration import (as_numpy, dipole_derivatives,
                                            equilibrium_structure, homo_index,
                                            mo_window)
+    from ..spectra.activity import ir_strength_km_mol
     from ..spectra.selection import select_modes
     from ..trajectory_log.emitter import MolwatchEmitter
     from ..workingcopy_structure import StructureCodec
@@ -196,7 +192,7 @@ def _vib_constants(cfg, names) -> List[str]:
                thermo_temperatures, vibrational_thermo,
                vibrational_thermo_grid, equilibrium_structure,
                write_spectra_payload, finite_or_none, select_modes,
-               constants, AtomIndexMap),
+               ir_strength_km_mol, constants, AtomIndexMap),
            f"JSON_PATH = _mb_outfile({run_file_expr(names, ROLE_SPECTRA)})",
            # THE WALL (`engines/pyscf.md` § 3.9): the deadline this deck
            # keeps -- its relaxation stops at it, its displaced SCFs refuse

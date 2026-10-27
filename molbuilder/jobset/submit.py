@@ -1883,7 +1883,7 @@ def _go(s: Submission, record, *, background: bool = False,
     # is (`running-a-job.md` § 3.6); one stating none runs until done.
     if (s.direct and s.sent is not None and s.sent.time
             and _own_walls("direct", inside)):
-        from ..scheduler.kinds import WALL_VAR
+        from ..runtime_info import WALL_VAR
         from ..scheduler.quantities import parse_walltime
         env[WALL_VAR] = str(parse_walltime(s.sent.time))
     names = [m.name for m in s.members]
@@ -2140,9 +2140,9 @@ def _plan_shelves(jobset: JobSet, base: Path, *, machine, shape, mode: str,
         pending = [trials[j.name] for j in members if j.name in trials]
         if not pending:
             continue            # this shelf already rode a group
-        plan.submissions.append(_plan_shelf(
-            jobset, base, pending, names, members, plan,
-            trial_timeout_s=trial_timeout_s, told=told, time_s=time_s, machine=machine))
+        _plan_shelf(jobset, base, pending, names, members, plan,
+                    trial_timeout_s=trial_timeout_s, told=told,
+                    time_s=time_s, machine=machine)
 
     if not plan.submissions:
         raise _all_launched(jobset, base, shape=shape, side=side,
@@ -2287,6 +2287,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
+    from ..runtime_info import JOB_STARTED_VAR
     when = "$(date '+%Y-%m-%dT%H:%M:%S')"
     lines = [
         "#!/usr/bin/env bash",
@@ -2301,7 +2302,8 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         # THE RUN'S START, once for every member, where the members share
         # one wall (running-a-job.md § 3.6): a job's header said it; run
         # here, the walk says it now.
-        *([': "${MB_JOB_STARTED:=$(date +%s)}"', "export MB_JOB_STARTED"]
+        *([f': "${{{JOB_STARTED_VAR}:=$(date +%s)}}"',
+           f"export {JOB_STARTED_VAR}"]
           if one_start else []),
         f'LOG="{log}"',
         # EVERYTHING IT SAYS IS IN ITS LOG -- bash's own errors and a start
@@ -2351,7 +2353,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "}",
     ]
     import shlex as _shlex
-    from ..scheduler.kinds import WALL_VAR
+    from ..runtime_info import WALL_VAR
     for k, (member, folder, run_sh, args, before) in enumerate(steps):
         if empties and k in empties:
             lines.append(f'empty_scratch {_shlex.quote(empties[k])}')
@@ -2478,12 +2480,64 @@ def _walk_of(members: List[_Member], container: Path) -> list:
     """Each member as the walk runs it -- its name, the folder it runs in
     from the walk's own (its run: `project-layout.md` § 1.5a), its run
     script, and its own counts, the shield against what an allocation
-    tells each run; no start to copy.  One answer for a benchmark's walk here,
-    a queue's shelf and a group."""
+    tells each run, and ``--cold`` for a stage launched again cold that
+    has no attempt yet; no start to copy.  One answer for a benchmark's walk
+    here, a queue's shelf and a group."""
     return [(m.name, str(m.run_dir.relative_to(container)),
              m.names.name(".run.sh"),
-             " ".join(_run_sh_args(m.job.resources, m.run)), ())
+             " ".join(_run_sh_args(m.job.resources, m.run,
+                                   cold=m.cold and not m.has_attempt)), ())
             for m in members]
+
+
+def _send_as_one_job(plan: LaunchPlan, *, gn: GroupNames, container: Path,
+                     script: str, members, jobs, machine, time_s, told,
+                     jobset: JobSet, what: str, redo: Optional[str] = None,
+                     missing_header: Optional[str] = None,
+                     **extra) -> Submission:
+    """A WALK SENT AS ONE JOB -- the one send every walk takes (a benchmark's
+    trials here, a queue's shelf, a run of points, a group, a sequence of
+    groups; `job-system.md` § 6.0): its script written into ``container``'s
+    ``launch/`` (an ``ask`` writes nothing), then run here -- ``bash
+    launch/<name>.run.sh`` -- or sent as one scheduler job through the
+    header its prep wrote, as prep wrote and placed it.  A header that is
+    not there is the one answer (`_no_sbatch`: ``what`` and ``redo`` its
+    words), or, on a machine with a queue, ``missing_header`` where the
+    caller's prep has its own way back.  ``extra`` are the submission's own
+    fields (its ``rides``, a refusal's hint, a sequence's record and
+    preview).  The submission is added to ``plan`` and returned."""
+    base, mode = plan.base, plan.mode
+    launch_dir = container / LAUNCH_DIR
+    walk = f"{LAUNCH_DIR}/{gn.name('.run.sh')}"
+    if mode != "ask":
+        open_container(base, launch_dir, plan.writes)
+        plan.writes.text(container / walk, script)
+    if mode == "direct":
+        sub = Submission(gn.stem, ["bash", walk], container, True,
+                         list(members),
+                         log=container / LAUNCH_DIR / gn.name(".log"),
+                         **extra)
+        plan.submissions.append(sub)
+        return sub
+    header = launch_dir / gn.name(".sbatch")
+    if _needs_header(mode, machine) and not header.is_file():
+        raise SubmitError(
+            missing_header if missing_header and machine.kind.queue
+            else _no_sbatch(what, f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
+                            base=base, told=told, machine=machine,
+                            redo=redo))
+    if header.is_file():
+        plan.reads.append(_as_found(header, base))
+    sent, placement, cmd, outputs_in = _sbatch_request(
+        header=header, placement=_placed_by_prep(jobs), time_s=time_s,
+        job_name=_scheduler_job_name(jobset, gn.stem),
+        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
+        machine=machine)
+    sub = Submission(gn.stem, cmd, container, False, list(members),
+                     placement=placement, sent=sent, header=header,
+                     machine=machine, outputs_in=outputs_in, **extra)
+    plan.submissions.append(sub)
+    return sub
 
 
 def _plan_bench_here(jobset: JobSet, base: Path, *, shape,
@@ -2503,17 +2557,15 @@ def _plan_bench_here(jobset: JobSet, base: Path, *, shape,
     # as a shelf's walk runs from it on a queue.
     container = _one_container(pending, base)
     gn = GroupNames.of_trials()
-    name = gn.stem
-    log = f"{LAUNCH_DIR}/{gn.name('.log')}"
-    open_container(base, container / LAUNCH_DIR, plan.writes)
-    plan.writes.text(container / LAUNCH_DIR / gn.name(".run.sh"), _walk_script(
-        name, _walk_of(pending, container),
-        where="this benchmark's unlaunched trials, run here", log=log,
-        bound_s=trial_timeout_s,
-        walls=[_wall_s(m.job.resources) for m in pending]))
-    plan.submissions.append(Submission(
-        name, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"], container, True, pending,
-        rides="rides the group", log=container / log))
+    script = _walk_script(
+        gn.stem, _walk_of(pending, container),
+        where="this benchmark's unlaunched trials, run here",
+        log=f"{LAUNCH_DIR}/{gn.name('.log')}", bound_s=trial_timeout_s,
+        walls=[_wall_s(m.job.resources) for m in pending])
+    _send_as_one_job(plan, gn=gn, container=container, script=script,
+                     members=pending, jobs=[m.job for m in pending],
+                     machine=None, time_s=None, told=None, jobset=jobset,
+                     what=gn.stem, rides="rides the group")
     return plan
 
 
@@ -2527,51 +2579,30 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     its prep wrote for all its trials, ``members``, as it is.  A dry run
     and an `ask` write nothing (`job-system.md` § 6.0, step 3).
     """
-    container = _one_container(pending, base)
     # L3 (roadmap 7.10, user 2026-08-24): the shelf's own machinery -- its
     # walk, its header, its log, and the scheduler's stdout/err -- lives in
     # ``launch/`` beside the trial directories, not among them.
-    launch_dir = container / LAUNCH_DIR
-    name = names.stem
-    header = launch_dir / names.name(".sbatch")
-    # THE HEADER PREP WROTE, or no queue to send to: a benchmark prepared
-    # with --no-sbatch, or for a machine that names no queue, has none --
-    # said by the one answer (`_no_sbatch`); asked about, the same.
-    if _needs_header(plan.mode, machine):
-        if not header.is_file():
-            raise SubmitError(_no_sbatch(
-                name, f"{LAUNCH_DIR}/{names.name('.sbatch')}", base=base,
-                told=told, machine=machine))
-        plan.reads.append(_as_found(header, base))
+    container = _one_container(pending, base)
     # THE ATTEMPT, NOT THE TRIAL (`project-layout.md` § 1.5a).  Each member's
     # ``run_dir`` is the one answer to "where does this trial run", and the
     # gates asked it (:func:`_bench_trials`).  Each trial is handed its own
     # -np / -omp: the shield against what the allocation tells each run.
     script = _walk_script(
-        name, _walk_of(pending, container),
+        names.stem, _walk_of(pending, container),
         where="ONE allocation, this shelf's unlaunched trials",
         log=f"{LAUNCH_DIR}/{names.name('.log')}", bound_s=trial_timeout_s)
-    # THE ONE LINE (`_sbatch_request`): the shelf's header as prep wrote it
-    # -- nothing chosen here.
-    sent, placement, cmd, outputs_in = _sbatch_request(
-        header=header, placement=_placed_by_prep(members),
-        time_s=time_s, job_name=_scheduler_job_name(jobset, name),
-        script=f"{LAUNCH_DIR}/{names.name('.sbatch')}", run_args=(),
-        machine=machine)
-    if plan.mode == "submit":
-        open_container(base, launch_dir, plan.writes)
-        plan.writes.text(launch_dir / names.name(".run.sh"), script)
     # A SHELF THE SCHEDULER REFUSES keeps its trials pending -- no launch
     # record -- so launching the benchmark again sends exactly them; a
     # shelf sent by hand would write no record, and the next launch would
-    # measure its trials twice (the unit 11 review, 2026-10-05).
-    hint = ("\n  Its trials stay pending: launch the benchmark again once "
-            "the ask fits -- the shelves already queued are skipped.")
-    return Submission(
-        name, cmd, container, False, pending,
-        placement=placement, sent=sent, rides="rides the group",
-        header=header, refusal_hint=hint, machine=machine,
-        outputs_in=outputs_in)
+    # measure its trials twice (the unit 11 review, 2026-10-05).  Sent as
+    # the header its prep wrote for all its trials, ``members``.
+    return _send_as_one_job(
+        plan, gn=names, container=container, script=script, members=pending,
+        jobs=members, machine=machine, time_s=time_s, told=told,
+        jobset=jobset, what=names.stem, rides="rides the group",
+        refusal_hint=("\n  Its trials stay pending: launch the benchmark "
+                      "again once the ask fits -- the shelves already "
+                      "queued are skipped."))
 
 
 def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
@@ -2784,42 +2815,16 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
 def _send_walk(plan: LaunchPlan, member: "_Member", calc, script: str,
                gn: GroupNames, stage_dir: Path, *, mode: str, machine,
                time_s: Optional[int], told) -> None:
-    """A RUN OF POINTS' WALK, SENT: the walk script written into the
-    stage's ``launch/`` and submitted -- run here, or as one scheduler job
+    """A RUN OF POINTS' WALK, SENT (:func:`_send_as_one_job`): written into
+    the stage's ``launch/`` and run here, or sent as one scheduler job
     through the walk's one header, as its prep wrote and placed it: one
     allocation walking every point, their walls summed (`group.envelope`,
-    `prep.prep_calculation`) -- or no queue to send to, said by the one
-    answer (`_no_sbatch`); asked about, the same."""
-    jobset, base = calc.jobset, Path(calc.base)
-    job = member.job
-    launch_dir = stage_dir / LAUNCH_DIR
-    log = f"{LAUNCH_DIR}/{gn.name('.log')}"
-    if mode != "ask":
-        open_container(base, launch_dir, plan.writes)
-        plan.writes.text(launch_dir / gn.name(".run.sh"), script)
-    if mode == "direct":
-        plan.submissions.append(Submission(
-            gn.stem, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"],
-            stage_dir, True, [member], rides="rides the sweep",
-            log=stage_dir / log))
-        return
-    header = launch_dir / gn.name(".sbatch")
-    if _needs_header(mode, machine):
-        if not header.is_file():
-            raise SubmitError(_no_sbatch(
-                gn.stem, f"{LAUNCH_DIR}/{gn.name('.sbatch')}", base=base,
-                told=told, machine=machine,
-                redo=_redo(calc, job)))
-        plan.reads.append(_as_found(header, base))
-    sent, placement, cmd, outputs_in = _sbatch_request(
-        header=header, placement=_placed_by_prep([job]), time_s=time_s,
-        job_name=_scheduler_job_name(jobset, gn.stem),
-        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
-        machine=machine)
-    plan.submissions.append(Submission(
-        gn.stem, cmd, stage_dir, False, [member], placement=placement,
-        sent=sent, rides="rides the sweep", header=header, machine=machine,
-        outputs_in=outputs_in))
+    `prep.prep_calculation`)."""
+    _send_as_one_job(plan, gn=gn, container=stage_dir, script=script,
+                     members=[member], jobs=[member.job], machine=machine,
+                     time_s=time_s, told=told, jobset=calc.jobset,
+                     what=gn.stem, redo=_redo(calc, member.job),
+                     rides="rides the sweep")
 
 
 def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
@@ -2875,7 +2880,8 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
                         launched_in=prev,
                         products=declared.products_of(stage, task.label,
                                                       base, point=pt),
-                        verdict_counts=declared.verdict_counts(stage, pt))
+                        verdict_counts=declared.verdict_counts(stage, pt),
+                        record_says=declared.record_says(prev, names, pt))
         return ok
 
     # EVERY CALL THE RUN HOLDS: the ones its planner opened (the relaxation,
@@ -2897,8 +2903,8 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
         # failure included.
         row = entry_of(prev_index, pt) if prev_index is not None else None
         own = (("phase", "name", "taken_from") if taken else
-               ("phase", "name", "started", "ended", "exit", "taken_from",
-                "record_error"))
+               ("phase", "name", "started", "ended", "exit", "verdict",
+                "taken_from", "record_error"))
         return {k: v for k, v in (row or {}).items() if k not in own}
 
     taken = [(pdir, pt) for pdir, pt in calls if _done(pt)]
@@ -3231,49 +3237,19 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     # THE ONE WALK SCRIPT: the members in order, each its own run in its own
     # run folder; one that fails does not stop the others -- none builds on
     # another.
-    log = f"{LAUNCH_DIR}/{gn.name('.log')}"
     script = _walk_script(
-        gn.stem,
-        [(m.name, str(m.run_dir.relative_to(base)),
-          m.names.name(".run.sh"),
-          " ".join(_run_sh_args(m.job.resources, m.run,
-                                cold=m.cold and not m.has_attempt)), ())
-         for m in members],
+        gn.stem, _walk_of(members, base),
         where="a group's one job: " + ", ".join(names),
-        member_word="stage", log=log,
+        member_word="stage", log=f"{LAUNCH_DIR}/{gn.name('.log')}",
         walls=([_wall_s(m.job.resources) for m in members]
                if _own_walls(mode, inside) else None))
-    launch_dir = base / LAUNCH_DIR
-    if mode != "ask":
-        open_container(base, launch_dir, plan.writes)
-        plan.writes.text(launch_dir / gn.name(".run.sh"), script)
-    if mode == "direct":
-        plan.submissions.append(Submission(
-            gn.stem, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"], base,
-            True, members, rides="rides the group", log=base / log))
-        return plan
-    header = launch_dir / gn.name(".sbatch")
-    # THE HEADER PREP WROTE, or no queue to send to -- asked about where the
-    # machine has a scheduler to ask, as every door's is.
-    if _needs_header(mode, machine):
-        if not header.is_file():
-            raise SubmitError(_no_sbatch(
-                f"group {number}", f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
-                base=base, told=told, machine=machine,
-                redo=_redo(calc, jobs[0])))
-    if header.is_file():
-        plan.reads.append(_as_found(header, base))
-    sent, placement, cmd, outputs_in = _sbatch_request(
-        header=header, placement=_placed_by_prep(jobs), time_s=time_s,
-        job_name=_scheduler_job_name(jobset, gn.stem),
-        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
-        machine=machine)
-    # `--mode ask` ASKS OVER THE LINE ITSELF: the header prep wrote is the
-    # one the send passes.
-    plan.submissions.append(Submission(
-        gn.stem, cmd, base, False, members, placement=placement, sent=sent,
-        rides="rides the group", header=header, machine=machine,
-        outputs_in=outputs_in))
+    # SENT AS ONE JOB (:func:`_send_as_one_job`), through the header the
+    # group's prep wrote -- `--mode ask` asks over that line itself.
+    _send_as_one_job(plan, gn=gn, container=base, script=script,
+                     members=members, jobs=jobs, machine=machine,
+                     time_s=time_s, told=told, jobset=jobset,
+                     what=f"group {number}", redo=_redo(calc, jobs[0]),
+                     rides="rides the group")
     return plan
 
 
@@ -3387,8 +3363,6 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                                 f"builds on then"))
                 for i, g in enumerate(groups[1:])]
     plan = LaunchPlan(base, mode, [])
-    launch_dir = base / LAUNCH_DIR
-    walk_name = f"{LAUNCH_DIR}/{names.name('.run.sh')}"
     log = f"{LAUNCH_DIR}/{names.name('.log')}"
     rec_path = record_path(base, names)
     # THE WALK: each group's launch, in order, the first that does not
@@ -3398,14 +3372,20 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     # see; the calculation by its full path; the job's address as its walk
     # knows it (`job-system.md` § 6.0, *The walk*).
     from .. import repo_root
+    from ..joblist import here_id
     home = repo_root()
     enters = _molbuilder_env_entry(machine)
+    # THE COMMAND'S ONE GRAMMAR (`identity.words_for`), run by molbuilder's
+    # own python as a module.
+    from ..identity import JOBSET_PROG, TASK, words_for
     steps = [(f"group {g['number']}", str(home), WalkCommand(
-        " ".join(['"$_mb_py"', "-m", "molbuilder", "jobset",
-                  "launch", "task", "--group", str(g["number"]), "--bundle",
+        " ".join(['"$_mb_py" -m', JOBSET_PROG, "launch",
+                  *words_for(TASK, groups=[g["number"]]), "--bundle",
                   shlex.quote(str(base)), "--mode", "direct", "--foreground",
                   "--yes", "--in-sequence", shlex.quote(names.stem),
-                  "--in-job", '"${MB_JOB_ID:-$(hostname)-$$}"'])), "", ())
+                  "--in-job",
+                  f'"${{MB_JOB_ID:-{here_id("$(hostname)", "$$")}}}"'])),
+         "", ())
         for g in groups]
     # EACH GROUP BUILDS ON THE ONE BEFORE IT: a group that failed stops the
     # groups after it (`job-system.md` § 6.0, *A sequence of groups*).
@@ -3415,51 +3395,34 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                           needs=[None] + list(range(len(steps) - 1)),
                           enters=enters)
     sequence = {"name": names.stem, "groups": groups, "record": rec_path}
-    if mode == "direct":
-        sub = Submission(names.stem, ["bash", walk_name], base, True, [],
-                         log=base / log, sequence=sequence, preview=preview)
+    # SENT AS ONE JOB (:func:`_send_as_one_job`); a header prep did not
+    # write is a sequence never prepared as one job, said with its way.
+    jobs = [jobset.job(st) for g in groups for st in g["stages"]]
+    sub = _send_as_one_job(
+        plan, gn=names, container=base, script=script, members=[],
+        jobs=jobs, machine=machine, time_s=time_s, told=told, jobset=jobset,
+        what=f"groups {words}",
+        missing_header=(
+            f"groups {words} go as one job, and prep wrote no header for "
+            f"them ({LAUNCH_DIR}/{names.name('.sbatch')}) -- prepare them as "
+            f"one job first:\n"
+            + block(prep_sequence_lines(numbers, base=base))
+            + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)"),
+        sequence=sequence, preview=preview)
+    if sub.direct:
         rec = Record(groups=groups, mode="direct", command=sub.command,
                      placed_on=None, scheduler=None)
     else:
-        header = launch_dir / names.name(".sbatch")
-        jobs = [jobset.job(st) for g in groups for st in g["stages"]]
-        if mode == "submit" and not machine.kind.queue:
-            # NO QUEUE TO SEND TO: the one answer every door gives
-            # (`_no_sbatch`), the run here as a command.
-            raise SubmitError(_no_sbatch(
-                f"groups {words}", f"{LAUNCH_DIR}/{header.name}", base=base,
-                told=told, machine=machine))
-        if _needs_header(mode, machine) and not header.is_file():
-            raise SubmitError(
-                f"groups {words} go as one job, and prep wrote no header "
-                f"for them ({LAUNCH_DIR}/{header.name}) -- prepare them as "
-                f"one job first:\n"
-                + block(prep_sequence_lines(numbers, base=base))
-                + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
-        if header.is_file():
-            plan.reads.append(_as_found(header, base))
-        sent, placement, cmd, outputs_in = _sbatch_request(
-            header=header, placement=_placed_by_prep(jobs), time_s=time_s,
-            job_name=_scheduler_job_name(jobset, names.stem),
-            script=f"{LAUNCH_DIR}/{names.name('.sbatch')}", run_args=(),
-            machine=machine)
-        sub = Submission(names.stem, cmd, base, False, [],
-                         placement=placement, sent=sent, header=header,
-                         machine=machine, outputs_in=outputs_in,
-                         sequence=sequence, preview=preview)
         plan.queue = _the_queue(jobs)
         rec = Record(
-            groups=groups, mode="submit", command=cmd,
-            placed_on=_placed_on(placement, sent),
+            groups=groups, mode="submit", command=sub.command,
+            placed_on=_placed_on(sub.placement, sub.sent),
             scheduler={"kind": machine.kind.name,
                        "outputs_in": os.path.relpath(
-                           base / (outputs_in or ""), base)})
+                           base / (sub.outputs_in or ""), base)})
     if mode != "ask":
-        open_container(base, launch_dir, plan.writes)
-        plan.writes.text(base / walk_name, script)
         plan.writes.text(rec_path, record_text(rec))
     plan.engine = jobset.engine
-    plan.submissions.append(sub)
     return plan
 
 

@@ -72,8 +72,10 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 # travels beside a job with the map's module.
 try:                                        # inside molbuilder
     from ..atom_permutation import MAP_KEY
+    from ..persist import write_bytes
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
+    from persist import write_bytes  # type: ignore[no-redef]
 
 try:
     import fcntl as _fcntl
@@ -187,6 +189,26 @@ ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "n_frames_total",
 #: (`structure-molstruct.md` § 2, *Retired keys*): `structure_hash`, the
 #: sha256 of the geometry file's bytes, until v13.
 RETIRED_ENVELOPE_KEYS = ("structure_hash",)
+
+
+def known_keys() -> frozenset:
+    """EVERY KEY A SIDECAR MAY CARRY -- the structure's metadata fields and
+    identity columns, the envelope, the free-form ``info`` block, and the
+    retired keys an older sidecar still opens with (accepted, not applied):
+    the one list each gate refuses a stray key against, the read door's
+    (`parse.sidecars.molstruct.load_text`) and :func:`apply_to_structure`'s
+    alike.  A key nobody reads is metadata the writer thinks it saved."""
+    try:                                        # inside molbuilder
+        from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
+                                          RETIRED_IDENTITY_KEYS,
+                                          RETIRED_METADATA_KEYS)
+    except ImportError:                         # beside a job, in a bundle
+        from structure import (FILE_FIELDS, IDENTITY_FIELDS,
+                               RETIRED_IDENTITY_KEYS, RETIRED_METADATA_KEYS)
+    return frozenset(set(FILE_FIELDS) | set(IDENTITY_FIELDS)
+                     | set(ENVELOPE_KEYS) | {"info"}
+                     | set(RETIRED_METADATA_KEYS) | set(RETIRED_IDENTITY_KEYS)
+                     | set(RETIRED_ENVELOPE_KEYS))
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 #: PUBLIC: a suffix with a composer (:func:`sidecar_path_for`) has a public
@@ -647,8 +669,11 @@ def save(
 ) -> Path:
     """Write a canonical sidecar to disk.  Returns the resolved path.
 
-    Atomic-write via tempfile + ``os.replace`` so a crash mid-write
-    doesn't leave a partial JSON the next reader chokes on.
+    Through the one atomic writer (`persist.write_bytes`: a unique temp
+    beside it, synced, then renamed), so a crash mid-write doesn't leave a
+    partial JSON the next reader chokes on and two writers never share a
+    temp.  ``encoding`` UTF-8, so a non-ASCII region label ("α-helix")
+    survives; the canonical serialiser (:func:`dumps`) refuses NaN.
 
     NB: this function does NOT take the sidecar lock — if you're
     doing a read-modify-write cycle, wrap the entire cycle in
@@ -657,35 +682,7 @@ def save(
     """
     sidecar_path = Path(sidecar_path).resolve()
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = sidecar_path.with_suffix(sidecar_path.suffix + ".tmp")
-    try:
-        # ``encoding="utf-8"`` is REQUIRED: without it Python defaults
-        # to the platform locale's encoding, which corrupts non-ASCII
-        # region labels (e.g. "α-helix") on cp1252 / latin-1 systems.
-        # ``allow_nan=False`` prevents the writer from emitting NaN/Inf
-        # tokens (a divergent SCF could write one) — same safety net
-        # as the spectra sidecar.
-        with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write(dumps(payload))
-            fh.flush()
-            # fsync before os.replace so a crash between fclose() and
-            # the rename can't leave the OS write buffer holding the
-            # only copy of the new bytes.  Matches the spectra sidecar.
-            try:
-                os.fsync(fh.fileno())
-            except OSError:
-                # Some filesystems (tmpfs on certain kernels) reject
-                # fsync — the data is still in the OS buffer + will
-                # land before the replace.  Don't let a quirky FS
-                # block the write.
-                pass
-        os.replace(tmp, sidecar_path)
-    finally:
-        if tmp.exists():
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+    write_bytes(sidecar_path, dumps(payload).encode("utf-8"), sync=True)
     return sidecar_path
 
 
@@ -735,25 +732,17 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"belong to these frames; write the pair again from the frame set "
             f"it describes.")
     try:                                        # inside molbuilder
-        from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
-                                          RETIRED_IDENTITY_KEYS,
-                                          RETIRED_METADATA_KEYS)
+        from molbuilder.structure import FILE_FIELDS, IDENTITY_FIELDS
     except ImportError:                         # beside a job, in a bundle
-        from structure import (FILE_FIELDS, IDENTITY_FIELDS,
-                               RETIRED_IDENTITY_KEYS, RETIRED_METADATA_KEYS)
-    # A RETIRED KEY IS NOT A STRAY ONE -- the THIRD gate asking that
-    # question, and it has to give the same answer as the other two
+        from structure import FILE_FIELDS, IDENTITY_FIELDS
+    # A RETIRED KEY IS NOT A STRAY ONE -- the gates ask that question of
+    # one list (:func:`known_keys`), so they give the same answer
     # (`structure.RETIRED_METADATA_KEYS` says which and why).
     #
     # `StructureCodec.load` never reaches here with a stray key, because
     # `parse.sidecars.molstruct.load_text` answers first.  This gate takes a
     # payload DIRECTLY, so a caller that builds one in code does reach it.
-    stray = [k for k in sidecar_data
-             if k not in FILE_FIELDS and k not in ENVELOPE_KEYS
-             and k not in IDENTITY_FIELDS and k != "info"
-             and k not in RETIRED_METADATA_KEYS
-             and k not in RETIRED_IDENTITY_KEYS
-             and k not in RETIRED_ENVELOPE_KEYS]
+    stray = [k for k in sidecar_data if k not in known_keys()]
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "

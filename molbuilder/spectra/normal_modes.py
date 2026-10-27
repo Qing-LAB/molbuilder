@@ -147,6 +147,19 @@ def rigid_motions(positions, held, axis_kind, cell=None, tol_ang=1e-3):
     return U[:, :keep].T.reshape(keep, len(free_idx), 3)
 
 
+def mode_count(positions, held, axis_kind, cell=None):
+    """``(n_free, n_rigid, n_modes)`` -- how many atoms are free, how many
+    whole-body motions survive holding ``held`` (:func:`rigid_motions`, R1)
+    and how many modes a run reports: ``3 * n_free - n_rigid`` (R2), the
+    count :func:`vibrational_modes` returns by construction -- asked by every
+    count said before or beside a run (prep's checks, its size line, the
+    Methods text).  ``positions``, ``held``, ``axis_kind`` and ``cell`` as
+    :func:`rigid_motions` takes them."""
+    n_free = len(positions) - len(set(int(i) for i in held))
+    n_rigid = len(rigid_motions(positions, held, axis_kind, cell=cell))
+    return n_free, n_rigid, 3 * n_free - n_rigid
+
+
 def vibrational_modes(hessian, masses, positions, held, axis_kind, cell=None):
     """Every vibration of the system, and nothing that is not one (R2-R4).
 
@@ -346,7 +359,7 @@ def displaced(positions, mode_over_atoms_, q):
             + float(q) * _np.asarray(mode_over_atoms_, dtype=float))
 
 
-__all__ = ["rigid_motions", "vibrational_modes", "signed_omega",
+__all__ = ["rigid_motions", "mode_count", "vibrational_modes", "signed_omega",
            "mode_over_atoms", "q_for_largest_move", "displaced",
            "frequencies_cm1", "display_form", "thermo_temperatures",
            "vibrational_thermo", "vibrational_thermo_grid", "THERMO_GRID_K"]

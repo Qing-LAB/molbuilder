@@ -54,6 +54,8 @@ IS_VOLT_EV = 1e-5
 #: 150-187).  A deck that states exactly that is the same input.
 NEQ_LIST, NEQ_LINE = fdf_key("TS.Contours.nEq"), fdf_key("TS.Contour.nEq.line")
 NEQ_CUTOFF = fdf_key("TS.Contours.nEq.Fermi.Cutoff")
+#: That line's spacing, as the engine writes it (`m_ts_contour_neq.f90`).
+NEQ_LINE_DELTA = ("0.01", "eV")
 
 
 def engine_input_differences(ran: str, now: str) -> List[str]:
@@ -145,7 +147,7 @@ def _as_siesta_reads(keys: Dict[str, List[str]],
                   NEQ_LINE: [["part", "line"],
                              ["from", "-", cutoff, "kT", "-", "|V|/2", "to",
                               "|V|/2", "+", cutoff, "kT"],
-                             ["delta", "0.01", "eV"],
+                             ["delta", *NEQ_LINE_DELTA],
                              ["method", "mid-rule"]]}
     return keys, blocks
 

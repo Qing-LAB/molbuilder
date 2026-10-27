@@ -46,9 +46,11 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 try:                                   # inside molbuilder
+    from .runfiles import FIRST_ATTEMPT
     from .runfiles import patterns as _runfile_patterns
 except ImportError:                    # beside a job -- it travels with the
-    from runfiles import patterns as _runfile_patterns   # monitor and the vibration finish (runwrap.MONITOR_COMPANIONS, VIBRATION_COMPANIONS)
+    from runfiles import FIRST_ATTEMPT  # monitor and the vibration finish
+    from runfiles import patterns as _runfile_patterns   # (runwrap.MONITOR_COMPANIONS, VIBRATION_COMPANIONS)
 
 
 @dataclass(frozen=True)
@@ -259,6 +261,29 @@ def command_stage(token: str) -> str:
     return m.group(1)
 
 
+#: THE JOBSET VERBS' COMMAND, and the kinds of work each names: the
+#: calculation as a TASK -- its groups named with ``--group``, a stage alone
+#: with ``--stage`` -- and a BENCHMARK of one stage, named by position
+#: (`job-system.md` § 5.3).  Here, below every surface, because a text read
+#: later says them (a deck's header, a result's remedy) as the command
+#: composer does (`jobset.commands`).
+JOBSET_PROG = "molbuilder jobset"
+TASK, BENCH = "task", "bench"
+
+
+def words_for(kind: str, *stages, groups=()) -> tuple:
+    """A verb's words for ``kind`` and what it names -- the ONE spelling
+    every printed line takes: ``task --group 1 --group 2`` (a task's
+    groups, the answer to the question its verbs ask), ``task --stage a``
+    (a member launched again alone, D4), ``bench a [trial]`` (a benchmark's
+    stage and trial by position).  A stage that is ``None`` is left out."""
+    named = [s for s in stages if s is not None]
+    if kind == TASK:
+        return (TASK, *(x for g in groups for x in ("--group", str(g))),
+                *(x for s in named for x in ("--stage", s)))
+    return (kind, *named)
+
+
 #: What the mode means, beside a launch line a text read LATER carries -- a
 #: deck's header, a result's remedy -- every engine's.
 LAUNCH_MODE_NOTE = ("(--mode direct runs it here, --mode submit sends it to "
@@ -274,8 +299,9 @@ def launch_as_typed(stage: str, trial: Optional[str] = None) -> str:
     for every engine's deck and remedy (W52) -- never ``--mode
     direct|submit``, which bash reads as a pipe.  ``stage`` is the stage's NAME -- never its token, a
     legal name of another stage (`job-system.md` § 5.3)."""
-    return ("molbuilder jobset launch "
-            + (f"bench {stage} {trial}" if trial else f"task --stage {stage}"))
+    return " ".join((JOBSET_PROG, "launch",
+                     *(words_for(BENCH, stage, trial) if trial
+                       else words_for(TASK, stage))))
 
 
 def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
@@ -302,7 +328,7 @@ def migrate_as_typed(folder=None) -> str:
     typed in the calculation's folder."""
     import shlex
     from pathlib import Path
-    return ("molbuilder jobset migrate"
+    return (f"{JOBSET_PROG} migrate"
             + ("" if folder is None
                else f" --bundle {shlex.quote(str(Path(folder).resolve()))}"))
 
@@ -346,6 +372,17 @@ def checkpoint_words(folder=None) -> str:
               f"one you pick")
 
 
+#: What a deck's hand-run line says beside itself (:func:`hand_run`).
+HAND_RUN_NOTE = "the same wrapper, by hand: its run's number, 0 for the first"
+
+
+def hand_run(names) -> str:
+    """A deck's run script started by hand -- ``bash <stage>.run.sh --run
+    0``, the first run's number (`runfiles.FIRST_ATTEMPT`): one spelling for
+    every engine's deck header, ``names`` the stage's (`runfiles.RunNames`)."""
+    return f"bash {names.name('.run.sh')} --run {FIRST_ATTEMPT}"
+
+
 def deck_launch(stage_token: Optional[str],
                 trial: Optional[str] = None) -> List[str]:
     """How a deck names its own managed launch, the lines its header prints
@@ -361,7 +398,7 @@ def deck_launch(stage_token: Optional[str],
     if trial:
         return [launch_as_typed(stage, trial)]
     alone = launch_as_typed(stage)
-    group = "molbuilder jobset launch task"
+    group = " ".join((JOBSET_PROG, "launch", TASK))
     width = max(len(group), len(alone))
     return [f"{group:<{width}}  # its group's first launch, offered once "
             f"what it builds on has finished",
@@ -718,7 +755,9 @@ def run_id(label: str, formula: str = "", *,
     return f"{stem}_{normalise_id(formula, what='formula')}"
 
 
-__all__ = ["LAUNCHED_WAY_BACK", "LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES",
+__all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
+           "HAND_RUN_NOTE", "hand_run",
+           "LAUNCHED_WAY_BACK", "LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES",
            "OUR_FILE_PATTERNS",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",

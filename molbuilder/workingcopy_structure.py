@@ -52,12 +52,14 @@ try:                                        # inside molbuilder
     from .structure import REMAPPED_NOT_EDITED, Structure
     from .sidecars import molstruct
     from .structure_pair import GeometryChangedError
+    from .persist import stage_bytes
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from atom_permutation import (  # type: ignore[no-redef]
         LISTED_NOT_STATED, MAP_KEY, AtomIndexMap, Permutation)
     from structure import REMAPPED_NOT_EDITED, Structure
     import molstruct
     from structure_pair import GeometryChangedError
+    from persist import stage_bytes  # type: ignore[no-redef]
 
 
 class StructurePair(NamedTuple):
@@ -750,31 +752,24 @@ class StructureCodec:
         BOTH RENDERED FIRST: the sidecar is serialised by its one
         serialiser (`molstruct.dumps`) before anything is written, so one
         that cannot be -- a NaN in ``info`` -- stops the write with the pair
-        on disk as it was.  THEN BOTH STAGED, each to a temp sibling, synced
-        where the filesystem takes it -- tmpfs on some kernels refuses, and
-        the bytes still land before the rename -- and only then both put in
-        place, the document first, then the sidecar: a failure staging
-        either leaves the old pair, and no temp file is left behind.  This
-        path runs inside jobs too (`write_moved`, the PySCF script's every
-        saved geometry)."""
+        on disk as it was.  THEN BOTH STAGED by the one atomic writer's
+        first half (`persist.stage_bytes`: a unique temp beside each,
+        synced), and only then both put in place, the document first, then
+        the sidecar: a failure staging either leaves the old pair, and no
+        temp file is left behind.  This path runs inside jobs too
+        (`write_moved`, the PySCF script's every saved geometry)."""
         target.parent.mkdir(parents=True, exist_ok=True)
         halves = [(target, document),
                   (molstruct.sidecar_path_for(target), molstruct.dumps(sidecar))]
-        staged = [(path.with_suffix(path.suffix + ".tmp"), path, text)
-                  for path, text in halves]
+        staged = []
         try:
-            for tmp, _path, text in staged:
-                with open(tmp, "w", encoding="utf-8") as fh:
-                    fh.write(text)
-                    fh.flush()
-                    try:
-                        os.fsync(fh.fileno())
-                    except OSError:
-                        pass
-            for tmp, path, _text in staged:
+            for path, text in halves:
+                staged.append((stage_bytes(path, text.encode("utf-8"),
+                                           sync=True), path))
+            for tmp, path in staged:
                 os.replace(tmp, path)
         finally:
-            for tmp, _path, _text in staged:
+            for tmp, _path in staged:
                 if tmp.exists():
                     tmp.unlink()
         return target

@@ -15,7 +15,6 @@ and a memory are NOT proposed (`execution/project-layout.md` § 2.3.2).
 
 from __future__ import annotations
 
-import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -669,7 +668,8 @@ def sweep_view(calc, jobset) -> Dict:
     # verdict this view shows is the verdict that gets written, down to
     # `choice["mechanism"]`.  Composing it here a second time is what B2
     # forbids.
-    res = bench_record(calc, jobset, now_iso=utc_now_iso())
+    from ..runrecord import stamp
+    res = bench_record(calc, jobset, now_iso=stamp())
     points = res.points
     status = jobset_status(calc, sweep=jobset)
 
@@ -772,17 +772,10 @@ def task_summary(task) -> Optional[str]:
     return None
 
 
-def utc_now_iso() -> str:
-    """UTC timestamp ``YYYY-MM-DDThh:mm:ssZ`` -- the summarize verb's stamp,
-    and :func:`sweep_view`'s."""
-    return datetime.datetime.now(datetime.timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ")
-
-
 __all__ = [
     "parse_point", "discover_points_from_jobset", "run_summarize_jobset",
     "sweep_view", "swept_coordinates",
     "bench_record",
-    "summary_text", "utc_now_iso",
+    "summary_text",
     "recommendation_text", "task_summary",
 ]

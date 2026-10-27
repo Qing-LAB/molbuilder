@@ -456,22 +456,16 @@ class RunStatus:
         if not self.active_source:
             return None
         ends = self.endings or {}
-        said = [ends[n] for n in (self.active_source, *self.speakers)
-                if n in ends]
-        for key, words in (("relaxed", "geometry"), ("scf_converged", "SCF")):
-            ok = next((getattr(e, key) for e in said
-                       if getattr(e, key) is not None), None)
-            if ok is not None:
-                return (words, bool(ok))
-        return None
+        return _re.verdict_of(ends[n] for n in (self.active_source,
+                                                *self.speakers)
+                              if n in ends)
 
     @property
     def converged_words(self) -> "Optional[str]":
         """The verdict in the words a row shows it -- ``geometry yes``,
         ``SCF NO`` -- or ``None`` when the output says neither yet.  For
         showing; a reader that decides asks :attr:`verdict`."""
-        v = self.verdict
-        return None if v is None else f"{v[0]} " + ("yes" if v[1] else "NO")
+        return _re.verdict_words(self.verdict)
 
 
 #: A caller that does not hold the attempt's launch record -- the monitor,

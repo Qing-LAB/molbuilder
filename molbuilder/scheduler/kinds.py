@@ -30,18 +30,19 @@ from __future__ import annotations
 LAUNCH_CLAIM_VAR = "MB_LAUNCHED_BY"
 LAUNCH_CLAIM = "jobset-launch"
 MANUAL_CLAIM = "manual"
-#: THE WALL A JOB WAS SENT WITH, told to it in seconds -- on the send line
-#: beside the launch claim (`{wall_var}={wall_s}`), in a direct run's
-#: environment when its card states one -- from which the run script counts
-#: what is left and hands it to the engine (`running-a-job.md` § 3.6).
-WALL_VAR = "MB_WALL_S"
-
 import re
 import tomllib
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+
+#: THE WALL A JOB WAS SENT WITH, told to it in seconds -- on the send line
+#: beside the launch claim (`{wall_var}={wall_s}`), in a direct run's
+#: environment when its card states one -- by its one name
+#: (`runtime_info.WALL_VAR`), from which the run script counts what is left
+#: and hands it to the engine (`running-a-job.md` § 3.6).
+from ..runtime_info import WALL_VAR
 
 #: The file, beside this module.
 KINDS_FILE = Path(__file__).with_name("kinds.toml")

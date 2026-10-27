@@ -479,8 +479,10 @@ def finished_window(finished) -> Tuple[float, float, int]:
     computed at its first point done, as its deck states it -- its window's
     ends and count, the numbers tbtrans computed its energies from, or, a
     point that shared energies, the grid its record describes
-    (:func:`_window_of`).  :class:`ValueError` when it holds none done."""
+    (`transport.energies.deck_window`).  :class:`ValueError` when it holds
+    none done."""
     from ..runs import run_of
+    from ..transport.energies import deck_window
     from ..transport.stages import frames_of, rung_points
     said = ""
     for pt in (rung_points(finished.task, SHARING_RUNG,
@@ -488,7 +490,7 @@ def finished_window(finished) -> Tuple[float, float, int]:
         src, _run, why = _finished_point(finished, SHARING_RUNG, pt)
         said = said or why or ""
         run = run_of(src) if src is not None else None
-        window = (_window_of(read_deck(run.deck))
+        window = (deck_window(read_deck(run.deck))
                   if run is not None and run.deck is not None else None)
         if window is not None:
             return window
@@ -575,11 +577,6 @@ _ENERGY_BLOCK = re.compile(
     r"^[ \t]*%endblock[ \t]+\1[ \t]*$\n?", re.M | re.S | re.I)
 
 #: The window line of a deck that computes its window whole.
-_WINDOW_LINE = re.compile(
-    r"%block[ \t]+TBT\.Contour\.window.*?from[ \t]+(\S+)[ \t]+eV[ \t]+to"
-    r"[ \t]+(\S+)[ \t]+eV.*?points[ \t]+(\d+)", re.S | re.I)
-
-
 def _with_energies(text: str, energies_of: str) -> str:
     """``text`` with its TBtrans energy blocks taken out and those of
     ``energies_of`` put in -- a deck rendered with the finished point's
@@ -587,18 +584,6 @@ def _with_energies(text: str, energies_of: str) -> str:
     return (_ENERGY_BLOCK.sub("", text) + "\n"
             + "\n".join(m.group(0) for m in
                         _ENERGY_BLOCK.finditer(energies_of)))
-
-
-def _window_of(text: str) -> Optional[Tuple[float, float, int]]:
-    """The grid a transmission deck describes: its sharing record's, or its
-    window's own line."""
-    from ..transport.energies import Contours
-    c = Contours.of_deck(text)
-    if c is not None:
-        return c.window
-    m = _WINDOW_LINE.search(text)
-    return ((float(m.group(1)), float(m.group(2)), int(m.group(3)))
-            if m else None)
 
 
 def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
@@ -613,7 +598,8 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
     from ..deck_record import same_calculation
     from ..projects import find_projects_root
     from ..runs import run_of
-    from ..transport.energies import grid, held, shared_contours
+    from ..transport.energies import (deck_window, grid, held,
+                                      shared_contours)
     words = f"{_words(pt):<6}"
     fbase = Path(finished.base)
     src, newest, why = _finished_point(finished, SHARING_RUNG, pt)
@@ -632,7 +618,7 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
     if differs:
         return None, (f"{words} shares none -- it is another calculation "
                       f"than {shown}: {'; '.join(differs)}")
-    window = _window_of(now)
+    window = deck_window(now)
     theirs = held(src, calc.task.label)
     tree = Path(find_projects_root(fbase)).resolve()
     c = shared_contours(grid(*window), theirs, window=window,
@@ -645,7 +631,7 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
         # keeps fewer than every finished energy.
         from ..transport.window import fitted
         try:
-            fit = fitted(_window_of(ran), window[0], window[1])
+            fit = fitted(deck_window(ran), window[0], window[1])
         except ValueError:
             return ""
         return (f"; fitted to the finished grid: {fit.emin:.5f}…"

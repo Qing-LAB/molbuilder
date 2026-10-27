@@ -2014,7 +2014,7 @@ the undisplaced reference every displaced curve is compared against, and it
 runs too — and `f001`… follow in file order, so a folder and a message say the
 same index (*frame index 1 (of 3)* is `f001`; `model/structure.md` § 2.2e: the
 code's index everywhere, a folder name included, a number only on the UI's
-display; `transport.stages.frame_token`).
+display; `paths.frame_token`).
 
 **One mode per frame set, and what each frame is, stated in the pair**
 *(user, 2026-10-09: "i would rather let one multi-frame focus on one mode ...
@@ -2227,7 +2227,12 @@ in its own copy of the cited junction (§ 4); false writes no key.
 
 The record names the switch and computes the low-bias I–V itself: a sum over
 the transmission TBtrans wrote, with the leads' Fermi functions — no TBtrans
-run at a voltage the device did not converge at. `jobset migrate` writes the switch for a description that
+run at a voltage the device did not converge at. **Every current the record
+computes is by TBtrans's own rule**, one function (`record.landauer_current`)
+for the low-bias I–V and for a point that shares energies (§ 2a.16): each
+energy's transmission, times the spacing of the grid its deck states (the
+mid-rule's weight, `energies.spacing`), times the two leads' Fermi functions'
+difference, G₀ times the sum. `jobset migrate` writes the switch for a description that
 states the older `bias.treatment` word.
 
 #### Where bias sits in the map

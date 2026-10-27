@@ -77,8 +77,11 @@ def homo_index(mo_occ) -> int:
 #: generated on the host and executed inside `molbuilder-pySCF`, so whether the
 #: analytic route exists is a property of the env it lands in, not of the
 #: machine that wrote it.
-def dipole_derivatives(mf, free_atom_idxs, want_ir):
+def dipole_derivatives(mf, free_atom_idxs, want_ir, *, repair: str):
     """The Hessian, and -- when asked and available -- dmu/dR with it.
+    ``repair`` is the command that installs the analytic route's package,
+    as this machine spells it into the script (`pyscf.vibration_emitters.
+    ir_repair_command`), said when the package is missing.
 
     Returns ``(hessian, dmu_dr, route)``:
 
@@ -216,8 +219,7 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir):
         except ImportError:
             print("  pyscf.prop.infrared not installed -- IR falls back to "
                   "finite-difference dipoles (same intensities, 6N extra "
-                  "SCFs).  Install it: bash scripts/install-env.sh repair "
-                  "molbuilder-pySCF --include-optional")
+                  f"SCFs).  Install it: {repair}")
         except Exception as _exc:          # noqa: BLE001 -- see below
             # Deliberately broad, and deliberately LOUD.  The analytic
             # route is an optimisation over a working fallback, so no

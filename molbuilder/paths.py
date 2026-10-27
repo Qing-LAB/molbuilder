@@ -154,6 +154,16 @@ def attempt_name(n: int) -> str:
     return f"{ATTEMPT_PREFIX}{int(n)}"
 
 
+def frame_token(frame: int) -> str:
+    """A frame's folder token: its index, three digits -- ``f000`` the
+    first, frame index 0 -- a transport point's frame in its cited set
+    (`engines/transport.md` § 2a.9) and a vibration's optical call
+    (`engines/vibration.md` § 5.11 § 2) alike; the code's index everywhere
+    but the UI's display, a folder name included (`model/structure.md`
+    § 2.2e)."""
+    return f"f{int(frame):03d}"
+
+
 def attempt_dir(container, n: int) -> Path:
     """The directory attempt *n* of this stage or trial runs in."""
     return Path(container) / attempt_name(n)
@@ -409,4 +419,6 @@ __all__ = [
     # the attempt -- composer, reader, finder (§ 4.5's pairing)
     "run_folder_of", "ATTEMPT_PREFIX", "attempt_name", "attempt_dir",
     "attempt_index", "attempts_in",
+    # a frame's folder
+    "frame_token",
 ]

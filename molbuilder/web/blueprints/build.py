@@ -2883,12 +2883,11 @@ def _read_as(folder) -> dict:
     """What each record is on disk -- ``{task, request}``, each the SHA-256
     of the file's bytes, or ``None`` when it is not there: what the folder
     answer serves and Save compares (`web/task-setup.md` § 8)."""
-    import hashlib
+    from ...persist import sha256_of
     out = {}
     for which, name in _RECORD_NAMES:
         path = pathlib.Path(folder) / name
-        out[which] = (hashlib.sha256(path.read_bytes()).hexdigest()
-                      if path.is_file() else None)
+        out[which] = sha256_of(path) if path.is_file() else None
     return out
 
 

@@ -67,8 +67,45 @@ def read_json(path) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def stage_bytes(target, data: bytes, *, mode: Optional[int] = None,
+                sync: bool = False) -> Path:
+    """``data`` written to a UNIQUE temp beside ``target`` -- :func:`write_bytes`'
+    first half, and the whole of a writer that puts several files in place
+    together (a structure's pair, `workingcopy_structure`): each staged, then
+    each renamed.  Its mode is ``mode``, else the target's own, else 0644;
+    ``sync`` flushes it to the disk before it is returned -- a filesystem
+    that refuses (tmpfs on some kernels) still has the bytes before the
+    rename.  The caller renames it into place or removes it."""
+    target = Path(target)
+    if mode is None:
+        try:
+            mode = target.stat().st_mode & 0o777
+        except OSError:
+            mode = 0o644
+    fd, tmp_name = tempfile.mkstemp(dir=str(target.parent),
+                                    prefix=target.name + ".", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            if sync:
+                handle.flush()
+                try:
+                    os.fsync(handle.fileno())
+                except OSError:
+                    pass
+        os.chmod(tmp, mode)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+    return tmp
+
+
 def write_bytes(target, data: bytes, *, mode: Optional[int] = None,
-                exclusive: bool = False) -> Path:
+                exclusive: bool = False, sync: bool = False) -> Path:
     """Write via a **unique** temp + ``os.replace`` — the one writer
     (`checkpoint._atomic_write_bytes` delegates here).
 
@@ -109,21 +146,14 @@ def write_bytes(target, data: bytes, *, mode: Optional[int] = None,
     the target, and fails rather than clobbers.  It is a LINK, which cannot
     cross a filesystem -- and never has to, the temp being beside its
     target.
+
+    ``sync`` flushes the bytes to the disk before the rename
+    (:func:`stage_bytes`) -- a structure's files, which a crash must not
+    leave holding nothing.
     """
     target = Path(target)
-    parent = target.parent
-    if mode is None:
-        try:
-            mode = target.stat().st_mode & 0o777
-        except OSError:
-            mode = 0o644
-    fd, tmp_name = tempfile.mkstemp(dir=str(parent),
-                                    prefix=target.name + ".", suffix=".tmp")
-    tmp = Path(tmp_name)
+    tmp = stage_bytes(target, data, mode=mode, sync=sync)
     try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-        os.chmod(tmp, mode)
         if exclusive:
             # CREATES the name or fails; never replaces.  `os.replace` below
             # would silently destroy the file this call was told not to touch.
@@ -220,4 +250,5 @@ def sha256_of(path) -> str:
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "read_json",
-           "json_text", "write_json", "write_bytes", "sha256_of"]
+           "json_text", "write_json", "stage_bytes", "write_bytes",
+           "sha256_of"]

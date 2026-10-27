@@ -797,7 +797,11 @@ every reader reads it back through `runfiles.parse`, with the run's label —
 one spelling, no second regex.
 
 For a charged molecule **`prep`** also drops a `makov_payne_correction.py`
-script next to the `.fdf` (§ 4). And each per-stage `.molwatch.log` carries
+script next to the `.fdf` (§ 4); it reads the run's output -- its last
+energy, its cell and SIESTA's own `Emadel` -- with SIESTA's one reading pass,
+from the monitor's bundle beside it in every run (`mb_monitor.pyz`), so it
+runs where molbuilder is not installed and reads the output as every other
+reader does. And each per-stage `.molwatch.log` carries
 `# convergence.<token>.<key>: <value>` lines — the stage's targets under its
 own token (`max_force_tol_eV_per_A`, `max_geom_iter`; the keys
 `trajectory_log/keys.py`'s, one grammar) so the Results inspector draws the right threshold for the

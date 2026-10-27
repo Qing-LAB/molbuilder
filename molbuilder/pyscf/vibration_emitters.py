@@ -76,6 +76,7 @@ PYSCF_ENGINE_LABEL = "PySCF (analytic Hessian + dα/dR)"
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- the spectrum
 #: deck's own, declared in `end_lines` beside the relaxation deck's.
 from .end_lines import SPECTRUM_END_MARKER   # noqa: E402
+from ..envs.hints import fix_cmd as _fix_cmd   # noqa: E402
 
 from ..atom_permutation import MAP_KEY
 from ..spectra.results import SCHEMA_VERSION
@@ -103,6 +104,17 @@ _RAMAN_FD_STEP_ANG = 0.005
 # --------------------------------------------------------------------- #
 # Header docstring + Methods paragraph                                  #
 # --------------------------------------------------------------------- #
+
+
+
+def ir_repair_command() -> str:
+    """The command that brings the analytic IR's package into the PySCF
+    env -- its optional packages, through the one spelling of an env
+    command (`envs.hints.fix_cmd`) and the env's one name
+    (`diagnostics.DEFAULT_ENV_NAMES`) -- written into the script for the
+    job's own message (`spectra.pyscf_vibration.dipole_derivatives`)."""
+    from ..diagnostics import DEFAULT_ENV_NAMES
+    return _fix_cmd("repair", DEFAULT_ENV_NAMES["pyscf"], "--include-optional")
 
 
 def _emit_header_docstring(struct: Structure,
@@ -140,7 +152,8 @@ def _emit_header_docstring(struct: Structure,
     out.append(f"Job name  : {cfg.job_name}")
     out.append("")
     # The stage by its NAME, through the one printer (`job-system.md` § 5.3).
-    from ..identity import LAUNCH_MODE_NOTE, deck_launch
+    from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE, deck_launch,
+                            hand_run)
     _launch = deck_launch(names.stage)
     if _launch:
         out.append("Run it the way it was prepared (the described route), "
@@ -150,8 +163,7 @@ def _emit_header_docstring(struct: Structure,
         out.append("    -- the wrapper beside this deck activates the env and "
                    "logs the run.")
     from .input import PYSCF_STDOUT_ROLE
-    out.append("By hand, the same wrapper with its run's number, 0 for the first:")
-    out.append(f"    bash {names.name('.run.sh')} --run 0")
+    out.append(f"    {hand_run(names)}    # {HAND_RUN_NOTE}")
     out.append("or PySCF directly, with the bundles beside this deck -- then")
     out.append("nothing records the run:")
     out.append(f"    python {names.name('.py')} --run 0 > "
@@ -196,7 +208,7 @@ def _emit_header_docstring(struct: Structure,
         out.append("")
     out.append("Dependencies:")
     out.append("    Use the generated molbuilder run wrapper after bootstrap:")
-    out.append("        bash scripts/install-env.sh bootstrap --yes")
+    out.append("        " + _fix_cmd("bootstrap", "--yes"))
     out.append("")
     # ---- Methods paragraph (verbatim).  Indented one space so the
     # triple-quoted docstring doesn't get confused by `"""` inside
@@ -790,7 +802,8 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    _mf_for_hess = _build_mf_at(COORDS_EQ_ANG, density_fit=False,")
     out.append("                                force_cpu=(not _GPU_HAS_HESSIAN))")
     out.append("_HESS_RAW, DMU_DR, IR_ROUTE = _mb_dipole_derivatives(")
-    out.append("    _mf_for_hess, FREE_ATOM_IDXS, _WANT_ANALYTIC_IR)")
+    out.append("    _mf_for_hess, FREE_ATOM_IDXS, _WANT_ANALYTIC_IR,")
+    out.append(f"    repair={ir_repair_command()!r})")
     out.append("HESS = _mb_as_numpy(_HESS_RAW)")
     out.append("# What the Hessian covered, recorded for the reader and the Methods text:")
     out.append("# 'free' -- second derivatives for the free atoms only (atoms are held);")
@@ -1047,20 +1060,15 @@ def _emit_ir_projection() -> List[str]:
     out.append("# anyway (any IR code has this caveat), so we don't try to fix it")
     out.append("# here -- but a user computing IR on a cation/anion should treat")
     out.append("# absolute values with extra suspicion.")
-    # THE CONSTANT'S ONE HOME is `constants` -- the script states its value.
-    from ..constants import IR_KM_MOL_PER_D2_A2_AMU
-    out.append(f"_IR_PREFACTOR_KM_MOL_PER_D2_PER_A2_PER_AMU = "
-               f"{IR_KM_MOL_PER_D2_A2_AMU!r}")
+    out.append("# THE FORMULA'S ONE HOME, from the bundle: the orientation average")
+    out.append("# (spectra.activity.ir_strength_km_mol, the prefactor its constant).")
     out.append("for _n in range(len(modes_payload)):")
     out.append("    _L_canonical = NORM_MODES_CANONICAL[_n]")
     out.append("    # dμ/dQ_n is a 3-vector; einsum sums DMU_DR over its k (atom)")
     out.append("    # and α (direction) axes weighted by L_canonical, leaving the")
     out.append("    # remaining axis i (dipole Cartesian component).")
     out.append("    _dmudq = np.einsum('kai,ka->i', DMU_DR, _L_canonical)")
-    out.append("    _ir_intensity = (")
-    out.append("        _IR_PREFACTOR_KM_MOL_PER_D2_PER_A2_PER_AMU")
-    out.append("        * float(np.dot(_dmudq, _dmudq))")
-    out.append("    )")
+    out.append("    _ir_intensity = _mb_ir_strength_km_mol(_dmudq)")
     out.append("    modes_payload[_n]['ir_intensity_km_mol'] = _ir_intensity")
     out.append("    # THE VECTOR ITSELF, beside its orientation average: every light")
     out.append("    # direction's strength is computed from it, a molecule held in one")
@@ -1122,7 +1130,8 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("except ImportError:")
     out.append("    raise SystemExit(")
     out.append("        'COMPUTE_RAMAN=True requires the optional pyscf-properties '")
-    out.append("        'package.  Bootstrap or repair the managed backend: bash scripts/install-env.sh bootstrap --yes'")
+    out.append("        'package.  Bootstrap or repair the managed backend: "
+               + _fix_cmd("bootstrap", "--yes") + "'")
     out.append("    )")
     out.append("")
     out.append("def _polarizability(_mf):")

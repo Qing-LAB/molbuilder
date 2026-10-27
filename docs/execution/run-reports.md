@@ -272,8 +272,8 @@ directory of shipped modules reads as a directory of decks.
 | which fields a card shows for an event, in what order, for each receiver | the layout file, through its reader `report_cards` (§ 4.1c) | `report_cards.py` · `report-cards.json`, the bundle's one data member |
 | *not a report — what the run script records through it*: a flat run's warm retry, its own launch record (`mb_monitor.pyz retried`) | the one writer, `runrecord.record_retry` → `write_launch`, through `persist` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) | `runrecord.py` · `persist.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
-| the wall it was sent with (§ 2.1b) | the run's launch record, `runrecord.launch_record` — `placed_on.time`, read by `runrecord.sent_wall_s` | `runrecord.py` |
-| when the job started (§ 2.1b) | its header's `MB_JOB_STARTED`, written by `runwrap.render_sbatch`, its name `monitor.JOB_STARTED_VAR` | `mb_monitor.py` |
+| the wall it was sent with (§ 2.1b) | the run's launch record, `runrecord.launch_record` — `placed_on.time`, read by `runrecord.sent_wall_s` through the wall's one parser, `scheduler.quantities.parse_walltime`, which travels with it | `runrecord.py` |
+| when the job started (§ 2.1b) | its header's `MB_JOB_STARTED`, written by `runwrap.render_sbatch`, its name `runtime_info.JOB_STARTED_VAR` -- the job's clock's names, `MB_WALL_S` and `MB_WALL_SLACK_S` beside it | `mb_monitor.py` |
 
 **What stays the monitor's is what no file states**: the watched PID — *when*
 the run ended — the machine and its utilisation, when to tell someone, and the

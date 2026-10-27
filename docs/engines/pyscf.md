@@ -322,7 +322,11 @@ own when its settings state one; else what the run script exported or the
 scheduler allocated — the variables `runtime_info.THREAD_SOURCES` names, in
 that order, the list the run script's own chain is built from
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.2); else the
-node's physical cores. A script imports every piece its kind can call,
+node's physical cores. **The node's physical cores are counted once per
+run**: by its run script's one probe, which exports them
+(`runtime_info.NODE_CORES_VAR`), so the count the script records in its
+runtime facts is the one the run's session log says; a script run by hand,
+outside its run script, counts them itself. A script imports every piece its kind can call,
 whatever its settings call: the imports are its load check.
 
 **No molbuilder function is copied into a script.** What is still written in it

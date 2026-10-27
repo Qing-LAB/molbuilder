@@ -27,16 +27,20 @@ def test_a_perfect_channels_low_bias_current_is_g0_times_v():
     science exception (testing.md § 3a): the integral is run here on
     T ≡ 1, whose answer the contract states.
 
-    Silent before this: no test ran the integral, so `np.trapz` -- gone from
-    this numpy -- crashed `summarize task` on the road's first low-bias
-    calculation (2026-10-08); reading the code shows a valid call.
+    Silent without it: reading the code shows a valid call even where the
+    numpy it calls has no such function -- `summarize task` crashed so on
+    the road's first low-bias calculation (2026-10-08).
     """
     from molbuilder.constants import CONDUCTANCE_QUANTUM_S as G0
-    import numpy as np
+    from molbuilder.transport.energies import grid, spacing
 
-    e = np.linspace(-2.0, 2.0, 4001).tolist()
+    # THE ENERGIES TBTRANS WRITES for a window, and the spacing its deck
+    # states -- each energy's weight in the integral.
+    window = (-2.0, 2.0, 4000)
+    e = grid(*window)
     volts = [0.0, 0.2, 0.4, -0.2, 3.9]
-    got = low_bias_iv(e, [1.0] * len(e), volts, kt_ev=0.0259)
+    got = low_bias_iv(e, [1.0] * len(e), volts, kt_ev=0.0259,
+                      spacing_ev=spacing(window))
     # SIGNED: I = G0·V at a negative voltage too -- μ_L,R = ±V/2.
     for v, i in zip(volts[:4], got["current_a"]):
         assert abs(i - G0 * v) < 1e-3 * G0 * max(abs(v), 0.1), (v, i, G0 * v)

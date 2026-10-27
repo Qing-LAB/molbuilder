@@ -2740,7 +2740,11 @@ _mb_py="${CONDA_PREFIX:+$CONDA_PREFIX/bin/python3}"
 ```
 
 — run from the folder molbuilder's package was imported from, which the
-job's node must see (a cluster's shared home). A step that exits nonzero
+job's node must see (a cluster's shared home). `--in-job` is the job's id as
+its shell knows it: the scheduler's, `MB_JOB_ID`, in a queue job; run here,
+`<host>-<pid>` — one template, `joblist.HERE_ID`, filled by the job's address
+with its values and by the walk with the shell's own `$(hostname)` and `$$` —
+so each group's runs join the job's entry `molbuilder jobs` lists. A step that exits nonzero
 stops the walk; its log, `launch/<seq>.log`, holds every group's launch as it printed
 it, and each group's own walk keeps its own log. **The wall each run is told**
 (`running-a-job.md` § 3.6): sent to a queue, the job's — the sequence's wall,
@@ -2887,7 +2891,7 @@ id, or beside a run left in the background, which is then named by its pid,
 | `calculation` | the calculation's folder — printed, as every line names it, by its address from the projects root |
 | `members` | each member's stage → its run, as a record names a run (`runrecord.RunRef`: its folder, or where its stage's runs share one, its own name), and that run's launch record, which its state is asked through — a sequence's, added by each group's launch inside it as it sends its runs |
 | `sequence` | a sequence of groups (§ 6.0): each group it launches, in order, with its stages, and the sequence's name; `null` for every other job |
-| `launched_at` | when it went |
+| `launched_at` | when it went — UTC, to the second, `…Z`: the run records' one clock (`runrecord.stamp`), so a run's launch record compares with it (a sequence's group read as sent by it, `ready._sent_by`); one written before 2.43.2 says `+00:00`, read alike (`runrecord.stamp_time`) |
 
 **What it is doing is read fresh, each time** — one fact, one source, one
 answer (`joblist.is_going`), which `molbuilder jobs` asks of each job,
@@ -2937,14 +2941,14 @@ here, a transmission left in the background, then once it was stopped:
 
 ```text
 qlabsrv-312877  run here on qlabsrv, in the background, pid 312877 -- its process is going
-  launched 2026-10-16T22:06:45+00:00; its calculation:
+  launched 2026-10-16T22:06:45Z; its calculation:
   molbuilder jobset status --bundle P/transport/S
     transmission  05_transmission/run-0  running
 ```
 
 ```text
 qlabsrv-312877  run here on qlabsrv, in the background, pid 312877 -- its process has ended
-  launched 2026-10-16T22:06:45+00:00; its calculation:
+  launched 2026-10-16T22:06:45Z; its calculation:
   molbuilder jobset status --bundle P/transport/S
     transmission  05_transmission/run-0  failed -- stopped before its end: …
   ended -- said once; its address is removed

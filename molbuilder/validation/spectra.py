@@ -154,20 +154,15 @@ def spectra_render_checks(struct: Structure,
     # not vibrations.  The deck projects them out before diagonalising, so
     # nothing here is a warning: it is the count the person will see missing
     # from 3 N_free, said before the run is paid for.
-    _frozen_idx = sorted(int(i) for i in (cfg.frozen_indices or []))
-    _positions = getattr(struct, "positions", None)
-    if _frozen_idx and _positions is not None:
-        from ..spectra.normal_modes import rigid_motions
+    _frozen_idx = sorted(int(i) for i in (struct.frozen_atoms or []))
+    if _frozen_idx and getattr(struct, "positions", None) is not None:
         try:
-            # ON THE AXES THE DECK COMPUTES ON -- the view's, a cluster's
+            # ON THE AXES THE DECK COMPUTES ON -- PySCF's, a cluster's
             # (`cell.engine_axis_kinds`, plan § 5w K8).
-            _n_rigid = len(rigid_motions(
-                _positions, _frozen_idx, cfg.axis_kind,
-                cell=getattr(struct, "cell", None)))
+            _n_free, _n_rigid, _n_modes = modes_of(struct, "pyscf")
         except ValueError:
             _n_rigid = None      # an index out of range is reported below
         if _n_rigid:
-            _n_free = int(len(_positions)) - len(_frozen_idx)
             issues.append(Issue(
                 severity="info",
                 message=(
@@ -175,7 +170,7 @@ def spectra_render_checks(struct: Structure,
                     f"whole-body motion(s) of the free atoms that cost no "
                     f"energy (a turn about the held atoms).  They are not "
                     f"vibrations: the deck removes them before diagonalising, "
-                    f"so {3 * _n_free - _n_rigid} modes will be reported, not "
+                    f"so {_n_modes} modes will be reported, not "
                     f"{3 * _n_free}, and the count removed is recorded with "
                     f"the results."
                 ),
@@ -473,7 +468,8 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
             where="structure.regions"))
         return issues
     if held:
-        n_rigid = rigid_motion_count(struct, cfg)
+        from ..template import engine_name
+        _f, n_rigid, n_modes = modes_of(struct, engine_name(type(cfg)))
         if n_rigid:
             issues.append(Issue(
                 severity="info",
@@ -482,7 +478,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
                     f"whole-body motion(s) of the free atoms that cost no "
                     f"energy (a turn about the held atoms).  They are not "
                     f"vibrations: they are removed before diagonalising, "
-                    f"so {3 * n_free - n_rigid} modes will be reported, "
+                    f"so {n_modes} modes will be reported, "
                     f"not {3 * n_free}, and the count removed is recorded "
                     f"with the results."),
                 where="structure.regions"))
@@ -621,23 +617,22 @@ def selector_issues(cfg, *, none_means: str) -> List[Issue]:
     return issues
 
 
-def rigid_motion_count(struct: Structure, cfg) -> int:
-    """HOW MANY WHOLE-BODY MOTIONS of the free atoms cost no energy with
-    the structure's held atoms held (`normal_modes.rigid_motions`, on the
-    axes the engine computes on -- the one door every engine's count asks,
-    `cell.engine_axis_kinds`): what a run removes before diagonalising, so
-    it reports ``3·n_free`` less these (`science/normal-modes.md` § 3.1) --
-    the one derivation this module's check and prep's count both state."""
+def modes_of(struct: Structure, engine: str):
+    """``(n_free, n_rigid, n_modes)`` of ``struct`` for ``engine``'s run --
+    its held atoms the structure's one read of them
+    (`Structure.frozen_atoms`), the whole-body motions on the axes the
+    engine computes on (`cell.engine_axis_kinds`), the count the rank rule's
+    (`normal_modes.mode_count`, `science/normal-modes.md` § 3.1): the one
+    count prep's checks, its size line and the Methods text state.  An index
+    outside the structure is a :class:`ValueError` (`rigid_motions`)."""
     from ..cell import engine_axis_kinds
-    from ..spectra.normal_modes import rigid_motions
-    from ..template import engine_name
-    held = sorted(int(i) for i in (struct.frozen_atoms or []))
-    return len(rigid_motions(
-        struct.positions, held,
-        engine_axis_kinds(engine_name(type(cfg)), struct),
-        cell=getattr(struct, "cell", None)))
+    from ..spectra.normal_modes import mode_count
+    return mode_count(struct.positions,
+                      sorted(int(i) for i in (struct.frozen_atoms or [])),
+                      engine_axis_kinds(engine, struct),
+                      cell=getattr(struct, "cell", None))
 
 
 # The render-time checks are the module's public door.
 __all__ = ["spectra_render_checks", "siesta_vibration_checks",
-           "selector_issues", "rigid_motion_count"]
+           "selector_issues", "modes_of"]

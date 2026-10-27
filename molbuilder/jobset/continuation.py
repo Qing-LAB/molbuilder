@@ -179,7 +179,8 @@ def usable(state: Optional[str]) -> bool:
 
 
 def done(folder, names, *, launch=None, products=(),
-         launched_in=None, verdict_counts: bool = True) -> Tuple[bool, str]:
+         launched_in=None, verdict_counts: bool = True,
+         record_says: Optional[str] = None) -> Tuple[bool, str]:
     """THE DONE-DOOR (`engines/transport.md` § 2a.11): whether the run, or a
     swept run's point, in ``folder`` is DONE -- ``(True, "done")`` -- or what
     it is instead, in the run door's words.  Done is three facts, all read
@@ -195,8 +196,14 @@ def done(folder, names, *, launch=None, products=(),
     (a point's run's folder; `run_status`).  ``verdict_counts`` False where
     the kind says a point's verdict is not its done -- a vibration's
     relaxation call, done finished, converged or not
-    (`points.PointsOf.verdict_counts`)."""
+    (`points.PointsOf.verdict_counts`).  ``record_says`` what the run's own
+    record says against the point being done, where its kind keeps one --
+    a vibration call whose record step failed (`points.PointsOf.
+    record_says`).  What a finished point lacks is said in the one rule's
+    words (`_run_ending.not_done_why`), which the vibration job's own
+    record step asks too."""
     from ..parse.dirs import run_status
+    from ..parse.engines._run_ending import not_done_why
     folder = Path(folder)
     if not folder.is_dir():
         return False, "not opened"
@@ -208,11 +215,13 @@ def done(folder, names, *, launch=None, products=(),
         return False, "not run"
     if not usable(st.state):
         return False, st.detail or st.state
-    if verdict_counts and st.verdict is not None and not st.verdict[1]:
-        return False, f"finished, not converged ({st.converged_words})"
-    missing = [_said(p) for p in products if not _held(folder, p)]
-    if missing:
-        return False, f"finished without {', '.join(missing)}"
+    if record_says:
+        return False, record_says
+    why = not_done_why(st.verdict, counts=verdict_counts,
+                       missing=[_said(p) for p in products
+                                if not _held(folder, p)])
+    if why:
+        return False, why
     from ..runfiles import COPIED_FROM_FILE
     from ..transport.energies import SHARED_DIR, sharing_of
     if (not (folder / SHARED_DIR / COPIED_FROM_FILE).is_file()
@@ -694,7 +703,8 @@ def point_rows(run, names, task, stage: str, *, launch, base):
         ok, why = done(pdir, names, launch=launch, launched_in=run,
                        products=declared.products_of(stage, task.label, base,
                                                      point=pt),
-                       verdict_counts=declared.verdict_counts(stage, pt))
+                       verdict_counts=declared.verdict_counts(stage, pt),
+                       record_says=declared.record_says(run, names, pt))
         # ITS RUN'S STATE AND VERDICT, through the one door every reader of
         # a run's state asks (`runs.concluded`: the run's record, and the
         # scheduler where this machine sent its job, its answer written

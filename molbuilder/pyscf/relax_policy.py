@@ -47,11 +47,15 @@ def wall_deadline(environ=None):
     (`engines/pyscf.md` § 3.9, `running-a-job.md` § 3.6).  Any absent or
     unreadable, no deadline: the deck runs until it is done."""
     import os
+    try:                                    # inside molbuilder
+        from ..runtime_info import JOB_STARTED_VAR, WALL_SLACK_VAR, WALL_VAR
+    except ImportError:                     # beside a job, in mb_pyscf.pyz
+        from runtime_info import JOB_STARTED_VAR, WALL_SLACK_VAR, WALL_VAR
     env = os.environ if environ is None else environ
     try:
-        wall = float(env["MB_WALL_S"])
-        started = float(env["MB_JOB_STARTED"])
-        slack = float(env["MB_WALL_SLACK_S"])
+        wall = float(env[WALL_VAR])
+        started = float(env[JOB_STARTED_VAR])
+        slack = float(env[WALL_SLACK_VAR])
     except (KeyError, ValueError, TypeError):
         return None
     return started + wall - slack

@@ -447,7 +447,8 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, write_group
     from .compose import recorded_junction
     from .record import iv_notes_placed, order_unstated_said
-    from .stages import (TRANSPORT_STAGES, frame_token, frames_of,
+    from ..paths import frame_token
+    from .stages import (TRANSPORT_STAGES, frames_of,
                          per_point_rungs, rung_points)
     from .transiesta import LEAD_NAMES
     base = Path(base_dir)

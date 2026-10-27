@@ -67,6 +67,8 @@ try:                                        # inside molbuilder
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
     from ..parse.engines.siesta_reader import SiestaReader
+    from ..parse.engines._run_ending import (ending_of, not_done_why,
+                                             verdict_of)
     from ..parse.fdf import (deck_atoms, fdf_key, read_deck, read_fdf,
                              system_label)
     from ..runfiles import compose
@@ -91,8 +93,8 @@ try:                                        # inside molbuilder
     from ..runfiles import (COORDINATES_FILE, FIRST_ATTEMPT, MONITOR_BUNDLE,
                             PSEUDO_DIR, ROLE_OPTICAL, VIBRATION_BUNDLE,
                             RunNames, beside_the_deck, find, parse)
-    from ..paths import run_folder_of
-    from ..runrecord import read_continued_from, stamp
+    from ..paths import frame_token, run_folder_of
+    from ..runrecord import newest_run, read_continued_from, stamp
     from ..siesta.deck_lines import coordinates_text
     from ..siesta.vibration_phases import (FC, OPTICAL, RELAX, Call,
                                            add_call, calls_of, entry_of,
@@ -109,6 +111,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
     from siesta_reader import SiestaReader
+    from _run_ending import (ending_of,  # type: ignore[no-redef]
+                             not_done_why, verdict_of)
     from fdf import (deck_atoms, fdf_key, read_deck,  # type: ignore[no-redef]
                      read_fdf, system_label)
     from runfiles import compose
@@ -133,9 +137,9 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                           MONITOR_BUNDLE, PSEUDO_DIR, ROLE_OPTICAL,
                           VIBRATION_BUNDLE, RunNames, beside_the_deck, find,
                           parse)
-    from paths import run_folder_of  # type: ignore[no-redef]
-    from runrecord import (read_continued_from,  # type: ignore[no-redef]
-                           stamp)
+    from paths import frame_token, run_folder_of  # type: ignore[no-redef]
+    from runrecord import (newest_run,  # type: ignore[no-redef]
+                           read_continued_from, stamp)
     from deck_lines import coordinates_text
     from vibration_phases import (FC, OPTICAL, RELAX, Call, add_call,
                                   calls_of, entry_of, index_path, phase,
@@ -594,11 +598,14 @@ def _species_index(deck_text: str) -> Mapping[str, int]:
 
 
 def _newest_output(folder: Path, names: "RunNames") -> Optional[Path]:
-    """The newest engine output of the call in ``folder`` (`runfiles.find`:
-    the stage's `.out`, the highest run index), or ``None``."""
-    got = [(rf.run or 0, p) for p, rf in find(folder, names.label,
-                                             role=".out", stage=names.stage)]
-    return max(got)[1] if got else None
+    """The engine output of the call in ``folder``'s NEWEST RUN -- the run
+    door's (`runrecord.newest_run`: the highest index any file of it
+    reached) -- or ``None`` where that run printed none: an engine that
+    died before its first line is never read from the try before it."""
+    n = newest_run(folder, names)
+    got = [p for p, rf in find(folder, names.label, role=".out",
+                               stage=names.stage) if rf.run == n]
+    return got[0] if n is not None and got else None
 
 
 def _reading(output: Path):
@@ -782,14 +789,14 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     order = (run.permutation.map_to_user_index(list(range(n)))
              if run.permutation is not None else list(range(n)))
     species = _species_index(read_deck(run.deck))
-    frames = [(Call(OPTICAL, "f000", mode=None, side=0), r0)]
+    frames = [(Call(OPTICAL, frame_token(0), mode=None, side=0), r0)]
     for k in picked:
         m = res.modes[k - 1]
         l_user = mode_over_atoms(m.eigenvector_canonical, res.free_atom_idxs, n)
         l_deck = np.asarray(l_user, dtype=float)[order]
         dq = q_for_largest_move(l_deck, delta)
         for side in (+1, -1):
-            frames.append((Call(OPTICAL, f"f{len(frames):03d}", mode=int(k),
+            frames.append((Call(OPTICAL, frame_token(len(frames)), mode=int(k),
                                 side=side, frequency_cm1=float(m.frequency_cm1),
                                 dq_amu12_ang=float(dq)),
                            displaced(r0, l_deck, side * dq)))
@@ -1028,29 +1035,37 @@ class _NothingToWrite(Exception):
 
 
 def _rows(here: _CallHere, index: dict) -> List[dict]:
-    """Each call the index lists, by the one done rule (§ 5.11 § 7;
-    `continuation.done`): done when it ended with exit 0, its record step
-    did not fail -- the call's conclusion then reads failed -- and it holds
-    its phase's products (`products_of`); each row with the call's words
-    and the run it was taken over from, where it was (`summary`)."""
+    """Each call the index lists, by the one done rule this machine's
+    done door asks (§ 5.11 § 6, § 7; `continuation.done`): done when it
+    ended with exit 0, its record step did not fail, its SCF converged
+    where its phase's verdict counts (`PhaseRule.verdict_counts`, the
+    verdict its record step read) and it holds its phase's products
+    (`products_of`) -- the last two said in the rule's own words
+    (`_run_ending.not_done_why`); each row with the call's words and the
+    run it was taken over from, where it was (`summary`)."""
     rows = []
     for row in index.get("calls") or []:
         call = Call.from_dict(row)
         ended = row.get("ended") is not None
-        held = all((here.run_dir / call.rel / name).is_file()
-                   for name in products_of(here.names.stage, here.label,
-                                           here.root, point=call))
-        ok = (ended and row.get("exit") in (0, "0")
-              and not row.get("record_error") and held)
+        said = row.get("verdict")
+        why = "; ".join(w for w in (
+            (f"exit {row.get('exit')}" if ended
+             and row.get("exit") not in (0, "0") else None),
+            row.get("record_error")) if w) or None
+        if ended and why is None:
+            why = not_done_why(
+                (said["of"], bool(said["converged"])) if said else None,
+                counts=phase(call.phase).verdict_counts,
+                missing=[name for name in products_of(
+                    here.names.stage, here.label, here.root, point=call)
+                    if not (here.run_dir / call.rel / name).is_file()])
+        ok = ended and why is None
         rows.append({"phase": row["phase"], "name": row.get("name"),
                      "words": call.words(), "done": ok, "ended": ended,
                      "started_from": row.get("taken_from"),
                      "state": ("finished" if ok else
                                "failed" if ended else "pending"),
-                     "why": "; ".join(w for w in (
-                         (f"exit {row.get('exit')}" if ended
-                          and row.get("exit") not in (0, "0") else None),
-                         row.get("record_error")) if w) or None})
+                     "why": why})
     return rows
 
 
@@ -1158,6 +1173,17 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
         write_index(here.index, index)
         failed = exc
 
+    # WHAT IT SAYS IT CONVERGED, read from its output by the reader this
+    # machine's status door reads it with (`_run_ending.verdict_of`) -- the
+    # one done rule's verdict (:func:`_rows`).
+    if output.is_file():
+        try:
+            said = verdict_of([ending_of(output)])
+            add_call(index, call, verdict=(
+                {"of": said[0], "converged": said[1]} if said else None))
+            write_index(here.index, index)
+        except Exception as exc:                        # noqa: BLE001
+            _record_failed("its verdict was not read", exc)
     if phase_name == RELAX and output.is_file():
         try:
             add_call(index, call, relaxation=_relaxation_record(output))
@@ -1171,27 +1197,33 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
             # result on disk for an analysis whose planning then failed.
             got = _force_constants(here, index)
             if got is None:
-                raise FinishError(
-                    f"{output.name}: the force-constant call holds no whole "
-                    f".FC -- nothing to analyse")
-            run, res = got
-            out = here.run_dir / compose(here.label, ".spectra.json")
-            planned = _plan_optical(here, run, res, index)
-            # THE OPTICAL CALLS' RECORD, every frame pending, and the
-            # result's citation of it: the Raman phase running (§ 8).
-            optical = _write_optical(here, index, res) if planned else None
-            res = replace(res, phase_raman=(PHASE_RUNNING if planned
-                                            else PHASE_NOT_REQUESTED),
-                          raman_route=("optical" if planned else "none"),
-                          raman_fd_step_ang=(float(run.fc.displacement_ang)
-                                             if planned else None),
-                          optical=optical)
-            dump_spectra_json(res, out)
-            add_call(index, call, modes=len(res.modes))
-            write_index(here.index, index)
-            _say("INFO", f"vibration: {len(res.modes)} mode(s) from "
-                         f"{Path(run.fc.path).name}; "
-                         f"{planned} optical call(s) planned; wrote {out.name}")
+                # NOT DONE by the one rule -- not converged, or no .FC --
+                # so nothing to analyse; the call's row says why (§ 5).
+                why = next(r["why"] for r in _rows(here, index)
+                           if r["phase"] == FC)
+                _say("INFO", f"vibration: {call.words()} is not done -- "
+                             f"{why}: nothing to analyse")
+            else:
+                run, res = got
+                out = here.run_dir / compose(here.label, ".spectra.json")
+                planned = _plan_optical(here, run, res, index)
+                # THE OPTICAL CALLS' RECORD, every frame pending, and the
+                # result's citation of it: the Raman phase running (§ 8).
+                optical = (_write_optical(here, index, res) if planned
+                           else None)
+                res = replace(
+                    res, phase_raman=(PHASE_RUNNING if planned
+                                      else PHASE_NOT_REQUESTED),
+                    raman_route=("optical" if planned else "none"),
+                    raman_fd_step_ang=(float(run.fc.displacement_ang)
+                                       if planned else None),
+                    optical=optical)
+                dump_spectra_json(res, out)
+                add_call(index, call, modes=len(res.modes))
+                write_index(here.index, index)
+                _say("INFO", f"vibration: {len(res.modes)} mode(s) from "
+                             f"{Path(run.fc.path).name}; {planned} optical "
+                             f"call(s) planned; wrote {out.name}")
         except Exception as exc:                        # noqa: BLE001
             # THE ANALYSIS FAILED after a clean engine exit: the run is
             # over -- nothing after the force constants can run -- so the

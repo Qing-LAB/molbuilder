@@ -90,6 +90,12 @@ class PointsOf:
     #: does (`continuation.done`); a vibration's relaxation call is done
     #: finished, converged or not (`engines/vibration.md` § 5.11 § 5, § 6).
     verdict_counts: Callable = lambda stage, point: True
+    #: ``(run_dir, names, point) -> Optional[str]``: what the run's own
+    #: record says against a point being done (`continuation.done`) -- a
+    #: vibration call whose record step failed, in its index
+    #: (`engines/vibration.md` § 5.11 § 7) -- ``None`` where it says
+    #: nothing.
+    record_says: Callable = lambda run, names, point: None
     #: Whether the run's points SHARE THE STAGE'S ONE WALL -- the card's
     #: wall is the run's, every point counting from the run's start (a
     #: vibration's calls, `engines/vibration.md` § 5.11 § 7a) -- rather than

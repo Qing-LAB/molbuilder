@@ -435,6 +435,7 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
     Runs inside ``molbuilder-pySCF`` like everything else in this file --
     pyscf lives only there.
     """
+    from molbuilder.pyscf.vibration_emitters import ir_repair_command
     from molbuilder.spectra.pyscf_vibration import dipole_derivatives
     script = tmp_path / "hess_identity.py"
     script.write_text(
@@ -449,7 +450,8 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
         "        if df: mf = mf.density_fit()\n"
         "        mf.run()\n"
         "        ref = np.asarray(mf.Hessian().kernel())\n"
-        "        h, dmu, route = _mb_dipole_derivatives(mf, [0,1,2,3], True)\n"
+        f"        h, dmu, route = _mb_dipole_derivatives(mf, [0,1,2,3], True, "
+        f"repair={ir_repair_command()!r})\n"
         "        print('RESULT', xc, df, route,\n"
         "              float(np.max(np.abs(h - ref))),\n"
         "              None if dmu is None else list(dmu.shape))\n",
@@ -654,6 +656,7 @@ def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
     dispersion correction, whose Hessian term is full-size and has to be
     cut to the free atoms by hand -- and it must come back numbered by
     position in the list, which is why the deck places it by index."""
+    from molbuilder.pyscf.vibration_emitters import ir_repair_command
     from molbuilder.spectra.pyscf_vibration import dipole_derivatives
     script = tmp_path / "partial_hessian.py"
     script.write_text(
@@ -668,7 +671,8 @@ def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
         "    mol = gto.M(atom=atom, basis=basis, verbose=0)\n"
         "    mf = (dft.RKS(mol, xc=xc) if xc else scf.RHF(mol)).run()\n"
         "    full = np.asarray(mf.Hessian().kernel())\n"
-        "    reduced, dmu, route = _mb_dipole_derivatives(mf, free, True)\n"
+        f"    reduced, dmu, route = _mb_dipole_derivatives(mf, free, True, "
+        f"repair={ir_repair_command()!r})\n"
         "    held = [i for i in range(mol.natm) if i not in free]\n"
         "    drift = float(np.max(np.abs(reduced[np.ix_(free, free)] - full[np.ix_(free, free)])))\n"
         "    zeros = float(np.max(np.abs(reduced[held])))\n"

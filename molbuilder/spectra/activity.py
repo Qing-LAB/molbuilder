@@ -254,3 +254,25 @@ def classify_modes(
         }
         for i, r in zip(ir, raman)
     ]
+
+
+def ir_strength_km_mol(dmu_dq_debye: Sequence[float],
+                       direction: Optional[Sequence[float]] = None) -> float:
+    """A MODE'S INFRARED STRENGTH, in km/mol, from its dipole change
+    dmu/dQ in D/(Angstrom amu^1/2) -- the one formula, asked by the PySCF
+    script for each mode and by a result's infrared view
+    (`spectra.infrared`): with no ``direction``, the orientation average
+    ``K |dmu/dQ|^2``, a tumbling molecule's; along a unit ``direction``,
+    ``3 K (e . dmu/dQ)^2``, a molecule held in one orientation
+    (`science/vibrational-optical-response.md` § 2.3) -- ``K`` the km/mol
+    prefactor's one home (`constants.IR_KM_MOL_PER_D2_A2_AMU`), imported
+    here, two ways, as this module travels."""
+    try:                                    # inside molbuilder
+        from ..constants import IR_KM_MOL_PER_D2_A2_AMU
+    except ImportError:                     # beside a job, in a bundle
+        from constants import IR_KM_MOL_PER_D2_A2_AMU
+    v = [float(x) for x in dmu_dq_debye]
+    if direction is None:
+        return IR_KM_MOL_PER_D2_A2_AMU * sum(x * x for x in v)
+    along = sum(float(e) * x for e, x in zip(direction, v))
+    return 3.0 * IR_KM_MOL_PER_D2_A2_AMU * along * along

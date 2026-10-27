@@ -22,13 +22,14 @@ the mode's zero-point amplitude, which a person compares it with.
 """
 from __future__ import annotations
 
-import hashlib
 import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+from .persist import sha256_of
 
 #: The rules the generator writes -- three frames by default, five on
 #: request (`science/vibrational-averaging.md` § 5.1, § 5.3).
@@ -297,7 +298,7 @@ def frameset_from_mode(run_folder, *, mode: int,
         frames.append(row)
     built.set_info(INFO_KEY, {
         "run": _relative(Path(run_folder), root),
-        "result_sha256": hashlib.sha256(result.read_bytes()).hexdigest()})
+        "result_sha256": sha256_of(result)})
 
     # AN ELECTRODE ATOM LEFT FREE MOVES -- written, and said.
     regions = built.regions or {}

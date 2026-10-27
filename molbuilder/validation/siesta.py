@@ -516,15 +516,15 @@ def _bias_window_points(cfg) -> List[Issue]:
     counts it (`transport.gf_files.line_points`); fewer than two points is
     an error naming the spacing.  0 V has no window and no check."""
     from ..constants import BOLTZMANN_EV_K
-    from ..transport.gf_files import line_points
-    volts = abs(float(getattr(cfg, "bias_voltage_v", 0.0) or 0.0))
-    if volts <= 1e-5:
+    from ..siesta.engine_input import IS_VOLT_EV
+    from ..transport.gf_files import bias_window_ev, line_points
+    volts = abs(float(cfg.bias_voltage_v))
+    if volts <= IS_VOLT_EV:
         return []
-    delta = float(getattr(cfg, "negf_neq_spacing_ev", 0.01) or 0.01)
-    cutoff = float(getattr(cfg, "negf_neq_fermi_cutoff_kt", 5.0) or 5.0)
-    kt = BOLTZMANN_EV_K * float(getattr(cfg, "electronic_temperature", 300.0)
-                                or 300.0)
-    window = volts + 2 * cutoff * kt
+    delta = float(cfg.negf_neq_spacing_ev)
+    cutoff = float(cfg.negf_neq_fermi_cutoff_kt)
+    kt = BOLTZMANN_EV_K * float(cfg.electronic_temperature)
+    window = bias_window_ev(volts, cutoff, cfg.electronic_temperature)
     n = line_points(window, delta)
     if n >= 2:
         return []

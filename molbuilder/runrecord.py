@@ -148,6 +148,18 @@ def read_continued_from(where, names: "_rf.RunNames",
     return RunRef.read(text, shared=names.shared) if text.strip() else None
 
 
+def conclude_line(code, note: str = "", *args: str) -> str:
+    """The run script's command that writes its conclusion marker
+    (``$_concluded``) -- ``rc=<N> at <date>[; <note>]``, the line
+    :func:`read_concluded` reads: ``code`` the exit code, a number or a
+    shell word (``"$_siesta_exit"``); ``note`` what the job adds, its own
+    ``%s`` filled by ``args``, shell words.  ONE spelling for every writer
+    of the line, beside its one reader."""
+    fmt = "rc=%s at %s" + (f"; {note}" if note else "") + "\\n"
+    return " ".join(["printf", f'"{fmt}"', str(code), '"$(date)"',
+                     *args]) + ' > "$_concluded"'
+
+
 def read_concluded(text: Optional[str]) -> Optional[dict]:
     """The conclusion marker's first line, ``rc=<N> at <when>[; <note>]`` as
     the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
@@ -250,8 +262,20 @@ def stamp() -> str:
     second, ``Z``: the launch record's `launched_at`, the ending's
     `asked_at`, a run in phases' index (each call's start and end, the
     finish's; `siesta.vibration_phases`).  One spelling, so two records of
-    one run compare."""
+    one run compare -- and the job's own address (`joblist`) and a sequence
+    of groups' record (`jobset.sequence`), which a run's is compared with
+    (:func:`stamp_time`)."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def stamp_time(text) -> Optional[datetime]:
+    """A stamp READ BACK -- :func:`stamp`'s spelling, or a record written
+    with its offset (``+00:00``) -- as a time two records compare by;
+    ``None`` for text that is no time."""
+    try:
+        return datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def notified_path(where, names: "_rf.RunNames", run: int) -> Path:
@@ -601,30 +625,28 @@ def launch_record(where, names: "_rf.RunNames",
 
 def sent_wall_s(record: Optional[dict]) -> Optional[int]:
     """The wall a launch record says its job was sent with, in seconds --
-    ``placed_on.time``, in the record's one spelling ``D-HH:MM:SS``
-    (`scheduler.quantities.slurm_time`, which wrote it) -- or ``None``
-    where it states none: a run here, which no queue placed.  A wall that
-    is there and does not read in that spelling is a
-    :class:`LaunchRecordError`, never read as no wall.
-
-    Parsed here rather than by `scheduler.quantities.parse_walltime`
-    because this module ships beside the job (`runwrap.MONITOR_COMPANIONS`)
-    and `quantities` does not: the one spelling, read where the monitor
-    runs."""
+    ``placed_on.time``, in the record dialect (`scheduler.quantities.
+    slurm_time` wrote it), read by that dialect's one reader,
+    `scheduler.quantities.parse_walltime`, which travels beside the job with
+    this module (`runwrap.MONITOR_COMPANIONS`) -- or ``None`` where it
+    states none: a run here, which no queue placed.  A wall that is there
+    and does not read is a :class:`LaunchRecordError`, never read as no
+    wall."""
+    try:                                    # inside molbuilder
+        from .scheduler.quantities import parse_walltime
+    except ImportError:                     # beside a job, as the monitor's
+        from quantities import parse_walltime
     placed = (record or {}).get("placed_on") or {}
     wall = placed.get("time")
     if wall in (None, ""):
         return None
-    days, _dash, clock = str(wall).partition("-")
-    parts = clock.split(":")
-    if not _dash or len(parts) != 3 or not all(
-            x.isdigit() for x in [days] + parts):
+    try:
+        return parse_walltime(wall)
+    except ValueError:
         raise LaunchRecordError(
-            f"the launch record's wall, {wall!r}, is not D-HH:MM:SS -- the "
-            f"spelling its writer uses -- so the time the job has left "
-            f"cannot be counted from it.")
-    h, m, s = (int(x) for x in parts)
-    return int(days) * 86400 + h * 3600 + m * 60 + s
+            f"the launch record's wall, {wall!r}, is no wall time -- "
+            f"D-HH:MM:SS is the spelling its writer uses -- so the time the "
+            f"job has left cannot be counted from it.") from None
 
 
 def retried_main(argv) -> int:

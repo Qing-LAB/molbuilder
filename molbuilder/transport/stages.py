@@ -42,7 +42,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ..structure import frame_words
 from ..identity import rung_label
-from ..paths import KIND_ROLES
+from ..paths import KIND_ROLES, frame_token
 from ..parse.engines import siesta_grammar as _G
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
@@ -149,14 +149,6 @@ def sweep_points(task, stage: str) -> Tuple[float, ...]:
     if getattr(task, "low_bias_approximation", None) is not False:
         return ()
     return bias_points(task) if stage in per_point_rungs() else ()
-
-
-def frame_token(frame: int) -> str:
-    """A frame's folder token: its index in the cited set, three digits --
-    ``f000`` the base, frame index 0 (`engines/transport.md` § 2a.9;
-    `model/structure.md` § 2.2e: the code's index everywhere but the UI's
-    display, a folder name included)."""
-    return f"f{int(frame):03d}"
 
 
 @dataclass(frozen=True)

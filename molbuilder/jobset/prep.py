@@ -645,9 +645,9 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
     # THE COUNT AND THE SIZES, beside the wall (§ 5.11 § 9): the free atoms
     # are those the held label leaves; the modes the run reports, the rank
     # rule's -- the one count prep's check states too.
-    from ..validation.spectra import rigid_motion_count
-    n_free = struct.n_atoms - len(struct.frozen_atoms or ())
-    n_modes = 3 * n_free - rigid_motion_count(struct, cfg0)
+    from ..template import engine_name
+    from ..validation.spectra import modes_of
+    n_free, _n_rigid, n_modes = modes_of(struct, engine_name(type(cfg0)))
     return Rung(struct=struct, render_kind="vibration",
                 said=(run_size_words(cfg0, n_free, n_modes),),
                 spec_extra=spec_extra, points=points, wrapper_at=wrapper_at,

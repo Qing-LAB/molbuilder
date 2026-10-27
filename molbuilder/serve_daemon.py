@@ -329,13 +329,20 @@ def daemonize() -> None:
     os.close(devnull)
 
 
-def _note(roll: "LogRoll", msg: str) -> None:
-    """A daemon EVENT line, stamped: the log is the record of concerns,
-    detections and respawns (user ruling 2026-08-28) -- and an event
-    without a time is half a record.  Child output is pumped verbatim
-    elsewhere; only the daemon's own lines come through here."""
+def event_line(source: str, msg: str) -> bytes:
+    """AN EVENT LINE OF THE SERVE LOG -- ``[serve-<source>] <time> <msg>``,
+    the one spelling its writers share: the daemon's own events
+    (:func:`_note`) and ``serve status``'s detection (`cli`).  The log is
+    the record of concerns, detections and respawns (user ruling
+    2026-08-28) -- and an event without a time is half a record."""
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-    roll.write(f"[serve-daemon] {stamp} {msg}\n".encode())
+    return f"[serve-{source}] {stamp} {msg}\n".encode()
+
+
+def _note(roll: "LogRoll", msg: str) -> None:
+    """A daemon EVENT line (:func:`event_line`).  Child output is pumped
+    verbatim elsewhere; only the daemon's own lines come through here."""
+    roll.write(event_line("daemon", msg))
 
 
 def supervise(port: int, child_argv: List[str], *,

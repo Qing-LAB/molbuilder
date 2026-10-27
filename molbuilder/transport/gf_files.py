@@ -41,7 +41,11 @@ def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
                    if p.is_file() and is_scratch(p.name))
     if not files:
         deck = _a_device_deck(base, task, stage_dir)
-        if deck is not None and not _reads(deck).out_of_core:
+        try:
+            in_memory = deck is not None and not _reads(deck).out_of_core
+        except _Unread as why:
+            return f"{scratch_dir}/: empty -- {why}"
+        if in_memory:
             return f"{scratch_dir}/: none -- the self-energies are kept in memory"
         return f"{scratch_dir}/: empty"
     size = sum(p.stat().st_size for p in files)
@@ -69,35 +73,73 @@ def _voltage_of(name: str, label: str) -> str:
 
 # ---- the estimate ------------------------------------------------------------
 
-class _Deck:
-    """What the estimate reads off a device deck."""
-    def __init__(self, text: str):
-        from ..parse.fdf import fdf_key, fdf_true, read_fdf
-        scalars, blocks = read_fdf(text)
+#: How many spin components each spin treatment's Hamiltonian holds -- the
+#: factor of the engine's own file estimate (`m_ts_electrode.F90`) -- keyed
+#: by the deck reader's words (`parse.fdf.FdfParams.spin_treatment`).
+_SPIN_COMPONENTS = {"restricted": 1, "unrestricted": 2, "non-collinear": 4,
+                    "spin-orbit": 8}
 
-        def one(key, default=None):
-            v = scalars.get(fdf_key(key))
-            return v[0] if v else default
-        self.out_of_core = fdf_true(scalars.get(fdf_key("TS.Elecs.Out-of-core")) or ["true"])
-        self.volts = abs(float(one("TS.Voltage", "0")))
-        self.pole_ev = float(one("TS.Contours.Eq.Pole", "10"))
-        self.temperature_k = float(one("ElectronicTemperature", "300"))
-        self.cutoff_kt = float(one("TS.Contours.nEq.Fermi.Cutoff", "5"))
-        spin = str(one("Spin", "non-polarized")).lower()
-        # SIESTA's own words (`siesta/layout.py` writes `non-colinear`).
-        self.spins = {"non-polarized": 1, "polarized": 2, "non-colinear": 4,
-                      "non-collinear": 4, "spin-orbit": 8}.get(spin, 1)
-        line = blocks.get(fdf_key("TS.Contour.nEq.line")) or []
-        self.delta_ev = next((float(r[1]) for r in line
-                              if r and r[0].lower() == "delta"), 0.01)
-        grid = blocks.get(fdf_key("kgrid_Monkhorst_Pack")) or []
-        self.grid = [(int(r[i]), float(r[3]) if len(r) > 3 else 0.0)
-                     for i, r in enumerate(grid[:3])]
+
+class _Deck:
+    """What the estimate reads off a device deck, through the deck's own
+    readers: the electronic temperature, the k-grid and its offset and the
+    spin by `parse.fdf.parse_fdf_params`; TranSIESTA's keywords in their
+    units (`units`).  A keyword the deck leaves out is the engine's own
+    default as the catalogue states it (`siesta.engine_input.
+    engine_defaults`); one with no default stated there is
+    :class:`_Unread`, named."""
+    def __init__(self, text: str):
+        from ..parse.fdf import fdf_key, fdf_true, parse_fdf_params, read_fdf
+        from ..siesta.engine_input import NEQ_LINE, NEQ_LINE_DELTA, \
+            engine_defaults
+        from ..units import energy_ev, temperature_k
+        scalars, blocks = read_fdf(text)
+        defaults = engine_defaults()
+        where = "the device deck"
+
+        def said(key):
+            toks = scalars.get(fdf_key(key)) or defaults.get(fdf_key(key))
+            if not toks:
+                raise _Unread(f"{where} states no {key}")
+            return toks
+
+        def ev(toks, key):
+            return energy_ev(float(toks[0]), toks[1] if len(toks) > 1
+                             else None, what=key, source=where)
+        p = parse_fdf_params(text, source=where)
+        self.out_of_core = fdf_true(said("TS.Elecs.Out-of-core"))
+        self.volts = abs(ev(said("TS.Voltage"), "TS.Voltage"))
+        self.pole_ev = ev(said("TS.Contours.Eq.Pole"), "TS.Contours.Eq.Pole")
+        toks = said("ElectronicTemperature")
+        self.temperature_k = (p.electronic_temperature_k
+                              if p.electronic_temperature_k is not None
+                              else temperature_k(
+                                  float(toks[0]),
+                                  toks[1] if len(toks) > 1 else None,
+                                  what="ElectronicTemperature",
+                                  source=where))
+        self.cutoff_kt = float(said("TS.Contours.nEq.Fermi.Cutoff")[0])
+        if p.spin_treatment not in _SPIN_COMPONENTS:
+            raise _Unread(f"{where}'s Spin is no word SIESTA reads")
+        self.spins = _SPIN_COMPONENTS[p.spin_treatment]
+        # THE BIAS WINDOW'S SPACING: the deck's line, or the one the engine
+        # builds where it writes none (`engine_input.NEQ_LINE_DELTA`).
+        row = next((r for r in blocks.get(NEQ_LINE) or []
+                    if r and r[0].lower() == "delta"), None)
+        self.delta_ev = ev(row[1:] if row else list(NEQ_LINE_DELTA),
+                           "TS.Contour.nEq.line delta")
+        self.grid = (list(zip(p.kgrid, p.kgrid_displacement or (0.0,) * 3))
+                     if p.kgrid else [])
 
 
 def _reads(deck_path: Path) -> _Deck:
+    """The deck at ``deck_path``, read (:class:`_Deck`); one that does not
+    read is :class:`_Unread`, in its reader's words."""
     from ..parse.fdf import read_deck
-    return _Deck(read_deck(deck_path))
+    try:
+        return _Deck(read_deck(deck_path))
+    except (OSError, ValueError) as exc:
+        raise _Unread(f"{deck_path.name} does not read: {exc}") from None
 
 
 def k_points_time_reversed(grid: List[Tuple[int, float]]) -> int:
@@ -129,13 +171,24 @@ def energy_points(deck: _Deck) -> int:
     """The contour's energy points: the equilibrium poles, and under bias
     the second reservoir's poles and the bias window's line
     (`engines/transport.md` § 2a.11, *What it costs*)."""
+    from ..siesta.engine_input import IS_VOLT_EV
     from .transiesta import pole_count
     poles = pole_count(deck.pole_ev, deck.temperature_k)
-    if deck.volts <= 1e-5:
+    if deck.volts <= IS_VOLT_EV:
         return poles
+    return 2 * poles + line_points(
+        bias_window_ev(deck.volts, deck.cutoff_kt, deck.temperature_k),
+        deck.delta_ev)
+
+
+def bias_window_ev(volts: float, cutoff_kt: float,
+                   temperature_k: float) -> float:
+    """The bias window's line's width as TranSIESTA builds it: |V| and the
+    Fermi cutoff's ``cutoff_kt`` kT on each side (`m_ts_contour_neq.f90`;
+    the device deck's line, `transport.deck._emit_neq_contour`)."""
     from ..constants import BOLTZMANN_EV_K
-    window = deck.volts + 2 * deck.cutoff_kt * BOLTZMANN_EV_K * deck.temperature_k
-    return 2 * poles + line_points(window, deck.delta_ev)
+    return (abs(float(volts))
+            + 2 * float(cutoff_kt) * BOLTZMANN_EV_K * float(temperature_k))
 
 
 def line_points(window_ev: float, delta_ev: float) -> int:
@@ -225,10 +278,12 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
     decks = _decks_per_voltage(base, task, stage_dir)
     if not decks:
         return f"{scratch_dir}/: one pair at a time"
-    first = _reads(decks[0][1])
-    if not first.out_of_core:
-        return f"{scratch_dir}/: none -- the self-energies are kept in memory"
     try:
+        read = [(v, _reads(path)) for v, path in decks]
+        first = read[0][1]
+        if not first.out_of_core:
+            return (f"{scratch_dir}/: none -- the self-energies are kept "
+                    f"in memory")
         orbitals = _lead_orbitals(base, task)
     except _Unread as why:
         return (f"{scratch_dir}/: one pair at a time; the size cannot be "
@@ -238,8 +293,7 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
                 f"the leads have run")
     same = len(set(orbitals.values())) == 1
     sizes, energies = [], []
-    for v, path in decks:
-        deck = _reads(path)
+    for v, deck in read:
         energies.append(energy_points(deck) + 2)
         if same:
             sizes.append(f"{size_words(file_bytes(orbitals['L'], deck))} a lead at {v:g} V")
@@ -256,4 +310,5 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
             + " and ".join(str(e) for e in energies) + " energies)")
 
 
-__all__ = ["status_line", "estimate_from", "k_points_time_reversed"]
+__all__ = ["status_line", "estimate_from", "k_points_time_reversed",
+           "bias_window_ev", "line_points"]

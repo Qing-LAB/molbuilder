@@ -35,8 +35,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from ..constants import DEBYE_E_ANGSTROM, IR_KM_MOL_PER_D2_A2_AMU
-from .activity import CHANNEL_PRESENT_FLOOR_IR_KM_MOL
+from ..constants import DEBYE_E_ANGSTROM
+from .activity import CHANNEL_PRESENT_FLOOR_IR_KM_MOL, ir_strength_km_mol
 from ..structure import Structure
 from .results import PARTITIONS, SpectraResults, mass_of
 
@@ -48,11 +48,6 @@ DIRECTIONS: Dict[str, Tuple[float, float, float]] = {
 DEFAULT_PARTITION = "hirshfeld"
 #: The release that first keeps a force-constant run's charges in its result.
 CHARGES_KEPT_SINCE = "2.36.0"
-
-#: km/mol per (D/Å)²/amu for a molecule held in one orientation, its field
-#: along one direction: three times the tumbling average
-#: (`constants.IR_KM_MOL_PER_D2_A2_AMU`; the method's § 2.3).
-ORIENTED_KM_MOL_PER_D2_A2_AMU = 3.0 * IR_KM_MOL_PER_D2_A2_AMU
 
 #: HOW A RESULT'S MOLECULE MEETS THE LIGHT, by whether the result holds atoms
 #: (the method's § 2.3; the user, 2026-10-24: "if no fix atoms are listed,
@@ -398,11 +393,10 @@ def infrared_view(result: SpectraResults, *, atoms: Sequence[int],
 def _strength(orientation: str, e: np.ndarray, dmu_debye: np.ndarray) -> float:
     """A mode's strength from its dipole change in D/(Å amu^½): along the
     light's direction for a held molecule, the orientation average for a
-    free one (:func:`orientation_of`)."""
-    if orientation == ORIENTATION_HELD:
-        along = float(np.dot(e, dmu_debye))
-        return ORIENTED_KM_MOL_PER_D2_A2_AMU * along * along
-    return IR_KM_MOL_PER_D2_A2_AMU * float(np.dot(dmu_debye, dmu_debye))
+    free one (:func:`orientation_of`) -- by the one formula
+    (`activity.ir_strength_km_mol`)."""
+    return ir_strength_km_mol(
+        dmu_debye, e if orientation == ORIENTATION_HELD else None)
 
 
 def _modes_of(rows) -> Tuple[InfraredMode, ...]:
@@ -467,6 +461,6 @@ __all__ = ["ASK_KEYS", "CHARGES_KEPT_SINCE", "DEFAULT_PARTITION", "DIRECTIONS",
            "SOURCE_CHARGES", "SOURCE_DIPOLE", "WHOLE_SYSTEM_NAME", "atoms_of",
            "dipole_absent_reason", "dipole_view", "orientation_of", "sets_of",
            "source_of",
-           "ORIENTED_KM_MOL_PER_D2_A2_AMU", "InfraredError", "InfraredMode",
+"InfraredError", "InfraredMode",
            "InfraredView", "infrared_view", "labelled_atoms", "labels_of",
            "no_charges_reason", "read_ask"]

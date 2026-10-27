@@ -1272,34 +1272,6 @@ numpy and netCDF4 before `siesta --version` (2.43.1; the user, 2026-10-26:
 declared in the PySCF env (`envs/recipes.py`), where it now arrives through
 pyscf's own dependencies.
 
-## 1ag. One fact coded in two places — the duplication review of 2026-10-26 *(two read-only reviewers, every pair read in full; for the user to choose what to fix)*
-
-*(The user, 2026-10-26: "use agent to check duplicated/redundant code across
-boundary of modules/scripts".)* Fixed already, with 2.43.1: the multi-group
-job's environment entry (one bootstrap for every script, `runwrap.env_bootstrap`)
-and its folder (`repo_root`). Open, most consequential first:
-
-| # | one fact | where it is coded twice | what goes wrong when they drift |
-|---|---|---|---|
-| D1 | whether a vibration call is done, and the run's state | `jobset/continuation.done` (exit, engine stop, SCF verdict, products) and the job's `spectra/siesta_vibration._rows` (index exit, products) | with `scf_must_converge` off, an unconverged call is "finished" in the result and the data file, "not converged" in `status`, and run again by a warm launch; the job could ask the same rule — `parse/dirs/job.py` and `_run_ending` already travel in `mb_monitor.pyz` |
-| D2 | a run's newest output | `siesta_vibration._newest_output` and `runrecord.newest_run` | a call whose engine died before printing is read from the try before |
-| D3 | the wall a job was sent with | `runrecord.sent_wall_s` (strict) and `quantities.parse_walltime` | a change in how a wall is spelled breaks the monitor's past-wall reading beside the job only; `quantities` could travel |
-| D4 | the time a launch is stamped | `runrecord.stamp` (`…Z`), `joblist._now` (`+00:00`), `sequence.sent`, `summarize.utc_now_iso`, `parse/_log`, `molstruct`; compared in `ready._sent_by` | a group of a multi-group job no longer read as sent |
-| D5 | the job's id on this machine | `joblist.run_here` (Python) and the multi-group job's `--in-job "${MB_JOB_ID:-$(hostname)-$$}"` (bash) | the groups' runs no longer added to the job's entry in `molbuilder jobs` |
-| D6 | the device deck read for the Green's-function estimate | `transport/gf_files._Deck` (its own reader, spin words, defaults; a 10 eV pole default) against `parse.fdf`, `engine_input`, the catalogue; the bias-window count also in `validation/siesta` | a unit or spin spelling change mis-sizes the estimate |
-| D7 | the current from T(E) | `transport/record.low_bias_iv` (trapezoid) and `joined_currents` (TBtrans's mid-rule), each with its own Fermi pair | one T(E), two rules for its current; a fix to one misses the other |
-| D8 | where SIESTA's node cores are measured | the run script's `lscpu` probe and `runtime_info.physical_core_count` in a PySCF job | one run reports two core counts |
-| D9 | the wrapper log's labels | written as literals in `runwrap`, read as regexes in `wrapper_log` | a reworded label empties the run record's host facts and the benchmark's node shape |
-| D10 | the advice to install an environment | `envs.hints.fix_cmd` and hand copies in `runwrap`, `envs/_cli`, the PySCF deck emitters, `spectra/pyscf_vibration` (one names a fixed env) | advice that no longer matches the installer |
-| D11 | 3·n_free − n_rigid, the modes a run reports | `validation/spectra.rigid_motion_count`, the PySCF check's own count, `spectra/methods._mode_count`, and the held atoms read past `Structure.frozen_atoms` | the count prep states and the count the Methods text states part |
-| D12 | sending a walk | four copies in `submit.py` (`_send_walk`, `_plan_group`, `_plan_shelf`, `_plan_sequence`), and the group's steps built outside `_walk_of` | a change to one kind of job's sending misses the others |
-| D13 | the job's start and wall variables | `MB_JOB_STARTED`, `MB_WALL_S` constants in `monitor`/`kinds`, literals in `runwrap` and the walk; `MB_WALL_SLACK_S` has no constant | a renamed variable read under its old name, a job told more wall than is left |
-| D14 | the `molbuilder jobset launch` line | `jobset/commands`, `identity`, the multi-group job's step | two grammars for one command |
-| D15 | atomic writes of a structure pair | `sidecars/molstruct.save` and `workingcopy_structure._write_pair`, each with a derived `.tmp` | two saves of one pair collide |
-| D16 | Makov–Payne's reading of SIESTA's output | the emitted script's own regexes and `siesta_reader`/`siesta_grammar` (which travel in `mb_monitor.pyz`) | an energy printed with an exponent misread |
-| D17 | IR intensity from dμ/dQ | the PySCF script's projection and `spectra/infrared` | the two engines' intensities part |
-| D18 | smaller ones | file sha256 in five places; the frame folder name `f%03d` in three; the sidecar envelope checked on write and on read; `checkpoint.py` naming a retired env `molbuilder-host`; the serve log line twice; the run-number check in bash and Python; the hand-run line in three deck emitters; the run's conclusion line in eight `printf`s | low |
-
 ## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; SIESTA's vibration redesigned 2026-10-25 as one run in phases, Raman its optical phase (the user's B); R-a, R-c and R1 decided as recommended, 2026-10-25 — to build)*
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode

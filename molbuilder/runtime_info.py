@@ -54,13 +54,34 @@ RUNTIME_INFO_KEYS = (
 )
 
 
+#: THE JOB'S CLOCK, in molbuilder's names -- set once for everything a job
+#: starts (its header, or a run here's run script or walk) and read by every
+#: run script, monitor and deck that counts what is left (`running-a-job.md`
+#: § 3.6): the job's start, an epoch second; the wall it was sent with, in
+#: seconds (on the send line, `scheduler.kinds`' ``{wall_var}``); and the run
+#: card's slack, how long before the wall the engine stops itself.
+JOB_STARTED_VAR = "MB_JOB_STARTED"
+WALL_VAR = "MB_WALL_S"
+WALL_SLACK_VAR = "MB_WALL_SLACK_S"
+
+#: THE NODE'S PHYSICAL CORES AS ITS RUN SCRIPT MEASURED THEM, exported by
+#: the run script's one probe (`runwrap._phys_cores_probe_block`), so a run
+#: reports one count -- its session log's and its own record's alike.
+NODE_CORES_VAR = "MB_NODE_PHYS_CORES"
+
+
 def physical_core_count() -> int:
-    """Return the host's physical (not logical) core count.
+    """Return the host's physical (not logical) core count -- the run
+    script's measurement (:data:`NODE_CORES_VAR`) where it ran the script;
+    measured here only for a script run by hand, outside it.
 
     Tries ``psutil`` first, then ``/proc/cpuinfo``, then
     ``os.cpu_count() // 2`` (a hyperthreaded box's best-guess).
     Final fallback: 1.  Never raises -- always returns >= 1.
     """
+    said = os.environ.get(NODE_CORES_VAR, "")
+    if said.isdigit() and int(said) >= 1:
+        return int(said)
     try:
         import psutil
         n = psutil.cpu_count(logical=False)
@@ -272,6 +293,13 @@ def to_gpu(mf):
             "  and finishing on the CPU would make that announcement false.")
 
 
+#: A RUN'S NUMBER AS ITS RUN SCRIPT IS GIVEN IT (``--run N``): a whole
+#: number with no leading zero -- the one pattern the run script checks in
+#: bash (`runwrap._run_index_block`) and a PySCF script in Python
+#: (:func:`run_given`).
+RUN_NUMBER = "0|[1-9][0-9]*"
+
+
 def run_given(argv=None) -> int:
     """THIS RUN'S NUMBER, as its run script gave it -- ``--run N`` on the
     script's command line (`engines/pyscf.md` § 2): the number `launch`
@@ -279,11 +307,12 @@ def run_given(argv=None) -> int:
     stage's names say so (`runfiles.RunNames`, rendered into the script as
     templates).  A script started without one stops on its first lines,
     saying so -- never a number guessed (plan W57 decision 6)."""
+    import re
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
     for i, word in enumerate(args[:-1]):
         n = args[i + 1]
-        if word == "--run" and n.isdigit() and (n == "0" or n[0] != "0"):
+        if word == "--run" and re.fullmatch(RUN_NUMBER, n):
             return int(n)
     raise SystemExit(
         "this script names its files with its run's number, --run N, which "
@@ -296,9 +325,10 @@ __all__ = [
     "RUNTIME_INFO_KEYS",
     "THREAD_SOURCES",
     "cap_threads",
-    "physical_core_count",
+    "physical_core_count", "NODE_CORES_VAR", "JOB_STARTED_VAR", "WALL_VAR",
+    "WALL_SLACK_VAR",
     "probe_gpu",
-    "run_given",
+    "RUN_NUMBER", "run_given",
     "runtime_facts",
     "threads_for",
     "to_gpu",

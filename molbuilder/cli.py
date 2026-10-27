@@ -3013,19 +3013,16 @@ def _note_wedge(port: int, pid: int) -> None:
     daemon's own writes; the rare rotation race can cost this line at worst,
     never a daemon byte.
     """
-    import time as _time
-
     from .config_dir import ensure_private_dir, serve_log
     try:
         # The same doors the daemon uses: `status` may be the FIRST writer, on
-        # a box where the server has never started (I5).
-        from .serve_daemon import open_private
+        # a box where the server has never started (I5) -- its line too.
+        from .serve_daemon import event_line, open_private
         ensure_private_dir(serve_log(port).parent, tighten=True)
         with open_private(serve_log(port), "ab") as fh:
-            fh.write((f"[serve-status] "
-                      f"{_time.strftime('%Y-%m-%dT%H:%M:%S%z')} "
-                      f"DETECTED: process up (pid {pid}) but /api/health "
-                      f"gave nothing within 5s\n").encode())
+            fh.write(event_line(
+                "status", f"DETECTED: process up (pid {pid}) but "
+                          f"/api/health gave nothing within 5s"))
     except OSError:
         pass                     # the terminal report above still stands
 

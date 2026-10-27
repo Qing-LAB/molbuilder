@@ -992,7 +992,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # (`02_freq`) is a legal name of another stage (`job-system.md`
             # § 5.3).  A trial's deck names its own
             # launch -- `launch task` would launch the stage's run.
-            from ..identity import LAUNCH_MODE_NOTE, deck_launch
+            from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE,
+                                    deck_launch, hand_run)
             _launch = deck_launch(stage_token, trial)
             if _launch and trial:
                 out.append("# The managed way -- this trial alone, from the "
@@ -1005,9 +1006,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             if _launch:
                 out.extend(f"#     {line}" for line in _launch)
                 out.append(f"#     {LAUNCH_MODE_NOTE}")
-            out.append(f"#     bash {names.name('.run.sh')} --run 0"
-                       "    # the same wrapper, by hand: its run's number,"
-                       " 0 for the first")
+            out.append(f"#     {hand_run(names)}    # {HAND_RUN_NOTE}")
             out.append(
                 "# The wrapper beside this deck is self-contained: it runs "
                 "unattended in a shell")

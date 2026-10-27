@@ -301,31 +301,48 @@ def sampled_window(emin_ev: float, emax_ev: float,
     and the description's preflight, as the record asks it with the energies
     the run wrote -- one rule, on the energies the current is integrated
     over."""
+    from .energies import spacing
     lo, hi = float(emin_ev), float(emax_ev)
-    h = (hi - lo) / int(n_points)
+    h = spacing((lo, hi, n_points))
     return lo + h / 2.0, hi - h / 2.0
 
 
-def low_bias_iv(energies: List[float], trans: List[float],
-                       voltages: List[float], kt_ev: float) -> Dict:
-    """**I(V) = (2e/h) ∫ T(E, 0) [f(E − μ_L) − f(E − μ_R)] dE**, μ = ±eV/2 --
-    the low-bias approximation's current, computed by the record from the
-    one zero-bias slice for each listed voltage (`engines/transport.md`
-    § 2a.10): G0 times the integral in eV, ``trans`` per spin channel as
-    :func:`point_transmission` gives it.  A voltage whose window plus the
-    Fermi tails (:data:`WINDOW_TAILS_KT`) reaches past the transmission's
-    energy window gets ``None`` and a note naming the reach -- the record
-    never integrates a slice it does not have."""
+def landauer_current(energies: List[float], trans: List[float],
+                     volts: float, kt_ev: float, spacing_ev: float) -> float:
+    """**I(V) = (2e/h) ∫ T(E) [f(E − μ_L) − f(E − μ_R)] dE**, μ_L,R = ±V/2,
+    V signed -- THE RECORD'S ONE RULE for a current it computes, TBtrans's
+    own (`m_tbt_save.F90`): each energy's transmission, times its weight
+    on the mid-rule grid -- the window's spacing, ``spacing_ev``
+    (`energies.spacing`) -- times the two leads' Fermi functions'
+    difference, G0 times the sum in eV (`engines/transport.md` § 2a.10,
+    § 2a.16).  ``trans`` per spin channel, as :func:`point_transmission`
+    gives it."""
     import numpy as np
     e = np.asarray(energies, dtype=float)
-    t = np.asarray(trans, dtype=float)
-    lo, hi = float(e.min()), float(e.max())
+    # SIGNED: a negative voltage carries a negative current, as TBtrans's
+    # own does.
+    half = float(volts) / 2.0
+    with np.errstate(over="ignore"):
+        f_l = 1.0 / (1.0 + np.exp((e - half) / kt_ev))
+        f_r = 1.0 / (1.0 + np.exp((e + half) / kt_ev))
+    return float(CONDUCTANCE_QUANTUM_S * float(spacing_ev)
+                 * np.sum(np.asarray(trans, dtype=float) * (f_l - f_r)))
+
+
+def low_bias_iv(energies: List[float], trans: List[float],
+                voltages: List[float], kt_ev: float,
+                spacing_ev: float) -> Dict:
+    """The low-bias approximation's I-V: :func:`landauer_current` of the
+    one zero-bias slice, T(E, 0), at each listed voltage
+    (`engines/transport.md` § 2a.10), on the grid of spacing
+    ``spacing_ev`` the slice's deck states.  A voltage whose window plus
+    the Fermi tails (:data:`WINDOW_TAILS_KT`) reaches past the
+    transmission's energies gets ``None`` and a note naming the reach --
+    the record never integrates a slice it does not have."""
+    lo, hi = float(min(energies)), float(max(energies))
     currents: List[Optional[float]] = []
     notes: Dict[str, str] = {}
     for v in voltages:
-        # SIGNED: μ_L, μ_R = ±V/2, so a negative voltage carries a
-        # negative current, as TBtrans's own does (`m_tbt_save.F90`).
-        half = float(v) / 2.0
         short = window_short_of(lo, hi, v, kt_ev)
         if short:
             currents.append(None)
@@ -333,11 +350,8 @@ def low_bias_iv(energies: List[float], trans: List[float],
             # by a spelling of the number a page would have to reproduce.
             notes[str(len(currents) - 1)] = short
             continue
-        with np.errstate(over="ignore"):
-            f_l = 1.0 / (1.0 + np.exp((e - half) / kt_ev))
-            f_r = 1.0 / (1.0 + np.exp((e + half) / kt_ev))
-        currents.append(float(CONDUCTANCE_QUANTUM_S
-                              * np.trapezoid(t * (f_l - f_r), e)))
+        currents.append(landauer_current(energies, trans, v, kt_ev,
+                                         spacing_ev))
     return {"voltages_v": [float(v) for v in voltages],
             "current_a": currents,
             "computed": "low-bias-approximation", "kt_ev": kt_ev,
@@ -348,22 +362,14 @@ def joined_currents(read: Dict, volts: float, kt_ev: float,
                     spacing_ev: float) -> Dict:
     """A POINT THAT SHARES ENERGIES -- its current the record's, over its
     joined grid (`engines/transport.md` § 2a.16), TBtrans's printed one
-    covering its own run's energies alone: by TBtrans's own rule, each
-    energy's transmission times its weight on the grid -- the mid-rule's,
-    the spacing -- times the two leads' Fermi functions' difference
-    (`m_tbt_save.F90`), G0 times the sum in eV, ``read`` per spin channel
-    as :func:`point_transmission` gives it; a polarized point's each
-    channel beside its total.  Its printed figure is none."""
-    import numpy as np
-    e = np.asarray(read["energy_ev"], dtype=float)
-    half = float(volts) / 2.0
-    with np.errstate(over="ignore"):
-        f_l = 1.0 / (1.0 + np.exp((e - half) / kt_ev))
-        f_r = 1.0 / (1.0 + np.exp((e + half) / kt_ev))
+    covering its own run's energies alone: :func:`landauer_current` of
+    ``read`` (:func:`point_transmission`'s, joined) on its deck's grid; a
+    polarized point's each channel beside its total.  Its printed figure
+    is none."""
+    e = read["energy_ev"]
 
     def total(trans) -> float:
-        return float(CONDUCTANCE_QUANTUM_S * spacing_ev
-                     * np.sum(np.asarray(trans, dtype=float) * (f_l - f_r)))
+        return landauer_current(e, trans, volts, kt_ev, spacing_ev)
     out: Dict = {"current_a": total(read["transmission"]),
                  "current_a_printed": None, "current_from": "joined"}
     chans = read.get("channels") or {}
@@ -379,7 +385,7 @@ def iv_notes_placed(iv: Dict) -> List[Dict]:
     with both, a frame's own (keyed by the frame: its 0 V transmission not
     run) with ``bias_v`` ``None``: how a file with no row axis states them
     (`transport/datafile.py`, `engines/transport.md` § 2a.12)."""
-    from .stages import frame_token
+    from ..paths import frame_token
     notes = iv.get("notes") or {}
     volts = list(iv.get("voltages_v") or ())
     frames = list(iv.get("frame") or [None] * len(volts))
@@ -900,7 +906,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..frameset import read as read_frame_set
     from .compose import read_provenance, recorded_junction
     from .stages import frames_of, rung_points, same_volts
-    from .energies import joined, sharing_of
+    from .energies import joined, sharing_of, spacing
     from .tbtnc import (DOS_CURVES, NO_CURVE, ORBITAL_NOTE,
                         ORBITAL_TYPES, TbtError, point_dos,
                         readings)
@@ -1050,8 +1056,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         currents.update(
             joined_currents(read, pt.volts or 0.0,
                             BOLTZMANN_EV_K * deck_temperature_k(where),
-                            (sharing.window[1] - sharing.window[0])
-                            / sharing.window[2])
+                            spacing(sharing.window))
             if sharing is not None else {"current_from": "tbtrans"})
         energies = read["energy_ev"]
         points_out.append({
@@ -1354,7 +1359,9 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
     :func:`low_bias_iv` of that spin's T(E, 0) -- the integral is
     the two-channel G₀'s."""
     from ..structure import frame_words
-    from .stages import frame_token, same_volts
+    from .energies import spacing, window_of
+    from ..paths import frame_token
+    from .stages import same_volts
     polarized = any(p.get("spin") == "polarized" for p in points_out)
     if treatment == "low-bias-approximation":
         out: Dict = {"frame": [], "voltages_v": [], "current_a": [],
@@ -1380,13 +1387,20 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                     else "the 0 V transmission has not run")
                 continue
             kt = BOLTZMANN_EV_K * deck_temperature_k(base / zero["attempt"])
+            # THE SLICE'S GRID, as its deck states it -- its spacing each
+            # energy's weight (`landauer_current`).
+            window = window_of(base / zero["attempt"])
+            if window is None:
+                raise RecordError(
+                    f"{zero['attempt']}: its deck states no transmission "
+                    f"window (TBT.Contour.window)")
             iv = low_bias_iv(zero["energy_ev"], zero["transmission"],
-                                    list(task.bias), kt)
+                             list(task.bias), kt, spacing(window))
             if polarized:
                 chans = zero.get("channels") or {}
                 for spin in ("up", "down"):
                     got = (low_bias_iv(zero["energy_ev"], chans[spin],
-                                              list(task.bias), kt)
+                                       list(task.bias), kt, spacing(window))
                            ["current_a"] if spin in chans
                            else [None] * len(iv["current_a"]))
                     out[f"current_{spin}_a"].extend(
@@ -1561,7 +1575,7 @@ def iv_table_text(record: Dict) -> str:
                      + (f", kT = {kt:.4f} eV, window {iv.get('window_ev')} eV"
                         if kt is not None else "")
                      + ":")
-        from .stages import frame_token
+        from ..paths import frame_token
         for k, (f, v, i) in enumerate(zip(iv.get("frame", ()),
                                           iv.get("voltages_v", ()),
                                           iv.get("current_a", ()))):

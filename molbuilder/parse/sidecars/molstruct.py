@@ -22,9 +22,8 @@ from molbuilder.parse.types import SidecarResult
 from molbuilder.sidecars.molstruct import (
     READABLE_VERSIONS,
     SCHEMA_VERSION,
-    ENVELOPE_KEYS,
-    RETIRED_ENVELOPE_KEYS,
     is_geometry_hash,
+    known_keys,
     is_sidecar,
     normalise_selection_rules,
     structure_fields_via_dataclass,
@@ -229,18 +228,13 @@ def load_text(text: str, *, source: str = "<sidecar>",
     # HERE, where the payload is still whole: this function reads the keys it
     # NAMES, so a stray one would be dropped before ``apply_to_structure``
     # could refuse it.
+    # The one list (`sidecars.molstruct.known_keys`): the retired keys are
+    # accepted and ignored rather than refused -- a key this project used to
+    # write is not a key nobody reads, and the files carrying it are the
+    # user's (`structure.RETIRED_METADATA_KEYS`).
     from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
-                                      RETIRED_METADATA_KEYS,
-                                      RETIRED_IDENTITY_KEYS)
-    # `info` (schema 9): the free-form NON-structural store -- known by
-    # NAME here (the block is open by design, so its keys are not
-    # enumerated).
-    # AND THE RETIRED ONES, which are accepted and ignored rather than
-    # refused -- a key this project used to write is not a key nobody reads,
-    # and the files carrying it are the user's (`structure.RETIRED_METADATA_KEYS`).
-    known = (set(FILE_FIELDS) | set(IDENTITY_FIELDS)
-             | set(ENVELOPE_KEYS) | {"info"} | set(RETIRED_METADATA_KEYS)
-             | set(RETIRED_IDENTITY_KEYS) | set(RETIRED_ENVELOPE_KEYS))
+                                      RETIRED_METADATA_KEYS)
+    known = known_keys()
     stray = sorted(k for k in data if k not in known)
     if stray:
         raise MolstructJsonError(

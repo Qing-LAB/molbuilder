@@ -913,7 +913,7 @@ through its run door, never by name across the tree.)*
 ### 2.6 The run wrapper — `.run.sh` and `.sbatch`
 
 **`prep` writes the wrapper**, on the machine that will run the job, and on
-the described route it is the only thing that does.  *(Recorded siblings write beside it, in `launch/`, through the same emit conventions: every job that walks several members has its one header written at its prep (`prep.walk_header_of`) — a task's group's `<label>_group-….sbatch`, a transport bias SCAN's `<stem>-sweep.sbatch`, a benchmark's shelves' — and its walker, `….run.sh`, written at its launch from the members still to run (`submit._points_walk`, `submit._plan_group`, `submit._plan_shelf`; a benchmark's walk here, `submit._plan_bench_here`).  The old side doors — the
+the described route it is the only thing that does.  *(Recorded siblings write beside it, in `launch/`, through the same emit conventions: every job that walks several members has its one header written at its prep (`prep.walk_header_of`) — a task's group's `<label>_group-….sbatch`, a transport bias SCAN's `<stem>-sweep.sbatch`, a benchmark's shelves' — and its walker, `….run.sh`, written at its launch from the members still to run (`submit._points_walk`, `submit._plan_group`, `submit._plan_shelf`; a benchmark's walk here, `submit._plan_bench_here`; a sequence of groups, `submit._plan_sequence`), each sent by the one sender every walk takes (`submit._send_as_one_job`: run here, or as one job through the header its prep wrote).  The old side doors — the
 pre-composite transport driver and the web install-wrapper endpoint —
 retired 2026-08-29 / 2026-08-21.)*  The wrapper activates the
 routed conda env and

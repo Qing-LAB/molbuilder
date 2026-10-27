@@ -65,6 +65,11 @@ class PhaseRule:
     #: (`continuation.done`'s products); a relaxation holds none -- done is
     #: finished, converged or not (§ 5).
     products: Tuple[str, ...]
+    #: Whether a call's VERDICT counts toward done -- its SCF converged
+    #: (`_run_ending.not_done_why`): not a relaxation's, done finished,
+    #: converged or not (§ 5, § 6).  Read by this machine's done door
+    #: (:data:`POINTS`) and by the job's own record step.
+    verdict_counts: bool
     #: The warm-files section a call of this phase reads, launched again
     #: not done (§ 6).
     warm_kind: str
@@ -81,14 +86,15 @@ PHASES: Tuple[PhaseRule, ...] = (
     PhaseRule(RELAX, part="relax", role="relaxation",
               switch=("already_relaxed", True),
               coordinates="structure", seed=None, products=(),
-              warm_kind="optimization", needs=()),
+              verdict_counts=False, warm_kind="optimization", needs=()),
     PhaseRule(FC, part="fc", role="force_constants", switch=None,
               coordinates=RELAX, seed=(RELAX, ".DM"), products=(".FC",),
-              warm_kind="vibration", needs=(RELAX,)),
+              verdict_counts=True, warm_kind="vibration", needs=(RELAX,)),
     PhaseRule(OPTICAL, part="optical", role="optical",
               switch=("es_mode_selection", "skip"),
               coordinates=FC, seed=(FC, ".DM"), products=(".EPSIMG",),
-              warm_kind="optical", needs=(FC,), planned=True),
+              verdict_counts=True, warm_kind="optical", needs=(FC,),
+              planned=True),
 )
 
 
@@ -307,7 +313,7 @@ def run_size_words(cfg, n_free: int, n_modes: int) -> str:
     ``explicit`` that are among the ``n_modes`` -- none at all for an
     empty list -- at most ``n_modes``
     under ``all``, the modes the run reports (prep's count, the rank rule,
-    `validation.spectra.rigid_motion_count`); each ``.EPSIMG``'s size from
+    `validation.spectra.modes_of`); each ``.EPSIMG``'s size from
     its photon energies (``Optical.Energy.Maximum`` over a step of
     ``Optical.Broaden / 10``, `Src/optical.F`).  Only the phases the
     settings turn on (:func:`phases_on`).  The wall stays the person's:
@@ -448,6 +454,17 @@ def _declared_summary(rows, run, names) -> str:
     return summary(rows, phases)
 
 
+def _record_says(run, names, point: Call) -> Optional[str]:
+    """What the run's index says against ``point`` being done: its record
+    step's failure, where it failed (§ 5.11 § 7) -- ``None`` with no index
+    yet, or no entry."""
+    path = index_path(run, names, FIRST_ATTEMPT)
+    if not path.is_file():
+        return None
+    row = entry_of(read_index(path), point) or {}
+    return row.get("record_error") or None
+
+
 def _also_needs(run, names, task, stage: str, base) -> Optional[str]:
     """What the run needs beyond its calls done: its finish ended with exit
     0 (the index's entry) and its result on disk (§ 5.11 § 7)."""
@@ -480,7 +497,9 @@ POINTS = (PointsOf(kind="vibration",
                    hands_on=_declared_hands_on,
                    summary=_declared_summary,
                    converges=lambda stage: True,
-                   verdict_counts=lambda stage, point: point.phase != RELAX,
+                   verdict_counts=lambda stage, point: phase(
+                       point.phase).verdict_counts,
+                   record_says=_record_says,
                    also_needs=_also_needs,
                    containers=_declared_containers,
                    planned_in_job=True, one_wall=True, unit="call")

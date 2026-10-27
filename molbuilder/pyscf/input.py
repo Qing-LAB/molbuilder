@@ -97,6 +97,7 @@ def _shown(names, role: str) -> str:
 # ONE name for each of the two doors this writer opens, imported once at
 # module scope -- as `siesta/input.py` does.
 from .. import script_emit as _sc
+from ..envs.hints import fix_cmd as _fix_cmd
 from . import layout as _layout
 
 
@@ -279,7 +280,8 @@ def spec_for(struct: Structure,
         out.append("")
         # The stage by its NAME, through the one printer (`job-system.md`
         # § 5.3): the token is a legal name of another stage.
-        from ..identity import LAUNCH_MODE_NOTE, deck_launch
+        from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE,
+                                deck_launch, hand_run)
         _launch = deck_launch(stage_token)
         if _launch:
             out.append("Run with -- the managed way, and the usual one, from "
@@ -288,9 +290,7 @@ def spec_for(struct: Structure,
             out.append(f"    {LAUNCH_MODE_NOTE}")
         else:
             out.append("Run with:")
-        out.append(f"    bash {names.name('.run.sh')} --run 0    "
-                   f"# the same wrapper, by hand: its run's number, 0 for "
-                   f"the first")
+        out.append(f"    {hand_run(names)}    # {HAND_RUN_NOTE}")
         out.append("")
         out.append("    The wrapper beside this file is self-contained: it runs")
         out.append("    unattended in a shell that inherits nothing, so it bakes")
@@ -322,7 +322,7 @@ def spec_for(struct: Structure,
         out.append("Environment:")
         out.append("    The wrapper activates it; this is how it gets built.")
         out.append("    Bootstrap managed environments once:")
-        out.append("        bash scripts/install-env.sh bootstrap --yes")
+        out.append("        " + _fix_cmd("bootstrap", "--yes"))
         out.append("\n")
         out.append('"""')
         out.append("")
@@ -372,7 +372,7 @@ def spec_for(struct: Structure,
             out.append('        "molbuilder PySCF script needs the geometric '
                        'optimizer package.\\n"')
             out.append('        "Bootstrap or repair the managed backend:\\n"')
-            out.append('        "bash scripts/install-env.sh bootstrap --yes\\n"')
+            out.append(f'        "{_fix_cmd("bootstrap", "--yes")}\\n"')
             out.append('        f"(import error: {_exc})"')
             out.append("    )")
         if cfg.solvent:
