@@ -700,6 +700,11 @@
           "subtitle": "§ 1s — what is computed vs how it runs: the plan's record — 2026-10-21"
         },
         {
+          "path": "archive/2026-10-27-plan-consolidation.md",
+          "label": "Plan consolidation, 2026-10-27 — what moved out of the plan, verbatim",
+          "subtitle": "Plan consolidation, 2026-10-27 — what moved out of the plan, verbatim"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"
