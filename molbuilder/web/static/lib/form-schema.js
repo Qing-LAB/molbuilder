@@ -958,8 +958,9 @@
         // `calculations` key) -- THE KIND IS STATED by every caller
         // (2026-10-06): the server refuses a schema request with none.
         // ``engine`` is an engine's form or ``"common"``, the settings
-        // every engine of the kind shares, and ``opts.surface`` ``"own"``
-        // narrows an engine's to its own (form-schema.md § 1.3).
+        // every engine of the kind shares; ``opts.surface`` ``"own"``
+        // narrows an engine's to its own, and ``"state"`` the common
+        // settings to their electronic state (form-schema.md § 1.3).
         const calculation = opts && opts.calculation;
         if (!calculation) {
             throw new Error("form-schema.fetchSchema: the calculation kind "

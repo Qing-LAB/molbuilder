@@ -34,11 +34,12 @@
 <div class="app-content">
 
 <!-- ============================================================
-     Spectrum-calculation tab — four-card vertical workflow:
+     Spectrum-calculation tab — five-card vertical workflow:
        1. Inspect structure (viewer + Load-from-sidebar)
-       2. Charge and spin (the chemistry card)
-       3. Parameters (schema-driven form + checks)
-       4. Send to Task setup
+       2. Charge and spin (the chemistry card, its three fields in it)
+       3. The calculation (the settings both engines share)
+       4. The engine and its own settings (+ checks)
+       5. Send to Task setup
 
      Mirrors the Structure-Optimization tab (templates/index.html):
      same .app-grid container, .card-viewer chrome, vertical flow.
@@ -83,14 +84,19 @@
       converge to a fictitious state (the hemeC-dithiol incident): a blank
       means "work it out", and the card shows the answer and its reason
       before anything is sent (science/chemistry-correctness.md § 2.5,
-      § 2a). -#}
+      § 2a).  The three fields are drawn in it, once for both engines,
+      above the answer they are worked into (web/spectra.md § 5 step 2;
+      GET /api/build/schema/common?surface=state). -#}
+  {% with state_form = "spectra-form-state" %}
   {% include "_chemistry_card.html" %}
+  {% endwith %}
 
   <!-- ===================== 3. The calculation ===================== -->
   {#- WHAT YOU WANT FROM THE CALCULATION, decided before the engine: the
       settings every engine of the vibration shares -- one meaning, one
-      default -- drawn once, by result (engines/template.md § 6.2a;
-      web/spectra.md § 5 step 3; GET /api/build/schema/common). -#}
+      default -- drawn once, by result, the charge and spin in step 2
+      (engines/template.md § 6.2a; web/spectra.md § 5 step 3;
+      GET /api/build/schema/common). -#}
   <section class="card" id="calculation-card">
     <h2>3. The calculation</h2>
     <p class="hint">
@@ -173,7 +179,7 @@
     </ul>
   </section>
 
-  <!-- ============== 4. Send to Task setup ============== -->
+  <!-- ============== 5. Send to Task setup ============== -->
   {#- This tab DESCRIBES a vibration calculation and hands the
       description to Task setup -- it renders no deck.  The deck is
       written by `prep` on the machine that runs it

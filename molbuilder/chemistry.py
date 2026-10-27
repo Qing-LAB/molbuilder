@@ -482,6 +482,12 @@ def every_label_resolves(struct: Structure) -> bool:
     return True
 
 
+#: WHICH MASSES :func:`atomic_mass` GIVES, as a record says it -- a mode's
+#: frame set states it beside the masses its coordinate is measured with
+#: (`model/structure.md` § 2.2f, ``mass_source``).
+MASS_SOURCE = "standard atomic weights"
+
+
 def atomic_mass(element: str) -> float:
     """Standard atomic weight of ``element``, in amu.
 

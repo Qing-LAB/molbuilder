@@ -16,6 +16,11 @@
                          tabs share.
       `chemistry_step` - the page's step number (2, or 3 on the transport
                          tab).
+      `state_form`     - the id of the host a page draws its charge and spin
+                         fields in, inside the card above the answer --
+                         the Spectrum tab's one part both engines share
+                         (`web/form-schema.md` § 1.3); none on a page whose
+                         fields sit in each engine's form.
 
     JS: `lib/chemistry.js` (the card and the analyze call),
         `lib/detection-chip.js` (each form's chip), `lib/dom.js`.
@@ -32,6 +37,11 @@
       knowing whether the cell repeats.  The answer is below, for each engine
       form, with its reason; type a value to state it
       instead.{% endif %}</p>
+  {% if state_form %}
+  <div id="{{ state_form }}" class="param-grid">
+    <p class="status">Loading form schema&hellip;</p>
+  </div>
+  {% endif %}
   <span id="chemistry-status" class="status" role="status"
         aria-live="polite"></span>
   <div id="chemistry-panel" class="chemistry-panel" hidden>

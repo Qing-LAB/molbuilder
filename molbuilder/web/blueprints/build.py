@@ -815,9 +815,11 @@ def api_build_schema(engine: str):
     ``engine`` is ``siesta`` or ``pyscf`` -- that engine's form -- or
     ``common``: the settings one row serves on every engine of the kind,
     drawn once on a page offering the kind on several (`form-schema.md`
-    § 1.3).  ``?surface=own`` narrows an engine's form to its own settings,
-    the common ones left out.  Anything else is a 404 naming what is
-    known, never a default response.
+    § 1.3), their electronic state apart: ``?surface=state`` gives it
+    alone, and ``common`` without a surface the rest.  ``?surface=own``
+    narrows an engine's form to its own settings, the common ones left
+    out.  Anything else is a 404 naming what is known, never a default
+    response.
     """
     engine = (engine or "").strip().lower()
     # Each form's id prefix -- the ids of one page's parts never collide.
@@ -833,11 +835,12 @@ def api_build_schema(engine: str):
         return _unstated(calculation=calculation)
     surface = request.args.get("surface") or None
     if engine == "common":
-        if surface is not None:
+        if surface not in (None, "state"):
             return jsonify({"ok": False,
-                            "error": "the common form is one part already; "
-                                     "it takes no surface"}), 400
-        engine_arg, surface = None, "common"
+                            "error": f"surface {surface!r}: the common form "
+                                     f"is its electronic state (state), or "
+                                     f"the rest of it"}), 400
+        engine_arg, surface = None, surface or "common"
     elif surface not in (None, "own"):
         return jsonify({"ok": False,
                         "error": f"surface {surface!r}: an engine's form is "

@@ -400,8 +400,9 @@ Every parameter of every calculation lives in the one catalogue
 [`engines/template.md`](?doc=engines/template.md)). An item declares which
 engines it applies to (`engines`, absent = all) and which calculation kinds
 select it (`calculations`, absent = every kind — § 6.3 there). The vibration
-template, the Spectrum tab's form (`GET /api/build/schema/common?calculation=vibration`,
-the settings both engines share, and `GET /api/build/schema/<engine>?calculation=vibration&surface=own`,
+template, the Spectrum tab's form (`GET /api/build/schema/common?calculation=vibration&surface=state`,
+the charge and spin both engines share, `GET /api/build/schema/common?calculation=vibration`,
+the other settings they share, and `GET /api/build/schema/<engine>?calculation=vibration&surface=own`,
 each engine's own) and the deck's own item lines are all the same narrowing of the same file, so
 a parameter is defined once and rendered the same everywhere.
 
@@ -413,7 +414,7 @@ that")*:
 
 | kind | the items | on the forms | in the result |
 |---|---|---|---|
-| **one meaning on both engines** | `already_relaxed`, `compute_ir`, `compute_raman`, `raman_modes`, `raman_freq_min_cm1`, `raman_freq_max_cm1`, `net_charge`, `spin_treatment`, `unpaired_electrons`, `temperature_K` | drawn **once**, under *The calculation*, before the engine is chosen ([`engines/template.md`](?doc=engines/template.md) § 6.2a); one default on both engines; both routes honour each — *Raman for* is SIESTA's to apply, and on PySCF, whose sweep gives every mode at once, the settings gate and the deck say a range narrows nothing | `thermo.temperature_K` and `relaxation.already_relaxed` in both results; the routes a result took (`ir_route`, `raman_route`); the charge and spin as resolved in PySCF's `electronic_state` block — a SIESTA result does not record its deck's state |
+| **one meaning on both engines** | `already_relaxed`, `compute_ir`, `compute_raman`, `raman_modes`, `raman_freq_min_cm1`, `raman_freq_max_cm1`, `net_charge`, `spin_treatment`, `unpaired_electrons`, `temperature_K` | drawn **once**, before the engine is chosen — the charge and spin in the chemistry card, the rest under *The calculation* ([`engines/template.md`](?doc=engines/template.md) § 6.2a); one default on both engines; both routes honour each — *Raman for* is SIESTA's to apply, and on PySCF, whose sweep gives every mode at once, the settings gate and the deck say a range narrows nothing | `thermo.temperature_K` and `relaxation.already_relaxed` in both results; the routes a result took (`ir_route`, `raman_route`); the charge and spin as resolved in PySCF's `electronic_state` block — a SIESTA result does not record its deck's state |
 | **one idea, each engine's own setting** | the relaxation's criteria (`geom_*` on PySCF, `relax_*` on SIESTA — two optimisers), the SCF machinery, the basis, the functional | each form shows its own | each engine's own record |
 | **a capability one route has** | PySCF's probe — `es_n_homo_below`, `es_n_lumo_above`, `displacement_amplitude_ang` — and the gas-phase pressure `pressure_atm`; SIESTA's `fc_displacement` and its optical items (`optical_*`, § 5.11 § 9). **The probe's mode selector** — `es_mode_selection`, `es_explicit_indices`, `freq_min_cm1`, `freq_max_cm1` — is PySCF's alone: the modes the orbital probe looks at, not tied to Raman — one meaning per setting *(the user, 2026-10-27)* | only that engine's form | the other route's file has no switch for it in its `config`, so the viewer reads the absence **by role** and says *not computed on this route* — it never asks a person to set an item that route does not have ([`web/spectra.md`](?doc=web/spectra.md) § 9b.3) |
 
@@ -460,11 +461,11 @@ orbital window — under `skip`, its list outside `explicit`, its window
 outside `all`. The settings gate says a value given there enters nothing.
 
 Every other setting keeps its `group`'s card — *Run profile*, *Convergence
-targets*, *Compute & budget*, *Output files* — the shared ones
-(`net_charge`, `spin_treatment`, `unpaired_electrons` in *Run profile*;
-`verbose_comments`, `write_molwatch_log` in *Output files*) drawn once with
-the results under *The calculation*, each engine's own under its name
-(*SIESTA · Run profile*). Nothing about a
+targets*, *Compute & budget*, *Output files* — the shared ones drawn once
+(`net_charge`, `spin_treatment`, `unpaired_electrons` in *Run profile*, in
+the chemistry card; `verbose_comments`, `write_molwatch_log` in *Output
+files*, with the results under *The calculation*), each engine's own under
+its name (*SIESTA · Run profile*). Nothing about a
 setting's value changes with its card: the template, the description and
 every deck are what they were. `group` still decides that *vary per stage*
 starts ticked on Task setup for the `stage` items and that the run-card
@@ -499,7 +500,7 @@ above; V1.20 closed 2026-09-24), the relaxation's workflow knobs
 (threads, memory, GPU, `mpi_np`) — are the catalogue's ordinary rows, selected
 into the vibration template with the kind's defaults; those one row serves on
 both engines (the charge and spin, the output switches) are drawn once, in the
-part both engines share (above).
+parts both engines share (above).
 
 **Why infrared is on by default and Raman off, on both engines** *(the user,
 2026-10-27: "both engine should share the same meaning and default
@@ -3523,7 +3524,7 @@ flowchart TB
 
 | door | does |
 |---|---|
-| `GET /api/build/schema/common?calculation=vibration` · `GET /api/build/schema/<engine>?calculation=vibration&surface=own` | the form schema from the catalogue narrowed to the kind: the settings both engines share, and each engine's own |
+| `GET /api/build/schema/common?calculation=vibration&surface=state` · `GET /api/build/schema/common?calculation=vibration` · `GET /api/build/schema/<engine>?calculation=vibration&surface=own` | the form schema from the catalogue narrowed to the kind: the charge and spin both engines share, their other shared settings, and each engine's own |
 | `POST /api/build/preflight` | the live checks: `validate(struct, cfg, calculation="vibration")` |
 | `POST /api/structure/analyze` | the charge and spin each form's vibration will carry — the one electronic state, for exactly what the form says, about the structure the viewer holds; the chemistry card shows it and fills nothing in |
 | `POST /api/task-setup/handover` | render `<label>.template.toml` and `task.1st.json` for the kind; the browser writes them where the person chose |

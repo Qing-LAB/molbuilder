@@ -25,7 +25,7 @@
  *   opts.kind        "optimization" | "vibration" | "transport"
  *   opts.forms()     {engine: [{host, schema}, ...]} -- the parts each
  *                    engine's form is drawn in (one, or the Spectrum tab's
- *                    shared part and the engine's own), whose state items
+ *                    two shared parts and the engine's own), whose state items
  *                    the answer is for; each engine's chip goes in the part
  *                    that engine alone draws
  *   opts.structure() the structure envelope the page would hand over, or

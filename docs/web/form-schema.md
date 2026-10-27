@@ -153,17 +153,23 @@ reads *device · Run profile*, *SIESTA · Raman*, so a title met twice on one
 page is never read as one thing repeated.
 
 **A kind offered on two engines draws their shared settings once**
-([`template.md`](?doc=engines/template.md) § 6.2a). The door gives the two
+([`template.md`](?doc=engines/template.md) § 6.2a). The door gives three
 parts separately — drawn by the same `catalogue_to_form_schema(surface=)` the
-transport tab's panels are; on the wire: `GET /api/build/schema/common?calculation=vibration`
-— the settings that are one catalogue row for every engine of the kind,
-every choice either engine can take offered — and
+transport tab's panels are; on the wire:
+`GET /api/build/schema/common?calculation=vibration&surface=state` — the
+electronic state, the charge and spin (`template.STATE_ITEMS`) that are one
+catalogue row for every engine of the kind;
+`GET /api/build/schema/common?calculation=vibration` — the other settings
+that are one row for every engine, the electronic state left out; each
+shared part offering every choice either engine can take — and
 `GET /api/build/schema/<engine>?calculation=vibration&surface=own` — that
 engine's own settings, the shared ones left out, its name as the
-`card_prefix`. The page draws the shared part once, above the engine strip,
-titled *The calculation*, and each engine's own part in its tab; on Send the
-two are read with `collectForm` and joined by name, so the description holds
-every setting of the engine sent, as a one-part form's would.
+`card_prefix`. The page draws the electronic state in its chemistry card,
+above the answer it is worked into; the other shared settings once, above
+the engine strip, titled *The calculation*; and each engine's own part in
+its tab. On Send the three are read with `collectForm` and joined by name,
+so the description holds every setting of the engine sent, as a one-part
+form's would.
 
 **A field that enters only under other fields' values** carries
 `active_when` — `{compute_raman: [true], raman_modes: ["range"]}`, the
@@ -221,8 +227,9 @@ saying what to fill in, with an example; a form showing a combination with no
 line is refused when its schema is built *(the user, 2026-10-10: "you can be
 elaborate for different situations")*. **The Run profile card's line follows
 the same way** (`template.card_line`): a form part holding the charge and
-spin alone — the Spectrum tab's shared part — says they are one answer for
-both engines (`PROFILE_STATE_WORDS`); one holding none of them — an engine's
+spin alone — the Spectrum tab's electronic-state part, in its chemistry
+card — says they are one setting for both engines, a blank worked out for
+each (`PROFILE_STATE_WORDS`); one holding none of them — an engine's
 own part, a transport rung's tab — says it holds how the electrons are
 computed (`PROFILE_METHOD_WORDS`); a form holding both says the group's own
 line. The words are true on every form: a stage may
@@ -397,7 +404,8 @@ flowchart LR
   turns each item into a small JSON description — its label, its kind, its
   default, its allowed choices — grouped by category. This is served at
   `GET /api/build/schema/<engine>?calculation=<kind>` — `siesta`, `pyscf`,
-  or `common` for the settings every engine of the kind shares, with
+  or `common` for the settings every engine of the kind shares but their
+  electronic state, which `common` with `&surface=state` gives alone, and
   `&surface=own` on an engine for its own settings alone (§ 1.3) — and
   `GET /api/transport/schema`, whose two surfaces are
   drawn from the template the tab's describe will write, each field carrying
@@ -416,7 +424,7 @@ register with the runtime):
 
 | Call | What it does |
 |---|---|
-| `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>?calculation=<kind>`) — `engine` an engine's form or `"common"`, the settings every engine of the kind shares; `opts.surface` `"own"` narrows an engine's form to its own (§ 1.3). `opts.calculation` is required: every caller states its kind, and the server refuses a request that states none rather than giving it one (2026-10-06, plan W57 R10). |
+| `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>?calculation=<kind>`) — `engine` an engine's form or `"common"`, the settings every engine of the kind shares; `opts.surface` `"own"` narrows an engine's form to its own, and `"state"` the shared settings to their electronic state (§ 1.3). `opts.calculation` is required: every caller states its kind, and the server refuses a request that states none rather than giving it one (2026-10-06, plan W57 R10). |
 | `renderForm(host, schema, opts)` | Draw the form from that shape into a host element. `opts.holds = "overrides"` draws a surface of overrides over the template — its fields blank, the template's value their hint (§ 1.1); `opts.foldable` folds the cards (§ 1.3); `opts.alongside` names the parts drawn with this one, where a field's `active_when` finds the fields it waits on (§ 1.3). |
 | `showPoints(host, name, text)` | Show `text` in the locked box of the field `name` answered point by point (`locked.per_point`) — the page holds the points, the form only the place to say them; the box stays locked and is never collected *(2026-10-13)* |
 | `collectForm(host, schema, names?)` | Read what the form holds back into a plain values object (the schema tells it how to read each kind): **every field, a blank as `null`** — not chosen — each value read as its type. A value that will not read is refused: it throws an `Error` naming the field (`err.field`) (§ 1.1). A `locked` field is never read. `names` reads those fields alone. |
@@ -510,8 +518,10 @@ un-mapped item never disappears.
 
 - **Build tab** (structure-optimization) — the full four-call cycle, for SIESTA
   and PySCF.
-- **Spectrum tab** — the same calls, against the kind's two parts: the
-  settings both engines share, once (`fetchSchema("common", {calculation:
+- **Spectrum tab** — the same calls, against the kind's three parts: the
+  charge and spin both engines share, once, in the chemistry card
+  (`fetchSchema("common", {calculation: "vibration", surface: "state"})`),
+  the other settings they share, once (`fetchSchema("common", {calculation:
   "vibration"})`), and each engine's own (`fetchSchema(<engine>,
   {calculation: "vibration", surface: "own"})`), both engines' forms mounted
   and the engine strip showing one ([`spectra.md`](?doc=web/spectra.md) § 5).

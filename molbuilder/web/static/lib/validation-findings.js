@@ -31,7 +31,7 @@
  *       panel:     <element>,   // the row parent AND visibility owner
  *       formScope: <element>,   // optional: searched for .card-issues panels
  *                  // -- or a list of them, the parts one form is drawn
- *                  // in (the Spectrum tab's shared part and an
+ *                  // in (the Spectrum tab's two shared parts and an
  *                  // engine's own, form-schema.md § 1.3)
  *       fieldIds:  {mesh_cutoff: "p-mesh-cutoff", ...},  // optional
  *                  // -- or, when one form holds several stages' controls

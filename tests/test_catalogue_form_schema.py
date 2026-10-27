@@ -77,29 +77,37 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
 def test_the_vibration_form_in_its_parts_holds_each_setting_once(engine):
     """`web/form-schema.md` § 1.3, `engines/template.md` § 6.2a: on the
     Spectrum tab the settings every engine shares are drawn once, before the
-    engine, and each engine's form holds its own -- together exactly the
-    engine's whole vibration form, no setting in both parts and none in
-    neither, each offered every choice the engine takes.
+    engine -- their electronic state in the chemistry card, the rest under
+    *The calculation* -- and each engine's form holds its own: together
+    exactly the engine's whole vibration form, no setting in two parts and
+    none in none, each shared one offered every choice the engine takes,
+    the electronic state's part holding the charge and spin alone.
 
-    THE SILENT FAILURE: a setting the person can no longer reach (in
-    neither part), or reached twice with two values the Send must pick
-    between (in both).  MUTATIONS THIS MUST FAIL AGAINST: the own part
-    left whole (the shared settings drawn twice); the shared part filtered
-    by one engine (a setting the other engine has, in neither)."""
+    THE SILENT FAILURE: a setting the person can no longer reach (in no
+    part), or reached twice with two values the Send must pick between (in
+    two).  MUTATIONS THIS MUST FAIL AGAINST: the own part left whole (the
+    shared settings drawn twice); the shared part filtered by one engine (a
+    setting the other engine has, in none); the charge and spin left in
+    the common part as well."""
+    from molbuilder.template import STATE_ITEMS
+
     def _fields(schema):
         return {f["name"]: f for s in schema["sections"] for f in s["fields"]}
     whole = _fields(catalogue_to_form_schema(engine, "p",
                                              calculation="vibration"))
-    common = _fields(catalogue_to_form_schema(None, "c",
-                                              calculation="vibration",
-                                              surface="common"))
-    own = _fields(catalogue_to_form_schema(engine, "p",
-                                           calculation="vibration",
-                                           surface="own"))
-    assert not set(common) & set(own), set(common) & set(own)
-    assert set(common) | set(own) == set(whole), \
-        set(whole) ^ (set(common) | set(own))
-    for name, f in common.items():
+    parts = {
+        surface: _fields(catalogue_to_form_schema(
+            None if surface != "own" else engine, "p",
+            calculation="vibration", surface=surface))
+        for surface in ("state", "common", "own")}
+    names = [set(p) for p in parts.values()]
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            assert not a & b, a & b
+    assert set().union(*names) == set(whole), set(whole) ^ set().union(*names)
+    assert parts["state"] and set(parts["state"]) <= set(STATE_ITEMS), \
+        parts["state"]
+    for name, f in {**parts["state"], **parts["common"]}.items():
         assert set(whole[name].get("choices") or ()) <= set(
             f.get("choices") or ()), name
 

@@ -37,7 +37,7 @@ WEIGHT_SUM_TOLERANCE = 1e-6
 @dataclass(frozen=True)
 class FrameRows:
     """A multi-frame structure's rows, as written: the structure's
-    (``structure``, ``[{name, value, unit}]``), each frame's (``frames``,
+    (``structure``, ``[{name, value, unit, note}]``), each frame's (``frames``,
     one such list per frame), the frames' weights where every frame states
     one as a number (``weights``, else ``None``), and what is said of them
     (``warnings``)."""

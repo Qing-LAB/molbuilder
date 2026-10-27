@@ -63,6 +63,9 @@ instead of carrying their own order.
 > settings both engines share once, and made *Compute IR*, *Compute Raman*
 > and *Raman for* one setting each on both engines; the Structure-optimization
 > tab's two locks into the catalogue are next on that road (§ 1ai, planned).
+> 2.46.0: a frame set says what its numbers mean wherever it is cited (§ 1aj,
+> built), and the Spectrum tab draws the charge and spin in its chemistry
+> card, step 2 (§ 1ai's question, decided and built).
 
 **Where we are.** Shipped since the last handover (2026-10-18; it is
 [`archive/2026-10-20-plan-handover.md`](?doc=archive/2026-10-20-plan-handover.md),
@@ -1378,17 +1381,22 @@ Structure-optimization tab still keeps two locks of its own in its page
 script (`structure-optimization/viewer.js`): a relaxation's step settings
 under *Relaxation type* `none`, and the solvent model with no solvent —
 which the gate never mentions. To design: `active_when` naming a value that is
-*any one given* (the solvent's blank is its gas phase, not a member to list),
-and a relaxation's settings under a vibration whose structure is already
-relaxed, where *Relaxation type* is not the switch — today *Structure is
-already relaxed* greys none of them though none runs (the force tolerance
-stays live: it judges the stated structure). `active_when` keyed by kind:
-the relaxation's rows are the optimization's too, which has no such box.
-Also the user's: whether the Spectrum tab's charge and spin fields belong in
-step 2 beside the chemistry card's answer, rather than in step 3's *Run
-profile* card (`web/spectra.md` § 5 prescribes today's order).
+*any one given* (the solvent's blank is its gas phase, not a member to list).
+A vibration's relaxation settings stay live under *Structure is already
+relaxed* — the person may relax again with other settings; the choice is
+theirs, never greyed *(the user, 2026-10-27: "structure that is already
+relaxed should not stop user from relax with a different set of parameter,
+the user's choice for this, no greying")*. The Spectrum tab's charge and
+spin fields sit in step 2, in the chemistry card above the answer they are
+worked into — the user's choice, 2026-10-27, built 2.46.0 (`web/spectra.md`
+§ 5, `web/form-schema.md` § 1.3: the common part's electronic state served
+apart, `&surface=state`). **Open, the user's word**: the part is drawn as a
+card titled *Run profile* inside *2. Charge and spin*, while step 4's
+*PySCF · Run profile* holds the method — a title true of a card holding the
+charge and spin alone (`template.card_line` choosing the title as well as
+the line) is a wording call.
 
-## 1aj. A frame set says what its numbers mean, wherever it is cited *(2026-10-27; contract written, to build)*
+## 1aj. A frame set says what its numbers mean, wherever it is cited *(2026-10-27; built 2.46.0)*
 
 *(The user, 2026-10-27: "the details of what the weights and mass correction
 is used should be in meta data, and should be in contract so that when these
@@ -1402,13 +1410,18 @@ row written with its meaning as its `note`; the rows `sampling_rule`,
 meanings, `info.vibration`, `mass_amu`, the pair and its sha256; the data
 file's `definition` from each row's meaning and the average's naming its
 rule; the page's hover), [`model/datafiles.md`](?doc=model/datafiles.md) § 2
-(a cited value keeps what it means). To build: `frame_average.Row.means`;
-`mode_frames.frameset_from_mode` writing the notes and the three rows;
-`frameset.read` carrying notes and saying a vocabulary row without one;
-`transport/record.py`'s `frame_set` block; `frame_average.data_file_variables`
-and `fill_data_file` taking `definition` from the notes; the frame card's
-hover. The first slice of the data files' self-description
-(`model/datafiles.md`).
+(a cited value keeps what it means). **Built 2.46.0**: `frame_average.Row.means`;
+`mode_frames.frameset_from_mode` writing every row with its unit and meaning
+from the vocabulary, and `sampling_rule`, `sampling_nodes`, `mass_source`;
+`frame_average.warnings_of`, the one line naming a vocabulary row written
+without its meaning, at every reader; `frame_average.citation_block`, the
+record's `frame_set` (`transport-result@13`), its masses in the user order;
+`frame_average.with_meanings`, each frame variable's `definition` the set's
+note, else the vocabulary's; the frame card's hover. Checked through the
+road: a set written on the spectrum viewer, cited on the Transport tab,
+prepared and launched with the printed commands, summarized — the record and
+the data file read back through their doors. The first slice of the data
+files' self-description (`model/datafiles.md`).
 
 ## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; SIESTA's vibration redesigned 2026-10-25 as one run in phases, Raman its optical phase (the user's B); R-a, R-c and R1 decided as recommended, 2026-10-25 — to build)*
 

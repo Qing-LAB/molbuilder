@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@12``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@13``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -44,6 +44,10 @@ from ..persist import json_safe
 if TYPE_CHECKING:
     from .stages import Point
 
+#: ``@13``: ``frame_set`` -- the frame set the average is taken over, cited
+#: whole: the citation and its files' sha256, the structure's rows as
+#: written with their meanings, ``info.vibration`` and every atom's
+#: ``mass_amu`` in the user order (`frame_average.citation_block`).
 #: ``@10``: each finished point's ``digest`` -- what is kept of each data
 #: file's reading, its own and its ``shared/``'s: its state, size and claim
 #: (`model/parse.md` § 5e); the DOS by region from the kept readings alone.
@@ -68,7 +72,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@12"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@13"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -902,7 +906,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..parse.engines._run_ending import keep_reading, version_of
     from ..parse.engines.siesta_reader import read_output
     from ..runfiles import JUNCTION_FILE
-    from ..frame_average import AverageError, average_block
+    from ..frame_average import AverageError, average_block, citation_block
     from ..frameset import read as read_frame_set
     from .compose import read_provenance, recorded_junction
     from .stages import frames_of, rung_points, same_volts
@@ -1162,8 +1166,14 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                       task, "transmission", frames=frames_of(base))]
                   or [None]),
         # THE FRAMES' AVERAGE at each voltage -- their post-process's
-        # (`frame_average`, § 2a.12).
+        # (`frame_average`, § 2a.12) -- and the frame set it is taken over,
+        # cited whole: its rows with their meanings, the vibration, the
+        # masses in the user order (`model/overview.md` § 2.2a), the pair
+        # and its sha256.
         "average": average,
+        "frame_set": citation_block(
+            junction.restored() if junction is not None else None,
+            provenance),
         # WHAT THE CURRENT IS, in the record's own words -- for each spin the
         # points were run with (one, for a junction decided once).
         "current_means": {s: CURRENT_MEANS[s]

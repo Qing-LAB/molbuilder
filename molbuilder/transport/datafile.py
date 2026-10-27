@@ -443,7 +443,7 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     readings just made (`tbtnc.read_points`) -- say a file that failed to
     read, or that another reading holds, in that outcome's words.
     :class:`DataFileError` names what does not lay out on one grid."""
-    from ..frame_average import fill_data_file
+    from ..frame_average import fill_data_file, with_meanings
     from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, write_group
     from .compose import recorded_junction
     from .record import iv_notes_placed, order_unstated_said
@@ -706,7 +706,9 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     # THE FILE, through the variable record's one writing loop (`ncdata`).
     with NC_LOCK:
         ds = in_memory("transport.nc")
-        write_group(ds, dims, VARIABLES, values)
+        # A FRAME ROW'S DEFINITION is its meaning as the set writes it
+        # (`model/datafiles.md` § 2).
+        write_group(ds, dims, with_meanings(VARIABLES, junction), values)
         ds.setncatts(attrs)
         data = as_bytes(ds)
     return data_file_path(base, attrs["label"]).name, data

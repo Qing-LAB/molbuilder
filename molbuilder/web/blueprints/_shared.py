@@ -562,11 +562,13 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
     (`citation_defaults.asked_of_the_person`: a pair's pseudopotential
     directory) -- and ``"rung"`` is the per-rung form, which never offers a
     shared item.  Across the engines a kind runs on (`engines/template.md`
-    § 6.2a): ``"common"`` -- ``engine`` ``None`` -- the settings one row
-    serves on every engine of the kind (`template.shared_by_engines`), each
-    offering every choice any of them takes, and ``"own"`` one engine's
-    settings without them, its name before every card title.  ``None`` is
-    every surface at once, the ordinary kinds' one form.
+    § 6.2a): ``"state"`` and ``"common"`` -- ``engine`` ``None`` -- the
+    settings one row serves on every engine of the kind
+    (`template.shared_by_engines`), each offering every choice any of them
+    takes: ``"state"`` their electronic state (`template.STATE_ITEMS`), the
+    Spectrum tab's chemistry card's, ``"common"`` the rest; and ``"own"``
+    one engine's settings without them, its name before every card title.
+    ``None`` is every surface at once, the ordinary kinds' one form.
 
     **The grouping axes** (`form-schema.md` § 1.3), answering different
     questions:
@@ -585,16 +587,22 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
     from molbuilder.electronic_state import engines_for
 
     parsed = _T.catalogue()
-    if (surface == "common") != (engine is None):
-        raise ValueError("the 'common' surface is every engine's, and names "
-                         "none; every other surface names its engine")
+    if (surface in ("state", "common")) != (engine is None):
+        raise ValueError("the 'state' and 'common' surfaces are every "
+                         "engine's, and name none; every other surface names "
+                         "its engine")
     # THE ENGINES' SHARED ROWS (§ 6.2a): drawn once, before the engine is
-    # chosen -- and left out of each engine's own part.
+    # chosen -- their electronic state in its own part, beside the answer
+    # it is worked into -- and left out of each engine's own part.
     common = _T.shared_by_engines(calculation)
     engines = engines_for(calculation) if engine is None else (engine,)
     items = _T.select(parsed, engine=engine)
-    if surface == "common":
-        items = [it for it in items if it.name in common]
+    if surface == "state":
+        items = [it for it in items
+                 if it.name in common and it.name in _T.STATE_ITEMS]
+    elif surface == "common":
+        items = [it for it in items
+                 if it.name in common and it.name not in _T.STATE_ITEMS]
     elif surface == "own":
         items = [it for it in items if it.name not in common]
 
@@ -632,7 +640,7 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
     # rung's answers; a form for the whole calculation the ones every rung
     # gives alike -- an item answered rung by rung has no one answer there.
     # The shared panel carries the shared values alone.
-    if surface in ("shared", "common"):
+    if surface in ("shared", "state", "common"):
         echoed: Dict[str, Any] = {}
     elif rung is not None:
         echoed = _T.role_answers(engine, calculation, rung)
@@ -652,9 +660,9 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
         _run = _T.run_settings(engine)
         items = [it for it in items if calculation not in it.shared
                  and (it.name not in _run or it.name in echoed)]
-    elif surface not in (None, "common", "own"):
-        raise ValueError(f"surface must be 'shared', 'rung', 'common', "
-                         f"'own' or None, not {surface!r}")
+    elif surface not in (None, "state", "common", "own"):
+        raise ValueError(f"surface must be 'shared', 'rung', 'state', "
+                         f"'common', 'own' or None, not {surface!r}")
     if rung is not None:
         if surface != "rung":
             raise ValueError("a rung narrows the 'rung' surface only")

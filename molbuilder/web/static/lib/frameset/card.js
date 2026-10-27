@@ -5,10 +5,10 @@
  *           frame is"); docs/model/structure.md § 2.2f (the rows as written).
  * Data:     the server's `frame_set` — `{n_frames, definition}`, the
  *           frames' post-process's answer (`frame_average.answer`): the
- *           structure's rows and the frames' columns, each with its unit and
- *           kind -- the vocabulary's words for a row `frame_average.ROWS`
- *           knows, any other's name as written -- and what is said of the
- *           weights. The card keeps no list of names: what the answer holds
+ *           structure's rows and the frames' columns, each with its unit,
+ *           kind and meaning -- the vocabulary's words for a row
+ *           `frame_average.ROWS` knows, any other's name as written -- and
+ *           what is said of the weights. The card keeps no list of names: what the answer holds
  *           is what it draws.
  * Owns:     lib/frameset/card.css.
  *
@@ -27,13 +27,15 @@ function _fmt(v) {
 }
 
 /** A row as a page says it -- its words, with its unit -- and, on hover,
- *  the name the file stores it under and what kind of number it is. */
+ *  the name the file stores it under, what kind of number it is and what
+ *  it means, as the set writes it (structure.md § 2.2f). */
 function _label(row) {
     return row.page_unit ? row.words + " (" + row.page_unit + ")" : row.words;
 }
 
 function _stored(row) {
-    return row.name + " — " + row.kind;
+    const said = row.name + " — " + row.kind;
+    return row.means ? said + "\n" + row.means : said;
 }
 
 function _el(doc, tag, cls, text) {

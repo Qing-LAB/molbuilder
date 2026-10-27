@@ -16,11 +16,14 @@
  * fork.  Same lift pattern as ``lib/trajectory/core.js`` (see
  * docs/web/results.md).
  *
- * Wires the schema-driven SpectraConfig form (via the shared
- * ``molbuilder.formSchema`` helpers) to the three Spectra API
- * endpoints (spec § 10):
+ * Wires the vibration's catalogue form, drawn in its parts by the
+ * shared ``molbuilder.formSchema`` helpers (web/form-schema.md § 1.3),
+ * to the Spectra API endpoints:
  *
- *   GET  /api/build/schema/pyscf?calculation=vibration -- the form
+ *   GET  /api/build/schema/common?calculation=vibration&surface=state,
+ *        /api/build/schema/common?calculation=vibration and
+ *        /api/build/schema/<engine>?calculation=vibration&surface=own
+ *                                       -- the form's parts
  *   POST /api/task-setup/handover       -- Send to Task setup
  *   POST /api/spectra/load              -- parse a results JSON
  *
@@ -89,8 +92,10 @@
         modesTable:     null,
         formContainer:  null,   // wraps both panels: the generate-side gate + the edit-listener scope
         // THE FORM'S PARTS (web/spectra.md § 5): the settings both engines
-        // share, drawn once, and each engine's own.
-        form:           { common: null, pyscf: null, siesta: null },
+        // share, drawn once -- the charge and spin in the chemistry card,
+        // the rest under The calculation -- and each engine's own.
+        form:           { state: null, common: null, pyscf: null,
+                          siesta: null },
         engineStrip:    null,
         engineNote:     null,
         sendBtn:        null,
@@ -156,7 +161,8 @@
         // Form / calculation state -- NOT covered by the results-state
         // contract.  Kept at the top level of `state` for backward
         // compat; migrates to a future workspace contract.
-        schemas:        { common: null, pyscf: null, siesta: null },   // the catalogue's parts for the vibration
+        schemas:        { state: null, common: null, pyscf: null,
+                          siesta: null },   // the catalogue's parts for the vibration
         engine:         "pyscf",                          // the strip's choice: the description's engine
         engineChosenByUser: false,                         // a click beats the structure's default
         strip:              null,                          // the shared strip's handle (lib/tab-strip.js)
@@ -770,15 +776,18 @@
 
     async function _reloadVibrationSchemas(fs) {
         // THE VIBRATION'S FORM IN ITS PARTS (form-schema.md § 1.3): the
-        // settings every engine of the kind shares, drawn once above the
-        // strip, and each engine's own in its tab -- all from the CATALOGUE,
+        // settings every engine of the kind shares, drawn once -- the
+        // charge and spin in the chemistry card, the rest above the strip
+        // -- and each engine's own in its tab, all from the CATALOGUE,
         // through the door and the renderer the Structure-optimization tab
         // uses, so a parameter is defined once and drawn the same
         // everywhere.  Every part stays mounted; the strip shows one
         // engine's.
         const mySeq = ++_schemaFetchSeq;
         try {
-            const [common, pyscf, siesta] = await Promise.all([
+            const [st, common, pyscf, siesta] = await Promise.all([
+                fs.fetchSchema("common", { calculation: "vibration",
+                                           surface: "state" }),
                 fs.fetchSchema("common", { calculation: "vibration" }),
                 fs.fetchSchema("pyscf",  { calculation: "vibration",
                                            surface: "own" }),
@@ -788,18 +797,20 @@
             // Race guard: a rapid remount can issue a newer fetch during
             // our await; the older response must not overwrite the newer.
             if (mySeq !== _schemaFetchSeq) return;
-            const got = { common: common, pyscf: pyscf, siesta: siesta };
+            const got = { state: st, common: common, pyscf: pyscf,
+                          siesta: siesta };
             for (const part of Object.keys(got)) {
                 state.schemas[part] = got[part];
                 const host = els.form[part];
                 if (!host) continue;
                 host.innerHTML = "";
-                // An engine's part is drawn WITH the shared one: a setting
-                // of its own waits on *Compute Raman* there (`active_when`).
-                fs.renderForm(host, got[part], part === "common" ? {} : {
-                    alongside: [{ host: els.form.common,
-                                  schema: got.common }],
-                });
+                // EACH PART IS DRAWN WITH THE OTHERS of the form it belongs
+                // to: a setting of an engine's own waits on *Compute Raman*
+                // in the shared part (`active_when`).
+                const alongside = ["state", "common"]
+                    .filter((p) => p !== part)
+                    .map((p) => ({ host: els.form[p], schema: got[p] }));
+                fs.renderForm(host, got[part], { alongside: alongside });
             }
             // The forms exist now: whoever shows what they will carry (the
             // page's chemistry card) asks again.
@@ -893,11 +904,12 @@
     }
 
     /* AN ENGINE'S FORM, AS THE PARTS IT IS DRAWN IN (form-schema.md § 1.3):
-     * the settings every engine shares, then the engine's own -- each
-     * {host, schema}.  Everything that reads the form asks here: what it
-     * sends, its findings, the chemistry card. */
+     * the settings every engine shares -- the charge and spin, then the
+     * rest -- then the engine's own, each {host, schema}.  Everything that
+     * reads the form asks here: what it sends, its findings, the chemistry
+     * card. */
     function _formParts(engine) {
-        return ["common", engine]
+        return ["state", "common", engine]
             .map((part) => ({ host: els.form[part],
                               schema: state.schemas[part] }))
             .filter((p) => p.host && p.schema);
@@ -4206,6 +4218,7 @@
     // ----- Bootstrap -------------------------------------------
     function init() {
         els.formContainer  = $("spectra-form-container");
+        els.form.state     = $("spectra-form-state");
         els.form.common    = $("spectra-form-common");
         els.form.pyscf     = $("spectra-form-pyscf");
         els.form.siesta    = $("spectra-form-siesta");
@@ -4313,9 +4326,11 @@
         if (hasGenerateSide) {
             _on(els.sendBtn, "click", sendToTaskSetup);
             // Live science check on every edit -- in every part the form is
-            // drawn in: the shared settings above the strip and each
-            // engine's own below it (`_formParts`).
-            for (const host of [els.form.common, els.formContainer]) {
+            // drawn in: the charge and spin in the chemistry card, the
+            // shared settings above the strip and each engine's own below
+            // it (`_formParts`).
+            for (const host of [els.form.state, els.form.common,
+                                els.formContainer]) {
                 _on(host, "input",  refreshPreflightDebounced);
                 _on(host, "change", refreshPreflightDebounced);
             }

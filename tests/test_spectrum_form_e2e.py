@@ -87,8 +87,12 @@ def test_raman_for_is_live_only_while_raman_is_asked(page, flask_server):
         "() => [...document.getElementById('common-raman-modes').options]"
         ".filter(o => o.value).map(o => [o.value, o.textContent])") == [
         ["all", "All modes"], ["range", "Modes in a frequency range"]]
+    # A FIELD IS LIVE WHEN ITS CONTROLS TAKE AN EDIT -- every box of a
+    # three-number field (Light along), whose id names its row of boxes.
     live = lambda: page.evaluate(  # noqa: E731
-        "(ids) => ids.map(i => !document.getElementById(i).disabled)",
+        "(ids) => ids.map(i => [...document.getElementById(i)"
+        ".closest('.schema-field').querySelectorAll('input, select')]"
+        ".every(c => !c.disabled))",
         list(_RAMAN))
     states = {"at load": live()}
     page.check("#common-compute-raman")
@@ -117,7 +121,7 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
     Water set as the sidebar's selection and loaded with the tab's Load
     button; what the check answered is read off the page's own request --
     a finding about the structure among it -- and the rows drawn in the
-    tab's findings panel and its two forms are those findings.
+    tab's findings panel and its form's parts are those findings.
 
     MUTATIONS THIS MUST FAIL AGAINST: the page without the renderer's
     global entry point; the tab drawing only the findings about a field; a
@@ -146,8 +150,8 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
                for i in said), ("the live check said nothing about water "
                                 "itself", said)
     assert_every_finding_drawn(
-        page, ["#spectra-issues", "#spectra-form-common", "#spectra-form-pyscf",
-               "#spectra-form-siesta"],
+        page, ["#spectra-issues", "#spectra-form-state", "#spectra-form-common",
+               "#spectra-form-pyscf", "#spectra-form-siesta"],
         said)
 
 
@@ -192,3 +196,44 @@ def test_an_edit_in_the_shared_part_is_checked_live_beside_its_field(
         "() => (document.getElementById('common-raman-modes')"
         ".closest('.schema-field').querySelector('.field-issues') || {})"
         ".textContent", timeout=10000)
+
+
+def test_a_charge_stated_in_the_chemistry_card_is_what_the_form_carries(
+        page, flask_server, tmp_path, monkeypatch):
+    """`web/spectra.md` § 5 step 2, `form-schema.md` § 1.3: the charge and
+    spin are drawn in the chemistry card, once for both engines, and read
+    with the form's other parts -- the live check sends what the Send
+    sends (`collectParams`), so a charge typed there is in its request.
+
+    THE SILENT FAILURE: the fields drawn in step 2 but not read with the
+    form -- a stated charge never reaching the description, the run
+    worked out at another.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the state part left out of the
+    form's parts (`_formParts`); the live check not listening in the
+    chemistry card."""
+    from test_chemistry_card_e2e import (_ready_for_a_pick,
+                                         _register_tmp_as_picker_root)
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water = tmp_path / "w" / "water.xyz"
+    water.parent.mkdir()
+    water.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
+    page.goto(f"{flask_server}/spectrum-calculation",
+              wait_until="domcontentloaded")
+    _ready_for_a_pick(page)
+    page.evaluate(
+        "(p) => window.molbuilder.projects.setShared("
+        "  p.substring(0, p.lastIndexOf('/')), p)", str(water))
+    page.wait_for_function(
+        "() => !document.getElementById('load-from-sidebar-btn').disabled",
+        timeout=5000)
+    with page.expect_response(lambda r: "/api/build/preflight" in r.url,
+                              timeout=15000):
+        page.locator("#load-from-sidebar-btn").click()
+    page.wait_for_selector("#chemistry-card #common-net-charge",
+                           timeout=15000)
+    with page.expect_request(lambda r: "/api/build/preflight" in r.url,
+                             timeout=15000) as asked:
+        page.fill("#common-net-charge", "1")
+        page.press("#common-net-charge", "Tab")
+    assert asked.value.post_data_json["params"]["net_charge"] == 1

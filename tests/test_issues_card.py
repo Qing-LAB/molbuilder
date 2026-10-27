@@ -23,12 +23,14 @@ from molbuilder.web.blueprints._shared import (catalogue_to_form_schema,
 _CLS = {"siesta": SiestaConfig, "pyscf": PySCFConfig}
 
 #: Every form part a page draws: the Build tab's two engine forms, and the
-#: Spectrum tab's shared part and each engine's own (`form-schema.md`
-#: § 1.3).  The shared part is checked against both engines' configs: its
-#: findings come from whichever engine is sent.
+#: Spectrum tab's shared parts -- the electronic state and the rest -- and
+#: each engine's own (`form-schema.md` § 1.3).  A shared part is checked
+#: against both engines' configs: its findings come from whichever engine
+#: is sent.
 _PARTS = [("siesta", "optimization", None), ("pyscf", "optimization", None),
           ("siesta", "vibration", "own"), ("pyscf", "vibration", "own"),
-          ("siesta", "vibration", "common"), ("pyscf", "vibration", "common")]
+          ("siesta", "vibration", "common"), ("pyscf", "vibration", "common"),
+          ("siesta", "vibration", "state"), ("pyscf", "vibration", "state")]
 
 
 def _card_of(where: str, engine: str, kind: str):
@@ -46,7 +48,8 @@ def test_a_finding_about_a_field_lands_on_the_card_it_is_drawn_in(
     setting of a vibration on a group card the form does not draw them in).
     """
     schema = catalogue_to_form_schema(
-        None if surface == "common" else engine, "p", calculation=kind,
+        None if surface in ("common", "state") else engine, "p",
+        calculation=kind,
         surface=surface)
     fields = [f for s in schema["sections"] for f in s["fields"]]
     assert fields, (engine, kind, surface)

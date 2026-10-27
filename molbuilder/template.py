@@ -281,14 +281,14 @@ def setup_words(shown) -> str:
 
 
 #: THE RUN PROFILE CARD'S LINE, by what a form draws in it: the electronic
-#: state alone -- the Spectrum tab's part both engines share, the charge
-#: and spin decided before the engine -- or the method without it -- each
-#: engine's own part there; a form drawing both says the card's own line
-#: (`GROUP_WORDS`).
-PROFILE_STATE_WORDS = ("The charge and spin of the system -- one answer for "
-                       "both engines.  Leave a field blank and it is worked "
-                       "out from the structure; the chemistry card above "
-                       "says what, and why.")
+#: state alone -- the Spectrum tab's part both engines share, drawn in its
+#: chemistry card above the answer it is worked into -- or the method
+#: without it -- each engine's own part there; a form drawing both says the
+#: card's own line (`GROUP_WORDS`).
+PROFILE_STATE_WORDS = ("One setting for both engines: a value you type goes "
+                       "to the engine you choose, which refuses beside the "
+                       "field one it cannot run; a blank is worked out for "
+                       "each engine -- its answer is below.")
 PROFILE_METHOD_WORDS = ("How the electrons are computed: the method, and "
                         "the solver settings that suit it.")
 

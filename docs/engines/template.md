@@ -1336,9 +1336,10 @@ calculation tab**, which offers the vibration on two engines and asks for the
 engine after the settings (the Structure-optimization tab draws each engine's
 form whole). There, a setting
 that is one catalogue row for every engine that runs the kind
-(`electronic_state.engines_for`) is drawn once, under *The calculation*,
-before the engine is chosen; each engine's form then shows only that
-engine's own settings. One row is one meaning and one default on every
+(`electronic_state.engines_for`) is drawn once, before the engine is
+chosen — the charge and spin in the chemistry card, beside the answer they
+are worked into, the others under *The calculation*; each engine's form
+then shows only that engine's own settings. One row is one meaning and one default on every
 engine (§ 6.3, *Items merge when …*), and its card does not depend on the
 engine, since `result` is keyed by kind. The value travels with whichever
 engine is sent. Where one engine can take fewer choices than the other — a

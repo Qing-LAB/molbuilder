@@ -35,6 +35,10 @@ from .persist import sha256_of
 #: request (`science/vibrational-averaging.md` § 5.1, § 5.3).
 NODES = (3, 5)
 
+#: How its frames sample the mode, as its ``sampling_rule`` row states it
+#: (`model/structure.md` § 2.2f).
+SAMPLING_RULE = "gauss-hermite"
+
 
 class FrameSetError(ValueError):
     """The frame set cannot be written -- the message names what is missing
@@ -154,7 +158,8 @@ def frameset_from_mode(run_folder, *, mode: int,
     stating no masses, a mode it does not hold or an imaginary one, a
     maximum displacement that is not a positive number, another rule than
     :data:`NODES`, a pair already at ``out``."""
-    from .frame_average import INFO_KEY, MASS_CHANNEL
+    from .chemistry import MASS_SOURCE
+    from .frame_average import INFO_KEY, MASS_CHANNEL, ROWS
     from .runfiles import ROLE_SPECTRA
     from .runs import on_label_at, place_of, run_of
     from .siesta.vibration_phases import force_constants_call
@@ -267,18 +272,27 @@ def frameset_from_mode(run_folder, *, mode: int,
     else:
         said.append(why)
 
-    # THE ROWS, in `model/structure.md` § 2.2f's vocabulary.
+    # THE ROWS, in `model/structure.md` § 2.2f's vocabulary: each with its
+    # unit and its meaning, the row's note, as the vocabulary states them.
     masses = [float(v) for v in res.equilibrium_masses_amu]
     built.set_channel(MASS_CHANNEL, AtomChannel(
         "value", {i: v for i, v in enumerate(masses)}))
-    for name, value, unit in (
-            ("mode_index_1based", int(m.index_1based), None),
-            ("frequency_cm1", float(m.frequency_cm1), "cm-1"),
-            ("zero_point_amplitude_amu12_ang", float(q_zp),
-             "amu^1/2 angstrom"),
-            ("max_displacement_ang", d_max, "angstrom"),
-            ("sigma_amu12_ang", sigma, "amu^1/2 angstrom")):
-        built.set_customized(name, value, unit=unit)
+    vocabulary = {r.name: r for r in ROWS}
+
+    def write(name: str, value: Any, frame: Optional[int] = None) -> None:
+        built.set_customized(name, value, unit=vocabulary[name].unit,
+                             note=vocabulary[name].means, frame=frame)
+
+    for name, value in (
+            ("mode_index_1based", int(m.index_1based)),
+            ("frequency_cm1", float(m.frequency_cm1)),
+            ("zero_point_amplitude_amu12_ang", float(q_zp)),
+            ("max_displacement_ang", d_max),
+            ("sigma_amu12_ang", sigma),
+            ("sampling_rule", SAMPLING_RULE),
+            ("sampling_nodes", int(nodes)),
+            ("mass_source", MASS_SOURCE)):
+        write(name, value)
     frames = []
     for f, (q, w) in enumerate(zip(qs, weights)):
         moved = q * L
@@ -286,15 +300,14 @@ def frameset_from_mode(run_folder, *, mode: int,
                "max_atom_displacement_ang":
                    float(np.linalg.norm(moved, axis=1).max()),
                "weight": float(w)}
-        for name, value, unit in (
-                ("displacement_ang", float(np.linalg.norm(moved)),
-                 "angstrom"),
+        for name, value in (
+                ("displacement_ang", float(np.linalg.norm(moved))),
                 ("max_atom_displacement_ang",
-                 row["max_atom_displacement_ang"], "angstrom"),
-                ("q_amu12_ang", q, "amu^1/2 angstrom"),
-                ("node_sigma", row["q_sigma"], None),
-                ("weight", row["weight"], None)):
-            built.set_customized(name, value, unit=unit, frame=f)
+                 row["max_atom_displacement_ang"]),
+                ("q_amu12_ang", q),
+                ("node_sigma", row["q_sigma"]),
+                ("weight", row["weight"])):
+            write(name, value, frame=f)
         frames.append(row)
     built.set_info(INFO_KEY, {
         "run": _relative(Path(run_folder), root),
@@ -315,5 +328,5 @@ def frameset_from_mode(run_folder, *, mode: int,
     return ModeFrames(path=out, frames=tuple(frames), said=tuple(said))
 
 
-__all__ = ["NODES", "FrameSetError", "ModeFrames", "frameset_from_mode",
-           "reference_max_displacement"]
+__all__ = ["NODES", "SAMPLING_RULE", "FrameSetError", "ModeFrames",
+           "frameset_from_mode", "reference_max_displacement"]

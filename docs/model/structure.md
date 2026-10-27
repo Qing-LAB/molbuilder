@@ -666,16 +666,20 @@ details of what the weights and mass correction is used should be in meta
 data, and should be in contract so that when these data are cited and used
 in other places, the meaning is clear and tracked")*. A row of the
 vocabulary below is written with its meaning as its `note` — the
-vocabulary's own words, the *meaning* column (`frame_average.ROWS`' `means`)
-— so a frame set read anywhere says what each number is without this page:
+vocabulary's own words (`frame_average.ROWS`' `means`), which the *meaning*
+column below states with its references — so a frame set read anywhere says
+what each number is without this page:
 what the weights average, over which distribution, along which coordinate,
 measured with which masses. **How the frames sample the mode is stated as
 rows of its own** — `sampling_rule`, `sampling_nodes` — and **which masses
 the coordinate is measured with** as `mass_source`, beside the `mass_amu`
 channel that holds them. A maker writing a vocabulary name writes its
 meaning with it; the one reader (`frameset.read`) carries every row's note
-as written, and a vocabulary row written without one is said so beside the
-frames — a warning, never a refusal, the row read as written. **A citation
+as written, and a vocabulary row written without one — a frame row no frame
+writes one for, since a frame row is read with the first meaning any frame
+writes — is said so beside the frames by the vocabulary's owner
+(`frame_average.warnings_of`, one line naming the rows) — a warning, never a
+refusal, the row read as written and said in the vocabulary's meaning. **A citation
 carries a row whole** — name, value, unit and note — with `info.vibration`
 and the masses: a transport calculation's record and its data file
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), and the pages
@@ -704,18 +708,18 @@ Any other name's unit is carried as written:
 | the `mass_amu` channel | each atom's mass | given | the masses the mode's coordinate is weighted by — the vibration result's own, `equilibrium.masses_amu`, which the vibration's deck stated and its analysis weighted the Hessian by; every atom, a positive finite number | amu | — |
 | the structure's rows | `mode_index_1based` | given | which mode, counted as the vibration result counts it (`index_1based`) | — | Mode |
 | | `frequency_cm1` | given | the mode's wavenumber, as the result states it | cm⁻¹ | Frequency (cm⁻¹) |
-| | `temperature_k` | given | the temperature whose thermal distribution the weights sample, where the maker states one — the generator states none (`engines/vibration.md` § 5.10 ③) | K | Temperature (K) |
+| | `temperature_k` | given | the temperature whose thermal distribution the frames sample, where the maker states one — the generator states none (`engines/vibration.md` § 5.10 ③) | K | Temperature (K) |
 | | `zero_point_amplitude_amu12_ang` | given | the mode's zero-point amplitude `Q_zp = √(ħ/2ω)`, as the result states it | amu^½·Å | Zero-point amplitude (amu½·Å) |
-| | `max_displacement_ang` | given | the largest atom's move at the outermost frames — the generator's input, the person's (`engines/vibration.md` § 5.10 ③) | Å | Maximum displacement (Å) |
-| | `sampling_rule` | given | how the frames sample the mode: `gauss-hermite` — the frames sit at the nodes $q_f$ of an $n$-point Gauss–Hermite rule for a Gaussian of spread σ in $q$, density $\exp(-q^2/2\sigma^2)/(\sigma\sqrt{2\pi})$, and their weights make $\sum_f w_f\,X_f$ that Gaussian's average of any property $X$ — exact for $X$ a polynomial in $q$ of degree below $2n$ ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5) | — | Sampling rule |
-| | `sampling_nodes` | given | $n$, the rule's number of nodes — the frames: 3 ($q = 0, \pm\sqrt3\,\sigma$; weights $\tfrac23, \tfrac16, \tfrac16$) or 5 | — | Nodes |
-| | `mass_source` | given | which masses the `mass_amu` channel holds and $q$ is measured with: `standard atomic weights` — the isotope-averaged standard atomic weights (`chemistry.atomic_mass`) the vibration's deck stated, as its result states them (`equilibrium.masses_amu`); the mode vector $L$ is normalised with them, $\sum_A m_A \lvert L_A\rvert^2 = 1$ | — | Masses |
+| | `max_displacement_ang` | given | the largest atom's move at the outermost frames — the input that sets the spread, chosen by the set's maker: the generator's, the person's (`engines/vibration.md` § 5.10 ③) | Å | Maximum displacement (Å) |
 | | `sigma_amu12_ang` | derived | the spread of the Gaussian the frames sample — the generator's from the maximum displacement, `σ = q_out / (√2 x_out)` with `q_out = d_max / max_A \|L_A\|`; a maker stating a temperature, its thermal spread `Q_zp · √coth(ħω / 2k_BT)` | amu^½·Å | Spread σ (amu½·Å) |
+| | `sampling_rule` | given | the rule, by name, that placed the frames along the mode and gave their weights; `gauss-hermite`, the generator's: the frames sit at the nodes $q_f$ of an $n$-point Gauss–Hermite rule for a Gaussian of spread σ in $q$, density $\exp(-q^2/2\sigma^2)/(\sigma\sqrt{2\pi})$, and $\sum_f w_f\,X_f$ approximates that Gaussian's average of a property $X$ — exactly when $X$ is a polynomial in $q$ of degree below $2n$; a response not smooth over the spread, a level crossing $E_F$, is averaged poorly ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5.1, § 5.3) | — | Sampling rule |
+| | `sampling_nodes` | given | $n$, the rule's number of nodes, one frame at each — the generator writes 3 ($q = 0, \pm\sqrt3\,\sigma$; weights $\tfrac23, \tfrac16, \tfrac16$) or 5 | — | Nodes |
+| | `mass_source` | given | which masses the `mass_amu` channel holds, by name, and so which $q$ is measured with; `standard atomic weights`, a molbuilder vibration's: the isotope-averaged standard atomic weights (`chemistry.atomic_mass`) the vibration's deck stated, as its result states them (`equilibrium.masses_amu`); the mode vector $L$ is normalised with them, $\sum_A m_A \lvert L_A\rvert^2 = 1$ | — | Masses |
 | each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, `√(Σ_A \|ΔR_A\|²)` over every atom — no masses | Å | Displacement (Å) |
 | | `max_atom_displacement_ang` | measured | its largest single atom's, `max_A \|ΔR_A\|` | Å | Largest atom move (Å) |
 | | `q_amu12_ang` | derived | its position along the mode, the mass-weighted normal coordinate — ONE number for the whole mode, every atom displaced by `q · L_A` with `Σ_A m_A \|L_A\|² = 1` over the `mass_amu` masses: its size `√(Σ_A m_A \|ΔR_A\|²)`, its sign the side of frame 0 it sits on; the frames' node, `√2 σ x_f` | amu^½·Å | Position along the mode, q (amu½·Å) |
 | | `node_sigma` | derived | the same position in units of the spread, `q / σ` | — | q in units of σ |
-| | `weight` | given | the frame's share of the mode's average: the sampling rule's weight at this frame's node, the weights summing to 1, so `Σ_f weight_f X_f` is the Gaussian average of `X` (`sampling_rule`; `engines/transport.md` § 2a.12) | — | Weight |
+| | `weight` | given | the frame's share of the mode's average: the sampling rule's weight at this frame's node, the weights summing to 1, so `Σ_f weight_f X_f` is the rule's estimate of the Gaussian average of `X` (`sampling_rule`; `engines/transport.md` § 2a.12) | — | Weight |
 | `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the geometry pin is a cited pair's, `structure-molstruct.md` § 3; a broad hash over the labels is V1.9's remainder) | — | — |
 
 *On a page* is how a page says the row (`frame_average.ROWS`' `words` and page unit): the plain words, the stored name on hover (`engines/transport.md` § 3.8.1). *Given* is stated by the vibration result, the coordinates or the script;

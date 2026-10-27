@@ -954,8 +954,10 @@ TBtrans's k-averaged text files on the data file's energies — and the PDOS by
 region from each point's kept reading of its data file (*A point's digest*,
 below; [`model/parse.md`](?doc=model/parse.md) § 5e); the points without a transmission as `pending` or `failed` in
 their run's words; for a frame set, each point's frame and that frame's
-`customized` rows, the I–V per frame, and the mode's average at each voltage
-(§ 2a.12, built 2026-10-10); the treatment; the provenance slot and the chain — each
+`customized` rows, the I–V per frame, the mode's average at each voltage
+(§ 2a.12, built 2026-10-10) and the frame set it is taken over, cited whole —
+its rows with their meanings, the vibration, the masses (`frame_set`, built
+2.46.0); the treatment; the provenance slot and the chain — each
 rung's `.gathered-from`; the DFT-NEGF caveat. The PDOS of any atoms, by orbital
 type, is asked of `/api/transport/pdos`. The Results tab composes the record on
 read (`/api/transport/record`); `summarize task` writes the same composition to
@@ -2029,8 +2031,9 @@ each vibration mode will have a separate prep and run as different task"; plan
 § 5z D3)*. A set that samples a mode carries a
 mode's frame set ([`model/structure.md`](?doc=model/structure.md) § 2.2f, its
 maker's vocabulary): the mode as the vibration result numbers it, its
-frequency, the temperature, the zero-point amplitude and the spread on the
-structure's rows; each frame's plain displacement, its mass-weighted position
+frequency, the zero-point amplitude, the maximum displacement, the spread,
+the sampling rule and its nodes and which masses measure the mode on the
+structure's rows (a temperature where a maker states one); each frame's plain displacement, its mass-weighted position
 along the mode and that position in units of the spread, and its weight on its
 own rows; each atom's mass on the `mass_amu` channel; where the mode came from
 in `info.vibration`. **Transport reads one of them, each frame's `weight`**
@@ -3037,7 +3040,8 @@ named in each variable's `coordinates` attribute, which xarray and netCDF4
 read): along `frame` its folder `frame_token` (`f000` …, empty for one
 structure, which has no frame level), every per-frame row of a mode's frame
 set's vocabulary (§ 2.2f) — each variable's `definition` the row's meaning
-as the set states it (its `note`), the vocabulary's where it states none —
+as the set states it (its `note`, said to be the set's), the vocabulary's
+where it states none —
 and `frame_rows`, every row the frame states as written, a JSON list of the
 rows whole, meanings included; along `atom` each atom's `element`
 and `mass_amu` — the fill value where the structure states none — and its
@@ -3106,8 +3110,8 @@ structure states rows, the vocabulary's structure rows and `info.vibration`
 where it states them, every row as written with its meaning
 (`structure_rows`, JSON) — the frames' average's variables each naming in
 its `definition` the rule and weights it was taken with, *Σ_f weight_f
-T_f(E) over the frame set's `sampling_rule` at its `sampling_nodes` frames*
-— what is
+T_f(E) over the frame set's `sampling_rule` at its `sampling_nodes` frames*,
+or the variable that does — what is
 said of the weights (`frame_warnings`), and where every frame states a weight
 their sum, the tolerance and — where the frames state a mode — what a mode's
 average assumes; the Fermi levels each in its run's
@@ -5319,8 +5323,8 @@ the frame-set card, one renderer for every page that shows a citation's
 frames (this card, Task setup's echo — `web/task-setup.md` § 3): for a mode's
 set, its mode line — the structure's rows of
 [`model/structure.md`](?doc=model/structure.md) § 2.2f in plain words, each
-with its value and unit (*Mode 6 · Frequency 2548.37 cm⁻¹ · Temperature
-300 K · …*) — and a table, a row per frame, numbered as the frame bar numbers
+with its value and unit (*Mode 6 · Frequency 2548.37 cm⁻¹ · Zero-point
+amplitude 0.0813 amu½·Å · …*) — and a table, a row per frame, numbered as the frame bar numbers
 them (1 … F), each frame's rows a column under its words and unit
 (*Displacement (Å)*, *Weight*); the name the file stores each under, its
 kind and its meaning as the set states it (the row's `note`, § 2.2f of the

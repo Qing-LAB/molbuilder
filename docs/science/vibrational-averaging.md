@@ -581,11 +581,15 @@ Each is stated beside the numbers it limits, never dropped:
 The frame set states what every frame is, raw values beside derived ones —
 the mode as the vibration result numbers it, its frequency, the zero-point
 amplitude, the maximum displacement the person set and the spread $\sigma$ it
-gives (a temperature where a maker states one); each frame's plain
-displacement, its mass-weighted position $Q_j$ and $Q_j/\sigma$, its weight;
-every atom's mass — the maker's rows of
-[`model/structure.md`](?doc=model/structure.md) § 2.2f, carried as written;
-the calculation reads each frame's weight alone. The transport record (`transport.md` § 2a.12) carries:
+gives (a temperature where a maker states one), the rule that placed and
+weighted the frames and its nodes, and which masses measure the mode; each
+frame's plain displacement, its mass-weighted position $Q_j$ and $Q_j/\sigma$,
+its weight; every atom's mass — the maker's rows of
+[`model/structure.md`](?doc=model/structure.md) § 2.2f, each with its
+meaning, carried as written; the calculation reads each frame's weight alone.
+The transport record (`transport.md` § 2a.12) carries the frame set it
+averages over, cited whole (`frame_set`: its rows with their meanings, the
+vibration it came from, the masses, the pair and its sha256), and:
 
 - each frame's $T_j(E)$ and current — the family of curves — beside its rows;
 - $\langle T(E)\rangle = \sum_j W_j T_j(E)$, the mode's average at every

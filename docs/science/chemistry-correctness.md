@@ -254,8 +254,9 @@ preparing anything:
 
 Each link of the 2026-05-22 chain is now broken: the silent default → a blank
 that the class decides, with its reason on the card, in the deck comment and in
-the prep report (§ 2a, ES8); the missing input surface → the four items on both
-engine sub-forms; the absent advisory → a metal-driven decision is a warning
+the prep report (§ 2a, ES8); the missing input surface → the four items on
+every form that runs a calculation (on the Spectrum tab the charge and spin
+drawn once, in the chemistry card); the absent advisory → a metal-driven decision is a warning
 until the count is stated, and a stated value that differs from what the
 structure implies is reported (ES9). The card and the chip read the same
 `ElectronicState` the checks and the deck writers read — see

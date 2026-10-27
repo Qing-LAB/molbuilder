@@ -145,7 +145,8 @@ _N_FRAMES = len(_NODES_SIGMA)
 #: A mode's frame set's rows as `model/structure.md` § 2.2f's table states
 #: them -- ``(name, kind, unit, words, page unit)``, the structure's and each
 #: frame's -- what the Transport tab's card shows for the set the fixture
-#: wrote (§ 3.8.1).
+#: wrote (§ 3.8.1); the generator's rule and masses as `engines/vibration.md`
+#: § 5.10 ③ states them.
 _SET_ROWS = (("mode_index_1based", "given", None, "Mode", None),
              ("frequency_cm1", "given", "cm-1", "Frequency", "cm⁻¹"),
              ("zero_point_amplitude_amu12_ang", "given", "amu^1/2 angstrom",
@@ -153,7 +154,12 @@ _SET_ROWS = (("mode_index_1based", "given", None, "Mode", None),
              ("max_displacement_ang", "given", "angstrom",
               "Maximum displacement", "Å"),
              ("sigma_amu12_ang", "derived", "amu^1/2 angstrom",
-              "Spread σ", "amu½·Å"))
+              "Spread σ", "amu½·Å"),
+             ("sampling_rule", "given", None, "Sampling rule", None),
+             ("sampling_nodes", "given", None, "Nodes", None),
+             ("mass_source", "given", None, "Masses", None))
+_SAMPLING = {"sampling_rule": "gauss-hermite", "sampling_nodes": 3,
+             "mass_source": "standard atomic weights"}
 _FRAME_ROWS = (("displacement_ang", "measured", "angstrom",
                 "Displacement", "Å"),
                ("max_atom_displacement_ang", "measured", "angstrom",
@@ -2072,6 +2078,21 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
     assert avg["tolerance"] == 1e-6
     assert abs(avg["weight_sum"] - 1.0) <= avg["tolerance"]
     assert avg["why"] is None and len(avg["assumptions"]) == 6
+    # THE FRAME SET THE AVERAGE IS TAKEN OVER, cited whole: the pair and its
+    # sha256, its rows with their meanings, the vibration and every atom's
+    # mass in the user order -- the cited pair's own, read back.
+    from molbuilder.frame_average import MASS_CHANNEL
+    from molbuilder.persist import sha256_of
+    from molbuilder.sidecars.molstruct import sidecar_path_for
+    cited, path = _the_set(junction), junction.tree / junction.frame_set
+    masses = cited.annotations[MASS_CHANNEL].data
+    assert _record(run)["frame_set"] == {
+        "citation": junction.frame_set,
+        "files": {p.name: sha256_of(p)
+                  for p in (path, sidecar_path_for(path))},
+        "rows": cited.customized_rows(),
+        "vibration": cited.info["vibration"],
+        MASS_CHANNEL: [masses[i] for i in range(cited.n_atoms)]}
     assert [e["bias_v"] for e in avg["at"]] == list(_BIAS)
     for e in avg["at"]:
         assert e["waits_for"] == [] and e["why"] is None, e
@@ -2160,6 +2181,12 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     assert set(attrs_of["positions_ang"]["coordinates"].split()) \
         == frame_labels | {"element", MASS_CHANNEL, "user_atom_index",
                            "engine_atom_index"}
+    # EACH FRAME ROW'S DEFINITION its meaning as the set writes it
+    # (`model/datafiles.md` § 2).
+    for r in FRAME_ROWS:
+        note = next(x["note"] for x in cited.customized_rows(0)
+                    if x["name"] == r.name)
+        assert attrs_of[r.name]["definition"].startswith(note), r.name
     for var in VARIABLES:
         attrs = attrs_of[var.name]
         assert attrs["long_name"] and attrs["definition"], var.name
@@ -2543,15 +2570,16 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     pair = StructureCodec().load(junction.tree / junction.frame_set,
                                  frames=True)
 
-    def stated(name, frame=None):
-        return next(r["value"] for r in pair.customized_rows(frame)
+    def stated(name, frame=None, key="value"):
+        return next(r[key] for r in pair.customized_rows(frame)
                     if r["name"] == name)
     expect = {
         "structure": [{"name": n, "value": stated(n), "unit": u, "kind": k,
-                       "words": w, "page_unit": pu}
+                       "words": w, "page_unit": pu,
+                       "means": stated(n, key="note")}
                       for n, k, u, w, pu in _SET_ROWS],
         "columns": [{"name": n, "unit": u, "kind": k, "words": w,
-                     "page_unit": pu}
+                     "page_unit": pu, "means": stated(n, 0, key="note")}
                     for n, k, u, w, pu in _FRAME_ROWS],
         "frames": [[stated(row[0], f) for row in _FRAME_ROWS]
                    for f in range(_N_FRAMES)],
@@ -2572,6 +2600,14 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     assert [row[3] for row in expect["frames"]] == pytest.approx(
         list(_NODES_SIGMA), rel=1e-12)
     assert stated("max_displacement_ang") == _MAX_DISPLACEMENT_ANG
+    assert {n: stated(n) for n in _SAMPLING} == _SAMPLING
+    # ...every row written with its meaning, the vocabulary's own words
+    # (`model/structure.md` § 2.2f).
+    from molbuilder.frame_average import ROWS
+    means = {r.name: r.means for r in ROWS}
+    for frame in (None, *range(_N_FRAMES)):
+        for r in pair.customized_rows(frame):
+            assert r["note"] == means[r["name"]], (frame, r)
     assert max(stated("max_atom_displacement_ang", f)
                for f in range(_N_FRAMES)) == pytest.approx(
         _MAX_DISPLACEMENT_ANG, rel=1e-12)

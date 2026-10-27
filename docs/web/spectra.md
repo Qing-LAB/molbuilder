@@ -60,7 +60,7 @@ flowchart TD
   ENG["lib/spectra/core.js — the whole spectra viewer<br/>form · chart · mode table · excited-state panel · 3D mode animation"]
   TAB["/spectrum-calculation<br/>(spectra/viewer.js — describe and Send; no result)"] --> ENG
   RES["Results tab<br/>(inspectors/spectra.js — view a *.spectra.json)"] --> ENG
-  ENG --> API["GET /api/build/schema/common?calculation=vibration — the shared part; /pyscf and /siesta?calculation=vibration&surface=own — each engine's own<br/>POST /api/build/preflight — the form checked as you edit<br/>POST /api/task-setup/handover — hand the description to Task setup (lib/task-handover.js)<br/>POST /api/spectra/load — read a finished .spectra.json<br/>GET /api/spectra/export — its data files and the Raman view<br/>POST /api/spectra/frameset — a mode as a frame set"]
+  ENG --> API["GET /api/build/schema/common?calculation=vibration&surface=state — the charge and spin; /common?calculation=vibration — the other shared settings; /pyscf and /siesta?calculation=vibration&surface=own — each engine's own<br/>POST /api/build/preflight — the form checked as you edit<br/>POST /api/task-setup/handover — hand the description to Task setup (lib/task-handover.js)<br/>POST /api/spectra/load — read a finished .spectra.json<br/>GET /api/spectra/export — its data files and the Raman view<br/>POST /api/spectra/frameset — a mode as a frame set"]
 ```
 
 ## 2. The spectrum chart
@@ -671,24 +671,31 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    ([`molview.md`](?doc=web/molview.md)). Pick a `.xyz`/`.pdb` in the Projects
    sidebar and load it; the card shows the 3D structure plus its atom count and
    formula, read straight off the loaded model.
-2. **Charge and spin.** The chemistry card shows the charge and spin each
-   engine form's vibration will carry — the one electronic-state class's answer
-   for exactly what the form says, about the structure the viewer holds, each
-   value with its reason (`POST /api/structure/analyze`,
+2. **Charge and spin.** The chemistry card holds the three fields — *Net
+   charge*, *Spin treatment*, *Unpaired electrons* — one setting for both
+   engines, drawn once (`GET /api/build/schema/common?calculation=vibration&surface=state`,
+   [`form-schema.md`](?doc=web/form-schema.md) § 1.3), and below them the
+   charge and spin each engine form's vibration will carry — the one
+   electronic-state class's answer for exactly what the forms say, about the
+   structure the viewer holds, each value with its reason
+   (`POST /api/structure/analyze`,
    [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
    § 2a). It fills nothing in: leave a field blank and it is worked out; type a
-   value to state it, and the card follows.
+   value to state it, and the answer follows. The fields sit beside the answer
+   they are worked into, so the person reads what a blank becomes where they
+   leave it blank.
 3. **The calculation — what you want from it.** One card for each result,
    in the order a person decides them: **Frequencies and mode shapes**
    (relax first, or the box saying the structure is already relaxed),
    **Infrared** (*Compute IR intensities*), **Raman** (*Compute Raman
    intensities*, and *Raman for*: **All modes**, or **Modes in a frequency
    range** with its *Min* and *Max* in cm⁻¹), **Thermochemistry** (the
-   temperature); then the charge and spin and the output switches. These
-   are the settings every engine of the vibration shares — one meaning and
-   one default on both — so they are drawn **once, before the engine is
-   chosen** ([`engines/template.md`](?doc=engines/template.md) § 6.2a;
-   `GET /api/build/schema/common?calculation=vibration`). Infrared is on and
+   temperature); then the output switches. These, with the charge and spin
+   of step 2, are the settings every engine of the vibration shares — one
+   meaning and one default on both — so they are drawn **once, before the
+   engine is chosen** ([`engines/template.md`](?doc=engines/template.md)
+   § 6.2a; `GET /api/build/schema/common?calculation=vibration`, the
+   charge and spin left to step 2). Infrared is on and
    Raman off unless you say otherwise, and Raman is for all modes unless you
    give a range, on both engines
    ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1). *Raman for*
@@ -759,8 +766,10 @@ catalogue schema + hand-over doors (§ 5):
 
 Each follows the app's `{ok: …}` envelope convention, the export's file
 aside. The form schema comes
-from the catalogue door — the part both engines share once
-(`GET /api/build/schema/common?calculation=vibration`) and each engine's own
+from the catalogue door — what both engines share, once: the charge and spin
+(`GET /api/build/schema/common?calculation=vibration&surface=state`, step 2)
+and the other settings (`GET /api/build/schema/common?calculation=vibration`,
+step 3) — and each engine's own
 (`GET /api/build/schema/<engine>?calculation=vibration&surface=own`);
 (the old `GET /api/build/schema/spectra` route retired at P3; frozen atoms
 travel with the structure now — § 8).
