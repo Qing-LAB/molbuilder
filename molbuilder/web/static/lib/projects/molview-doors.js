@@ -35,20 +35,16 @@ async function _postJSON(url, body) {
 }
 
 /* WHERE and AS WHAT is the unified question (`chooseSavePath`,
- * projects.md § 5) — this door phrases it for an export, and ADDS THE
- * EXPORT'S EXTENSION ``ext``, as its hint promises: once, so a name typed
- * with it (`x.xyz`, any case) is kept as typed rather than doubled.
- * Resolves the full path, or null on cancel. */
+ * projects.md § 5) — this door phrases it for an export, the export's
+ * extension ``ext`` added by the question itself.  Resolves the full path,
+ * or null on cancel. */
 async function _askProjectPath(stem, what, ext) {
-    const picked = await chooseSavePath({
+    return chooseSavePath({
         title: "Save " + what + " where?",
         nameTitle: "Save " + what + " as",
         initial: stem,
-        hint: "The extension is added for you.",
+        ext: ext,
     });
-    if (!picked) return null;
-    return picked.toLowerCase().endsWith(ext.toLowerCase())
-        ? picked : picked + ext;
 }
 
 export const molviewFiles = {

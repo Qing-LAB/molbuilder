@@ -186,8 +186,13 @@ export function confirmDestructive(opts) {
  * tomorrow — asks this one question through this one door, so "where may
  * files go" never grows a second implementation.
  *
- * @param opts {title?, nameTitle?, initial?, hint?}
- * @returns "<dir>/<name>" (no extension appended), or null on cancel.
+ * THE EXTENSION IS ADDED, never asked (`opts.ext`, e.g. ".xyz"): the name
+ * is asked without it, the dialog says so, and it is added once -- a name
+ * typed with it, in any case, is taken as typed: `x.xyz` is `x.xyz`, never
+ * `x.xyz.xyz` (projects.md § 5).
+ *
+ * @param opts {title?, nameTitle?, initial?, hint?, ext?}
+ * @returns "<dir>/<name>" -- `ext` added where given -- or null on cancel.
  * @throws when the project root is not available on this page yet — said,
  *         never a silent nothing.
  */
@@ -200,12 +205,16 @@ export async function chooseSavePath(opts) {
     title: opts.title || "Save where?",
   });
   if (!dir) return null;
+  const ext = opts.ext || "";
   const name = await chooseName({
     title: opts.nameTitle || "Save as",
     label: "Name",
     initial: opts.initial || "",
-    hint: opts.hint || "",
+    hint: [opts.hint || "", ext ? "The extension is added for you." : ""]
+      .filter(Boolean).join(" "),
   });
   if (!name) return null;
-  return String(dir).replace(/\/+$/, "") + "/" + name;
+  const typed = name.toLowerCase().endsWith(ext.toLowerCase())
+    ? name : name + ext;
+  return String(dir).replace(/\/+$/, "") + "/" + typed;
 }

@@ -641,7 +641,11 @@ multi-frame structure pair a transport calculation cites
 person states the **maximum displacement** — the largest atom's move at the
 outermost frames, in Å, with this mode's largest zero-point atom move shown
 beside the field (the result's `zero_point_displacement_ang`) — three or five
-frames, chosen from the two, and where in the tree to save the pair.
+frames, chosen from the two, and where in the tree to save the pair: a
+folder, then the set's name alone — `mode6` offered for mode 6 — written as
+`<name>.xyz` and `<name>.molstruct.json`, the extension added by the
+save-where question (`chooseSavePath`, [`projects.md`](?doc=web/projects.md)
+§ 5).
 **Beside the field, the reference** — the maximum displacement whose frames
 sample the mode's thermal spread at a temperature, for three frames and for
 five, which the load door serves per mode

@@ -178,20 +178,46 @@ def test_the_gates_verdicts_ride_the_doors_result():
                                "about": "cell.edit"}]
 
 
+#: The save-where question's own dialogs, answered: the folder picker picks
+#: ``P``, the name dialog answers ``globalThis.__typed``, the page has a
+#: project root.
+_QUESTION_ANSWERED = r"""
+const { registerHooks } = await import("node:module");
+const __stub = (src) => "data:text/javascript," + encodeURIComponent(src);
+const __answers = {
+    "../dialog.js": __stub("export async function askFields() "
+                           + "{ return { name: globalThis.__typed }; }"),
+    "./state.js": __stub("export function getProjectsRoot() "
+                         + "{ return '/root'; }"),
+    "../tree-picker.js": __stub("export async function pickPath() "
+                                + "{ return 'P'; }"),
+};
+registerHooks({ resolve(spec, ctx, next) {
+    return (spec in __answers
+            && String(ctx.parentURL).endsWith("/lib/projects/dialogs.js"))
+        ? { url: __answers[spec], shortCircuit: true } : next(spec, ctx);
+} });
+"""
+
+DIALOGS = ROOT / "molbuilder/web/static/lib/projects/dialogs.js"
+
+
 def test_a_name_typed_with_its_extension_is_saved_as_typed():
-    """`projects.md` § 3: the door adds the extension to the name it asked
-    for, and a name typed with it -- in any case -- is taken as typed: a
-    second `.xyz` names a file nobody chose (V1.14, the 2026-09-23 walk)."""
-    out = _run(r"""
+    """`projects.md` § 5: the save-where question asks the name without its
+    extension and adds it once -- a name typed with it, in any case, is
+    taken as typed: a second `.xyz` names a file nobody chose (V1.14, the
+    2026-09-23 walk).  The question's own rule, so every door that asks it
+    -- the viewer's export, the spectrum viewer's frame set -- names the
+    file the same way."""
+    out = run_node([], (
+        "const { chooseSavePath } = await import("
+        + json.dumps(DIALOGS.resolve().as_uri()) + ");\n"
+        + r"""
         const saved = [];
-        for (const typed of ["P/x", "P/x.xyz", "P/x.XYZ"]) {
-            globalThis.__picked = typed;
-            __calls.length = 0;
-            await molviewFiles.save("project", "x",
-                                    { structure: { elements: ["C"] } });
-            saved.push(__calls.find(
-                (c) => c.url.includes("/api/structure/save")).body.path);
+        for (const typed of ["x", "x.xyz", "x.XYZ"]) {
+            globalThis.__typed = typed;
+            saved.push(await chooseSavePath({ ext: ".xyz" }));
         }
         console.log(JSON.stringify(saved));
-    """, answered=True)
+    """), globals_js=_QUESTION_ANSWERED)
     assert out == ["P/x.xyz", "P/x.xyz", "P/x.XYZ"], out

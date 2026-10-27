@@ -3595,8 +3595,10 @@
             out = await chooseSavePath({
                 title: "Save the frame set where?",
                 nameTitle: "Save the frame set as",
-                initial: "mode" + mode.index_1based + ".xyz",
-                hint: "the pair's .xyz; its .molstruct.json is written beside it",
+                initial: "mode" + mode.index_1based,
+                hint: "The set is written as two files: the name with .xyz, "
+                    + "and with .molstruct.json beside it.",
+                ext: ".xyz",
             });
         } catch (exc) {
             setStatus(els.framesetStatus, String(exc.message || exc), "error");

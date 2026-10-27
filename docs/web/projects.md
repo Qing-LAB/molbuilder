@@ -162,10 +162,10 @@ not read as metadata (`structure.lone_file`, `model/structure.md` § 2.3).
 given, so it needed a UI layer to decide one, and the tab's copy of that layer
 went with it — § 5):*
 
-0. It asks **where**: a folder, then a name (`chooseSavePath`). Cancel either
-   and nothing is written. The name is asked without its extension, which the
-   door adds (`.xyz`; a picture's own); a name typed with it, in any case, is
-   taken as typed — `x.xyz` is saved as `x.xyz`, never `x.xyz.xyz`.
+0. It asks **where**: a folder, then a name (`chooseSavePath`, its `ext`
+   the export's: `.xyz`, a picture's own). Cancel either and nothing is
+   written. The name is asked without its extension, which the question
+   adds — the rule below.
 1. The caller has already asked MolView for the structure
    (`molview.data.exportFile()` → `{name, structure}`: one envelope, the
    range's frames and their rows inside it — data, not bytes).
@@ -464,9 +464,16 @@ the vibration result ([`web/spectra.md`](?doc=web/spectra.md) § 3.3).
 
 **The unified save-where question — `projects.chooseSavePath(opts)`**
 *(2026-08-19, user)*: the move-to dialog composed with the name dialog, from
-the project root, on any tab — `{title?, nameTitle?, initial?, hint?}` →
-`"<dir>/<name>"` or `null` on cancel (throws, never a silent nothing, when
-the page has no project root yet). **One door for every flow that deposits
+the project root, on any tab — `{title?, nameTitle?, initial?, hint?, ext?}`
+→ `"<dir>/<name>"` or `null` on cancel (throws, never a silent nothing, when
+the page has no project root yet). **The extension is added, never asked**:
+with `ext` the name is asked without it, the dialog says *The extension is
+added for you.*, and it is added once — a name typed with it, in any case,
+is taken as typed: `x.xyz` is saved as `x.xyz`, never `x.xyz.xyz`. One rule
+in the question, so every door that asks it names a file the same way: the
+MolView exports, and the spectrum viewer's *Write frame set…*
+([`spectra.md`](?doc=web/spectra.md) § 4.3) *(the user, 2026-10-27: "make the
+name box take the name only")*. **One door for every flow that deposits
 artifacts under the root**: the MolView exports ride it today.  *(The
 transport calculation was the named future consumer; it shipped 2026-08-29
 consolidating NOTHING in the browser — the citation composes at `prep`, and
