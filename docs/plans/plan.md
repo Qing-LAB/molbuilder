@@ -65,7 +65,9 @@ instead of carrying their own order.
 > tab's two locks into the catalogue are next on that road (§ 1ai, planned).
 > 2.46.0: a frame set says what its numbers mean wherever it is cited (§ 1aj,
 > built), and the Spectrum tab draws the charge and spin in its chemistry
-> card, step 2 (§ 1ai's question, decided and built).
+> card, step 2 (§ 1ai's question, decided and built); 2.46.1: `summarize`
+> says a set's rows as the card does, the record's `frame_set` null for one
+> structure, the shared parts' titles name no engine (the user's rule).
 
 **Where we are.** Shipped since the last handover (2026-10-18; it is
 [`archive/2026-10-20-plan-handover.md`](?doc=archive/2026-10-20-plan-handover.md),
@@ -1390,11 +1392,9 @@ the user's choice for this, no greying")*. The Spectrum tab's charge and
 spin fields sit in step 2, in the chemistry card above the answer they are
 worked into — the user's choice, 2026-10-27, built 2.46.0 (`web/spectra.md`
 § 5, `web/form-schema.md` § 1.3: the common part's electronic state served
-apart, `&surface=state`). **Open, the user's word**: the part is drawn as a
-card titled *Run profile* inside *2. Charge and spin*, while step 4's
-*PySCF · Run profile* holds the method — a title true of a card holding the
-charge and spin alone (`template.card_line` choosing the title as well as
-the line) is a wording call.
+apart, `&surface=state`). Its card keeps the title *Run profile*: a shared
+part's titles name no engine, one engine's own carry its name — the user's
+rule, 2026-10-27 (`web/form-schema.md` § 1.3).
 
 ## 1aj. A frame set says what its numbers mean, wherever it is cited *(2026-10-27; built 2.46.0)*
 

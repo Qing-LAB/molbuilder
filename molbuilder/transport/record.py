@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@13``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@14``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -44,6 +44,8 @@ from ..persist import json_safe
 if TYPE_CHECKING:
     from .stages import Point
 
+#: ``@14``: ``frame_set`` is ``null`` where the citation is no frame set --
+#: one structure -- never a block naming a run as one.
 #: ``@13``: ``frame_set`` -- the frame set the average is taken over, cited
 #: whole: the citation and its files' sha256, the structure's rows as
 #: written with their meanings, ``info.vibration`` and every atom's
@@ -72,7 +74,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@13"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@14"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -1169,7 +1171,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # (`frame_average`, § 2a.12) -- and the frame set it is taken over,
         # cited whole: its rows with their meanings, the vibration, the
         # masses in the user order (`model/overview.md` § 2.2a), the pair
-        # and its sha256.
+        # and its sha256; null for one structure.
         "average": average,
         "frame_set": citation_block(
             junction.restored() if junction is not None else None,

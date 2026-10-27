@@ -150,7 +150,12 @@ a warning about the field carries the same `card` (§ 5.1 of
 field is drawn in. A form that names its cards — a rung's tab, one engine's
 own part — sends the name once as **`card_prefix`**, and every card title
 reads *device · Run profile*, *SIESTA · Raman*, so a title met twice on one
-page is never read as one thing repeated.
+page is never read as one thing repeated. **A part every engine of the kind
+shares names no engine** *(the user, 2026-10-27: "i don't think shared parts
+card title need to mention engine at all")*: on the Spectrum tab a card title
+with no engine — *Run profile* in the chemistry card, *Raman* under *The
+calculation* — holds the settings both engines share, and a card of one
+engine's own carries its name (*PySCF · Run profile*, *SIESTA · Raman*).
 
 **A kind offered on two engines draws their shared settings once**
 ([`template.md`](?doc=engines/template.md) § 6.2a). The door gives three

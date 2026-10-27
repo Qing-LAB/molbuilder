@@ -654,8 +654,9 @@ with a warning. Nothing is refused for a row.
 
 **Every other row is its maker's** — the structure's rows and each frame's:
 carried exactly as written into the calculation's record and data file, and
-shown on the pages — a row of the vocabulary below in its words, any other by
-its name and unit as written; never computed from, and checked for one thing
+shown on the pages and in the summary `summarize` prints — a row of the
+vocabulary below in its words and page unit, any other by its name and unit
+as written, one rule for every surface (`frame_average._said`); never computed from, and checked for one thing
 alone, a vocabulary name's unit (below) (`frameset.read`, the one reader). Of
 `info` and the channels, the mode's own two travel with the rows —
 `info.vibration` and the `mass_amu` channel (below); any other stays the

@@ -87,3 +87,48 @@ def test_a_vocabulary_row_without_its_meaning_is_said_once_by_name(reader):
         said = answer(s)["definition"]["warnings"]
     assert len(said) == 1 and said[0].count("displacement_ang") == 1, said
     assert "weight" not in said[0], said
+
+
+def test_summarize_says_a_sets_rows_as_the_page_does():
+    """`model/structure.md` § 2.2f: a set's rows are said in the
+    vocabulary's words and page units on every surface -- the line
+    `summarize` prints as the frame card does (`engines/transport.md`
+    § 3.8.1, *Mode 6 · Frequency 2548.37 cm⁻¹*).
+
+    THE SILENT FAILURE: the terminal printing the stored names
+    (``mode_index_1based 6, frequency_cm1 2548.365564447995 cm-1``) for
+    every set the generator writes, its readable line reached only by a set
+    stating a temperature, which the generator never states."""
+    from molbuilder.frame_average import ROWS, average_block, summary_lines
+    from molbuilder.frameset import read
+    means = {r.name: r.means for r in ROWS}
+    s = _frames(_OWN)
+    s.set_customized("mode_index_1based", 6,
+                     note=means["mode_index_1based"])
+    s.set_customized("frequency_cm1", 2548.365564447995, unit="cm-1",
+                     note=means["frequency_cm1"])
+    head = summary_lines(average_block(2, read(s), [], [],
+                                       lambda a, b: a == b))[0]
+    assert "Mode 6" in head and "Frequency 2548.37 cm⁻¹" in head, head
+    assert "mode_index_1based" not in head, head
+
+
+@pytest.mark.parametrize("frames", [1, 2], ids=["one structure", "a set"])
+def test_the_record_cites_a_frame_set_and_only_a_frame_set(frames):
+    """`engines/transport.md` § 2a.12: the record's ``frame_set`` is the
+    frame set the average is taken over, cited whole -- its rows with their
+    meanings -- and null where the citation is one structure.
+
+    THE SILENT FAILURE: a script reading ``record["frame_set"]`` as "a frame
+    set was cited" for a calculation of one structure, its block holding
+    the run's citation under a frame set's name."""
+    from molbuilder.frame_average import citation_block
+    from molbuilder.structure import Structure
+    s = (_frames(_OWN) if frames == 2
+         else Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n"))
+    block = citation_block(s, {"citation": "P/structure/h2.xyz"})
+    if frames == 1:
+        assert block is None, block
+    else:
+        assert block["citation"] == "P/structure/h2.xyz", block
+        assert block["rows"] == s.customized_rows(), block

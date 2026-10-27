@@ -375,25 +375,13 @@ def summary_lines(avg: Dict) -> List[str]:
             for w in avg.get("warnings") or ()]
     if avg.get("why"):
         return said + [f"  the frames' average: {avg['why']}"]
-    # EACH NUMBER IN ITS ROW'S UNIT, the vocabulary's own: the angstrom
-    # spelled out, `A` the ampere's on the same printout.
-    unit = {r.name: r.unit for r in STRUCTURE_ROWS}
-    mode = ("mode_index_1based", "frequency_cm1", "temperature_k",
-            "sigma_amu12_ang")
-    if all(_number(avg.get(k)) is not None for k in mode):
-        head = (f"  the mode's average over {avg['frames']} frames -- mode "
-                f"{avg.get('mode_index_1based')} at "
-                f"{avg.get('frequency_cm1'):g} {unit['frequency_cm1']}, "
-                f"{avg.get('temperature_k'):g} {unit['temperature_k']}, "
-                f"sigma {avg.get('sigma_amu12_ang'):.6g} "
-                f"{unit['sigma_amu12_ang']}")
-    else:
-        rows = ", ".join(
-            f"{r['name']} {r['value']}" + (f" {r['unit']}" if r.get("unit")
-                                           else "")
-            for r in avg.get("rows") or ())
-        head = (f"  the frames' average over {avg['frames']} frames"
-                + (f" -- {rows}" if rows else ""))
+    # THE ROWS AS A PAGE SAYS THEM (:func:`_said`, the frame card's one
+    # rule): the vocabulary's words and units in its order, any other row's
+    # name and unit as written, each number to six figures as the card
+    # shows it.
+    rows = ", ".join(_row_words(r) for r in _in_order(avg.get("rows") or ()))
+    head = (f"  the frames' average over {avg['frames']} frames"
+            + (f" -- {rows}" if rows else ""))
     total, tol = avg.get("weight_sum"), avg.get("tolerance")
     within = (total is not None and tol is not None
               and abs(total - 1.0) <= tol)
@@ -492,6 +480,24 @@ def _said(name: str, unit: Any, note: Optional[str],
             "words": name, "page_unit": unit, "means": note or ""}
 
 
+def _in_order(rows) -> List[Dict[str, Any]]:
+    """The structure's rows in the vocabulary's order, any other row after
+    them as written -- the order every surface says them in."""
+    order = {r.name: i for i, r in enumerate(STRUCTURE_ROWS)}
+    return sorted(rows, key=lambda r: order.get(r["name"], len(order)))
+
+
+def _row_words(row: Dict[str, Any]) -> str:
+    """One structure row in a line of text, as the frame card says it: its
+    words, its value -- a number to six figures -- and its page unit."""
+    said = _said(row["name"], row.get("unit"), None, _STRUCTURE,
+                 value=row["value"])
+    v = said["value"]
+    text = f"{v:.6g}" if _number(v) is not None else str(v)
+    return (f"{said['words']} {text}"
+            + (f" {said['page_unit']}" if said.get("page_unit") else ""))
+
+
 def _wire(rows, structure) -> Dict[str, Any]:
     """``{structure: [{name, value, unit, kind, words, page_unit, means}],
     columns: [{name, unit, kind, words, page_unit, means}], frames: [[a value
@@ -499,9 +505,7 @@ def _wire(rows, structure) -> Dict[str, Any]:
     weight_sum, warnings, mode}`` -- ``mode`` whether the frames state one -- and
     ``masses_amu`` and ``vibration`` where the structure carries them; the
     vocabulary's rows first, in its order."""
-    order = {r.name: i for i, r in enumerate(STRUCTURE_ROWS)}
-    srows = sorted(rows.structure,
-                   key=lambda r: order.get(r["name"], len(order)))
+    srows = _in_order(rows.structure)
     stated: List[str] = []
     units: Dict[str, Any] = {}
     for frame in rows.frames:
@@ -536,27 +540,29 @@ def _wire(rows, structure) -> Dict[str, Any]:
     return out
 
 
-def citation_block(structure, provenance: Optional[Dict]) -> Dict[str, Any]:
+def citation_block(structure, provenance: Optional[Dict]
+                   ) -> Optional[Dict[str, Any]]:
     """The record's ``frame_set`` block (`engines/transport.md` § 2a.12): the
-    structure the calculation cites, whole -- the pair and its files' sha256
+    frame set the calculation cites, whole -- the pair and its files' sha256
     as the citation pinned them (``provenance``, the slot's), the
     structure's rows as written, each with its meaning (``note``), where the
     mode came from (:data:`INFO_KEY`) and every atom's mass
     (:data:`MASS_CHANNEL`) -- so the average beside it says, in the record
     itself, which rule weighted it and which masses its coordinate was
-    measured with.  Every key in every record: empty where the citation
-    states none."""
+    measured with.  ``None`` where the citation is no frame set -- one
+    structure, or nothing composed yet; inside the block, each key empty
+    where the set states none."""
     from .frameset import read
+    if structure is None or structure.n_frames < 2:
+        return None
     prov = provenance or {}
-    rows = read(structure) if structure is not None else None
-    info = ((structure.info or {}).get(INFO_KEY)
-            if structure is not None else None)
+    rows = read(structure)
+    info = (structure.info or {}).get(INFO_KEY)
     return {"citation": prov.get("citation"),
             "files": dict(prov.get("files") or {}),
             "rows": list(rows.structure) if rows is not None else [],
             "vibration": dict(info) if isinstance(info, dict) else None,
-            MASS_CHANNEL: (_masses(structure) if structure is not None
-                           else None)}
+            MASS_CHANNEL: _masses(structure)}
 
 
 def _masses(structure) -> Optional[List[Any]]:

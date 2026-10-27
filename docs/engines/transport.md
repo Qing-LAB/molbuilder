@@ -2977,7 +2977,8 @@ vibration it came from (`info.vibration`: its run and its result's sha256),
 every atom's mass (`mass_amu`), and the pair cited with its sha256
 ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — so the average
 says, in the record itself, which rule weighted it and which masses its
-coordinate was measured with. **Nothing else is
+coordinate was measured with; `null` where the citation is no frame set,
+one structure, as the average then says why it has none. **Nothing else is
 derived across the frames** — no slope and no curvature: a level crossing E_F
 within the vibration makes the transmission jump between frames, and a
 difference of a few frames is then no derivative, so a number shaped like one
