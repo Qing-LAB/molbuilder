@@ -18,7 +18,7 @@ door** every other module uses to open a structure or save one. It is passive:
 it *publishes* what you picked and *tabs listen* — the sidebar never decides
 which tab wants which file.
 
-It is a plain ES module (all ten of its files) — nothing here is waiting on a
+It is a plain ES module (all eleven of its files) — nothing here is waiting on a
 conversion.
 
 ## 1. The one door, and the pieces behind it

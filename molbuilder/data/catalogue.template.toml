@@ -1933,7 +1933,7 @@ group = "profile"
 label = "Explicit modes"
 tier = "advanced"
 help = """
-Which vibrational modes get orbital-energy data, as a comma-separated list of 1-based mode numbers, e.g. "3, 7, 12". Ranges work too: "3-7, 12". There is one string format and no aliases, parsed at the emitter.
+Which vibrational modes get orbital-energy data (PySCF) or the optical calls their Raman is derived from (SIESTA), as a comma-separated list of 1-based mode numbers, e.g. "3, 7, 12". Ranges work too: "3-7, 12". There is one string format and no aliases, parsed at the emitter.
 Only read when selector = explicit.
 Usual workflow: run with selector = skip first, look at the spectrum, then re-run with selector = explicit and the modes you care about.
 """
@@ -1954,7 +1954,7 @@ label = "Min frequency"
 tier = "advanced"
 not_set = "no lower bound: every mode is kept"
 help = """
-Restrict the orbital-energy data to modes at or above this frequency.  Useful for skipping low-frequency rocking and librational modes, which are often noisy and rarely matter for transport.  Ignored when Mode selection is explicit.
+Restrict the orbital-energy data (PySCF) or the Raman's optical calls (SIESTA) to modes at or above this frequency.  Useful for skipping low-frequency rocking and librational modes, which are often noisy and rarely matter for transport.  Ignored when Mode selection is explicit.
 Caveat: a window can skip a mode whose electron-phonon coupling is strong but whose frequency falls outside it ([Galperin2007]).
 """
 
@@ -1974,7 +1974,7 @@ label = "Max frequency"
 tier = "advanced"
 not_set = "no upper bound: every mode is kept"
 help = """
-Restrict the orbital-energy data to modes at or below this frequency.  Combine it with Min frequency to target a specific spectral window, for example 2800-3200 cm^-1 for C-H stretches.  Ignored when Mode selection is explicit.
+Restrict the orbital-energy data (PySCF) or the Raman's optical calls (SIESTA) to modes at or below this frequency.  Combine it with Min frequency to target a specific spectral window, for example 2800-3200 cm^-1 for C-H stretches.  Ignored when Mode selection is explicit.
 """
 
 [item.es_n_homo_below]
@@ -2906,8 +2906,8 @@ In the electrode plane (x, y) the leads use the shared k-point grid on the share
 # ---- The vibration's optical phase on SIESTA (engines/vibration.md 5.11 9) ----
 # SIESTA's optical calculation (Src/optical.F, 5.4.2): eps2(w) by first-order
 # perturbation over independent Kohn-Sham states, at a single point.  Each
-# item is read against the manual, 9.1 'Optical properties'; the switch
-# Optical.Calc and the polarization type are fixed by the phase's deck
+# item is read against the manual, 6.20 'Optical properties'; the switch
+# OpticalCalculation and the polarization type are fixed by the phase's deck
 # (siesta/vibration_deck.py::optical_block), not items.
 
 [item.optical_direction]

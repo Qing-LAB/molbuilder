@@ -78,6 +78,7 @@ _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 ROLE_CHK         = ".chk"
 ROLE_PYSCF_LOG   = ".log"                # PySCF's own log, a rung's own
 ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
+ROLE_SPECTRA_DATA = ".spectra.nc"        # the same result as structured data
 ROLE_PHASES      = ".phases.json"        # a run in phases: its calls, the index
 ROLE_NOTIFIED    = ".notified.json"      # a run's notification record
 ROLE_OPTICAL     = ".optical.nc"         # a run in phases' optical calls, as data
@@ -1173,7 +1174,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              listed_by="user_index"),
     # THE SAME RESULT AS STRUCTURED DATA, written beside the JSON at every
     # write by the one writer (`engines/vibration.md` § 6.10.5).
-    Artifact(".spectra.nc", "the spectrum as data on its grids -- the "
+    Artifact(ROLE_SPECTRA_DATA, "the spectrum as data on its grids -- the "
                             "structure, the modes, the thermochemistry, "
                             "every variable stating itself (NetCDF-4); "
                             "the JSON's sha256 beside",

@@ -860,7 +860,7 @@ How each engine implements the idea, in this tool:
 | step | PySCF route | SIESTA route |
 |---|---|---|
 | where the held set comes from | `frozen_atoms` in the structure's own sidecar, set in the viewer — never a form field (`vibration.md` § 2.3) | the same fact, the same file |
-| the constrained relaxation | Phase 0: geomeTRIC with a `$freeze` file naming the held atoms; the gate judges the largest force **over the free atoms** (R5); `already_relaxed` skips the optimiser and still checks | the ladder relaxes first when the box is unticked — a `relax` stage, an ordinary SIESTA relaxation holding the same set (`Geometry.Constraints`), then `freq` at the geometry it left (`vibration.md` § 5.2a); ticked, the force constants are taken at the geometry as given and the reference-step forces are read back and judged |
+| the constrained relaxation | Phase 0: geomeTRIC with a `$freeze` file naming the held atoms; the gate judges the largest force **over the free atoms** (R5); `already_relaxed` skips the optimiser and still checks | the run relaxes first when the box is unticked — its `relax` phase, an ordinary SIESTA relaxation holding the same set (`Geometry.Constraints`), then the `fc` phase at the geometry it left, in one run (`vibration.md` § 5.11) (`vibration.md` § 5.2a); ticked, the force constants are taken at the geometry as given and the reference-step forces are read back and judged |
 | the partial Hessian | `hess_elec(atmlst = A) + hess_nuc(atmlst = A) + D3[A, A]` on a plain mean field — the block is computed, never sliced from a full one; what shrinks and what does not is read from PySCF's source (`vibration.md` § 4.4) | a sorted copy, held atoms first, so the free atoms are one contiguous `FC.First..FC.Last` range; the held atoms in `Geometry.Constraints`; six whole-system SCFs per free atom; the order record stated by the deck and undone at read-back (`vibration.md` § 5.2–5.5) |
 | the cross terms | every free–free pair, in the block | every free–free pair: a displaced coordinate's column holds the force on *every* atom, and the free rows are kept |
 | what a held atom still does | enters every SCF, every derivative integral and the dispersion sum; feels $-H_{FA}\,u_A$ and cannot answer | enters every SCF; its force rows are written to the `.FC` file and never read |
@@ -1004,10 +1004,10 @@ substrate, active substrate and molecule; every atom in the same periodic DFT
 calculation; relax with $\Delta R_F = 0$, the deep layers at bulk positions; after
 it, $F_A \approx 0$ while $F_F$ need not vanish. *Tool:* the relaxation is the
 person's explicit choice (`vibration.md` § 2.2): with the box unticked the
-description's ladder is `relax` then `freq` — an ordinary SIESTA relaxation
-holding the set, then the force constants at the geometry it left, in the
-cell it ran in (§ 5.2a) — and with it ticked `freq` alone measures at the
-geometry as given. **What the tool measured, 2026-09-24:** the finish
+run's `relax` phase comes first — an ordinary SIESTA relaxation holding the
+set, then the force constants at the geometry it left, in the cell it ran
+in, one run (`vibration.md` § 5.11) — and with it ticked the force constants
+alone measure at the geometry as given. **What the tool measured, 2026-09-24:** the finish
 (then the host read-back) reads the forces SIESTA evaluated at its FC step 0 into the artifact and
 judges the largest component on the free atoms against the description's
 own `relax_force_tol` — 0.01 eV/Å at the kind's recommendation — (R5 on both
@@ -1039,8 +1039,10 @@ internal diagnostic; and, the strongest test, $\omega_\nu(\delta) \approx \omega
 modes that matter. Too small drowns in noise, too large picks up
 anharmonicity. *Tool:* `fc_displacement` carries the range and the help text
 ties the noise floor to `DM.Tolerance`; it is a stage item, so a ladder of
-two stages at $\delta$ and $\delta/2$ is describable, every force-constant stage measures
-at the relaxed geometry, each stage's job derives its own modes, and
+two stages at $\delta$ and $\delta/2$ is describable, each stage relaxes in its
+own run (two stages at different geometries the summary refuses — the
+take-over of the first stage's relaxation is not built), each stage's job
+derives its own modes, and
 `jobset summarize task` compares them into `<label>.fc-sweep.json` — each
 mode's frequency per stage, matched by shape, and the force constants
 themselves from the raw `.FC` (`vibration.md` § 5.9). The symmetry diagnostic is recorded since 2026-09-24 —
@@ -1217,14 +1219,14 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | frozen is not cheap electronically — "a 200-Au cluster remains a 200-Au electronic-structure problem" | **the same, and sharpened from the code** (`vibration.md` § 4.4, § 5.7): on PySCF the response equations and the derivative integrals shrink with the free atoms, the exchange-correlation derivative matrices do not, and at hundreds of atoms those matrices are the wall; on SIESTA the count of force evaluations shrinks and each stays whole-system |
 | PySCF is a finite-system code; a metal surface is a periodic solid | **the same, and it is why there are two routes**: the isolated molecule goes to PySCF, the slab or junction to SIESTA, and both hand the same block to the same harmonic path |
 | a fixed atom's displacement is zero, its interaction is not: $F_F = -H_{FA}\,u_A \neq 0$ | **the same**, and it is the sentence a reader of a held-atom result should carry: the held atoms shape every number in $H_{AA}$ |
-| three outputs in a chain — modes, optical activity, electronic and transport modulation | **the same organisation** (§ 4b.3): the tool covers the first link on both engines, the second on PySCF and, for infrared, on SIESTA, and the third in part — the PySCF probe and transport along a mode's frames |
+| three outputs in a chain — modes, optical activity, electronic and transport modulation | **the same organisation** (§ 4b.3): the tool covers the first link on both engines, the second on both — on SIESTA the infrared from its charges and the Raman from its optical calls — and the third in part — the PySCF probe and transport along a mode's frames |
 | on PySCF there is no finite step to converge | **for the Hessian, the same**; the tool's Raman activities, its infrared with atoms held and its probe are finite differences with steps of their own (§ 4b.5 B, E, F), untested for convergence by the tool |
 | infrared and Raman for the constrained system "depends on the property implementation" (first turn); for a finite cluster, obtainable by displacing along $\pm Q_\nu$ and differentiating (later turn) | **settled** (§ 4a; `vibration.md` § 4.6): with atoms held the analytic dipole route takes no atom list, so infrared goes by central differences of the dipole and Raman by central differences of the polarizability — over the free atoms' Cartesian coordinates, projected onto every mode at once, rather than one displaced pair per selected mode: the same derivative, organised per coordinate |
 | $R(Q_\nu) = R_0 + Q_\nu\,e_\nu$ with the mass-weighting conversion, at five points, the held coordinates unchanged | **differs in the coordinate and the count**: two points along the display eigenvector at a peak displacement $A$; the held atoms unchanged; the conversion to the discussion's $\partial\varepsilon/\partial Q_\nu$ and to the coupling per zero-point amplitude is § 4b.5 F, and the five-point sample is owed |
 | a metal-connected molecule has no clean HOMO and LUMO; use the projected density of states and resonances | **the same**; the probe is PySCF's and records the cluster's own window — a molecule-projected quantity is owed, and nothing of this exists on SIESTA (§ 4b.6 G) |
-| on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as two stages of one calculation** when the box is unticked (§ 4b.6 A), and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
+| on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as the `relax` phase of one run** when the box is unticked (§ 4b.6 A), and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one $\pm\delta$ pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
-| converge $\delta$: $\Delta F \gg \sigma_F$, $H(\delta) \approx H(\delta/2)$, $H_{ij} \approx H_{ji}$, $\omega(\delta) \approx \omega(\delta/2)$ | **built, but for $\Delta F \gg \sigma_F$**: the range and the noise-floor note are on the item; the ladder is describable, every force-constant stage measures at the relaxed geometry, and `summarize task` compares the stages — $\omega$ per mode matched by shape and $H(\delta)$ from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
+| converge $\delta$: $\Delta F \gg \sigma_F$, $H(\delta) \approx H(\delta/2)$, $H_{ij} \approx H_{ji}$, $\omega(\delta) \approx \omega(\delta/2)$ | **built, but for $\Delta F \gg \sigma_F$**: the range and the noise-floor note are on the item; the ladder is describable, each stage relaxes in its own run — two stages at different geometries refused — and `summarize task` compares the stages — $\omega$ per mode matched by shape and $H(\delta)$ from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
 | mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **not built**; the displacement arithmetic and the pair writer exist, and the amplitude rule is stated (`vibration.md` § 5.6, level one) |
 | the molecular dipole is undefined for the periodic metal; the metal electrons are signal; $\Delta\rho_\nu(r)$ as the intermediate quantity | **the same reasoning** (§ 4b.7); the Born-charge route recorded, the density-difference maps owed |
 | match PySCF and SIESTA modes by their displacement patterns, then read how adsorption moved them | **not built**; it is the same overlap calculation as the Model A/B/C comparison (§ 4b.9) |

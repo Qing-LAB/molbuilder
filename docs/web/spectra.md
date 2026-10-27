@@ -29,8 +29,9 @@ panels of sticks over one frequency axis, a sortable table of the vibrational
 modes, and — when you click a peak — a **3D animation of that normal mode**. You reach it two ways, but it is the same code
 both times. **A result with no strength computed draws its mode
 positions, not a spectrum**: a SIESTA result until the atoms whose infrared
-its charges give are named (§ 3.2), and a PySCF run with infrared and Raman
-both off, draw one line at each mode's wavenumber — no heights, no
+its charges give are named (§ 3.2) or a laser is typed for its Raman (§ 3.3),
+and a PySCF run with infrared and Raman both off, draw one line at each mode's
+wavenumber — no heights, no
 broadening — which is still where a mode is picked for its animation and its
 electronic structure, and one sentence says why there are no heights (§ 2,
 § 9b.3).
@@ -58,7 +59,7 @@ flowchart TD
   ENG["lib/spectra/core.js — the whole spectra viewer<br/>form · chart · mode table · excited-state panel · 3D mode animation"]
   TAB["/spectrum-calculation<br/>(spectra/viewer.js — describe and Send; no result)"] --> ENG
   RES["Results tab<br/>(inspectors/spectra.js — view a *.spectra.json)"] --> ENG
-  ENG --> API["GET /api/build/schema/pyscf and /siesta?calculation=vibration — the two forms<br/>POST /api/build/preflight — the form checked as you edit<br/>POST /api/task-setup/handover — hand the description to Task setup (lib/task-handover.js)<br/>POST /api/spectra/load — read a finished .spectra.json"]
+  ENG --> API["GET /api/build/schema/pyscf and /siesta?calculation=vibration — the two forms<br/>POST /api/build/preflight — the form checked as you edit<br/>POST /api/task-setup/handover — hand the description to Task setup (lib/task-handover.js)<br/>POST /api/spectra/load — read a finished .spectra.json<br/>GET /api/spectra/export — its data files and the Raman view<br/>POST /api/spectra/frameset — a mode as a frame set"]
 ```
 
 ## 2. The spectrum chart
@@ -116,8 +117,10 @@ Two special cases are worth knowing:
   result states its charges, *name the atoms above the modes table for their
   infrared, from the run's charges*; where its optical calls ran, *type the
   laser's wavelength — the strength depends on it (above the modes table)*,
-  or the door's reason where it refused the laser, else *no Raman was
-  requested in this run*; and where it states neither, *this result carries
+  or the door's reason where it refused the laser — the line beside the
+  boxes' words — or, with a laser typed and no picked mode's sides both
+  done yet, *no picked mode has both of its sides done yet*; else *no Raman
+  was requested in this run*; and where it states neither, *this result carries
   the frequencies and the mode shapes, no infrared or Raman intensities*);
   **the run asked for none** (a PySCF run with both strengths
   off); **they are still being computed** (a PySCF run before its first
@@ -350,8 +353,9 @@ quantity's name — *Raman strength, light along z, 633 nm, 0.0272114 eV
 (Å⁴/amu)* — with the static value beside it, *Raman strength, static, light
 along z, 0.0272114 eV*: the width, not the laser, since the static number
 reads the smoothed spectrum and no laser. A picked mode whose two sides are
-not both done reads its state in the cell — `pending` or `failed` — the
-reason on hover; a mode no call was made for, `—`. The table's CSV names the
+not both done reads its state in both cells, the laser's and the static
+one — `pending` or `failed` — the reason on hover; a mode no call was made
+for, `—`. The table's CSV names the
 two columns the same way, `raman_strength_a4_amu_along_z_633nm_0.0272114eV`
 and `raman_strength_static_a4_amu_along_z_0.0272114eV` — a PySCF result's
 stays `raman_activity_a4_amu`. The chart's lane, named *Raman* for both
@@ -757,7 +761,10 @@ Raman's laser and width of § 3.3)
 documented follow-up until then). **Read back, they are the file's ask**: the
 read is async, so once it lands the file on screen is loaded again with them
 where they ask something other than the load did — its thermal spreads, its
-references and its infrared at the remembered choices. A stored value is
+references and its infrared at the remembered choices. **An answer to an
+older ask** — a load or a poll that left before a control changed — is drawn,
+then the file is asked again with the controls as they are, so a laser
+typed while a poll is out is never undone by its answer. A stored value is
 restored only where its control holds it — a direction or a partition among
 the select's options, a temperature of 0 K or more — so a value the door
 would refuse never turns every load into a refusal.
@@ -881,8 +888,10 @@ you publish.**
 ### 9a.1 The three selectors
 
 Electronic structure at a displaced geometry is an SCF per mode, so which
-modes get one is a real cost decision. `es_mode_selection` — a PySCF item:
-SIESTA's route has no probe (§ 9b.3) — takes one of three answers:
+modes get one is a real cost decision. `es_mode_selection` — on both forms,
+picking the probe's modes on PySCF and the modes whose optical calls run on
+SIESTA, which has no probe (§ 9b.3; `engines/vibration.md` § 5.11 § 9) —
+takes one of three answers:
 
 | | picks |
 |---|---|
@@ -966,7 +975,7 @@ compute a channel and for a run that did not ask for one:
 | the chart | **mode positions, not a spectrum**, when no mode carries a strength — a SIESTA result with no infrared asked of it (§ 3.2): one line of one height at each mode, no curve, no height scale, no width or display-floor control, and one sentence above them saying which case it is (§ 2) *(user, 2026-09-28)*. With some strengths computed — a SIESTA result's infrared of a set of atoms among them — a lane whose channel is missing is titled *not computed* |
 | the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked |
 | the modes table | **a column the file's route cannot compute is not shown** — the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them; the IR column and the charge-moved column on SIESTA only where the result states its charges (§ 3.2); the Raman column where its route is `optical` (§ 3.3). Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
-| the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names PySCF's `es_mode_selection`, which a SIESTA run has no way to set. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
+| the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names the probe's `es_mode_selection`, which on SIESTA picks the Raman's modes, not a probe's. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
 | the run summary | *not computed on this route* for every channel the route lacks — the per-mode orbital energies on SIESTA — by the same rule; *not requested* only where the run could have asked, a SIESTA run whose selector picked no modes for Raman among them; a SIESTA result's Raman, where its optical calls ran, the route and $\delta$ with the view at the laser, *not given:* and the door's reason, or the laser asked for (§ 3.3); a SIESTA result's infrared, where it states its charges, *from the run's charges* — the view (*BDT, along z, Hirshfeld*), *not given:* and the door's reason, or *name the atoms above the modes table* — and where it states none, *none in this result — it states no charges*, the reason itself said once, above the modes table (§ 3.2) |
 | the thermochemistry tab | labelled by its regime (§ 3): on SIESTA the vibrational contributions alone, with what they are good for and where they stop ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.7) |
 | the write-up | names what was computed — on SIESTA the charges recorded and the Raman route, its optical calls or none requested; at load the infrared and Raman views shown, their citations among the result's keys (§ 3.2, § 3.3); the file and the viewer name what was not, so an absence cannot be read as a zero |
@@ -998,6 +1007,9 @@ tab: the modes without a spectrum, the columns and dots by route, the
 infrared controls, columns and summary of a result stating its charges and
 the door's answer once the atoms are named (§ 3.2), the vibrational-only
 thermochemistry and its bars),
+`tests/test_siesta_vibration_e2e.py::test_the_page_asks_the_raman_at_a_laser_and_exports_it`
+(a SIESTA result with optical calls: no number before a laser, the laser
+typed, the columns, the summary and the Export, § 3.3),
 `test_spectra_no_spectrum_sentence_js.py` (the four cases of § 2, by role —
 a SIESTA result with and without its charges among them — and when the viewer
 stops waiting, infrared's own flag included, § 7),

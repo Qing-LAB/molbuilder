@@ -92,6 +92,18 @@ def photon_energy_ev(laser_nm: float) -> float:
     return HC_EV_NM / float(laser_nm)
 
 
+def width_words(ev: float) -> str:
+    """A width as it is shown, eV: six significant digits, rounded UP, so
+    the run's own width typed back as shown is never narrower than the
+    run's -- which :func:`spreader` refuses.  The page's `_widthWords`
+    applies the same rule."""
+    x = float(ev)
+    s = f"{x:.6g}"
+    if float(s) < x:
+        s = f"{float(s) + 10 ** (math.floor(math.log10(x)) - 5):.6g}"
+    return s
+
+
 def spreader(energies: Sequence[float], run_ev: float, width_ev: float):
     """The spread from ``run_ev`` to ``width_ev`` on the uniform grid
     ``energies``, built once for every frame of a view: a function of a
@@ -104,7 +116,8 @@ def spreader(energies: Sequence[float], run_ev: float, width_ev: float):
     if width_ev < run_ev:
         raise RamanError(
             f"a broadening of {width_ev:g} eV is narrower than the run's own, "
-            f"{run_ev!r} eV (Optical.Broaden) -- the narrowest there is")
+            f"{width_words(run_ev)} eV (Optical.Broaden) -- the narrowest "
+            f"there is")
     e = np.asarray(energies, dtype=float)
     s = math.sqrt(width_ev ** 2 - run_ev ** 2)
     de = float(e[1] - e[0])
@@ -343,8 +356,10 @@ def raman_view(result, optical: Mapping[str, Any], *, laser_nm: float,
     ``optical``) from its optical calls' data file read back
     (`spectra.optical_data.read_optical_data`): at ``laser_nm``, broadened
     to ``broaden_ev`` -- the run's own width when ``None``.  Refused by
-    name: a result whose Raman is not the optical route, a width below the
-    run's, a laser outside the stored spectrum, a data file with no cell."""
+    name: a result whose Raman is not the optical route, a data file with
+    no optical call finished yet, whose deck states no width or whose
+    structure no cell, a width below the run's, a laser outside the stored
+    spectrum."""
     require_optical_route(result)
     laser = _positive("laser_nm", laser_nm, "the laser's wavelength in nm")
     run_ev = run_broaden_ev(optical)
@@ -353,6 +368,12 @@ def raman_view(result, optical: Mapping[str, Any], *, laser_nm: float,
     omega = photon_energy_ev(laser)
     volume = _cell_volume_a3(optical)
     grid = np.asarray(optical["photon_energy_ev"], dtype=float)
+    # NO SPECTRUM YET: the data file is written with every frame pending
+    # before the first optical call ends (§ 8), its photon energies none.
+    if grid.size < 2:
+        raise RamanError("no optical call has finished yet -- the spectrum "
+                         "the Raman is derived from is stored once the "
+                         "first one does")
     spread = spreader(grid, run_ev, width)
 
     def alphas(frame) -> Optional[Tuple[float, complex]]:
@@ -440,10 +461,11 @@ def raman_view_of(result_path, *, laser_nm: float,
                   optical_bytes: Optional[bytes] = None) -> RamanView:
     """The view of the result at ``result_path`` (``<label>.spectra.json``)
     and the optical calls' data file it cites (:func:`optical_data_of`) --
-    the data file read once, from ``optical_bytes`` where the caller holds
-    them, and each file named with the sha256 of what was read.
-    ``result`` is the result file already read, where the caller holds it.
-    The one door the load door, the export and `postprocess` ask."""
+    the data file read through its reader, or from ``optical_bytes`` where
+    the caller holds them (an export, which copies what it read), and each
+    file named with its sha256.  ``result`` is the result file already
+    read, where the caller holds it.  The one door the load door, the
+    export and `postprocess` ask."""
     from ..persist import sha256_of, sha256_of_bytes
     from ..sidecars.spectra import parse_spectra_json
     from .optical_data import read_optical_data
@@ -451,13 +473,16 @@ def raman_view_of(result_path, *, laser_nm: float,
     if result is None:
         result = parse_spectra_json(path)
     data = optical_data_of(path, result)
-    raw = data.read_bytes() if optical_bytes is None else optical_bytes
-    return raman_view(result, read_optical_data(data, data=raw),
+    if optical_bytes is None:
+        optical, data_sha = read_optical_data(data), sha256_of(data)
+    else:
+        optical = read_optical_data(data, data=optical_bytes)
+        data_sha = sha256_of_bytes(optical_bytes)
+    return raman_view(result, optical,
                       laser_nm=laser_nm, broaden_ev=broaden_ev,
                       derived_from=({"name": path.name,
                                      "sha256": sha256_of(path)},
-                                    {"name": data.name,
-                                     "sha256": sha256_of_bytes(raw)}))
+                                    {"name": data.name, "sha256": data_sha}))
 
 
 def read_ask(raw: Any) -> Dict[str, Any]:
@@ -626,6 +651,7 @@ def read_raman_data(path) -> Dict[str, Any]:
 
 __all__ = ["ASK_KEYS", "RAMAN_SCHEMA", "READABLE_RAMAN_SCHEMAS", "RamanError",
            "RAMAN_FILE", "RamanMode", "RamanView", "WHAT", "broadened",
+           "width_words",
            "eps1_minus_one", "eps2_at", "has_optical_route",
            "optical_data_of", "spreader",
            "photon_energy_ev", "polarizability_a3", "raman_data_bytes",

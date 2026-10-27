@@ -68,7 +68,16 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         const WATCH_MAX_ERRORS = 5;
         const _drawn = [];
         let answer = async () => ({{ body: {{ ok: true, results: {{}} }} }});
-        const fetchResults = (p, signal) => answer(p, signal);
+        // WHAT A REQUEST ASKS, carried with its answer as the real one
+        // carries it -- read when the request leaves, before its await.
+        let _ask = {{}};
+        let _asks = 0;
+        function _askOf() {{ return _ask; }}
+        const fetchResults = async (p, signal) => {{
+            const asked = JSON.stringify(_askOf());
+            _asks++;
+            return Object.assign({{ asked }}, await answer(p, signal));
+        }};
         function setStatus() {{ _drawn.push("status"); }}
         function stopWatch() {{ _drawn.push("stopped"); }}
         function renderResults() {{ _drawn.push("results"); }}
@@ -100,6 +109,8 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         }}
         {lifted(MODULE, "    async function watchTick() {",
                 "\n    function ")}
+        {lifted(MODULE, "    function _askAgainIfChanged(asked) {", "\n    }")}
+        }}
         const handle = {{
         {lifted(MODULE, "        dispose() {", "\n        },")}
         }}
@@ -118,6 +129,7 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
             polling: _polling,
             aborted: _aborted.sort(),
             drawn: _drawn,
+            asks: _asks,
             threw,
         }}));
         }})();
@@ -203,6 +215,25 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         {"machine": "LOADED", "run": _FINISHED, "polling": False,
          "drawn": ["results", "phases", "run status"]},
         id="a poll that says the run finished is drawn, and ends the follow"),
+    pytest.param(
+        {"machine": "WATCHING", "run": _LIVE, "in_flight": False},
+        # The person types a laser while the poll is out: its answer is to
+        # the older ask.
+        'answer = async () => { _ask = { raman: { laser_nm: 633 } };'
+        '  answer = async () => new Promise(() => {});'
+        '  return { body: { ok: true, results: { from: "tick" },'
+        '                   run: ' + json.dumps(_LIVE) + ' } }; };'
+        ' await watchTick();',
+        {"drawn": ["results", "phases", "run status"], "asks": 2},
+        id="a poll answering an older ask is drawn, then the file asked "
+           "again"),
+    pytest.param(
+        {"machine": "WATCHING", "run": _LIVE, "in_flight": False},
+        'answer = async () => ({ body: { ok: true, results: { from: "tick" },'
+        '                   run: ' + json.dumps(_LIVE) + ' } });'
+        ' await watchTick();',
+        {"drawn": ["results", "phases", "run status"], "asks": 1},
+        id="a poll answering the ask as it stands asks nothing more"),
 ])
 def test_what_the_spectra_viewer_holds_after(start, script, holds):
     """THE SILENT FAILURES: a late answer for a file you have moved off,

@@ -92,7 +92,8 @@ try:                                        # inside molbuilder
     from ..persist import sha256_of
     from .optical_data import write_optical_data
     from ..runfiles import (COORDINATES_FILE, FIRST_ATTEMPT, MONITOR_BUNDLE,
-                            PSEUDO_DIR, ROLE_OPTICAL, VIBRATION_BUNDLE,
+                            PSEUDO_DIR, ROLE_OPTICAL, ROLE_SPECTRA,
+                            VIBRATION_BUNDLE,
                             RunNames, beside_the_deck, find, parse)
     from ..paths import frame_token, run_folder_of
     from ..runrecord import newest_run, read_continued_from, stamp
@@ -137,7 +138,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from persist import sha256_of  # type: ignore[no-redef]
     from runfiles import (COORDINATES_FILE, FIRST_ATTEMPT,  # type: ignore[no-redef]
                           MONITOR_BUNDLE, PSEUDO_DIR, ROLE_OPTICAL,
-                          VIBRATION_BUNDLE, RunNames, beside_the_deck, find,
+                          ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck, find,
                           parse)
     from paths import frame_token, run_folder_of  # type: ignore[no-redef]
     from runrecord import (newest_run,  # type: ignore[no-redef]
@@ -560,7 +561,7 @@ def _finished(deck, output, *, into=None, relaxation=None):
     run = read_force_constant_run(deck, output)
     res = result_of(run, relaxation=relaxation)
     out = (Path(into) if into is not None else Path(deck).parent) / compose(
-        run.label, ".spectra.json")
+        run.label, ROLE_SPECTRA)
     dump_spectra_json(res, out)
     return run, res, out
 
@@ -1138,7 +1139,7 @@ def _finish_run(here: _CallHere, index: dict) -> None:
                          "-- no result to write")
             raise _NothingToWrite
         run, res = got
-        out = here.run_dir / compose(here.label, ".spectra.json")
+        out = here.run_dir / compose(here.label, ROLE_SPECTRA)
         # THE OPTICAL CALLS' RECORD, final, and its citation: the phase
         # complete once every call has ended (§ 5.11 § 8).
         optical = _write_optical(here, index, res)
@@ -1223,7 +1224,7 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
                              f"{why}: nothing to analyse")
             else:
                 run, res = got
-                out = here.run_dir / compose(here.label, ".spectra.json")
+                out = here.run_dir / compose(here.label, ROLE_SPECTRA)
                 planned = _plan_optical(here, run, res, index)
                 # THE OPTICAL CALLS' RECORD, every frame pending, and the
                 # result's citation of it: the Raman phase running (§ 8).

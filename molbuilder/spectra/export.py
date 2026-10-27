@@ -22,10 +22,10 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from ..ncdata import ExportError, Exported
+from .raman import ASK_KEYS
 
-#: What a vibration export asks beyond its form: the Raman view's laser and
-#: width (`spectra.raman.ASK_KEYS`).
-ASKS = ("laser_nm", "broaden_ev")
+#: What a vibration export asks beyond its form: the Raman view's own asks.
+ASKS = ASK_KEYS
 
 
 def _stem(calc) -> str:
@@ -88,8 +88,8 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
     route, the view's own refusals, and a data file that does not read -- in
     its reader's words."""
     from ..ncdata import export_format, exported
-    from ..runfiles import compose
-    from ..sidecars.spectra import (DATA_ROLE, SpectraJsonError,
+    from ..runfiles import ROLE_SPECTRA_DATA, compose
+    from ..sidecars.spectra import (SpectraJsonError,
                                     parse_spectra_json)
     from .datafile import read_spectra_data
     from .optical_data import read_optical_data
@@ -110,7 +110,7 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
         raise ExportError(f"{path.name}: {exc}") from exc
     # THE DATA FILES AS THEIR WRITERS WROTE THEM, each read once: its bytes
     # are what is copied, what its reader reads, and what the view hashes.
-    spectra_nc = path.with_name(compose(label, DATA_ROLE))
+    spectra_nc = path.with_name(compose(label, ROLE_SPECTRA_DATA))
     optical = has_optical_route(result)
     try:
         sources = [spectra_nc] + ([optical_data_of(path, result)]
@@ -122,7 +122,10 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
         if not source.is_file():
             raise ExportError(f"{path.name}'s data file {source.name} is not "
                               f"beside it")
-        files[source.name] = source.read_bytes()
+        try:
+            files[source.name] = source.read_bytes()
+        except OSError as exc:
+            raise ExportError(f"{source.name}: {exc}") from exc
     try:
         read_spectra_data(spectra_nc, data=files[spectra_nc.name])
         if optical and asked is None:

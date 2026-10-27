@@ -234,6 +234,7 @@ def raman_view_sentence(view: Mapping[str, Any]) -> str:
     ``δ``, the laser, the width, and that the dielectric function is of
     independent states with no local field
     (`science/vibrational-optical-response.md` § 3.3)."""
+    from .raman import width_words
     return (f"The Raman strengths shown are R = |∂α/∂Q|², the squared "
             f"modulus of the polarizability's change along each mode for "
             f"light polarized along {_direction_words(view)} [Gillet2013]: "
@@ -245,8 +246,8 @@ def raman_view_sentence(view: Mapping[str, Any]) -> str:
             f"({float(view['photon_energy_ev']):.4f} eV) -- its real part by "
             f"Kramers–Kronig, its imaginary part the absorption there -- "
             f"the spectrum broadened as SIESTA's Optical.Broaden, a Gaussian "
-            f"exp(-(E/s)²) of s = {float(view['broaden_ev']):.4g} eV, the "
-            f"run's own s being {float(view['run_broaden_ev']):.4g} eV. "
+            f"exp(-(E/s)²) of s = {width_words(view['broaden_ev'])} eV, the "
+            f"run's own s being {width_words(view['run_broaden_ev'])} eV. "
             f"They are strengths, not intensities: no laser-frequency or "
             f"temperature factor is applied.")
 

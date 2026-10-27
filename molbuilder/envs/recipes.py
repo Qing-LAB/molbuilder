@@ -1312,6 +1312,12 @@ def _pyscf(cuda_version: str) -> Recipe:
             # beside its JSON (`engines/vibration.md` § 6.10.5-6; approved
             # by the user, 2026-10-14).
             "netcdf4",
+            # numpy: what the job's own script imports for its arrays --
+            # the Hessian, the modes, the derived values -- declared rather
+            # than left to arrive through pyscf's dependencies, as the
+            # SIESTA envs declare theirs (the user, 2026-10-27: "pyscf
+            # include numpy. confirmed").
+            "numpy",
         ),
         # GPU support: gpu4pyscf + cupy ship via PyPI (not conda-forge for
         # current versions).  Wheel suffix derived from ``cuda_version`` via
@@ -1391,7 +1397,7 @@ def _pyscf(cuda_version: str) -> Recipe:
         # from the right repository that nevertheless cannot be imported
         # passes the audit and fails here, which is the right way round.
         verify_argv=("python", "-c",
-                     "import pyscf, geometric, netCDF4; "
+                     "import numpy, pyscf, geometric, netCDF4; "
                      "from pyscf.prop import polarizability; "
                      "import importlib, importlib.util as _u; "
                      "ir = (importlib.import_module('pyscf.prop.infrared') "

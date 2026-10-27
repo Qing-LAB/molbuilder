@@ -56,7 +56,9 @@ instead of carrying their own order.
 > by a script. Next, each the user's: the NetCDF self-description (the data
 > files' definitions in `model/datafiles.md` first, then the writers); M5,
 > the contract closed (§ 1ae); the verified findings of § 1ad.2, last-number
-> moves; the viewer walked on the user's server with Claude in Chrome.
+> moves; the viewer walked on the user's server with Claude in Chrome; the
+> corrections to a junction's electronic structure, a framework first
+> (§ 1ag, planned).
 
 **Where we are.** Shipped since the last handover (2026-10-18; it is
 [`archive/2026-10-20-plan-handover.md`](?doc=archive/2026-10-20-plan-handover.md),
@@ -1147,10 +1149,10 @@ review of what it touched, its tests green, then the next.
 
 | # | milestone | pieces | done when |
 |---|---|---|---|
-| M1 | **the framework** | a rung of points declared — each `RUNGS` row states where its points come from, what makes a point done, its start and its finish; every reader asking `calculation == "transport"` today asks the row (prep, the walk, `status`, `continuation`, the gather, Task setup, the record); `siesta/vibration_phases.py` — `PHASES`, the index's writer and reader, its `runfiles.WRITTEN` row and registry parser, the state rule over `points_state`; `parse/fdf.py` reads `%block Label < Filename`; `selection`, `calcdirs`, `paths` join the vibration bundle; `materialize.bring_files`' copy core split into a floor-1 function both call; `siesta/deck_lines.coordinates_rows` (one for `spec_for`, TranSIESTA, the plan); the displacement rule one function (`mode_frames` and the plan) | the fast batch and the real-junction e2e pass unchanged — nothing a transport calculation does differs |
+| M1 | **the framework** | a rung of points declared — each `RUNGS` row states where its points come from, what makes a point done, its start and its finish; every reader asking `calculation == "transport"` today asks the row (prep, the walk, `status`, `continuation`, the gather, Task setup, the record); `siesta/vibration_phases.py` — `PHASES`, the index's writer and reader, its `runfiles.WRITTEN` row and registry parser, the state rule over `points_state`; `parse/fdf.py` reads `%block Label < Filename`; `selection`, `calcdirs`, `paths` join the vibration bundle; `materialize.bring_files`' copy core split into a floor-1 function both call; `siesta/deck_lines.coordinates_rows` (one for `spec_for`, TranSIESTA, the plan); the displacement rule one function (`mode_frames` and the plan) | **built 2.42.0** — the fast batch and the real-junction e2e pass unchanged — nothing a transport calculation does differs |
 | M2 | **prep and launch** | `spec_for(part=)` for the relax, force-constant and optical decks; the stage's phase folders with their run scripts; `relax`'s coordinates file; the count beside the wall; `vibration_stages` one stage on both engines and the `relax` stage's rules retired (`ladder`, `ready`'s *waits before it can be prepared*, `_vibration_stage_geometry`, `first_launch_takes`' branch, § 5.2a); the phased walk at launch; the calls a warm launch takes over through `materialize.HandOver`; `warm-files.toml` per phase; the monitor's `--member` flag and `notify` verb, the run script's monitor block rendered for a member, the N-hour clock from the run's start | **built 2.42.0** — the scratch H₂ (held and free) through `describe → prep → launch --mode direct`: `01_freq/{relax,fc}/` each with its deck, `coordinates.fdf` and run script; `run-0/relax`, `run-0/fc` seeded from its `.DM`; the index with both calls, its phases and the finish; `notified.json` start + finish; the result pair at the run's root; the CO₂ e2e (`tests/test_siesta_vibration_e2e.py`) through `describe → prep → launch`: the `relax` and `fc` calls, one mode's three optical calls, the index, the result, one `start` and one `finish`, the sweep — and the relaxation's, the monitor's and the inspector's e2e on the same run |
 | M3 | **the job's Python** | `plan`, `record`, `finish` in `spectra/siesta_vibration.py`, the optical calls' record composed there; `parse/engines/siesta_epsimg_reader.py` and its registered parser `siesta_epsimg.py`; `spectra/optical_data.py` (its `Var` table, `photon_energy_ev` in `ncdata.AXES`); the result's `phase_*` on SIESTA, `raman_route` `optical`, `raman_fd_step_ang`, `optical` (schema 13; the `.nc` @7); prep's count and sizes (§ 5.11 § 9) | **built 2.43.0** — the CO₂ e2e's index, result and data file agree, each frame's geometry the displacement rule's and its spectrum its call's `.EPSIMG` through the registry; the result's phases and route right; the data file reads through its reader and `xarray.load_dataset`; the warm-relaunch e2e (a copy stopped once an optical call started) takes `relax` and `fc` over and runs only the optical calls — it caught the optical record reading a result only a run computing its own force constants writes |
-| M4 | **the view, the export and the readers** *(designed 2026-10-26, § 5.11 § 10; M4-a–e decided)* | `spectra/raman.py` — `raman_view` (KK, the width composed, the laser), its ask's reader, the `raman.nc` variable table; `phase_ir` and `ir_route` `charges` written by the finish; the viewer's gates by route (`_ramanRouteLabel` reads PySCF's `compute_raman` today), `_ramanOf`, the *Laser wavelength* and *Electronic broadening* boxes, the Raman column and lane named by their quantity, the Export buttons; the load door's `raman` ask; `spectra/export.py`, `GET /api/spectra/export`, `jobset export` for a vibration (`--laser-nm`, `--broaden-ev`), the export's shape shared with transport's; `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`' sentence; the charge switch as items (L4); Task setup's card per phase | **built 2.44.0** — the KK and composition API tests; the CO₂ e2e's symmetry check (633 nm: 45.1 against 0.23 Å⁴/amu) and its export read back through the readers and `xarray`; the page's own e2e asking the laser and exporting in a browser; the viewer on the user's running server (Claude in Chrome) still to walk |
+| M4 | **the view, the export and the readers** *(designed 2026-10-26, § 5.11 § 10; M4-a–e decided)* | `spectra/raman.py` — `raman_view` (KK, the width composed, the laser), its ask's reader, the `raman.nc` variable table; `phase_ir` and `ir_route` `charges` written by the finish; the viewer's gates by route, `_ramanOf`, the *Laser wavelength* and *Electronic broadening* boxes, the Raman column and lane named by their quantity, the Export buttons; the load door's `raman` ask; `spectra/export.py`, `GET /api/spectra/export`, `jobset export` for a vibration (`--laser-nm`, `--broaden-ev`), the export's shape shared with transport's; `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`' sentence; the charge switch as items (L4); Task setup's card per phase | **built 2.44.0** — the KK and composition API tests; the CO₂ e2e's symmetry check (633 nm: 45.1 against 0.23 Å⁴/amu) and its export read back through the readers and `xarray`; the page's own e2e asking the laser and exporting in a browser; the viewer on the user's running server (Claude in Chrome) still to walk |
 | M5 | **the contract, closed** | § 5.11 becomes the rules of § 2.2, § 5.2a–§ 5.5, § 5.8, § 5.9 as built; `job-system.md` § 5.4's vibration rows; `project-layout.md` § 5 (the manifest regenerated); `job-contracts.md`'s rows; `web/results.md`; `web/spectra.md` § 3.2; `web-api.md`; the method doc's § 5 and § 7; the changelog; two review rounds | R1 measured on the toy junction through the built run (two `optical_mesh` values), its numbers in the method doc's § 3.1 |
 
 **Handover, M2 built (2026-10-26)** — what M3–M5 pick up: (a) a sweep's
@@ -1268,9 +1270,73 @@ engine's (the user, 2026-10-26: "make sure the correct activation is done …
 this should be a framework level. installation of env is assumed";
 `job-system.md` § 6.0, *The walk*). The SIESTA envs' self-test imports
 numpy and netCDF4 before `siesta --version` (2.43.1; the user, 2026-10-26:
-"siesta can check for numpy and netcdf4"). **For the user's word**: numpy
-declared in the PySCF env (`envs/recipes.py`), where it now arrives through
-pyscf's own dependencies.
+"siesta can check for numpy and netcdf4"). numpy is declared in the PySCF
+env too, its self-test importing it (2.44.1; the user, 2026-10-27: "pyscf
+include numpy. confirmed") — an existing env gains it with `molbuilder envs
+repair molbuilder-pySCF`.
+
+
+## 1ag. Corrections to a junction's electronic structure — a framework before any one correction *(2026-10-27; planned, not designed)*
+
+*(The user, 2026-10-27: "let's put this deltaH, IP/EA design into a plan
+instead of directly build it now because we need a better framework to
+integrate such consideration rather than one arbitrary parameter".)*
+
+**The question it answers.** PBE places a molecule's frontier levels too
+close to the electrodes' Fermi level, so a junction's conductance comes out
+high: AuBDTAu (thiolate on flat Au(111), three-fold sites) reads
+T(E_F) = 0.225 G₀, its HOMO-derived resonance at −0.68 eV, against Kaneko
+2016's 0.02 G₀ (bridge-tip state; JACS 138, 1294). The corrections in the
+literature all act on a converged device Hamiltonian, and TBtrans takes any
+of them as a correction to it — `TBT.dH`, a NetCDF file sisl writes
+(`deltancSileTBtrans`, eV in, Ry stored; SIESTA 5.4.2
+`Util/TS/TBtrans/m_tbt_delta.F90`, manual `tbtrans.tex` § δH) — so only the
+transmission re-runs, never the device SCF.
+
+**Why a framework, not a parameter.** Several corrections share one road and
+differ in what they move and why:
+
+| correction | moves | its inputs |
+|---|---|---|
+| DFT+Σ (scissor; Neaton 2006, Quek 2011, Mowbray 2008) | occupied down, empty up — the gap opens — less the image charge | IP, EA and the same functional's gas-phase HOMO/LUMO of a reference molecule; the image plane z₀ |
+| a rigid shift (a non-self-consistent gate scan) | every molecular level by one Δ | Δ, or a range of them |
+| an optimally tuned hybrid's levels (Egger 2015) | each level by its own gas-phase difference plus the image term | a gas-phase calculation of another functional |
+
+A framework names, for every correction: the subspace it acts on (a label
+the person names), the projection (δH_MM = Σₙ Δₙ S_MM ψₙψₙ† S_MM with
+ψ†S_MMψ = 1, exact in a non-orthogonal basis), the levels it moves and by
+what, each input's unit and source, the terms molbuilder derives from the
+geometry (the image term, P = 3.600 eV·Å / (z − z_surface − z₀) per
+electrode), and where the record keeps it — the deck, the data file's
+settings, the report's curve label, the Methods sentence.
+
+**What to design, in order** (contract first, `engines/transport.md`):
+1. The correction as a record: its kind, inputs with units and sources,
+   derived terms, and the δH's sha256 — one writer in the job's python
+   (sisl, in the SIESTA env), one reader.
+2. Where it sits: the transmission rung, and an extension of a finished
+   calculation changing only that tab (§ 2a.16 road, built 2.33.0).
+3. Inputs from another calculation — a gas-phase reference's IP/EA and
+   levels — cited as a calculation of molbuilder's or typed with a source.
+4. The comparison: corrected and uncorrected T(E) side by side.
+5. The help each correction carries: when it applies (weakly coupled, levels
+   away from E_F) and when the papers call it unjustified — a thiolate on
+   gold (Mowbray 2008, Liu 2017, Souza 2014) — stated, never refused.
+
+**Facts already verified** (2026-10-27, the agent's report, DOIs
+Crossref-checked): z₀ = 1.0 Å (Quek 2011; Souza 2014: 0.79–1.13 Å), 0.9 Å for
+Au(111) (Egger 2015); no measured IP for 1,4-benzenedithiol (computed: PBE
+ΔSCF 7.5 eV, EOM-CCSD 7.8–7.9 eV; PBE HOMO −5.1 eV — Strange 2011, Bâldea
+2014); PBE ΔSCF IP error 0.16–0.24 eV (Ernzerhof & Scuseria 1999, Rostgaard
+2010), EAs unreliable with semi-local functionals; Kaneko 2019 shifted BDT's
+HOMO by 1.08–1.17 eV and gets 0.029 G₀ (bridge) against 0.024 measured, its
+split into the two terms unreported. On AuBDTAu the image term is 1.4–1.8 eV
+at the ring centre for z₀ = 0–1 Å, and its 1/d diverges at the sulfurs —
+the classical picture's limit for a bonded atom. The step with the best
+support for the 0.02-vs-0.22 question is the structure: the thiol hydrogens
+kept, or Au adatoms (Strange 2011: GW 1.0×10⁻² G₀ with H kept, 0.83 for the
+thiolate; Inkpen 2019: H retained under common conditions) — ordinary
+transport calculations molbuilder runs today.
 
 ## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; SIESTA's vibration redesigned 2026-10-25 as one run in phases, Raman its optical phase (the user's B); R-a, R-c and R1 decided as recommended, 2026-10-25 — to build)*
 

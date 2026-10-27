@@ -49,7 +49,7 @@ by a second reader: it is that composition on its grid, for analysis.
 | `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@7` (`@1`–`@6` read as they are) | `engines/vibration.md` § 6.10.5 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@3` | `model/parse.md` § 5e |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@1` | `engines/vibration.md` § 5.11 § 8 |
-| `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; the two data files it was derived from by name and sha256 | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@1` | `engines/vibration.md` § 5.11 § 10 |
+| `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@1` | `engines/vibration.md` § 5.11 § 10 |
 
 **An engine's NetCDF files molbuilder reads** come through the same door
 (§ 4): TBtrans's `<label>.TBT.nc` (through sisl, `sile=True`) and SIESTA's
@@ -272,7 +272,7 @@ whole, written atomically.
 ## 8. Adding a data file
 
 A new kind of result is a data file when a reader outside molbuilder needs
-its values on a grid. It is added as the three above were: a `Var` table in
+its values on a grid. It is added as the files above were: a `Var` table in
 its own module, every variable with its units and words, every axis a row of
 § 2a — an axis already named there used by its name, a new one added there
 first; one writer through

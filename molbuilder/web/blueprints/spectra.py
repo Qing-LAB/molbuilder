@@ -539,7 +539,7 @@ def api_spectra_export():
         return jsonify({"ok": False, "error": exc.message}), exc.status
     except FileNotFoundError:
         return jsonify({"ok": False, "error": f"nothing at {raw_path}"}), 404
-    except (NotACalculation, ExportError, ValueError) as exc:
+    except (NotACalculation, ExportError, ValueError, OSError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return sent_export(got)
 

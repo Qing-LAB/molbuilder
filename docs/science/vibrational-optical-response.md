@@ -645,7 +645,11 @@ a laser changed on the page is a new number in a second
 2. **Each geometry's spectrum smoothed to the width asked** — the run spread
    every transition as a Gaussian of its own width $\sigma_{\mathrm{run}}$
    (`Optical.Broaden`); a wider $\sigma$ is one more Gaussian of
-   $\sqrt{\sigma^2-\sigma_{\mathrm{run}}^2}$. The laser does not enter here.
+   $\sqrt{\sigma^2-\sigma_{\mathrm{run}}^2}$ — exact for a transition a few
+   widths above zero, not below: SIESTA keeps only the part of each line
+   above zero (`Src/optical.F`), so a line within a few widths of zero — a
+   metal's near-Fermi pairs — keeps less weight widened after the run than a
+   run at the wider width would. The laser does not enter here.
 3. **The real part at the laser's energy**, by Kramers–Kronig (§ 3.1):
 
    $$
@@ -965,12 +969,12 @@ independent-state picture of § 3.3, no local field);
 $\partial\alpha_{zz}/\partial Q$ = 4.84 Å² amu$^{-1/2}$ static, 5.08 at
 633 nm, so $R(\hat z)$ = 23.4 and 25.8 Å⁴/amu — non-zero for the one mode of
 H₂, Raman-active and infrared-silent. The broadening composes exactly after
-the run (§ 3.1): the 0.001 Ry spectrum convolved to 0.01 and 0.1 Ry gives the
+the run (§ 3.2a, step 2; H₂'s gap is far above zero): the 0.001 Ry spectrum convolved to 0.01 and 0.1 Ry gives the
 direct runs' $\alpha$ to four decimals, and the width moves $\alpha$ by
 0.6 % between 0.0136 and 1.36 eV.
 
-**Not yet shown — the comparison owed** (the infrared was built before it,
-2.36.0; Raman waits on it): on a molecule whose
+**Not yet shown — the comparison owed** (the infrared built in 2.36.0 and
+Raman in 2.44.0 without it): on a molecule whose
 answer is known independently, SIESTA's infrared (§ 2) and Raman (§ 3)
 against PySCF's, which molbuilder computes already (`engines/vibration.md`
 § 4): water in a box, the same modes, compared mode by mode and in rank. The
@@ -1049,6 +1053,9 @@ Each checked against Crossref, 2026-10-24, and in `references.bib`.
 - [Porezag1996] D. Porezag, M. R. Pederson, *Phys. Rev. B* **54**, 7830–7836
   (1996), doi:10.1103/PhysRevB.54.7830 — infrared intensities and Raman
   activities in density-functional theory.
+- [Gillet2013] Y. Gillet, M. Giantomassi, X. Gonze, *Phys. Rev. B* **88**,
+  094305 (2013), doi:10.1103/PhysRevB.88.094305 — the Raman tensor at a
+  laser: the complex susceptibility's change, its squared modulus.
 - SIESTA 5.4.2 manual, `OpticalCalculation`, `Optical.*`, `Charge.Hirshfeld`,
   `BornCharge` and `PolarizationGrids`; its source `Src/optical.F`,
   `Src/partial_charges.F90`, `Src/grdsam.F`, `Src/siesta_analysis.F90`,

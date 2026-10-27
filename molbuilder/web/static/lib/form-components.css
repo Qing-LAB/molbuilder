@@ -252,22 +252,10 @@
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-soft);
 }
-/* ---- Hint / helper text ---- */
-.hint {
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    margin: var(--space-xs) 0 var(--space-sm2);
-    line-height: 1.55;
-}
+/* `.hint` and the action row `.fdf-actions` are page-shell's: the report
+ * pages use them too (`web/ui-contract.md` § 1). */
 
-/* ---- FDF / PySCF action row + generated-output box ---- */
-.fdf-actions {
-    display: flex;
-    gap: var(--space-sm);
-    align-items: center;
-    margin-top: var(--space-md);
-    flex-wrap: wrap;
-}
+/* ---- Generated-output box ---- */
 .fdf-output {
     margin-top: var(--space-sm2);
     padding: var(--space-sm2) var(--space-md);

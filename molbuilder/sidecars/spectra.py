@@ -36,18 +36,16 @@ if TYPE_CHECKING:
 # TWO WAYS, because this module travels beside the job in both bundles.
 try:                                        # inside molbuilder
     from ..persist import write_bytes as _write_bytes
-    from ..runfiles import compose as _compose, role_of as _role_of
+    from ..runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,
+                            compose as _compose, role_of as _role_of)
     from ..spectra.datafile import write_spectra_data as _write_spectra_data
     from ..spectra.derived import with_derived as _with_derived
 except ImportError:                         # beside a job, in a bundle
     from persist import write_bytes as _write_bytes
-    from runfiles import compose as _compose, role_of as _role_of
+    from runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,  # type: ignore[no-redef]
+                          compose as _compose, role_of as _role_of)
     from spectra_datafile import write_spectra_data as _write_spectra_data
     from derived import with_derived as _with_derived
-
-#: The result's role and its data file's, the catalogue's (`runfiles.WRITTEN`).
-SPECTRA_ROLE = ".spectra.json"
-DATA_ROLE = ".spectra.nc"
 
 
 class SpectraJsonError(Exception):
@@ -134,11 +132,11 @@ def write_spectra_payload(payload: dict,
     import hashlib
     p = Path(os.fspath(path))
     role = _role_of(p.name)
-    if role != SPECTRA_ROLE:
+    if role != ROLE_SPECTRA:
         raise ValueError(
-            f"{p.name}: a vibration result is named <label>{SPECTRA_ROLE} "
+            f"{p.name}: a vibration result is named <label>{ROLE_SPECTRA} "
             f"(runfiles.WRITTEN), and its data file follows from that name")
-    label = p.name[:-len(SPECTRA_ROLE)]
+    label = p.name[:-len(ROLE_SPECTRA)]
 
     # EVERY MODE'S DERIVED VALUES, stated beside what they come from by the
     # one derivation (`spectra.derived`, `engines/vibration.md` § 6.6) -- in
@@ -153,7 +151,7 @@ def write_spectra_payload(payload: dict,
                       sort_keys=False)
     data = text.encode("utf-8")
     _write_bytes(p, data)
-    _write_spectra_data(payload, p.with_name(_compose(label, DATA_ROLE)),
+    _write_spectra_data(payload, p.with_name(_compose(label, ROLE_SPECTRA_DATA)),
                         json_sha256=hashlib.sha256(data).hexdigest(),
                         label=label)
 

@@ -1143,7 +1143,8 @@
         // WHAT THIS LOAD ASKS, remembered as it leaves -- what a restore of
         // the knobs compares against (`_prefsRestore`).
         const ask = _askOf();
-        _lastAsk = JSON.stringify(ask);
+        const sent = JSON.stringify(ask);
+        _lastAsk = sent;
         const r = await fetch("/api/spectra/load", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
@@ -1155,7 +1156,7 @@
             body:    JSON.stringify(Object.assign({ path: path }, ask)),
             signal:  signal,
         });
-        return { path: path, body: await r.json() };
+        return { path: path, body: await r.json(), asked: sent };
     }
 
     /* WHAT EVERY LOAD ASKS beside the file: the temperature, the infrared
@@ -1189,12 +1190,12 @@
         transition("LOADING", { path: path });
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
-        let body;
+        let body, asked;
         try {
             // The JSON parse is inside `fetchResults`, which is called
             // inside this try, so a malformed / truncated body lands on
             // the same status-banner path as a network error.
-            body = (await fetchResults(path, signal)).body;
+            ({ body, asked } = await fetchResults(path, signal));
         } catch (exc) {
             // AbortError: a newer loadByPath() superseded us, or
             // dispose() ran.  Silent -- the newer action owns the
@@ -1243,6 +1244,16 @@
         _settlePostLoad();
         _showRunStatus(body.results);
         _announceReady({});
+        _askAgainIfChanged(asked);
+    }
+
+    /* AN ANSWER TO AN OLDER ASK -- a load or a tick that left before the
+     * person changed a control the ask carries (the views, the
+     * temperature) -- is drawn, then the file is asked again with the
+     * controls as they are now, the way a tick asks it (web/spectra.md
+     * § 3.3, § 7). */
+    function _askAgainIfChanged(asked) {
+        if (asked !== JSON.stringify(_askOf())) watchTick();
     }
 
     /* THE LOAD HAS ENDED -- drawn, or refused with its reason on the status
@@ -1317,8 +1328,9 @@
         // ends up painted under the wrong name -- and it is what every
         // guard below compares against.
         const myPath = state.fileState.path;
+        let asked;
         try {
-            body = (await fetchResults(myPath, signal)).body;
+            ({ body, asked } = await fetchResults(myPath, signal));
         } catch (exc) {
             if (exc.name === "AbortError") return;
             if (myPath !== state.fileState.path) return;
@@ -1372,6 +1384,7 @@
         // timer stops), else WATCHING (keeps polling).
         _settlePostLoad();
         _showRunStatus(body.results);
+        _askAgainIfChanged(asked);
     }
 
     function _watchProgressLine(results) {
@@ -1694,12 +1707,14 @@
                           + "be given (why: above the modes table)"
                         : "name the atoms above the modes table for their "
                           + "infrared, from the run's charges";
+                // THE LINE BESIDE THE BOXES' WORDS (`_ramanWait`); a view
+                // shown with no number yet is a run whose picked modes
+                // have not both sides done.
                 const raman = !_ramanOptical(r)
                     ? "no Raman was requested in this run"
-                    : r.raman_said
-                        ? "the Raman asked of the run's optical calls could "
-                          + "not be given (why: above the modes table)"
-                        : RAMAN_PROMPT + " (above the modes table)";
+                    : _ramanWait(r)
+                        ? _ramanWait(r).words + " (above the modes table)"
+                        : "no picked mode has both of its sides done yet";
                 return "Each line marks where a mode is -- "
                      + [ir, raman].filter(Boolean).join("; ")
                      + ".  Click a line to pick its mode.";
@@ -1936,13 +1951,17 @@
         const width = els.ramanBroaden ? els.ramanBroaden.value.trim() : "";
         // A BOX HOLDS A POSITIVE NUMBER OR NOTHING -- the door's rule;
         // typed otherwise, the line beside the boxes says so and nothing is
-        // asked.
-        if (laser !== "" && _positiveOf(laser) === null) {
+        // asked.  What the browser could not read as a number reads as ""
+        // -- its `badInput` says it was not left empty.
+        const unread = el => !!(el && el.validity && el.validity.badInput);
+        if (unread(els.ramanLaser)
+            || (laser !== "" && _positiveOf(laser) === null)) {
             setStatus(els.ramanStatus, "a wavelength is a positive number "
                       + "of nm", "warn");
             return;
         }
-        if (width !== "" && _positiveOf(width) === null) {
+        if (unread(els.ramanBroaden)
+            || (width !== "" && _positiveOf(width) === null)) {
             setStatus(els.ramanStatus, "a broadening is a positive number "
                       + "of eV, the run's own or more", "warn");
             return;
@@ -2033,7 +2052,10 @@
     /* What a change of infrared redraws: the heading and its sentence, the
      * chart and the table -- the same lines `renderResults` draws them
      * with. */
-    function _renderStrengths(results) {
+    /* THE SPECTRUM'S HEADING, ITS CONTROLS AND THE SENTENCE IN THEIR PLACE
+     * (web/spectra.md § 2): a spectrum where a strength was computed, the
+     * mode positions where none was, and one sentence saying which case. */
+    function _renderHeading(results) {
         const drawn = _anyStrength(results);
         if (els.spectrumHeading) {
             els.spectrumHeading.textContent = drawn ? "Spectrum" : "Mode positions";
@@ -2044,6 +2066,10 @@
             els.spectrumAbsent.textContent = drawn ? ""
                 : _noSpectrumSentence(results);
         }
+    }
+
+    function _renderStrengths(results) {
+        _renderHeading(results);
         if ((results.modes || []).length) renderSpectrumChart(results.modes);
         renderModesTable();
         // THE SUMMARY'S INFRARED AND RAMAN LINES say what the views now are.
@@ -2226,18 +2252,9 @@
         // width or floor control since there is no height for either to act
         // on -- and the columns only for what the route computes
         // (web/spectra.md § 2, § 9b.3; spectrumchart.md § 6.2).
-        const drawn = _anyStrength(results);
         const haveModes = (results.modes || []).length > 0;
         if (els.spectrumSection) els.spectrumSection.hidden = !haveModes;
-        if (els.spectrumHeading) {
-            els.spectrumHeading.textContent = drawn ? "Spectrum" : "Mode positions";
-        }
-        if (els.spectrumControls) els.spectrumControls.hidden = !drawn;
-        if (els.spectrumAbsent) {
-            els.spectrumAbsent.hidden = drawn;
-            els.spectrumAbsent.textContent = drawn ? ""
-                : _noSpectrumSentence(results);
-        }
+        _renderHeading(results);
         _renderInfraredControls(results);
         _renderRamanControls(results);
         if (els.modesTable) {
@@ -2537,7 +2554,8 @@
         const notGiven = _ramanStateOf(m);
         const raman = notGiven ? notGiven.state
             : (_ramanOf(m) == null) ? "—" : Number(_ramanOf(m)).toFixed(2);
-        const ramanStatic = (_ramanStaticOf(m) == null) ? "—"
+        const ramanStatic = notGiven ? notGiven.state
+            : (_ramanStaticOf(m) == null) ? "—"
             : Number(_ramanStaticOf(m)).toFixed(2);
         /* The Raman, IR and orbital cells carry their column's class, so a
          * column the route cannot compute goes with its header
@@ -2564,6 +2582,7 @@
         addCell(raman, "raman-col");
         if (notGiven) tr.lastChild.title = notGiven.why;
         addCell(ramanStatic, "raman-col raman-static-col");
+        if (notGiven) tr.lastChild.title = notGiven.why;
         addCell(ir, "ir-col");
         addCell(moved, "charge-col");
         addCell(m.has_imag ? "✓" : "");

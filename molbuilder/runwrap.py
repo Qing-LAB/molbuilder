@@ -29,8 +29,8 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tupl
 
 from .diagnostics import get_capabilities
 from .envs import hints as _hints
-from .runfiles import (RANK_LAUNCHER, RUN_COUNTER_GLOB, deck_roles,
-                       engine_of_role)
+from .runfiles import (RANK_LAUNCHER, ROLE_SPECTRA, RUN_COUNTER_GLOB,
+                       deck_roles, engine_of_role)
 # The channel-name rule, from the module that owns the file those names
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
@@ -1756,7 +1756,7 @@ def _py_deck_reads_prior(text: Optional[str]) -> Optional[bool]:
     """
     if text is None:
         return None
-    if ".spectra.json" in text:
+    if ROLE_SPECTRA in text:
         return None                     # the vibration deck
     return 'init_guess = "chkfile"' in text
 
