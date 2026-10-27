@@ -2887,10 +2887,12 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
         # WHAT THE LAST RUN'S INDEX SAID OF THE CALL -- what it is, from
         # what -- and, for a call TAKEN OVER, when it ran and how it ended:
         # done is done, its ending the run's that computed it (§ 5.11
-        # § 6); a call this run walks gets its own.
+        # § 6); a call this run walks gets its own, its record step's
+        # failure included.
         row = entry_of(prev_index, pt) if prev_index is not None else None
         own = (("phase", "name", "taken_from") if taken else
-               ("phase", "name", "started", "ended", "exit", "taken_from"))
+               ("phase", "name", "started", "ended", "exit", "taken_from",
+                "record_error"))
         return {k: v for k, v in (row or {}).items() if k not in own}
 
     taken = [(pdir, pt) for pdir, pt in calls if _done(pt)]
@@ -2956,6 +2958,11 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
                 hand_over(base, HandOver(pdir, names, FIRST_ATTEMPT,
                                          CONTINUED, source=at, files=files),
                           plan.writes)
+    # THE CALLS IN THE ORDER THEY WERE PLANNED, taken over or not: the
+    # index is the run's list of its calls, and the optical calls' data
+    # file numbers its frames by it -- frame 0 the reference (§ 5.11 § 8).
+    order = {(pt.phase, pt.name): k for k, (_p, pt) in enumerate(calls)}
+    index["calls"].sort(key=lambda r: order[(r["phase"], r.get("name"))])
     plan.writes.text(index_path(run, names, FIRST_ATTEMPT), json_text(index))
     # THE WALK: the known calls in the phases' order, each seeded by the
     # walk from the call before it, then the loop over the optical calls
@@ -3007,7 +3014,9 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
     gn = GroupNames.of_points(names.stem)
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s run in phases, {run.name}",
-        member_word="call", log=f"{LAUNCH_DIR}/{gn.name('.log')}",
+        # ITS STEPS, as its log counts them: the known calls and one loop
+        # over the optical calls -- not the calls themselves.
+        member_word="step", log=f"{LAUNCH_DIR}/{gn.name('.log')}",
         needs=needs,
         walls=([_wall_s(job.resources)] * len(steps)
                if _own_walls(mode, inside) else None),

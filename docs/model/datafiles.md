@@ -46,8 +46,9 @@ by a second reader: it is that composition on its grid, for analysis.
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
 | `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same bytes | `molbuilder/transport-data@5` | `engines/transport.md` § 2a.12 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@6` (`@1`–`@5` read as they are) | `engines/vibration.md` § 6.10.5 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@7` (`@1`–`@6` read as they are) | `engines/vibration.md` § 6.10.5 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@3` | `model/parse.md` § 5e |
+| `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@1` | `engines/vibration.md` § 5.11 § 8 |
 
 **An engine's NetCDF files molbuilder reads** come through the same door
 (§ 4): TBtrans's `<label>.TBT.nc` (through sisl, `sile=True`) and SIESTA's
@@ -119,20 +120,20 @@ naming this section — in every file, every group, the root's included.
 
 | axis | its points | its coordinate's values | units (— labels) | files |
 |---|---|---|---|---|
-| `atom` | the atoms | each atom's index by the file's atom index map — the user index in the transport and vibration files, the engine index in the digest (`atoms_listed_by`), from 0 | 1 | transport, vibration (`/structure`), digest |
+| `atom` | the atoms | each atom's index by the file's atom index map — the user index in the transport, vibration and optical files, the engine index in the digest (`atoms_listed_by`), from 0 | 1 | transport, vibration (`/structure`), optical, digest |
 | `free_atom` | the atoms a vibration moves | their atom indices, from 0 | 1 | vibration |
 | `device_atom` | the atoms of TranSIESTA's device region | their atom indices, from 0 | 1 | digest |
 | `atom_bound` | each atom's first orbital, and one past the last | from 0 to the atom count | 1 | digest |
 | `device_orbital` | the device region's orbitals, one DOS column each | each orbital's index in the geometry, from 0; its atom beside it (`device_orbital_atom`) | 1 | digest |
-| `xyz` | a Cartesian component | `x`, `y`, `z` | — | transport, vibration, digest |
-| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | vibration, digest |
+| `xyz` | a Cartesian component | `x`, `y`, `z` | — | transport, vibration, optical, digest |
+| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | vibration, optical (`/structure`), digest |
 | `reciprocal_vector` | the reciprocal cell's three vectors — a k-point's reduced components | `b1`, `b2`, `b3` | — | digest |
 | `kpoint` | the k-points a reading averaged over | from 0 | 1 | digest |
-| `frame` | a frame set's frames | from 0, as MolView's API counts | 1 | transport |
+| `frame` | a frame set's frames — a transport calculation's structures, a vibration's optical calls (the reference geometry, then each mode's two sides) | from 0, as MolView's API counts | 1 | transport, optical |
 | `bias_v` | the voltages computed | each voltage | V | transport |
 | `iv_bias_v` | the I–V's voltages | each voltage | V | transport |
 | `energy_ev` | energy relative to the leads' Fermi level | each energy, ascending | eV | transport, digest |
-| `spin` | spin channels | `up` and `down` — or, unpolarized, the one channel by the spin its deck states | — | transport |
+| `spin` | spin channels | `up` and `down` — or, unpolarized, the one channel by the spin its deck states | — | transport, optical |
 | `lead` | the two leads | their names as TBtrans names them | — | transport, digest |
 | `region` | molbuilder's regions of the junction | `L-electrode`, `bridge`, `R-electrode` | — | transport |
 | `eigenchannel` | transmission eigenchannels | from 0, as TBtrans orders them | 1 | transport, digest |
@@ -146,6 +147,7 @@ naming this section — in every file, every group, the root's included.
 | `window` | an orbital's place in the probe's window | from 0, ascending energy | 1 | vibration |
 | `temperature_k` | the thermochemistry's temperatures | each temperature | K | vibration |
 | `fc_step` | a SIESTA force-constant run's steps | from 0, step 0 the reference geometry, then each displacement in SIESTA's order | 1 | vibration (`/partial_charges`) |
+| `photon_energy_ev` | the light's energy, ħω — a concept apart from `energy_ev`, which is an electron's energy relative to the leads' Fermi level | each photon energy as SIESTA wrote it, ascending | eV | optical |
 
 **Files written before these names** read as rule 5 says: the vibration
 data file's reader takes `@1`–`@3`'s names for the new ones; a digest before

@@ -96,6 +96,10 @@ class PointsOf:
     #: each point told the card's wall from its own start, the job's wall
     #: their sum (a bias sweep's points, `engines/transport.md` § 2a.11).
     one_wall: bool = False
+    #: What one point of the run is called in the kind's words -- a
+    #: transport point, a vibration's SIESTA call -- what the walk and the
+    #: prep's line name it by.
+    unit: str = "point"
 
     def walls(self, n: int) -> int:
         """How many of the card's walls a run of ``n`` points asks: one

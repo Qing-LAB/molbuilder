@@ -159,6 +159,7 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("window", "an orbital's place in the probe's window", "1"),
     Axis("temperature_k", "the thermochemistry's temperatures", "K"),
     Axis("fc_step", "a SIESTA force-constant run's steps", "1"),
+    Axis("photon_energy_ev", "the light's energy, hbar*omega", "eV"),
 )}
 
 

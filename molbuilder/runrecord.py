@@ -152,9 +152,11 @@ def read_concluded(text: Optional[str]) -> Optional[dict]:
     """The conclusion marker's first line, ``rc=<N> at <when>[; <note>]`` as
     the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
     "note": note}`` -- ``at`` and ``note`` only when stated -- or ``None``
-    when the text is not one.  The note is what the wrapper adds when the job's finish
-    failed or cannot run (`parse.dirs.job.FINISH_FAILED`,
-    `FINISH_CANNOT_LOAD`).  THE one reader of that line.
+    when the text is not one.  The note is what the wrapper adds when the
+    job had no python of its env (`parse.dirs.job.NO_ENV_PYTHON`), or its
+    finish -- or a run in phases' plan or record step -- failed or cannot
+    run (`FINISH_FAILED`, `FINISH_CANNOT_LOAD`).  THE one reader of that
+    line.
     """
     head = text.splitlines()[0] if text else ""
     m = re.search(r"\brc=(-?\d+)(?:\s+at\s+(.*?))?(?:;\s*(.*?))?\s*$", head)

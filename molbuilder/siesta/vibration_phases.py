@@ -291,6 +291,80 @@ def summary(rows, phases=()) -> str:
     return " · ".join(parts) if parts else "no call yet"
 
 
+#: AN .EPSIMG ROW'S BYTES PER COLUMN, as SIESTA writes it list-directed:
+#: the photon energy, then eps2 per spin channel, 26 characters each and the
+#: line's end -- 53 bytes a row with one channel, measured on the CO2
+#: end-to-end run (2,650,217 bytes over 50,009 lines, 2026-10-26).
+EPSIMG_COLUMN_BYTES = 26
+
+
+def run_size_words(cfg, n_free: int, n_modes: int) -> str:
+    """THE COUNT AND THE SIZES OF THE RUN the stage's settings make, in
+    words -- what prep says beside the wall (`engines/vibration.md` § 5.11
+    § 9): the relaxation up to ``relax_steps`` geometry steps a try (its
+    retries the run card's); the force constants ``1 + 6·n_free`` SCFs;
+    Raman ``1 + 2·N`` single points, ``N`` the listed modes under
+    ``explicit`` that are among the ``n_modes`` -- none at all for an
+    empty list -- at most ``n_modes``
+    under ``all``, the modes the run reports (prep's count, the rank rule,
+    `validation.spectra.rigid_motion_count`); each ``.EPSIMG``'s size from
+    its photon energies (``Optical.Energy.Maximum`` over a step of
+    ``Optical.Broaden / 10``, `Src/optical.F`).  Only the phases the
+    settings turn on (:func:`phases_on`).  The wall stays the person's:
+    nothing here judges it."""
+    def _n(k: int, word: str) -> str:
+        return f"{k} {word}{'s' if k != 1 else ''}"
+    on = {p.name for p in phases_on(cfg)}
+    parts = []
+    if RELAX in on:
+        parts.append(f"relax up to {int(cfg.relax_steps)} geometry steps a "
+                     f"try")
+    parts.append(f"fc {_n(1 + 6 * n_free, 'SCF')} (1 + 6 x "
+                 f"{_n(n_free, 'free atom')})")
+    if OPTICAL in on:
+        calls = None
+        if str(cfg.es_mode_selection) == "explicit":
+            from ..spectra.selection import SelectionError, parse_index_list
+            try:
+                listed = parse_index_list(str(cfg.es_explicit_indices or ""),
+                                          first=1)
+            except SelectionError:
+                parts.append("optical: the explicit mode list does not read "
+                             "-- prep's check says why")
+                listed = None
+            # A LISTED NUMBER ABOVE THE MODES THE RUN REPORTS names none:
+            # the run drops it (§ 4.8), so it is counted out here.
+            n = (None if listed is None
+                 else sum(1 for k in listed if 1 <= k <= n_modes))
+            if listed is not None and not listed:
+                parts.append("optical: no mode listed, so no optical call")
+            elif n == 0:
+                parts.append(f"optical: no listed mode is one of the "
+                             f"{_n(n_modes, 'mode')} the run reports, so no "
+                             f"optical call")
+            elif n is not None:
+                beyond = len(listed) - n
+                calls = (f"{_n(1 + 2 * n, 'single point')} (1 + 2 x "
+                         f"{_n(n, 'mode')}"
+                         + (f"; {beyond} listed above the run's {n_modes} "
+                            f"dropped" if beyond else "") + ")")
+        else:
+            calls = (f"up to {_n(1 + 2 * n_modes, 'single point')} (1 + 2 x "
+                     f"the modes its window keeps, at most {n_modes})")
+        if calls is not None:
+            broaden = float(cfg.optical_broaden)
+            if broaden > 0:
+                rows = int(round(float(cfg.optical_energy_max)
+                                 / (broaden / 10.0))) + 1
+                one = rows * (2 * EPSIMG_COLUMN_BYTES + 1) / 1e6
+                more = rows * EPSIMG_COLUMN_BYTES / 1e6
+                calls += (f", each .EPSIMG about {one:.1f} MB ({rows:,} "
+                          f"photon energies, one spin channel; {more:.1f} "
+                          f"MB more with two)")
+            parts.append(f"optical {calls}")
+    return "the run: " + " · ".join(parts)
+
+
 def products_of(stage: str, label: str, base, point: Optional[Call] = None
                 ) -> List[str]:
     """What a call must hold to be done: its phase's products, named on the
@@ -409,7 +483,7 @@ POINTS = (PointsOf(kind="vibration",
                    verdict_counts=lambda stage, point: point.phase != RELAX,
                    also_needs=_also_needs,
                    containers=_declared_containers,
-                   planned_in_job=True, one_wall=True)
+                   planned_in_job=True, one_wall=True, unit="call")
           if PointsOf is not None else None)
 
 

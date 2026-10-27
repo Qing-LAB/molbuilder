@@ -344,8 +344,9 @@ def _monitor_block(names, notify_on_scf: bool,
     sampled or judged.
 
     It runs with the JOB's OWN python (``$_mb_py``, the activated env's,
-    set after the activation) from the working dir -- no molbuilder
-    install, no numpy, no repo on PATH -- sleeps between wakes, and runs at
+    set after the activation) from the working dir -- needing no molbuilder
+    install, nothing beyond the standard library and no repo on PATH --
+    sleeps between wakes, and runs at
     `nice -n 19` so it never competes with the compute ranks.  Opt out with
     ``MB_MONITOR=0``.  Stopped by ``_mb_stop_monitor``; it also exits when
     this wrapper's PID (``$$``) disappears.
@@ -368,7 +369,6 @@ def _monitor_block(names, notify_on_scf: bool,
     return head + (
         f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
         f'&& command -v nice >/dev/null 2>&1 '
-        f'&& [ -n "$_mb_py" ] '
         f'&& [ -f {MONITOR_BUNDLE} ]; then\n'
         f'    nice -n 19 "$_mb_py" {MONITOR_BUNDLE} '
         # INDEXED LIKE THE OUTPUT IS: the run's number, which launch gave
@@ -408,8 +408,7 @@ def _monitor_block(names, notify_on_scf: bool,
         f'run\'s .monitor.log + .util.csv"\n'
         f'else\n'
         f'    _log INFO "monitor: not started (set MB_MONITOR=1; needs '
-        f'nice + a python interpreter + {MONITOR_BUNDLE} beside the '
-        f'job)"\n'
+        f'nice + {MONITOR_BUNDLE} beside the job)"\n'
         f'fi\n'
     )
 
@@ -424,8 +423,9 @@ def _finish_block(finish: Optional[str], script_name: str, *,
                   after: Optional[Sequence[str]] = None,
                   failed: bool = False) -> str:
     """The job's step after its engine: the finish bundle beside the deck,
-    run with the job's own python (``$_mb_py``, probed by the monitor block
-    whether or not a monitor starts) on the deck and its output
+    run with the job's own python (``$_mb_py``, the activated env's, checked
+    once the run index is known, `running-a-job.md` § 2.2a) on the deck and
+    its output
     (`engines/vibration.md` § 5.5) -- the finish verb, or the job's own
     ``after`` words (a run in phases' ``record <phase>``, § 5.11 § 3, told
     the engine's exit code).  After a clean exit, before the conclusion is
@@ -455,12 +455,12 @@ def _finish_block(finish: Optional[str], script_name: str, *,
         f"{pad}# with it; its lines and any traceback are in this session log.\n"
         f'{pad}_log INFO "{FINISH_STARTED} {finish} {words} {script_name} $_out_file"\n'
         f"{pad}set +e\n"
-        f'{pad}if [ -n "$_mb_py" ] && [ -f {finish} ]; then\n'
+        f'{pad}if [ -f {finish} ]; then\n'
         f"{pad}    {call}\n"
         f"{pad}    _mb_finish_rc=$?\n"
         f"{pad}else\n"
-        f'{pad}    _log ERROR "finish: needs a python beside the job and {finish} '
-        f'beside the deck -- the result was not derived"\n'
+        f'{pad}    _log ERROR "finish: {finish} is not beside the deck -- '
+        f'the result was not derived"\n'
         f"{pad}    _mb_finish_rc=1\n"
         f"{pad}fi\n"
         f"{pad}set -e\n"
@@ -530,8 +530,8 @@ def _before_block(finish: Optional[str], script_name: str,
 
 def _finish_check_block(finish: Optional[str]) -> str:
     """Before the engine starts: can the job's finish run here?  Asked with
-    the python that will run it (``$_mb_py``, probed by the monitor block
-    whether or not a monitor starts), once the run index is known, so a job
+    the python that will run it (``$_mb_py``, the activated env's, checked
+    once the run index is known, `running-a-job.md` § 2.2a), so a job
     env without what the finish imports stops before the expensive run it
     would otherwise throw away -- and SAYS SO in the conclusion, which reads
     failed (`engines/vibration.md` § 5.5, `running-a-job.md` § 4.2).  A dry
@@ -544,13 +544,12 @@ def _finish_check_block(finish: Optional[str]) -> str:
         f"# The bundle's `loads` verb imports the finish on the job's own\n"
         f"# python and answers; its words are the load error itself.\n"
         f'_mb_fin_said=""\n'
-        f'if [ -z "$_mb_py" ] || [ ! -f {finish} ] '
+        f'if [ ! -f {finish} ] '
         f'|| ! _mb_fin_said=$("$_mb_py" {finish} loads 2>&1); then\n'
         f'    _log ERROR "finish: {finish} cannot run on the job\'s python ($_mb_py) -- '
-        f'${{_mb_fin_said:-no python in the job env, or {finish} is not '
-        f'beside the deck}}"\n'
+        f'${{_mb_fin_said:-{finish} is not beside the deck}}"\n'
         f'    echo "ERROR: this job cannot finish itself: {finish} does not '
-        f'load on the job\'s python (${{_mb_py:-none found}}) -- the engine '
+        f'load on the job\'s python ($_mb_py) -- the engine '
         f'was not started, so no run is lost.  Its imports are the standard '
         f'library, numpy and netCDF4, which the job env carries '
         f'(envs/recipes.py)." >&2\n'
@@ -1526,8 +1525,8 @@ def _ending_question_func() -> str:
 
     ``_mb_ending QUESTION [ARG]`` answers by exit status (0 yes, 1 no, 2 the
     ending cannot be read); ``_mb_ending`` alone prints the ending in words.
-    With no python beside the job, or a bundle that does not load on it, it
-    answers 2 -- no hint and no warm retry.
+    With the bundle missing, or not loading on the job's python, it answers
+    2 -- no hint and no warm retry.
 
     ``_mb_ending_able`` ASKS THE BUNDLE ONCE whether it loads here
     (``mb_monitor.pyz loads``) and remembers the answer, so a bundle that
@@ -1544,7 +1543,7 @@ def _ending_question_func() -> str:
         "# 1 no, 2 cannot read; _mb_ending alone: the ending in words.\n"
         "_mb_ending_able() {\n"
         '    if [ -z "${_mb_ending_state:-}" ]; then\n'
-        f'        if [ -n "$_mb_py" ] && [ -f {MONITOR_BUNDLE} ] \\\n'
+        f'        if [ -f {MONITOR_BUNDLE} ] \\\n'
         f'           && "$_mb_py" {MONITOR_BUNDLE} loads; then\n'
         "            _mb_ending_state=able\n"
         "        else\n"
@@ -1925,7 +1924,7 @@ def render_run_wrapper(script_path: Path, *,
                   given and ≥ 2; redirects stdout to
                   ``<basename>-runN.out``, N the run's number `launch`
                   gives the wrapper (``--run N``).
-    * ``.py``   → PySCF.  Runs ``python <script> --run N`` with the same
+    * ``.py``   → PySCF.  Runs ``"$_mb_py" <script> --run N`` with the same
                   ``-runN`` redirect, but the suffix is
                   ``.pyscf.log`` instead of ``.out`` so the Results-tab inspector
                   dispatcher can distinguish PySCF stdout from
@@ -3867,8 +3866,8 @@ MONITOR_COMPANIONS: Dict[str, str] = {
 #: THE ONE FILE that travels beside every job for its monitor: a Python zip
 #: application (PEP 441) holding every module of :data:`MONITOR_COMPANIONS`,
 #: each its own file verbatim under its shipped name, and a ``__main__`` that
-#: runs the monitor.  ``python mb_monitor.pyz ...`` is the monitor; ``python
-#: mb_monitor.pyz ending OUTPUT ...`` is `_run_ending`'s door, which
+#: runs the monitor.  ``"$_mb_py" mb_monitor.pyz ...`` is the monitor;
+#: ``"$_mb_py" mb_monitor.pyz ending OUTPUT ...`` is `_run_ending`'s door, which
 #: `monitor.main` hands on.  One file holds them all (user: *"can't we just
 #: put it in one single Python file?"*): still the package's own files, so still no second copy of any
 #: reader.
@@ -3881,12 +3880,12 @@ from .report_cards import FILENAME as _CARDS_FILE, SHIPPED as _CARDS_SHIPPED  # 
 #: ``{name beside the job: the package file}`` -- the path is the owner's.
 MONITOR_DATA: Dict[str, Path] = {_CARDS_FILE: _CARDS_SHIPPED}
 
-#: What the wrapper's log says when the ending cannot be asked: no python
-#: beside the job, no bundle, or a bundle that does not load on it -- whose
-#: error the one ask printed just above (`_mb_ending_able`).
-_ENDING_UNREADABLE = (f"the ending cannot be read here (it needs a python "
-                      f"beside the job that loads {MONITOR_BUNDLE}): no "
-                      f"failure hint, no warm retry")
+#: What the wrapper's log says when the ending cannot be asked: no bundle,
+#: or a bundle that does not load on the job's python -- whose error the
+#: one ask printed just above (`_mb_ending_able`).
+_ENDING_UNREADABLE = (f"the ending cannot be read here ({MONITOR_BUNDLE} "
+                      f"is not beside the job, or does not load on its "
+                      f"python): no failure hint, no warm retry")
 
 #: The bundle's entry: the monitor, whose exit status is the process's --
 #: `_run_ending`'s questions answer by it.  A bundle this python cannot
@@ -4002,10 +4001,10 @@ def companion_source(name: str,
 #: with.
 #:
 #: **Each module's own file, imported two ways** (package, or beside the
-#: job), like the monitor's; unlike the monitor's, the set needs **numpy**,
-#: which the SIESTA job envs carry for it (`envs/recipes.py`): the rule for
-#: joining is *imports only the standard library, numpy and the other
-#: members* (`engines/vibration.md` I23).  The SIESTA end-to-end run proves the set whole: its
+#: job), like the monitor's; unlike the monitor's, the set needs **numpy
+#: and netCDF4**, which the SIESTA job envs carry for it (`envs/recipes.py`):
+#: the rule for joining is *imports only the standard library, numpy,
+#: netCDF4 and the other members* (`engines/vibration.md` I23).  The SIESTA end-to-end run proves the set whole: its
 #: job's python cannot import molbuilder (`tests/test_siesta_vibration_e2e.py`).
 VIBRATION_COMPANIONS: Dict[str, str] = {
     "siesta_vibration.py":     "molbuilder.spectra.siesta_vibration",
@@ -4023,6 +4022,10 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "errors.py":               "molbuilder.parse.errors",
     "siesta_reader.py":        "molbuilder.parse.engines.siesta_reader",
     "siesta_grammar.py":       "molbuilder.parse.engines.siesta_grammar",
+    # AN OPTICAL CALL'S SPECTRUM, read by its one reader, and the optical
+    # calls' data file (`engines/vibration.md` § 5.11 § 8).
+    "siesta_epsimg_reader.py": "molbuilder.parse.engines.siesta_epsimg_reader",
+    "optical_data.py":         "molbuilder.spectra.optical_data",
     "transiesta.py":           "molbuilder.parse.engines.transiesta",
     "_section_rules.py":       "molbuilder.parse.engines._section_rules",
     "molwatch_grammar.py":     "molbuilder.parse.engines.molwatch_grammar",
@@ -4056,15 +4059,17 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "vibration_phases.py":     "molbuilder.siesta.vibration_phases",
     "runrecord.py":            "molbuilder.runrecord",
     # THE RELAXATION RECORD'S ONE FUNCTION (`parse/contract.py`, the
-    # relax call's record in the index) and the keys it reads.
+    # relax call's record in the index); the keys it reads are a member
+    # above.
     "contract.py":             "molbuilder.parse.contract",
-    "keys.py":                 "molbuilder.trajectory_log.keys",
 }
 
 #: THE ONE FILE that finishes a SIESTA force-constant job: a Python zip
 #: application of :data:`VIBRATION_COMPANIONS` whose ``__main__`` runs
-#: `spectra.siesta_vibration.main` -- ``python mb_vibration.pyz <deck>
-#: <output>`` writes ``<label>.spectra.json`` beside the run.  A deck names it
+#: `spectra.siesta_vibration.main` -- ``"$_mb_py" mb_vibration.pyz finish
+#: <deck> <output>`` writes ``<label>.spectra.json`` beside the run.  Its
+#: other verbs, ``plan`` and ``record``, are a run in phases' steps around
+#: each call (`engines/vibration.md` § 5.11 § 3).  A deck names it
 #: (`DeckSpec.finish`), `prep` copies that onto the job (`Job.finish`), the
 #: wrapper runs it after SIESTA exits cleanly, and `materialize` brings it
 #: into every attempt.
@@ -4119,10 +4124,10 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 #: reads them here.
 #:
 #: **Each module's own file, imported two ways**, like the monitor's and the
-#: finish's; the rule for joining is *imports the standard library and numpy
-#: at load, and in the functions the script calls also ASE and netCDF4 --
-#: which the PySCF env carries for it (`envs/recipes.py`) -- and PySCF
-#: itself, with gpu4pyscf and cupy for a run on the GPU; nothing else but
+#: finish's; the rule for joining is *imports the standard library, numpy
+#: and netCDF4 at load (netCDF4 in `ncdata`, the data-file framework), and
+#: in the functions the script calls also ASE -- which the PySCF env carries,
+#: with netCDF4, for it (`envs/recipes.py`) -- and PySCF itself, with gpu4pyscf and cupy for a run on the GPU; nothing else but
 #: the other members*.
 PYSCF_COMPANIONS: Dict[str, str] = {
     "runtime_info.py":          "molbuilder.runtime_info",

@@ -6,7 +6,7 @@ Its names:
     PySCFConfig      -- the parameters, imported from ``config/pyscf.py``
     spec_for         -- the deck's spec, which `prep` renders and writes
 
-The generated script runs as `python <script>.py` beside `mb_pyscf.pyz`, the
+The generated script runs as `"$_mb_py" <script>.py` beside `mb_pyscf.pyz`, the
 molbuilder code it imports (`engines/pyscf.md` § 3): build mole -> SCF ->
 (optional) optimization -> save outputs.
 

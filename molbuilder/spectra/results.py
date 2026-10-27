@@ -81,7 +81,15 @@ except ImportError:                         # beside a job, in a bundle
 #          `spectra.derived` and checked on read (engines/vibration.md
 #          § 6.6).  A v4-v6 file reads as before: no masses, its derived
 #          values computed on read.
-SCHEMA_VERSION = 12  # 12: each mode's DIPOLE CHANGE, whole --
+SCHEMA_VERSION = 13  # 13: the OPTICAL CALLS' CITATION, `optical` -- on a
+#                    SIESTA run in phases whose optical phase ran: the data
+#                    file they are recorded in and its sha256, the light's
+#                    direction, the displacement, the selection as asked and
+#                    as applied, and each frame's state -- the Raman strength
+#                    itself derived on request at a laser and a width
+#                    (engines/vibration.md § 5.11 § 8, § 10); null otherwise;
+#                    a v4-v12 file reads, null.
+#                    12: each mode's DIPOLE CHANGE, whole --
 #                    `dipole_derivative_d_per_ang_amu12`, dmu/dQ in
 #                    D/(A amu^1/2), on PySCF where infrared was computed
 #                    (engines/vibration.md § 4.6): the vector the IR
@@ -110,7 +118,7 @@ SCHEMA_VERSION = 12  # 12: each mode's DIPOLE CHANGE, whole --
 #                    v4-v7 file reads as before, its range read under v8's
 #                    name (`from_dict`).
 #: Every version the reader serves as the v9 shape.
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12})
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12, 13})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -213,8 +221,19 @@ _RESULTS_KEYS = frozenset({
     "hessian_scope", "n_atoms_in_hessian", "hessian_density_fit", "ir_route",
     "ir_fd_step_ang", "raman_route", "raman_fd_step_ang", "phase_raman",
     "phase_ir", "phase_es", "engine_metadata", "runtime_info",
-    MAP_KEY, "partial_charges",
+    MAP_KEY, "partial_charges", "optical",
 })
+
+#: A FRAME'S STATE as the optical citation states it -- the run's one done
+#: rule's words (`engines/vibration.md` § 5.11 § 6, § 7).
+OPTICAL_STATES = ("finished", "failed", "pending")
+#: The optical citation's keys (`engines/vibration.md` § 6.2).
+_OPTICAL_KEYS = frozenset({"data_file", "data_sha256", "direction",
+                           "displacement_ang", "selection", "reference",
+                           "modes"})
+#: ...and each of its mode rows'.
+_OPTICAL_MODE_KEYS = frozenset({"mode", "frequency_cm1", "dq_amu12_ang",
+                                "plus", "minus"})
 
 #: THE PARTITIONS a result's charges may state (`engines/vibration.md`
 #: § 5.10 ②, `science/vibrational-optical-response.md` § 1a).
@@ -283,6 +302,75 @@ def checked_partial_charges(block: Mapping[str, Any], n_atoms: int,
                        "axis": s["axis"], "side": int(s["side"])}
                       for s in steps],
             "charges_e": {p: out[p] for p in PARTITIONS if p in out}}
+
+
+def checked_optical(block: Mapping[str, Any]) -> Dict[str, Any]:
+    """A result's ``optical`` citation (v13), checked and in its one shape
+    (`engines/vibration.md` § 6.2): ``data_file`` the optical calls' data
+    file's name, ``data_sha256`` its bytes' (``None`` before it exists),
+    ``direction`` the light's three components, ``displacement_ang`` ``δ``,
+    ``selection`` as asked and as applied, ``reference`` frame 0's state,
+    and ``modes`` -- one row per mode the selection applied, ``{mode,
+    frequency_cm1, dq_amu12_ang, plus, minus}``, each side's state.  A key
+    not here, or one missing -- in the block or a mode row -- a direction
+    not three numbers, no ``δ`` or a state not one of
+    :data:`OPTICAL_STATES` is refused by name."""
+    where = "SpectraResults.optical"
+    unknown = sorted(k for k in block if k not in _OPTICAL_KEYS)
+    missing = sorted(_OPTICAL_KEYS - set(block))
+    if unknown or missing:
+        raise ValueError(f"{where} carries {unknown} and lacks {missing}; "
+                         f"its keys are {sorted(_OPTICAL_KEYS)}")
+    for m in block.get("modes") or ():
+        extra = sorted(k for k in m if k not in _OPTICAL_MODE_KEYS)
+        lacks = sorted(_OPTICAL_MODE_KEYS - set(m))
+        if extra or lacks:
+            raise ValueError(f"{where}.modes carries {extra} and lacks "
+                             f"{lacks}; a mode row's keys are "
+                             f"{sorted(_OPTICAL_MODE_KEYS)}")
+    if block.get("displacement_ang") is None:
+        raise ValueError(f"{where} states no displacement_ang -- the "
+                         f"force constants' step the frames were moved by")
+    direction = [float(x) for x in block.get("direction") or ()]
+    if len(direction) != 3:
+        raise ValueError(f"{where}.direction is three components, not "
+                         f"{block.get('direction')!r}")
+    states = [block.get("reference")] + [
+        m.get(side) for m in block.get("modes") or ()
+        for side in ("plus", "minus")]
+    bad = sorted({str(s) for s in states if s not in OPTICAL_STATES})
+    if bad:
+        raise ValueError(f"{where}: frame state(s) {bad}; a frame is "
+                         f"{', '.join(OPTICAL_STATES)}")
+    return {"data_file": str(block["data_file"]),
+            "data_sha256": (None if block.get("data_sha256") is None
+                            else str(block["data_sha256"])),
+            "direction": direction,
+            "displacement_ang": float(block["displacement_ang"]),
+            "selection": (None if block.get("selection") is None
+                          else dict(block["selection"])),
+            "reference": str(block["reference"]),
+            "modes": [{"mode": int(m["mode"]),
+                       "frequency_cm1": float(m["frequency_cm1"]),
+                       "dq_amu12_ang": float(m["dq_amu12_ang"]),
+                       "plus": str(m["plus"]), "minus": str(m["minus"])}
+                      for m in block.get("modes") or ()]}
+
+
+def _optical_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """A file's ``optical`` as it states it: ``None`` where it states none;
+    a stated block for :func:`checked_optical` to judge; refused on a
+    schema before 13, which has no such key."""
+    block = d.get("optical")
+    if block is None:
+        return None
+    if int(d.get("schema_version", 0)) < 13:
+        raise ValueError(f"SpectraResults: a schema-{d.get('schema_version')} "
+                         f"result states optical, which schema 13 first "
+                         f"carries")
+    if not isinstance(block, Mapping):
+        raise ValueError(f"SpectraResults.optical is a block, not {block!r}")
+    return dict(block)
 
 
 def _partial_charges_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
@@ -890,6 +978,11 @@ class SpectraResults:
     #: before v11, and from a deck that asked for none.
     partial_charges:           Optional[Dict[str, Any]] = None
 
+    #: v13: THE OPTICAL CALLS' CITATION (engines/vibration.md § 5.11 § 8,
+    #: § 6.2) -- :func:`checked_optical`'s shape; ``None`` where no optical
+    #: call was planned, on PySCF, and before v13.
+    optical:                   Optional[Dict[str, Any]] = None
+
     __eq__ = _no_equality
 
     def __post_init__(self):
@@ -1132,6 +1225,9 @@ class SpectraResults:
             self.partial_charges = checked_partial_charges(
                 self.partial_charges, int(self.n_atoms_total),
                 self.free_atom_idxs)
+        # THE OPTICAL CITATION, checked in its one shape.
+        if self.optical is not None:
+            self.optical = checked_optical(self.optical)
 
     def _modes_with_derived(self) -> List[Dict[str, Any]]:
         """Mode dicts, each with its DERIVED values stated beside the rest --
@@ -1245,6 +1341,7 @@ class SpectraResults:
             # own, or -- one written before v10 -- the user column alone.
             MAP_KEY:                self.atom_index_map_stated().to_dict(),
             "partial_charges":      self.partial_charges,
+            "optical":              self.optical,
         }
 
     @classmethod
@@ -1373,11 +1470,12 @@ class SpectraResults:
             atom_index_map       = (dict(d[MAP_KEY])
                                     if MAP_KEY in d else None),
             partial_charges      = _partial_charges_read(d),
+            optical              = _optical_read(d),
         )
 
 
 __all__ = [
-    "SCHEMA_VERSION",
+    "SCHEMA_VERSION", "OPTICAL_STATES", "checked_optical",
     "ModeElectronicStructure",
     "ModeData",
     "SpectraResults",

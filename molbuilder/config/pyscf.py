@@ -259,13 +259,15 @@ class PySCFConfig:
     @property
     def explicit_modes(self) -> List[int]:
         """The modes ``es_explicit_indices`` names: 1-based, sorted, each once.
-        THE one reading of that text -- the deck's constant (which the
-        script's selector reads), the Methods paragraph and the kind's check
-        all take it from here (`engines/vibration.md` § 4.8).  The grammar is the atom
-        index list's (``selection.parse_index_list``): ``"3, 7, 12"``,
-        ``"3-7, 12"``.  Raises ``SelectionError`` (a ``ValueError``) on text
-        it cannot read; the kind's check turns that into a refusal at
-        ``prep``, so no deck is written from it."""
+        The deck's constant (which the script's selector reads) and the
+        Methods paragraph take it from here, and the kind's check reads the
+        text with the same reader on both engines
+        (`validation.spectra.selector_issues`, `engines/vibration.md`
+        § 4.8).  The grammar is the atom index list's
+        (``selection.parse_index_list``): ``"3, 7, 12"``, ``"3-7, 12"``.
+        Raises ``SelectionError`` (a ``ValueError``) on text it cannot read;
+        the kind's check turns that into a refusal at ``prep``, so no deck
+        is written from it."""
         return parse_index_list(self.es_explicit_indices, first=1)
 
     # ``molwatch_log`` reads and writes ``write_molwatch_log``.

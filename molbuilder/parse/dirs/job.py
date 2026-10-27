@@ -111,10 +111,11 @@ def _enumerate_files(run_dir: Path, basename: str) -> Dict[str, List[Path]]:
             for role in _rf.run_output_roles()}
 
 
-#: What a conclusion marker says when the job's FINISH failed -- the step the
-#: wrapper runs after the engine when the engine alone leaves no result (a
-#: SIESTA force-constant run's modes, `engines/vibration.md` § 5.5).  The
-#: wrapper writes ``rc=<N> at <date>; finish failed (<bundle>)`` and this
+#: What a conclusion marker says when the job's FINISH failed -- a step the
+#: wrapper runs with the finish bundle when the engine alone leaves no
+#: result: a SIESTA vibration call's plan step before its engine and its
+#: record step after (`engines/vibration.md` § 5.11 § 3).  The wrapper
+#: writes ``rc=<N> at <date>; finish failed (<bundle> <verb>)`` and this
 #: reader reads the job as failed although the engine's output ended: the
 #: engine ended, the job did not.  Declared here, where it is read; the
 #: wrapper imports it (`runwrap._finish_block`).

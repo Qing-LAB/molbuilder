@@ -205,8 +205,8 @@ stating because it is easy to break by accretion.
 - **The shell must outlive the engine.** The engine is run, not `exec`'d
   (§ 2.0a), so the wrapper can read its exit code, decide a warm retry (§ 3.5),
   **finish the calculation when the engine alone leaves no result** — a SIESTA
-  force-constant run's job derives its modes with `mb_vibration.pyz`, the job's
-  own python, beside the run ([`engines/vibration.md`](?doc=engines/vibration.md)
+  force-constant run's job derives its modes with `mb_vibration.pyz` on the
+  job's own python, beside the run ([`engines/vibration.md`](?doc=engines/vibration.md)
   § 5.5); its failure is the job's — and write the conclusion marker as its
   last act ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3).
 
@@ -235,9 +235,16 @@ run's own output.
 place for logic:
 
 - **molbuilder is not importable there.** It is deliberately never
-  pip-installed into any env, so `import molbuilder` fails on a compute node
-  whatever interpreter is found. The wrapper is self-contained at run time by
-  design (§ 2).
+  pip-installed into any env, so `import molbuilder` fails on the job's
+  python. The wrapper is self-contained at run time by
+  design (§ 2). One step on the node is the launcher layer's, not the job's:
+  a sequence of groups' walk runs each group's launch with the host's
+  molbuilder — the interpreter that sent the sequence,
+  `-m molbuilder jobset launch task --group N … --in-sequence`, run from the
+  folder its package was imported from, which the job's node must see
+  ([`job-system.md`](?doc=execution/job-system.md) § 6.0, *The walk*). Every
+  other walk step runs a run script with `bash`, and the scheduler header
+  runs no Python.
 - **The job's python is its env's own, for every engine.** Right after the
   activation the wrapper sets `$_mb_py` to `$CONDA_PREFIX/bin/python3` — the
   activated env's interpreter, never the first `python3` on `PATH`, which a
@@ -251,13 +258,22 @@ place for logic:
   (`conda activate`, `source activate`, § 5.2), and every recipe pins
   python into its env (`envs/recipes.py`).
 
-  Any logic written to run there is either shell, or a shipped stdlib-only
-  file, or broken. **`mb_monitor.pyz` is that one shipped file**: it holds the
-  monitor — a *subprocess of the running job*, watching it from inside — and
-  the reader the wrapper asks how the run ended (`python mb_monitor.pyz ending
-  …`, § 3.5). Neither has anywhere else to live, which is why the file is
-  stdlib-only; it is not a pattern to copy for anything that could run on the
-  host instead.
+  Any logic written to run there is either shell, or a shipped bundle run on
+  `$_mb_py`, or broken. **Three bundles ship beside a job**
+  (`runfiles.MONITOR_BUNDLE`, `VIBRATION_BUNDLE`, `PYSCF_BUNDLE`):
+  `mb_monitor.pyz`, beside every job, holds the monitor — a *subprocess of
+  the running job*, watching it from inside — and the reader the wrapper asks
+  how the run ended (`"$_mb_py" mb_monitor.pyz ending …`, § 3.5);
+  `mb_vibration.pyz` is a SIESTA vibration's finish and the steps of its run
+  in phases ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5,
+  § 5.11); `mb_pyscf.pyz` holds the molbuilder code a PySCF deck imports.
+  **Only the monitor's is stdlib-only**, because it is the instrument that
+  reports a failure: it must load when the env's own packages do not — a
+  broken numpy is reported by it, never hidden by it. The vibration and
+  PySCF bundles run on the same job python and import the env's own
+  packages, numpy and netCDF4 among them (`runwrap.VIBRATION_COMPANIONS`,
+  `runwrap.PYSCF_COMPANIONS`). None is a pattern to copy for anything that
+  could run on the host instead.
 
 **No generated wrapper contains a `cd`**, on either engine: the caller decides
 the directory, and the layout layer — `jobset/materialize.py::prepare_attempt`
@@ -270,7 +286,8 @@ The wrapper routes to a conda env by the script's extension, resolved at
 generate time (`molbuilder/diagnostics.py`, `molbuilder/runwrap.py`):
 
 - **`.fdf` → `molbuilder-siesta`**, launched with `mpirun -np N siesta`.
-- **`.py` → `molbuilder-pySCF`**, launched with `python`.
+- **`.py` → `molbuilder-pySCF`**, launched with `"$_mb_py"`, the env's own
+  python (§ 2.2a).
 - **`.fdf` that requests GPU → `molbuilder-siesta-gpu`.** Only
   `Diag.ELPA.GPU true` re-routes. **CPU-ELPA does not** — the packaged SIESTA
   carries ELPA through ELSI and runs both stages on CPU (measured; see
@@ -512,7 +529,7 @@ non-convergence)*.
 | it stopped at its wall (§ 3.6) | `OUT_OF_TIME: Time is up.`, after saving `.DM`/`.XV` | `_mb_ending stopped-by out_of_time:` — **never retried**: no time is left, and the next launch continues from the saved files | — |
 | a relaxation used all its moves, unconverged | exit 0, and `outcoor: Final (unrelaxed) atomic coordinates` (a converged one prints `Relaxed…`) | `_mb_ending relaxation-capped` | the banked `.XV`/`.DM`/`.CG`, with a fresh step budget |
 
-The wrapper **asks, never greps**: `_mb_ending` runs `python mb_monitor.pyz
+The wrapper **asks, never greps**: `_mb_ending` runs `"$_mb_py" mb_monitor.pyz
 ending` over the output and SIESTA's stderr (`run-reports.md` § 2.3). **Never
 retried**, because running again cannot fix it: a crash — `propor`'s
 `IMAX = 0` (§ 3.1a), any abort, or a tolerated non-convergence followed by
@@ -520,7 +537,8 @@ one; a **diverged** SCF, whose retry resumes from the diverged density and is
 the same run again — the monitor warns instead (`model/parse.md` § 5d.6)
 *(not built — plan § 5t, P4: no divergence verdict or symptom is read yet, so a
 diverged SCF that SIESTA stopped reads as the first row's and is retried)*; and
-anything, when no python is beside the job (the log says so).
+anything, when `mb_monitor.pyz` is not beside the job or does not load on the
+job's python (the log says so).
 
 **A run that cannot resume is retried as the budget says, and said to
 re-run.** SIESTA re-runs a force-constant run from its reference (undisplaced)
@@ -697,7 +715,7 @@ as asked, and the person decides.
 | **monitor** — utilisation every 10 s, progress, notifications | `-runN.monitor.log` · `-runN.util.csv` | both | start to end | a person; the run record |
 | **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) | `-runN.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
 | **failure hint** — how the run ended, where its output and log are; for `propor`, the causes (§ 3.1a) | the session log | SIESTA | on a nonzero exit | a person |
-| **conclusion marker** — exit code and time, and for a job with a finish the words that say it failed or could not run (`…; finish failed (<bundle>)`, `…; finish cannot load (<bundle>)`) | `-runN.concluded` | both | the wrapper's last act, main line only — after the job's finish, when it has one | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
+| **conclusion marker** — exit code and time, and the words that say why where a step of ours stopped it: the job had no python of its env (`…; no env python (<path>)`), or its finish — or a run in phases' plan or record step — failed or could not run (`…; finish failed (<bundle> <verb>)`, `…; finish cannot load (<bundle>)`) | `-runN.concluded` | both | the wrapper's last act, main line only — after the job's finish, when it has one | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 
 **The monitor** is `mb_monitor.pyz`, one file beside every deck, reading the
 run with the framework's own readers. What it reads, when it speaks (never
@@ -871,7 +889,7 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 | `queued` | queued as job N · launched (direct), no output yet — and, on the Results tab's ladder row, its **standing** where this machine sent the job — its address on this machine's jobs list, the scheduler asked on the cluster the job was sent to as the scheduler names it ([`job-system.md`](?doc=execution/job-system.md) § 6.0a; `joblist.address_of`, `asked_here`: the one rule `molbuilder jobs` asks by): `PENDING (Priority) · expected to start 2026-10-19T14:02:00 · priority 1234`, the start as the scheduler prints it, the kind's `standing` query ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) through the run door (`runs.standing_of`); from any other machine the row says *ask on <machine>* |
 | `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result — **where the run is**, in the reading pass's words where its output states it (`model/parse.md` § 2b, `doing`): *running · negf SCF iteration 12*, and until a device's first SCF row its set-up, *running · computing the R lead's surface Green's function (estimated 49.170 GB)* — the same words the monitor's status line says; a sent run's bare *running* says too how long since the job itself last wrote, *running · last wrote 2 h 10 min ago*: the one fact a folder gives where its scheduler cannot be asked · *the scheduler lists it: PENDING (Requeue)*, a requeued job past the wall rule's bound, on the machine it was sent to |
 | `finished` | job_completed · concluded (rc=0 at …) |
-| `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · stopped before its end: the scheduler no longer listed job N (asked on *machine* at *when*); no exit recorded · the scheduler listed job N ended: *its words* (asked on *machine* at *when*) · stopped before its end: nothing was written for longer than its wall (*wall*; last write *when*), so the job is over; how it ended was not recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
+| `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · stopped before its end: the scheduler no longer listed job N (asked on *machine* at *when*); no exit recorded · the scheduler listed job N ended: *its words* (asked on *machine* at *when*) · stopped before its end: nothing was written for longer than its wall (*wall*; last write *when*), so the job is over; how it ended was not recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; *its words* — finish cannot load (*bundle*), no env python (*path*)) before any output |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so
@@ -948,8 +966,9 @@ written as the process starts). One stopped before writing anything reads
 `failed` by its scheduler's line or its monitor's closing record — a walk's
 member the job never reached too, its job's line naming it — or `queued`
 when nothing says so; an engine that merely died still reaches the wrapper's marker and reads
-`failed`; a job that cannot run its finish stops before its engine and says
-so in its marker (`finish cannot load`), which reads `failed`; a flat stage
+`failed`; a job with no python of its env, or one that cannot run its
+finish, stops before its engine and says so in its marker (`no env python`,
+`finish cannot load`), which reads `failed`; a flat stage
 reads `queued` the same way, from its own `<basename>-run<N>.run.json`.
 
 ```mermaid

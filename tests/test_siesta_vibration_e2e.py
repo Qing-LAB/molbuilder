@@ -38,13 +38,19 @@ The roads: one per state of the person's one box (`engines/vibration.md`
 e2e read too), its `fc` call at the geometry `relax` reached, one mode's
 optical calls after it; ticked, the run is the `fc` call alone, at the
 geometry as given -- then a displacement sweep (§ 5.9), on the unticked
-calculation.  A flat calculation's refusal needs no engine:
+calculation; and the unticked run stopped by the person once its force
+constants and its first optical call ended, then launched again warm
+(§ 5.11 § 6), on a copy of it.
+The optical calls' data file is read beside the index and the result
+(§ 5.11 § 8).  A flat calculation's refusal needs no engine:
 `test_siesta_vibration_deck`.  The ticked road's result is then opened on the
 Results tab, in a browser.
 
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
 cleanly anywhere else.  Each force-constant call is thirteen single points of
-CO2 on one rank, about a minute here, and the module launches three runs
+CO2 on one rank, about a minute and a half here, each optical call some 25 s,
+and the module launches four runs beside the shared one -- the ticked, the
+sweep's second stage, the stopped and the one launched after it
 (`process/testing.md` tier 3: each run made once a pass).
 """
 from __future__ import annotations
@@ -199,14 +205,78 @@ def _index_of(run, stage: str = "freq", n: int = 0) -> dict:
 
 
 def _notified(run, stage: str = "freq", n: int = 0) -> list:
-    """The events the run sent, by its record (`runrecord.read_notified`),
-    named as its stage's files are (`jobset.naming.stage_home`)."""
+    """The events run ``n`` sent, by its record (`runrecord.read_notified`),
+    named as its stage's files are (`jobset.naming.stage_home`) -- a run in
+    phases is one run in its folder, its records named as its first
+    (`runfiles.FIRST_ATTEMPT`, as its index is)."""
     from molbuilder.jobset.naming import stage_home
+    from molbuilder.runfiles import FIRST_ATTEMPT
     from molbuilder.runrecord import read_notified
     from molbuilder.task import of as task_of
     task = task_of(run.bundle)
     names = stage_home(run.bundle, task, stage).names(task.shape)
-    return [e["event"] for e in read_notified(run.attempt(stage, n), names, n)]
+    return [e["event"] for e in read_notified(run.attempt(stage, n), names,
+                                              FIRST_ATTEMPT)]
+
+
+def _the_optical_record(run, computed_in, n: int = 0):
+    """THE RAMAN PHASE'S RECORD of run ``n`` of `freq`, and the three records
+    of it agreeing (`engines/vibration.md` § 5.11 § 8, § 6.2): the run's
+    data file, at its root -- read by its reader
+    (`spectra.optical_data.read_optical_data`) and by `xarray.load_dataset`,
+    as a person's script reads it -- lists the index's optical calls in the
+    index's order, each frame finished, its mode, side and `δQ` the
+    index's, the run that computed it ``computed_in[<call>]``, and its
+    spectrum the call's own `.EPSIMG` as the parse registry reads it
+    (`postprocess.parse`); the result (:func:`_the_result`) cites the file
+    by its bytes' sha256, each frame's state, the selection, the light's
+    direction and `δ` as the file states them.  Returns ``(result, data,
+    calls)``."""
+    import xarray
+    from molbuilder.persist import sha256_of
+    from molbuilder.postprocess import parse as through_the_registry
+    from molbuilder.runfiles import ROLE_OPTICAL
+    from molbuilder.runs import on_label_at, run_of
+    from molbuilder.siesta.vibration_phases import OPTICAL, calls_of, entry_of
+    from molbuilder.spectra.optical_data import read_optical_data
+    d = _the_result(run, n=n)
+    folder = run.attempt("freq", n)
+    index = _index_of(run, n=n)
+    calls = [c for c in calls_of(index) if c.phase == OPTICAL]
+    path = on_label_at(folder, ROLE_OPTICAL)
+    assert path is not None, \
+        "the run left no data file of its optical calls at its root"
+    cited = d["optical"]
+    assert (cited["data_file"], cited["data_sha256"]) == (
+        path.name, sha256_of(path)), cited
+    data = read_optical_data(path)
+    frames = data["frames"]
+    assert [f["call"] for f in frames] == [c.rel for c in calls], frames
+    grid = np.asarray(data["photon_energy_ev"])
+    ds = xarray.load_dataset(path, group="frames")
+    assert ds["eps2"].dims == ("frame", "photon_energy_ev", "spin")
+    for k, (f, c) in enumerate(zip(frames, calls)):
+        row = entry_of(index, c)
+        assert f["state"] == "finished", (c.rel, f["state"])
+        assert (f["mode"], f["side"], f["dq_amu12_ang"]) == (
+            c.mode, int(c.side or 0), row.get("dq_amu12_ang")), (f, row)
+        assert f["computed_in"] == computed_in[c.name], (c.rel, f)
+        got = through_the_registry(run_of(folder / c.rel).on_label(".EPSIMG"))
+        assert got.result_kind == "dielectric" and list(got.spin) == \
+            data["spin"], got.spin
+        assert np.array_equal(got.energy_ev, grid), c.rel
+        assert np.array_equal(f["eps2"], got.eps2), c.rel
+        assert np.array_equal(ds["eps2"].values[k], got.eps2.T), c.rel
+    settings = data["settings"]
+    assert (cited["direction"], cited["selection"], cited["displacement_ang"]
+            ) == (settings["direction"], settings["selection"],
+                  settings["delta_ang"]), (cited, settings)
+    assert cited["reference"] == "finished", cited
+    assert cited["modes"] == [
+        {"mode": f["mode"], "frequency_cm1": f["frequency_cm1"],
+         "dq_amu12_ang": f["dq_amu12_ang"], "plus": "finished",
+         "minus": "finished"} for f in frames if f["side"] == 1], cited
+    return d, data, calls
 
 
 def _common_assertions(d, *, optical: bool):
@@ -225,12 +295,18 @@ def _common_assertions(d, *, optical: bool):
     assert d["thermo"]["regime"] == "vibrational-only"
     # the frequencies are this route's whole answer; the probe was never
     # asked of it (vibration.md § 4.9); Raman is the optical phase's, where
-    # it ran (§ 5.11 § 8)
+    # it ran -- complete once every optical call ended, its step δ the
+    # force constants' own, the `.FC` header's (§ 6.2; § 5.11 § 3)
     assert d["phase_frequencies"] == "complete"
     assert d["phase_es"] == "not requested"
     assert d["raman_route"] == ("optical" if optical else "none"), d
-    if not optical:
+    if optical:
+        assert d["phase_raman"] == "complete", d["phase_raman"]
+        assert d["raman_fd_step_ang"] == \
+            d["engine_metadata"]["fc_displacement_ang"], d["raman_fd_step_ang"]
+    else:
         assert d["phase_raman"] == "not requested"
+        assert d["raman_fd_step_ang"] is None and d["optical"] is None
         assert d["modes"][0]["raman_activity_a4_amu"] is None
     assert "Head1997" in d["bibliography_keys"]
     # R5 on this route: the reference-step forces judged by the tolerance
@@ -437,6 +513,49 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     assert said.exit_code != 0, said.output
     assert ("every call of 01_freq/run-0 is done and its finish wrote the "
             "result") in said.output and "--cold" in said.output, said.output
+
+
+def test_the_optical_calls_are_one_data_file_the_result_cites(
+        real_co2_vibration):
+    """THE RAMAN PHASE'S RECORD (`engines/vibration.md` § 5.11 § 8, § 6.2):
+    the shared run's three optical calls -- the reference geometry, then the
+    picked mode's two sides -- in one data file at the run's root that the
+    index and the result agree with (:func:`_the_optical_record`), each
+    computed in this run; the light along the optical deck's
+    `Optical.Vector`; the selection as asked and applied; and each frame at
+    the geometry the displacement rule gives (§ 5.11 § 3): the reference
+    the result's own, in the user order, and each side the reference moved
+    by ±δQ along the mode's vector -- zero on the held carbon -- its
+    largest atom's move `δ`, the force constants' step.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a frame's geometry left in the deck's
+    held-first order (the carbon's row then moves); a frame's spectrum from
+    another call's file; the result citing the data file as the force
+    constants' record step wrote it, before the optical calls ran (its
+    sha256 and every state pending)."""
+    from molbuilder.parse.fdf import fdf_key
+    run = real_co2_vibration
+    d, data, calls = _the_optical_record(
+        run, computed_in=dict.fromkeys(("f000", "f001", "f002"),
+                                       "01_freq/run-0"))
+    assert data["settings"]["selection"]["applied"] == [_PICKED_MODE]
+    optical = _deck_of(run.attempt("freq") / calls[0].rel)
+    vector = optical[1][fdf_key("Optical.Vector")]
+    assert data["settings"]["direction"] == [float(x) for x in vector[0][:3]]
+    reference, plus, minus = data["frames"]
+    r0 = np.asarray(reference["position_ang"])
+    assert np.allclose(r0, d["structure"]["positions"], atol=1e-5)
+    mode = d["modes"][_PICKED_MODE - 1]
+    assert plus["frequency_cm1"] == mode["frequency_cm1"], (plus, mode)
+    vec = np.zeros_like(r0)
+    vec[d["free_atom_idxs"]] = np.asarray(mode["eigenvector_canonical"])
+    delta = d["engine_metadata"]["fc_displacement_ang"]
+    for f in (plus, minus):
+        move = np.asarray(f["position_ang"]) - r0
+        assert np.allclose(move, f["side"] * f["dq_amu12_ang"] * vec,
+                           atol=1e-5), (f["side"], move)
+        assert np.linalg.norm(move, axis=1).max() == pytest.approx(
+            delta, abs=1e-5), move
 
 
 def test_ticked_the_run_measures_at_the_geometry_as_given(ticked):
@@ -744,3 +863,117 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
     assert fc["against"] == "freq" and fc["max_abs_change_ev_ang2"] > 0.0
     assert all(m["flagged"] is True for m in rec2["modes"])
     assert rec2["tolerance_cm1"] == 1e-6
+
+
+@pytest.fixture(scope="module")
+def stopped_after_fc(real_co2_vibration, tmp_path_factory):
+    """THE PERSON STOPS THE RUN ONCE ITS FORCE CONSTANTS AND ITS FIRST
+    OPTICAL CALL ENDED, then launches it again (`engines/vibration.md`
+    § 5.11 § 6): a copy of the shared run's calculation
+    (`support.real_runs.copy_of`), `freq` launched again cold in the
+    background -- a launch's default (`job-system.md` § 6.0) -- so run-1
+    relaxes and takes its force constants anew; once `jobset status` reads
+    an optical call of run-1 done and run-1's index lists the next one
+    started (an optical call takes some 25 s here), the run stopped with
+    the line that launch printed and let end; the run as the stop left it
+    kept -- its status (``stopped``) and its index (``stopped_index``);
+    then `freq` launched again warm, in the foreground: run-2."""
+    from molbuilder.siesta.vibration_phases import OPTICAL
+    from support.real_runs import (_road_at, _stopped_by_its_line, _taken,
+                                   _typed, _until, copy_of, stage_status)
+
+    def stopped(c):
+        with _road_at(c.tree.parent, tmp_path_factory):
+            run1 = c.attempt("freq", 1).name
+            launched = _taken(c, "launch freq cold", "launch", "task",
+                              "--stage", "freq", "--mode", "direct", "--yes",
+                              "--cold")
+
+            def one_done_and_the_next_started():
+                # RUN-1'S CALLS, by the done rule launch takes them over by
+                # -- the status door -- and the next call's start, its index.
+                s = stage_status(c.bundle, "freq")
+                if s.attempt != run1:
+                    return False          # run-1 not opened yet
+                done = {p["call"] for p in s.points
+                        if p["phase"] == OPTICAL and p["done"]}
+                if not done:
+                    return False
+                index = _index_of(c, "freq", 1)
+                return any(r["phase"] == OPTICAL and r.get("started")
+                           and r["name"] not in done for r in index["calls"])
+            _until(one_done_and_the_next_started, within=900,
+                   what="an optical call of run-1 done, the next started")
+            _stopped_by_its_line(c, "stop as its launch said", launched)
+            c.stopped = stage_status(c.bundle, "freq")
+            c.stopped_index = _index_of(c, "freq", 1)
+            _typed(c, "launch freq warm", "launch", "task", "--stage",
+                   "freq", "--mode", "direct", "--foreground", "--yes")
+    return copy_of(real_co2_vibration, "stopped-after-fc", stopped)
+
+
+def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
+        stopped_after_fc):
+    """LAUNCHED AGAIN WARM after the person stopped the run once its force
+    constants and its first optical call ended (`engines/vibration.md`
+    § 5.11 § 6): run-2 takes over, from run-1 -- the run that computed
+    them -- the relaxation, the force constants and every optical call
+    run-1 finished, each call's `.continued-from` naming run-1's, as
+    `jobset status` reads it, and its index entry naming it too, its start
+    and end run-1's, so none ran again; it runs the optical calls run-1
+    left unfinished, from the coordinates run-1's force constants planned,
+    and nothing else -- the launch says so in its words; `status` counts
+    the calls taken over; the run reports as one run (`start` once,
+    `finish` once); and its result and data file are whole
+    (:func:`_the_optical_record`), each frame computed where it was --
+    run-1's for a frame taken over -- with no force-constant call of its
+    own, the record of each optical call stands on the one it took over.
+
+    MUTATIONS THIS MUST FAIL AGAINST: launch not taking a done call over
+    (the relaxation runs again: its start is run-2's); a done optical call
+    walked again; an optical call's record step reading what only a run
+    that took its own force constants writes (the run then fails); the
+    take-over naming the run it copied from rather than the one that
+    computed the call; a taken-over frame's data file row naming its call
+    folder rather than its run."""
+    from molbuilder.siesta.vibration_phases import FC, OPTICAL, RELAX
+    run = stopped_after_fc
+    # THE PREMISE, by the status door launch decides by: the stop landed
+    # once the force constants and at least one optical call were done,
+    # and before every optical call was.
+    ended = {p["call"]: p for p in run.stopped.points}
+    assert ended[RELAX]["done"] and ended[FC]["done"], run.stopped.points
+    finished = {p["call"] for p in run.stopped.points
+                if p["phase"] == OPTICAL and p["done"]}
+    assert 0 < len(finished) < 3, run.stopped.points
+    before = {r["name"]: r for r in run.stopped_index["calls"]}
+    said = run.said["launch freq warm"]
+    assert said.exit_code == 0, said.output
+    assert ("takes over the relaxation, the force constants, frame 0, the "
+            "equilibrium" in said.output
+            and f"done in run-1; runs the optical calls below run-2/optical/ "
+                f"({3 - len(finished)} to run again)" in said.output), \
+        said.output
+    status, _folder = _the_run(run, n=2)
+    assert status.detail == (f"relax done · fc done · optical 3 of 3 "
+                             f"({len(finished)} taken over)"), status.detail
+    run1 = run.attempt("freq", 1).relative_to(run.bundle).as_posix()
+    run2 = run.attempt("freq", 2).relative_to(run.bundle).as_posix()
+    index = {r["name"]: r for r in _index_of(run, n=2)["calls"]}
+    for p in status.points:
+        name = p["call"]
+        taken = p["phase"] in (RELAX, FC) or name in finished
+        rel = f"{run1}/{p['phase']}" + (f"/{name}" if p["phase"] == OPTICAL
+                                         else "")
+        assert p["started_from"] == (rel if taken else None), p
+        assert index[name].get("taken_from") == (rel if taken else None), \
+            index[name]
+        if taken:
+            assert (index[name]["started"], index[name]["ended"]) == (
+                before[name]["started"], before[name]["ended"]), \
+                (index[name], before[name])
+    assert _notified(run, n=2) == ["start", "finish"]
+    d, _data, _calls = _the_optical_record(
+        run, n=2, computed_in={name: (run1 if name in finished else run2)
+                               for name in ("f000", "f001", "f002")})
+    _common_assertions(d, optical=True)

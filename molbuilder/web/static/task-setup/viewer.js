@@ -3883,9 +3883,9 @@ function _showPrepAnswer(wrap, say, r, head) {
      * line (`job-request.md` § 3.1a): a hint, refusing nothing. */
     if (r.need) line("memory need: " + r.need.line);
     if (r.launch && r.launch.said && !r.group) {
-        line(((r.points || []).length
-              ? "one job walking its " + r.points.length
-                + " points (their walls summed) -- " : "") + r.launch.said);
+        // A RUN OF POINTS' ONE JOB, in the words prep composed for both
+        // doors (`prep.walk_words`).
+        line((r.launch.walk ? r.launch.walk + " -- " : "") + r.launch.said);
     }
     /* A BENCHMARK'S SHELVES, each the one job its launch sends, with its
      * fit on the benchmark's queue. */

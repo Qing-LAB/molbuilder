@@ -446,7 +446,7 @@ def say(end: RunEnding) -> str:
 
 def main(argv=None) -> int:
     """``OUTPUT [--stderr FILE] [QUESTION [ARG]]`` -- beside a job,
-    ``python mb_monitor.pyz ending ...`` (the bundle's entry hands ``ending``
+    ``"$_mb_py" mb_monitor.pyz ending ...`` (the bundle's entry hands ``ending``
     here; `runwrap.MONITOR_BUNDLE`): with a question, the exit status answers
     it (:data:`QUESTIONS`); without one, the ending is printed as :func:`say`
     words it.  ``--stderr`` is :func:`ending_of`'s.  2 when the output cannot

@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Sequence, Tuple
+from typing import Any, Dict, Mapping, Sequence, Tuple
 
 import numpy as np
 
@@ -57,19 +57,21 @@ except ImportError:                         # beside a job, in a bundle
                         unnumber_attr, write_group)
     from persist import write_bytes
 
-DATA_SCHEMA = "molbuilder/spectra-data@6"
+DATA_SCHEMA = "molbuilder/spectra-data@7"
 #: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
 #: the same variables without its atom index map, read as it is and never
 #: rewritten -- its map made as it is read (`engines/vibration.md`
 #: § 6.10.5; `model/overview.md` § 2.2b, F3); one written before 2.33.2
 #: (``@1``, ``@2``) names four axes' values otherwise, and before 2.33.3
 #: (``@3``) the temperatures' (:data:`_EARLIER`); one before 2.36.0
-#: (``@1``-``@4``) holds no ``/partial_charges``.
+#: (``@1``-``@4``) holds no ``/partial_charges``; one before 2.43.0
+#: (``@1``-``@6``) no ``optical`` citation.
 READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1",
                          "molbuilder/spectra-data@2",
                          "molbuilder/spectra-data@3",
                          "molbuilder/spectra-data@4",
-                         "molbuilder/spectra-data@5", DATA_SCHEMA)
+                         "molbuilder/spectra-data@5",
+                         "molbuilder/spectra-data@6", DATA_SCHEMA)
 #: AN AXIS'S VALUES AS EARLIER SCHEMAS NAMED THEM, newest first -- before
 #: every axis was a coordinate of its own name, and before an axis's name
 #: carried its unit (`model/datafiles.md` § 2a, rule 5).
@@ -111,6 +113,8 @@ _ROOT = {
     "raman_route": "text", "raman_fd_step_ang": "number?",
     "hessian_scope": "text", "n_atoms_in_hessian": "int?",
     "hessian_density_fit": "flag?",
+    # THE OPTICAL CALLS' CITATION (v13): the data file that holds them.
+    "optical": "json",
 }
 #: The ``relaxation`` block, as ``relaxation_<key>`` attributes.
 _RELAXATION = {
@@ -206,7 +210,10 @@ def _block_back(attrs: Mapping[str, Any], table: Mapping[str, str],
 #  The variables                                                          #
 # --------------------------------------------------------------------- #
 
-def _structure_vars() -> Tuple[Var, ...]:
+def structure_vars() -> Tuple[Var, ...]:
+    """``/structure`` -- the geometry a vibration result is about, its atom
+    axis listed by user index: shared by the result's data file and the
+    optical calls' (`spectra.optical_data`), one layout for one fact."""
     return (
         Var("atom", ("atom",), "coordinate", "1", "atom index",
             "the atom's user index, from 0 -- the file is listed by user "
@@ -233,6 +240,52 @@ def _structure_vars() -> Tuple[Var, ...]:
         Var("axis_kind", ("xyz",), "given", "", "each axis's kind",
             "periodic or isolated, as the run was given it", dtype=str),
     )
+
+
+def write_structure_group(ds, structure, atoms: AtomIndexMap, *,
+                          masses=None, held=()) -> None:
+    """``/structure`` written on ``ds``: the arrays an analysis reaches for
+    and ``Structure.to_dict()`` whole as JSON text (`model/structure.md`
+    § 2.1) -- its elements, positions, held set, cell and axis kinds read
+    through the structure's own door, never a hand-walk of the dict.  The
+    atom axis is ``atoms``, the map it is listed by (`model/overview.md`
+    § 2.2b); ``masses`` every atom's, or ``None``; ``held`` the held atoms
+    where no structure is stated (a result written before one existed)."""
+    g = ds.createGroup("structure")
+    vars_ = structure_vars()
+    n_atoms = atoms.n_atoms
+    values = _fill(vars_, {"atom": atoms, "xyz": 3, "cell_vector": 3})
+    values["atom"][:] = np.arange(n_atoms)
+    values["xyz"][:] = ["x", "y", "z"]
+    values["cell_vector"][:] = ["a", "b", "c"]
+    held = [int(i) for i in held]
+    if structure is not None:
+        s = _Structure.from_dict(structure)
+        values["element"][:] = [str(e) for e in s.elements]
+        values["position_ang"][:] = np.asarray(s.positions, dtype=float)
+        held = [int(i) for i in (s.frozen_atoms or ())]
+        if s.cell is not None:
+            values["cell_ang"][:] = np.asarray(s.cell, dtype=float)
+        if s.axis_kind is not None:
+            values["axis_kind"][:] = [str(k) for k in s.axis_kind]
+    values["held"][:] = 0
+    for i in held:
+        values["held"][i] = 1
+    if masses is not None:
+        values["mass_amu"][:] = np.asarray(masses, dtype=float)
+    write_group(g, {"atom": atoms, "cell_vector": 3, "xyz": 3}, vars_,
+                values)
+    g.setncattr("structure_json", json_attr(structure))
+
+
+def read_structure_group(group, *, source: str) -> Dict[str, Any]:
+    """``/structure`` read back: ``structure`` (the dict, or ``None``),
+    ``atoms`` (its atom index map, or ``None`` for a file written before
+    one), ``held`` (each atom's flag) and ``masses`` (NaN where none)."""
+    sv = read_variables(group)
+    return {"structure": json.loads(str(group.getncattr("structure_json"))),
+            "atoms": read_atom_index_map(group, source=source),
+            "held": sv["held"]["data"], "masses": sv["mass_amu"]["data"]}
 
 
 def _partial_charge_vars(partitions: Sequence[str]) -> Tuple[Var, ...]:
@@ -418,11 +471,9 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         ds.setncatts(attrs)
 
         # /structure -- the arrays an analysis reaches for, and the structure
-        # whole as its one serialiser states it.
-        g = ds.createGroup("structure")
-        vars_ = _structure_vars()
-        # THE ATOM AXIS AS ITS MAP (`model/overview.md` § 2.2b): the
-        # result's own, listed by user index.
+        # whole as its one serialiser states it; THE ATOM AXIS AS ITS MAP
+        # (`model/overview.md` § 2.2b): the result's own, listed by user
+        # index.
         if MAP_KEY not in payload:
             raise SpectraDataError(
                 "the result states no atom_index_map: its data file says "
@@ -431,33 +482,9 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         atoms = AtomIndexMap.from_dict(payload[MAP_KEY],
                                        n_atoms=n_atoms,
                                        source="the result's atom_index_map")
-        values = _fill(vars_, {"atom": atoms, "xyz": 3, "cell_vector": 3})
-        values["atom"][:] = np.arange(n_atoms)
-        values["xyz"][:] = ["x", "y", "z"]
-        values["cell_vector"][:] = ["a", "b", "c"]
-        held: List[int]
-        if structure is not None:
-            # THROUGH THE STRUCTURE'S OWN DOOR (`model/structure.md` § 2.1):
-            # its elements, positions, held set, cell and axis kinds as the
-            # instance states them, never a hand-walk of the dict.
-            s = _Structure.from_dict(structure)
-            values["element"][:] = [str(e) for e in s.elements]
-            values["position_ang"][:] = np.asarray(s.positions, dtype=float)
-            held = [int(i) for i in (s.frozen_atoms or ())]
-            if s.cell is not None:
-                values["cell_ang"][:] = np.asarray(s.cell, dtype=float)
-            if s.axis_kind is not None:
-                values["axis_kind"][:] = [str(k) for k in s.axis_kind]
-        else:
-            held = [int(i) for i in payload.get("frozen_atom_idxs") or ()]
-        values["held"][:] = 0
-        for i in held:
-            values["held"][i] = 1
-        if eq.get("masses_amu") is not None:
-            values["mass_amu"][:] = np.asarray(eq["masses_amu"], dtype=float)
-        write_group(g, {"atom": atoms, "cell_vector": 3, "xyz": 3}, vars_,
-                    values)
-        g.setncattr("structure_json", json_attr(structure))
+        write_structure_group(ds, structure, atoms,
+                              masses=eq.get("masses_amu"),
+                              held=payload.get("frozen_atom_idxs") or ())
 
         # /equilibrium -- the energy subgroup, whole or not at all (§ 6.2).
         g = ds.createGroup("equilibrium")
@@ -599,22 +626,19 @@ def read_spectra_data(path) -> Dict[str, Any]:
         out.update(_block_back(attrs, _ROOT, ""))
         relaxation = _block_back(attrs, _RELAXATION, "relaxation_")
         out["relaxation"] = relaxation
-        # /structure
-        g = ds["structure"]
-        sv = read_variables(g)
-        structure = json.loads(str(g.getncattr("structure_json")))
-        held_flags = sv["held"]["data"]
-        masses = sv["mass_amu"]["data"]
+        # /structure, and THE ATOM INDEX MAP the file states of it
+        # (§ 2.2b), back as the result's own block.
+        st = read_structure_group(ds["structure"],
+                                  source=f"{Path(path).name}/structure")
+        structure, held_flags, masses = (st["structure"], st["held"],
+                                         st["masses"])
         if structure is not None:
             out["structure"] = structure
         else:
             out["frozen_atom_idxs"] = [int(i) for i, h in enumerate(held_flags)
                                        if int(h) == 1]
-        # THE ATOM INDEX MAP the file states of /structure (§ 2.2b), back as
-        # the result's own block.
-        atoms = read_atom_index_map(g, source=f"{Path(path).name}/structure")
-        if atoms is not None:
-            out[MAP_KEY] = atoms.to_dict()
+        if st["atoms"] is not None:
+            out[MAP_KEY] = st["atoms"].to_dict()
         # /equilibrium
         g = ds["equilibrium"]
         scf = unnumber_attr(g.getncattr("scf_energy_eh"))
@@ -725,4 +749,5 @@ def read_spectra_data(path) -> Dict[str, Any]:
 
 
 __all__ = ["DATA_SCHEMA", "SpectraDataError", "write_spectra_data",
-           "read_spectra_data"]
+           "read_spectra_data", "structure_vars", "write_structure_group",
+           "read_structure_group"]

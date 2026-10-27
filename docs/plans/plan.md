@@ -1152,31 +1152,120 @@ review of what it touched, its tests green, then the next.
 |---|---|---|---|
 | M1 | **the framework** | a rung of points declared — each `RUNGS` row states where its points come from, what makes a point done, its start and its finish; every reader asking `calculation == "transport"` today asks the row (prep, the walk, `status`, `continuation`, the gather, Task setup, the record); `siesta/vibration_phases.py` — `PHASES`, the index's writer and reader, its `runfiles.WRITTEN` row and registry parser, the state rule over `points_state`; `parse/fdf.py` reads `%block Label < Filename`; `selection`, `calcdirs`, `paths` join the vibration bundle; `materialize.bring_files`' copy core split into a floor-1 function both call; `siesta/deck_lines.coordinates_rows` (one for `spec_for`, TranSIESTA, the plan); the displacement rule one function (`mode_frames` and the plan) | the fast batch and the real-junction e2e pass unchanged — nothing a transport calculation does differs |
 | M2 | **prep and launch** | `spec_for(part=)` for the relax, force-constant and optical decks; the stage's phase folders with their run scripts; `relax`'s coordinates file; the count beside the wall; `vibration_stages` one stage on both engines and the `relax` stage's rules retired (`ladder`, `ready`'s *waits before it can be prepared*, `_vibration_stage_geometry`, `first_launch_takes`' branch, § 5.2a); the phased walk at launch; the calls a warm launch takes over through `materialize.HandOver`; `warm-files.toml` per phase; the monitor's `--member` flag and `notify` verb, the run script's monitor block rendered for a member, the N-hour clock from the run's start | **built 2.42.0** — the scratch H₂ (held and free) through `describe → prep → launch --mode direct`: `01_freq/{relax,fc}/` each with its deck, `coordinates.fdf` and run script; `run-0/relax`, `run-0/fc` seeded from its `.DM`; the index with both calls, its phases and the finish; `notified.json` start + finish; the result pair at the run's root; the CO₂ e2e (`tests/test_siesta_vibration_e2e.py`) through `describe → prep → launch`: the `relax` and `fc` calls, one mode's three optical calls, the index, the result, one `start` and one `finish`, the sweep — and the relaxation's, the monitor's and the inspector's e2e on the same run |
-| M3 | **the job's Python** | `plan`, `record`, `finish` in `spectra/siesta_vibration.py`; `spectra/siesta_raman.py`; `parse/engines/siesta_epsimg.py`; `spectra/optical_data.py` (its `Var` table, `photon_energy_ev` in `ncdata.AXES`); the result's `phase_*` on SIESTA, `raman_route` `optical`, `raman_fd_step_ang`, `optical` (schema 13; the `.nc` @7) | the e2e's index, result and data file agree; the result's phases and route right; the data file reads through its reader and `xarray.load_dataset`; the warm-relaunch e2e (stopped after `fc`) takes `relax` and `fc` over |
-| M4 | **the view and the settings** | `spectra/raman.raman_view` (KK, the width composed, the laser); the load door's `raman` view and its asks; `postprocess.raman_view`; `methods`; the viewer's `_ramanOf`, the *Laser* and *Broadening* boxes, the Raman column and lane on a SIESTA result; the catalogue's optical items, the selector's `engines` gaining `siesta`, the charge switch as items (L4); Task setup's card per phase | the KK and composition API tests; the CO₂ e2e's symmetry check (mutual exclusion); the viewer on the running server showing Raman for the e2e's result (Claude in Chrome) |
+| M3 | **the job's Python** | `plan`, `record`, `finish` in `spectra/siesta_vibration.py`, the optical calls' record composed there; `parse/engines/siesta_epsimg_reader.py` and its registered parser `siesta_epsimg.py`; `spectra/optical_data.py` (its `Var` table, `photon_energy_ev` in `ncdata.AXES`); the result's `phase_*` on SIESTA, `raman_route` `optical`, `raman_fd_step_ang`, `optical` (schema 13; the `.nc` @7); prep's count and sizes (§ 5.11 § 9) | **built 2.43.0** — the CO₂ e2e's index, result and data file agree, each frame's geometry the displacement rule's and its spectrum its call's `.EPSIMG` through the registry; the result's phases and route right; the data file reads through its reader and `xarray.load_dataset`; the warm-relaunch e2e (a copy stopped once an optical call started) takes `relax` and `fc` over and runs only the optical calls — it caught the optical record reading a result only a run computing its own force constants writes |
+| M4 | **the view and the settings** | `spectra/raman.raman_view` (KK, the width composed, the laser); `phase_ir` and `ir_route` `charges` on a SIESTA result, with the viewer's gates (the Results tab names SIESTA's Raman by its route — `_ramanRouteLabel` reads PySCF's `compute_raman` today); the load door's `raman` view and its asks; `postprocess.raman_view`; `methods`; the viewer's `_ramanOf`, the *Laser* and *Broadening* boxes, the Raman column and lane on a SIESTA result; the catalogue's optical items, the selector's `engines` gaining `siesta`, the charge switch as items (L4); Task setup's card per phase | the KK and composition API tests; the CO₂ e2e's symmetry check (mutual exclusion); the viewer on the running server showing Raman for the e2e's result (Claude in Chrome) |
 | M5 | **the contract, closed** | § 5.11 becomes the rules of § 2.2, § 5.2a–§ 5.5, § 5.8, § 5.9 as built; `job-system.md` § 5.4's vibration rows; `project-layout.md` § 5 (the manifest regenerated); `job-contracts.md`'s rows; `web/results.md`; `web/spectra.md` § 3.2; `web-api.md`; the method doc's § 5 and § 7; the changelog; two review rounds | R1 measured on the toy junction through the built run (two `optical_mesh` values), its numbers in the method doc's § 3.1 |
 
 **Handover, M2 built (2026-10-26)** — what M3–M5 pick up: (a) a sweep's
 later stage taking the first stage's `relax` call over (§ 5.11 § 1, § 6) is
 not built — each stage relaxes in its own run today, and § 5.9's summary
-refuses two geometries; (b) the finish marks
-`phase_raman` complete when optical calls ran, before any reader of their
-`.EPSIMG` exists (M3); (c) `status` reads a run whose calls are all done
+refuses two geometries; (c) `status` reads a run whose calls are all done
 while its job still goes as *running (after its last point)* — the record
 step or the finish at work; (d) § 5.11 is still one
 section beside the rules it changes (M5 folds it into § 2.2, § 5.2a–§ 5.5,
-§ 5.8, § 5.9); (e) prep's count and sizes (§ 5.11 § 9) are M3's, beside
-the `.EPSIMG` size; (f) `ready.first_launch_takes` and `at_launch` still
+§ 5.8, § 5.9); (f) `ready.first_launch_takes` and `at_launch` still
 ask `calculation == "transport"` — the next framework pass moves the
 question to the rung-of-points declaration (`jobset.points`); (g) a
 transport sweep's points still send their own `start` and `finish` — the
 run's one pair needs a step its walk can run (R-e's transport half,
 `engines/vibration.md` § 5.11 § 7a); (h) a call whose bundle does not load
 on the job's python (no numpy) records nothing and sends no event — its
-run's state still reads failed, by the run door.
+run's state still reads failed, by the run door; (i) a warm launch with
+every call done and the finish not done runs the last call again so its
+record step finishes the run (§ 5.11 § 6) — no e2e reaches it: the real
+road is a finish that failed, and no job environment of ours lacks what the
+finish imports; a finish entry removed by hand is a planted state. (b) and
+(e) closed with M3 (2.43.0).
+
+**Handover, M3 built (2026-10-26)** — what the review left for later: (j)
+a run stopped inside its optical phase keeps the result the force
+constants' record step wrote — `phase_raman` *running*, its citation the
+data file's sha256 at that write — since the result is rewritten at a
+phase's end (§ 5.11 § 8); (k) `envs/recipes.py`'s comments say the SIESTA
+env's python is the monitor's and ASE a monitor reader (~l.1466, 1477) —
+the person's file to approve; (m) a
+spin-polarized optical frame's Fermi level reads none (SIESTA prints
+`ef_up`/`ef_dn` with a fixed spin); (n) § 5.5 still describes the finish
+as a step after the force-constant run alone — M5 folds § 5.11 in.
 
 **Open after it**: the named set's share (D-e), designed after R1; the
 `electronic` kind (§ 5.10 ④) for the response along a mode, unchanged.
+
+## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user — the contract to write in `execution/run-reports.md` § 2, then the build)*
+
+*(The user, 2026-10-26: "the report should report the progress and/or the
+periodic update, as the monitor is designed for. i am asking you to do a
+logical design rather than aligning with what happens to be the case"; on
+transport: "one voltage across every frame would be a transport milestone.
+these calculation is heavy and it deserves a report".)*
+
+**The rule an optimization's reports follow, carried to every kind**: a unit
+of work is reported when its outcome is something the person can judge or
+act on — a geometry move changes the largest force against its tolerance;
+otherwise only its count and pace are said, in the periodic report.
+
+| report | when | what it says |
+|---|---|---|
+| start | once per run | the run started, where |
+| step | each geometry move, where the person ticks it | the energy, the largest force against its tolerance |
+| milestone | the end of a phase whose outcome the person can act on | that phase's outcome |
+| part failed | at once | which call or point, and why |
+| periodic | every N hours, the person's setting | the phase, units done of all, the time per unit, the time left at that pace, the running SCF's state |
+| wall warning | once per run | the step underway may not finish; or, for a run of points, the units left need more than the wall leaves at the measured pace |
+| finish | once per run | how it ended, and what it produced |
+
+**Vibration (SIESTA's run in phases)**: the relaxation's moves are steps;
+no message per displacement or per optical call — their count and pace in
+the periodic report; milestones at the relaxation's end (converged, the
+largest force), the force constants' end (the modes, how many imaginary, the
+stationarity verdict — the checkpoint at which the person may stop a Raman
+phase that would be wasted) and the optical calls' end. **Transport**: the
+seed and the leads are single points, start and finish their whole report;
+a sweep's point that fails is reported at once; **one voltage done across
+every frame is a milestone** (the user's); the periodic report carries the
+points done and failed, the time left at the measured pace, and the running
+point's NEGF iteration and residuals; the SCF trouble signs, once built
+(`model/parse.md` § 5d.6, P4), once each per point.
+
+**What changes**: `scf_converged` fires on geometry moves only, never on a
+force-constant displacement; milestones and part failures are new events;
+the wall warning gains the run-level projection; a transport run of points
+reports as one run — which needs its run to keep the index a vibration's
+keeps, so the monitor can tell its first and last point (R-e's transport
+half, `engines/vibration.md` § 5.11 § 7a, handover (g) above).
+
+**With it, the environment the monitor runs in** *(the user, 2026-10-26: one
+consistent theme; scanned the same day, the code's claims checked)*. **The
+governing rule** is `execution/running-a-job.md` § 2.2a (since 2.35.1): every
+Python a job runs is its activated engine environment's own,
+`$_mb_py = $CONDA_PREFIX/bin/python3`, set right after the activation
+(`runwrap.py`, the activation block) and checked once the run index is known
+— the env's name and its python — else `no env python`, nothing started.
+The monitor, the ending reader, the retry's record, the vibration bundle's
+`loads`/`plan`/`record` steps and the `notify` verb they run, and a PySCF
+deck all run on it. **One exception, the launcher layer's**: a sequence of
+groups' walk runs the host molbuilder on the node
+(`sys.executable -m molbuilder jobset launch`, `submit.py`, the sequence
+walk; `job-system.md` § 6.0) — every other walk is bash, the sbatch header
+runs no Python. **Aligned in 2.43.0** (docs, comments, and the run script's
+unreachable checks for a missing job python dropped; no change of design):
+`run-reports.md` § 2.3 and its layout file, `running-a-job.md` § 2.2a
+(the launcher layer's one exception; three bundles, the monitor's alone
+stdlib-only) and § 3.5, `job-contracts.md` § 2.6 (the PySCF deck on
+`$_mb_py`; the job-python and plan-step rows; no *no python* case),
+`configuration.md` § 2.3 (`persist` travels; the finish's and the
+PySCF bundle's imports), `vibration.md`'s finish command and the
+environments' self-tests, `installation.md` and `pyscf.md`'s package
+lists, `runwrap.py`'s and `monitor.py`'s comments. **Still open**:
+`job-contracts.md` § 2.6's block table has no row for the preamble
+preflight. **Why the monitor stays stdlib-only**, restated: it is the
+instrument that reports a failure, so it must load when the env's own
+packages do not — a broken numpy is reported by it, never hidden by it.
+**For the user's word**: (i) the sequence walk's host-molbuilder step — kept
+as the launcher layer's, said so, or moved; (ii) the env recipes
+(`envs/recipes.py`, the user's to approve): the SIESTA envs' self-test to
+import numpy and netCDF4 as the PySCF env's does, and numpy declared in the
+PySCF env where it now arrives through pyscf's own dependencies.
 
 ## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; SIESTA's vibration redesigned 2026-10-25 as one run in phases, Raman its optical phase (the user's B); R-a, R-c and R1 decided as recommended, 2026-10-25 — to build)*
 

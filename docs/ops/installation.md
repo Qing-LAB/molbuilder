@@ -12,23 +12,24 @@ molbuilder itself is a light Python app, but the calculations it drives —
 SIESTA, PySCF, AmberTools, and friends — have **mutually incompatible dependency
 pins** (you cannot solve AmberTools, gpu4pyscf, and a real-MPI SIESTA into one
 conda environment). So molbuilder installs each backend into **its own conda
-environment** and dispatches to it with `conda run -n <env>`. Installation is
+environment**: a job's run script activates its env, and molbuilder installs,
+verifies and probes each with `conda run -n <env>`. Installation is
 mostly about creating those environments — and one command does it.
 
 ## 1. The environment model
 
 There is **one host environment you live in** (`molbuilder`) plus **one
-environment per backend family**. molbuilder runs in the host env and shells out
-to a backend env whenever a job needs it.
+environment per backend family**. molbuilder runs in the host env; each job
+runs in its backend env, which its run script activates.
 
 ```mermaid
 flowchart TD
-  HOST["molbuilder (host env)<br/>the web UI + CLI + build-time chemistry<br/>python · ase · rdkit · openbabel · flask · sisl"]
-  HOST -->|"conda run -n molbuilder-siesta"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)<br/>+ numpy · ase · sisl (what a job's python reads its run with)"]
-  HOST -->|"conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · ase · (gpu4pyscf)"]
+  HOST["molbuilder (host env)<br/>the web UI + CLI + build-time chemistry<br/>python · ase · rdkit · openbabel · flask · sisl · netCDF4"]
+  HOST -->|"conda run -n molbuilder-siesta"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)<br/>+ numpy · ase · sisl · netCDF4 (what a job's python reads its run and writes its result with)"]
+  HOST -->|"conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · ase · netCDF4 · (gpu4pyscf)"]
   HOST -->|"conda run -n molbuilder-MDtools"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
   HOST -->|"conda run -n molbuilder-siesta-gpu"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
-  HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab · ipykernel · numpy/scipy/pandas/matplotlib · ase/sisl<br/>(optional)"]
+  HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab · ipykernel · numpy/scipy/pandas/matplotlib · ase/sisl/netCDF4<br/>(optional)"]
 ```
 
 The dotted edge is the notebook tab, and it is the only one: the notebook env
@@ -355,9 +356,9 @@ Reference:
 | **PySCF, geomeTRIC** | `molbuilder-pySCF` | conda (`pyscf`, `pyscf-dispersion`, `geometric`) + pip `pyscf-properties` **from git**, with the index as a declared fallback, for analytic IR — see §3.1 |
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
-| **RDKit, OpenBabel, ASE, sisl, biopython** | host `molbuilder` | conda |
-| **numpy, ASE, sisl** in the job envs | `molbuilder-siesta`, `molbuilder-siesta-gpu` (numpy, ASE, sisl); `molbuilder-pySCF` (ASE) | conda — a SIESTA vibration's job derives its modes with numpy after the force-constant run (`engines/vibration.md` § 5.5), and its wrapper refuses to start without it; sisl is SIESTA's own reader of its outputs (`.HSX` and `.TSHS` binary, `.TBT.nc` NetCDF, `.PDOS` XML), in every SIESTA env so a job can always read what its engine wrote (`engines/vibration.md` § 5.10 D5). The same packages on both SIESTA recipes, so the GPU switch never changes what a job can import (plan W36 ⑤). **An existing env gains what its recipe declares with** `molbuilder envs repair <env>` — the installer's own conda step for each missing package, added packages only (measured 2026-09-28: sisl 0.16.4 with netcdf4, pandas and xarray into both SIESTA envs) |
-| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel`, the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) and, since 2026-09-24, the file-level science libraries `ase` and `sisl` — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It holds no calculation engine (no pyscf / siesta / rdkit): a notebook reads the MD and trajectory formats calculations produce, and is not a second place to run one nor the place a frame set is made (`web/jupyter.md` § 7). A notebook's LaTeX is drawn by the MathJax JupyterLab carries in its own bundle, so the recipe adds no math package. **Opt-in**, like the GPU env: `bootstrap` does not install it |
+| **RDKit, OpenBabel, ASE, sisl, netCDF4, biopython** | host `molbuilder` | conda |
+| **numpy, ASE, sisl, netCDF4** in the job envs | `molbuilder-siesta`, `molbuilder-siesta-gpu` (numpy, ASE, sisl, netCDF4); `molbuilder-pySCF` (ASE, netCDF4) | conda — a SIESTA vibration's job derives its modes with numpy after the force-constant run (`engines/vibration.md` § 5.5) and writes its result's data file with netCDF4, as a PySCF vibration's deck does (`engines/vibration.md` § 6.10.5), and its wrapper does not start the engine without them; sisl is SIESTA's own reader of its outputs (`.HSX` and `.TSHS` binary, `.TBT.nc` NetCDF, `.PDOS` XML), in every SIESTA env so a job can always read what its engine wrote (`engines/vibration.md` § 5.10 D5). The same packages on both SIESTA recipes, so the GPU switch never changes what a job can import (plan W36 ⑤). **An existing env gains what its recipe declares with** `molbuilder envs repair <env>` — the installer's own conda step for each missing package, added packages only (measured 2026-09-28: sisl 0.16.4 with netcdf4, pandas and xarray into both SIESTA envs) |
+| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel`, the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) and, since 2026-09-24, the file-level science libraries `ase` and `sisl`, `netcdf4` to open the data files molbuilder writes and `xarray` to read them as the post-processing document does — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It holds no calculation engine (no pyscf / siesta / rdkit): a notebook reads the MD and trajectory formats calculations produce, and is not a second place to run one nor the place a frame set is made (`web/jupyter.md` § 7). A notebook's LaTeX is drawn by the MathJax JupyterLab carries in its own bundle, so the recipe adds no math package. **Opt-in**, like the GPU env: `bootstrap` does not install it |
 | **PeptideBuilder, pubchempy** | host | pip |
 | **Plotly.js** (every chart in the web UI) | host `molbuilder` | conda `plotly` — the browser bundle is package data of the Python package, and the app serves it at `/vendor/plotly.min.js` |
 | **The web UI's other browser libraries** (3D viewer, editor, Markdown, diagrams, math) | none — **the source tree** | **committed** under `molbuilder/web/static/vendor/`, each beside its licence, its release and its citation — that folder's `README.md` is the inventory. They come with the clone and the app serves them; nothing installs them, and a new one is added by that README's procedure, not by a recipe |

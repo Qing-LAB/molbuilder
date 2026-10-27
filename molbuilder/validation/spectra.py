@@ -104,37 +104,11 @@ def spectra_render_checks(struct: Structure,
     # engine and kind (`validation.chemistry.check_electronic_state`,
     # `science/chemistry-correctness.md` § 2a).
 
-    # The explicit list, read by its one reader (`explicit_modes`).  Text
-    # it cannot read is refused here, before a deck is written from it;
-    # an empty list is a run that computes no orbital-energy data though
-    # the person asked for some -- said now, not after the wall time.
-    if cfg.es_mode_selection == "explicit":
-        try:
-            listed = cfg.explicit_modes
-        except ValueError as e:
-            issues.append(Issue(
-                severity="error",
-                message=(
-                    f"The explicit mode list {cfg.es_explicit_indices!r} "
-                    f"can't be read: {e}.  Write 1-based mode numbers "
-                    f"separated by commas, with ranges if you like: "
-                    f"\"3, 7, 12\" or \"3-7, 12\"."
-                ),
-                where="config.es_explicit_indices",
-            ))
-        else:
-            if not listed:
-                issues.append(Issue(
-                    severity="warn",
-                    message=(
-                        "Mode selection is set to \"explicit\" but no "
-                        "mode indices were entered.  No per-mode "
-                        "orbital-energy data will be computed.  Either "
-                        "add at least one mode index, or switch the "
-                        "selector to \"skip\" or \"all\"."
-                    ),
-                    where="config.es_explicit_indices",
-                ))
+    # The mode selector (:func:`selector_issues`): an empty explicit list is
+    # a run that computes no orbital-energy data though the person asked for
+    # some.
+    issues.extend(selector_issues(
+        cfg, none_means="No per-mode orbital-energy data will be computed."))
 
     # Large-system cost advisory.  The Hessian cost scales like
     # N_free² and the Raman finite-difference step adds 6·N_free
@@ -230,26 +204,6 @@ def spectra_render_checks(struct: Structure,
             where="config.pressure_atm",
         ))
 
-    # The frequency window filters the modes `all` selects and nothing else
-    # (§ 4.8): `skip` selects none, and naming a mode is saying *that one*.
-    # The form locks the two fields outside `all`, but a locked field keeps
-    # its value and the hand-over carries it, as a hand-edited template
-    # does -- so a window set there is said to do nothing, by the same rule.
-    _window = [(k, getattr(cfg, k, None))
-               for k in ("freq_min_cm1", "freq_max_cm1")]
-    _window = [(k, v) for k, v in _window if v is not None]
-    if _window and cfg.es_mode_selection != "all":
-        issues.append(Issue(
-            severity="warn",
-            message=(
-                f"{' and '.join(f'{k} = {float(v):g} cm⁻¹' for k, v in _window)}"
-                f" {'has' if len(_window) == 1 else 'have'} no effect here: "
-                f"the frequency window filters the modes \"all\" selects, "
-                f"and es_mode_selection is {cfg.es_mode_selection!r} "
-                f"(engines/vibration.md § 4.8)."
-            ),
-            where=f"config.{_window[0][0]}",
-        ))
 
     # A STRUCTURE THAT REPEATS IS COMPUTED AS A CLUSTER, AND SAID SO -- a note,
     # not a refusal (user, 2026-09-29: "why should it be a refusal? just note
@@ -519,15 +473,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
             where="structure.regions"))
         return issues
     if held:
-        from ..spectra.normal_modes import rigid_motions
-        # On the axes SIESTA computes on -- the structure's, through the one
-        # door every engine's count asks (`cell.engine_axis_kinds`).
-        from ..cell import engine_axis_kinds
-        from ..template import engine_name
-        n_rigid = len(rigid_motions(
-            struct.positions, held,
-            engine_axis_kinds(engine_name(type(cfg)), struct),
-            cell=getattr(struct, "cell", None)))
+        n_rigid = rigid_motion_count(struct, cfg)
         if n_rigid:
             issues.append(Issue(
                 severity="info",
@@ -553,13 +499,14 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
                 f"the static field of the held ones; thermochemistry is "
                 f"vibrational-only.  Every atom's Hirshfeld and Voronoi "
                 f"charge is recorded at every nudge, so the spectrum viewer "
-                f"gives the infrared of the atoms you name; Raman "
-                f"intensities are not computed on this route."),
+                f"gives the infrared of the atoms you name; Raman comes "
+                f"from the optical calls the mode selector asks for "
+                f"(es_mode_selection)."),
             where="structure.regions"))
     # THE RELAXATION IS THE PERSON'S EXPLICIT CHOICE (`engines/vibration.md`
-    # § 2.2, § 5.8), made with one box.  Unticked, the ladder relaxes first
-    # -- a `relax` stage before the force constants, to this template's own
-    # tolerance -- and the finding says so.  Ticked, nothing relaxes, and the
+    # § 2.2, § 5.8), made with one box.  Unticked, the run relaxes first --
+    # its relaxation call before the force constants, to this template's own
+    # tolerance (§ 5.11) -- and the finding says so.  Ticked, nothing relaxes, and the
     # finding is a WARNING in plain words: off a stationary point the
     # frequencies will be off; the job's finish measures the reference-step
     # forces against the same tolerance and says whether the statement held.
@@ -613,8 +560,84 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
         level=contract_fields_of(cfg, state=_state,
                                  axis_kind=struct.axis_kind,
                                  kind="vibration")))
+    # THE SELECTOR, reused whole (§ 5.11 § 9): its list read when it asks
+    # for one -- an empty one a run with no optical call -- and its window.
+    issues.extend(selector_issues(
+        cfg, none_means="No optical call will be made, so no Raman."))
     return issues
 
 
+def selector_issues(cfg, *, none_means: str) -> List[Issue]:
+    """THE MODE SELECTOR'S CHECKS, on both engines (`engines/vibration.md`
+    § 4.8, § 5.11 § 9).  The frequency window filters the modes ``all``
+    selects and nothing else: ``skip`` selects none, and naming a mode is
+    saying *that one*; the form locks the two fields outside ``all``, but a
+    locked field keeps its value and the hand-over carries it, as a
+    hand-edited template does -- so a window set there is said to do
+    nothing.  The explicit list is read by its one reader (`selection.
+    parse_index_list`, 1-based) when the selector is ``explicit`` -- the
+    catalogue's "only read when selector = explicit": text it cannot read
+    is refused here, before a deck is written from it; an empty list is
+    said now, not after the wall time -- ``none_means`` what the run then
+    does not compute, in the engine's words."""
+    issues: List[Issue] = []
+    selector = str(getattr(cfg, "es_mode_selection", ""))
+    window = [(k, getattr(cfg, k, None))
+              for k in ("freq_min_cm1", "freq_max_cm1")]
+    window = [(k, v) for k, v in window if v is not None]
+    if window and selector != "all":
+        issues.append(Issue(
+            severity="warn",
+            message=(
+                f"{' and '.join(f'{k} = {float(v):g} cm⁻¹' for k, v in window)}"
+                f" {'has' if len(window) == 1 else 'have'} no effect here: "
+                f"the frequency window filters the modes \"all\" selects, "
+                f"and es_mode_selection is {selector!r} "
+                f"(engines/vibration.md § 4.8)."),
+            where=f"config.{window[0][0]}"))
+    if selector != "explicit":
+        return issues
+    from ..spectra.selection import parse_index_list
+    text = str(getattr(cfg, "es_explicit_indices", "") or "")
+    try:
+        listed = parse_index_list(text, first=1)
+    except ValueError as e:
+        return issues + [Issue(
+            severity="error",
+            message=(
+                f"The explicit mode list {text!r} can't be read: {e}.  "
+                f"Write 1-based mode numbers separated by commas, with "
+                f"ranges if you like: \"3, 7, 12\" or \"3-7, 12\"."),
+            where="config.es_explicit_indices")]
+    if not listed:
+        issues.append(Issue(
+            severity="warn",
+            message=(
+                f"Mode selection is set to \"explicit\" but no mode "
+                f"indices were entered.  {none_means}  Either add at least "
+                f"one mode index, or switch the selector to \"skip\" or "
+                f"\"all\"."),
+            where="config.es_explicit_indices"))
+    return issues
+
+
+def rigid_motion_count(struct: Structure, cfg) -> int:
+    """HOW MANY WHOLE-BODY MOTIONS of the free atoms cost no energy with
+    the structure's held atoms held (`normal_modes.rigid_motions`, on the
+    axes the engine computes on -- the one door every engine's count asks,
+    `cell.engine_axis_kinds`): what a run removes before diagonalising, so
+    it reports ``3·n_free`` less these (`science/normal-modes.md` § 3.1) --
+    the one derivation this module's check and prep's count both state."""
+    from ..cell import engine_axis_kinds
+    from ..spectra.normal_modes import rigid_motions
+    from ..template import engine_name
+    held = sorted(int(i) for i in (struct.frozen_atoms or []))
+    return len(rigid_motions(
+        struct.positions, held,
+        engine_axis_kinds(engine_name(type(cfg)), struct),
+        cell=getattr(struct, "cell", None)))
+
+
 # The render-time checks are the module's public door.
-__all__ = ["spectra_render_checks"]
+__all__ = ["spectra_render_checks", "siesta_vibration_checks",
+           "selector_issues", "rigid_motion_count"]

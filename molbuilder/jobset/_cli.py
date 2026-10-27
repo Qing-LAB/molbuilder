@@ -1695,8 +1695,8 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         # it -- a run of points', its walk's -- the line above saying where
         # each came from.  A member of a group of several is sent in the
         # group's one job, said after its last member.
-        click.echo("  " + (f"one job walking its {len(ans.points)} points "
-                           f"(their walls summed) -- " if ans.points else "")
+        click.echo("  " + (ans.launch["walk"] + " -- "
+                           if ans.launch.get("walk") else "")
                    + ans.launch["said"])
     for line in ans.notes:
         # WHAT ITS REQUEST MEANS, said where a value can still change -- its

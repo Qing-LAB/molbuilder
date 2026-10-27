@@ -208,6 +208,25 @@ class TransmissionResult(ParseResult):
     result_kind: str = "transmission"
 
 
+@dataclass(frozen=True)
+class DielectricResult(ParseResult):
+    """An optical calculation's absorption spectrum -- `parse.md` § 5f:
+    SIESTA's ``.EPSIMG``, the imaginary part of the dielectric function for
+    the field its deck asked (`Optical.Vector`), as the file states it.
+    ``energy_ev`` the photon energy of each row, eV, ascending; ``eps2``
+    ``(spin, energy)``, dimensionless; ``spin`` the channels the columns are
+    (``("unpolarized",)``, or ``("up", "down")``); ``energy_range_ev`` the
+    header's range; ``f_sum`` and ``drude_wp2_ha2`` the header's f-sum rule
+    and Drude plasma frequency squared (Ha²), per channel."""
+    energy_ev: Any = None
+    eps2: Any = None
+    spin: Tuple[str, ...] = ()
+    energy_range_ev: Tuple[float, float] = (0.0, 0.0)
+    f_sum: Tuple[float, ...] = ()
+    drude_wp2_ha2: Tuple[float, ...] = ()
+    result_kind: str = "dielectric"
+
+
 def answers_a_trajectory(parser_cls) -> bool:
     """Whether this parser's own declared ``output`` is a trajectory.
 

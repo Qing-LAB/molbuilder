@@ -472,7 +472,7 @@ door for the kind of file it has, and the door knows:
 | `molbuilder.json` | `runtime_config.write_config_scope(patch)` | merge over what is there, validate the merge, then `write_bytes` at `0600` — the mode set as the file is written, never after — and the auth wizard's writer since 2026-09-13; it had one of its own |
 | anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
 | a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
-| anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job, where the only module of ours it can reach is one that travels with it — see below |
+| the monitor's two files on a compute node — its `.util.csv` and its `.monitor.log` | `pathlib`, deliberately | appended to as the run goes — see below; its notification record and a retry's launch record go through `persist` |
 
 **The shapes that are not `write_bytes` calls, and why each one is not.**
 *(The list was two long and said "nothing else may"; three more existed, which is
@@ -487,7 +487,7 @@ Four remain.)*
 | an appended log (`serve_daemon.open_private`) | below |
 | **the supervisor's pidfile** | a few bytes rewritten at every start, holding an address rather than a secret, read by the next `stop`/`restart`. A truncated one is replaced on the next start; there is nothing in it to preserve |
 | **a README this program seeds** (`envs init-config`, and a new project's skeleton) | written into a directory the same call just made — `envs init-config`'s two are also rewritten whole when their text is out of date, being molbuilder's own text — so there is no person's content to protect, and none of them carries a credential |
-| **anything the monitor writes on a compute node** | it ships beside the job, and `persist` does not travel with it — see below |
+| **the monitor's two files on a compute node** | appended to as the run goes — see below |
 
 **One of those needs the longer reason.** *(Two did until 2026-09-13: the
 auth wizard staged a temp, validated the bytes on disk and replaced — a second
@@ -497,51 +497,51 @@ the door lacked was the wizard's one private finding — that a file can be
 refused for a section the patch never touched — and that now lives in the door,
 where every caller gets it.)*
 
-**The other shape is outside it for a reason that is not about writing at all:
-`monitor.py` SHIPS BESIDE A JOB.** It travels to the machine that runs the job
-inside `mb_monitor.pyz` and is executed by **the job's own python**, in a
-backend env where molbuilder is not installed (`runwrap.MONITOR_BUNDLE`,
-`execution/running-a-job.md` § 2.0a). So its two files — the
-`-runN.util.csv` it writes and the `-runN.monitor.log` it appends to
-(`execution/run-reports.md` § 2.5) — use `pathlib`: importing `persist` here
-would make the monitor die at import on every node, which costs the run's
-status, its utilisation trace and its reports -- the session log says why
-(`execution/run-reports.md` § 2.6), and nothing else does.
+**The other shape is the monitor's two files, and `monitor.py` SHIPS BESIDE A
+JOB.** It travels to the machine that runs the job inside `mb_monitor.pyz` and
+is executed by **the job's own python**, in a backend env where molbuilder is
+not installed (`runwrap.MONITOR_BUNDLE`, `execution/running-a-job.md` § 2.0a).
+Its two files — the `-runN.util.csv` it starts with its header and appends a
+row to when the sample changes or its keepalive comes due, and the
+`-runN.monitor.log` it appends to
+(`execution/run-reports.md` § 2.5) — are written with `pathlib`.
 
-**And the reason is SHIPPING, not stdlib-ness.** `persist.py` is itself pure
-stdlib — so is `config_dir.py`; the property is *depends only on stdlib*, never
-*imports nothing of ours* (`config_dir.py`'s own header says so, and
-`scheduler/record.py` imports `persist` on the strength of it). What kills the
-import on a compute node is that `persist.py` is not THERE: what travels is
-exactly the modules `runwrap.MONITOR_COMPANIONS` names, in one file
-(`execution/run-reports.md` § 2.3). So the monitor's real rule is
-**stdlib-only AND travels**, and each of those modules imports the next two
-ways — from the package, or from the bundle.
+**The monitor's rule is *stdlib-only AND travels*.** `persist.py` is
+itself pure stdlib — so is `config_dir.py`; the property is *depends only on
+stdlib*, never *imports nothing of ours* (`config_dir.py`'s own header says so,
+and `scheduler/record.py` imports `persist` on the strength of it). What
+travels is exactly the modules `runwrap.MONITOR_COMPANIONS` names, in one file
+(`execution/run-reports.md` § 2.3) — `persist.py` among them, the writer a
+flat run's warm retry writes its own launch record through beside the job
+(`runrecord.record_retry`, `execution/running-a-job.md` § 3.5) — and each of
+those modules imports the next two ways — from the package, or from the
+bundle.
 
-**A second bundle, a second rule of the same shape.** A SIESTA force-constant
-job also carries its FINISH, `mb_vibration.pyz` (`runwrap.VIBRATION_COMPANIONS`,
-`engines/vibration.md` § 5.5): the analysis that turns the run's force
-constants into its spectrum.  It needs arrays, so its rule is **the standard
-library and numpy — which the SIESTA job envs carry for it — AND
-travels**; its members import each other the same two ways.  The monitor's
-set stays stdlib-only: the bundles are built by one builder from their own
-tables, and nothing of the finish's reaches the monitor. The finish reads its deck's
-order record through `deck_record` and `atom_permutation`, both in the set
-(`model/overview.md` § 2.2a, I5); it states the result's structure through
-`structure` and the sidecar codec `molstruct`, and writes the result's two
-files through `persist` and `ncdata` — so its rule is **the standard library,
-numpy and netCDF4**, which the SIESTA job envs carry for it (`envs/recipes.py`;
-`engines/vibration.md` § 6.10.5–6).
+**A second bundle, a second rule of the same shape.** Every call of a SIESTA
+vibration carries `mb_vibration.pyz` (`runwrap.VIBRATION_COMPANIONS`,
+`engines/vibration.md` § 5.5, § 5.11): its plan and record steps and the
+analysis that turns the run's force constants into its spectrum.  The
+analysis reads its deck's order record through `deck_record` and
+`atom_permutation`, both in the set (`model/overview.md` § 2.2a, I5); it
+states the result's structure through `structure`, and writes the result's
+two files and the optical calls' data file through `persist` and `ncdata`.
+So its rule is **the standard library, numpy and netCDF4 — which the SIESTA
+job envs carry for it (`envs/recipes.py`; `engines/vibration.md`
+§ 6.10.5–6) — AND travels**; its members import each other the same two
+ways.  The monitor's set stays stdlib-only: the bundles are built by one
+builder from their own tables, and nothing of the vibration bundle's reaches
+the monitor.
 
 **A third, imported rather than run.** A PySCF script imports every molbuilder
 function it runs from `mb_pyscf.pyz` (`runwrap.PYSCF_COMPANIONS`,
 `engines/pyscf.md` § 3) -- the thread and GPU set-up, the progress-log
 writer, the structure codec, the relaxation, and a vibration's rules,
-selector and writer.  Its rule is **the standard library and numpy at load;
-in the functions the script calls also ASE and netCDF4 -- which the PySCF env
-carries for it (`envs/recipes.py`; netCDF4 for the result's data file,
-`engines/vibration.md` § 6.10.5) -- and PySCF itself, with gpu4pyscf and cupy
-for a run on the GPU; AND travels**; its members import each other the same
+selector and writer.  Its rule is **the standard library, numpy and netCDF4 at load -- netCDF4
+in `ncdata`, the data-file framework every NetCDF file molbuilder writes goes
+through; in the functions the script calls also ASE -- which the PySCF env
+carries, with netCDF4, for it (`envs/recipes.py`; `engines/vibration.md`
+§ 6.10.5) -- and PySCF itself, with gpu4pyscf and cupy for a run on the GPU;
+AND travels**; its members import each other the same
 two ways.
 The one member the script imports before numpy -- the thread set-up's,
 `runtime_info` -- imports nothing that loads numpy (the standard library at

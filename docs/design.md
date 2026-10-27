@@ -115,10 +115,8 @@ you need a new operation on a duration, it goes where durations live; it does
 
 **`scheduler/` is the one deliberate exception, and it is recorded rather than
 implicit.** By question 1 its `fit`/`place`/`emit` read as verbs, yet it is
-L1. The reason is portability, not grammar: a machine record is read *on the
-cluster*, inside a backend environment with no molbuilder installed, so the
-whole subpackage is stdlib-only by contract. Anything that must survive that
-trip belongs here regardless of question 1.
+L1, and stdlib-only. Nothing in it is shipped beside a job (its own
+header): its machine records are JSON, read on this machine.
 
 **Four core types are the lingua franca**; everything else is a verb operating
 on them:
@@ -230,7 +228,7 @@ These are load-bearing. Don't violate one without updating this document.
    (`mb_monitor.pyz`), a SIESTA force-constant job's finish
    (`mb_vibration.pyz`), and the code a PySCF script imports (`mb_pyscf.pyz`,
    [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3). `scp -r` the folder to a
-   cluster with the PySCF env — `pyscf`, `geometric` and `ase`
+   cluster with the PySCF env — `pyscf`, `geometric`, `ase` and `netCDF4`
    (`envs/recipes.py`) — and it runs. See
    [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
 8. **Don't reinvent wheels.** CLI parsing → click; routing → Flask Blueprints;

@@ -249,11 +249,11 @@ is over is not.
 reader the rest of molbuilder reads that file with, and those readers travel
 with the job in **one file**, `mb_monitor.pyz` (`runwrap.MONITOR_BUNDLE`) — a
 Python zip application of the modules `runwrap.MONITOR_COMPANIONS` names, each
-unchanged, run by the job's own python: **whatever `python3` the job's PATH
-offers after its activation** — on this workstation the engine env's, on a
-cluster a module's bare interpreter with nothing installed (ASU Sol,
-measured 2026-10-19), which is why the rule is the standard library and
-nothing else. `prep` writes it beside the wrapper and
+unchanged, run by the job's own python: **the activated env's own,
+`$_mb_py`** ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
+It needs nothing beyond the standard library because it is the
+instrument that reports a failure: it must load when the env's own packages
+do not — a broken numpy is reported by it, never hidden by it. `prep` writes it beside the wrapper and
 `materialize` copies it into every attempt. What may travel is
 [`configuration.md`](?doc=configuration.md) § 2.3's rule, *stdlib-only AND
 travels*; the trajectory log's vocabulary the grammar reads is its own
@@ -437,19 +437,19 @@ nice -n 19 "$_mb_py" mb_monitor.pyz --label "<label>" --stage "<stage>" [--share
 itself, in the session log's own line format (`wrapper_log.LOG_LINE`):
 
 ```
-[23:41:35-0700] [INFO ] monitor: starting mb_monitor.pyz on python 3.12.14 (/…/bin/python)
+[23:41:35-0700] [INFO ] monitor: starting mb_monitor.pyz on python 3.12.14 (/…/envs/molbuilder-siesta/bin/python3)
 [23:41:35-0700] [INFO ] monitor: mb_monitor.pyz started
 ```
 
 — the first before it imports the monitor, the second once it has. **A
 monitor that died loading says so**: `starting`, then one `ERROR` line naming
 the exception and its traceback, which names the file that failed, and no
-`started` — a shipped file reaching into molbuilder, a package the job's env
-lacks, a python too old for its files:
+`started` — a shipped file reaching into molbuilder, or into a package the
+job's env lacks:
 
 ```
-[23:41:35-0700] [INFO ] monitor: starting mb_monitor.pyz on python 3.6.8 (/usr/bin/python3)
-[23:41:35-0700] [ERROR] monitor: mb_monitor.pyz did not load -- SyntaxError: invalid syntax (runfiles.py, line 12)
+[23:41:35-0700] [INFO ] monitor: starting mb_monitor.pyz on python 3.12.14 (/…/envs/molbuilder-siesta/bin/python3)
+[23:41:35-0700] [ERROR] monitor: mb_monitor.pyz did not load -- ModuleNotFoundError: No module named 'molbuilder'
 Traceback (most recent call last):
   …
 ```
@@ -845,9 +845,9 @@ Execute Webhook refuses (`400`) a body carrying none of `content`, `embeds`,
 **One layout file says how the one picture is laid out for each receiver.**
 A receiver is a `kind` of § 4.1b (`slack`, `discord`) or `web`, the This
 machine tab. The file is `molbuilder/data/report-cards.json`, schema
-`molbuilder/report-cards@1`. JSON, not TOML: the monitor reads it beside the
-job on whatever python the job's machine has (§ 2.3), and `tomllib` is 3.11's.
-Its reader is `report_cards.py`, standard library alone, and the file travels
+`molbuilder/report-cards@1`, a JSON file. Its reader is `report_cards.py`,
+standard library alone, run beside the job on the job's python (§ 2.3), and
+the file travels
 in the monitor's bundle as its one data member, beside the reader. The reader
 finds the file by the import's two ways (§ 2.3): inside the package, in
 `molbuilder/data/`; beside the job, beside itself in the bundle — read through

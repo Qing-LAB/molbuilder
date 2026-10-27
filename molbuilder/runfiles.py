@@ -80,6 +80,7 @@ ROLE_PYSCF_LOG   = ".log"                # PySCF's own log, a rung's own
 ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
 ROLE_PHASES      = ".phases.json"        # a run in phases: its calls, the index
 ROLE_NOTIFIED    = ".notified.json"      # a run's notification record
+ROLE_OPTICAL     = ".optical.nc"         # a run in phases' optical calls, as data
 ROLE_INITIAL     = "_initial.xyz"
 ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
@@ -1180,6 +1181,22 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the run itself, with the JSON "
                     "(`sidecars.spectra.write_spectra_payload`)",
              door="spectra.datafile.read_spectra_data",
+             listed_by="user_index"),
+    # A RUN IN PHASES' OPTICAL CALLS AS DATA, rewritten by the run's own
+    # record step after each optical call and by its finish
+    # (`engines/vibration.md` § 5.11 § 8): the record of the Raman phase so
+    # far.
+    Artifact(ROLE_OPTICAL, "the optical calls as data on their grids -- each "
+                           "frame's eps2 over the photon energies, its mode, "
+                           "side and geometry, its SCF facts, and the "
+                           "settings the calls read (NetCDF-4)",
+             staged=False, engine="siesta", calculation="vibration",
+             kind="result",
+             writer="the run's own record steps -- the force constants', "
+                    "every frame pending, then each optical call's -- and "
+                    "its finish (`spectra.siesta_vibration`, "
+                    "`spectra.optical_data.write_optical_data`)",
+             door="spectra.optical_data.read_optical_data",
              listed_by="user_index"),
     # ---- the wrapper --------------------------------------------------
     Artifact(".run.sh", "the wrapper — activates the environment, tees "

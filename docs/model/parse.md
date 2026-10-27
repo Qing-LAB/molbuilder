@@ -149,12 +149,18 @@ classDiagram
         atom · firsto · version · kept
         result_kind = "transmission"
     }
+    class DielectricResult {
+        energy_ev · eps2 · spin · energy_range_ev ·
+        f_sum · drude_wp2_ha2
+        result_kind = "dielectric"
+    }
     ParseResult <|-- TrajectoryResult
     ParseResult <|-- StructureResult
     ParseResult <|-- SidecarResult
     ParseResult <|-- InstrumentResult
     ParseResult <|-- EngineParamsResult
     ParseResult <|-- TransmissionResult
+    ParseResult <|-- DielectricResult
 ```
 
 **The four envelope fields are built in ONE place** —
@@ -172,8 +178,8 @@ instead of raising.
 
 - **The discriminator.** Each concrete subclass sets `result_kind` to a fixed
   string (`"trajectory"`, `"structure"`, `"sidecar"`, `"instrument"`,
-  `"rundir"` — § 5.0 — `"engine-params"` — § 5d.3 — and `"transmission"`
-  — § 5e).
+  `"rundir"` — § 5.0 — `"engine-params"` — § 5d.3 — `"transmission"`
+  — § 5e — and `"dielectric"` — § 5f).
   Consumers holding a `ParseResult` (cached, or sent over the wire)
   `match` on it; JSON deserialisation reads it to pick a class. Adding a kind =
   a new subclass + a new discriminator value (rule below).
@@ -382,7 +388,7 @@ over*.
 | door | answers | cost · asked by |
 |---|---|---|
 | `ending_of(path, *, stderr=None)` | the ending of any run-output file, dispatched on its ROLE through `READERS` (§ 5.5): an `.out` through the SIESTA reading pass (§ 4a) — with `stderr`, the file SIESTA's stderr went to, read after the output when the output states no ending, because `die` flushes stdout on node 0 alone; a PySCF stdout through its decks' end lines; a progress log through its footer | one pass, stdlib, no Frames · `run_status`, which passes a SIESTA output's session log — the one whose first section is its run (`wrapper_log.logs_by_run`); the wrapper's door below; the bench summary |
-| `python mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION [ARG]]` | `relaxation-capped` or `stopped-by MARKER`, by exit status (0 yes, 1 no, 2 unreadable); with no question, the ending in words | the wrapper's `_mb_ending`: its failure hint and warm retries (`execution/running-a-job.md` § 3.5) |
+| `"$_mb_py" mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION [ARG]]` | `relaxation-capped` or `stopped-by MARKER`, by exit status (0 yes, 1 no, 2 unreadable); with no question, the ending in words | the wrapper's `_mb_ending`: its failure hint and warm retries (`execution/running-a-job.md` § 3.5) |
 | `run_status(run_dir, basename, *, launch=, run=, launched_in=)` | a run's state, from its outputs' endings, how it ended — `runrecord.ending`, the one door — and its `run.json`; each output's ending read once per version of the file (its size and modification time, `_run_ending.ending_of`), and an output that states how it ended takes its own parse's reading (`keep_reading`, through the one read, `siesta_reader.read_output`), so a run asked about again and again — a Results viewer following it — costs a look at its folder, and a load reads its file once | `execution/running-a-job.md` § 4.2 |
 | the registered parsers (§ 3) | frames, energies, forces — and the same `run_state` and `scf_converged`, from the same grammar | callers that want the arrays |
 
@@ -568,6 +574,8 @@ molbuilder/parse/
 │   ├── _run_ending.py         # HOW A RUN ENDED — one reader per role (§ 2b) ─┘
 │   ├── tbtrans.py             # TBtrans's loop in words · its k-averaged text files (§ 5e) — not registered; travels
 │   ├── tbtrans_nc.py          # registered: a TBtrans data file → TransmissionResult, its reading kept beside it (§ 5e)
+│   ├── siesta_epsimg_reader.py # SIESTA's .EPSIMG, its one reader — numpy; travels in mb_vibration.pyz (§ 5f)
+│   ├── siesta_epsimg.py       # registered: an optical calculation's spectrum → DielectricResult (§ 5f)
 │   ├── transiesta.py          # where a run is, in words (§ 2b `doing`) — not registered; travels
 │   ├── siesta_fc.py           # SIESTA's .FC force constants, for the vibration kind
 │   └── _helpers.py            # Trajectory → TrajectoryResult adapters
@@ -648,7 +656,8 @@ flowchart LR
   `scf_timing_rows`, `_run_ending`, `tbtrans` (TBtrans's loop in words, § 5d.5),
   `wrapper_log` and `dirs/job.py` import
   nothing of ours but each other, `runfiles`, `identity`, `report_fields` (the
-  span rule's words) and `pyscf/end_lines`. They ship inside
+  span rule's words), `engine_atom_index` (the held atoms' numbering) and
+  `pyscf/end_lines`. They ship inside
   `mb_monitor.pyz` beside every job (`runwrap.MONITOR_COMPANIONS`), each
   importing the next from the package or from the bundle; what the monitor
   reads through them is [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.3's.
@@ -666,7 +675,7 @@ flowchart LR
 | reads | a SIESTA-family `.out` | a `.molwatch.log`; `stage` picks a staged header's targets |
 | `feed(line, line_no=None)` · `feed_text(text)` | one line without its newline · a whole text | the same |
 | `now()` | where the run is, as read so far; commits nothing | the last finished step block |
-| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, held, warnings}` — `held`, the 1-based atoms the output says the run held; `runtime_info.system_label`, the label the run read; `runtime_info.scf_criteria` and `.scf_residuals` among them, and `.forces_not_computed` for a run that computes none — with the last forces and stress as `now()` states them (`max_force` · `max_force_all` · `stress_voigt_kbar`, or `forces_not_computed`, below); each step's `forces`, `max_force` (every atom's), `max_force_constrained` (the free atoms'), `stress_voigt_kbar`, and `charges` — `{hirshfeld, voronoi}`, every atom's partial charge in the deck's order, for each block the step printed (`Charge.Hirshfeld` / `Charge.Voronoi`), `None` where it printed none | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
+| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, held, warnings}` — `held`, the 1-based atoms the output says the run held, and `runtime_info.frozen_atoms` the same atoms 0-based through the engine index API (`engine_atom_index`), stated here once for every reader of the pass; `runtime_info.system_label`, the label the run read; `runtime_info.scf_criteria` and `.scf_residuals` among them, and `.forces_not_computed` for a run that computes none — with the last forces and stress as `now()` states them (`max_force` · `max_force_all` · `stress_voigt_kbar`, or `forces_not_computed`, below); each step's `forces`, `max_force` (every atom's), `max_force_constrained` (the free atoms'), `stress_voigt_kbar`, and `charges` — `{hirshfeld, voronoi}`, every atom's partial charge in the deck's order, for each block the step printed (`Charge.Hirshfeld` / `Charge.Voronoi`), `None` where it printed none | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
 | also | `criteria(negf=None)` — each phase's `{column: {tolerance, unit, required}}` | `targets()` — the rung's convergence targets; its criteria are `molwatch_grammar.scf_criteria(runtime_info)` — `{"scf": {dE, \|g\|: {tolerance, unit, required}}}`, PySCF's `conv_tol` and `conv_tol_grad` as the deck read them back, in eV |
 
 **What each SCF row measures is declared once an engine** — `siesta_grammar.
@@ -1862,7 +1871,7 @@ ts-scf:    1  -498887.159627  -501136.521108  -501136.521108 28.835878 -2.408334
 |---|---|---|
 | `* Running on 10 nodes …` · `>> Start of run: …` | `read_launch_line` | `n_mpi_processes` 10 · `run_start_local` `2026-09-25T19:49:36` |
 | `reinit: System Label: H2` | `SYSTEM_LABEL` · the `system_label` rule | `runtime_info["system_label"]` `H2` — the label SIESTA names its own files from, which the history's sibling is read with (§ 5.3) |
-| `siesta: Constraint (1): pos`, then `[ 1 -- 4, 7 ]` | `CONSTRAINT_LINE` · the `constraint` rule, its ranges line read by `constraint_atoms` | `held` {1, 2, 3, 4, 7} — 1-based as SIESTA echoes them; the parser translates through `engine_atom_index` into `runtime_info["frozen_atoms"]` |
+| `siesta: Constraint (1): pos`, then `[ 1 -- 4, 7 ]` | `CONSTRAINT_LINE` · the `constraint` rule, its ranges line read by `constraint_atoms` | `held` {1, 2, 3, 4, 7} — 1-based as SIESTA echoes them; the reading pass translates them through `engine_atom_index` into `runtime_info["frozen_atoms"]`, for every reader of the pass |
 | the `iscf` names row, then `scf:    7 …` | `scf_header`, then `scf_row` → `cycle_from_header` | `{cycle 7, energy −437029.337796, dDmax 7e-06, ef −2.408334, dHmax 0.000279, phase "periodic"}` |
 | `SCF Convergence by DM+H criterion` | the reading pass · the ending scan | the periodic phase converged: `phase_converged["periodic"]` · `RunEnding.phases["periodic"]` = True |
 | the `ts-q:` pair · `ts-Vha:` | `ts_q_line` + `ts_q_row` · `TS_VHA` | held for the next row: `charges` {D 1091.437, E1 509.494, C1 −25.472, …}, `dq` −29.1 · `vha_ev` −18.66 |
@@ -2086,6 +2095,45 @@ offering to read it (`engines/transport.md` § 2a.12); `summarize task` reads
 the ones missing or out of date, saying so (`transport.tbtnc.read_points`). A
 running point's data file is TBtrans's while it writes, and a stopped one's
 is partial: neither is read.
+
+## 5f. An optical calculation's spectrum — SIESTA's `.EPSIMG` *(built with plan § 1ae M3)*
+
+**What SIESTA writes.** A deck with `OpticalCalculation true` makes SIESTA,
+after its SCF, compute the imaginary part of the dielectric function for a
+field along `Optical.Vector` — first-order perturbation theory over the
+self-consistent states, the transitions between them (`Src/optical.F`;
+[`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 3.1) — and write `<label>.EPSIMG`: a header of `##` lines, each title
+followed by its value line — the energy range in eV, the number of spin
+components, and per spin the f-sum rule and the Drude term's plasma
+frequency squared in Ha² — then one row per energy, the photon energy ħω in
+eV and ε₂ for each spin component. The energies are `wmin + (i-1)·dw`,
+`dw = Optical.Broaden / 10` (`Src/optical.F:287`). Beside it SIESTA writes
+`<label>.contrib.EPSIMG`, each band pair's share at each energy: the
+engine's scratch ([`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+§ 4.2a), read by nothing.
+
+**One reader, every caller:**
+
+| file | its reader | answers |
+|---|---|---|
+| `<label>.EPSIMG` | `siesta_epsimg_reader.read_epsimg(path)` — numpy and its siblings; it travels in `mb_vibration.pyz` (`runwrap.VIBRATION_COMPANIONS`) | the photon energies, ascending; ε₂ over `(spin, energy)`; the spin channels, in the SIESTA family's names (`siesta_grammar.TBT_CHANNELS`: `unpolarized`; `up`, `down`); the header's range, f-sum and Drude term per channel |
+
+The registered parser, `siesta-epsimg` → `DielectricResult` (`result_kind`
+`dielectric`), answers through it — a person's script through
+`postprocess.parse`, the Results tab's file card — and an optical call's
+record step reads the file with the same function beside the job
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 8). **It is
+claimed by its first line**, never by its name alone: `.contrib.EPSIMG` ends
+the same way. **Refused by name**: a header missing a title or its value,
+a spin count other than one or two, a header line after the rows, a file
+with no rows, a value that is not a number, a row of another width than the
+header's channels make, energies not ascending, and rows that do not run
+the header's range at either end — a file cut short by a call stopped while
+it wrote, which read whole would end the spectrum early with nothing said.
+**Its reading is not kept**: a file is a few megabytes of text, read in a
+fraction of a second (50,001 rows, 0.15 s, measured on the CO₂ end-to-end
+run's frames).
 
 ## 6. Adding a parser
 

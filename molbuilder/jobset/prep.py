@@ -491,6 +491,11 @@ class Rung:
     #: calculation's own (a SIESTA vibration's phases are its parts,
     #: `spec_extra`'s ``part``).
     render_kind: str
+    #: WHAT THE KIND SAYS OF THE RUN IT PREPARES, beside its request -- a
+    #: SIESTA vibration's count and sizes (`engines/vibration.md` § 5.11
+    #: § 9); prep's notes carry them to both doors.  Nothing judges the
+    #: wall: it stays the person's.
+    said: Tuple[str, ...] = ()
     #: ``cfg -> cfg``: the config an element renders from -- a lead's own
     #: label, the junction's electronic state folded in.
     configure: Callable = lambda cfg: cfg
@@ -565,7 +570,8 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
     is rendered with its own `resumes` and its two Python steps
     (:attr:`Rung.wrapper_at`)."""
     from ..paths import Shape
-    from ..siesta.vibration_phases import FC, RELAX, Call, phase, phases_on
+    from ..siesta.vibration_phases import (FC, RELAX, Call, phase, phases_on,
+                                           run_size_words)
     from ..transport.sort import deck_sort_key, sort_by
     from ..warmfiles import warm_list
     from .naming import stage_home
@@ -636,7 +642,14 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
         plan.text(Path(folder) / COORDINATES_FILE,
                   spec.derived["coordinates_file"])
 
+    # THE COUNT AND THE SIZES, beside the wall (§ 5.11 § 9): the free atoms
+    # are those the held label leaves; the modes the run reports, the rank
+    # rule's -- the one count prep's check states too.
+    from ..validation.spectra import rigid_motion_count
+    n_free = struct.n_atoms - len(struct.frozen_atoms or ())
+    n_modes = 3 * n_free - rigid_motion_count(struct, cfg0)
     return Rung(struct=struct, render_kind="vibration",
+                said=(run_size_words(cfg0, n_free, n_modes),),
                 spec_extra=spec_extra, points=points, wrapper_at=wrapper_at,
                 beside=beside,
                 relaxes_at=lambda pt: pt is not None and pt.phase == RELAX,
@@ -1024,6 +1037,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                      _described_rung)(calc, pset, seam=seam,
                                       sweep=sweep, log=log, plan=plan,
                                       contours=contours)
+    if notes is not None:
+        notes.extend(rung.said)
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
@@ -1405,16 +1420,13 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         from .group import envelope
         from .points import walls_of
         job = js.job(stage)
-        n_walls = walls_of(task, len(_points))
         walk = walk_header_of(
             home.dir, GroupNames.of_points(
                 run_names(js, job, resolved.shape).stem),
-            envelope([job] * n_walls), environment, engine=task.engine,
-            jobs=[job], emit_sbatch=emit_sbatch,
-            what=(f"stage {stage!r}, one job walking its {len(_points)} "
-                  f"points ("
-                  + ("their walls summed" if n_walls == len(_points)
-                     else "the stage's one wall") + ")"))
+            envelope([job] * walls_of(task, len(_points))), environment,
+            engine=task.engine, jobs=[job], emit_sbatch=emit_sbatch,
+            what=f"stage {stage!r}, "
+                 f"{walk_words(planned, stage, read=plan.read_text)}")
         if walk is not None:
             open_container(base, home.dir / LAUNCH_DIR, plan)
             plan.text(walk.path, walk.text)
@@ -1612,6 +1624,31 @@ def _open_attempts(calc, stage: str, *, plan, shape) -> List:
     rep = prepare_attempt(calc, stage, plan=plan)
     _move_progress_channel_into(rep.dir, plan)
     return [rep]
+
+
+def walk_words(calc, stage: str, *, read=None) -> str:
+    """A RUN OF POINTS' ONE JOB, in words -- the one composer both doors
+    print and a placement refusal names it by: its points in the kind's
+    word, counted as its declaration knows them at prep
+    (`PointsOf.rung_points`) -- and where the stage's job plans more in a
+    container below the run (`PointsOf.containers`, a vibration's optical
+    calls), the rest planned in the job -- and the walls it asks: the
+    stage's one where its points share it (`PointsOf.one_wall`), else
+    their sum.  ``read`` reads a record the prep's plan holds and the disk
+    does not yet -- a junction's, composed by this prep -- as the
+    declaration reads it at the run's opening."""
+    from .points import points_of
+    pts = points_of(calc.task)
+    known = len(pts.rung_points(calc, stage, read=read))
+    unit = pts.unit
+    planned = pts.planned_in_job and bool(pts.containers(calc, stage))
+    count = (f"its {unit}s -- {known} known at prep, the rest planned in "
+             f"the job" if planned else
+             f"its {known} {unit}{'s' if known != 1 else ''}")
+    return (f"one job walking {count} ("
+            + ("the stage's one wall" if pts.one_wall
+               else "their walls summed")
+            + ")")
 
 
 def _launch_as_written(plan, header, script, kind) -> dict:
@@ -2613,6 +2650,11 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         out.launch = _launch_as_written(
             plan, sends, Path(run_dir) / names.name(".run.sh"),
             environment.kind)
+        # A RUN OF POINTS' ONE JOB, in the words both doors print beside
+        # its header (:func:`walk_words`).
+        if out.points:
+            out.launch["walk"] = walk_words(pcalc, stage,
+                                            read=plan.read_text)
         # ...AND ITS FIT IS THE WALK'S, its points' walls summed: the walk
         # is what is sent, and no point is sent alone.
         if walked:

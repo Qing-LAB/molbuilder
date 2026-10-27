@@ -153,7 +153,7 @@ when geomeTRIC's own is absent), and the deck's prefix for it is derived from
 the trajectory's name. Prep renders each name from the
 stage's names (`runfiles.RunNames`) as a template, `{run}` where the number
 goes, and the script fills it with the number its run script gives it,
-`python <script>.py --run N` — every PySCF script takes `--run N`, and in the
+`"$_mb_py" <script>.py --run N` — every PySCF script takes `--run N`, and in the
 hierarchy its templates have nothing to fill. A flat stage launched again is
 a second run in the same folder, and PySCF opens its log with `'w'` — the
 next run truncated the last's *(until 2026-10-06, plan W57 decision 2;
@@ -336,12 +336,14 @@ gpu4pyscf's classes, and the IR and Raman formulas, which have no branch
 bundle is bound as `_mb_<its name>`** (`_mb_StructureCodec`, `_mb_constants`),
 so an import of ours can never take a name the engine owns (`gto`, `scf`); the
 script's own names — `JOB`, `mol`, `mf`, `state` — are the run's, written as a
-person reads them. A member imports the standard library and numpy at load,
-and in the functions the script calls also ASE — which the PySCF env carries
-for it (`envs/recipes.py`) — and PySCF itself, with gpu4pyscf and cupy for a
-run on the GPU; nothing else but the other
-members, each reaching the next two ways: the package first, the bundle second
-([`configuration.md`](?doc=configuration.md) § 2.3). What moves is the job's
+person reads them. A member imports the standard library and numpy at load —
+and netCDF4, in the data-file framework every NetCDF file molbuilder writes
+goes through (`ncdata`) — and in the functions the script calls also ASE and
+PySCF itself, with gpu4pyscf and cupy for a run on the GPU. The PySCF env
+carries ASE and netCDF4 for it (`envs/recipes.py`). A member imports the
+other members too, each reaching the next two ways: the package first, the
+bundle second; psutil inside the core count, where the env has it; and the
+host's packages only in functions the script never calls ([`configuration.md`](?doc=configuration.md) § 2.3). What moves is the job's
 folder — the script, its run script and the bundles beside it; a script copied
 on its own does not run. *(Until 2026-10-05 the script carried all of it as
 text: the progress-log writer, the relaxation, the HOMO and Hessian rules, the

@@ -14,9 +14,10 @@ beside the job inside ``mb_monitor.pyz`` -- one file, holding it as
 ``mb_monitor.py`` with the framework modules it reads through
 (`runwrap.MONITOR_BUNDLE`) -- and runs with the JOB's own python from
 the working directory: molbuilder is deliberately never pip-installed into
-any env, so ``import molbuilder`` fails on a compute node whatever
-interpreter is found.  That is why this module is stdlib-only, and it is a
-constraint rather than a preference.
+any env, so ``import molbuilder`` fails on the job's python.  It is
+stdlib-only because it is the instrument that reports a failure: it must
+load when the env's own packages do not, so a broken numpy is reported by
+it, never hidden by it.
 
 **WHICH python it gets is the ENV's**: the activated env's own,
 ``$CONDA_PREFIX/bin/python3`` -- never the first ``python3`` on PATH
@@ -39,7 +40,7 @@ channel this machine has, absent or ``""`` for none (`run-reports.md` 3.0).
 
 CLI (also available as ``molbuilder monitor``)::
 
-    nice -n 19 python mb_monitor.pyz \\
+    nice -n 19 "$_mb_py" mb_monitor.pyz \\
         --label job --stage 01_coarse --run 0 --util --cores 8 \\
         --notify-every-hours 6 --watch-pid $$ &
 
@@ -2421,9 +2422,8 @@ def make_log_notifier(log: Path) -> Notifier:
 # with it (`runwrap.MONITOR_COMPANIONS`) -- no molbuilder package, no numpy.
 # That is what lets the run-wrapper SHIP this file -- as ``mb_monitor.py``
 # inside ``mb_monitor.pyz`` -- next to the job and run it with the JOB's own
-# python (e.g. the minimal
-# ``molbuilder-siesta-gpu`` env, which has no numpy/molbuilder), from the
-# working directory, with no install and no repo on PATH.
+# python, from the working directory, with no install and no repo on PATH,
+# whatever else that env's packages can or cannot import.
 
 
 #: Why this process was stopped, or None: ``"SIGTERM"`` -- the job ended (the
