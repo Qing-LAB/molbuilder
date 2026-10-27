@@ -18,8 +18,8 @@ def _sentence(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
-def spectra_render_checks(struct: Structure,
-                          cfg) -> List[Issue]:
+def spectra_render_checks(struct: Structure, cfg, *,
+                          inactive=frozenset()) -> List[Issue]:
     """PySCF SCIENTIFIC advisories — THE render gate for a vibration
     deck (grid / amplitude / the mode selection / the frozen set).  The
     charge and the spin are the electronic state's one family, asked from
@@ -27,7 +27,9 @@ def spectra_render_checks(struct: Structure,
 
     Called from ``validation/__init__.py``'s vibration arm, over the
     deck's config view -- an ADAPTER over PySCFConfig, so ``cfg`` is
-    duck-typed to the spectra vocabulary."""
+    duck-typed to the spectra vocabulary.  ``inactive`` names the settings
+    that enter nothing here (`metadata._inactive`): the probe's advice
+    stands aside while its displacement is one of them."""
     issues: List[Issue] = []
 
     # -- PySCF-specific scientific advisories ------------------
@@ -42,62 +44,66 @@ def spectra_render_checks(struct: Structure,
     from .pyscf import check_dft_grid_level
     issues.extend(check_dft_grid_level(cfg, context="spectra"))
 
-    # Displacement amplitude.  The [0.02, 0.20] Å acceptance
-    # range is empirical -- not derived from a single source.
-    # 0.02 Å keeps
-    # the probe inside the linear-response regime (ΔE_orbital
-    # ∝ A), at the cost of needing a tight SCF tolerance to
-    # resolve the smaller ΔE.  The script's default
-    # ``scf_conv_tol = 1e-9`` is usually sufficient (FD noise on ΔE_HOMO
-    # at 0.02 Å is ~1e-8 Ha << ΔE for a typical bond-stretch
-    # mode).  Above 0.20 Å cubic anharmonicity in the
-    # potential becomes significant (cf. Mills1972 §2.4).
-    amp = cfg.displacement_amplitude_ang
-    if amp < 0.02:
-        issues.append(Issue(
-            severity="warn",
-            message=(f"Displacement amplitude {amp:g} Å is "
-                     f"smaller than the accepted range "
-                     f"(0.02-0.20 Å).  At this scale the "
-                     f"finite-difference orbital-energy slope "
-                     f"is at or below the noise floor of "
-                     f"the default scf_conv_tol=1e-9 SCF; either tighten "
-                     f"scf_conv_tol further or raise the "
-                     f"displacement to at least 0.02 Å."),
-            where="config.displacement_amplitude_ang",
-        ))
-    elif amp > 0.20:
-        issues.append(Issue(
-            severity="warn",
-            message=(f"Displacement amplitude {amp:g} Å is "
-                     f"larger than the accepted range "
-                     f"(0.02-0.20 Å).  At large amplitudes the "
-                     f"potential isn't linear in the displacement "
-                     f"any more -- anharmonic terms contaminate "
-                     f"the orbital-energy slope you want to "
-                     f"measure.  Lower to 0.20 Å or less."),
-            where="config.displacement_amplitude_ang",
-        ))
+    # THE PROBE'S ADVICE, while the probe runs: its displacement enters
+    # nothing under `skip` (the item's `active_when`), and no advice is
+    # given about a value that enters nothing (`engines/template.md` § 5).
+    if "displacement_amplitude_ang" not in inactive:
+        # Displacement amplitude.  The [0.02, 0.20] Å acceptance
+        # range is empirical -- not derived from a single source.
+        # 0.02 Å keeps
+        # the probe inside the linear-response regime (ΔE_orbital
+        # ∝ A), at the cost of needing a tight SCF tolerance to
+        # resolve the smaller ΔE.  The script's default
+        # ``scf_conv_tol = 1e-9`` is usually sufficient (FD noise on ΔE_HOMO
+        # at 0.02 Å is ~1e-8 Ha << ΔE for a typical bond-stretch
+        # mode).  Above 0.20 Å cubic anharmonicity in the
+        # potential becomes significant (cf. Mills1972 §2.4).
+        amp = cfg.displacement_amplitude_ang
+        if amp < 0.02:
+            issues.append(Issue(
+                severity="warn",
+                message=(f"Displacement amplitude {amp:g} Å is "
+                         f"smaller than the accepted range "
+                         f"(0.02-0.20 Å).  At this scale the "
+                         f"finite-difference orbital-energy slope "
+                         f"is at or below the noise floor of "
+                         f"the default scf_conv_tol=1e-9 SCF; either tighten "
+                         f"scf_conv_tol further or raise the "
+                         f"displacement to at least 0.02 Å."),
+                where="config.displacement_amplitude_ang",
+            ))
+        elif amp > 0.20:
+            issues.append(Issue(
+                severity="warn",
+                message=(f"Displacement amplitude {amp:g} Å is "
+                         f"larger than the accepted range "
+                         f"(0.02-0.20 Å).  At large amplitudes the "
+                         f"potential isn't linear in the displacement "
+                         f"any more -- anharmonic terms contaminate "
+                         f"the orbital-energy slope you want to "
+                         f"measure.  Lower to 0.20 Å or less."),
+                where="config.displacement_amplitude_ang",
+            ))
 
-    # ---- Amplitude x SCF-tolerance coupling (SCIENTIFIC-AUDIT, FN-4) ----
-    # The finite-difference orbital-energy SIGNAL scales with the
-    # displacement amplitude; it must sit well ABOVE the SCF noise floor
-    # (~scf_conv_tol).  A SMALL amplitude paired with a LOOSE conv_tol
-    # buries the signal -- the exact failure the amplitude window guards,
-    # but the window alone never looked at the actual tolerance.  Warn
-    # when both are near their risky ends (conservative; a soft advisory).
-    conv = getattr(cfg, "scf_conv_tol", None)
-    if (conv is not None and conv > 1e-7 and amp <= 0.05):
-        issues.append(Issue(
-            severity="warn",
-            message=(f"Small displacement ({amp:g} Å) with a loose "
-                     f"scf_conv_tol ({conv:g}): the finite-difference "
-                     f"orbital-energy slope (∝ amplitude) may be at or "
-                     f"below the SCF noise floor (~conv_tol), giving noisy "
-                     f"electronic-structure shifts.  Tighten scf_conv_tol "
-                     f"(≤1e-8) or raise the displacement amplitude."),
-            where="config.scf_conv_tol",
-        ))
+        # ---- Amplitude x SCF-tolerance coupling (SCIENTIFIC-AUDIT, FN-4) ----
+        # The finite-difference orbital-energy SIGNAL scales with the
+        # displacement amplitude; it must sit well ABOVE the SCF noise floor
+        # (~scf_conv_tol).  A SMALL amplitude paired with a LOOSE conv_tol
+        # buries the signal -- the exact failure the amplitude window guards,
+        # but the window alone never looked at the actual tolerance.  Warn
+        # when both are near their risky ends (conservative; a soft advisory).
+        conv = getattr(cfg, "scf_conv_tol", None)
+        if (conv is not None and conv > 1e-7 and amp <= 0.05):
+            issues.append(Issue(
+                severity="warn",
+                message=(f"Small displacement ({amp:g} Å) with a loose "
+                         f"scf_conv_tol ({conv:g}): the finite-difference "
+                         f"orbital-energy slope (∝ amplitude) may be at or "
+                         f"below the SCF noise floor (~conv_tol), giving noisy "
+                         f"electronic-structure shifts.  Tighten scf_conv_tol "
+                         f"(≤1e-8) or raise the displacement amplitude."),
+                where="config.scf_conv_tol",
+            ))
 
     # The charge, the spin and the method are NOT judged here: they are the
     # electronic state's, and `validate` asks its one family once for every
@@ -109,6 +115,7 @@ def spectra_render_checks(struct: Structure,
     # some.
     issues.extend(selector_issues(
         cfg, none_means="No per-mode orbital-energy data will be computed."))
+    issues.extend(raman_issues(cfg, engine="pyscf"))
 
     # Large-system cost advisory.  The Hessian cost scales like
     # N_free² and the Raman finite-difference step adds 6·N_free
@@ -146,6 +153,62 @@ def spectra_render_checks(struct: Structure,
                 ),
                 where="structure.regions",
             ))
+        # INFRARED WITH ATOMS HELD is the finite-difference dipole route --
+        # the analytic one takes the whole Hessian -- so its cost is said
+        # where Compute IR, on by default, is the only strength asked
+        # (`engines/vibration.md` § 3.1, § 4.6; the deck's
+        # `_WANT_ANALYTIC_IR`).  With Raman on it rides that sweep.
+        if (cfg.frozen_indices and n_free_estimate
+                and bool(getattr(cfg, "compute_ir", False))
+                and not bool(getattr(cfg, "compute_raman", False))):
+            issues.append(Issue(
+                severity="info",
+                message=(
+                    f"With atoms held, the infrared is taken from the dipole "
+                    f"at small pushes of each free atom: "
+                    f"{6 * n_free_estimate} extra SCFs (6 per free atom), "
+                    f"each covering the whole system, beside the Hessian.  "
+                    f"Turn Compute IR off for the frequencies alone."),
+                where="config.compute_ir",
+            ))
+        # WHAT RAMAN AND THE ORBITAL PROBE COST, said when they are asked
+        # (`engines/vibration.md` § 3.3: "the cost of what was ticked") --
+        # the deck's own loops, counted as it runs them.
+        if n_free_estimate and bool(getattr(cfg, "compute_raman", False)):
+            issues.append(Issue(
+                severity="info",
+                message=(
+                    f"Raman: {6 * n_free_estimate} extra SCFs (6 per free "
+                    f"atom), each covering the whole system, with a "
+                    f"polarizability response calculation at each and no "
+                    f"density fitting"
+                    + ("; the infrared comes from the same sweep."
+                       if bool(getattr(cfg, "compute_ir", False)) else ".")),
+                where="config.compute_raman",
+            ))
+        _probe = str(getattr(cfg, "es_mode_selection", "skip"))
+        if _probe in ("all", "explicit"):
+            try:
+                _picked = (len(cfg.explicit_modes) if _probe == "explicit"
+                           else modes_of(struct, "pyscf")[2])
+            except ValueError:
+                _picked = None   # refused by the selector's own check
+            if _picked:
+                issues.append(Issue(
+                    severity="info",
+                    message=(
+                        "Orbital energies along a mode: "
+                        + (f"{2 * _picked} extra SCFs (2 per mode listed)"
+                           if _probe == "explicit" else
+                           f"up to {2 * _picked} extra SCFs (2 per mode"
+                           + (" within the window" if (
+                               getattr(cfg, "freq_min_cm1", None) is not None
+                               or getattr(cfg, "freq_max_cm1", None)
+                               is not None) else "")
+                           + f", {_picked} modes in all)")
+                        + ", each covering the whole system."),
+                    where="config.es_mode_selection",
+                ))
 
     # WHAT SURVIVES THE FREEZE, from the one derivation (science/normal-modes.md
     # R1, R7).  Holding atoms removes the whole-body motions that would move
@@ -493,11 +556,11 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
                 f"(6 force evaluations per free atom, each a whole-system "
                 f"SCF).  Frequencies are those of the free atoms moving in "
                 f"the static field of the held ones; thermochemistry is "
-                f"vibrational-only.  Every atom's Hirshfeld and Voronoi "
-                f"charge is recorded at every nudge, so the spectrum viewer "
-                f"gives the infrared of the atoms you name; Raman comes "
-                f"from the optical calls the mode selector asks for "
-                f"(es_mode_selection)."),
+                f"vibrational-only.  With Compute IR on, every atom's "
+                f"Hirshfeld and Voronoi charge is recorded at every nudge, "
+                f"so the spectrum viewer gives the infrared of the atoms "
+                f"you name; with Compute Raman on, Raman comes from the "
+                f"optical calls at the modes Raman for picks."),
             where="structure.regions"))
     # THE RELAXATION IS THE PERSON'S EXPLICIT CHOICE (`engines/vibration.md`
     # § 2.2, § 5.8), made with one box.  Unticked, the run relaxes first --
@@ -556,41 +619,36 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
         level=contract_fields_of(cfg, state=_state,
                                  axis_kind=struct.axis_kind,
                                  kind="vibration")))
-    # THE SELECTOR, reused whole (§ 5.11 § 9): its list read when it asks
-    # for one -- an empty one a run with no optical call -- and its window.
-    issues.extend(selector_issues(
-        cfg, none_means="No optical call will be made, so no Raman."))
+    # RAMAN FOR (§ 3.1): the range's ends, when one is asked.
+    issues.extend(raman_issues(cfg, engine="siesta"))
     return issues
 
 
 def selector_issues(cfg, *, none_means: str) -> List[Issue]:
-    """THE MODE SELECTOR'S CHECKS, on both engines (`engines/vibration.md`
-    § 4.8, § 5.11 § 9).  The frequency window filters the modes ``all``
-    selects and nothing else: ``skip`` selects none, and naming a mode is
-    saying *that one*; the form locks the two fields outside ``all``, but a
-    locked field keeps its value and the hand-over carries it, as a
-    hand-edited template does -- so a window set there is said to do
-    nothing.  The explicit list is read by its one reader (`selection.
+    """THE PROBE'S MODE SELECTOR'S CHECKS, PySCF's (`engines/vibration.md`
+    § 4.8).  The explicit list is read by its one reader (`selection.
     parse_index_list`, 1-based) when the selector is ``explicit`` -- the
     catalogue's "only read when selector = explicit": text it cannot read
     is refused here, before a deck is written from it; an empty list is
     said now, not after the wall time -- ``none_means`` what the run then
-    does not compute, in the engine's words."""
+    does not compute.  A window outside ``all`` is the generic check's,
+    from the items' ``active_when`` (`metadata._check_inactive`)."""
     issues: List[Issue] = []
     selector = str(getattr(cfg, "es_mode_selection", ""))
-    window = [(k, getattr(cfg, k, None))
-              for k in ("freq_min_cm1", "freq_max_cm1")]
-    window = [(k, v) for k, v in window if v is not None]
-    if window and selector != "all":
-        issues.append(Issue(
-            severity="warn",
-            message=(
-                f"{' and '.join(f'{k} = {float(v):g} cm⁻¹' for k, v in window)}"
-                f" {'has' if len(window) == 1 else 'have'} no effect here: "
-                f"the frequency window filters the modes \"all\" selects, "
-                f"and es_mode_selection is {selector!r} "
-                f"(engines/vibration.md § 4.8)."),
-            where=f"config.{window[0][0]}"))
+    if selector == "all":
+        # THE WINDOW'S TWO ENDS, stated against each other: refused, as
+        # Raman's range is (:func:`raman_issues`).
+        lo = getattr(cfg, "freq_min_cm1", None)
+        hi = getattr(cfg, "freq_max_cm1", None)
+        if lo is not None and hi is not None and float(lo) > float(hi):
+            issues.append(Issue(
+                severity="error",
+                message=(f"Probe modes from, {float(lo):g} cm⁻¹, is above "
+                         f"Probe modes up to, {float(hi):g} cm⁻¹: the "
+                         f"window's two ends conflict -- swap them, or "
+                         f"clear one."),
+                where="config.freq_min_cm1"))
+        return issues
     if selector != "explicit":
         return issues
     from ..spectra.selection import parse_index_list
@@ -617,6 +675,46 @@ def selector_issues(cfg, *, none_means: str) -> List[Issue]:
     return issues
 
 
+def raman_issues(cfg, *, engine: str) -> List[Issue]:
+    """RAMAN FOR's checks, on both engines (`engines/vibration.md` § 3.1):
+    with Compute Raman on and a frequency range asked, a range with neither
+    end is refused -- a range stated nowhere -- and so is one whose minimum
+    is above its maximum, two ends that conflict.  On PySCF, whose sweep
+    gives every mode at once, a range is said to narrow nothing."""
+    if not bool(getattr(cfg, "compute_raman", False)):
+        return []
+    if str(getattr(cfg, "raman_modes", "all")) != "range":
+        return []
+    lo = getattr(cfg, "raman_freq_min_cm1", None)
+    hi = getattr(cfg, "raman_freq_max_cm1", None)
+    from ..template import catalogue, choice_words, one
+    modes = one(catalogue(), "raman_modes")
+    if lo is None and hi is None:
+        return [Issue(
+            severity="error",
+            message=(f"Raman for is {choice_words(modes, 'range')} and "
+                     f"neither Raman from nor Raman up to is given: give "
+                     f"one or both ends of the range in cm⁻¹, or choose "
+                     f"{choice_words(modes, 'all')} for every mode."),
+            where="config.raman_modes")]
+    if lo is not None and hi is not None and float(lo) > float(hi):
+        return [Issue(
+            severity="error",
+            message=(f"Raman from, {float(lo):g} cm⁻¹, is above Raman up "
+                     f"to, {float(hi):g} cm⁻¹: the range's two ends "
+                     f"conflict -- swap them, or clear one."),
+            where="config.raman_freq_min_cm1")]
+    if engine == "pyscf":
+        return [Issue(
+            severity="info",
+            message=("PySCF computes Raman for every mode at once, from its "
+                     "polarizability sweep, so the frequency range narrows "
+                     "nothing here; on SIESTA it would pick the modes "
+                     "(engines/vibration.md § 3.1)."),
+            where="config.raman_modes")]
+    return []
+
+
 def modes_of(struct: Structure, engine: str):
     """``(n_free, n_rigid, n_modes)`` of ``struct`` for ``engine``'s run --
     its held atoms the structure's one read of them
@@ -635,4 +733,4 @@ def modes_of(struct: Structure, engine: str):
 
 # The render-time checks are the module's public door.
 __all__ = ["spectra_render_checks", "siesta_vibration_checks",
-           "selector_issues", "modes_of"]
+           "selector_issues", "raman_issues", "modes_of"]

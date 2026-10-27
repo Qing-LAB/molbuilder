@@ -58,7 +58,11 @@ instead of carrying their own order.
 > the contract closed (§ 1ae); the verified findings of § 1ad.2, last-number
 > moves; the viewer walked on the user's server with Claude in Chrome; the
 > corrections to a junction's electronic structure, a framework first
-> (§ 1ag, planned).
+> (§ 1ag, planned); which modes get Raman, after the run and by symmetry
+> (§ 1ah, planned). 2.45.0 laid the vibration's form out by result, drew the
+> settings both engines share once, and made *Compute IR*, *Compute Raman*
+> and *Raman for* one setting each on both engines; the Structure-optimization
+> tab's two locks into the catalogue are next on that road (§ 1ai, planned).
 
 **Where we are.** Shipped since the last handover (2026-10-18; it is
 [`archive/2026-10-20-plan-handover.md`](?doc=archive/2026-10-20-plan-handover.md),
@@ -1338,6 +1342,74 @@ kept, or Au adatoms (Strange 2011: GW 1.0×10⁻² G₀ with H kept, 0.83 for th
 thiolate; Inkpen 2019: H retained under common conditions) — ordinary
 transport calculations molbuilder runs today.
 
+## 1ah. Which modes get Raman — after the run, and by symmetry *(2026-10-27; planned, not designed)*
+
+*(The user, 2026-10-27, on *Raman for*: "because this is done before any
+calculation how could there be anything to select from?"; "is there a way
+to exclude obvious ones that is insensitive? or there is no general
+simplification?")*
+
+Before a run there are no modes, so 2.45.0's *Raman for* offers what can be
+decided then — all modes, or a frequency range a chemist knows
+(`engines/vibration.md` § 3.1). Two ways to spend less, each its own design:
+
+1. **Pick modes from a finished spectrum.** A vibration whose force
+   constants are done, extended with the optical calls of the modes a person
+   ticks on the Spectra page — only those run, on the run's own modes; the
+   extension road of a finished calculation (`engines/transport.md`
+   § 2a.16) for the vibration kind, the run's index already planning optical
+   calls after `fc` (§ 5.11 § 3).
+2. **Skip the modes symmetry forbids.** A mode's Raman is exactly zero when
+   its symmetry forbids it — CO₂'s antisymmetric stretch and two bends, 3 of
+   its 4 modes (our run: 0.23 against 45.1 Å⁴/amu, zero to numerical noise),
+   9 optical calls cut to 3. To design: the point group found, each mode's
+   symmetry species with a tolerance for numerical noise, a forbidden mode
+   recorded *not computed: forbidden by symmetry* — never a silent zero —
+   and which library in the SIESTA environment does it. It saves nothing on
+   a junction, which has little or no symmetry; the frequency range stays
+   the general cost control there (above about 300 cm⁻¹ leaves out the slow
+   gold modes).
+
+## 1ai. The Structure-optimization tab's two locks into the catalogue *(2026-10-27; planned)*
+
+2.45.0's `active_when` greys a field out from one catalogue declaration,
+and the settings gate says the same (`web/form-schema.md` § 1.3). The
+Structure-optimization tab still keeps two locks of its own in its page
+script (`structure-optimization/viewer.js`): a relaxation's step settings
+under *Relaxation type* `none`, and the solvent model with no solvent —
+which the gate never mentions. To design: `active_when` naming a value that is
+*any one given* (the solvent's blank is its gas phase, not a member to list),
+and a relaxation's settings under a vibration whose structure is already
+relaxed, where *Relaxation type* is not the switch — today *Structure is
+already relaxed* greys none of them though none runs (the force tolerance
+stays live: it judges the stated structure). `active_when` keyed by kind:
+the relaxation's rows are the optimization's too, which has no such box.
+Also the user's: whether the Spectrum tab's charge and spin fields belong in
+step 2 beside the chemistry card's answer, rather than in step 3's *Run
+profile* card (`web/spectra.md` § 5 prescribes today's order).
+
+## 1aj. A frame set says what its numbers mean, wherever it is cited *(2026-10-27; contract written, to build)*
+
+*(The user, 2026-10-27: "the details of what the weights and mass correction
+is used should be in meta data, and should be in contract so that when these
+data are cited and used in other places, the meaning is clear and tracked".)*
+
+The contract: [`model/structure.md`](?doc=model/structure.md) § 2.2f (every
+row written with its meaning as its `note`; the rows `sampling_rule`,
+`sampling_nodes`, `mass_source`), [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.10 ③ (the generator writes them), [`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.9, § 2a.12, § 3.8.1 (the record's `frame_set` block — rows with
+meanings, `info.vibration`, `mass_amu`, the pair and its sha256; the data
+file's `definition` from each row's meaning and the average's naming its
+rule; the page's hover), [`model/datafiles.md`](?doc=model/datafiles.md) § 2
+(a cited value keeps what it means). To build: `frame_average.Row.means`;
+`mode_frames.frameset_from_mode` writing the notes and the three rows;
+`frameset.read` carrying notes and saying a vocabulary row without one;
+`transport/record.py`'s `frame_set` block; `frame_average.data_file_variables`
+and `fill_data_file` taking `definition` from the notes; the frame card's
+hover. The first slice of the data files' self-description
+(`model/datafiles.md`).
+
 ## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; SIESTA's vibration redesigned 2026-10-25 as one run in phases, Raman its optical phase (the user's B); R-a, R-c and R1 decided as recommended, 2026-10-25 — to build)*
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode
@@ -1467,7 +1539,7 @@ arguments")*:
 | # | decision | the choice |
 |---|---|---|
 | R1 | Raman's numbers, measured | through the built runs, on the toy junction: whether the whole cell's change, at a laser frequency and static, is stable against the optical calculation's k-point mesh and broadening; and what the optical calculation costs per geometry (the method's § 3.1, § 5.1) |
-| R-a | how SIESTA's form asks for Raman — which modes is PySCF's selector, reused (`es_mode_selection`, its window and list) | the selector alone, `skip` no optical phase, `compute_raman` staying PySCF's (recommended); or `compute_raman` on both engines beside it ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) |
+| R-a | how SIESTA's form asks for Raman — which modes is PySCF's selector, reused (`es_mode_selection`, its window and list) | **decided 2026-10-25, revised at 2.45.0**: *Compute Raman* and *Raman for* on both engines, PySCF's selector the orbital probe's alone ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1, R-a) |
 | R-e | a run of points' monitors report as one run — one `start`, one `finish`, the walk's; transport's points lose their per-point pair ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a) | taken with the build unless the user objects |
 | R-c | the run's resolution, `Optical.Broaden` — the presentation's width is the viewer's, applied after the run: Gaussians compose, **verified exact on H₂** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 12) | 0.002 Ry (recommended: 2.7 MB of `.EPSIMG` text a frame, 0.4 MB in the data file), revisited with R1 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 13) |
 

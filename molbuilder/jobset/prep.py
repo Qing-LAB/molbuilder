@@ -306,11 +306,11 @@ def this_prep_lines(stage: str, takes) -> List[str]:
 
 def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
                      struct) -> dict:
-    """A SIESTA force-constant deck's `vibration` block, format v4: the
+    """A SIESTA force-constant deck's `vibration` block, format v5: the
     facts the run's finish reads and no SIESTA keyword states
     (`engines/vibration.md` § 5.3, § 5.11 § 4), built here because only
     `prep` holds all of them -- the stage, its resolved config, the
-    molbuilder rendering the deck -- and the mode selection the optical
+    molbuilder rendering the deck -- and *Raman for*, the modes the optical
     phase applies (`select_modes`), the one fact of that phase no keyword
     states.  ``criterion`` is the relaxation phase's own ``relax_force_tol``
     -- the force the reference geometry is relaxed to, and judged by.
@@ -318,10 +318,22 @@ def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
     masses the block states (`chemistry.atomic_mass`, I3).  The relaxation
     record is the `relax` call's, read from the run's index at the finish
     (§ 5.11 § 3), never written here."""
+    import dataclasses
     from .. import __version__ as _mb_version
     from ..chemistry import atomic_mass
+    from ..siesta.vibration_phases import OPTICAL, phases_on
     from ..spectra.siesta_vibration import vibration_record
     from ..structure import IDENTITY_FIELDS
+    from ..template import catalogue, inactive_why, one
+    # WHAT ENTERS, asked of its declarations: the optical phase of the phase
+    # table's switch (`phases_on`), each of Raman for's ends of its
+    # `active_when` -- a setting that enters nothing is not stated as if it
+    # did (`template.inactive_why`).
+    values = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
+
+    def _entering(name: str):
+        item = one(catalogue(), name, engine="siesta")
+        return None if inactive_why(item, values) else values[name]
     return vibration_record(
         stage=stage,
         force_criterion_ev_ang=criterion,
@@ -331,10 +343,12 @@ def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
         temperature_K=float(cfg.temperature_K),
         masses_amu=[atomic_mass(el) for el in struct.elements],
         molbuilder_version=str(_mb_version),
-        selection={"es_mode_selection": str(cfg.es_mode_selection),
-                   "es_explicit_indices": str(cfg.es_explicit_indices),
-                   "freq_min_cm1": cfg.freq_min_cm1,
-                   "freq_max_cm1": cfg.freq_max_cm1},
+        # RAMAN FOR, as the optical phase applies it -- none when the
+        # stage runs no optical phase.
+        raman=({"modes": str(cfg.raman_modes),
+                "freq_min_cm1": _entering("raman_freq_min_cm1"),
+                "freq_max_cm1": _entering("raman_freq_max_cm1")}
+               if any(p.name == OPTICAL for p in phases_on(cfg)) else None),
         # WHAT NO OTHER BLOCK OF THE DECK CARRIES of the structure the result
         # states (engines/vibration.md 6.10.1).
         title=str(struct.title or ""),
@@ -528,6 +542,9 @@ class Rung:
     #: value its steps set after them (a transport rung's label;
     #: `job-contracts.md` § 3.2).
     sources: Callable = lambda element: element.deck_sources
+    #: ``(sources, point) -> sources``: the rows a point's deck states --
+    #: a vibration phase's, the items its role reads; every row by default.
+    sources_at: Callable = lambda sources, point: sources
     #: ``point -> {resumes, steps, member}``: how a point's run script is
     #: rendered beyond the job's own facts -- a vibration phase's `resumes`,
     #: its two Python steps and its monitor as a member of the run
@@ -566,7 +583,7 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
     at is its own `coordinates.fdf`, written by the run's plan step
     (§ 5.11 § 3).  Which phases run is the stage's config's: each `PHASES`
     row's switch (`already_relaxed` turns the relaxation off,
-    `es_mode_selection` skip the optical calls).  Each phase's run script
+    `compute_raman` off the optical calls).  Each phase's run script
     is rendered with its own `resumes` and its two Python steps
     (:attr:`Rung.wrapper_at`)."""
     from ..paths import Shape
@@ -635,6 +652,20 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
                 "member": (Call(rule.name, "call") if rule.planned
                            else point).to_run}
 
+    def sources_at(sources, point):
+        # A PHASE'S DECK STATES THE ROWS ITS ROLE READS (the catalogue's
+        # `stages`, `engines/template.md` § 6.4): never another phase's
+        # settings, nor the relaxation's `restart` in a call that fixes its
+        # own start (§ 5.11 § 4).  A benchmark trial's deck states them all.
+        if point is None:
+            return sources
+        from ..template import catalogue, select
+        role = phase(point.phase).role
+        items = {it.name: it for it in select(catalogue(), engine="siesta")}
+        return tuple((n, w) for n, w in sources
+                     if n not in items or not items[n].stages
+                     or role in items[n].stages)
+
     def beside(point, spec, folder, plan):
         # THE STRUCTURE'S COORDINATES, beside every phase's deck (§ 5.11
         # § 4): the rows the deck writer derived, as the deck reads them.
@@ -651,7 +682,7 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
     return Rung(struct=struct, render_kind="vibration",
                 said=(run_size_words(cfg0, n_free, n_modes),),
                 spec_extra=spec_extra, points=points, wrapper_at=wrapper_at,
-                beside=beside,
+                beside=beside, sources_at=sources_at,
                 relaxes_at=lambda pt: pt is not None and pt.phase == RELAX,
                 # THE RUN'S PHASES, on its job (`Job.phases`): what launch
                 # opens and walks, what the run's own python follows.
@@ -1072,11 +1103,18 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     from ..validation import REPORT_STREAM
 
     class _OncePerLine(_io.TextIOBase):
+        # A LINE IS JUDGED WHOLE: `print` writes its text and its newline
+        # apart, so a line is held until its newline arrives -- a repeat
+        # dropped takes its newline with it, never leaving a blank line.
         def __init__(self, wrapped):
             self._w, self._seen, self.dropped = wrapped, set(), 0
+            self._held = ""
 
         def write(self, text):
-            for line in text.splitlines(keepends=True):
+            whole = (self._held + text).splitlines(keepends=True)
+            self._held = (whole.pop() if whole
+                          and not whole[-1].endswith("\n") else "")
+            for line in whole:
                 key = line.strip()
                 if key and (key.startswith("warn") or key.startswith("info")):
                     if key in self._seen:
@@ -1087,6 +1125,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             return len(text)
 
         def flush(self):
+            if self._held:
+                self._w.write(self._held)
+                self._held = ""
             self._w.flush()
 
     _once = _OncePerLine(_sys.stderr)
@@ -1207,7 +1248,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                     _sc.prepare_deck(_spec, _struct, _at, _out / script,
                                      log=log, dest_dir=base,
                                      findings=findings, plan=plan,
-                                     sources=_sources)
+                                     sources=rung.sources_at(_sources,
+                                                             _point))
                 spec = spec or _spec
                 spec_at[_out] = _spec
             if seam.sibling_artifacts is not None:
@@ -1255,6 +1297,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                 placement=resolved.placement)))
     finally:
         REPORT_STREAM.reset(_scope)
+        _once.flush()
     if _once.dropped:
         # TRUE OF A PREVIEW TOO, which writes nothing: the report is the
         # deck's, written with it when the prep is.

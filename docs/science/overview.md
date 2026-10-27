@@ -103,9 +103,12 @@ class Issue:
     severity:       Severity              # "error" | "warn" | "info"
     message:        str
     where:          str = ""              # e.g. "geometry.min_distance" / "config.kgrid"
-    workflow_group: Optional[str] = None  # set by _shared.resolve_workflow_group(where, cfg)
-                                          # so the web UI routes the issue to the right card
+    stage:          Optional[str] = None  # a stage's label, beside where (engines/stages.md § 4 R2)
 ```
+
+The card a finding is drawn on is not the Issue's: `_shared.issues_to_json`
+adds `card` to the wire form (`template.card_of`), so the web UI routes the
+finding to the card its field is drawn in.
 
 The CLI mirrors this: `molbuilder validate <input> --engine siesta` (`cli.py:1058`)
 emits the same `List[Issue]` as **JSON to stdout** for shell-driven pre-flight checks.

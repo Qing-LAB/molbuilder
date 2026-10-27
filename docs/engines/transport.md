@@ -2040,10 +2040,13 @@ alone** (§ 2a.12's average), where every frame states one; weights that do not
 sum to 1 are averaged as written, with a warning *(user, 2026-10-09: "all
 weights should add up to 1 that's an explicit rule within error tolerance")*;
 frames that do not each state one have no average, said. Every other row is
-carried as written into its record and data file and shown on the pages, and
-so are the mode's own two beside the rows — `info.vibration` (the data file
-keeps its run and result fingerprint) and the `mass_amu` channel; another
-`info` key or channel stays the structure's and is not carried. The one check
+carried whole — name, value, unit and its meaning, the row's `note`
+([`model/structure.md`](?doc=model/structure.md) § 2.2f: what the weights
+average, the rule that placed the frames, the masses the coordinate is
+measured with) — into its record and its data file and shown on the pages,
+and so are the mode's own two beside the rows, in both: `info.vibration`
+(the vibration run and its result's sha256) and the `mass_amu` channel;
+another `info` key or channel stays the structure's and is not carried. The one check
 made on the rows is a vocabulary name's unit —
 a row of the mode's vocabulary written with another unit is refused by name
 wherever the rows are read for a record, a data file or a page
@@ -2963,9 +2966,15 @@ weight alone:
 
 with § 7 of the science document's assumptions beside the numbers (a harmonic
 mode, static frames, the equilibrium distribution at each voltage, each frame
-its own ground state, the DFT alignment, the electrodes unmoved), and the
-structure's rows beside them as written
-([`model/structure.md`](?doc=model/structure.md) § 2.2f). **Nothing else is
+its own ground state, the DFT alignment, the electrodes unmoved), and **the
+frame set the average is taken over, cited whole** — the record's
+`frame_set`: the structure's rows as written, each with its meaning
+(`sampling_rule`, `sampling_nodes`, the spread, `mass_source` among them), the
+vibration it came from (`info.vibration`: its run and its result's sha256),
+every atom's mass (`mass_amu`), and the pair cited with its sha256
+([`model/structure.md`](?doc=model/structure.md) § 2.2f) — so the average
+says, in the record itself, which rule weighted it and which masses its
+coordinate was measured with. **Nothing else is
 derived across the frames** — no slope and no curvature: a level crossing E_F
 within the vibration makes the transmission jump between frames, and a
 difference of a few frames is then no derivative, so a number shaped like one
@@ -3027,8 +3036,10 @@ dimension's points are coordinates beside it** (CF auxiliary coordinates,
 named in each variable's `coordinates` attribute, which xarray and netCDF4
 read): along `frame` its folder `frame_token` (`f000` …, empty for one
 structure, which has no frame level), every per-frame row of a mode's frame
-set's vocabulary (§ 2.2f) and `frame_rows`, every row the frame states as
-written, a JSON list of the rows whole; along `atom` each atom's `element`
+set's vocabulary (§ 2.2f) — each variable's `definition` the row's meaning
+as the set states it (its `note`), the vocabulary's where it states none —
+and `frame_rows`, every row the frame states as written, a JSON list of the
+rows whole, meanings included; along `atom` each atom's `element`
 and `mass_amu` — the fill value where the structure states none — and its
 `user_atom_index` and `engine_atom_index`, the atom index map
 ([`model/overview.md`](?doc=model/overview.md) § 2.2b). The frames'
@@ -3092,7 +3103,11 @@ and `iv_notes`, JSON, each note with the `frame` and the `bias_v` it is
 about — the voltages the window does not reach, and a frame's own note (its
 0 V transmission not run) with `bias_v` null); wherever the
 structure states rows, the vocabulary's structure rows and `info.vibration`
-where it states them, every row as written (`structure_rows`, JSON), what is
+where it states them, every row as written with its meaning
+(`structure_rows`, JSON) — the frames' average's variables each naming in
+its `definition` the rule and weights it was taken with, *Σ_f weight_f
+T_f(E) over the frame set's `sampling_rule` at its `sampling_nodes` frames*
+— what is
 said of the weights (`frame_warnings`), and where every frame states a weight
 their sum, the tolerance and — where the frames state a mode — what a mode's
 average assumes; the Fermi levels each in its run's
@@ -5307,9 +5322,10 @@ set, its mode line — the structure's rows of
 with its value and unit (*Mode 6 · Frequency 2548.37 cm⁻¹ · Temperature
 300 K · …*) — and a table, a row per frame, numbered as the frame bar numbers
 them (1 … F), each frame's rows a column under its words and unit
-(*Displacement (Å)*, *Weight*); the name the file stores each under, and its
-kind, on hover *(the user, 2026-10-10: plain words on the page, the stored
-name one hover away)*. The words and the page's unit are the vocabulary's own
+(*Displacement (Å)*, *Weight*); the name the file stores each under, its
+kind and its meaning as the set states it (the row's `note`, § 2.2f of the
+structure model), on hover *(the user, 2026-10-10: plain words on the page,
+the stored name one hover away)*. The words and the page's unit are the vocabulary's own
 (`frame_average.ROWS`), beside each name; a row the vocabulary does not know is
 said by its name and unit as written; what is said of the weights stands
 beneath. For frames stating no rows, *N frames — a family: each frame's curve
@@ -5405,7 +5421,7 @@ correct order".)*
 | **One tab per rung**, in ladder order, numbered `1 · seed` … `5 · transmission`. The strip is `lib/tab-strip.js`'s, the switcher the engine strips already use | the person answers *which rung* by choosing the tab. A value typed there is that rung's own override bag; nothing routes |
 | **Each tab opens with one line** on what the rung computes and what it hands on — `transport/stages.py::RUNG_NOTES`, served by the schema route | the flow § 6.1 draws, read at the point of setting |
 | **A tab offers** the items the rung owns (`stages` names it) and the items any rung may set (no `stages`) | never another rung's item — that is on its own tab — and never a shared one — that is card 2 |
-| **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count. **Every card is named with the rung** (*seed · Convergence targets*) and one sentence above them says the values are the rung's own over the template's — the schema's `stage` and `stage_words` *(user, 2026-10-09: "make sure the title and text in each panel for these stages are clear ... so the user is not confused by the repetition")* | the rung's own physics is what the eye lands on; the seed, both leads and the device each carry the same SCF settings with their own values, and each tab says whose they are |
+| **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count. **Every card is named with the rung** (*seed · Convergence targets*) and one sentence above them says the values are the rung's own over the template's — the schema's `card_prefix` and `stage_words` *(user, 2026-10-09: "make sure the title and text in each panel for these stages are clear ... so the user is not confused by the repetition")* | the rung's own physics is what the eye lands on; the seed, both leads and the device each carry the same SCF settings with their own values, and each tab says whose they are |
 | **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`template.unread_overrides`, the description's check — `validation/task.py`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
 | **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, every one — the seed among them, since the device starts from its density (user, 2026-10-12, withdrawing ruling Q4's skip) — and its shape hierarchical (`task.fixed_by_kind`, from `paths.KIND_ROLES`); the description's reader refuses anything else, naming the five rungs, and Task setup offers no control that would change either (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk; the reader took all three until 2026-10-11, and Task setup's stage table offered them |
 | **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one that already holds a `task.json` (one calculation per folder), and one inside the citation (§ 3.1) — the checks `molbuilder describe` asks, through the same two functions (`describe.refuse_described`, `compose.refuse_inside_citation`) — and writes the template, `task.json` and `job-request.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `molbuilder describe`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | the refusal belongs to the door that writes; until 2026-10-11 the browser wrote the server's text through the content-blind layer and the one-folder refusal lived in the page alone |

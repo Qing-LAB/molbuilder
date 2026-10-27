@@ -40,66 +40,52 @@ from molbuilder.periodicity_gate import (notices_for_report,
 # --------------------------------------------------------------------- #
 
 
-def resolve_workflow_group(where: str, cfg) -> Optional[str]:
-    """Return the workflow-group binding for an Issue ``where`` field.
+def card_of_finding(where: str, cfg, calculation: str) -> Optional[str]:
+    """The card a finding about ``where`` is shown on -- the card its field
+    is drawn in on a ``calculation``'s form (`template.card_of`,
+    `engines/template.md` § 6.2a): the field's result card where it names
+    one for the kind, else its group's.  One rule for the form and for the
+    finding, so a warning always sits beside its field
+    (`web/ui-contract.md` § 5.1).
 
-    Per docs/web/ui-contract.md Rule 2, validator findings
-    should attach to the workflow-group card whose fields they
-    concern: a ``config.mesh_cutoff`` finding belongs in the Stage
-    card; ``config.spin_treatment`` belongs in the Run profile card;
-    ``config.max_scf_iter`` belongs in the Budget card.  The mapping is
-    the catalogue's ``group``, read through `template.items_of` -- the
-    form draws its cards by it (`web/form-schema.md` § 1a).
-
-    Returns ``None`` for:
-      * Issues that don't target a config field (where prefix isn't
-        ``config.``) — geometry / cell / polymer findings render in
-        a residual panel below the cards.
-      * Issues whose dotted name doesn't resolve to a real dataclass
-        field (typo, future-proofing).
-      * Issues whose field has no ``workflow_group`` metadata (legacy
-        untagged fields; rendered in residual panel).
+    ``None`` for a finding not about a config field (``where`` outside
+    ``config.`` -- geometry, cell, polymer: the residual panel), and for a
+    name no catalogue item of the config's engine holds.
     """
     if not where or not where.startswith("config."):
         return None
     if not dataclasses.is_dataclass(cfg):
         return None
-    # Strip "config." prefix and any further dotted sub-fields:
-    # "config.net_charge.makov_payne" → "net_charge".
-    tail = where.split(".", 1)[1]
-    field_name = tail.split(".", 1)[0]
-    # THE CARD IS THE CATALOGUE'S `group` (`engines/template.md` § 2.1).
-    from molbuilder.template import items_of
+    # "config.net_charge.makov_payne" -> "net_charge".
+    field_name = where.split(".", 1)[1].split(".", 1)[0]
+    from molbuilder.template import card_of, items_of
     item = items_of(cfg).get(field_name)
-    return item.group if item is not None else None
+    return card_of(item, calculation) if item is not None else None
 
 
-def issues_to_json(issues, cfg=None):
+def issues_to_json(issues, cfg=None, *, calculation: str = ""):
     """Serialise List[Issue] for the JSON wire.
 
-    The web client reads ``issues[].severity / message / where /
-    workflow_group`` to decide how to display.  Schema duplicated
-    literally in both blueprints' tests; if a key changes here,
-    those tests catch it.
+    The web client reads ``issues[].severity / message / where / card /
+    stage`` to decide how to display (`science/validation.md` R1).
 
-    ``cfg`` is the engine config dataclass — when provided, each
-    issue's ``workflow_group`` is resolved (per
-    :func:`resolve_workflow_group`) so the frontend can attach
-    findings to their workflow-group card per web-ui-coherence
-    Rule 2.  When ``cfg`` is None, the ``workflow_group`` key is
-    omitted from the dict (the Issue's own ``workflow_group`` field
-    is still honoured if pre-tagged).
+    ``cfg`` is the engine config dataclass and ``calculation`` the kind the
+    form is drawn for: given both, each finding carries the ``card`` its
+    field is drawn in (:func:`card_of_finding`), so the page puts it beside
+    the field.  A config without its kind is refused -- the card depends on
+    it -- and with no config the key is omitted: the finding goes to the
+    residual panel.
     """
+    if cfg is not None and not calculation:
+        raise ValueError("issues_to_json: a config's findings are placed by "
+                         "the kind's cards -- state the calculation")
     out = []
     for i in issues:
         d = i.to_json()          # THE key set lives on `Issue`
-        # An Issue may pre-tag its workflow_group; if not, derive
-        # from the where field via the config dataclass metadata.
-        group = i.workflow_group
-        if group is None and cfg is not None:
-            group = resolve_workflow_group(i.where, cfg)
-        if group is not None:
-            d["workflow_group"] = group
+        card = (card_of_finding(i.where, cfg, calculation)
+                if cfg is not None else None)
+        if card is not None:
+            d["card"] = card
         # The stage label rides BESIDE ``where``, never inside it
         # (engines/stages.md § 4 R2): the same check produces the same id
         # whether it fired for a single run or for a stage, and the UI binds
@@ -306,15 +292,9 @@ def workspace_payload(
         "n_atoms":       struct.n_atoms,
         "atoms":         atoms_list(struct),
         "lattice":       None,
-        # ``cfg=None`` explicit (not implicit default) so the missing-cfg case is documented at the
-        # call site.  ``validate_geometry`` emits only ``where=
-        # "struct.*"`` issues -- no engine config field is in
-        # scope here -- so workflow_group enrichment correctly
-        # short-circuits to None.  A future refactor that moves
-        # engine-config validation upstream of this helper MUST
-        # pass cfg= or the per-card fan-out (web-ui-coherence
-        # Rule 2) silently drops engine issues into the residual
-        # panel.
+        # ``cfg=None`` explicit: ``validate_geometry`` emits only
+        # ``where="struct.*"`` findings, which no card holds -- the
+        # residual panel's.
         "issues":        issues_to_json(
             validate_geometry(struct), cfg=None),
         "extra":         dict(extra) if extra else {},
@@ -551,7 +531,7 @@ def _control_for(item) -> str:
     return _CONTROL_FOR_TYPE.get(item.type, "text")
 
 
-def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
+def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
                              calculation: str = "optimization",
                              surface: Optional[str] = None,
                              rung: Optional[str] = None,
@@ -572,32 +552,51 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     set for itself.  Every field carries its ``stages`` so a surface can
     tell the rung's own items from the ones it merely may set.
 
-    ``surface`` is a composite kind's second axis (`engines/transport.md`
-    § 3.8.2): ``"shared"`` is the panel that edits the TEMPLATE -- every item
-    the catalogue marks `shared` for this kind, except the `setup` group,
-    whose two members (the identity, the pseudopotential directory) the
-    description and the citation answer themselves -- save ``asks``, what
-    the citation asks of the person (`citation_defaults.asked_of_the_person`:
-    a pair's pseudopotential directory) -- and ``"rung"`` is the
-    per-rung form, which never offers a shared item.  ``None`` is every
-    surface at once, the ordinary kinds' one form.
+    ``surface`` says which part of the kind's settings this form draws, on
+    a page that draws them in parts.  Across a composite kind's rungs
+    (`engines/transport.md` § 3.8.2): ``"shared"`` is the panel that edits
+    the TEMPLATE -- every item the catalogue marks `shared` for this kind,
+    except the `setup` group, whose two members (the identity, the
+    pseudopotential directory) the description and the citation answer
+    themselves -- save ``asks``, what the citation asks of the person
+    (`citation_defaults.asked_of_the_person`: a pair's pseudopotential
+    directory) -- and ``"rung"`` is the per-rung form, which never offers a
+    shared item.  Across the engines a kind runs on (`engines/template.md`
+    § 6.2a): ``"common"`` -- ``engine`` ``None`` -- the settings one row
+    serves on every engine of the kind (`template.shared_by_engines`), each
+    offering every choice any of them takes, and ``"own"`` one engine's
+    settings without them, its name before every card title.  ``None`` is
+    every surface at once, the ordinary kinds' one form.
 
-    **The two grouping axes** (`form-schema.md` § 1.3), both carried by every
-    item and answering different questions:
+    **The grouping axes** (`form-schema.md` § 1.3), answering different
+    questions:
 
-    * ``group`` -- *when do I set this?* -- is the OUTER card.
-    * ``category`` -- *what question about the calculation is this?* -- is the
-      legend INSIDE the card.  The six are shared, so SIESTA and PySCF show the
-      same inner headings.
+    * the CARD -- `template.card_of`: the item's result for the kind, else
+      its ``group``, *when do I set this?* -- is the OUTER card;
+    * ``category`` -- *what question about the calculation is this?* -- is
+      the legend INSIDE a group's card.  The six are shared, so SIESTA and
+      PySCF show the same inner headings.
 
     Sections come out in § 6.2's reading order, which is the order the closed
     vocabulary is declared in -- not alphabetical, and not the order the items
     happen to sit in the file.
     """
     from molbuilder import template as _T
+    from molbuilder.electronic_state import engines_for
 
     parsed = _T.catalogue()
+    if (surface == "common") != (engine is None):
+        raise ValueError("the 'common' surface is every engine's, and names "
+                         "none; every other surface names its engine")
+    # THE ENGINES' SHARED ROWS (§ 6.2a): drawn once, before the engine is
+    # chosen -- and left out of each engine's own part.
+    common = _T.shared_by_engines(calculation)
+    engines = engines_for(calculation) if engine is None else (engine,)
     items = _T.select(parsed, engine=engine)
+    if surface == "common":
+        items = [it for it in items if it.name in common]
+    elif surface == "own":
+        items = [it for it in items if it.name not in common]
 
     # ``staging`` is a PANEL THIS SURFACE DOES NOT HAVE.  The stage token is a
     # real parameter -- it reaches the generated script, and the template
@@ -633,7 +632,7 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # rung's answers; a form for the whole calculation the ones every rung
     # gives alike -- an item answered rung by rung has no one answer there.
     # The shared panel carries the shared values alone.
-    if surface == "shared":
+    if surface in ("shared", "common"):
         echoed: Dict[str, Any] = {}
     elif rung is not None:
         echoed = _T.role_answers(engine, calculation, rung)
@@ -653,9 +652,9 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         _run = _T.run_settings(engine)
         items = [it for it in items if calculation not in it.shared
                  and (it.name not in _run or it.name in echoed)]
-    elif surface is not None:
-        raise ValueError(f"surface must be 'shared', 'rung' or None, "
-                         f"not {surface!r}")
+    elif surface not in (None, "common", "own"):
+        raise ValueError(f"surface must be 'shared', 'rung', 'common', "
+                         f"'own' or None, not {surface!r}")
     if rung is not None:
         if surface != "rung":
             raise ValueError("a rung narrows the 'rung' surface only")
@@ -708,7 +707,10 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         # would refuse -- no dynamics for a vibration's relaxation, no
         # restricted-open on SIESTA, no floating moment on PySCF.
         if it.choices:
-            field["choices"] = list(_T.offered(it, engine, calculation))
+            field["choices"] = list(_T.offered_by_any(it, engines, calculation))
+        # THE CARD IT IS DRAWN IN (`template.card_of`, § 6.2a) -- the rule
+        # a finding about it is placed by too.
+        field["card"] = _T.card_of(it, calculation)
         by_category.setdefault(panel, []).append(field)
 
     sections = [{"name": cat, "title": cat.capitalize(),
@@ -721,25 +723,36 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # design conversation (user, 2026-08-14).
     # The words a field's source is said in -- one vocabulary, the
     # template's (`template.SOURCE_WORDS`), so no surface coins its own.
-    # AND THE WORDS ITS CARDS SAY, from their one home (`template.GROUP_WORDS`,
-    # form-schema.md § 1.3); a form of one rung's own values names the rung
-    # and says once whose its values are (`template.stage_words`).
-    # THE SETUP CARD SAYS WHAT ITS FIELDS ON THIS FORM ASK (`template.
-    # setup_words`); a form showing none of them draws no Setup card.
-    shown_setup = [f["name"] for sec in sections for f in sec["fields"]
-                   if f.get("workflow_group") == "setup"]
-    out = {"config": engine, "id_prefix": id_prefix, "sections": sections,
+    # AND THE CARDS, in drawing order with their words, from their one home
+    # (`template.cards`: GROUP_WORDS and RESULTS, form-schema.md § 1.3); a
+    # form of one rung's own values names the rung and says once whose its
+    # values are (`template.stage_words`).
+    # A CARD SAYS WHAT ITS FIELDS ON THIS FORM ARE (`template.card_line`):
+    # the Setup card's by its fields, the Run profile's by whether it holds
+    # the electronic state; a form showing none of a card's draws no card.
+    shown_in: Dict[str, List[str]] = {}
+    for sec in sections:
+        for f in sec["fields"]:
+            shown_in.setdefault(f["card"], []).append(f["name"])
+    out = {"config": engine or "common", "id_prefix": id_prefix,
+           "sections": sections,
            "source_words": dict(_T.SOURCE_WORDS),
-           # A LIST, in the vocabulary's order: the order IS the cards'
-           # order, and a JSON object's keys are sorted on the wire.
-           "group_words": [{"group": g, "title": t,
-                            "subtitle": (_T.setup_words(shown_setup)
-                                         if g == "setup" and shown_setup
-                                         else sub)}
-                           for g, (t, sub) in _T.GROUP_WORDS.items()]}
+           # A LIST, in drawing order (`template.cards`): the order IS the
+           # cards' order, and a JSON object's keys are sorted on the wire.
+           # Each card's line true of the fields this form draws in it
+           # (`template.card_line`).
+           "cards": [{"card": c.key, "title": c.title,
+                      "subtitle": (_T.card_line(c.key, shown_in[c.key])
+                                   if c.key in shown_in else c.subtitle),
+                      "legends": c.legends}
+                     for c in _T.cards(calculation)]}
+    # A FORM THAT NAMES ITS CARDS -- one rung's own values, one engine's own
+    # settings -- says whose they are before every card title.
     if rung is not None:
-        out["stage"] = rung
+        out["card_prefix"] = rung
         out["stage_words"] = _T.stage_words(rung)
+    elif surface == "own":
+        out["card_prefix"] = _T.ENGINE_WORDS[engine]
     return out
 
 
@@ -787,8 +800,15 @@ def _item_to_field(item, id_prefix: str,
         out["unit"] = item.unit
     if item.pattern:
         out["pattern"] = item.pattern
-    if item.group:
-        out["workflow_group"] = item.group
+    # WHAT GREYS IT OUT (`engines/template.md` § 5): the renderer follows
+    # the named fields of the same form, its parts drawn together
+    # (`form-schema.md` § 1.3).
+    if item.active_when:
+        out["active_when"] = {k: list(v) for k, v in item.active_when}
+        # ...and what it waits on, in words, shown beside it while greyed.
+        from molbuilder.template import active_words
+        words = active_words(item)
+        out["active_words"] = words[:1].upper() + words[1:] + "."
     # The engine-keyword badge.  **The FULL spelling, not the anchor**: an
     # anchor is the bare leading keyword (`template.md` § 5), and an
     # engine_key that is a molbuilder note is the only way a reader learns the
@@ -800,6 +820,9 @@ def _item_to_field(item, id_prefix: str,
         out["engine_key"] = spelled
     if item.choices:
         out["choices"] = list(item.choices)
+        # ...each with the words a person reads (`choice_labels`).
+        if item.choice_labels:
+            out["choice_labels"] = {str(c): w for c, w in item.choice_labels}
     elif out["kind"] == "tri-select":
         # An Optional[bool] has three states and the renderer walks
         # ``f.choices`` to build them; they are the CONTROL's vocabulary, not

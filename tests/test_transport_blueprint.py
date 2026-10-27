@@ -72,15 +72,17 @@ class TestTransportSchemaEndpoint:
         # `transport.md` § 3.8.2a; user, 2026-10-09: "so the user is not
         # confused by the repetition"): the schema names the rung, which the
         # renderer puts on every card, and one sentence says the values are
-        # the rung's own; the cards' words are the one vocabulary's.
+        # the rung's own; the cards are the kind's, in their one order
+        # (`template.cards`) -- a transport calculation lists no results, so
+        # its cards are the groups'.
         from molbuilder.template import GROUPS
         ids = {}
         for rung in TRANSPORT_STAGES:
             got = web.get(f"/api/transport/schema?engine=siesta&surface=rung&rung={rung}").get_json()
             ids[rung] = {f["id"] for s in got["schema"]["sections"] for f in s["fields"]}
-            assert got["schema"]["stage"] == rung
+            assert got["schema"]["card_prefix"] == rung
             assert got["schema"]["stage_words"].startswith(rung + "'s own values")
-            assert tuple(w["group"] for w in got["schema"]["group_words"]) == GROUPS
+            assert tuple(c["card"] for c in got["schema"]["cards"]) == GROUPS
         for a in TRANSPORT_STAGES:
             for b in TRANSPORT_STAGES:
                 if a < b:

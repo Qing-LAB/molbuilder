@@ -324,14 +324,13 @@ def config_class_for(task, generators=None):
 
     ONE OWNER for the engine -> config resolution.  `web/blueprints/build.py`
     renders this task's preflight findings for the browser, and
-    `issues_to_json` needs the dataclass to resolve each finding's
-    ``workflow_group`` -- without it the key is OMITTED and the page cannot
-    attach the finding to its workflow-group card (`web/ui-contract.md`
-    Rule 2).
+    `issues_to_json` needs the dataclass to resolve each finding's ``card``
+    -- without it the key is OMITTED and the page cannot attach the finding
+    to the card its field is drawn in (`web/ui-contract.md` § 5.1).
 
-    Returns the CLASS, not an instance: `resolve_workflow_group` reads
-    ``metadata["workflow_group"]`` off the field declarations, so no values are
-    needed and constructing one would invent defaults that are not this task's.
+    Returns the CLASS, not an instance: `card_of_finding` asks the catalogue
+    of the class's engine (`template.items_of`), so no values are needed and
+    constructing one would invent defaults that are not this task's.
 
     ``None`` for an engine this backend has no generator for -- which
     :func:`preflight` reports as its first error, and which leaves the caller

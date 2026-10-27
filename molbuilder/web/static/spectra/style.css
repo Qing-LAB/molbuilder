@@ -1,7 +1,7 @@
 /* molbuilder Spectra-tab styles -- the /spectra PAGE sheet ONLY.
  *
- * Composition only: the banner's padding, the action row's margin, the
- * .is-locked form fade and the room the .status line keeps.  The generic
+ * Composition only: the banner's padding, the action row's margin and
+ * the room the .status line keeps.  The generic
  * controls are page-shell's.
  *
  * The spectra-INSPECTOR component classes (.spectra-section / .spectra-section-header /
@@ -53,10 +53,4 @@ html, body { height: 100%; }
 /* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
  * page-shell.css (`web/ui-contract.md` § 1.1). */
 
-/* Selector compatibility: a locked es-* value field gets faded so
- * the user sees which knob is active. */
-.is-locked { opacity: 0.45; }
-.is-locked input, .is-locked select, .is-locked textarea {
-    pointer-events: none;
-}
 

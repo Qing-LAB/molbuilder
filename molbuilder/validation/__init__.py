@@ -46,8 +46,9 @@ from ..structure import Structure
 # The checks this entry point runs.
 from .chemistry import check_electronic_state
 from .geometry import validate_geometry
-from .metadata import (_check_fixed_on_every_rung, _check_values,
-                       _validate_config_metadata, not_carried)
+from .metadata import (_check_fixed_on_every_rung, _check_inactive, _inactive,
+                       _check_values, _validate_config_metadata,
+                       not_carried)
 from .pyscf import _validate_pyscf
 from .siesta import _validate_siesta
 
@@ -241,13 +242,19 @@ def validate(struct: Structure, cfg, *,
     # displacement SIESTA divides by.  Reported after the metadata's own, in
     # the order this function has always emitted.
     refusals = _check_values(cfg, calculation)
+    # ...AND WHAT ENTERS NOTHING HERE -- a greyed-out field's (`engines/
+    # template.md` § 5, `active_when`): said once below, and no advice is
+    # given about it -- no recommended range, no probe's displacement.
+    inactive = _inactive(cfg, calculation)
     issues += _validate_config_metadata(
         cfg, refused={i.where.split(".", 1)[1] for i in refusals},
-        foreign=not_carried(cfg, calculation))
+        foreign=not_carried(cfg, calculation), inactive=frozenset(inactive))
     # WHAT EVERY RUNG FIXES ALIKE (`engines/template.md` § 6.4): a config
     # that skipped `resolve` holds whatever its caller put there.
     issues += _check_fixed_on_every_rung(cfg, calculation)
     issues += refusals
+    # A VALUE THAT ENTERS NOTHING HERE: said once.
+    issues += _check_inactive(cfg, calculation, inactive)
     # THE ELECTRONIC STATE, once, for every engine and every kind
     # (`science/chemistry-correctness.md` § 2a): the state the deck will be
     # written from, judged by one family of findings.
@@ -280,6 +287,7 @@ def validate(struct: Structure, cfg, *,
     # refusal alone (`engines/template.md` § 5.3).
     engine_kw["refused"] = frozenset(i.where.split(".", 1)[1]
                                      for i in refusals)
+    engine_kw["inactive"] = frozenset(inactive)
     # The KIND rides along so an engine validator can defer a family the
     # kind's own science owns (the double-fire dedup, ruled 2026-08-21:
     # one fact, one finding -- on a vibration deck the grid and frozen-atom
@@ -347,7 +355,8 @@ _KIND_VALIDATORS: dict = {}
 
 
 def _validate_vibration_kind(struct: Structure, cfg, cell, *,
-                             design=None, **_) -> List[Issue]:
+                             design=None, inactive=frozenset(),
+                             **_) -> List[Issue]:
     """The vibration kind's science (grid / amplitude / frozen atoms /
     the relaxation record), over the deck's own config view -- the charge
     and spin are the electronic state's one family, asked by ``validate``."""
@@ -355,7 +364,8 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
     if isinstance(cfg, PySCFConfig):
         from ..pyscf.vibration_deck import science_view
         from .spectra import spectra_render_checks
-        return list(spectra_render_checks(struct, science_view(cfg, struct)))
+        return list(spectra_render_checks(struct, science_view(cfg, struct),
+                                          inactive=inactive))
     from ..config.siesta import SiestaConfig
     if isinstance(cfg, SiestaConfig):
         from .spectra import siesta_vibration_checks

@@ -67,7 +67,7 @@ named once, read by the writer and the reader alike:
 |---|---|
 | name, dimensions | the variable, over its axes — every axis a row of § 2a and a coordinate of its own name, so a reader selects by value (`transmission.sel(bias_v=0.2)`) |
 | `kind` | `given` (an input as stated), `raw` (as the engine printed it), `measured` (read off the structures — a frame set's rows, [`structure.md`](?doc=model/structure.md) § 2.2f), `derived` (molbuilder's computation), `state` (what happened: a run's state, why a value is missing), `coordinate` |
-| `units` · `long_name` · `definition` | one spelling a unit (`angstrom`, `A`, `eV`); what it is; how it is obtained — the formula for a derived one |
+| `units` · `long_name` · `definition` | one spelling a unit (`angstrom`, `A`, `eV`); what it is; how it is obtained — the formula for a derived one. **A value cited from another record keeps what it means**: a variable holding a row a structure states (a frame set's, [`structure.md`](?doc=model/structure.md) § 2.2f) takes its `definition` from the row's meaning as written (`note`), so a number carried into a file still says what it is and how it was obtained |
 | `source` | for a raw one, the file it was read from |
 | `auxiliary` | a label beside an axis (CF auxiliary coordinate, named in each variable's `coordinates`): an atom's element, a frame's folder |
 | `atom_index` | its values are atom indices, counting by the file's atom index map (`free_atom`, a digest's `device_orbital_atom`) |

@@ -58,17 +58,30 @@ def _render(cfg: PySCFConfig, struct: Structure = None) -> str:
 def test_amplitude_advisory_reaches_the_person():
     """A 0.5 A displacement is outside the accepted window; the deck
     still renders (a warn is advice, not a refusal) and the warning
-    goes where a person sees it."""
+    goes where a person sees it -- with the orbital probe asked, the run
+    the displacement enters (a value that enters nothing gets no advice,
+    `engines/template.md` § 5)."""
     err, old = io.StringIO(), sys.stderr
     sys.stderr = err
     try:
-        text = _render(PySCFConfig(displacement_amplitude_ang=0.5))
+        text = _render(PySCFConfig(displacement_amplitude_ang=0.5,
+                                   es_mode_selection="all"))
     finally:
         sys.stderr = old
     assert "Hessian" in text, "the deck did not render"
     assert "0.02-0.20" in err.getvalue(), (
         "the amplitude advisory never surfaced -- the science gate "
         "is not composed into the deck's render")
+    # ...and under `skip`, where the displacement enters nothing, none.
+    # MUTATION THIS MUST FAIL AGAINST: the probe's advice given whatever the
+    # selector (a person told to change a greyed-out field).
+    err = io.StringIO()
+    sys.stderr = err
+    try:
+        _render(PySCFConfig(displacement_amplitude_ang=0.5))
+    finally:
+        sys.stderr = old
+    assert "0.02-0.20" not in err.getvalue(), err.getvalue()
 
 
 def test_the_kind_door_runs_the_same_gate_body():

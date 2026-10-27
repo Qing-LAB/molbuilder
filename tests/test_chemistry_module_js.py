@@ -149,6 +149,7 @@ _RESP = json.dumps({
             "n_electrons": 43, "finite": True,
         },
     },
+    "engine_words": {"siesta": "SIESTA", "pyscf": "PySCF"},
 })
 
 

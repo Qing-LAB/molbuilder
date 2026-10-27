@@ -501,14 +501,15 @@ def bench(tmp_path_factory) -> RealRun:
 #: literature value.
 CO2_SETTINGS = {"mixing_weight": 0.25, "mesh_cutoff": 150.0}
 
-#: THE OPTICAL PHASE ASKED FOR, on the shared run: the two stretches --
-#: modes 3 and 4 of four, 1-based (`spectra.selection.select_modes`), the one
-#: whose oxygens move apart and the one whose oxygens move together, so the
-#: Raman view can be held to CO2's symmetry -- so the run's optical calls are
-#: five, the equilibrium and each mode's two sides; the optical mesh the one
-#: point an isolated molecule's box needs.
-CO2_OPTICAL = {"es_mode_selection": "explicit", "es_explicit_indices": "3,4",
-               "optical_mesh": [1, 1, 1]}
+#: THE OPTICAL PHASE ASKED FOR, on the shared run: Compute Raman, for the
+#: modes above 1000 cm-1 -- the two stretches, modes 3 and 4 of four, 1-based
+#: (`spectra.selection.select_modes`); the bends sit near 620 cm-1 at this
+#: mesh -- the one whose oxygens move apart and the one whose oxygens move
+#: together, so the Raman view can be held to CO2's symmetry; so the run's
+#: optical calls are five, the equilibrium and each mode's two sides; the
+#: optical mesh the one point an isolated molecule's box needs.
+CO2_OPTICAL = {"compute_raman": True, "raman_modes": "range",
+               "raman_freq_min_cm1": 1000.0, "optical_mesh": [1, 1, 1]}
 
 
 def co2_vibration(tree: Path, where: str = "P/freq/CO2", *,

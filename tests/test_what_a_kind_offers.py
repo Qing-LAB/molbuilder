@@ -104,18 +104,19 @@ def test_a_pyscf_vibration_is_restricted(isolated_projects_root):
 def test_pcm_reaches_one_route(isolated_projects_root):
     """vibration.md § 4.6: with a solvent, the frequencies of a structure
     with no atoms held, IR and Raman off -- the one route whose Hessian
-    carries the solvent's response.  Raman is on by default, so a solvent
-    alone is refused, naming the route and what turns it off.
+    carries the solvent's response.  Infrared is on by default, so a
+    solvent alone is refused, naming the route and what turns it off.
 
-    MUTATION THIS MUST FAIL AGAINST: the route rule removed (the Raman loop
-    runs without the solvent's response, under an info saying it has it)."""
+    MUTATION THIS MUST FAIL AGAINST: the route rule removed (the dipole
+    route runs without the solvent's response, under an info saying it has
+    it)."""
     _d, _s, said = _pyscf_vibration(
         isolated_projects_root,
         PySCFConfig(job_name="JOB", already_relaxed=True, solvent="water"),
         refused=True)
     assert "PCM solvation (water) reaches one route" in said, said
-    assert "Raman -- its polarizability loop" in said, said
-    assert "Turn Raman off" in said, said
+    assert "IR -- its dipole-derivative route" in said, said
+    assert "Turn IR off" in said, said
     _d, _s, deck = _pyscf_vibration(
         isolated_projects_root,
         PySCFConfig(job_name="JOB", already_relaxed=True, solvent="water",

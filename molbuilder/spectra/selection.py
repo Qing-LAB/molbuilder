@@ -1,17 +1,19 @@
-"""Which modes the per-mode electronic-structure probe runs on.
+"""Which modes a per-mode step runs on -- PySCF's orbital probe, SIESTA's
+optical calls.
 
-One function, :func:`select_modes`, and the PySCF vibration script imports
-it: this file travels beside the job inside ``mb_pyscf.pyz``
-(``runwrap.PYSCF_COMPANIONS``, ``engines/pyscf.md`` § 3), where molbuilder is
-not installed -- so it imports nothing.
+One function, :func:`select_modes`, and both jobs import it: this file
+travels beside the job inside ``mb_pyscf.pyz`` and ``mb_vibration.pyz``
+(``engines/pyscf.md`` § 3, ``engines/vibration.md`` § 5.11), where
+molbuilder is not installed -- so it imports nothing.
 
-The three selectors (`engines/vibration.md` § 4.8):
+The selectors (`engines/vibration.md` § 3.1, § 4.8):
 
-    skip      -> []  (no probe)
-    all       -> every mode inside the frequency window
-    explicit  -> exactly the listed modes; the window is IGNORED --
-                 the person named specific modes, and the window does
-                 not override that
+    skip      -> []  (the probe's: none)
+    all       -> every mode inside the frequency window, when one is given
+    range     -> every mode inside the frequency window (Raman for's)
+    explicit  -> exactly the listed modes (the probe's); the window is
+                 IGNORED -- the person named specific modes, and the
+                 window does not override that
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ def select_modes(frequencies_cm1: Sequence[float], selection: str, *,
                  explicit: Sequence[int] = (),
                  freq_min_cm1: Optional[float] = None,
                  freq_max_cm1: Optional[float] = None) -> List[int]:
-    """The 1-based numbers of the modes the probe runs on.
+    """The 1-based numbers of the modes a per-mode step runs on.
 
     ``frequencies_cm1`` holds every mode's frequency in its order, so mode
     ``n`` is ``frequencies_cm1[n - 1]``; an imaginary mode's is negative.
@@ -50,12 +52,12 @@ def select_modes(frequencies_cm1: Sequence[float], selection: str, *,
         return []
     if selection == "explicit":
         return [n for n in explicit if 1 <= n <= len(frequencies_cm1)]
-    if selection == "all":
+    if selection in ("all", "range"):
         return [n for n, f in enumerate(frequencies_cm1, start=1)
                 if (freq_min_cm1 is None or f >= freq_min_cm1)
                 and (freq_max_cm1 is None or f <= freq_max_cm1)]
-    raise ValueError(f"es_mode_selection {selection!r}: the selectors are "
-                     f"'skip', 'all' and 'explicit'")
+    raise ValueError(f"mode selection {selection!r}: the selectors are "
+                     f"'skip', 'all', 'range' and 'explicit'")
 
 
 def parse_index_list(expression: str, *, first: int = 0,

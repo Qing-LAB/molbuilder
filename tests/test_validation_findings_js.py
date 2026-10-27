@@ -4,7 +4,7 @@ lib/validation-findings.js is the ONE module that puts a scientific finding on
 screen.  These tests execute it under node against a minimal DOM stub and assert
 the behaviours the three per-tab renderers it replaced got wrong:
 
-  * an issue whose ``workflow_group`` names a card the form schema did NOT
+  * an issue whose ``card`` names a card the form schema did NOT
     render was silently dropped by all three (they iterated the card panels, so
     a bucket with no panel was built and never read) -- R3;
   * an unrecognised or missing severity was dropped by the spectra copy -- R4;
@@ -55,9 +55,9 @@ var doc = { createElement: function (t) { return new El(t); } };
 function FormScope(cards) { this._cards = cards; }
 FormScope.prototype.querySelectorAll = function () { return this._cards; };
 
-function card(role) {
+function card(name) {
   var ul = new El("ul");
-  ul.setAttribute("data-workflow-group", role);
+  ul.setAttribute("data-card", name);
   ul.hidden = true;
   return ul;
 }
@@ -98,8 +98,8 @@ class TestNothingIsDropped:
     with docs/web/ui-contract.md § 5.1 for the display side.
 
     INVARIANT: every finding the server sends appears somewhere.  A finding whose
-    ``workflow_group`` names a form card the schema DID render goes on that card;
-    anything else — no group, or a group with no rendered card — goes to the
+    ``card`` names a form card the schema DID render goes on that card;
+    anything else — no card, or a card the form did not draw — goes to the
     residual panel.  ``render`` returns the counts it actually wrote, and
     ``total`` always equals ``issues.length``.
 
@@ -116,9 +116,9 @@ class TestNothingIsDropped:
         var scope = new FormScope([card("profile")]);   // NO "budget" card
         var s = F.render([
             {{severity: "warn",  message: "tagged for a card that exists",
-              where: "config.a", workflow_group: "profile"}},
+              where: "config.a", card: "profile"}},
             {{severity: "error", message: "tagged for a card that does NOT exist",
-              where: "config.b", workflow_group: "budget"}},
+              where: "config.b", card: "budget"}},
         ], {{panel: panel, formScope: scope}});
         console.log(JSON.stringify({{summary: s,
             residual: {_rows("panel")},
@@ -140,7 +140,7 @@ class TestNothingIsDropped:
         var issues = [];
         for (var i = 0; i < 7; i++) {{
             issues.push({{severity: "info", message: "m" + i,
-                          workflow_group: (i % 2) ? "stage" : "nope"}});
+                          card: (i % 2) ? "stage" : "nope"}});
         }}
         var s = F.render(issues, {{panel: panel, formScope: scope}});
         console.log(JSON.stringify({{summary: s,
@@ -150,12 +150,36 @@ class TestNothingIsDropped:
         assert got["summary"]["total"] == 7
         assert got["onCard"] + got["inResidual"] == 7
 
+    def test_a_form_drawn_in_parts_finds_the_card_in_any_part(self):
+        """`form-schema.md` § 1.3: the Spectrum tab draws one engine's form
+        in two parts -- the settings both engines share, and the engine's
+        own -- and passes both as the scope.  A finding about a shared
+        setting lands on its card in the first part, one about the engine's
+        own on its card in the second; neither falls to the residual panel.
+        MUTATION THIS MUST FAIL AGAINST: a list scope read as one element
+        (both findings in the residual panel)."""
+        got = _run(f"""
+        var panel = new El("ul");
+        var common = new FormScope([card("raman")]);
+        var own = new FormScope([card("modes")]);
+        var s = F.render([
+            {{severity: "error", message: "shared", card: "raman"}},
+            {{severity: "warn",  message: "own",    card: "modes"}},
+        ], {{panel: panel, formScope: [common, own]}});
+        console.log(JSON.stringify({{residual: s.residual,
+            shared: {_rows("common._cards[0]")},
+            mine: {_rows("own._cards[0]")}}}));
+        """)
+        assert got["residual"] == 0
+        assert [r["message"] for r in got["shared"]] == ["shared"]
+        assert [r["message"] for r in got["mine"]] == ["own"]
+
     def test_no_form_scope_sends_everything_to_residual(self):
         got = _run(f"""
         var panel = new El("ul");
         var s = F.render([
-            {{severity: "warn", message: "grouped but no form on this page",
-              workflow_group: "profile"}},
+            {{severity: "warn", message: "carded but no form on this page",
+              card: "profile"}},
         ], {{panel: panel}});
         console.log(JSON.stringify({{summary: s, rows: {_rows("panel")}}}));
         """)
@@ -241,7 +265,7 @@ class TestStaleStateCannotSurvive:
         residual markup was missing, so a stale finding stayed up."""
         got = _run("""
         var scope = new FormScope([card("profile")]);
-        F.render([{severity: "warn", message: "old", workflow_group: "profile"}],
+        F.render([{severity: "warn", message: "old", card: "profile"}],
                  {panel: new El("ul"), formScope: scope});
         var before = scope._cards[0].children.length;
         F.render([], {formScope: scope});          // no panel at all

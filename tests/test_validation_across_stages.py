@@ -176,7 +176,7 @@ def test_a_single_run_response_is_unchanged():
     # `stage` omitted when absent is a DECISION (`Issue.to_json`), not a shape.
     assert "stage" not in d
     # The key set is a Python<->JS rename tripwire: `validation-findings.js`
-    # reads `severity`, `message`, `where` and `workflow_group` by name, and
+    # reads `severity`, `message`, `where` and `card` by name, and
     # the node harness that would catch a rename SKIPS here (#79).  One writer
     # (`Issue.to_json`).
     assert set(d) == {"severity", "message", "where"}

@@ -190,20 +190,11 @@ class TestFormSchemasRender:
             self, page, flask_server, engine):
         """Every field the catalogue asks for lands INSIDE a card.
 
-        `form-schema.js` draws one card per name in its own
-        ``WORKFLOW_GROUP_ORDER`` and renders a field whose group is not in
-        that list bare, appended straight to the container — the same
-        invisible outcome as no group at all.  So adding a group to the
-        catalogue without adding it to the renderer looks exactly like the
-        bug the grouping was introduced to fix.
-
-        Asked of the rendered DOM because comparing the renderer's
-        `WORKFLOW_GROUP_ORDER` with the catalogue's groups as SETS passes in
-        two ways while the page is still wrong: a role listed in
-        ``WORKFLOW_GROUP_ORDER`` but missing from ``WORKFLOW_GROUP_META``
-        fails the `if` that admits a field to a card, and a card whose
-        section map comes out empty is skipped entirely.  Here the question
-        is asked of the DOM, where the answer is the same one the person gets.
+        `form-schema.js` draws the cards the schema lists (``cards``) and
+        renders a field whose ``card`` is not among them bare, appended
+        straight to the container -- the same invisible outcome as no card
+        at all.  Asked of the rendered DOM, where the answer is the same one
+        the person gets.
         """
         _open_build(page, flask_server)
         sel = f"#{engine}-form-container"
@@ -226,10 +217,9 @@ class TestFormSchemasRender:
             f"loose' would be true of an empty page")
         assert loose["bare"] == [], (
             f"{engine}: section(s) {loose['bare']} rendered below the cards "
-            f"instead of inside one.  Their workflow_group is not among the "
-            f"roles form-schema.js draws, so the catalogue asks for a card "
-            f"the renderer does not know about -- add it to "
-            f"WORKFLOW_GROUP_ORDER *and* WORKFLOW_GROUP_META.")
+            f"instead of inside one: their card is not among the schema's "
+            f"`cards` (`template.cards`), so the renderer has nowhere to "
+            f"draw them.")
 
     def test_engine_key_badges_present_after_schema_render(
             self, page, flask_server):
@@ -601,7 +591,7 @@ class TestFindingsSitBesideTheirField:
         # And it is not ALSO duplicated into the card list.
         in_card = page.evaluate(
             "() => document.querySelectorAll("
-            "  '.card-issues[data-workflow-group] .issue-item').length")
+            "  '.card-issues[data-card] .issue-item').length")
         assert in_card == 0, f"{in_card} finding(s) also sitting in a card list"
 
     def test_the_warning_clears_from_the_field_when_the_value_is_fixed(
@@ -672,7 +662,7 @@ class TestFindingsSitBesideTheirField:
             timeout=10_000)
         in_card = page.evaluate(
             "() => document.querySelectorAll("
-            "  '.card-issues[data-workflow-group] .issue-item').length")
+            "  '.card-issues[data-card] .issue-item').length")
         assert in_card == 0, f"{in_card} finding(s) also sitting in a card list"
 
 

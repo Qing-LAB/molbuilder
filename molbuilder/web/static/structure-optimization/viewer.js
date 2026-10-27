@@ -170,7 +170,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     function renderIssues(panelId, issues, formContainerId, reveal) {
         const f = (window.molbuilder || {}).validationFindings;
-        if (!f) return { total: 0, residual: 0, byGroup: {}, byField: {},
+        if (!f) return { total: 0, residual: 0, byCard: {}, byField: {},
                          counts: { error: 0, warn: 0, info: 0 } };
         // The engine is the container's own name -- the two are one choice.
         const engine = (formContainerId || "").startsWith("pyscf")
@@ -424,10 +424,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     const _chemistry = window.molbuilder.chemistry.attach({
         kind: "optimization",
         forms: () => ({
-            siesta: { host: $("siesta-form-container"),
-                      schema: formSchemas.siesta },
-            pyscf:  { host: $("pyscf-form-container"),
-                      schema: formSchemas.pyscf },
+            siesta: [{ host: $("siesta-form-container"),
+                       schema: formSchemas.siesta }],
+            pyscf:  [{ host: $("pyscf-form-container"),
+                       schema: formSchemas.pyscf }],
         }),
         structure: _structureForRequest,
     });

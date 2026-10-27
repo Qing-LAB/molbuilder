@@ -156,7 +156,7 @@ def _check_periodic_structure_in_a_gas_phase_script(
         f"lattice and no k-points, so your cell ({cell_text}) is NOT used and "
         f"the result is an isolated cluster of {struct.n_atoms} atoms. For a "
         f"periodic calculation use SIESTA, or set the axes to 'isolated' "
-        f"(Modify → Cell tab) if an isolated cluster is what you want.",
+        f"(the Molbuilder tab's Cell page) if an isolated cluster is what you want.",
         "cell.periodic_in_gas_phase",
     )]
 

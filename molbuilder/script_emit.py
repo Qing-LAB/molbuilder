@@ -194,7 +194,7 @@ class BenchField:
     type_: str                                # benchmark_declarable_types()
     range_: Optional[Tuple[float, float]] = None
     unit: Optional[str] = None
-    group: Optional[str] = None               # workflow_group
+    group: Optional[str] = None               # the catalogue's group
     choices: Optional[Tuple[str, ...]] = None  # the enum's members
     optional: bool = False                    # unset is a distinct state
 
@@ -495,18 +495,18 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
 
 
 def emit_vibration_record(payload: Mapping[str, Any]) -> str:
-    """The VIBRATION block, format v4: the facts a SIESTA force-constant
+    """The VIBRATION block, format v5: the facts a SIESTA force-constant
     run's finish reads that no SIESTA keyword states (`engines/vibration.md`
     § 5.3, § 5.5, § 5.11 § 4) -- ``force_criterion_ev_ang`` (the tolerance
     the reference geometry is relaxed to, `prep`'s), ``temperature_K`` (the
     thermochemistry's, from the template), ``already_relaxed`` (the
     person's statement, as made), ``masses_amu`` (every atom's mass in the
-    deck's order, stated by `prep`, I3) and ``selection`` (the mode
-    selection the optical phase applies, v4).  Written by the framework
+    deck's order, stated by `prep`, I3) and ``raman`` (*Raman for*, as the
+    optical phase applies it -- ``None`` with Compute Raman off, v5).  Written by the framework
     from :attr:`DeckSpec.vibration`; read back by
     `deck_record.extract_vibration_record`, beside the job as on the host."""
     out: List[str] = [begin_marker(BLOCK_VIBRATION),
-                      "# format: molbuilder-vibration/v4"]
+                      "# format: molbuilder-vibration/v5"]
     out.extend(f"# {line}" for line in _compact_json_lines(dict(payload)))
     out.append(end_marker(BLOCK_VIBRATION))
     return "\n".join(out)

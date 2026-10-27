@@ -174,12 +174,15 @@
         return { drawn: drawn, hint: null, hintKind: "" };
     }
 
-    /** A value as a person reads it -- a mesh as "4, 4, 1", a box as on/off. */
+    /** A value as a person reads it -- a mesh as "4, 4, 1", a box as on/off,
+     *  a choice as its words (`choice_labels`). */
     function show(v, f) {
         const unit = f.unit ? " " + f.unit : "";
         if (Array.isArray(v)) return v.join(", ") + unit;
         if (v === true) return "on";
         if (v === false) return "off";
+        const words = f.choice_labels || {};
+        if (words[String(v)] !== undefined) return words[String(v)];
         return String(v) + unit;
     }
 
@@ -191,7 +194,8 @@
         const then = st.hintKind === "template"
                 ? show(st.hint, f) + " " + said(ctx, f.source)
             : st.hintKind === "optional" ? (f.null_label || "")
-            : st.hintKind === "default" ? "recommended " + show(st.hint, f)
+            : st.hintKind === "default" && show(st.hint, f)
+                ? "recommended " + show(st.hint, f)
             : "";
         return [said(ctx, "default"), then].filter(Boolean).join(" \u00b7 ");
     }
@@ -227,8 +231,12 @@
             (f.optional || f.null_option) ? (f.null_label || "(default)")
                                            : "(" + blankWords(f, st, ctx) + ")"));
         let picked = false;
+        // A CHOICE READS AS ITS WORDS where the catalogue gives them
+        // (`choice_labels`); its value is the choice itself.
+        const words = f.choice_labels || {};
         for (const c of f.choices) {
-            const opt = el("option", { value: String(c) }, String(c));
+            const opt = el("option", { value: String(c) },
+                           words[String(c)] || String(c));
             if (st.drawn !== null && c === st.drawn) {
                 opt.selected = true;
                 picked = true;
@@ -544,24 +552,29 @@
     /* ---------- public API ---------- */
 
     // THE CARDS AND THEIR WORDS ARE THE SCHEMA'S (form-schema.md § 1.3):
-    // each field's catalogue ``group`` arrives as ``workflow_group``, and
-    // ``schema.group_words`` -- from ``template.GROUP_WORDS``, the one home
-    // -- names the cards, in the vocabulary's order, with the title and the
-    // line each card says.  A form of one stage's own values names the stage
-    // (``schema.stage``) on every card and says once whose its values are
-    // (``schema.stage_words``).  UNTAGGED fields render bare in their own
-    // section (no workflow-group wrapper).
+    // each field names the card it is drawn in (``card``, the template's
+    // one rule, `template.card_of` -- the rule a finding is placed by too),
+    // and ``schema.cards`` lists the cards in drawing order, each with its
+    // title, its line, and whether its fields sit under the category
+    // legends (a result's card holds them bare: its title says what they
+    // are for).  A form that names its cards -- one stage's own values, one
+    // engine's own settings -- sends the name once (``schema.card_prefix``),
+    // and a stage's form says once whose its values are
+    // (``schema.stage_words``).  A field naming no card renders bare in its
+    // own section.
 
     function renderForm(container, schema, opts) {
         if (!container || !schema || !Array.isArray(schema.sections)) {
             throw new Error("form-schema.renderForm: bad container/schema");
         }
         // FOLDABLE CARDS are the CALLER's choice (form-schema.md § 1.3):
-        // `opts.foldable` draws each workflow-group card as a <details>
-        // whose header is its <summary>, and `opts.folded(role, fields)`
-        // says which start closed.  The Build tab passes nothing and gets
-        // open <section> cards; the transport tab folds per rung
-        // (transport.md § 3.8.2a).
+        // `opts.foldable` draws each card as a <details> whose header is
+        // its <summary>, and `opts.folded(card, fields)` says which start
+        // closed.  The Build tab passes nothing and gets open <section>
+        // cards; the transport tab folds per rung (transport.md § 3.8.2a).
+        // A FORM DRAWN IN PARTS names the parts drawn with this one
+        // (`opts.alongside`, each {host, schema}), where a field's
+        // `active_when` may find the fields it waits on (§ 1.3).
         opts = opts || {};
         const foldable = !!opts.foldable;
         // WHAT THIS SURFACE'S FIELDS HOLD (form-schema.md § 1.1): the
@@ -579,50 +592,25 @@
         _staleWarnings.clear();
         container.innerHTML = "";
 
-        // Two passes:
-        //
-        //   PASS 1: walk every field once, bucketing into
-        //     - tagged fields → their role's bucket, keyed by
-        //       (role, original_section_name) so a card renders with
-        //       a legend like "SCF" inside it.
-        //     - untagged fields → original section, rendered bare
-        //       AFTER the workflow-group cards.
-        //
-        //   PASS 2: render the cards in the schema's group order, then the
-        //     untagged sections.
-        const words = {};
-        const cardOrder = [];
-        (schema.group_words || []).forEach(function (w) {
-            words[w.group] = w;
-            cardOrder.push(w.group);
-        });
-        const tagged = {};
-        for (const role of cardOrder) {
-            tagged[role] = new Map();
-        }
+        // PASS 1: every field into its card, keyed by (card, its category)
+        // so a group's card keeps the legend inside it; a field naming no
+        // card the schema draws into a bare section after the cards.
+        const cards = schema.cards || [];
+        const byCard = {};
+        for (const c of cards) byCard[c.card] = new Map();
         const untagged = [];
-
         for (const sect of schema.sections) {
-            const remainingFields = [];
+            const loose = [];
             for (const f of sect.fields) {
-                const role = f.workflow_group;
-                if (role && tagged[role]) {
-                    if (!tagged[role].has(sect.name)) {
-                        tagged[role].set(sect.name, []);
-                    }
-                    tagged[role].get(sect.name).push(f);
+                const bucket = f.card && byCard[f.card];
+                if (bucket) {
+                    if (!bucket.has(sect.name)) bucket.set(sect.name, []);
+                    bucket.get(sect.name).push(f);
                 } else {
-                    remainingFields.push(f);
+                    loose.push(f);
                 }
             }
-            if (remainingFields.length > 0) {
-                // The leftover untagged fields, rendered bare in their
-                // own section.
-                untagged.push({
-                    name:        sect.name,
-                    fields:      remainingFields,
-                });
-            }
+            if (loose.length) untagged.push({ name: sect.name, fields: loose });
         }
 
         // A FORM OF ONE STAGE'S OWN VALUES says whose they are, once,
@@ -631,25 +619,25 @@
             container.appendChild(el("p", { class: "hint schema-stage-words" },
                                      schema.stage_words));
         }
-        // PASS 2 — Render workflow-group cards in the schema's order.
-        for (const role of cardOrder) {
-            const sectMap = tagged[role];
+        // PASS 2 -- the cards in the schema's order.
+        for (const meta of cards) {
+            const sectMap = byCard[meta.card];
             if (sectMap.size === 0) continue;
-            const meta = words[role];
             const fieldsInCard = [];
             for (const fs_ of sectMap.values()) fieldsInCard.push(...fs_);
             const folded = foldable && typeof opts.folded === "function"
-                && !!opts.folded(role, fieldsInCard);
+                && !!opts.folded(meta.card, fieldsInCard);
             const card = el(foldable ? "details" : "section",
-                { class: "workflow-group workflow-group--" + role
+                { class: "workflow-group workflow-group--" + meta.card
                          + (foldable ? " fold" : "") });
             if (foldable) card.open = !folded;
             const header = el(foldable ? "summary" : "header",
                               { class: "workflow-group-header" });
             header.appendChild(el("h3",
                 { class: "workflow-group-title" },
-                schema.stage ? schema.stage + " \u00b7 " + meta.title
-                             : meta.title));
+                schema.card_prefix
+                    ? schema.card_prefix + " \u00b7 " + meta.title
+                    : meta.title));
             if (foldable) {
                 // A folded card still says how much it holds.
                 header.appendChild(el("span",
@@ -665,42 +653,45 @@
             const body = foldable
                 ? el("div", { class: "workflow-group-body" }) : card;
             if (foldable) card.appendChild(body);
-            body.appendChild(el(
-                "p",
-                { class: "workflow-group-subtitle" },
-                meta.subtitle,
-            ));
-            // Render each original section's tagged-field subset as
-            // a mini-fieldset inside the card.  The legend keeps the
-            // user's mental map ("the DM.Tolerance field belongs to
-            // SCF") while moving it into the workflow-group context.
-            for (const [sectName, fields] of sectMap.entries()) {
-                const fs = el("fieldset", { class: "schema-section" });
-                fs.appendChild(el("legend", null, sectName));
-                for (const f of fields) {
-                    fs.appendChild(renderField(f, ctx));
-                }
-                body.appendChild(fs);
+            if (meta.subtitle) {
+                body.appendChild(el("p", { class: "workflow-group-subtitle" },
+                                    meta.subtitle));
             }
-            // Per-card issues panel — appended at the bottom of the
-            // card so validator findings tagged with this workflow-
-            // group land WITH the fields they concern
-            // (docs/web/ui-contract.md § 5.1).  Hidden
-            // until ``renderIssues`` populates it; tagged with the
-            // role so the JS render path can find it via
-            // ``[data-workflow-group="<role>"]``.
+            // A group's card keeps each category as a fieldset with its
+            // legend -- the field's question ("SCF") inside the card's
+            // when; a result's card holds its fields in one fieldset with
+            // no legend, its title already saying what they are for, the
+            // basic ones first -- the switch before what it switches on.
+            if (meta.legends === false) {
+                const fs = el("fieldset",
+                              { class: "schema-section schema-section--bare" });
+                const basicFirst = fieldsInCard.slice().sort((a, b) =>
+                    (a.tier === "advanced") - (b.tier === "advanced"));
+                for (const f of basicFirst) fs.appendChild(renderField(f, ctx));
+                body.appendChild(fs);
+            } else {
+                for (const [sectName, fields] of sectMap.entries()) {
+                    const fs = el("fieldset", { class: "schema-section" });
+                    fs.appendChild(el("legend", null, sectName));
+                    for (const f of fields) fs.appendChild(renderField(f, ctx));
+                    body.appendChild(fs);
+                }
+            }
+            // The card's own findings panel, at its bottom: a finding about
+            // a field of this card lands here when its field is not drawn
+            // (`validation-findings.js`, ui-contract.md § 5.1), found by its
+            // ``data-card``.  Hidden until a finding lands.
             body.appendChild(el(
                 "ul",
-                { "class":                "issues-panel card-issues",
-                  "data-workflow-group":  role,
-                  "hidden":               "",
-                  "aria-live":            "polite" },
+                { "class":      "issues-panel card-issues",
+                  "data-card":  meta.card,
+                  "hidden":     true,
+                  "aria-live":  "polite" },
             ));
             container.appendChild(card);
         }
 
-        // PASS 2 (cont.) — Render untagged sections in their
-        // original schema order, bare (no workflow-group wrapper).
+        // ...then the fields that name no drawn card, bare.
         for (const sect of untagged) {
             const fs = el("fieldset", { class: "schema-section" });
             fs.appendChild(el("legend", null, sect.name));
@@ -709,6 +700,86 @@
             }
             container.appendChild(fs);
         }
+        _followActiveWhen(container, schema, opts.alongside || []);
+    }
+
+    /* What each container's `active_when` listeners are, so a fresh render
+     * of the same container takes the old ones off first. */
+    const _activeWhenWiring = new WeakMap();
+
+    /* A FIELD THAT ENTERS ONLY UNDER OTHER FIELDS' VALUES (`active_when`,
+     * form-schema.md § 1.3; the catalogue's, `engines/template.md` § 5):
+     * drawn greyed out while any named field holds another value -- a blank
+     * field holding its default -- and followed as they change.  A named
+     * field is looked for in this part, then in the parts the page draws
+     * with it (`opts.alongside`, each {host, schema}: the Spectrum tab's
+     * engine part beside the shared part, where *Compute Raman* is); a name
+     * no part draws is an error, never read as not met.  A lock on EDITING
+     * only: the field keeps its value and the form still sends it
+     * (`collectForm` reads no `disabled`); the settings gate says it enters
+     * nothing. */
+    function _followActiveWhen(container, schema, alongside) {
+        const off = _activeWhenWiring.get(container);
+        if (off) off();
+        _activeWhenWiring.delete(container);
+        const fields = [];
+        for (const sect of schema.sections) fields.push(...sect.fields);
+        const waiting = fields.filter((f) => f.active_when && !f.locked);
+        if (!waiting.length) return;
+        const parts = [{ host: container, schema: schema }].concat(alongside);
+        const where = {};
+        for (const p of parts.slice().reverse()) {
+            for (const sect of p.schema.sections) {
+                for (const f of sect.fields) where[f.name] = { f: f, host: p.host };
+            }
+        }
+        for (const f of waiting) {
+            for (const name of Object.keys(f.active_when)) {
+                if (!where[name]) {
+                    throw new Error("form-schema.renderForm: " + f.name
+                        + " waits on " + name + ", which no part of this "
+                        + "form draws");
+                }
+            }
+        }
+        const valueOf = (name) => {
+            const at = where[name];
+            let v = null;
+            try { v = collectField(at.f, at.host); } catch (_) { v = null; }
+            return v === null ? at.f.default : v;
+        };
+        const apply = () => {
+            for (const f of waiting) {
+                const on = Object.keys(f.active_when).every((name) =>
+                    f.active_when[name].some((v) => same(valueOf(name), v)));
+                const box = container.querySelector("#" + cssEsc(f.id));
+                const wrap = box && box.closest(".schema-field");
+                if (!wrap) continue;
+                for (const c of wrap.querySelectorAll("input, select, textarea")) {
+                    c.disabled = !on;
+                }
+                wrap.classList.toggle("is-locked", !on);
+                // ...AND SAYS WHAT IT WAITS FOR, beside it (`active_words`).
+                let why = wrap.querySelector(":scope > .lock-reason");
+                if (!why && f.active_words) {
+                    why = el("span", { class: "lock-reason" }, f.active_words);
+                    wrap.appendChild(why);
+                }
+                if (why) why.hidden = on;
+            }
+        };
+        const hosts = [...new Set(parts.map((p) => p.host))];
+        for (const h of hosts) {
+            h.addEventListener("change", apply);
+            h.addEventListener("input", apply);
+        }
+        _activeWhenWiring.set(container, () => {
+            for (const h of hosts) {
+                h.removeEventListener("change", apply);
+                h.removeEventListener("input", apply);
+            }
+        });
+        apply();
     }
 
     /* Tracks fields we've already warned about per-load so a stale
@@ -882,18 +953,22 @@
     }
 
     async function fetchSchema(engine, opts) {
-        // ``opts.calculation`` (optional) narrows the form to the
-        // parameters that apply to that calculation KIND
-        // (template.md § 6.3's `calculations` key).
-        // THE KIND IS STATED by every caller (2026-10-06): the server
-        // refuses a schema request with none.
+        // ``opts.calculation`` narrows the form to the parameters that
+        // apply to that calculation KIND (template.md § 6.3's
+        // `calculations` key) -- THE KIND IS STATED by every caller
+        // (2026-10-06): the server refuses a schema request with none.
+        // ``engine`` is an engine's form or ``"common"``, the settings
+        // every engine of the kind shares, and ``opts.surface`` ``"own"``
+        // narrows an engine's to its own (form-schema.md § 1.3).
         const calculation = opts && opts.calculation;
         if (!calculation) {
             throw new Error("form-schema.fetchSchema: the calculation kind "
                             + "is required ({calculation: ...})");
         }
         const url = "/api/build/schema/" + encodeURIComponent(engine)
-            + "?calculation=" + encodeURIComponent(calculation);
+            + "?calculation=" + encodeURIComponent(calculation)
+            + (opts.surface ? "&surface=" + encodeURIComponent(opts.surface)
+                            : "");
         const r = await fetch(url);
         const body = await r.json();
         if (!r.ok || !body.ok) {

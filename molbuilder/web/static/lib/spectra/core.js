@@ -88,7 +88,9 @@
         spectrumAbsent: null,
         modesTable:     null,
         formContainer:  null,   // wraps both panels: the generate-side gate + the edit-listener scope
-        form:           { pyscf: null, siesta: null },   // one schema-built form per engine
+        // THE FORM'S PARTS (web/spectra.md § 5): the settings both engines
+        // share, drawn once, and each engine's own.
+        form:           { common: null, pyscf: null, siesta: null },
         engineStrip:    null,
         engineNote:     null,
         sendBtn:        null,
@@ -154,7 +156,7 @@
         // Form / calculation state -- NOT covered by the results-state
         // contract.  Kept at the top level of `state` for backward
         // compat; migrates to a future workspace contract.
-        schemas:        { pyscf: null, siesta: null },   // the catalogue narrowed to (engine, vibration)
+        schemas:        { common: null, pyscf: null, siesta: null },   // the catalogue's parts for the vibration
         engine:         "pyscf",                          // the strip's choice: the description's engine
         engineChosenByUser: false,                         // a click beats the structure's default
         strip:              null,                          // the shared strip's handle (lib/tab-strip.js)
@@ -767,30 +769,38 @@
     }
 
     async function _reloadVibrationSchemas(fs) {
-        // BOTH engines' forms come from the CATALOGUE, narrowed to the
-        // vibration kind (template.md § 6.3) -- the same door and the same
-        // renderer the Structure-optimization tab uses for its two
-        // sub-forms, so a parameter is defined once and rendered the same
-        // on every tab.  Both stay mounted; the strip only shows one.
+        // THE VIBRATION'S FORM IN ITS PARTS (form-schema.md § 1.3): the
+        // settings every engine of the kind shares, drawn once above the
+        // strip, and each engine's own in its tab -- all from the CATALOGUE,
+        // through the door and the renderer the Structure-optimization tab
+        // uses, so a parameter is defined once and drawn the same
+        // everywhere.  Every part stays mounted; the strip shows one
+        // engine's.
         const mySeq = ++_schemaFetchSeq;
         try {
-            const [pyscf, siesta] = await Promise.all([
-                fs.fetchSchema("pyscf",  { calculation: "vibration" }),
-                fs.fetchSchema("siesta", { calculation: "vibration" }),
+            const [common, pyscf, siesta] = await Promise.all([
+                fs.fetchSchema("common", { calculation: "vibration" }),
+                fs.fetchSchema("pyscf",  { calculation: "vibration",
+                                           surface: "own" }),
+                fs.fetchSchema("siesta", { calculation: "vibration",
+                                           surface: "own" }),
             ]);
             // Race guard: a rapid remount can issue a newer fetch during
             // our await; the older response must not overwrite the newer.
             if (mySeq !== _schemaFetchSeq) return;
-            state.schemas.pyscf  = pyscf;
-            state.schemas.siesta = siesta;
-            for (const [engine, schema] of [["pyscf", pyscf], ["siesta", siesta]]) {
-                const host = els.form[engine];
+            const got = { common: common, pyscf: pyscf, siesta: siesta };
+            for (const part of Object.keys(got)) {
+                state.schemas[part] = got[part];
+                const host = els.form[part];
                 if (!host) continue;
                 host.innerHTML = "";
-                fs.renderForm(host, schema);
+                // An engine's part is drawn WITH the shared one: a setting
+                // of its own waits on *Compute Raman* there (`active_when`).
+                fs.renderForm(host, got[part], part === "common" ? {} : {
+                    alongside: [{ host: els.form.common,
+                                  schema: got.common }],
+                });
             }
-            wireCompatibilityListeners();
-            applyCompatibility();
             // The forms exist now: whoever shows what they will carry (the
             // page's chemistry card) asks again.
             if (opts && typeof opts.onFormsReady === "function") {
@@ -882,92 +892,44 @@
         refreshPreflightDebounced();
     }
 
+    /* AN ENGINE'S FORM, AS THE PARTS IT IS DRAWN IN (form-schema.md § 1.3):
+     * the settings every engine shares, then the engine's own -- each
+     * {host, schema}.  Everything that reads the form asks here: what it
+     * sends, its findings, the chemistry card. */
+    function _formParts(engine) {
+        return ["common", engine]
+            .map((part) => ({ host: els.form[part],
+                              schema: state.schemas[part] }))
+            .filter((p) => p.host && p.schema);
+    }
+
     /* THE FORMS THE CHEMISTRY CARD ANSWERS FOR (`lib/chemistry.js`): each
-     * engine's rendered form and its schema, so the card can ask for the
-     * charge and spin of exactly what each form says.  The page asks; it
-     * never reaches into the containers (overview.md § 1). */
+     * engine's form as its parts, so the card asks for the charge and spin
+     * of exactly what each engine's form says.  The page asks; it never
+     * reaches into the containers (overview.md § 1). */
     function stateForms() {
         const out = {};
         for (const engine of ["pyscf", "siesta"]) {
-            const host = els.form[engine], schema = state.schemas[engine];
-            if (host && schema) out[engine] = { host: host, schema: schema };
+            const parts = _formParts(engine);
+            if (parts.length) out[engine] = parts;
         }
         return out;
     }
 
-    // ----- Selector / compatibility (lock unused value fields) --
-    //
-    // The selector (skip/all/explicit) has three value fields: the
-    // explicit list, live only under `explicit`, and the frequency
-    // window's two bounds, live only under `all`.  Locking the others
-    // matches the Build tab's pattern -- the user can't enter values
-    // the selector would ignore.
-    function _fieldIdByName(name) {
-        // The catalogue owns id derivation (`_item_to_field`); this
-        // module never spells an id.
-        const schema = state.schemas.pyscf;
-        const sections = (schema && schema.sections) || [];
-        for (const sect of sections) {
-            for (const f of (sect.fields || [])) {
-                if (f.name === name) return f.id || "";
-            }
-        }
-        return "";
-    }
-
-    function _esSelectionEl() {
-        // The probe's selectors are the PySCF form's; SIESTA has none.
-        const id = _fieldIdByName("es_mode_selection");
-        return (id && els.form.pyscf) ? els.form.pyscf.querySelector("#" + id) : null;
-    }
-
-    function wireCompatibilityListeners() {
-        _on(_esSelectionEl(), "change", applyCompatibility);
-    }
-
-    function applyCompatibility() {
-        const sel = _esSelectionEl();
-        if (!sel) return;
-        const which = sel.value;
-        // Map selector value -> the fields that are active for it.  Every
-        // other one is disabled -- a lock on EDITING: the field keeps its
-        // value and the form still sends it (`formSchema.collectForm` reads
-        // no `disabled`), so a value typed before the switch reaches the
-        // template, where prep says it enters nothing (validation/
-        // spectra.py).  The window filters `all` alone -- `skip` selects
-        // nothing and `explicit` names its modes -- so outside `all` it
-        // enters nothing and is locked like the list is outside `explicit`
-        // (web/spectra.md § 9a.1; user, 2026-09-28).
-        const activeByMode = {
-            "skip":      [],
-            "all":       ["freq_min_cm1", "freq_max_cm1"],
-            "explicit":  ["es_explicit_indices"],
-        };
-        const valueFields = ["es_explicit_indices", "freq_min_cm1",
-                             "freq_max_cm1"];
-        const active = activeByMode[which] || [];
-        for (const name of valueFields) {
-            const id = _fieldIdByName(name);
-            const f = (id && els.form.pyscf)
-                ? els.form.pyscf.querySelector("#" + id) : null;
-            if (!f) continue;
-            const isActive = active.includes(name);
-            f.disabled = !isActive;
-            // Visually fade the field set so it's obvious which one
-            // is in play -- the disabled attr does some of this, but
-            // a class lets us style the wrapping <label> too.
-            const wrap = f.closest("label, .field");
-            if (wrap) wrap.classList.toggle("is-locked", !isActive);
-        }
-    }
-
     // ----- Helpers: gather form values + xyz -------------------
+    /* WHAT AN ENGINE'S FORM HOLDS: its parts read with `collectForm` and
+     * joined by name, so the description holds the values it always held
+     * (form-schema.md § 1.3).  A value that will not read as its type is
+     * refused, naming its field. */
     function collectParams(engine) {
         const fs = (window.molbuilder || {}).formSchema;
         const e = engine || _activeEngine();
-        const host = els.form[e], schema = state.schemas[e];
-        if (!fs || !host || !schema) return {};
-        return fs.collectForm(host, schema);
+        if (!fs) return {};
+        const out = {};
+        for (const p of _formParts(e)) {
+            Object.assign(out, fs.collectForm(p.host, p.schema));
+        }
+        return out;
     }
 
     /* THE VIEWER THIS PAGE MOUNTED, handed to us by the page that mounted it
@@ -998,10 +960,10 @@
     // while the person is still at the form (Build's pattern,
     // structure-optimization/viewer.js::refreshPreflight): debounced
     // POST /api/build/preflight with calculation="vibration"; the
-    // shared findings renderer places each finding on its
-    // workflow-group card and the rest on the summary panel below
-    // the form.  No structure loaded -> no call: warnings that
-    // haven't been earned yet don't show.
+    // shared findings renderer places each finding on its card and
+    // the rest on the summary panel below the form.  No structure
+    // loaded -> no call: warnings that haven't been earned yet don't
+    // show.
     function _debouncePreflight(fn, wait) {
         let t = null;
         return function () {
@@ -1010,6 +972,11 @@
         };
     }
 
+    // The newest check asked: an answer to an older one -- an edit since,
+    // or the other engine before a switch -- is not drawn, since the
+    // shared part shows whichever engine's findings land last.
+    let _preflightSeq = 0;
+
     async function refreshPreflight() {
         const _structure = structureForRequest();
         if (!_structure) return;
@@ -1017,6 +984,7 @@
         let params;
         try { params = collectParams(engine); }
         catch (_) { return; }   // the field's own caption says why
+        const mySeq = ++_preflightSeq;
         try {
             const r = await fetch("/api/build/preflight", {
                 method:  "POST",
@@ -1028,6 +996,7 @@
                     params:      params,
                 }),
             }).then(x => x.json());
+            if (mySeq !== _preflightSeq) return;
             if (Array.isArray(r.issues)) {
                 live[engine] = r.issues;
                 showFindings(engine, r.issues);
@@ -1051,25 +1020,26 @@
         const vf = (window.molbuilder || {}).validationFindings;
         if (!vf) return;
         /* fieldIds lands each finding beside its own control -- the same
-         * map the optimization tab passes; without it a finding falls to
-         * card-then-residual.  emptyText keeps the panel's no-findings copy alive:
+         * map the optimization tab passes, from every part the engine's
+         * form is drawn in; without it a finding falls to card-then-
+         * residual.  emptyText keeps the panel's no-findings copy alive:
          * the template's static row is destroyed by the first render. */
+        const parts = _formParts(engine);
         const ids = {};
-        const schema = state.schemas[engine];
-        const sects = (schema && schema.sections) || [];
-        for (const s of sects) {
-            for (const f of (s.fields || [])) ids[f.name] = f.id;
+        for (const p of parts) {
+            for (const s of (p.schema.sections || [])) {
+                for (const f of (s.fields || [])) ids[f.name] = f.id;
+            }
         }
-        // Both forms stay mounted (one is shown), so the OTHER form's
-        // field rows are cleared before this engine's are drawn -- a scope
-        // of one form would leave the hidden form's stale.
+        // Both engines' own parts stay mounted (one is shown), so the OTHER
+        // engine's field rows are cleared before this engine's are drawn.
         for (const e of ["pyscf", "siesta"]) {
             if (e !== engine && els.form[e] && typeof vf.clear === "function") {
                 vf.clear({ formScope: els.form[e] });
             }
         }
         vf.render(issues, { panel: els.preflightPanel,
-                            formScope: els.form[engine],
+                            formScope: parts.map((p) => p.host),
                             fieldIds: ids,
                             reveal: !!reveal,
                             emptyText: "No findings yet — checks "
@@ -1412,10 +1382,9 @@
         // A file from before the flag carries "" -- no record, not a phase
         // still to come (vibration.md § 4.9).
         const ir = results.phase_ir;
-        if (results.config && results.config.compute_ir && ir && !done(ir))
+        if (_irAsked(results) && !done(ir))
             return "Computing infrared intensities (dipole derivatives)";
-        const sel = results.config && results.config.es_mode_selection;
-        if (sel && sel !== "skip" && !done(e)) {
+        if (_asked(results, "es") && !done(e)) {
             const haveES = (results.modes || [])
                 .filter(m => m.electronic_structure).length;
             const planned = (results.selected_mode_idxs_1based || []).length;
@@ -1435,15 +1404,14 @@
         if (rx.enabled && results.phase_relaxation !== "complete")
             return false;
         if (results.phase_frequencies !== "complete") return false;
-        const cfg = results.config || {};
         const done = (v) => v === "complete" || v === "not requested";
-        if (_ramanAsked(results) && !done(results.phase_raman)) return false;
-        // "" is a file written before the infrared flag: no record, and
-        // no reason to wait (vibration.md § 4.9).
-        if (cfg.compute_ir && results.phase_ir && !done(results.phase_ir))
-            return false;
-        if (cfg.es_mode_selection && cfg.es_mode_selection !== "skip"
-            && !done(results.phase_es)) return false;
+        // EACH PHASE THE RUN ASKED FOR, by its own record (vibration.md
+        // § 5.11 § 8) -- "" is a file written before a flag: no record,
+        // and no reason to wait (§ 4.9).
+        for (const ph of ["raman", "ir", "es"]) {
+            if (_asked(results, ph) && !done(results["phase_" + ph]))
+                return false;
+        }
         return true;
     }
 
@@ -1453,16 +1421,12 @@
         const dots = els.phaseIndicator.querySelectorAll(".spectra-phase-dot");
         dots.forEach(dot => {
             const ph = dot.dataset.phase;   // relaxation|frequencies|raman|ir|es
-            // A phase the file's route does not have shows no dot at all
-            // (web/spectra.md § 3), read by route: SIESTA's Raman is its
-            // optical calls', its infrared its charges', and it has no
-            // probe.  Infrared's flag is "" in a file written before it
-            // existed -- no record, so no dot rather than one left empty.
-            const has = ph === "raman" ? _ramanRoute(results)
-                      : ph === "ir" ? (_irRoute(results)
-                                       && results.phase_ir !== "")
-                      : ph === "es" ? _routeHas(results, "es_mode_selection")
-                      : true;
+            // A PHASE THE RUN DID NOT ASK FOR shows no dot (web/spectra.md
+            // § 3), by its own record on either engine: `not requested` --
+            // a strength switched off, the probe at skip or on SIESTA -- or
+            // "" in a file written before its flag, no record.
+            const has = (ph === "raman" || ph === "ir" || ph === "es")
+                ? _asked(results, ph) : true;
             const wrap = dot.closest(".spectra-phase");
             if (wrap) wrap.hidden = !has;
             const v  = results["phase_" + ph] || "empty";
@@ -1580,13 +1544,28 @@
     function _ramanOptical(r) {
         return !!(r && r.raman_route === "optical");
     }
-    /* Whether the run asked for Raman -- a phase still to finish. */
-    function _ramanAsked(r) {
-        return _ramanOptical(r) || !!(r && r.config && r.config.compute_raman);
+    /* WHETHER THE RUN ASKED FOR A PHASE, from the result's own record, the
+     * same on both engines (engines/vibration.md § 5.11 § 8): `not
+     * requested` is a run that never asked -- Compute IR, Compute Raman
+     * off, PySCF's probe at skip; "" a file written before the flag, no
+     * record. */
+    function _asked(r, phase) {
+        const v = r && r["phase_" + phase];
+        return !!v && v !== "not requested";
     }
-    /* Whether the route has a Raman column and a phase dot at all. */
-    function _ramanRoute(r) {
-        return _ramanOptical(r) || _routeHas(r, "compute_raman");
+    function _ramanAsked(r) { return _asked(r, "raman"); }
+    /* A result that states its charges asked for its infrared -- they are
+     * what it is made of -- whatever a finish before 2.44.0 left in
+     * `phase_ir` (the analysis's default, *not requested*). */
+    function _irAsked(r) { return _asked(r, "ir") || _irFromCharges(r); }
+    /* RAMAN ASKED AND NONE COMPUTED: the phase ended with no route -- a
+     * SIESTA range that kept no mode, no optical call run (engines/
+     * vibration.md § 5.11 § 8); the Methods paragraph says which range.
+     * A PySCF sweep still running states route `none` too, its phase not
+     * yet complete. */
+    function _ramanNoneComputed(r) {
+        return _ramanAsked(r) && r.phase_raman === "complete"
+            && r.raman_route === "none";
     }
     /* A MODE'S RAMAN, ONE ACCESSOR (web/spectra.md § 3.3): the strength at
      * the laser the load door derived from a SIESTA result's optical calls,
@@ -1696,39 +1675,37 @@
      * route computes no strengths; the run asked for none; they are still
      * being computed; the run asked and recorded none. */
     function _noSpectrumSentence(r) {
-        if (!_routeHas(r, "compute_raman") && !_routeHas(r, "compute_ir")) {
-            // A SIESTA RESULT: its infrared is the charges', of the atoms
-            // the person names (web/spectra.md § 3.2); its Raman the optical
-            // calls', at the laser the person types (§ 3.3).
-            if (r.partial_charges || _ramanOptical(r)) {
-                const ir = !r.partial_charges ? ""
-                    : r.infrared_said
-                        ? "the infrared asked of the run's charges could not "
-                          + "be given (why: above the modes table)"
-                        : "name the atoms above the modes table for their "
-                          + "infrared, from the run's charges";
-                // THE LINE BESIDE THE BOXES' WORDS (`_ramanWait`); a view
-                // shown with no number yet is a run whose picked modes
-                // have not both sides done.
-                const raman = !_ramanOptical(r)
-                    ? "no Raman was requested in this run"
-                    : _ramanWait(r)
-                        ? _ramanWait(r).words + " (above the modes table)"
-                        : "no picked mode has both of its sides done yet";
-                return "Each line marks where a mode is -- "
-                     + [ir, raman].filter(Boolean).join("; ")
-                     + ".  Click a line to pick its mode.";
-            }
-            return "Each line marks where a mode is -- this result carries "
-                 + "the frequencies and the mode shapes, no infrared or "
-                 + "Raman intensities, so there are no heights.  Click a "
-                 + "line to pick its mode.";
-        }
-        const cfg = r.config || {};
-        if (!cfg.compute_raman && !cfg.compute_ir) {
+        const ir = _irAsked(r), raman = _ramanAsked(r);
+        // THE RUN ASKED FOR NONE -- its own record, on either engine.
+        if (!ir && !raman) {
             return "Each line marks where a mode is -- infrared and Raman "
                  + "intensities were not requested in this run, so there are "
-                 + "no heights.";
+                 + "no heights.  Click a line to pick its mode.";
+        }
+        // A STRENGTH WAITS FOR YOU: a SIESTA result's, derived when you ask
+        // -- its infrared from the run's charges for the atoms you name
+        // (web/spectra.md § 3.2), its Raman from the optical calls at the
+        // laser you type (§ 3.3).
+        if (_irFromCharges(r) || _ramanOptical(r) || _ramanNoneComputed(r)) {
+            const irWords = !ir ? "no infrared was requested in this run"
+                : r.infrared_said
+                    ? "the infrared asked of the run's charges could not "
+                      + "be given (why: above the modes table)"
+                    : "name the atoms above the modes table for their "
+                      + "infrared, from the run's charges";
+            // THE LINE BESIDE THE BOXES' WORDS (`_ramanWait`); a view
+            // shown with no number yet is a run whose picked modes have
+            // not both sides done.
+            const ramanWords = !raman ? "no Raman was requested in this run"
+                : _ramanNoneComputed(r)
+                    ? "no mode lay in the range Raman was asked for (the "
+                      + "Methods paragraph says which)"
+                : _ramanWait(r)
+                    ? _ramanWait(r).words + " (above the modes table)"
+                    : "no picked mode has both of its sides done yet";
+            return "Each line marks where a mode is -- "
+                 + irWords + "; " + ramanWords
+                 + ".  Click a line to pick its mode.";
         }
         const running = (v) => v === "empty" || v === "running";
         if (running(r.phase_frequencies) || running(r.phase_raman)
@@ -1764,11 +1741,10 @@
              + (view.source === "dipole" ? ""
                 : ", " + _partitionName(view.partition));
     }
-    /* Whether the route has an infrared column and a phase dot at all --
-     * PySCF's switch, or a SIESTA result's charges (web/spectra.md § 3.2):
-     * `_ramanRoute`'s twin. */
-    function _irRoute(r) {
-        return _routeHas(r, "compute_ir") || !!(r && r.partial_charges);
+    /* A SIESTA RESULT'S INFRARED is its charges' (web/spectra.md § 3.2):
+     * its route `charges`, derived on request for the atoms named. */
+    function _irFromCharges(r) {
+        return !!(r && (r.ir_route === "charges" || r.partial_charges));
     }
     /* A FREE MOLECULE -- the result holds no atom -- meets the light
      * tumbling: no direction is asked (the door's `infrared_orientation`). */
@@ -1779,10 +1755,9 @@
     /* The run summary's infrared line -- module scope, so a change of the
      * infrared view rewrites it without rebuilding the page. */
     function _irRouteLabel(r) {
-        const asked = r.config && ("compute_ir" in r.config);
         // A SIESTA RESULT'S INFRARED is its charges', for the atoms the
         // person names (web/spectra.md § 3.2, § 9b.3).
-        if (!asked && r.partial_charges) {
+        if (_irFromCharges(r)) {
             if (r.infrared)
                 return "from the run's charges — " + _irViewWords(r.infrared);
             return r.infrared_said
@@ -1790,14 +1765,14 @@
                 : "from the run's charges — name the atoms above "
                   + "the modes table";
         }
-        // A SIESTA RESULT STATING NO CHARGES: why is the door's, said once
-        // above the modes table (`infrared_absent`).
-        if (!asked && r.infrared_absent) {
+        // A RUN THAT DID NOT ASK, by its own record, on either engine.
+        if (r.phase_ir === "not requested") return "not requested";
+        // A RESULT STATING NO CHARGES and no record of the phase: why is
+        // the door's, said once above the modes table (`infrared_absent`).
+        if (r.infrared_absent) {
             return "none in this result — it states no charges (why: above "
                  + "the modes table)";
         }
-        if (!asked && r.ir_route === "none") return "not computed on this route";
-        if (!r.config || !r.config.compute_ir) return "not requested";
         // A HELD MOLECULE'S COLUMN is its stored dipole change along the
         // light (web/spectra.md § 3.2): the summary says which view it is.
         const shown = (r.infrared && r.infrared.source === "dipole")
@@ -1836,20 +1811,19 @@
                 return head + " \u2014 " + r.phase_raman;
             return head + " \u2014 " + _ramanWait(r).words;
         }
-        // By ROLE, not by engine name: a file whose config never asked
-        // (SIESTA carries no `compute_raman`) and whose route is `none` ran
-        // no optical calls -- none requested; a PySCF file that asked and
-        // was answered `none` computed none.
-        const asked = r.config && ("compute_raman" in r.config);
-        if (!asked && r.raman_route === "none") return "not requested";
-        if (!r.config || !r.config.compute_raman) return "not requested";
+        // A RUN THAT DID NOT ASK, by its own record, on either engine.
+        if (!_ramanAsked(r)) return "not requested";
         switch (r.raman_route) {
             case "finite-difference":
                 return "computed \u2014 finite-difference polarizabilities"
                      + (r.raman_fd_step_ang != null
                         ? " (\u00b1" + r.raman_fd_step_ang + " \u00c5)" : "");
             case "none":
-                return "not computed";
+                // A sweep still running has no route yet: its phase says
+                // where it is.
+                return r.phase_raman === "complete"
+                     ? "none computed \u2014 the Methods paragraph says why"
+                     : r.phase_raman;
             case "":
             case undefined:
                 return r.phase_raman === "complete"
@@ -2258,12 +2232,12 @@
         _renderInfraredControls(results);
         _renderRamanControls(results);
         if (els.modesTable) {
+            // A COLUMN FOR EACH STRENGTH THE RUN ASKED FOR (web/spectra.md
+            // § 9b.3), on either engine -- not one asked and none computed.
             els.modesTable.classList.toggle("route-no-raman",
-                                            !_ramanRoute(results));
-            // A SIESTA RESULT'S INFRARED is its charges' (web/spectra.md
-            // § 3.2): the column stands where the result states them.
+                !_ramanAsked(results) || _ramanNoneComputed(results));
             els.modesTable.classList.toggle("route-no-ir",
-                                            !_irRoute(results));
+                                            !_irAsked(results));
             els.modesTable.classList.toggle("route-no-charge",
                                             !results.partial_charges);
             els.modesTable.classList.toggle("route-no-es",
@@ -2558,13 +2532,11 @@
             : (_ramanStaticOf(m) == null) ? "—"
             : Number(_ramanStaticOf(m)).toFixed(2);
         /* The Raman, IR and orbital cells carry their column's class, so a
-         * column the route cannot compute goes with its header
+         * column the run did not ask for goes with its header
          * (`.route-no-*`, web/spectra.md § 9b.3). */
         /* "—" IS NOT ZERO.  A null means the run did not compute this
-         * channel (`compute_ir` is off by default); 0.00 means it did and the
-         * mode is silent there.  CO2 needs both readings in one table: its
-         * symmetric stretch is 0.00 km/mol by symmetry, while a Raman-only
-         * run leaves every IR cell "—". */
+         * channel for this mode; 0.00 means it did and the mode is silent
+         * there -- CO2's symmetric stretch is 0.00 km/mol by symmetry. */
         const ir = (_irOf(m) == null) ? "—" : Number(_irOf(m)).toFixed(2);
         const moved = (_chargeMovedOf(m) == null) ? "—"
             : Number(_chargeMovedOf(m)).toFixed(4);
@@ -2730,9 +2702,10 @@
         // BOTH channels, beside each other.
         // THE EXPORT FOLLOWS THE TABLE: a column the route cannot compute
         // is left out of both (web/spectra.md § 9b.3).
-        const hasRaman = _ramanRoute(state.results);
+        const hasRaman = _ramanAsked(state.results)
+            && !_ramanNoneComputed(state.results);
         const ramanView = state.results.raman;
-        const hasIr = _irRoute(state.results);
+        const hasIr = _irAsked(state.results);
         const view = state.results.infrared;
         const hasCharge = !!state.results.partial_charges;
         const hasEs = _routeHas(state.results, "es_mode_selection");
@@ -4233,6 +4206,7 @@
     // ----- Bootstrap -------------------------------------------
     function init() {
         els.formContainer  = $("spectra-form-container");
+        els.form.common    = $("spectra-form-common");
         els.form.pyscf     = $("spectra-form-pyscf");
         els.form.siesta    = $("spectra-form-siesta");
         els.engineStrip    = $("spectra-engine-strip");
@@ -4338,9 +4312,13 @@
         const hasGenerateSide = Boolean(els.formContainer);
         if (hasGenerateSide) {
             _on(els.sendBtn, "click", sendToTaskSetup);
-            // Live science check on every edit.
-            _on(els.formContainer, "input",  refreshPreflightDebounced);
-            _on(els.formContainer, "change", refreshPreflightDebounced);
+            // Live science check on every edit -- in every part the form is
+            // drawn in: the shared settings above the strip and each
+            // engine's own below it (`_formParts`).
+            for (const host of [els.form.common, els.formContainer]) {
+                _on(host, "input",  refreshPreflightDebounced);
+                _on(host, "change", refreshPreflightDebounced);
+            }
 
         }
 

@@ -397,12 +397,13 @@ The same rule, one layer up. A scientific finding (a validator `Issue`) is
 rendered by exactly one module — `lib/validation-findings.js` — which every page
 that shows findings mounts. One row shape
 (`li.issue-item[data-severity]`), styled once in `lib/page-shell.css`;
-`workflow_group` puts a finding on its form card, everything else lands in the
+`card` puts a finding on its form card (`template.card_of`, the rule the form
+draws its fields by), everything else lands in the
 page's residual panel, and **nothing is dropped**.
 
 This was four implementations until 2026-07-29 — one per tab plus the per-card
 panels `form-schema.js` creates — and the drift was not cosmetic. All three tab
-copies silently discarded a finding whose `workflow_group` named a card the form
+copies silently discarded a finding naming a card the form
 schema had not rendered (they iterated the card *panels*, so a bucket with no
 panel was built and never read); the Spectra copy also dropped any severity
 outside `error`/`warn`/`info`, re-ordered the rest, and carried a second row
@@ -486,7 +487,7 @@ produced one here on 2026-08-25, and two of them nearly deleted live styling.
 **Trap 1 — grepping for the class name.** A class can be *composed*:
 
 ```js
-{ class: "workflow-group workflow-group--" + role }   // form-schema.js
+{ class: "workflow-group workflow-group--" + meta.card }   // form-schema.js
 el("div", "schema-field-" + f.kind)                   // form-schema.js
 ```
 
@@ -542,7 +543,7 @@ before concluding anything.
 
 | rule | verdict | how it was settled |
 |---|---|---|
-| `.workflow-group--stage` | **live** | composed from `role`; 11 SIESTA fields carry it; 2 matches measured on the Build form |
+| `.workflow-group--stage` | **live** | composed from the card key (`card`); 11 SIESTA fields carry it; 2 matches measured on the Build form |
 | `.mb-dialog-title`, `.mb-dialog-field` | **live** *(2026-10-13)* | `lib/dialog.js`'s parts (`dialogTitle`, `dialogField`) build every dialog of the one component (§ 11), and the one confirm wears the title. Until then they were declared API that no dialog used. |
 | `.mb-dialog::backdrop` | **live** | Trap 3 — not selectable, matches on every modal |
 | `.inspector-section{,-header,-hint}`, `.fdf-actions`, `.fdf-output`, `.disabled-tip`, `.structure-error`, `.source-body-error` | **no builder found — deliberately NOT deleted** | no literal reference and no composition prefix, but never observed in their own state either |

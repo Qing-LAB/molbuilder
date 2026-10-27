@@ -86,20 +86,38 @@
       § 2a). -#}
   {% include "_chemistry_card.html" %}
 
-  <!-- ===================== 3. Parameters ===================== -->
-  <section class="card" id="parameters-card">
-    <h2>3. Parameters</h2>
+  <!-- ===================== 3. The calculation ===================== -->
+  {#- WHAT YOU WANT FROM THE CALCULATION, decided before the engine: the
+      settings every engine of the vibration shares -- one meaning, one
+      default -- drawn once, by result (engines/template.md § 6.2a;
+      web/spectra.md § 5 step 3; GET /api/build/schema/common). -#}
+  <section class="card" id="calculation-card">
+    <h2>3. The calculation</h2>
     <p class="hint">
-      Defaults work for most cases.  Hover any label for the
-      per-field help.  When done, click <strong>Send to Task
-      setup</strong> in the panel below.
+      What you want from it &mdash; the same on both engines, so it is
+      chosen before the engine.  Each field's &#9432; help says what it
+      does.
+    </p>
+    <div id="spectra-form-common" class="param-grid">
+      <p class="status">Loading form schema&hellip;</p>
+    </div>
+  </section>
+
+  <!-- ===================== 4. The engine ===================== -->
+  <section class="card" id="parameters-card">
+    <h2>4. The engine and its own settings</h2>
+    <p class="hint">
+      Name the run under Setup (SIESTA also needs its pseudopotential
+      folder); the other settings start at their recommended values.
+      Each field's &#9432; help says what it does.  When done, click
+      <strong>Send to Task setup</strong> in the panel below.
     </p>
     {# TWO ENGINES, ONE STRIP -- the Structure-optimization tab's own
-       component (the in-card .tabs strip, lib/form-components.css): both
-       forms are rendered from the catalogue narrowed to (engine, vibration)
-       and stay mounted, so switching loses nothing.  Which engine is
-       active is what the live checks and the hand-over send; it is the
-       description's engine, never a parameter of the deck
+       component (the in-card .tabs strip, lib/form-components.css): each
+       engine's own settings, rendered from the catalogue
+       (`&surface=own`), stay mounted, so switching loses nothing.  Which
+       engine is active is what the live checks and the hand-over send; it
+       is the description's engine, never a parameter of the deck
        (engines/vibration.md § 3.1, web/spectra.md § 5).  The wrapper keeps
        one id, so the form is one thing to the tests and the checks
        panel. #}
@@ -121,8 +139,7 @@
       <div class="tab-panel" id="spectra-tab-pyscf" role="tabpanel">
         <p class="hint">
           An isolated molecule: analytic second derivatives for the free
-          atoms, infrared and Raman strengths, thermochemistry, and the
-          orbital energies along a mode.
+          atoms, and the orbital energies along a mode.
         </p>
         <div id="spectra-form-pyscf" class="param-grid">
           <p class="status">Loading form schema&hellip;</p>
@@ -132,9 +149,9 @@
         <p class="hint">
           A slab, a surface or a junction, or the same pseudopotentials
           and orbitals as a transport step: force constants by nudging the
-          free atoms; frequencies and mode shapes, and every atom's charge
-          at every nudge — the infrared of the atoms you name, in the
-          spectrum viewer. No Raman intensities.
+          free atoms; the infrared from every atom's charges, of the atoms
+          you name, and Raman from SIESTA's optical calculation, at the
+          laser you type &mdash; both in the spectrum viewer.
         </p>
         <div id="spectra-form-siesta" class="param-grid">
           <p class="status">Loading form schema&hellip;</p>
@@ -145,8 +162,8 @@
     <h3>Checks</h3>
     {#- Gate ① (workflow.md § 9): the live science verdict -- the same
         gate `prep` runs, answered while the person is still at the
-        form.  Per-card findings land on the workflow-group cards the
-        shared form renderer emits; everything else lands here.
+        form.  A finding lands beside its field, or on the card its
+        field is drawn in; everything else lands here.
         lib/validation-findings.js owns the contents. -#}
     <ul id="spectra-issues" class="issues-panel">
       <li class="issues-empty">
@@ -162,7 +179,7 @@
       written by `prep` on the machine that runs it
       (docs/execution/script-preparation.md). -#}
   <section class="card" id="send-card">
-    <h2>4. Send to Task setup</h2>
+    <h2>5. Send to Task setup</h2>
     <p class="hint">
       Hands the description over — the same flow as the Optimization
       tab: writes the parameter template, the structure files and

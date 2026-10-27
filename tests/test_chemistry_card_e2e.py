@@ -193,10 +193,12 @@ def test_the_spectrum_tab_answers_for_its_vibration_forms(
     card = _card(page)
     assert "PySCF" in card and "SIESTA" in card, card
     assert "unrestricted, 2S = 2" in card, card
-    # PySCF's vibration takes the analytic Hessian, which ROHF/ROKS lack
-    # (ES4): its form does not offer restricted-open.
+    # The spin is drawn once, for both engines, offering every choice either
+    # takes for a vibration (`engines/template.md` § 6.2a): restricted-open
+    # is neither's -- PySCF's vibration takes the analytic Hessian, which
+    # ROHF/ROKS lack (ES4), and SIESTA has no such formalism.
     assert "restricted-open" not in _options(
-        page, "py-spin-treatment")["py-spin-treatment"]
+        page, "common-spin-treatment")["common-spin-treatment"]
 
 
 def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(

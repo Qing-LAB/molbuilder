@@ -356,15 +356,27 @@ SET_AFTER = {
 #: chosen*.  For these the deck writes a value molbuilder works out: the
 #: electronic state's (ES1, `science/chemistry-correctness.md` § 2a; the
 #: deck's own note says from what), the k-point split from the mesh, the
-#: transmission's mesh from the SCF's (`kmesh.mesh_for`).
-#: Every other is the engine's own default, which the deck's not-set line
-#: names (`engines/template.md` § 6.6 obligation 4).
+#: transmission's mesh from the SCF's (`kmesh.mesh_for`).  Every other says
+#: what its blank means in the catalogue's words for it, the form's
+#: (`null_label`: *no lower end*, *the stage's k-point grid*), else the
+#: engine's own default, which the deck's not-set line names
+#: (`engines/template.md` § 6.6 obligation 4).
 BLANK_ANSWERED_BY = {
     **{name: "the electronic state decides it" for name in STATE_ITEMS},
     "parallel_over_k": "worked out from the k-point grid",
     "tbt_k_grid": "three times the shared k-point grid in the electrode plane",
 }
 BLANK_ENGINE = "the engine's own default"
+
+
+def _blank_words(item) -> Optional[str]:
+    """What an optional ``item``'s blank means, as the deck's table says it
+    (:data:`BLANK_ANSWERED_BY`) -- ``None`` for an item that is not
+    optional, or no item."""
+    if item is None or not item.optional:
+        return None
+    return (BLANK_ANSWERED_BY.get(item.name)
+            or (item.null_label or "").strip().strip("()") or BLANK_ENGINE)
 
 
 def _deck_items(engine: str, kind: str, stage: str) -> Mapping[str, bool]:
@@ -381,13 +393,14 @@ def _deck_items(engine: str, kind: str, stage: str) -> Mapping[str, bool]:
 
 def _deck_sources(values, provenance: Mapping[str, str],
                   origins: Mapping[str, Optional[str]],
-                  items: Mapping[str, bool]) -> Tuple[Tuple[str, str], ...]:
+                  items: Mapping[str, Optional[str]]
+                  ) -> Tuple[Tuple[str, str], ...]:
     """``((item, who), ...)`` for :attr:`ResolvedConfig.deck_sources`, in
     the pipeline log's order (`pipeline_log.config_rows`: what the rung
     decided first).  A template value says whose it is as the template
     records it -- *not recorded* for a file written before the record -- and
-    an optional item nobody set says who answers it
-    (:data:`BLANK_ANSWERED_BY`, else the engine's own default)."""
+    an optional item nobody set says what its blank means (``items``, each
+    name's :func:`_blank_words`)."""
     from .pipeline_log import config_rows
     from .template import SAID, SOURCE_WORDS
     rows = []
@@ -401,8 +414,8 @@ def _deck_sources(values, provenance: Mapping[str, str],
             # A RUN SETTING WITH NO DEFAULT, stated by no card: its not-set
             # line's answer (`job-request.md` § 4).
             who = SOURCE_WORDS["default"]
-        if value is None and items[name]:
-            who = f"{who} · {BLANK_ANSWERED_BY.get(name, BLANK_ENGINE)}"
+        if value is None and items[name] is not None:
+            who = f"{who} · {items[name]}"
         rows.append((name, who))
     return tuple(rows)
 
@@ -529,8 +542,7 @@ def resolve(template_text: str, task, config_cls, *,
     # WHO SET EACH VALUE is said of what this kind carries: an item of
     # another kind (a transport rung's electrode on an optimization) is no
     # value of this calculation's.
-    every_item = {f.name: bool(_items.get(f.name) is not None
-                               and _items[f.name].optional)
+    every_item = {f.name: _blank_words(_items.get(f.name))
                   for f in dataclasses.fields(config_cls)
                   if _items.get(f.name) is None
                   or not _items[f.name].calculations

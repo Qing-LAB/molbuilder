@@ -497,7 +497,7 @@ def _check_siesta_vacuum_adequacy(struct: Structure,
          f"{min_vac:g} Å per side ({'charged' if q else 'neutral'}) so the "
          f"molecule's periodic images don't interact — the gap between images "
          f"is 2×vacuum, and basis orbitals reach several Å per atom. Set "
-         f"'vacuum' on the structure (Modify → Cell tab); the geometry is not "
+         f"'vacuum' on the structure (the Molbuilder tab's Cell page); the geometry is not "
          f"changed for you."),
         "cell.vacuum_thin",
     )]

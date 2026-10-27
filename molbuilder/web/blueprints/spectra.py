@@ -268,6 +268,9 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     if source == SOURCE_CHARGES and results.structure_stated():
         payload["infrared_sets"] = sets_of(results)
     elif source is None and str(results.engine).lower() == "siesta":
+        # ...A SIESTA RESULT STATING NO CHARGES says why, once, from its own
+        # facts (`infrared.no_charges_reason`): written before charges were
+        # kept, Compute IR off, or printed none.
         payload["infrared_absent"] = (f"This result states no charges, so "
                                       f"it carries no infrared: "
                                       f"{no_charges_reason(results)}.")

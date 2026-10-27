@@ -133,7 +133,7 @@ const WORKSPACE_TAG = "transport";
      * (its `stages` names the rung); the SCF, output and runtime cards
      * are one click away, the rung's own physics is what the eye lands
      * on (transport.md 3.8.2a). */
-    function _foldedUnlessOwned(role, fields) {
+    function _foldedUnlessOwned(card, fields) {
         return !fields.some(function (f) {
             return f.stages && f.stages.length;
         });
@@ -1904,7 +1904,8 @@ const WORKSPACE_TAG = "transport";
                     var host = _$("transport-shared-container");
                     var out = {};
                     if (host && _sharedSchema) {
-                        out[_engine()] = { host: host, schema: _sharedSchema };
+                        out[_engine()] = [{ host: host,
+                                            schema: _sharedSchema }];
                     }
                     return out;
                 },

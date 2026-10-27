@@ -108,11 +108,11 @@
 
 /* ---- Locked fields ----
  *
- * Compatibility-engine locks one field based on another's value.
- * Locked fields stay visible but dim, with a "↳" reason hint. */
-.schema-section label.is-locked {
-    opacity: 0.55;
-    transition: opacity 120ms;
+ * A field that enters nothing under the other fields' values stays
+ * readable -- its words muted, its control disabled below -- with a "↳"
+ * line saying what it waits for (`.lock-reason`). */
+.schema-section label.is-locked > .schema-field-text {
+    color: var(--text-muted);
 }
 .schema-section input:disabled,
 .schema-section select:disabled {
@@ -185,6 +185,22 @@
 .workflow-group > .workflow-group-subtitle,
 .workflow-group > .issues-panel {
     grid-column: 1 / -1;
+}
+
+/* A RESULT'S CARD holds its fields in one bare fieldset (no legend): it
+ * spans the card and tiles its fields across it, so the card's width is
+ * used, not one column of it. */
+.workflow-group > fieldset.schema-section--bare,
+details.workflow-group > .workflow-group-body > fieldset.schema-section--bare {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(min(var(--param-field-min), 100%), 1fr));
+    gap: 0 var(--space-md);
+    align-content: start;
+    border: 0;
+    padding: 0;
+    background: none;
 }
 
 /* A form of one stage's own values says whose they are once, above its

@@ -226,8 +226,14 @@ class PySCFConfig:
 
     # ----- Vibrational spectroscopy (the vibration calculation kind) -----
     already_relaxed: bool = False
-    compute_raman: bool = True
-    compute_ir: bool = False
+    # THE STRENGTHS, one meaning and one default on both engines
+    # (`engines/vibration.md` § 3.1).  Raman for is read by SIESTA's
+    # optical phase alone: the sweep below gives every mode at once.
+    compute_raman: bool = False
+    compute_ir: bool = True
+    raman_modes: str = 'all'
+    raman_freq_min_cm1: Optional[float] = None
+    raman_freq_max_cm1: Optional[float] = None
     displacement_amplitude_ang: float = 0.02
     es_mode_selection: str = 'skip'
     es_explicit_indices: str = ''
@@ -261,9 +267,8 @@ class PySCFConfig:
         """The modes ``es_explicit_indices`` names: 1-based, sorted, each once.
         The deck's constant (which the script's selector reads) and the
         Methods paragraph take it from here, and the kind's check reads the
-        text with the same reader on both engines
-        (`validation.spectra.selector_issues`, `engines/vibration.md`
-        § 4.8).  The grammar is the atom index list's
+        text with the same reader (`validation.spectra.selector_issues`,
+        `engines/vibration.md` § 4.8).  The grammar is the atom index list's
         (``selection.parse_index_list``): ``"3, 7, 12"``, ``"3-7, 12"``.
         Raises ``SelectionError`` (a ``ValueError``) on text it cannot read;
         the kind's check turns that into a refusal at ``prep``, so no deck

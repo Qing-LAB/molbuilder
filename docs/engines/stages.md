@@ -389,18 +389,17 @@ limited to.
 > stage preset silently rewrote budget and system fields too*. Two consumers, both
 > in the surface — `form-schema.js` renders the cards in a fixed order so
 > "switching the stage selector touches the stage card only" is visible at a
-> glance, and `_shared.py::resolve_workflow_group` routes a validation finding to
-> the card whose fields it concerns (`web/ui-contract.md` Rule 2). **It has never
+> glance, and `_shared.py::card_of_finding` routes a validation finding to
+> the card whose fields it concerns (`web/ui-contract.md` § 5.1). **It has never
 > been a model constraint and must not become one.** Under the checkbox design it
 > keeps three honest jobs: ordering the form, routing findings, and deciding which
 > boxes start ticked.
 >
-> `profile`'s own subtitle reads *"Set once per run; doesn't change between
-> stages"*, and that is a claim about **typical use, not a constraint** — which
-> matters, because the subtitle is the sentence a user reads before deciding
-> whether to tick the box beside a field. When a `profile` field turns out to
-> vary in practice, the honest answer is to fix the tag, not to weaken the
-> subtitle; `relax_type` was exactly that case and is now `stage` (below).
+> `profile`'s line says what its settings are, never that they are set once —
+> a stage may override any setting that is not shared
+> ([`web/form-schema.md`](?doc=web/form-schema.md) § 1.3). When a `profile`
+> field turns out to vary in practice, the honest answer is to fix the tag;
+> `relax_type` was exactly that case and is now `stage` (below).
 >
 > **Four items are bound, and not by this tag** *(W34, decided 2026-09-25)*:
 > the electronic state — `net_charge`, `spin_treatment`, `unpaired_electrons`,

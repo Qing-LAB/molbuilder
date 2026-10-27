@@ -887,6 +887,11 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
             # (`scf.hf.SCF.disp`), and HF takes the correction, so it is
             # read back like any other setting (pyscf.md § 7a).
             expr = None
+        if expr and name == "solvent_method" and not cfg.solvent:
+            # No continuum on a gas-phase object: the solvent's blank is the
+            # gas phase (`scf_setup.emit_solvent_lines`), so there is no
+            # model to read back.
+            expr = None
         third = f"_mb_read(lambda: {expr})" if expr else "None"
         # A RUN SETTING'S ROW READS ITS ZONE, by name (`job-contracts.md`
         # § 3.1): the one line that states it.

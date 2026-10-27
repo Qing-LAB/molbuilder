@@ -23,8 +23,11 @@
  * status line:
  *
  *   opts.kind        "optimization" | "vibration" | "transport"
- *   opts.forms()     {engine: {host, schema}} -- the rendered forms whose
- *                    state items the answer is for
+ *   opts.forms()     {engine: [{host, schema}, ...]} -- the parts each
+ *                    engine's form is drawn in (one, or the Spectrum tab's
+ *                    shared part and the engine's own), whose state items
+ *                    the answer is for; each engine's chip goes in the part
+ *                    that engine alone draws
  *   opts.structure() the structure envelope the page would hand over, or
  *                    null when it holds none
  *
@@ -49,7 +52,6 @@
     var STATE_ITEMS = ["net_charge", "spin_treatment", "unpaired_electrons",
                        "method"];
 
-    var ENGINE_NAME = { siesta: "SIESTA", pyscf: "PySCF" };
 
     function _$(id) { return root.document.getElementById(id); }
 
@@ -115,12 +117,13 @@
                                  : ", 2S = " + c);
     }
 
-    /** One engine's state as the card's lines.  Each reason is the server's
-     *  own phrasing (`Resolved.said`), the one a deck comment carries. */
-    function _stateBlock(engine, st) {
+    /** One engine's state as the card's lines, headed by the engine's name
+     *  as the server says it (`template.ENGINE_WORDS`).  Each reason is the
+     *  server's own phrasing (`Resolved.said`), the one a deck comment
+     *  carries. */
+    function _stateBlock(name, st) {
         var box = _el("div", "chemistry-engine");
-        box.appendChild(_el("h3", "chemistry-engine-name",
-                            ENGINE_NAME[engine] || engine));
+        box.appendChild(_el("h3", "chemistry-engine-name", name));
         var dl = _el("dl", "chemistry-items");
         function row(label, value, why) {
             dl.appendChild(_el("dt", null, label));
@@ -162,8 +165,10 @@
         if (stateEl) {
             stateEl.textContent = "";
             var states = (resp && resp.state) || {};
+            var names = (resp && resp.engine_words) || {};
             Object.keys(states).forEach(function (engine) {
-                stateEl.appendChild(_stateBlock(engine, states[engine]));
+                stateEl.appendChild(_stateBlock(names[engine] || engine,
+                                                states[engine]));
             });
         }
         var metBox = _$("chemistry-metals-box");
@@ -255,16 +260,38 @@
                                                       : {};
         }
 
+        /* Which hosts more than one engine draws in -- a shared part,
+         * where no one engine's chip belongs. */
+        function _sharedHosts(fs) {
+            var seen = [], shared = [];
+            Object.keys(fs).forEach(function (engine) {
+                (fs[engine] || []).forEach(function (p) {
+                    if (!p || !p.host) return;
+                    if (seen.indexOf(p.host) !== -1) shared.push(p.host);
+                    else seen.push(p.host);
+                });
+            });
+            return shared;
+        }
+
         function refresh() {
             var fs = forms(), items = {}, hosts = {}, unreadable = false;
+            var shared = _sharedHosts(fs);
             Object.keys(fs).forEach(function (engine) {
-                var f = fs[engine];
-                if (!f || !f.host || !f.schema) return;
-                var held = _stateItems(f.host, f.schema);
-                if (held === null) unreadable = true;
-                else items[engine] = held;
-                hosts[engine] = f.host;
-                _watch(f.host);
+                var parts = (fs[engine] || []).filter(function (p) {
+                    return p && p.host && p.schema;
+                });
+                if (!parts.length) return;
+                var held = {};
+                parts.forEach(function (p) {
+                    var got = _stateItems(p.host, p.schema);
+                    if (got === null) unreadable = true;
+                    else Object.assign(held, got);
+                    _watch(p.host);
+                    // EACH ENGINE'S CHIP in the part it alone draws.
+                    if (shared.indexOf(p.host) === -1) hosts[engine] = p.host;
+                });
+                items[engine] = held;
             });
             // A STATE FIELD THAT WILL NOT READ is said beside it, by its own
             // caption; the card keeps what it showed until it reads.
@@ -310,12 +337,13 @@
                 if (!id) return;
                 var fs = forms();
                 var hit = Object.keys(fs).some(function (engine) {
-                    var f = fs[engine];
-                    if (!f || f.host !== host || !f.schema) return false;
-                    return (f.schema.sections || []).some(function (sec) {
-                        return (sec.fields || []).some(function (fd) {
-                            return fd.id === id
-                                && STATE_ITEMS.indexOf(fd.name) !== -1;
+                    return (fs[engine] || []).some(function (p) {
+                        if (!p || p.host !== host || !p.schema) return false;
+                        return (p.schema.sections || []).some(function (sec) {
+                            return (sec.fields || []).some(function (fd) {
+                                return fd.id === id
+                                    && STATE_ITEMS.indexOf(fd.name) !== -1;
+                            });
                         });
                     });
                 });

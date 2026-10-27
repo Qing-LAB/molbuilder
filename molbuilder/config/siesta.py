@@ -278,16 +278,16 @@ class SiestaConfig:
     # gas-phase translational term one would enter.
     temperature_K: float = 298.15
     relax_max_displ: float = 0.05
-    # ----- The run's optical phase: Raman on this engine --------------
-    # WHICH MODES (`engines/vibration.md` § 5.11 § 9): PySCF's mode
-    # selector, reused whole -- `skip` runs no optical call; `all` every
-    # mode inside the window; `explicit` the listed ones.  The same items
-    # on both configs, read by the same function in the job
-    # (`spectra.selection.select_modes`).
-    es_mode_selection: str = "skip"
-    es_explicit_indices: str = ""
-    freq_min_cm1: Optional[float] = None
-    freq_max_cm1: Optional[float] = None
+    # ----- The strengths, one meaning on both engines ------------------
+    # (`engines/vibration.md` § 3.1): the infrared from every atom's charges
+    # at every force-constant step; Raman from the run's optical phase, for
+    # every mode or those within a frequency range -- the modes picked by
+    # the one selector in the job (`spectra.selection.select_modes`).
+    compute_ir: bool = True
+    compute_raman: bool = False
+    raman_modes: str = "all"
+    raman_freq_min_cm1: Optional[float] = None
+    raman_freq_max_cm1: Optional[float] = None
     # SIESTA'S OPTICAL CALCULATION, one single point per frame (the
     # equilibrium, then +/-dQ along each selected mode): the light's
     # direction, the k-point mesh the optical sum runs over (none: the
@@ -301,11 +301,6 @@ class SiestaConfig:
     optical_broaden: float = 0.002
     optical_energy_max: float = 10.0
     optical_bands: Optional[int] = None
-    # THE PARTIAL CHARGES AT EVERY FORCE-CONSTANT STEP, fixed by the kind
-    # (role items, L4): what the charge each mode moves is read from
-    # (engines/vibration.md 5.3, 5.10).
-    charge_hirshfeld: str = "geometry"
-    charge_voronoi: str = "geometry"
 
     # ``continue_retries`` -- the warm-retry budget.  engines/stages.md § 3
     # is why it is a SHARED field rather than a stage one: it passes both of

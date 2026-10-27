@@ -116,8 +116,9 @@ flowchart LR
   > ([`template.md`](?doc=engines/template.md) § 2.1, the config class is a
   > translator on the way out, not the source). **The Spectrum tab is the same
   > catalogue door since the spectra migration's P2**: its form comes from
-  > `GET /api/build/schema/pyscf?calculation=vibration` — the vibration kind's
-  > items beside the shared ones — and `SpectraConfig` no longer feeds any
+  > `GET /api/build/schema/common?calculation=vibration` and
+  > `GET /api/build/schema/pyscf?calculation=vibration&surface=own` — the
+  > settings both engines share, then PySCF's own — and `SpectraConfig` no longer feeds any
   > form.)*
 
 ---

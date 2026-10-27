@@ -29,8 +29,8 @@ EVERY INPUT IS A RECORD THE ATTEMPT HOLDS, and each is read by its owner:
     the way back to the user order; none for a deck the sort left in the
     user order -- `model/overview.md` § 2.2a, I5), ``engine-offset`` (the axis
     kinds, R3, and the box the run had, `box_of_run`) and ``vibration`` (the stationarity criterion, the
-    thermochemistry's temperature, the person's statement, the stage, the
-    selection, the molbuilder that prepared it);
+    thermochemistry's temperature, the person's statement, the stage,
+    Raman for, the molbuilder that prepared it);
   * the run's index -- its one reader, `vibration_phases.read_index`: how
     each call ended, and the `relax` call's relaxation record;
   * ``<label>.FC`` -- `parse.engines.siesta_fc`;
@@ -98,12 +98,13 @@ try:                                        # inside molbuilder
     from ..paths import frame_token, run_folder_of
     from ..runrecord import newest_run, read_continued_from, stamp
     from ..siesta.deck_lines import coordinates_text
-    from ..siesta.vibration_phases import (FC, OPTICAL, RELAX, Call,
+    from ..siesta.vibration_phases import (FC, IR_CHARGES, OPTICAL, RELAX,
+                                           Call,
                                            add_call, calls_of, entry_of,
                                            index_path, phase, products_of,
                                            read_index, summary, write_index)
     from .normal_modes import displaced, mode_over_atoms, q_for_largest_move
-    from .selection import parse_index_list, select_modes
+    from .selection import select_modes
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_epsimg_reader import read_epsimg  # type: ignore[no-redef]
     from optical_data import write_optical_data  # type: ignore[no-redef]
@@ -144,12 +145,13 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from runrecord import (newest_run,  # type: ignore[no-redef]
                            read_continued_from, stamp)
     from deck_lines import coordinates_text
-    from vibration_phases import (FC, OPTICAL, RELAX, Call, add_call,
+    from vibration_phases import (FC, IR_CHARGES, OPTICAL,  # type: ignore[no-redef]
+                                  RELAX, Call, add_call,
                                   calls_of, entry_of, index_path, phase,
                                   products_of, read_index, summary,
                                   write_index)
     from normal_modes import displaced, mode_over_atoms, q_for_largest_move
-    from selection import parse_index_list, select_modes
+    from selection import select_modes
 
 #: What the result says about how the geometry was reached: the run it
 #: finishes relaxes nothing (`engines/vibration.md` § 5.5).
@@ -164,20 +166,21 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                      temperature_K: float,
                      masses_amu: Sequence[float],
                      molbuilder_version: str,
-                     selection: Optional[Mapping[str, Any]] = None,
+                     raman: Optional[Mapping[str, Any]] = None,
                      relaxation_stage: Optional[str] = None,
                      title: str = "",
                      identity: Optional[Mapping[str, Any]] = None) -> dict:
-    """The deck's ``vibration`` block, format v4 (`engines/vibration.md`
+    """The deck's ``vibration`` block, format v5 (`engines/vibration.md`
     § 5.3, § 5.11 § 4): what the finish reads back and no SIESTA keyword
     states.  Built by `prep`, which holds every fact -- the stage it
     prepares, the stage's resolved config (``relax_force_tol``,
     ``already_relaxed``), the thermochemistry's temperature, every atom's
     mass in the deck's order (``masses_amu``, `chemistry.atomic_mass`'s,
-    I3), the molbuilder that renders the deck, **the mode selection** the
-    optical phase applies (``selection``: `es_mode_selection`, the list, the
-    window -- the one fact of that phase no keyword states; the plan step
-    refuses a block without it), and what no other block of the deck
+    I3), the molbuilder that renders the deck, **Raman for** as the optical
+    phase applies it (``raman``: ``modes`` -- ``all`` or ``range`` -- and the
+    range's two bounds; ``None`` with Compute Raman off -- the one fact of
+    that phase no keyword states; the record step refuses a block without
+    the key), and what no other block of the deck
     carries of the structure -- its ``title`` and its ``identity`` columns
     (`structure.IDENTITY_FIELDS`, in the deck's order), for the structure the
     result states (`engines/vibration.md` § 6.10.1) -- and placed in the
@@ -205,8 +208,7 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
             "temperature_K": float(temperature_K),
             "masses_amu": [float(m) for m in masses_amu],
             "molbuilder_version": str(molbuilder_version),
-            "selection": (dict(selection) if selection is not None
-                          else None),
+            "raman": (dict(raman) if raman is not None else None),
             "title": str(title or ""),
             "identity": {k: (list(v) if v is not None else None)
                          for k, v in (identity or {}).items()}}
@@ -255,6 +257,10 @@ class ForceConstantRun:
     #: ``None`` for a step that printed none (`engines/vibration.md`
     #: § 5.10 ②)
     step_charges: Tuple[Optional[Mapping[str, Sequence[float]]], ...] = ()
+    #: the partitions the deck asked for at every step -- its own
+    #: ``Charge.*`` lines (`vibration_phases.IR_CHARGES`): none with
+    #: Compute IR off.
+    charges_asked: Tuple[str, ...] = ()
 
     @property
     def held(self) -> Tuple[int, ...]:
@@ -323,7 +329,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     if record is None:
         raise FinishError(
             f"{deck.name} carries no vibration block -- the stationarity "
-            f"criterion and the run's selection are not recorded: "
+            f"criterion and the run's Raman for are not recorded: "
             f"re-prep the stage")
     # THE BOX THE RUN HAD -- the one rule the structure the result states is
     # built with (`deck_record.box_of_run`, the ENGINE-OFFSET block), never
@@ -363,7 +369,12 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
         fc=read_fc(fc_path),
         siesta_version=str(build.get("version") or ""),
         record=record,
-        step_charges=tuple(s.get("charges") for s in reading["steps"]))
+        step_charges=tuple(s.get("charges") for s in reading["steps"]),
+        # WHAT THE DECK ASKED, from its own lines -- the one statement of
+        # it (`engines/vibration.md` § 5.3).
+        charges_asked=tuple(p for kw, value, p in IR_CHARGES
+                            if (scalars.get(fdf_key(kw)) or [None])[0]
+                            == value))
 
 
 def equilibrium_structure(run: ForceConstantRun) -> dict:
@@ -401,12 +412,19 @@ def partial_charges_of(run: ForceConstantRun) -> Optional[dict]:
     step, by partition, in the user order, beside each step's displaced
     atom (its user index), axis and side -- the steps SIESTA's own order
     (§ 5.4: the reference, then each nudged atom along x, y, z, side -1
-    before +1).  ``None`` when the output printed none -- a deck that asked
-    for none.  A partition the output printed at some steps and not at
-    every one is refused: the run and its charges disagree."""
-    printed = sorted({p for s in run.step_charges if s for p in s})
-    if not printed:
+    before +1).  ``None`` when the deck asked for none -- Compute IR off
+    (``charges_asked``).  A partition asked that the output prints at no
+    step, or at some steps and not at every one, is refused: the run and
+    its charges disagree."""
+    if not run.charges_asked:
         return None
+    printed = {p for s in run.step_charges if s for p in s}
+    missing = [p for p in run.charges_asked if p not in printed]
+    if missing:
+        raise FinishError(
+            f"{run.deck.name} asks for the {' and '.join(missing)} charges at "
+            f"every step (Compute IR) and {run.output.name} prints none: the "
+            f"run and its deck disagree")
     n = len(run.elements)
     expected = 1 + len(FC_STEP_PATTERN) * len(run.displaced)
     if len(run.step_charges) != expected:
@@ -416,7 +434,7 @@ def partial_charges_of(run: ForceConstantRun) -> Optional[dict]:
             f"takes {expected}")
     every_atom = list(range(n))
     charges = {}
-    for p in printed:
+    for p in run.charges_asked:
         rows = []
         for i, s in enumerate(run.step_charges):
             row = (s or {}).get(p)
@@ -534,12 +552,18 @@ def _with_raman_phase(res, run, optical, phase: str):
     where it has calls, the route, the step ``delta`` and the Methods
     paragraph's sentence for that route -- one composition for the force
     constants' record step and the finish (`engines/vibration.md` § 5.11
-    § 8)."""
+    § 8).  With no call planned, the deck's `vibration` block says why:
+    Compute Raman off (`raman` null) -- *not requested* -- or Raman asked
+    over a range that kept no mode -- *complete*, nothing left to run, the
+    Methods sentence naming the range."""
+    raman = run.record.get("raman")
     route = "optical" if optical is not None else "none"
-    methods = with_siesta_raman_route(res.methods_text, route)
+    methods = with_siesta_raman_route(res.methods_text, route, raman)
     return replace(
         res, optical=optical, raman_route=route,
-        phase_raman=phase if optical is not None else PHASE_NOT_REQUESTED,
+        phase_raman=(phase if optical is not None
+                     else PHASE_COMPLETE if raman is not None
+                     else PHASE_NOT_REQUESTED),
         raman_fd_step_ang=(float(run.fc.displacement_ang)
                            if optical is not None else None),
         methods_text=methods,
@@ -762,50 +786,38 @@ def _relaxation_record(output: Path) -> Optional[dict]:
 def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
                   index: dict) -> int:
     """THE OPTICAL CALLS PLANNED once the force constants are known
-    (§ 5.11 § 3): the modes the selection picks (`select_modes`, on the
-    deck's `vibration` block), each picked mode's ``δQ = δ / max_k |L_k|``
-    -- ``δ`` the `.FC` header's displacement -- and for each frame a call
-    folder below the run's `optical/`, opened through the opener's
-    travelling core (`calcdirs.record`, `planned.bring` from the stage's
-    `optical/`), its `coordinates.fdf` (``R₀ ± δQ·L``, the one displacement
-    rule, `normal_modes.displaced`) and its index entry.  Returns how many
-    were planned -- 0 under `skip`, or when the stage runs no optical
-    phase."""
-    sel = run.record.get("selection")
-    if sel is None:
+    (§ 5.11 § 3): the modes *Raman for* picks (`select_modes`, on the deck's
+    `vibration` block's ``raman``), each picked mode's ``δQ = δ /
+    max_k |L_k|`` -- ``δ`` the `.FC` header's displacement -- and for each
+    frame a call folder below the run's `optical/`, opened through the
+    opener's travelling core (`calcdirs.record`, `planned.bring` from the
+    stage's `optical/`), its `coordinates.fdf` (``R₀ ± δQ·L``, the one
+    displacement rule, `normal_modes.displaced`) and its index entry.
+    Returns how many were planned -- 0 with Compute Raman off, the stage
+    running no optical phase, or when a range keeps no mode."""
+    if "raman" not in run.record:
         raise FinishError(
-            f"{run.deck.name}'s vibration block states no selection -- a "
-            f"deck prepared before the run in phases (2.42.0): prepare the "
-            f"stage again")
+            f"{run.deck.name}'s vibration block states no raman -- a deck "
+            f"prepared before Raman for (2.45.0): prepare the stage again")
+    raman = run.record["raman"]
+    if raman is None:
+        return 0
     stage_optical = here.stage_dir / OPTICAL
     freqs = [float(m.frequency_cm1) for m in res.modes]
-    # THE LIST IS READ ONLY WHEN THE SELECTOR ASKS FOR IT (the catalogue's
-    # `es_explicit_indices`: "only read when selector = explicit").
-    explicit = (parse_index_list(str(sel.get("es_explicit_indices") or ""),
-                                 first=1)
-                if str(sel.get("es_mode_selection")) == "explicit" else [])
-    # A LISTED NUMBER THAT NAMES NO MODE is dropped, and said in the run's
-    # output (§ 4.8): the count is known only now.
-    dropped = [k for k in explicit if not 1 <= k <= len(freqs)]
-    if dropped:
-        _say("WARN", f"vibration: listed mode(s) "
-                     f"{', '.join(str(k) for k in dropped)} name no mode -- "
-                     f"the run has {len(freqs)}; dropped")
-    picked = select_modes(freqs, str(sel.get("es_mode_selection")),
-                          explicit=explicit,
-                          freq_min_cm1=sel.get("freq_min_cm1"),
-                          freq_max_cm1=sel.get("freq_max_cm1"))
+    picked = select_modes(freqs, str(raman.get("modes")),
+                          freq_min_cm1=raman.get("freq_min_cm1"),
+                          freq_max_cm1=raman.get("freq_max_cm1"))
     delta = float(run.fc.displacement_ang)
     # THE SELECTION, AS ASKED AND AS APPLIED (§ 7), whatever it picks --
     # none picked is an answer the run states.
-    index["selection"] = {"asked": dict(sel),
+    index["selection"] = {"asked": dict(raman),
                           "applied": [int(k) for k in picked],
                           "delta_ang": delta}
     if not picked:
         return 0
     if not stage_optical.is_dir():
         raise FinishError(
-            f"the selection picks {len(picked)} mode(s) and the stage holds "
+            f"Raman for picks {len(picked)} mode(s) and the stage holds "
             f"no {OPTICAL}/ folder for their calls -- a stage prepared "
             f"before its optical phase (2.42.0): prepare it again")
     n = len(run.elements)

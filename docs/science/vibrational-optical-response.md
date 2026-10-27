@@ -62,7 +62,7 @@ kept, and the molecule's share is stated beside it (§ 3.1).
 | the molecule — a label the person names (`BDT` on AuBDTAu) | the infrared dipole | — |
 | the light's direction $\hat e$ | infrared and Raman | z on the spectrum viewer, which takes x, y, z or any vector *(the user, 2026-10-24)*; a script names it. None for a free molecule — nothing held — whose infrared is the orientation average (§ 2.3). The infrared takes any direction at no cost (§ 2.3); Raman takes one per optical run: z, the gap's axis, by default, another chosen before the run (`plans/plan.md` § 1ac, D-h) |
 | the charge partition | infrared | Hirshfeld (§ 1a) |
-| the modes to compute Raman for — fixed before the run, since a mode exists only after the force-constant run | Raman | none (`skip`): the vibration's mode selector, PySCF's reused — `all` within a frequency window, or the modes listed ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9) |
+| the modes to compute Raman for — fixed before the run, since a mode exists only after the force-constant run | Raman | every mode — *Raman for*, the setting both engines share: all modes, or the modes in a frequency range a chemist knows before the run ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1, § 5.11 § 9) |
 | the laser's wavelength | Raman, after the run — the polarizability is taken at its frequency (§ 3.1) | — |
 | a temperature | the displacement's reference | — |
 
@@ -270,7 +270,8 @@ SIESTA's force-constant run moves each free atom $k$ by $\pm\delta$ along x,
 y and z in turn (`FC.Displacement`, 0.04 bohr = 0.0212 Å by default) and
 solves the electrons self-consistently at each step. With
 `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` in its input —
-written there since 2.35.2 (`engines/vibration.md` § 5.3) — SIESTA prints
+written there when *Compute IR* is on (`engines/vibration.md` § 3.1, § 5.3)
+— SIESTA prints
 every atom's partial charge, by both partitions, "at the end of every geometry
 step" (SIESTA 5.4.2 manual, `Charge.Hirshfeld`; `grdsam.F`), to $10^{-6}\,e$
 (`partial_charges.F90`), each column summing to zero for a neutral cell.
@@ -565,8 +566,9 @@ static value whether it may be shown beside it (`plans/plan.md` § 1ac, R1).
   is not the frame generator's maximum displacement, which is a spread to
   average over (§ 4), and its averaging weights do not enter.
 - **The modes are the person's; the equilibrium is shared.** The optical
-  phase takes the modes the selection picks — fixed before the run, since a mode
-  exists only after the force-constant run: the vibration's mode selector, PySCF's reused ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9) —
+  phase takes the modes *Raman for* picks — fixed before the run, since a mode
+  exists only after the force-constant run: every mode, or those in a
+  frequency range ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1) —
   and runs the undisplaced geometry once and the two displaced ones for each
   mode: $1 + 2N$ runs (§ 5.1).
 - **The light's direction: z by default, another chosen before the run.** One
@@ -575,9 +577,9 @@ static value whether it may be shown beside it (`plans/plan.md` § 1ac, R1).
   geometry — decided once the toy junction's measurement says what an optical
   run costs (`plans/plan.md` § 1ac, R1). The infrared, by contrast, takes any
   direction after the run at no cost (§ 2.3).
-- **The settings the runs read are declared** — the optical keywords and the
-  charge switch alike shown on Task setup and in each deck's provenance, as
-  every input is (`plans/plan.md` § 1ac, L4).
+- **The settings the runs read are declared** — the optical keywords and
+  *Compute IR*'s charges alike shown on Task setup and in each deck's
+  provenance, as every input is (`plans/plan.md` § 1ac, L4).
 
 Each geometry is one SIESTA single point with the optical calculation in
 its input — a call of the vibration run's optical phase (§ 5).

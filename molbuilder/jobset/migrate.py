@@ -63,7 +63,10 @@ NEGF broadenings, written blank -- a rung's override taken out too
 (`template.RENAMED_ITEMS`), and an item a release retired taken out where
 its value runs as before without it (`template.RETIRED_ITEMS`,
 `Retired.runs`), any other value refused by name -- in the template, a
-stage's own values and `varies` alike.  **What the rewrite carries is the
+stage's own values and `varies` alike; a SIESTA vibration's Raman selector
+before 2.45.0 stated as *Compute IR*, *Compute Raman* and *Raman for*
+(:func:`_map_raman`), an explicit list of modes and a stage's own value of
+it refused by name.  **What the rewrite carries is the
 old file's, whole**: every value, every blank and each item's source as the
 file records it (`engines/template.md` § 5); what it cannot carry is said --
 a value of an item no longer of this kind, the comments a person wrote
@@ -195,6 +198,45 @@ def _map_state(engine: str, vals: Dict[str, Any]
             out["unpaired_electrons"] = count
             said.append(f"spin_total = {total!r} -> "
                         f"unpaired_electrons = {count}")
+    return out, said
+
+
+def _map_raman(vals: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+    """A SIESTA vibration described before 2.45.0, its Raman and infrared
+    as the settings both engines share say them (`engines/vibration.md`
+    § 5.11 § 9): its ``es_mode_selection`` decided the Raman -- ``skip``,
+    or ``explicit`` with an empty list, none; ``all`` every mode within the
+    window -- and its charges were always written.  An ``explicit`` list of
+    modes is refused by name: mode numbers have no range to become."""
+    from ..spectra.methods import frequency_range_words
+    from ..spectra.selection import parse_index_list
+    sel = vals.get("es_mode_selection", "skip")
+    listed = str(vals.get("es_explicit_indices") or "")
+    out: Dict[str, Any] = {"compute_ir": True}
+    said = ["compute_ir = True (the charges were always written)"]
+    if sel == "explicit" and parse_index_list(listed, first=1):
+        raise MigrateError(
+            f"es_mode_selection = 'explicit' ({listed!r}) picked this SIESTA "
+            f"vibration's Raman modes by number, and Raman for takes every "
+            f"mode or a frequency range -- mode numbers have no range to "
+            f"become, so nothing was written.  Edit the template: "
+            f"es_mode_selection = 'all', with freq_min_cm1 / freq_max_cm1 "
+            f"for a range, or 'skip' for no Raman; then run the migration "
+            f"again (engines/vibration.md 3.1).")
+    if sel != "all":
+        out["compute_raman"] = False
+        said.append(f"es_mode_selection = {sel!r}"
+                    + (" with no mode listed" if sel == "explicit" else "")
+                    + " -> compute_raman = False (no optical call ran)")
+        return out, said
+    lo, hi = vals.get("freq_min_cm1"), vals.get("freq_max_cm1")
+    out.update(compute_raman=True,
+               raman_modes=("range" if lo is not None or hi is not None
+                            else "all"),
+               raman_freq_min_cm1=lo, raman_freq_max_cm1=hi)
+    where = frequency_range_words(lo, hi)
+    said.append("es_mode_selection = 'all' -> compute_raman = True, Raman "
+                "for " + (f"the modes {where}" if where else "every mode"))
     return out, said
 
 
@@ -1352,12 +1394,29 @@ def _decide_template(rec: "_Records", task):
     # stage's own values and `varies` -- when its value runs as before
     # without it, and refused by name otherwise: what the calculation was is
     # kept, never rounded (`template.Retired.runs`).
-    retired = [it for it in mine if it.name in _T.RETIRED_ITEMS]
+    # ...ON THIS ENGINE: an item one engine keeps is another's to retire
+    # (`template.Retired.engines`).
+    def _gone(name: str) -> bool:
+        r = _T.RETIRED_ITEMS.get(name)
+        return r is not None and r.retired_on(engine)
+
+    retired = [it for it in mine if _gone(it.name)]
     stage_retired = [(st.name, k, v) for st in (task.stages or ())
-                     for k, v in (st.overrides or {}).items()
-                     if k in _T.RETIRED_ITEMS]
-    varies_retired = [k for k in (task.varies or ())
-                      if k in _T.RETIRED_ITEMS]
+                     for k, v in (st.overrides or {}).items() if _gone(k)]
+    varies_retired = [k for k in (task.varies or ()) if _gone(k)]
+    # A STAGE'S OWN RAMAN, said by SIESTA's retired selector, is not taken
+    # out: it decided the stage's optical phase, and the template's mapping
+    # (:func:`_map_raman`) speaks for the template alone.  A `varies` entry
+    # alone decides nothing, and is taken out as any retired item's.
+    raman_said = [f"stage {st!r} overrides {k}" for st, k, _v in stage_retired
+                  if k in _T.SIESTA_RAMAN_SELECTOR and engine == "siesta"]
+    if raman_said:
+        raise MigrateError(
+            f"{'; '.join(raman_said)}, which picked that stage's Raman modes "
+            f"on SIESTA -- since 2.45.0 Compute Raman and Raman for say it.  "
+            f"Nothing was written: state them on the stage instead (or take "
+            f"the override out), then run the migration again "
+            f"(engines/vibration.md 3.1).")
     stuck = ([(f"the template says {it.name} = {it.value!r}", it.name)
               for it in retired
               if it.is_set
@@ -1375,10 +1434,10 @@ def _decide_template(rec: "_Records", task):
     if stage_retired or varies_retired:
         task = dataclasses.replace(
             task, varies=tuple(k for k in (task.varies or ())
-                               if k not in _T.RETIRED_ITEMS),
+                               if not _gone(k)),
             stages=tuple(dataclasses.replace(st, overrides={
                 k: v for k, v in (st.overrides or {}).items()
-                if k not in _T.RETIRED_ITEMS}) for st in task.stages))
+                if not _gone(k)}) for st in task.stages))
     retired_said = (
         [(f"{it.name} = {it.value!r}" if it.is_set else f"{it.name} (blank)")
          + f" removed ({_T.RETIRED_ITEMS[it.name].why})" for it in retired]
@@ -1437,7 +1496,7 @@ def _decide_template(rec: "_Records", task):
     run_items = sorted(it.name for it in mine if it.name in ours)
     vals = {k: v for k, v in vals.items() if k not in run_items}
     unknown = sorted(k for k in vals if k not in known
-                     and k not in old_names and k not in _T.RETIRED_ITEMS)
+                     and k not in old_names and not _gone(k))
     if unknown:
         raise MigrateError(
             f"{tmpl.name} names {', '.join(map(repr, unknown))}, which no "
@@ -1476,6 +1535,13 @@ def _decide_template(rec: "_Records", task):
             if k in known and k not in old_names and k not in zeros}
     kept.update(state)
     kept.update(from_card)
+    # A SIESTA VIBRATION'S RAMAN, AS ITS RETIRED SELECTOR SAID IT (2.45.0,
+    # `engines/vibration.md` § 5.11 § 9): stated in the settings both
+    # engines share, so the deck computes what it computed.
+    if any(it.name == "es_mode_selection" for it in retired):
+        switches, switches_said = _map_raman(vals)
+        kept.update(switches)
+        said += switches_said
     said += ([f"{', '.join(run_items)} taken out -- a run setting is the job "
               f"request's, never the template's ({_RUN_OUT})"]
              if run_items else [])

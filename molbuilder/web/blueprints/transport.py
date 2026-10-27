@@ -927,7 +927,8 @@ def api_transport_describe() -> Any:
             "error": "the description fails its own preflight "
                      "(engines/stages.md § 6.6):\n  - "
                      + "\n  - ".join(i.message for i in _pf_errs),
-            "findings": _issues_to_json(_pf, cfg=_cfg_cls_for(task)),
+            "findings": _issues_to_json(_pf, cfg=_cfg_cls_for(task),
+                                        calculation=task.calculation),
         }), 400
 
     # WRITTEN HERE, every file or none, through the writer `molbuilder describe`
@@ -984,7 +985,8 @@ def api_transport_describe() -> Any:
         # its junction's place -- beside the description's own notes
         # (`issues.Issue`, the one finding).
         "notices": _issues_to_json(list(_pf) + list(notes),
-                                   cfg=_cfg_cls_for(task)),
+                                   cfg=_cfg_cls_for(task),
+                                   calculation=task.calculation),
     })
 
 
@@ -1001,7 +1003,8 @@ def _plan_of(desc, finished, *, root, task, notices, cfg) -> Any:
     from molbuilder.issues import Issue
     if finished is None:
         return jsonify({"ok": True, "plan": True, "manifest": None,
-                        "notices": _issues_to_json(notices, cfg=cfg)})
+                        "notices": _issues_to_json(
+                            notices, cfg=cfg, calculation="transport")})
     from molbuilder.calculation import open as _open_calc
     from molbuilder.describe import DescribeError
     from molbuilder.jobset.errors import PrepError
@@ -1034,7 +1037,8 @@ def _plan_of(desc, finished, *, root, task, notices, cfg) -> Any:
             shutil.rmtree(staging, ignore_errors=True)
     return jsonify({"ok": True, "plan": True, "manifest": manifest,
                     "notices": _issues_to_json(notices + list(notes),
-                                               cfg=cfg)})
+                                               cfg=cfg,
+                                               calculation="transport")})
 
 
 # ===================================================================== #

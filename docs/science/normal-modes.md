@@ -608,14 +608,15 @@ picks ([`vibrational-optical-response.md`](?doc=science/vibrational-optical-resp
 § 2; `vibration.md` § 5.10 ②). Born effective charges from the Berry-phase
 polarisation are the route for an insulating crystal, and SIESTA computes them
 for an insulator only; a junction is metallic. **Raman is the run's optical
-phase**: SIESTA's optical calculation at $\pm\delta Q$ along each mode the
-selector picks, and the strength — the squared change of the polarizability
+phase**: SIESTA's optical calculation at $\pm\delta Q$ along each mode
+*Raman for* picks — every mode, or those in a frequency range — and the
+strength — the squared change of the polarizability
 along the light — derived at a laser the person names after the run
 ([`vibration.md`](?doc=engines/vibration.md) § 5.11 § 10, its science
 [`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
-§ 3; problem 5 of § 4b.7 below). PySCF's *Compute Raman* is not drawn when
-SIESTA is the engine — not drawn rather than defaulted off, because a control
-that silently does nothing is worse than an absent one.
+§ 3; problem 5 of § 4b.7 below). *Compute Raman* and *Raman for* are one
+setting each on both engines ([`vibration.md`](?doc=engines/vibration.md)
+§ 3.1).
 
 **And for the junction work the more useful quantity is a different one again.**
 What modulates a current is not how a mode couples to light but how it couples

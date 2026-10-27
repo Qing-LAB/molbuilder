@@ -73,6 +73,37 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
     assert names() == names(calculation="optimization")
 
 
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_the_vibration_form_in_its_parts_holds_each_setting_once(engine):
+    """`web/form-schema.md` § 1.3, `engines/template.md` § 6.2a: on the
+    Spectrum tab the settings every engine shares are drawn once, before the
+    engine, and each engine's form holds its own -- together exactly the
+    engine's whole vibration form, no setting in both parts and none in
+    neither, each offered every choice the engine takes.
+
+    THE SILENT FAILURE: a setting the person can no longer reach (in
+    neither part), or reached twice with two values the Send must pick
+    between (in both).  MUTATIONS THIS MUST FAIL AGAINST: the own part
+    left whole (the shared settings drawn twice); the shared part filtered
+    by one engine (a setting the other engine has, in neither)."""
+    def _fields(schema):
+        return {f["name"]: f for s in schema["sections"] for f in s["fields"]}
+    whole = _fields(catalogue_to_form_schema(engine, "p",
+                                             calculation="vibration"))
+    common = _fields(catalogue_to_form_schema(None, "c",
+                                              calculation="vibration",
+                                              surface="common"))
+    own = _fields(catalogue_to_form_schema(engine, "p",
+                                           calculation="vibration",
+                                           surface="own"))
+    assert not set(common) & set(own), set(common) & set(own)
+    assert set(common) | set(own) == set(whole), \
+        set(whole) ^ (set(common) | set(own))
+    for name, f in common.items():
+        assert set(whole[name].get("choices") or ()) <= set(
+            f.get("choices") or ()), name
+
+
 def test_the_displacement_gets_a_control_that_can_carry_its_value():
     """§ 57.3, the defect this job had to fix before the field could appear.
 

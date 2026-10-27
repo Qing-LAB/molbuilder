@@ -58,23 +58,13 @@ class Issue:
         either an ordinary single-run finding, or a fact about the
         SEQUENCE (§ 4 R3) -- a ladder that loosens is a property of the
         description, not of any one stage in it.
-    workflow_group : Optional[str]
-        Optional workflow-card binding -- one of "profile", "stage",
-        or "budget" -- so the web UI can attach the finding to the
-        card whose fields it concerns rather than dumping every
-        issue into one panel below the Generate button (per
-        docs/web/ui-contract.md Rule 2).  Defaults to
-        None; usually set by ``_shared.resolve_workflow_group(where,
-        cfg)`` at serialization time so individual ``_check_*``
-        functions don't need to think about UI structure.  Findings
-        whose ``where`` doesn't map to a config field (geometry,
-        cell, polymer) keep ``workflow_group = None`` and render in
-        the residual "structure" panel.
+    The card a finding is shown on is not the finding's: it is the card
+    its field is drawn in on the form, worked out where the form is known
+    (`_shared.issues_to_json`, `template.card_of`).
     """
     severity:        Severity
     message:         str
     where:           str = ""
-    workflow_group:  Optional[str] = None
     stage:           Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -91,8 +81,8 @@ class Issue:
 
         `stage` rides beside `where`, never inside it (`engines/stages.md`
         § 4 R2), and is omitted when absent.
-        `workflow_group` is resolved from a config the web layer holds, so
-        `_shared.issues_to_json` adds it on top of this.
+        The ``card`` is the form's, so `_shared.issues_to_json` adds it on
+        top of this.
         """
         d: "Dict[str, Any]" = {"severity": self.severity,
                                "message":  self.message,

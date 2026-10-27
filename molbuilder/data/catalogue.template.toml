@@ -493,6 +493,7 @@ engine_default = { value = "CG", source = "SIESTA 5.4.2 read_options.F90:1281: d
 recommended = { vibration = "Broyden" }
 # a vibration's `relax` stage relaxes: no relaxation is not one
 offered = { vibration = ["CG", "Broyden", "FIRE"] }
+result = { vibration = "modes" }
 group = "stage"
 label = "Relaxation algorithm"
 help = """
@@ -520,13 +521,14 @@ value = 200
 default = 200
 recommended = { vibration = 100 }
 range = [1, 10000]
+result = { vibration = "modes" }
 group = "budget"
 label = "Max geometry-optimisation steps"
 tier = "advanced"
 help = """
 Outer loop: the most geometry steps the optimiser is allowed, each step being a full SCF plus forces plus one move of the atoms -- SIESTA's ``MD.Steps``.
 The shipped ladder: coarse 600, medium 200, tight 100 -- a small displacement cap is slow per step but needs few steps from a publishable-converged starting geometry.
-A well-behaved relaxation converges in 30-150 steps, so 200 is a safety cap, not a target.
+A well-behaved relaxation converges in 30-150 steps, so the cap -- 200 on an optimization, 100 on a vibration's relaxation -- is a safety cap, not a target.
 """
 
 [item.relax_force_tol]
@@ -546,13 +548,14 @@ recommended = { vibration = 0.01 }
 unit = "eV/Å"
 range = [0.001, 0.5]
 tightens = "down"
+result = { vibration = "modes" }
 group = "stage"
 label = "Force convergence threshold"
 tier = "advanced"
 help = """
 The relaxation declares success when the largest force on any unconstrained atom falls below this, in eV/Å.
 Per-tier (eV/Å): screening 0.10, loose preopt 0.05, publishable 0.04 (SIESTA's own default), tight (vib/IR) 0.01, very-tight (NEB barrier) 0.001.
-SIESTA's own default is 0.04 eV/Å -- the 'publishable' row above. This catalogue starts at 0.02, twice as tight, because a relaxation that stops at the loose end leaves residual forces big enough to contaminate a frequency calculation run on top of it, and re-relaxing afterwards costs more than the extra steps did. For a single-point or a screening pass, 0.04 is the engine's own answer.
+SIESTA's own default is 0.04 eV/Å -- the 'publishable' row above. This catalogue starts at 0.02 on an optimization, twice as tight, and at 0.01 on a vibration's relaxation, because a relaxation that stops at the loose end leaves residual forces big enough to contaminate a frequency calculation run on top of it, and re-relaxing afterwards costs more than the extra steps did. For a single-point or a screening pass, 0.04 is the engine's own answer.
 SIESTA checks max force only, unlike the 5-criteria geomeTRIC/Gaussian convention.
 """
 
@@ -573,13 +576,14 @@ recommended = { vibration = 0.02 }
 unit = "Å"
 range = [0.001, 0.5]
 tightens = "down"
+result = { vibration = "modes" }
 group = "stage"
 label = "Max displacement per step"
 tier = "advanced"
 help = """
 A hard ceiling on how far any atom may move in one optimiser step, in Å -- it catches line-search over-shoot. Applies across CG, Broyden AND FIRE, as ``MD.MaxDispl`` (SIESTA 5.4.2; its own default is 0.2 Bohr).
 Per-tier (Å): screening 0.30, loose preopt 0.20, publishable 0.05, tight (vib/IR) 0.02.
-That engine default of 0.2 Bohr is 0.106 Å; this catalogue starts at 0.05 Å, about half. The cap only ever limits a step, so a smaller one costs steps and never accuracy. Raise it toward the loose-preopt 0.20 Å for a cheap first pass on a structure that starts far from its minimum.
+That engine default of 0.2 Bohr is 0.106 Å; this catalogue starts at 0.05 Å on an optimization, about half, and at 0.02 Å on a vibration's relaxation. The cap only ever limits a step, so a smaller one costs steps and never accuracy. Raise it toward the loose-preopt 0.20 Å for a cheap first pass on a structure that starts far from its minimum.
 Symptom of a cap set too large: max force oscillates rather than descends (e.g. 0.09 -> 0.44 -> 0.13 -> 0.31 -> ...). Halve the cap.
 """
 
@@ -599,13 +603,14 @@ engine_default = { none = "the older MD.FCDispl, else 0.04 Bohr", source = "SIES
 unit = "Bohr"
 range = [0.005, 0.2]
 above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }
+result = { vibration = "modes" }
 group = "stage"
 label = "Force-constant displacement"
 tier = "advanced"
 help = """
 How far each free atom is nudged, in Bohr, along x, y and z both ways, to measure the force constants by central differences -- SIESTA's own default is 0.04 Bohr (about 0.02 Å).
 Smaller nudges follow the harmonic curvature more closely but push the force difference toward the SCF's noise floor (tighten DM.Tolerance if you go below 0.02 Bohr); larger ones pick up anharmonic terms.  The run nudges the FREE atoms only: the held atoms are written into Geometry.Constraints and sit outside the FC.First..FC.Last range, so holding atoms reduces the run in proportion (6 force evaluations per free atom, each a whole-system SCF).
-The force constants land in <SystemLabel>.FC in eV/Å²; the job itself then turns them into modes (mb_vibration.pyz, run by the wrapper after SIESTA) through the same projection and diagonalisation the PySCF route runs, and writes <SystemLabel>.spectra.json beside the run (engines/vibration.md 5.5).  Every atom's Hirshfeld and Voronoi charge is recorded at every nudge, from which the spectrum viewer gives the infrared of the atoms you name (engines/vibration.md 5.10); the Raman of the modes the selector picks is derived from the run's optical calls at a laser you name (engines/vibration.md 5.11 § 10).
+The force constants land in <SystemLabel>.FC in eV/Å²; the job itself then turns them into modes (mb_vibration.pyz, run by the wrapper after SIESTA) through the same projection and diagonalisation the PySCF route runs, and writes <SystemLabel>.spectra.json beside the run (engines/vibration.md 5.5).  With Compute IR on, every atom's Hirshfeld and Voronoi charge is recorded at every nudge, from which the spectrum viewer gives the infrared of the atoms you name (engines/vibration.md 5.10); with Compute Raman on, the Raman of the modes Raman for picks is derived from the run's optical calls at a laser you name (engines/vibration.md 5.11 § 10).
 """
 
 [item.continue_retries]
@@ -1772,6 +1777,7 @@ default = 298.15
 unit = "K"
 range = [1.0, 5000.0]
 above = { value = 0, why = "PySCF's ideal-gas thermochemistry divides by kT and takes logarithms of kT/P (pyscf/hessian/thermo.py), so 0 writes inf and nan; what 0 K would leave, the zero-point energy, every record carries at any temperature" }
+result = { vibration = "thermochemistry" }
 group = "profile"
 label = "Thermochemistry temperature"
 tier = "advanced"
@@ -1796,6 +1802,7 @@ default = 1.0
 unit = "atm"
 range = [1e-06, 1000.0]
 above = { value = 0, why = "PySCF's ideal-gas entropy takes a logarithm of kT/P (pyscf/hessian/thermo.py), so 0 writes inf" }
+result = { vibration = "thermochemistry" }
 group = "profile"
 label = "Thermochemistry pressure"
 tier = "advanced"
@@ -1815,12 +1822,13 @@ engine_key = "(molbuilder: no engine keyword -- the ladder or the deck decides)"
 type = "bool"
 value = false
 default = false
+result = { vibration = "modes" }
 group = "profile"
 label = "Structure is already relaxed"
 tier = "basic"
 help = """
 Is this structure already relaxed at the level of theory about to run?  Your call, and explicit: nothing is assumed either way.
-UNTICKED (the default): the calculation relaxes the free atoms first, to the convergence settings in this form -- recommended tight, a largest remaining force of about 0.01 eV/A -- and then takes the second derivatives at the relaxed geometry.  On PySCF that is the script's first phase; on SIESTA it is a `relax` stage before the `freq` stage, the relaxed geometry carried into the force-constant deck.
+UNTICKED (the default): the calculation relaxes the free atoms first, to the convergence settings in this form -- recommended tight, a largest remaining force of about 0.01 eV/A -- and then takes the second derivatives at the relaxed geometry.  On PySCF that is the script's first phase; on SIESTA it is the run's relax call, before its force-constant call, which starts from the relaxed geometry (engines/vibration.md 5.11).
 TICKED: nothing is relaxed.  If the structure is NOT relaxed at this level of theory the frequencies will be off -- an unrelaxed H2 bond gave 3358 cm-1 where the relaxed one gives 3022 (a tenth) -- so the tool measures the forces at the starting geometry and warns with the number when they exceed the force tolerance in this form.  It never refuses: the statement is yours to make.
 A structure exported from a finished relaxation at the same level of theory is the case this box is for; anything drawn, edited or relaxed elsewhere should be left unticked.
 """
@@ -1828,45 +1836,110 @@ A structure exported from a finished relaxation at the same level of theory is t
 [item.compute_raman]
 kind = "deck"
 calculations = ["vibration"]
-expands = ["finite-difference polarizability loop"]
+expands = ["PySCF: the finite-difference polarizability loop, every mode at once", "SIESTA: the optical phase -- an optical calculation at the equilibrium and at +/-dQ along each mode Raman for picks"]
 category = ["procedure"]
-engines = ["pyscf"]
-engine_key = "(molbuilder: finite-diff polarizability path)"
+engines = ["pyscf", "siesta"]
+engine_key = "(molbuilder: PySCF's polarizability sweep; SIESTA's optical phase)"
 type = "bool"
-value = true
-default = true
+value = false
+default = false
+result = { vibration = "raman" }
 group = "profile"
-label = "Compute Raman activities"
+label = "Compute Raman intensities"
 tier = "basic"
 help = """
-Compute how strongly each mode scatters light in a Raman experiment -- the activity follows from how much the molecule's polarizability changes as the mode vibrates.
+Compute how strongly each mode scatters laser light in a Raman experiment -- from how much the molecule's polarizability changes as the mode vibrates.  Off unless you turn it on, on both engines: it is the expensive result.
 
-This is the expensive optional, and the one that sets the run's cost: roughly 6 x (number of free atoms) extra SCFs, each followed by a polarizability response calculation -- one per +/- finite-difference displacement in each Cartesian direction.
+PySCF: the polarizability at small pushes of every free atom along x, y and z -- about 6 x (free atoms) extra SCFs, each with a response calculation -- which gives every mode at once.  It also makes the infrared free, read at the same pushes.
+SIESTA: SIESTA's optical calculation at the equilibrium and at a small push forward and back along each mode Raman for picks -- 1 + 2 x (modes) single points; prep states the count before you launch.  The strength itself is worked out when you open the result, at the laser wavelength you type (engines/vibration.md 5.11 § 10).
+"""
 
-Turn it off if you only want frequencies, or frequencies plus IR: IR without Raman takes an analytic route that needs no displacement loop at all.  Turning it on makes IR free, because the dipole can be read at each displacement the Raman loop is already computing.
+[item.raman_modes]
+kind = "deck"
+calculations = ["vibration"]
+expands = ["SIESTA: the modes the optical phase runs for (select_modes)", "PySCF: nothing -- its sweep gives every mode"]
+category = ["procedure"]
+engines = ["pyscf", "siesta"]
+engine_key = "(molbuilder: which modes get Raman)"
+type = "enum"
+choices = ["all", "range"]
+choice_labels = { all = "All modes", range = "Modes in a frequency range" }
+value = "all"
+default = "all"
+active_when = { compute_raman = [true] }
+result = { vibration = "raman" }
+group = "profile"
+label = "Raman for"
+tier = "basic"
+help = """
+Which modes get Raman, decided before the run:
+  All modes                   -- every mode (the default).
+  Modes in a frequency range  -- only the modes whose frequency lies between Min and Max below (cm-1); either may be left blank.
+A range is the one choice that can be made before any calculation, from chemistry: C-H stretches sit at about 2800-3200 cm-1, and a lower limit of about 300 cm-1 leaves out a gold junction's many slow modes.
+SIESTA runs two optical calculations per mode picked, so a range is how to spend less.  PySCF computes every mode at once from its sweep, so there a range narrows nothing -- the checks say so.
+"""
+
+[item.raman_freq_min_cm1]
+kind = "deck"
+calculations = ["vibration"]
+expands = ["SIESTA: the lower end of the range Raman is computed for"]
+category = ["procedure"]
+engines = ["pyscf", "siesta"]
+engine_key = "(molbuilder: the Raman range's lower end)"
+type = "float"
+optional = true
+unit = "cm⁻¹"
+null_label = "(no lower end)"
+active_when = { compute_raman = [true], raman_modes = ["range"] }
+result = { vibration = "raman" }
+group = "profile"
+label = "Raman from"
+tier = "basic"
+not_set = "no lower end: every mode up to Max is kept"
+help = """
+The lowest frequency, in cm-1, of the modes Raman is computed for under "Modes in a frequency range".  Blank: no lower end.
+"""
+
+[item.raman_freq_max_cm1]
+kind = "deck"
+calculations = ["vibration"]
+expands = ["SIESTA: the upper end of the range Raman is computed for"]
+category = ["procedure"]
+engines = ["pyscf", "siesta"]
+engine_key = "(molbuilder: the Raman range's upper end)"
+type = "float"
+optional = true
+unit = "cm⁻¹"
+null_label = "(no upper end)"
+active_when = { compute_raman = [true], raman_modes = ["range"] }
+result = { vibration = "raman" }
+group = "profile"
+label = "Raman up to"
+tier = "basic"
+not_set = "no upper end: every mode from Min up is kept"
+help = """
+The highest frequency, in cm-1, of the modes Raman is computed for under "Modes in a frequency range".  Blank: no upper end.
 """
 
 [item.compute_ir]
 kind = "deck"
 calculations = ["vibration"]
-expands = ["analytic dipole derivatives (or a finite-difference dipole loop)"]
+expands = ["PySCF: analytic dipole derivatives (or a finite-difference dipole loop)", "SIESTA: Charge.Hirshfeld and Charge.Voronoi at every force-constant step"]
 category = ["procedure"]
-engines = ["pyscf"]
-engine_key = "(molbuilder: pyscf.prop.infrared, else finite-diff dipoles)"
+engines = ["pyscf", "siesta"]
+engine_key = "(molbuilder: PySCF's dipole derivative; SIESTA's charges at every force-constant step)"
 type = "bool"
-value = false
-default = false
+value = true
+default = true
+result = { vibration = "infrared" }
 group = "profile"
 label = "Compute IR intensities"
 tier = "basic"
 help = """
-Compute IR absorption intensities (km/mol) from the dipole-moment derivative dmu/dR -- how much the molecule's dipole shifts as each mode vibrates, which is what makes a band bright or dark.
+Compute how strongly each mode absorbs infrared light (km/mol) -- from how much the dipole changes as the mode vibrates, which is what makes a band bright or dark.  On by default on both engines: it is the cheap result.
 
-Cost depends on what else you ticked.  With Raman off this is nearly free: the derivative comes from the very coupled-perturbed response the Hessian already solves, measured at about +14% on top of the Hessian.  With Raman on it is free outright -- Raman's displacement loop runs anyway, and the dipole is read at each point it already computes.
-
-The slow path is a fallback, not the design: if the env lacks `pyscf.prop.infrared` (never released to PyPI -- `envs doctor` reports it and `envs repair --include-optional` installs it), the deck finite-differences the dipole instead.  Same intensities, 6N extra SCFs.  Which route actually ran is recorded in the results and shown in the viewer's run summary.
-
-The analytic route reproduces Q-Chem's published NH3 intensities to 0.02 km/mol, and the two routes' derivative tensors agree to 0.02%.  Band ordering reproduces the literature for water at B3LYP/def2-SVP (bend ~55 km/mol > asym ~27 > sym ~5).
+PySCF: with no atom held, the dipole derivative from the response the Hessian already solves -- about +14% on the Hessian with Raman off, free with Raman on, which reads it at its own pushes.  With atoms held it is the dipole at small pushes of each free atom -- 6 extra whole-system SCFs per free atom with Raman off; the checks say how many before the run.  If the env lacks `pyscf.prop.infrared` (never released to PyPI -- `envs doctor` reports it and `envs repair --include-optional` installs it), the deck finite-differences the dipole instead: same intensities, 6N extra SCFs.  Which route ran is recorded in the results.  The analytic route reproduces Q-Chem's published NH3 intensities to 0.02 km/mol.
+SIESTA: every atom's Hirshfeld and Voronoi charge at every force-constant step (Charge.Hirshfeld, Charge.Voronoi) -- a grid integration per step, no extra SCF.  The infrared of the atoms you name is worked out from them when you open the result (engines/vibration.md 5.10).
 """
 
 [item.displacement_amplitude_ang]
@@ -1882,6 +1955,8 @@ value = 0.02
 default = 0.02
 range = [0.02, 0.2]
 unit = "Å"
+active_when = { es_mode_selection = ["all", "explicit"] }
+result = { vibration = "probe" }
 group = "stage"
 label = "Displacement amplitude"
 tier = "advanced"
@@ -1901,12 +1976,14 @@ kind = "deck"
 calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
-engines = ["pyscf", "siesta"]
+engines = ["pyscf"]
 engine_key = "(molbuilder: per-mode electronic-structure selector)"
 type = "enum"
 value = "skip"
 default = "skip"
 choices = ["skip", "all", "explicit"]
+choice_labels = { skip = "No mode: the probe is off", all = "Every mode (within the window)", explicit = "Modes listed by number" }
+result = { vibration = "probe" }
 group = "profile"
 label = "Mode selection"
 tier = "basic"
@@ -1916,7 +1993,7 @@ Which vibrational modes get the displaced-geometry orbital-energy probe -- a loo
   all       -- every mode inside the frequency window (cost ~ 2 N modes).
   explicit  -- you list specific mode numbers.
 Each chosen mode costs two extra SCF calculations (one at +A, one at -A along the mode), so this is the most expensive part of the run and its cost scales linearly with how many modes you pick; the frequency window is the cost control.
-On SIESTA the same choice picks the modes whose Raman is derived: each chosen mode costs two optical calculations at +δQ and -δQ, and skip runs none, so the result's Raman reads not requested (engines/vibration.md 5.11 § 8).  The orbital-energy probe itself is PySCF's: on SIESTA the electrons' response along a mode is the projected density of states at displaced structures, planned (engines/vibration.md 5.10).
+It is not tied to Raman, which has its own choice of modes ("Raman for").  The probe is PySCF's: on SIESTA the electrons' response along a mode is the projected density of states at displaced structures, planned (engines/vibration.md 5.10).
 """
 
 [item.es_explicit_indices]
@@ -1924,16 +2001,18 @@ kind = "deck"
 calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
-engines = ["pyscf", "siesta"]
+engines = ["pyscf"]
 engine_key = "(molbuilder: per-mode selector parameter)"
 type = "str"
 value = ""
 default = ""
+active_when = { es_mode_selection = ["explicit"] }
+result = { vibration = "probe" }
 group = "profile"
 label = "Explicit modes"
 tier = "advanced"
 help = """
-Which vibrational modes get orbital-energy data (PySCF) or the optical calls their Raman is derived from (SIESTA), as a comma-separated list of 1-based mode numbers, e.g. "3, 7, 12". Ranges work too: "3-7, 12". There is one string format and no aliases, parsed at the emitter.
+Which vibrational modes get orbital-energy data, as a comma-separated list of 1-based mode numbers, e.g. "3, 7, 12". Ranges work too: "3-7, 12". There is one string format and no aliases, parsed at the emitter.
 Only read when selector = explicit.
 Usual workflow: run with selector = skip first, look at the spectrum, then re-run with selector = explicit and the modes you care about.
 """
@@ -1943,18 +2022,20 @@ kind = "deck"
 calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
-engines = ["pyscf", "siesta"]
+engines = ["pyscf"]
 engine_key = "(molbuilder: per-mode frequency filter)"
 type = "float"
 optional = true
 unit = "cm⁻¹"
-null_label = "(no lower bound)"
+null_label = "(no lower end)"
+active_when = { es_mode_selection = ["all"] }
+result = { vibration = "probe" }
 group = "profile"
-label = "Min frequency"
+label = "Probe modes from"
 tier = "advanced"
-not_set = "no lower bound: every mode is kept"
+not_set = "no lower end: every mode is kept"
 help = """
-Restrict the orbital-energy data (PySCF) or the Raman's optical calls (SIESTA) to modes at or above this frequency.  Useful for skipping low-frequency rocking and librational modes, which are often noisy and rarely matter for transport.  Ignored when Mode selection is explicit.
+Restrict the orbital-energy data to modes at or above this frequency.  Useful for skipping low-frequency rocking and librational modes, which are often noisy and rarely matter for transport.  Ignored when Mode selection is explicit.
 Caveat: a window can skip a mode whose electron-phonon coupling is strong but whose frequency falls outside it ([Galperin2007]).
 """
 
@@ -1963,18 +2044,20 @@ kind = "deck"
 calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
-engines = ["pyscf", "siesta"]
+engines = ["pyscf"]
 engine_key = "(molbuilder: per-mode frequency filter)"
 type = "float"
 optional = true
 unit = "cm⁻¹"
-null_label = "(no upper bound)"
+null_label = "(no upper end)"
+active_when = { es_mode_selection = ["all"] }
+result = { vibration = "probe" }
 group = "profile"
-label = "Max frequency"
+label = "Probe modes up to"
 tier = "advanced"
-not_set = "no upper bound: every mode is kept"
+not_set = "no upper end: every mode is kept"
 help = """
-Restrict the orbital-energy data (PySCF) or the Raman's optical calls (SIESTA) to modes at or below this frequency.  Combine it with Min frequency to target a specific spectral window, for example 2800-3200 cm^-1 for C-H stretches.  Ignored when Mode selection is explicit.
+Restrict the orbital-energy data to modes at or below this frequency.  Combine it with Probe modes from to target a specific spectral window, for example 2800-3200 cm^-1 for C-H stretches.  Ignored when Mode selection is explicit.
 """
 
 [item.es_n_homo_below]
@@ -1988,6 +2071,8 @@ type = "int"
 value = 5
 default = 5
 range = [0, 50]
+active_when = { es_mode_selection = ["all", "explicit"] }
+result = { vibration = "probe" }
 group = "output"
 label = "Orbitals below HOMO to save"
 tier = "advanced"
@@ -2006,6 +2091,8 @@ type = "int"
 value = 5
 default = 5
 range = [0, 50]
+active_when = { es_mode_selection = ["all", "explicit"] }
+result = { vibration = "probe" }
 group = "output"
 label = "Orbitals above LUMO to save"
 tier = "advanced"
@@ -2026,6 +2113,7 @@ recommended = { vibration = 0.0002 }
 unit = "Ha/Bohr"
 range = [1e-06, 0.1]
 tightens = "down"
+result = { vibration = "modes" }
 group = "stage"
 label = "‖F‖∞"
 tier = "advanced"
@@ -2049,6 +2137,7 @@ recommended = { vibration = 0.0001 }
 unit = "Ha/Bohr"
 range = [1e-06, 0.1]
 tightens = "down"
+result = { vibration = "modes" }
 group = "stage"
 label = "‖F‖RMS"
 tier = "advanced"
@@ -2071,6 +2160,7 @@ recommended = { vibration = 0.001 }
 unit = "Å"
 range = [1e-05, 1.0]
 tightens = "down"
+result = { vibration = "modes" }
 group = "stage"
 label = "Δx max"
 tier = "advanced"
@@ -2092,6 +2182,7 @@ recommended = { vibration = 0.0005 }
 unit = "Å"
 range = [1e-05, 1.0]
 tightens = "down"
+result = { vibration = "modes" }
 group = "stage"
 label = "Δx RMS"
 tier = "advanced"
@@ -2114,6 +2205,7 @@ recommended = { vibration = 0.000001 }
 unit = "Hartree"
 range = [1e-12, 0.01]
 tightens = "down"
+result = { vibration = "modes" }
 group = "stage"
 label = "ΔE tol"
 tier = "advanced"
@@ -2135,6 +2227,7 @@ value = 200
 default = 200
 recommended = { vibration = 100 }
 range = [1, 10000]
+result = { vibration = "modes" }
 group = "stage"
 label = "Max steps"
 tier = "advanced"
@@ -2152,6 +2245,7 @@ type = "enum"
 value = "halt"
 default = "halt"
 choices = ["proceed", "continue", "halt"]
+result = { vibration = "modes" }
 group = "stage"
 label = "If max_steps runs out"
 tier = "advanced"
@@ -2173,6 +2267,7 @@ type = "int"
 value = 1
 default = 1
 range = [0, 5]
+result = { vibration = "modes" }
 group = "stage"
 label = "Continue retries"
 tier = "advanced"
@@ -2924,6 +3019,8 @@ manual = "SIESTA 5.4.2 §6.20 'Optical properties' (Optical.Vector, Optical.Pola
 type = "float3"
 value = [0.0, 0.0, 1.0]
 default = [0.0, 0.0, 1.0]
+active_when = { compute_raman = [true] }
+result = { vibration = "raman" }
 group = "stage"
 label = "Light along"
 tier = "basic"
@@ -2948,6 +3045,8 @@ optional = true
 null_label = "(the stage's k-point grid)"
 not_set = "the deck writes the stage's k-point grid (kgrid): SIESTA takes Γ alone for a cell it judges a molecule, and for a cell joined across its boundary the optical sum runs over the same k-points the SCF did"
 range = [1, 256]
+active_when = { compute_raman = [true] }
+result = { vibration = "raman" }
 group = "stage"
 label = "Optical k-point grid"
 tier = "advanced"
@@ -2972,6 +3071,8 @@ engine_default = { value = 0.0, source = "SIESTA 5.4.2 manual, Optical propertie
 unit = "Ry"
 range = [0.0005, 0.1]
 above = { value = 0, why = "SIESTA spreads each transition as a Gaussian of this width on an energy grid a tenth of it (optical.F:287); 0 writes spikes on no grid" }
+active_when = { compute_raman = [true] }
+result = { vibration = "raman" }
 group = "stage"
 label = "Optical resolution"
 tier = "advanced"
@@ -2995,6 +3096,8 @@ default = 10.0
 engine_default = { value = 10.0, source = "SIESTA 5.4.2 manual, Optical properties: the manual's default, 10 Ry" }
 unit = "Ry"
 range = [0.5, 50.0]
+active_when = { compute_raman = [true] }
+result = { vibration = "raman" }
 group = "stage"
 label = "Optical energy range"
 tier = "advanced"
@@ -3017,6 +3120,8 @@ optional = true
 null_label = "(every band)"
 not_set = "SIESTA includes every band of the basis in the optical sum (the manual: 'all bands')"
 range = [1, 100000]
+active_when = { compute_raman = [true] }
+result = { vibration = "raman" }
 group = "stage"
 label = "Optical bands"
 tier = "advanced"
@@ -3024,48 +3129,3 @@ help = """
 How many bands, counted from the lowest, enter the optical sum.  Left unset every band of the basis does, which is complete for the basis and the cost of one more diagonalisation's worth of states.  A smaller number drops the highest empty states and with them the highest transitions: it lowers α slightly and shortens the sum -- a saving only on a very large junction.
 """
 
-# ---- The force-constant run's partial charges, fixed by the kind (L4) ----
-# What the charge each mode moves is read from (engines/vibration.md 5.3,
-# 5.10): every atom's charge at the end of every force-constant step, by
-# both partitions.  Role items: shown on the form, fixed by the rung --
-# a person reads that the run writes them and cannot turn them off.
-
-[item.charge_hirshfeld]
-kind = "engine"
-category = ["procedure"]
-engines = ["siesta"]
-calculations = ["vibration"]
-stages = ["force_constants"]
-role = ["vibration"]
-anchor = "Charge.Hirshfeld"
-engine_key = "Charge.Hirshfeld"
-manual = "SIESTA 5.4.2 §6.19.2 'Voronoi and Hirshfeld atomic population analysis' (Charge.Hirshfeld)"
-engine_default = { none = "the populations at the end of the run alone, never at every step", source = "SIESTA 5.4.2 manual, Voronoi and Hirshfeld atomic population analysis: computed by default only at the end of the program" }
-type = "str"
-value = "geometry"
-group = "output"
-label = "Hirshfeld charges"
-tier = "advanced"
-help = """
-Every atom's Hirshfeld charge at the end of every force-constant step -- positive where electrons left the atom.  Fixed by the kind: the infrared the result derives on request reads the charge each mode moves from these (engines/vibration.md 5.10).  A grid integration per step, no extra SCF.
-"""
-
-[item.charge_voronoi]
-kind = "engine"
-category = ["procedure"]
-engines = ["siesta"]
-calculations = ["vibration"]
-stages = ["force_constants"]
-role = ["vibration"]
-anchor = "Charge.Voronoi"
-engine_key = "Charge.Voronoi"
-manual = "SIESTA 5.4.2 §6.19.2 'Voronoi and Hirshfeld atomic population analysis' (Charge.Voronoi)"
-engine_default = { none = "the populations at the end of the run alone, never at every step", source = "SIESTA 5.4.2 manual, Voronoi and Hirshfeld atomic population analysis: computed by default only at the end of the program" }
-type = "str"
-value = "geometry"
-group = "output"
-label = "Voronoi charges"
-tier = "advanced"
-help = """
-Every atom's Voronoi charge at the end of every force-constant step, the second partition beside the Hirshfeld one: the result keeps both, and the infrared view says which it reads (engines/vibration.md 5.10).  Fixed by the kind.
-"""

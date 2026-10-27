@@ -2,16 +2,16 @@
 
 `web/spectra.md` § 2: with no strength in the file the chart draws the mode
 positions, and one sentence under them says why there are no heights, naming
-one of FOUR cases, read BY ROLE from the file
-(`_routeHas`: the file's own config carries the switch or it does not) --
+one of FOUR cases, read from the file's own record, the same on both engines
+(`engines/vibration.md` § 5.11 § 8) --
 
-* the route computes none: a SIESTA file, whose config has no strength switch
-  -- one stating its charges told to name the atoms for their infrared, one
-  stating none that it carries no intensities (§ 3.2);
-* the run asked for none: a PySCF file with both switches off;
-* they are still being computed: a PySCF run whose Raman or infrared phase is
+* the run asked for none: `phase_ir` and `phase_raman` both *not requested*;
+* a strength waits for you: a SIESTA result stating its charges, told to
+  name the atoms for their infrared (§ 3.2);
+* they are still being computed: a run whose Raman or infrared phase is
   still to finish;
-* the run asked and recorded none.
+* the run asked and recorded none -- a SIESTA Raman range that kept no
+  mode said as that, with or without infrared.
 
 And § 7: the viewer stops watching only when every phase the description asked
 for is done -- infrared's own flag, `phase_ir`, included -- while a file
@@ -26,7 +26,11 @@ road test can hold the page there.
 MUTATIONS THIS MUST FAIL AGAINST: the sentence's running test without
 `phase_ir` (a run mid-sweep is told it recorded none); the done-rule without
 `phase_ir` (the viewer stops watching mid-sweep); the done-rule waiting on
-`""` (a finished file from before the flag is never done).
+`""` (a finished file from before the flag is never done); the asked test
+read from the config's switches (a SIESTA run with both off is told it
+carries no intensities, not that it asked for none); the range that kept no
+mode said only beside charges (with Compute IR off it is told its log says
+why).
 """
 from __future__ import annotations
 
@@ -62,8 +66,10 @@ def _judge(files):
     if node is None:
         pytest.skip("node not available")
     src = "\n".join(_extract_fn_source(n) for n in
-                    ("_routeHas", "_ramanOptical", "_ramanAsked",
-                     "_noSpectrumSentence", "allPhasesComplete"))
+                    ("_ramanOptical", "_asked", "_ramanAsked", "_irAsked",
+                     "_ramanNoneComputed", "_irFromCharges",
+                     "_noSpectrumSentence",
+                     "allPhasesComplete"))
     script = (f"{src}\nconst files = {json.dumps(files)};\n"
               "console.log(JSON.stringify(files.map(f => ({"
               "sentence: _noSpectrumSentence(f), "
@@ -75,25 +81,35 @@ def _judge(files):
 
 
 def test_the_sentence_names_the_case_and_the_viewer_waits_for_infrared():
-    route, charged, off, mid_sweep, before_sweep, none, old = _judge([
+    (siesta_off, charged, off, mid_sweep, before_sweep, none, old,
+     kept_none) = _judge([
         _file(_SIESTA),
-        _file(_SIESTA, partial_charges={"displacement_ang": 0.0212}),
+        _file(_SIESTA, phase_ir="complete", ir_route="charges",
+              partial_charges={"displacement_ang": 0.0212}),
         _file({**_PYSCF, "compute_ir": False}),
         _file(_PYSCF, phase_ir="running"),
         _file(_PYSCF, phase_ir="empty"),
         _file(_PYSCF, phase_ir="complete"),
         _file(_PYSCF, phase_ir=""),
+        _file(_SIESTA, phase_raman="complete", raman_route="none"),
     ])
-    assert "carries the frequencies and the mode shapes, no infrared" \
-        in route["sentence"]
+    # the run asked for none, whichever engine: the same words
+    for asked_none in (siesta_off, off):
+        assert "not requested in this run" in asked_none["sentence"], \
+            asked_none
     assert "name the atoms above the modes table for their infrared" \
         in charged["sentence"]
-    assert "not requested in this run" in off["sentence"]
+    assert "no Raman was requested in this run" in charged["sentence"]
     for mid in (mid_sweep, before_sweep):
         assert "still being computed" in mid["sentence"], mid
         assert mid["done"] is False, mid
     assert "recorded none" in none["sentence"]
-    assert (route["done"], charged["done"], off["done"], none["done"]) \
-        == (True,) * 4
+    # Compute IR off, Raman over a range that kept no mode: the range, and
+    # the Methods paragraph, said -- not the log
+    assert "no infrared was requested in this run" in kept_none["sentence"]
+    assert "no mode lay in the range Raman was asked for" \
+        in kept_none["sentence"], kept_none
+    assert (siesta_off["done"], charged["done"], off["done"],
+            none["done"]) == (True,) * 4
     # a file from before the flag carries "" -- no record, nothing to wait on
     assert old["done"] is True

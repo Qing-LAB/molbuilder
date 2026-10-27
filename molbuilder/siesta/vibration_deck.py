@@ -32,7 +32,7 @@ from .. import script_emit as _sc
 from ..atom_permutation import SORT_HELD_FIRST
 from ..engine_atom_index import siesta_numbering
 from ..structure import Structure
-from .vibration_phases import PHASES, phase
+from .vibration_phases import IR_CHARGES, PHASES
 
 #: THE PARTS A VIBRATION DECK IS, one per phase of the run
 #: (`vibration_phases.PHASES`, `engines/vibration.md` § 5.11 § 4) -- what
@@ -144,12 +144,16 @@ def fc_facts(struct: Structure, cfg) -> dict:
 
 
 def fc_block(struct: Structure, cfg, derived: dict) -> str:
-    """The run type, the range and the partial charges at every step --
-    structural text, like the electrode blocks of a transport deck: fixed
-    by the kind, not a parameter anybody answers (`engines/vibration.md`
-    § 5.3).  ``FC.Displacement`` is NOT here: it is a catalogue item and
-    reaches the deck through the syntax door in its own section, with its
-    declaration, unit and note.
+    """The run type, the range and -- when Compute IR is on -- every atom's
+    partial charges at every step (:data:`IR_CHARGES`): structural text,
+    like the electrode blocks of a transport deck, the run type fixed by the
+    kind and the charges by the setting both engines share
+    (`engines/vibration.md` § 3.1, § 5.3).  With Compute IR off the block
+    writes no charge keyword and says so: SIESTA then computes no
+    Hirshfeld or Voronoi population (`read_options.F90`).
+    ``FC.Displacement`` is NOT here: it is a catalogue item and reaches the
+    deck through the syntax door in its own section, with its declaration,
+    unit and note.
     """
     f = derived["fc"]
     v = bool(getattr(cfg, "verbose_comments", True))
@@ -176,8 +180,18 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
         "MD.TypeOfRun      FC",
         f"FC.First          {f['fc_first']}",
         f"FC.Last           {f['fc_last']}",
-        "",
     ]
+    if bool(cfg.compute_ir):
+        if v:
+            out.append("# Compute IR: every atom's charge at every step, by "
+                       "both partitions (engines/vibration.md 5.10)")
+        out += [f"{kw:<18}{value}" for kw, value, _p in IR_CHARGES]
+    else:
+        out.append(f"# {', '.join(kw for kw, _v, _p in IR_CHARGES)} not "
+                   f"written: Compute IR is off -- SIESTA computes no "
+                   f"Hirshfeld or Voronoi population, and the result's "
+                   f"infrared is not requested")
+    out.append("")
     return "\n".join(out)
 
 
@@ -232,7 +246,7 @@ def stage_science(cfg, derived: dict, part: Optional[str]) -> str:
                 f"over {'x'.join(map(str, o['mesh']))} k-points, "
                 f"Optical.Broaden {cfg.optical_broaden:g} Ry, "
                 f"MeshCutoff {cfg.mesh_cutoff} Ry")
-    return (f"the relaxation of the run, {phase('relax').role}: "
+    return (f"the relaxation of the run: "
             f"MeshCutoff {cfg.mesh_cutoff} Ry, force tol "
             f"{cfg.relax_force_tol} eV/Ang, {cfg.relax_type}, max "
             f"{cfg.relax_steps} steps")

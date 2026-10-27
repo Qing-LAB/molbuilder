@@ -305,7 +305,8 @@
                              : "Wrote " + written.join(", ")
                                + ". About the structure, ")
                 + count + " came back"
-                + (showFindings ? " — read them"
+                + (showFindings ? (notices.length === 1 ? " — read it"
+                                                        : " — read them")
                                 : ", and this page has no findings panel "
                                   + "to show them in")
                 + (isTransport ? ".  " + transportNext

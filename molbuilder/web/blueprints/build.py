@@ -210,6 +210,7 @@ def _analyze_response(struct, body):
         except (TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         states[engine] = electronic_state(struct, cfg, kind=kind).as_dict()
+    from molbuilder.template import ENGINE_WORDS
     return jsonify({
         "ok":          True,
         "kind":        kind,
@@ -217,6 +218,9 @@ def _analyze_response(struct, body):
         "metals":      facts.metals,
         "metal_hints": [asdict(h) for h in facts.metal_hints],
         "state":       states,
+        # EACH ENGINE'S NAME, from its one home (`template.ENGINE_WORDS`):
+        # the card heads each state with it.
+        "engine_words": {e: ENGINE_WORDS[e] for e in states},
     })
 
 
@@ -805,43 +809,46 @@ def api_build_load():
 
 @bp.route("/api/build/schema/<engine>", methods=["GET"])
 def api_build_schema(engine: str):
-    """Form-rendering schema for the SIESTA or PySCF Build panel.
+    """A parameter form's schema, from the catalogue
+    (``_shared.catalogue_to_form_schema``; `web/form-schema.md` § 1).
 
-    Returns the JSON-friendly shape produced by
-    ``_shared.catalogue_to_form_schema()`` -- see the helper docstring
-    for the exact field/section layout.  The Build tab's JS calls
-    this once on page load and renders the form panel directly from
-    the returned schema; no static HTML field declarations are
-    duplicated.
-
-    ``engine`` is constrained to {"siesta", "pyscf"} so a typo
-    surfaces as a clean 404 instead of leaking a default response.
+    ``engine`` is ``siesta`` or ``pyscf`` -- that engine's form -- or
+    ``common``: the settings one row serves on every engine of the kind,
+    drawn once on a page offering the kind on several (`form-schema.md`
+    § 1.3).  ``?surface=own`` narrows an engine's form to its own settings,
+    the common ones left out.  Anything else is a 404 naming what is
+    known, never a default response.
     """
     engine = (engine or "").strip().lower()
-    cls_map = {
-        "siesta": (SiestaConfig, "p"),
-        "pyscf":  (PySCFConfig,  "py"),
-    }
-    if engine not in cls_map:
+    # Each form's id prefix -- the ids of one page's parts never collide.
+    prefixes = {"siesta": "p", "pyscf": "py", "common": "common"}
+    if engine not in prefixes:
         return jsonify({
             "ok": False,
-            "error": (
-                f"unknown engine {engine!r}; "
-                f"expected one of {sorted(cls_map)}"
-            ),
+            "error": (f"unknown form {engine!r}; expected one of "
+                      f"{sorted(prefixes)}"),
         }), 404
-    _cls, id_prefix = cls_map[engine]
     calculation = str(request.args.get("calculation") or "")
     if not calculation:
         return _unstated(calculation=calculation)
-    # Built from the CATALOGUE (`web/form-schema.md` § 1), not from the config
-    # class: a parameter is defined in molbuilder/data/catalogue.template.toml,
-    # and the class is a translator on the way OUT to an engine.  The renderer
-    # is unchanged -- it takes whatever schema it is handed.
+    surface = request.args.get("surface") or None
+    if engine == "common":
+        if surface is not None:
+            return jsonify({"ok": False,
+                            "error": "the common form is one part already; "
+                                     "it takes no surface"}), 400
+        engine_arg, surface = None, "common"
+    elif surface not in (None, "own"):
+        return jsonify({"ok": False,
+                        "error": f"surface {surface!r}: an engine's form is "
+                                 f"whole, or its own settings (own)"}), 400
+    else:
+        engine_arg = engine
     return jsonify({
         "ok": True,
-        "schema": _catalogue_to_form_schema(engine, id_prefix,
-                                            calculation=calculation),
+        "schema": _catalogue_to_form_schema(engine_arg, prefixes[engine],
+                                            calculation=calculation,
+                                            surface=surface),
     })
 
 
@@ -923,7 +930,8 @@ def api_build_preflight():
     return jsonify({
         "ok": True,
         "issues": _issues_to_json(
-            validate(struct, cfg, calculation=calculation), cfg=cfg),
+            validate(struct, cfg, calculation=calculation), cfg=cfg,
+            calculation=calculation),
     })
 
 
@@ -1092,7 +1100,8 @@ def api_task_setup_handover():
                          "write a calculation that cannot start -- the "
                          "findings are beside the pseudopotential field "
                          "(handover-procedure.md 2.2)",
-                "findings": _issues_to_json(psml, cfg=cfg),
+                "findings": _issues_to_json(psml, cfg=cfg,
+                                            calculation=calculation),
             }), 400
 
     from molbuilder.identity import normalise_id
@@ -1546,8 +1555,8 @@ def api_task_setup_save():
                        if _tpl_file is not None else None),
         request=job_req)
     # THE CONFIG CLASS RIDES WITH THE FINDINGS.  Without it `_issues_to_json`
-    # omits `workflow_group` and the page has no card to put a finding on
-    # (`web/ui-contract.md` Rule 2).
+    # omits `card` and the page has no card to put a finding on
+    # (`web/ui-contract.md` § 5.1).
     _pf_cfg = _cfg_cls_for(task)
     _pf_errs = [i for i in _pf if i.severity == "error"]
     if _pf_errs:
@@ -1557,7 +1566,8 @@ def api_task_setup_save():
                      "preflight (engines/stages.md § 6.6; "
                      "execution/job-request.md § 7):\n  - "
                      + "\n  - ".join(i.message for i in _pf_errs),
-            "findings": _issues_to_json(_pf, cfg=_pf_cfg),
+            "findings": _issues_to_json(_pf, cfg=_pf_cfg,
+                                        calculation=task.calculation),
         }), 400
 
     # ONE CALCULATION PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  A folder already
@@ -1676,7 +1686,8 @@ def api_task_setup_save():
             "handover_name": TASK_HANDOVER_NAME,
             "handover_here": (dest / TASK_HANDOVER_NAME).is_file(),
             "stages": [st.name for st in task.stages],
-            "findings": _issues_to_json(_pf, cfg=_pf_cfg)})
+            "findings": _issues_to_json(_pf, cfg=_pf_cfg,
+                                        calculation=task.calculation)})
 
     # THE FOLDER'S STATE, SAVED FIRST -- always, by the one function prep
     # calls (`checkpointing.md` § 9; user, 2026-10-03, B10: "make this
@@ -1712,7 +1723,8 @@ def api_task_setup_save():
         # Gate ③'s non-refusing findings (sequence warnings and the
         # fingerprint note): the save proceeded, and the reader deserves
         # what the CLI would have echoed.
-        "findings":      _issues_to_json(_pf, cfg=_pf_cfg),
+        "findings":      _issues_to_json(_pf, cfg=_pf_cfg,
+                                         calculation=task.calculation),
     })
 
 

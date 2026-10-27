@@ -96,6 +96,17 @@ def _describe(tmp_path, monkeypatch, *, frozen=()):
     return bundle
 
 
+def _asks(bundle, **values):
+    """The person's values in the calculation's template, through its one
+    door (`template.with_values_set`)."""
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.template import with_values_set
+    tpl = bundle / "W.template.toml"
+    tpl.write_text(with_values_set(tpl.read_text(), PySCFConfig,
+                                   calculation="vibration", values=values,
+                                   source="person"))
+
+
 def _prep_and_run(bundle):
     from click.testing import CliRunner
 
@@ -126,6 +137,10 @@ def water(tmp_path_factory):
         outside_the_developers_folders(mp.setenv, mp.delenv,
                                        tmp_path_factory)
         bundle = _describe(tmp_path_factory.mktemp("water"), mp)
+        # RAMAN ASKED, INFRARED NOT -- the polarizability sweep is the run
+        # this fixture is for (both defaults are the other way round,
+        # `engines/vibration.md` § 3.1), stated as the person states it.
+        _asks(bundle, compute_raman=True, compute_ir=False)
         # A converged SCF is worth a message (`stages.md` § 6.9's
         # neighbour, `notify.on_scf_converged`): asked for the way a person
         # asks, so the monitor beside the run is told to send them.
@@ -310,14 +325,8 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
     that retires the prefactor's NOT-VALIDATED flag; the windows are wide
     enough for method/BLAS wiggle and narrow enough that a wrong
     prefactor (off by any structural factor) cannot pass."""
+    # The defaults: infrared on, Raman off (`engines/vibration.md` § 3.1).
     bundle = _describe(tmp_path, monkeypatch)
-    tpl = bundle / "W.template.toml"
-    t = tpl.read_text()
-    i = t.index("[item.compute_ir]"); j = t.index("[item.", i + 1)
-    t = t[:i] + t[i:j].replace("value = false", "value = true", 1) + t[j:]
-    i = t.index("[item.compute_raman]"); j = t.index("[item.", i + 1)
-    t = t[:i] + t[i:j].replace("value = true", "value = false", 1) + t[j:]
-    tpl.write_text(t)
 
     d = _prep_and_run(bundle)
     modes = sorted(d["modes"], key=lambda m: m["frequency_cm1"])
@@ -380,19 +389,9 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     with real numbers, plus the solvated deck actually differing from gas
     (the eps line is in the deck; the energy is the solvated one)."""
     bundle = _describe(tmp_path, monkeypatch)
-    tpl = bundle / "W.template.toml"
-    t = tpl.read_text()
-    # An optional-empty item emits NO value line at all -- the edit
-    # INSERTS one, and the write is verified.
-    anchor = '[item.solvent]\n'
-    assert t.count(anchor) == 1
-    t = t.replace(anchor, anchor + 'value = "water"\n', 1)
-    assert 'value = "water"' in t
-    # Raman OFF (it defaults on); IR stays off, its default.
-    i = t.index("[item.compute_raman]"); j = t.index("[item.", i + 1)
-    t = t[:i] + t[i:j].replace("value = true", "value = false", 1) + t[j:]
-    assert t[t.index("[item.compute_raman]"):t.index("[item.", t.index("[item.compute_raman]") + 1)].count("value = false") == 1
-    tpl.write_text(t)
+    # Water as the solvent, and IR OFF (it defaults on) -- Raman stays off,
+    # its default: the one route PCM reaches (`engines/vibration.md` § 4.6).
+    _asks(bundle, solvent="water", compute_ir=False)
 
     d = _prep_and_run(bundle)
     # The deck is born in its STAGE directory (L1, roadmap 7.10).  Bound
@@ -565,14 +564,9 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     light, the three axes averaging back to the file's own intensity
     (`engines/vibration.md` § 4.6)."""
     bundle = _describe(tmp_path, monkeypatch, frozen=(0,))
-    # INFRARED ON, so the held molecule's column is read along the light
-    # (`engines/vibration.md` § 4.6): finite-difference dipoles, the held
-    # route's, twelve small SCFs.
-    tpl = bundle / "W.template.toml"
-    t = tpl.read_text()
-    i = t.index("[item.compute_ir]"); j = t.index("[item.", i + 1)
-    t = t[:i] + t[i:j].replace("value = false", "value = true", 1) + t[j:]
-    tpl.write_text(t)
+    # INFRARED ON -- the default -- so the held molecule's column is read
+    # along the light (`engines/vibration.md` § 4.6): finite-difference
+    # dipoles, the held route's, twelve small SCFs.
     d = _prep_and_run(bundle)
 
     # THE HELD ATOMS are the structure's own label (schema 9).
@@ -837,11 +831,10 @@ def test_the_listed_modes_get_the_probe_and_no_other(tmp_path, monkeypatch):
 
     def _answer(listed):
         t = original
+        # the probe is the subject; Raman's 6N SCFs are not, and Raman is
+        # off by default
         for item, old, new in (("es_mode_selection", '"skip"', '"explicit"'),
-                               ("es_explicit_indices", '""', f'"{listed}"'),
-                               # the probe is the subject; Raman's 6N SCFs
-                               # are not
-                               ("compute_raman", "true", "false")):
+                               ("es_explicit_indices", '""', f'"{listed}"')):
             i = t.index(f"[item.{item}]"); j = t.index("[item.", i + 1)
             assert f"value = {old}" in t[i:j], t[i:j]
             t = (t[:i] + t[i:j].replace(f"value = {old}", f"value = {new}", 1)

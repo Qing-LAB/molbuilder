@@ -372,7 +372,15 @@ molecular-dynamics settings, `md_initial_temperature`,
 the dynamics run types `Verlet` and `Nose` — no calculation kind of
 molbuilder runs molecular dynamics, and no relaxation's deck ever wrote
 them *(the user, 2026-10-25: "yes, remove MD from the optimization
-kind")*. A blank one,
+kind")*; at 2.45.0, a SIESTA vibration's `charge_hirshfeld` and
+`charge_voronoi`, fixed by the kind until 2.45.0, when *Compute IR* became a
+setting of both engines and the force-constant block writes the charge
+keywords while it is on, and — **on SIESTA alone**, the retirement
+naming its engine (`Retired.engines`) — `es_mode_selection`,
+`es_explicit_indices`, `freq_min_cm1` and `freq_max_cm1`, which picked
+SIESTA's Raman modes until *Compute Raman* and *Raman for* did; on PySCF
+they stay the orbital probe's ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 3.1) *(the user, 2026-10-27)*. A blank one,
 retired or renamed, asks nothing and is read as absent. **An item a release
 renamed** is refused under its old name, naming the new and `jobset migrate`
 (`template.RENAMED_ITEMS`). Every door that
@@ -381,7 +389,12 @@ overrides — says it in one sentence (`template.why_not_an_item`).
 **`molbuilder jobset migrate` takes a retired item out** — of the template,
 of a stage's own values and of `varies`, blank or set — **when its value
 runs as before without it** (each item's `runs`: any value of `copy_psml`
-and of the three dynamics settings, `optimizer = "geometric"`), and
+and of the three dynamics settings, `optimizer = "geometric"`). SIESTA's
+retired Raman selector it does not take out: it states *Compute IR*,
+*Compute Raman* and *Raman for* from it in the template, and refuses by name
+a stage that overrides it and an explicit list of modes, which has no range
+to become ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9).
+It
 **renames a renamed one** in the same three
 places, keeping its value or its blank; it says each, and keeps the old file
 as `<name>.pre-<rule>`, once — the earliest rule it was written before
@@ -650,8 +663,11 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `launch` | `kind = "wrapper"` — the words the run script passes the engine on its command line for this item, a table by the program it starts (`Job.program`, the engine's own by default): `launch.siesta = ["-fdf", "MaxWalltime={left}:s", "-fdf", "MaxWalltime.Slack={slack}:s"]`, the placeholders the script fills; a program not named takes the item some other way (a PySCF deck reads its environment) or not at all (`tbtrans`). The run script renders the words, never spells them ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
+| `result` | **which result of the calculation this setting is for**, on a kind whose form is laid out by its results — a vibration's *Frequencies and mode shapes*, *Infrared*, *Raman*, *Thermochemistry*, *Orbital energies along a mode* (§ 6.2a) — a table keyed by kind, `result = { vibration = "raman" }`, each value one of that kind's results (`template.RESULTS`); a kind or a result it does not list is refused at parse time. **It only decides where the setting is drawn**, as `category` does: no deck changes with it, and it is not written into a calculation's template |
+| `choice_labels` | **the words a person reads for each choice** — `choice_labels = { all = "All modes", range = "Modes in a frequency range" }`: what a form's list shows and a message says (`template.choice_words`); the value written stays the choice. Every key a choice of the item. Catalogue-only, like `result` |
+| `active_when` | **the values other settings must hold for this one to enter the calculation** — `active_when = { compute_raman = [true], raman_modes = ["range"] }`, every named setting at one of its listed values (2026-10-27). Otherwise the setting enters nothing: the form draws it greyed out, keeping its value and saying what it waits on (`template.active_words`), and the settings gate says once that a value given to it enters nothing (`template.inactive_why`; a value at the kind's default says nothing) — never a refusal for that, since nothing it holds is run, and **no advice about it**: no recommended range, no check of the run it would join (the orbital probe's displacement under `skip`). A value no setting can hold is still refused, as anywhere (§ 5.3): the template holds it, and it would run the day the switch is turned on. Each named setting is an item of the catalogue serving the same engines, each listed value passes that item's own type. Catalogue-only, like `result` |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
-| `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the vibration items — thirteen since two retired selectors went, 2026-09-28 — stay out of an optimization template by declaration |
+| `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the vibration items — 21 at 2.45.0 — stay out of an optimization template by declaration |
 | `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows as a blank field's hint and what `molbuilder describe` and the form doors write into that kind's template when nobody chose, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, § 5.3) |
 | `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.transport = ["restricted", "unrestricted"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
@@ -659,7 +675,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `run_card` | **a row on every run card from the start**, blank until stated — `run_card = true` on every run setting, the `execution` category's items (2026-10-11 for the launch's, 2.27.0 for the rest; [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2b). One boolean, read by the run card through `/api/task-setup/sweepable`; it states no value and decides nothing prep does |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`, the spin's `spin_treatment` and `unpaired_electrons` (2026-09-28), the grid's offset `kgrid_displacement` (2026-09-30, `engines/siesta.md` § 6.1), and the SCF's mixer and criteria — `mixing_weight`, `pulay_history`, `dm_tolerance`, `h_tolerance`, `dm_energy_tolerance`, `scf_energy_converge` — each SCF stage's starting value, not shared (2026-10-09, TD6). It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
 | `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
-| `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`, and since 2.1.0 on the device's `ts_hartree_fix` and the transmission's `tbt_solution_method`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1); the vibration kind on `charge_hirshfeld` and `charge_voronoi` — both partitions at every force-constant step ([`vibration.md`](?doc=engines/vibration.md) § 5.10 ②). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
+| `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`, and since 2.1.0 on the device's `ts_hartree_fix` and the transmission's `tbt_solution_method`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
 | `role_values` | **a rung whose role gives another answer than `value`**, by the rung's name — `role_values = { device = "transiesta" }` on `solution_method`. Only on a `role` item; each value passes the item's own `type` at parse time, as `recommended`'s do. Like `recommended`, a catalogue key: it does not travel into a calculation's template, whose role items hold no value — `resolve` asks the catalogue (`template.role_answers`) |
 | `stages` | **which rungs of the kind read it, by the rung's ROLE** — `stages = ["electrode_L", "electrode_R"]` on a lead's item, `stages = ["relaxation"]` on the relaxation settings (2026-09-30, plan § 5w K4) — or **the name of a set of roles**, `stages = "scf"`: every rung that runs an SCF, never the transmission, on the solver, mixer, tolerance, diagonaliser and GPU items alike (`paths.ROLE_SETS`, beside the roles; a fact fifteen rows share, stated once — 2026-10-12), read as its roles, a name no set has refused; only those rungs may carry their own value, and on a `role` item, which nobody sets, it names the rungs that write it. Absent means every rung reads it (§ 6.4). **With `shared`, one value carried by the named rungs only** — `electrodes_bulk`, `stages = ["device", "transmission"]` (TD11, 2026-10-11): no stage sets its own, the other rungs' decks never write it, and the shared panel and Task setup say which rungs it is for (`template.shared_scope_words`); a refusal says why (`why_shared`) |
 | `tightens` | **which way a ladder makes this item tighter** — `"down"` for a tolerance, `"up"` for a mesh cutoff (2026-09-30, plan § 5w K4). Set where [`tuning.md`](?doc=engines/tuning.md) § 2 gives a tier table and nowhere else; the ladder check reads it on every engine ([`stages.md`](?doc=engines/stages.md) § 4 R3) |
@@ -671,7 +687,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `range` · `unit` · `choices` | bounds, unit label, enum members. `unit` is also the **deck's unit word**: the SIESTA renderer writes it beside the number (`siesta/layout.unit_word`, one source — plan F27), spelling Å as fdf's `Ang`; the bias, held in volts, is written `eV`, the one declared exception. `range` is a **recommendation**: a value outside it is warned on every surface and refused on none (§ 5.3) |
 | `above` | **a hard limit: the value must be greater than `value`**, and `why` is the reason — `above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }`. Refused on every surface with one message, through `template.why_not` (§ 5.3, 2026-09-30); for a triple, each component |
 | `at_least` | **the same, inclusive: the value must be at least `value`** — for an engine whose own rule is *larger than or equal to*: `at_least = { value = 2.5, why = "TranSIESTA stops a run below 2.5 …" }` on `negf_neq_fermi_cutoff_kt` (`m_ts_contour_neq.f90`, 2.1.0). The limit refuses exactly what the engine refuses, through the same door (`template.why_not`, § 5.3) |
-| `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). **What each card says** — its title and the line under it — has one home, `template.GROUP_WORDS`, served with every form schema as `group_words` (`web/form-schema.md` § 1.3). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
+| `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (the method and the physical character of the system) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). **What each card says** — its title and the line under it — has one home, `template.GROUP_WORDS`, served with every form schema in its `cards`, beside a kind's result cards (§ 6.2a; `web/form-schema.md` § 1.3); the *Setup* and *Run profile* cards' lines follow the fields a form shows them with, beside it (`SETUP_WORDS`, `PROFILE_STATE_WORDS`, `PROFILE_METHOD_WORDS`, chosen by `template.card_line`). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
 | `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 21 optional items only 18 carry one, so three would silently lose the option *(`dispersion` stopped being optional on 2026-09-28: its "none" is a value, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a; the two NEGF device broadenings became optional at 2.1.0, blank being *not set*, [`transport.md`](?doc=engines/transport.md) § 2a.13; the transmission's mesh at 2.8.0, blank being three times the shared one, § 0.3b there)* (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `required` | **which calculation KINDS' forms draw this optional item as required** — `required = ["optimization", "vibration"]` on `psml_lib` (2026-09-30, plan § 5w K20): unset stays a state the item has, but on those kinds the Send refuses until its question is answered, so the form marks it required and shows it red while it is empty. A list, like `calculations`; absence means *not required*. It refuses nothing itself — the Send's check does ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
@@ -1279,6 +1295,69 @@ same idea disagreed on the label and no surface could group across them.
 `category` is closed and engine-independent, which is what lets ONE panel set
 serve every engine.
 
+### 6.2a `result` — which result a setting is for *(2026-10-27)*
+
+*(The user, 2026-10-27: "i want a logically clear and easy to follow UI"; "raman and ir option is engine neutral, so why don't you make it explicit and clearly have it user accessible"; "the engine switch can be after the decided parameters"; "this would simplify the UI because repeated/shared concept and parameter are not repeated in both engine setup"; "both engine should share the same meaning and default behavior"; "text should be clear instead of cryptic"; "keep the framework organized, unified workflow/data flow, do not hack".)*
+
+`group` says *when* a setting is decided and `category` *what kind of
+question* it answers; neither says *what the calculation will give you*.
+`result` is the setting's third label: the result it is for — a vibration's
+infrared and Raman settings are drawn under *Infrared* and *Raman*, not
+among the method's.
+
+**A kind lists its results in the order a person decides them**, each with
+a title and one line saying what it gives and what it costs. They live in
+one place, `template.RESULTS`:
+
+| kind | its results, in order |
+|---|---|
+| vibration | **Frequencies and mode shapes** — relax first, then the modes · **Infrared** · **Raman** · **Thermochemistry** · **Orbital energies along a mode** |
+
+A kind that lists none — an optimization, a transport calculation — keeps
+the cards it has today.
+
+**The cards, one rule** (`template.card_of`, `template.cards`). A setting is
+drawn in its result's card when it names a result for this kind, otherwise
+in its `group`'s card — the same rule decides where a warning about it is
+shown, so a warning always sits beside its field. A kind's cards come in
+this order: *Setup*, then the kind's results, then *Run profile*,
+*Convergence targets*, *Compute & budget*, *Output files*; each with its
+title and line, from `GROUP_WORDS` and `RESULTS`, served with every form of
+the kind as the schema's `cards` ([`web/form-schema.md`](?doc=web/form-schema.md)
+§ 1.3). A result's card draws its settings without the category headings —
+its title already says what they are for — its basic settings before its
+advanced ones, a switch before what it switches on. `group` keeps its other jobs:
+whether *vary per stage* starts ticked on Task setup, and that a run-card
+setting is not on a parameter form. So a setting moved into its result's
+card changes where it is drawn and nothing else.
+
+**A setting every engine of the kind shares is drawn once — on the Spectrum
+calculation tab**, which offers the vibration on two engines and asks for the
+engine after the settings (the Structure-optimization tab draws each engine's
+form whole). There, a setting
+that is one catalogue row for every engine that runs the kind
+(`electronic_state.engines_for`) is drawn once, under *The calculation*,
+before the engine is chosen; each engine's form then shows only that
+engine's own settings. One row is one meaning and one default on every
+engine (§ 6.3, *Items merge when …*), and its card does not depend on the
+engine, since `result` is keyed by kind. The value travels with whichever
+engine is sent. Where one engine can take fewer choices than the other — a
+PySCF vibration's spin is *restricted* only — the shared field offers every
+choice either engine can take, and the chosen engine's checks refuse,
+beside the field and naming why, a choice it cannot run (§ 6.3a). **Where
+one engine has nothing to do with a shared setting's value, it is said, not
+hidden**: a PySCF vibration computes Raman for every mode at once, so
+*Raman for* narrows nothing there, and the deck and the settings gate say so
+in one line ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1).
+
+**A setting that enters only under others' values says so** (`active_when`,
+§ 5): *Raman for* only while *Compute Raman* is on, its frequency range only
+under *Modes in a frequency range*, the probe's explicit list only under
+*explicit*. The form draws it greyed out, keeping what was typed, and the
+settings gate says once that a value given to it enters nothing
+(`template.inactive_why`; a value at the kind's default says nothing) —
+one declaration, read by both.
+
 ### 6.3 `engines` — one file, every engine
 
 **A template describes a calculation, not an engine.** One file carries the items
@@ -1295,7 +1374,7 @@ mental model.
 *(spectra-migration plan P0, 2026-08-20)*: an item may declare which kinds
 select it (`calculations = ["vibration"]`), and its absence means every
 kind — so the 80-plus pre-existing items needed no edit, and the vibration
-items (thirteen since two retired selectors went, 2026-09-28) stay out of an
+items (21 at 2.45.0) stay out of an
 optimization template by declaration rather
 than by luck (they leaked into one the day they were added; measured, and
 the reason the key exists). The same writer rule applies on emit: a
@@ -1374,6 +1453,16 @@ nothing is derived.
 | `spin_treatment` | `Spin non-polarized` / `polarized` / `non-colinear` / `spin-orbit` | the R / RO / U of the SCF class it composes |
 | `unpaired_electrons` | `Spin.Fix` + `Spin.Total` when pinned; nothing for `free` | `gto.M(spin=)` |
 | `verbose_comments`, `write_molwatch_log` | *(no keyword — `kind="produce"`)* | same |
+| `compute_ir` | the Hirshfeld and Voronoi charges of every atom at every force-constant step (`Charge.Hirshfeld`, `Charge.Voronoi`), from which the infrared is derived after the run; nothing when off | `COMPUTE_IR` — the dipole's derivative |
+| `compute_raman` | the optical phase — SIESTA's optical calculation at the equilibrium and at $\pm\delta Q$ along each mode *Raman for* picks; nothing when off | `COMPUTE_RAMAN` — the polarizability sweep, every mode at once |
+| `raman_modes` · `raman_freq_min_cm1` · `raman_freq_max_cm1` | which modes the optical phase runs for: `all` every mode, `range` the modes inside the range (`select_modes`) | nothing: the sweep gives every mode, and the deck and the settings gate say a range narrows nothing |
+
+*Raman for* is the same question on both engines — which modes get Raman —
+and one answer by default, every mode; PySCF's route cannot take another,
+its sweep giving every mode at once. The row is merged so a description
+reads the same whichever engine runs it, and where PySCF cannot follow a
+range it says so rather than staying silent (§ 6.2a) *(the user,
+2026-10-27)*.
 
 > **Every merge has landed** *(corrected 2026-09-25 — this note said they
 > were ruled but not yet renamed; the two spin items merged on 2026-09-28 with
@@ -1543,7 +1632,7 @@ dotted key as one table per engine. A kind's key without an engine answers
 every engine; an engine's table answers only the kinds it names.
 
 **One door, five readers.** `template.offered(item, engine, kind)` is the
-set: the form offers only it (`catalogue_to_form_schema`), the stage table's
+set: the form offers only it (`catalogue_to_form_schema`) — on the part every engine of a kind shares, what any of them offers (`template.offered_by_any`, § 6.2a), the chosen engine's settings gate refusing the rest beside the field — the stage table's
 cells only it (`/api/task-setup/columns`), and the description's own check
 refuses a stage override outside it when the description is written
 (`validation/task.py`, gate ③), before anything reaches a machine. `resolve`

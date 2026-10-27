@@ -208,8 +208,9 @@ def no_charges_reason(result: SpectraResults) -> str:
     """Why ``result`` states no charges, from its own facts -- its engine
     and the schema it was written at (`engines/vibration.md` § 5.10 ②):
     a PySCF result's infrared is its own; a SIESTA result written before
-    :data:`CHARGES_KEPT_SINCE` keeps none, whatever its run printed; a
-    later one whose force-constant run printed none."""
+    :data:`CHARGES_KEPT_SINCE` keeps none, whatever its run printed; one
+    whose run asked for no infrared -- Compute IR off, its `phase_ir` *not
+    requested* -- asked SIESTA for none; any other printed none."""
     if str(result.engine).lower() != "siesta":
         return (f"a {result.engine} result: its infrared is its own -- the "
                 f"IR column, from its dipole derivatives")
@@ -223,6 +224,9 @@ def no_charges_reason(result: SpectraResults) -> str:
                 f"launched, from the state saved before its group's first "
                 f"launch (execution/job-system.md, How the checkpoint "
                 f"supports you)")
+    if result.phase_ir == "not requested":
+        return ("Compute IR was off, so the deck asked SIESTA for no charges "
+                "(engines/vibration.md 3.1)")
     return "the force-constant run printed no charges"
 
 

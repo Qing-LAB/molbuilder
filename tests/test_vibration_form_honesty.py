@@ -75,11 +75,17 @@ _COMPANIONS = {
     # counts as honored).
     "symmetry": {"already_relaxed": True},
     # a method methods nothing without a solvent (the validator warns
-    # standalone); its deck effect is probed beside one -- with Raman
-    # off, on the one route PCM reaches (`engines/vibration.md` § 4.6):
-    # a refused render would count as honored and measure nothing.
-    "solvent_method": {"solvent": "water", "compute_raman": False},
-    "solvent": {"compute_raman": False},
+    # standalone); its deck effect is probed beside one -- with infrared
+    # and Raman off, on the one route PCM reaches (`engines/vibration.md`
+    # § 4.6): a refused render would count as honored and measure nothing.
+    "solvent_method": {"solvent": "water", "compute_raman": False,
+                       "compute_ir": False},
+    "solvent": {"compute_raman": False, "compute_ir": False},
+    # Raman for speaks only with Raman on (`active_when`), and on PySCF
+    # the deck says it narrows nothing -- its range, under "range".
+    "raman_modes": {"compute_raman": True},
+    "raman_freq_min_cm1": {"compute_raman": True, "raman_modes": "range"},
+    "raman_freq_max_cm1": {"compute_raman": True, "raman_modes": "range"},
     # An ECP only speaks when both halves are named AND the structure
     # holds the element -- probe them together, on gold (below).
     "ecp":       {"ecp_atoms": ["Au"]},

@@ -105,9 +105,8 @@ def _run_with_results(
     if dot_phases is None:
         dot_phases = ["frequencies", "raman", "es"]
     fn = _extract_fn_source("updatePhaseIndicator")
-    # the route questions it asks of the file (web/spectra.md § 3, § 3.3)
-    route = "\n".join(_extract_fn_source(n) for n in
-                      ("_routeHas", "_ramanOptical", "_ramanRoute", "_irRoute"))
+    # what it asks of the file's own record (web/spectra.md § 3)
+    route = "\n".join(_extract_fn_source(n) for n in ("_routeHas", "_asked"))
     stub = _make_phase_indicator_stub(dot_phases=dot_phases)
     bootstrap = f"""
         // ===== Stub the ``els.phaseIndicator`` element =====
@@ -266,42 +265,47 @@ def test_relaxation_dot_is_data_driven():
     assert by_phase["relaxation"]["className"] == "spectra-phase-dot spectra-phase-empty"
 
 
-def test_a_phase_the_files_route_does_not_have_shows_no_dot():
-    """web/spectra.md § 3: no dot for a phase the file's route does not
-    have, read BY ROLE -- the file's own config carries the switch or it
-    does not.  A SIESTA file's config has no `compute_raman`, no
-    `compute_ir` and no `es_mode_selection`, so its Raman, infrared and
-    probe dots are gone; a PySCF file that switched all three off still
-    has them, reading *not requested*.  Infrared's flag is "" in a file
-    written before it existed: no record, so no dot.
+#: (the file's record, the dots shown) -- web/spectra.md § 3: no dot for a
+#: phase the run did not ask for, by its own record, on either engine.
+_DOT_ROWS = [
+    # a SIESTA run with every strength off: its config holds no switch
+    ({"config": {"engine": "siesta", "calculation": "vibration"},
+      "phase_frequencies": "complete", "phase_raman": "not requested",
+      "phase_ir": "not requested", "phase_es": "not requested"},
+     {"raman": False, "ir": False, "es": False}),
+    # the same record from PySCF, whose config holds the switches: read alike
+    ({"config": {"compute_raman": False, "compute_ir": False,
+                 "es_mode_selection": "skip"},
+      "phase_frequencies": "complete", "phase_raman": "not requested",
+      "phase_ir": "not requested", "phase_es": "not requested"},
+     {"raman": False, "ir": False, "es": False}),
+    # a SIESTA run that asked for both strengths: their dots
+    ({"config": {"engine": "siesta", "calculation": "vibration"},
+      "phase_frequencies": "complete", "phase_raman": "running",
+      "phase_ir": "complete", "phase_es": "not requested",
+      "raman_route": "optical", "ir_route": "charges"},
+     {"raman": True, "ir": True, "es": False}),
+    # infrared's flag "" -- a file written before it: no record, no dot
+    ({"config": {"compute_raman": True, "compute_ir": True},
+      "phase_frequencies": "complete", "phase_raman": "complete",
+      "phase_ir": ""},
+     {"raman": True, "ir": False, "es": False}),
+]
 
-    MUTATIONS THIS MUST FAIL AGAINST: asking the switch's VALUE instead of
-    its presence -- the PySCF run with Raman off would lose a dot its
-    route has; the infrared dot shown for a file with no flag."""
+
+@pytest.mark.parametrize("record,want", _DOT_ROWS)
+def test_a_phase_the_run_did_not_ask_for_shows_no_dot(record, want):
+    """web/spectra.md § 3: a dot for each phase the run asked for, read from
+    its own record -- `not requested` none, "" no record -- the same on both
+    engines; the relaxation and the frequencies always.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the switch's presence in the file's
+    config read instead of the record (the PySCF row shows its three dots);
+    a "" flag read as a record (the last row shows an infrared dot)."""
     phases = ["relaxation", "frequencies", "raman", "ir", "es"]
-    siesta = _run_with_results(
-        {"config": {"engine": "siesta", "calculation": "vibration"},
-         "phase_frequencies": "complete", "phase_raman": "not requested",
-         "phase_ir": "not requested", "phase_es": "not requested"},
-        dot_phases=phases)
-    shown = {d["phase"]: d["shown"] for d in siesta["dot_states"]}
-    assert shown == {"relaxation": True, "frequencies": True,
-                     "raman": False, "ir": False, "es": False}, shown
-
-    pyscf = _run_with_results(
-        {"config": {"compute_raman": False, "compute_ir": False,
-                    "es_mode_selection": "skip"},
-         "phase_frequencies": "complete", "phase_raman": "not requested",
-         "phase_ir": "not requested", "phase_es": "not requested"},
-        dot_phases=phases)
-    assert all(d["shown"] for d in pyscf["dot_states"]), pyscf["dot_states"]
-
-    before_the_flag = _run_with_results(
-        {"config": {"compute_raman": True, "compute_ir": True},
-         "phase_frequencies": "complete", "phase_raman": "complete",
-         "phase_ir": ""}, dot_phases=phases)
-    shown = {d["phase"]: d["shown"] for d in before_the_flag["dot_states"]}
-    assert shown["ir"] is False and shown["raman"] is True, shown
+    out = _run_with_results(record, dot_phases=phases)
+    shown = {d["phase"]: d["shown"] for d in out["dot_states"]}
+    assert shown == {"relaxation": True, "frequencies": True, **want}, shown
 
 
 def test_dot_title_carries_human_readable_status():

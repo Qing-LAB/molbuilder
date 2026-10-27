@@ -330,13 +330,16 @@ def _stage_science(cfg: "SiestaConfig") -> str:
     return " \u00b7 ".join(bits)
 
 
-def _bench_marks_for(struct, cfg, block_size, bs_range) -> dict:
+def _bench_marks_for(struct, cfg, block_size, bs_range, *,
+                     relaxes: bool = True) -> dict:
     """The BENCH-MARKS block's arguments — the values only SIESTA can supply.
 
     Kept beside the writer rather than in the framework because every entry is
     a SIESTA fact: which keyword carries the step count, that ``BlockSize`` is
     derived from a launch quantity, that a defaults row for an absent keyword
-    would be the block lying.
+    would be the block lying.  ``relaxes``: whether this deck relaxes --
+    a vibration's force-constant and optical calls do not, and carry no
+    relaxation's step count.
     """
     # BlockSize's row carries the range this deck's rank count makes legal, and
     # drops out entirely when the deck carries no BlockSize (state three).
@@ -368,7 +371,7 @@ def _bench_marks_for(struct, cfg, block_size, bs_range) -> dict:
             # keyword is the block lying -- the same rule as BlockSize's state
             # three one entry up (R11, 2026-08-12).
             **({"MD.Steps": cfg.relax_steps}
-               if (cfg.relax_type
+               if (relaxes and cfg.relax_type
                    and cfg.relax_type.strip().upper()
                    in ("CG", "BROYDEN", "FIRE"))
                else {}),
@@ -860,6 +863,18 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             struct.elements, positions, species_index)
     if _vibration and part == _vib_deck.FC_PART:
         _derived["fc"] = _vib_deck.fc_facts(struct, cfg)
+        # WHAT A FORCE-CONSTANT RUN LEAVES IN ITS OUTPUT FILES: SIESTA
+        # writes them at the last geometry it moved to (`siesta_move.F`:
+        # "Output of coordinates is meaningless here") -- said beside each,
+        # so neither is taken for the reference geometry, the relax call's.
+        _derived["beside"] = {
+            **(_derived.get("beside") or {}),
+            **({"write_coor_xmol": "in this force-constant run: the last "
+                                   "nudged geometry, not the reference"}
+               if cfg.write_coor_xmol else {}),
+            **({"write_hs": "in this force-constant run: at the last "
+                            "nudged geometry"}
+               if cfg.write_hs else {})}
     elif _vibration and part == _vib_deck.OPTICAL_PART:
         _derived["optical"] = _vib_deck.optical_facts(cfg, _mesh)
     else:
@@ -933,7 +948,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             None if _derived.get("block_size") is None else
             _block_size_bounds(st.n_atoms, c.mpi_np,
                                gpu_mode=bool(c.use_gpu),
-                               emitted=_derived.get("block_size"))),
+                               emitted=_derived.get("block_size")),
+            relaxes=not _vibration or part == _vib_deck.RELAX_PART),
         created_by="molbuilder jobset prep",
         check_rules=_layout.check_rules,
         # WHAT the settings gate judges: the structure as this deck

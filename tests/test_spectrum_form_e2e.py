@@ -56,6 +56,53 @@ def test_the_selection_locks_what_it_would_ignore(page, flask_server):
                     "explicit": [True, False, False]}, live
 
 
+#: Raman for, then its range's two ends -- the shared part's fields, drawn
+#: once above the engine strip (`form-schema.md` § 1.3) -- and SIESTA's
+#: Light along, in SIESTA's own part, waiting on Compute Raman in the
+#: shared one
+_RAMAN = ("common-raman-modes", "common-raman-freq-min-cm1",
+          "common-raman-freq-max-cm1", "p-optical-direction")
+
+
+def test_raman_for_is_live_only_while_raman_is_asked(page, flask_server):
+    """`web/spectra.md` § 5 step 3: *Raman for* is greyed out until *Compute
+    Raman* is ticked, its range's two ends until *Modes in a frequency
+    range* is chosen -- each field's `active_when`, followed by the one
+    renderer, in the part both engines share; and SIESTA's optical settings,
+    in its own part, follow the same tick across the parts.
+
+    At load nothing is chosen: Compute Raman's blank is its default, off,
+    so all three are greyed out.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the renderer reading `active_when`
+    once at load (ticking leaves them greyed); a blank read as no value
+    rather than the default (the range live under Raman for's blank, which
+    is all modes); a part looking only in itself for the field it waits on
+    (SIESTA's optical settings greyed for good)."""
+    page.goto(f"{flask_server}/spectrum-calculation")
+    page.wait_for_selector("#common-compute-raman", timeout=20000)
+    # THE CHOICES READ AS THEIR WORDS (the catalogue's `choice_labels`),
+    # their values the choices themselves.
+    assert page.evaluate(
+        "() => [...document.getElementById('common-raman-modes').options]"
+        ".filter(o => o.value).map(o => [o.value, o.textContent])") == [
+        ["all", "All modes"], ["range", "Modes in a frequency range"]]
+    live = lambda: page.evaluate(  # noqa: E731
+        "(ids) => ids.map(i => !document.getElementById(i).disabled)",
+        list(_RAMAN))
+    states = {"at load": live()}
+    page.check("#common-compute-raman")
+    states["Raman on"] = live()
+    page.select_option("#common-raman-modes", value="range")
+    states["a range"] = live()
+    page.uncheck("#common-compute-raman")
+    states["Raman off again"] = live()
+    assert states == {"at load":         [False, False, False, False],
+                      "Raman on":        [True, False, False, True],
+                      "a range":         [True, True, True, True],
+                      "Raman off again": [False, False, False, False]}, states
+
+
 def test_every_finding_the_live_check_returns_is_on_the_page(
         page, flask_server, tmp_path, monkeypatch):
     """Every finding the tab's live check returns for the structure loaded is
@@ -99,5 +146,49 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
                for i in said), ("the live check said nothing about water "
                                 "itself", said)
     assert_every_finding_drawn(
-        page, ["#spectra-issues", "#spectra-form-pyscf", "#spectra-form-siesta"],
+        page, ["#spectra-issues", "#spectra-form-common", "#spectra-form-pyscf",
+               "#spectra-form-siesta"],
         said)
+
+
+def test_an_edit_in_the_shared_part_is_checked_live_beside_its_field(
+        page, flask_server, tmp_path, monkeypatch):
+    """`web/spectra.md` § 5 step 3: the settings both engines share are
+    checked as they are edited, like the engine's own -- the live check's
+    request follows an edit above the strip, and its finding lands beside
+    the field there.
+
+    THE SILENT FAILURE: the check listening to the engine's part alone --
+    a Raman range stated nowhere would go unflagged until Send.
+
+    MUTATION THIS MUST FAIL AGAINST: the live check's listener on the
+    engine forms' wrapper only (no request after the shared part's edit)."""
+    from test_chemistry_card_e2e import (_ready_for_a_pick,
+                                         _register_tmp_as_picker_root)
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water = tmp_path / "w" / "water.xyz"
+    water.parent.mkdir()
+    water.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
+    page.goto(f"{flask_server}/spectrum-calculation",
+              wait_until="domcontentloaded")
+    _ready_for_a_pick(page)
+    page.evaluate(
+        "(p) => window.molbuilder.projects.setShared("
+        "  p.substring(0, p.lastIndexOf('/')), p)", str(water))
+    page.wait_for_function(
+        "() => !document.getElementById('load-from-sidebar-btn').disabled",
+        timeout=5000)
+    with page.expect_response(lambda r: "/api/build/preflight" in r.url,
+                              timeout=15000):
+        page.locator("#load-from-sidebar-btn").click()
+    page.check("#common-compute-raman")
+    with page.expect_response(lambda r: "/api/build/preflight" in r.url,
+                              timeout=15000) as answered:
+        page.select_option("#common-raman-modes", value="range")
+    said = [i for i in answered.value.json()["issues"]
+            if i.get("where") == "config.raman_modes"]
+    assert said and said[0]["severity"] == "error", said
+    page.wait_for_function(
+        "() => (document.getElementById('common-raman-modes')"
+        ".closest('.schema-field').querySelector('.field-issues') || {})"
+        ".textContent", timeout=10000)

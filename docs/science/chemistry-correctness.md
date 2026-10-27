@@ -482,7 +482,7 @@ transport axis, and a `free` moment has no parity to match.
 
 **ES4 · What an engine can run is declared, not discovered** (§ 2a.3). A choice an
 engine cannot run for this kind is refused by name at the settings gate, never
-left to fail on the node — and the form does not offer it. The gate holds the
+left to fail on the node — and an engine's own form does not offer it (the part both engines share offers what either can run, and the chosen engine's gate refuses the rest beside the field). The gate holds the
 RESOLVED treatment and count to the catalogue's sets, so a value worked out
 from the structure is judged as a stated one is: a radical's detected
 `unrestricted` on a PySCF vibration is refused, saying where it came from.
@@ -550,7 +550,7 @@ and used is a finding, not a footnote.
 Declared once, on the two items (`offered` — [`engines/template.md`](?doc=engines/template.md)
 § 6.3a, 2026-09-30; `electronic_state.CAPABILITY` held it in code until then),
 read by the form and the stage table, which offer only what the engine can
-run for the kind, by the description's own check, which refuses a stage's
+run for the kind (the shared part of a form drawn in parts, what either engine can), by the description's own check, which refuses a stage's
 value outside it when the description is written, and by the settings gate,
 which holds the RESOLVED treatment and count to it and refuses anything else
 by name, saying where the value came from (ES4) — on a transport calculation
@@ -756,8 +756,8 @@ is a defect, not a convenience.
 **3.5 At engine emission** — `validate(struct, cfg)` runs before render in *every*
 engine path (no "render that skips preflight"):
 `tests/test_web.py:435,459::test_preflight_returns_issues_for_{siesta,pyscf}`;
-issues carrying `workflow_group` metadata route to the correct UI card
-(`tests/test_issues_workflow_group.py`).
+findings serialised with a `card` route to the correct UI card
+(`tests/test_issues_card.py`).
 
 ---
 

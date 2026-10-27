@@ -142,7 +142,7 @@ class TestRenderMethodsMdPreRun:
     def test_compute_raman_false_omits_raman_prose(self):
         """diagnostic / Hessian-only run -> no dα/dR clause."""
         from molbuilder.spectra import render_methods_md
-        cfg = _spectra_cfg(compute_raman=False)
+        cfg = _spectra_cfg(compute_raman=False, compute_ir=False)
         md = render_methods_md(cfg)
         assert "Raman activities" not in md
         assert "Komornicki1979" not in md

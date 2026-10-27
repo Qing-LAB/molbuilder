@@ -9,7 +9,7 @@ validators all read from the same place.
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
-from typing import List
+from typing import Dict, List, Mapping
 
 from ..issues import Issue
 
@@ -54,14 +54,16 @@ def outside_range(value, rng) -> list:
 
 
 def _validate_config_metadata(cfg, refused=frozenset(),
-                              foreign=frozenset()) -> List[Issue]:
-    """The field metadata's own findings.  Two sets of fields have no range
-    warning: ``refused``, the values the one per-value door refused
+                              foreign=frozenset(),
+                              inactive=frozenset()) -> List[Issue]:
+    """The field metadata's own findings.  Three sets of fields have no
+    range warning: ``refused``, the values the one per-value door refused
     (``template.why_not``) -- a value refused draws that refusal alone
-    (`engines/template.md` § 5.3) -- and ``foreign``, the catalogue items
-    this calculation does not carry: the kind narrows the catalogue (§ 6.3),
-    so their values are not this calculation's to warn about
-    (:func:`not_carried`)."""
+    (`engines/template.md` § 5.3) -- ``foreign``, the catalogue items this
+    calculation does not carry: the kind narrows the catalogue (§ 6.3), so
+    their values are not this calculation's to warn about
+    (:func:`not_carried`) -- and ``inactive``, the settings that enter
+    nothing here (:func:`_inactive`), whose one line says so."""
     issues: List[Issue] = []
     if not is_dataclass(cfg):
         return issues
@@ -77,7 +79,8 @@ def _validate_config_metadata(cfg, refused=frozenset(),
         # range = (lo, hi) inclusive
         rng = item.range if item is not None else None
         if (rng is not None and value is not None
-                and f.name not in refused and f.name not in foreign):
+                and f.name not in refused and f.name not in foreign
+                and f.name not in inactive):
             lo, hi = rng
             # A TRIPLE'S RANGE BOUNDS EACH COMPONENT (engines/template.md
             # § 5).  That is the only reading that means anything for
@@ -243,4 +246,50 @@ def _check_values(cfg, calculation: str) -> List[Issue]:
             shown = list(have) if isinstance(have, tuple) else have
             issues.append(Issue("error", f"{it.name} = {shown!r}{clause}.",
                                 f"config.{it.name}"))
+    return issues
+
+
+def _inactive(cfg, calculation: str) -> Dict[str, str]:
+    """The settings that enter nothing here, each with why -- the items
+    whose ``active_when`` the other settings do not meet (`engines/
+    template.md` § 5), whatever they hold.  Asked once by ``validate``: the
+    gate's one line about each (:func:`_check_inactive`), and the advice
+    that stands aside for them -- a recommended range, the probe's
+    displacement -- since nothing they hold is run."""
+    from ..template import catalogue, engine_name, inactive_why, select
+    engine = engine_name(type(cfg))
+    cat = catalogue()
+    if engine not in cat.engines:
+        return {}
+    values = {f.name: getattr(cfg, f.name) for f in fields(cfg)}
+    out: Dict[str, str] = {}
+    for it in select(cat, engine=engine, calculation=calculation):
+        why = inactive_why(it, values) if it.active_when else None
+        if why:
+            out[it.name] = why
+    return out
+
+
+def _check_inactive(cfg, calculation: str,
+                    inactive: Mapping[str, str]) -> List[Issue]:
+    """A value given to a setting that enters nothing here (``inactive``,
+    :func:`_inactive`): said once, never refused for it, since nothing it
+    holds is run.  The form draws the same field greyed out, keeping its
+    value, which is how the hand-over carries it; a value at the kind's
+    default is nobody's statement and says nothing."""
+    from ..template import catalogue, choice_words, default_of, one
+    cat = catalogue()
+    issues: List[Issue] = []
+    for name, why in inactive.items():
+        it = one(cat, name)
+        have = getattr(cfg, name, None)
+        if have is None or have == default_of(it, calculation):
+            continue
+        # The value in the words every "has no effect here" says it.
+        said = (f"{float(have):g}" if isinstance(have, (int, float))
+                and not isinstance(have, bool) else choice_words(it, have))
+        unit = f" {it.unit}" if it.unit else ""
+        issues.append(Issue(
+            "warn", f"{name} = {said}{unit} has no effect here: {why}.",
+            f"config.{name}"))
     return issues

@@ -14,8 +14,8 @@
  *
  * The contract's rules are the module's behaviour, with no knob to opt out:
  *
- *   R3 nothing is dropped.  An unroutable finding (no group, or a group with no
- *      rendered card) goes to the residual panel.  ``render`` returns the
+ *   R3 nothing is dropped.  An unroutable finding (no card, or a card the
+ *      form did not draw) goes to the residual panel.  ``render`` returns the
  *      counts it actually wrote, and ``total`` always equals ``issues.length``.
  *   R4 severity means one thing.  One row vocabulary
  *      (``li.issue-item[data-severity]``, styled once in page-shell.css --
@@ -30,6 +30,9 @@
  *   const summary = molbuilder.validationFindings.render(issues, {
  *       panel:     <element>,   // the row parent AND visibility owner
  *       formScope: <element>,   // optional: searched for .card-issues panels
+ *                  // -- or a list of them, the parts one form is drawn
+ *                  // in (the Spectrum tab's shared part and an
+ *                  // engine's own, form-schema.md § 1.3)
  *       fieldIds:  {mesh_cutoff: "p-mesh-cutoff", ...},  // optional
  *                  // -- or, when one form holds several stages' controls
  *                  // (the transport tab's rungs), keyed by stage first:
@@ -41,7 +44,7 @@
  *       reveal:    true,        // optional: bring the first error into view
  *                                // -- a Send's refusal, not a live check
  *   });
- *   // summary = {total, residual, byGroup: {<role>: n},
+ *   // summary = {total, residual, byCard: {<card>: n},
  *   //            byField: {<where>: n}, counts: {error, warn, info}}
  *
  * PLACEMENT, most specific first: beside the CONTROL when
@@ -117,13 +120,28 @@ const _module = (function (root) {
         return li;
     }
 
+    /* A form's scope as the list of the elements it is drawn in: one
+     * element, or the parts a caller names. */
+    function _scopes(formScope) {
+        if (!formScope) return [];
+        var list = Array.isArray(formScope) ? formScope : [formScope];
+        return list.filter(function (e) { return e && e.querySelectorAll; });
+    }
+
+    function _all(formScope, selector) {
+        var out = [];
+        _scopes(formScope).forEach(function (e) {
+            var found = e.querySelectorAll(selector) || [];
+            for (var i = 0; i < found.length; i++) out.push(found[i]);
+        });
+        return out;
+    }
+
     function _cardPanels(formScope) {
         var out = {};
-        if (!formScope || !formScope.querySelectorAll) return out;
-        var found = formScope.querySelectorAll(".card-issues[data-workflow-group]");
-        for (var i = 0; i < found.length; i++) {
-            out[String(found[i].getAttribute("data-workflow-group"))] = found[i];
-        }
+        _all(formScope, ".card-issues[data-card]").forEach(function (p) {
+            out[String(p.getAttribute("data-card"))] = p;
+        });
         return out;
     }
 
@@ -168,8 +186,12 @@ const _module = (function (root) {
             ? where.slice("config.".length).split(".")[0] : where;
         var id = ids[name];
         if (typeof id !== "string" || !id) return null;
-        var input = formScope.querySelector("#" + (root.CSS && root.CSS.escape
-                                                   ? root.CSS.escape(id) : id));
+        var sel = "#" + (root.CSS && root.CSS.escape ? root.CSS.escape(id) : id);
+        var input = null;
+        _scopes(formScope).some(function (e) {
+            input = e.querySelector(sel);
+            return !!input;
+        });
         if (!input) return null;
         // The whole control -- label, unit, help -- when the schema rendered
         // it; the element itself when the id names the control's own row.
@@ -199,8 +221,8 @@ const _module = (function (root) {
         // Per-field lists are REMOVED, not emptied: they are created on demand
         // beside a control, so an empty one left behind is a gap in the layout
         // under every field that ever had a finding.
-        if (opts.formScope && opts.formScope.querySelectorAll) {
-            var stale = opts.formScope.querySelectorAll(".field-issues") || [];
+        if (opts.formScope) {
+            var stale = _all(opts.formScope, ".field-issues");
             for (var s = 0; s < stale.length; s++) {
                 // Detach when the node knows its parent, empty it when it does
                 // not.  Both leave no stale row, and the second is what a DOM
@@ -227,7 +249,7 @@ const _module = (function (root) {
         var list = (issues || []).filter(Boolean);
         var doc = (panel && panel.ownerDocument) || root.document;
         var summary = {
-            total: list.length, residual: 0, byGroup: {}, byField: {},
+            total: list.length, residual: 0, byCard: {}, byField: {},
             counts: { error: 0, warn: 0, info: 0 },
         };
 
@@ -246,10 +268,10 @@ const _module = (function (root) {
         }
 
         // ONE pass over the FINDINGS (not over the panels): iterating panels
-        // would silently drop a finding whose group had no rendered card.
+        // would silently drop a finding whose card was not drawn.
         list.forEach(function (issue) {
             summary.counts[_severityOf(issue)] += 1;
-            var group = issue && issue.workflow_group;
+            var card = issue && issue.card;
             // BESIDE THE CONTROL first, the card second, the residual panel
             // last.  Each fallback is strictly less specific than the one
             // before it, so a finding never moves further from its field than
@@ -260,18 +282,18 @@ const _module = (function (root) {
                 _fieldPanel(doc, anchor).appendChild(_row(doc, issue));
                 summary.byField[String(issue.where)] =
                     (summary.byField[String(issue.where)] || 0) + 1;
-                if (group) {
-                    summary.byGroup[String(group)] =
-                        (summary.byGroup[String(group)] || 0) + 1;
+                if (card) {
+                    summary.byCard[String(card)] =
+                        (summary.byCard[String(card)] || 0) + 1;
                 }
                 return;
             }
-            var target = (group && panels[String(group)]) || null;
+            var target = (card && panels[String(card)]) || null;
             if (target) {
                 target.appendChild(_row(doc, issue));
                 target.hidden = false;
-                summary.byGroup[String(group)] =
-                    (summary.byGroup[String(group)] || 0) + 1;
+                summary.byCard[String(card)] =
+                    (summary.byCard[String(card)] || 0) + 1;
                 return;
             }
             if (!panel) return;      // nowhere to put it; counted, not silent
@@ -298,7 +320,7 @@ const _module = (function (root) {
         // the first card, plan § 5w K20) -- the form first, beside its
         // control, then the residual panel.  A live check never asks.
         if (opts.reveal) {
-            var scopes = [opts.formScope, panel];
+            var scopes = _scopes(opts.formScope).concat([panel]);
             for (var k = 0; k < scopes.length; k++) {
                 var first = scopes[k] && scopes[k].querySelector
                     && scopes[k].querySelector(

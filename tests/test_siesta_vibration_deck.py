@@ -85,6 +85,51 @@ def test_the_force_constant_deck_nudges_the_free_range_only(tmp_path,
         assert scalars.get(fdf_key(key)) == ["geometry"], key
 
 
+#: (the person's values, the charges' keywords in the fc deck, an optical
+#: phase prepared) -- `engines/vibration.md` § 3.1, § 5.3, § 5.11 § 9.
+_SWITCH_ROWS = [
+    ({}, True, False),                         # the defaults: IR on, Raman off
+    ({"compute_ir": False}, False, False),
+    ({"compute_raman": True, "raman_modes": "range",
+      "raman_freq_min_cm1": 1000.0}, True, True),
+]
+
+
+@pytest.mark.parametrize("values,charges,optical", _SWITCH_ROWS)
+def test_compute_ir_and_compute_raman_reach_the_decks(
+        tmp_path, monkeypatch, values, charges, optical):
+    """The two settings both engines share, translated on SIESTA: *Compute
+    IR* writes every atom's charges at every force-constant step, by both
+    partitions, and leaves them out -- saying so -- when off; *Compute
+    Raman* prepares the optical phase, and none when off.  Read as the
+    engine reads the deck.  MUTATIONS THIS MUST FAIL AGAINST: the charges
+    written whatever Compute IR says (the run computes a population nobody
+    asked for, and its result claims an infrared); the optical phase
+    switched by anything but Compute Raman."""
+    from molbuilder.template import with_values_set
+    from molbuilder.template_file import template_path
+    from support.road import CO2, describe_calculation, group_words, jobset
+    bundle = describe_calculation(tmp_path, monkeypatch, name="CO2",
+                                  calculation="vibration", structure=CO2)
+    path = template_path(bundle, "CO2")
+    path.write_text(with_values_set(path.read_text(), SiestaConfig,
+                                    calculation="vibration", values=values,
+                                    source="person"))
+    r = jobset("prep", "task", *group_words(bundle, "freq"),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    names = RunNames.of("CO2", "01_freq", "hierarchical")
+    text = read_deck(bundle / "01_freq" / FC_PART / names.name(".fdf"))
+    scalars, _ = read_fdf(text)
+    got = {key: scalars.get(fdf_key(key))
+           for key in ("Charge.Hirshfeld", "Charge.Voronoi")}
+    assert got == ({k: ["geometry"] for k in got} if charges
+                   else {k: None for k in got}), got
+    if not charges:
+        assert "Compute IR is off" in text
+    assert (bundle / "01_freq" / "optical").is_dir() is optical
+
+
 def test_every_atom_held_is_refused_by_the_gate():
     from molbuilder.validation import validate
     s = _three_h(held=[0, 1, 2])

@@ -1742,6 +1742,44 @@ def _fdf_honours_restart(text: Optional[str]) -> Optional[bool]:
     return fdf_true(answer.split())
 
 
+def _fdf_reads(text: Optional[str]) -> Dict[str, Tuple[str, bool]]:
+    """What prior state this SIESTA deck lets SIESTA read, FILE BY FILE --
+    ``{suffix: (keyword, reads)}`` for each restart file whose deck keyword
+    (`warm-files.toml`'s ``honoured_by``) the deck states, read as fdf reads
+    a switch.  One restart group may say yes to one file and no to another:
+    a force-constant call reads the relaxed density, never a geometry
+    (`siesta/vibration_deck.start_state_lines`)."""
+    from .parse.fdf import fdf_key, fdf_true
+    from .script_emit import deck_values
+    from .warmfiles import warm_list
+    if text is None:
+        return {}
+    said = {fdf_key(k): str(v)
+            for k, v in deck_values("restart", "siesta", text).items()}
+    return {r.suffix: (r.honoured_by, fdf_true(said[fdf_key(r.honoured_by)]
+                                               .split()))
+            for r in warm_list("siesta").rules
+            if r.honoured_by and fdf_key(r.honoured_by) in said}
+
+
+def _fdf_reads_words(reads: Dict[str, Tuple[str, bool]]) -> str:
+    """What :func:`_fdf_reads` found, as the run script says it: a group
+    that reads everything it names is the description's *start from:
+    continue*; one that reads some and not others is a call that fixes its
+    own start -- *sets DM.UseSaveDM .true., so SIESTA reads the .DM left
+    under this SystemLabel -- and MD.UseSaveXV .false.: never the .XV*."""
+    yes = [(s, k) for s, (k, r) in reads.items() if r]
+    no = [(s, k) for s, (k, r) in reads.items() if not r]
+    out = (("" if no else "says 'start from: continue' -- it ")
+           + "sets " + " / ".join(k for _, k in yes) + " .true., so SIESTA "
+           "reads the " + "/".join(s for s, _ in yes) + " left under this "
+           "SystemLabel")
+    if no:
+        out += (" -- and " + " / ".join(k for _, k in no) + " .false.: "
+                "never the " + "/".join(s for s, _ in no))
+    return out + "."
+
+
 def _py_deck_reads_prior(text: Optional[str]) -> Optional[bool]:
     """Whether this PySCF deck reads prior state at start -- from the DECK.
 
@@ -1799,7 +1837,9 @@ def _effective_parameters_block(script_path: "Path") -> str:
 
     **The deck is read at LAUNCH**, comments and blank lines stripped -- the
     lines libfdf parses -- so a deck somebody hand-edited after `prep` is
-    recorded as the engine will see it.
+    recorded as the engine will see it; a block read from a file beside the
+    deck (``%block Label < Filename``) is echoed with that file's rows, as
+    libfdf reads it (`parse/fdf.inline_includes`).
     """
     import shlex as _shlex
     from . import script_emit as _sc
@@ -1818,7 +1858,11 @@ def _effective_parameters_block(script_path: "Path") -> str:
             lines.append("echo " + _shlex.quote(
                 _sc.parameter_row(item.name, param.default)))
     lines += [
-        f'grep -v "^[[:space:]]*#" "{script_name}" | grep -v "^[[:space:]]*$"'
+        "awk '{ if (tolower($1) == \"%block\" && $3 == \"<\") "
+        "{ print \"%block \" $2; while ((getline _l < $4) > 0) print _l; "
+        "close($4); print \"%endblock \" $2 } else print }' "
+        f'"{script_name}"'
+        ' | grep -v "^[[:space:]]*#" | grep -v "^[[:space:]]*$"'
         ' | sed "s/^/#   /"',
         f'echo "{end_marker(BLOCK_PARAMETERS)}"',
         "",
@@ -2363,6 +2407,8 @@ def render_run_wrapper(script_path: Path, *,
     # wrapper's own help cannot contradict the file it ships beside.
     _restart_honoured = (_fdf_honours_restart(deck_text)
                          if suffix == ".fdf" else None)
+    # ...and FILE BY FILE, which is what the run's texts name.
+    _reads = _fdf_reads(deck_text) if suffix == ".fdf" else {}
     # WHAT A RETRY OF THIS RUN DOES -- one description (`_retry_texts`), read
     # by every text that speaks of a retry: the banner's retry line, the
     # retry's own message, a retried run's Mode line, the --continue usage
@@ -2577,11 +2623,8 @@ def render_run_wrapper(script_path: Path, *,
             + (
                 f"                   {_retry['usage']}"
                 if not resumes else
-                "                   This deck says 'start from: continue'\n"
-                "                   (DM.UseSaveDM / MD.UseSaveXV .true.,\n"
-                "                   and MD.UseSaveCG on a CG relaxation),\n"
-                "                   so SIESTA reads the .DM/.XV (and .CG)\n"
-                "                   left under this SystemLabel.\n"
+                _wrapped("This deck " + _fdf_reads_words(_reads),
+                         "                   ")
                 if _restart_honoured else
                 "                   This deck says 'start from: clean'\n"
                 "                   (DM.UseSaveDM .false.), so SIESTA will\n"
@@ -2659,7 +2702,11 @@ def render_run_wrapper(script_path: Path, *,
             + _runtime_status_block(basename, engine="siesta",
                                     resumes=resumes,
                                     reads_prior=_restart_honoured,
-                                    warm=_warm_in_effect("siesta", warm),
+                                    # the files the deck says it reads
+                                    warm=tuple(
+                                        s for s in _warm_in_effect("siesta",
+                                                                   warm)
+                                        if _reads.get(s, ("", True))[1]),
                                      script_name=script_name)
         )
 
@@ -3746,10 +3793,8 @@ def render_run_wrapper(script_path: Path, *,
             "#    state at start -- each run recomputes from its own\n"
             "#    relaxation (or the already_relaxed assertion).\n"
             if suffix == ".py" else
-            "#  * SIESTA: this deck sets ``DM.UseSaveDM`` /\n"
-            "#    ``MD.UseSaveXV`` .true. (and ``MD.UseSaveCG`` on a CG\n"
-            "#    relaxation), so SIESTA loads the .DM/.XV (and .CG) left\n"
-            "#    under this SystemLabel.\n"
+            _wrapped("* SIESTA: this deck " + _fdf_reads_words(_reads),
+                     "#  ")
             if _restart_honoured else
             "#  * SIESTA: this deck sets ``DM.UseSaveDM`` .false., so\n"
             "#    SIESTA does NOT load prior .DM/.XV/.CG -- the run starts\n"

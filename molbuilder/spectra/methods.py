@@ -252,23 +252,49 @@ def raman_view_sentence(view: Mapping[str, Any]) -> str:
             f"temperature factor is applied.")
 
 
-def siesta_raman_sentence(raman_route: str) -> str:
+def frequency_range_words(freq_min_cm1, freq_max_cm1) -> str:
+    """A frequency range in words, either end blank for none -- *from 1000
+    to 2000 cm⁻¹*, *from 1000 cm⁻¹ up*, *up to 2000 cm⁻¹* -- or ``""`` for
+    no range.  One wording for every place that says Raman for's range:
+    the Methods paragraph, the PySCF deck, migrate's account."""
+    if freq_min_cm1 is None and freq_max_cm1 is None:
+        return ""
+    if freq_max_cm1 is None:
+        return f"from {float(freq_min_cm1):g} cm⁻¹ up"
+    if freq_min_cm1 is None:
+        return f"up to {float(freq_max_cm1):g} cm⁻¹"
+    return (f"from {float(freq_min_cm1):g} to {float(freq_max_cm1):g} "
+            f"cm⁻¹")
+
+
+def siesta_raman_sentence(raman_route: str, raman=None) -> str:
     """The Methods paragraph's Raman sentence on SIESTA's route, by the
-    route the run took (`engines/vibration.md` § 5.11 § 8): its optical
-    calls planned -- the strengths derived on request at a laser -- or
-    none."""
+    route the run took and what it asked (`engines/vibration.md` § 5.11
+    § 8): its optical calls planned -- the strengths derived on request at
+    a laser; Raman asked (``raman``, the deck's `vibration` block's) over a
+    range that kept no mode; or none asked."""
     if raman_route == "optical":
         return ("Raman strengths are derived on request, at a laser the "
                 "reader names, from SIESTA's optical calculation "
                 "(independent states, no local field) at ±δQ along each "
                 "picked mode.")
+    if raman is not None:
+        where = frequency_range_words(raman.get("freq_min_cm1"),
+                                      raman.get("freq_max_cm1"))
+        return (f"Raman strengths were asked for the modes {where}; none of "
+                f"the run's modes lies in that range, so no optical "
+                f"calculation ran." if where else
+                "Raman strengths were asked; the run reports no mode, so no "
+                "optical calculation ran.")
     return "Raman strengths were not requested in this run."
 
 
-def with_siesta_raman_route(methods_md: str, raman_route: str) -> str:
+def with_siesta_raman_route(methods_md: str, raman_route: str,
+                            raman=None) -> str:
     """``methods_md`` with :func:`siesta_raman_sentence` placed in the
     paragraph."""
-    return _with_sentence(methods_md, siesta_raman_sentence(raman_route))
+    return _with_sentence(methods_md,
+                          siesta_raman_sentence(raman_route, raman))
 
 
 def with_raman_view(methods_md: str, view: Mapping[str, Any]) -> str:
@@ -308,7 +334,10 @@ def siesta_methods_text(*, displacement_bohr: float, n_free: int,
         f"displacement, from which the infrared of a chosen set of atoms is "
         f"derived."
         if named else
-        " Infrared intensities are not computed on this route.")
+        # A FINISH THAT KEEPS NO CHARGES IS A RUN THAT ASKED FOR NONE: one
+        # that asked and printed none is refused (`siesta_vibration.
+        # partial_charges_of`).
+        " Infrared intensities were not requested in this run.")
     return (
         "## Methods\n\n"
         f"Harmonic force constants were obtained by central finite "

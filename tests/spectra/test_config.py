@@ -61,10 +61,12 @@ class TestSpectraDefaults:
         cfg = _spectra_cfg()
         assert cfg.es_mode_selection == "skip"
 
-    def test_ir_off_v1_reserved(self):
-        """IR intensities are off by default."""
+    def test_infrared_on_and_raman_off_by_default(self):
+        """The strengths' defaults, one on both engines
+        (`engines/vibration.md` § 3.1): infrared on -- the cheap one --
+        Raman off -- the expensive one."""
         cfg = _spectra_cfg()
-        assert cfg.compute_ir is False
+        assert (cfg.compute_ir, cfg.compute_raman) == (True, False)
 
     def test_displacement_amplitude_production_default(self):
         """0.02 Å keeps ES probes inside the linear-response regime

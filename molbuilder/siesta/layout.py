@@ -45,14 +45,13 @@ OUTPUT_SECTION = Section(
      "write_md_xmol", "write_hs"),
 )
 
-#: The force-constant run's items (the vibration kind on this engine): the
-#: nudge, and the partial charges at every step -- role items, fixed by the
-#: kind (`engines/vibration.md` § 5.3, § 5.11 § 9).  The run type and the
-#: atom range are structural text derived from the structure --
+#: The force-constant run's item (the vibration kind on this engine): the
+#: nudge (`engines/vibration.md` § 5.3, § 5.11 § 9).  The run type, the
+#: atom range and the charges Compute IR asks for are structural text --
 #: `siesta/vibration_deck.py` -- not items.
 FC_SECTION = Section(
     "Force constants",
-    ("fc_displacement", "charge_hirshfeld", "charge_voronoi"),
+    ("fc_displacement",),
 )
 
 #: The optical calculation's items (the vibration run's optical phase,

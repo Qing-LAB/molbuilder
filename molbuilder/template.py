@@ -131,7 +131,7 @@ TYPES = ("int", "float", "str", "bool", "enum", "pow2",
 GROUPS = ("setup", "profile", "stage", "budget", "output", "staging")
 
 #: ...and what each card SAYS -- its title and the one line under it, the one
-#: home of those words, served with every form schema as ``group_words`` (as
+#: home of those words, served with every form schema in its ``cards`` (as
 #: :data:`SOURCE_WORDS` is) so no surface keeps a copy (`form-schema.md`
 #: § 1.3).  True on every form: a stage may override any setting that is not
 #: shared, so no card says its settings are set once for every stage.
@@ -142,22 +142,19 @@ GROUP_WORDS = {
     # `SETUP_WORDS`, below.
     "setup": ("Setup", None),
     "profile": ("Run profile",
-                "WHAT you're computing -- the method and the physical "
-                "character of the system: functional, basis, charge and "
-                "spin, smearing, solvent -- and the SCF solver and mixer "
-                "that suit it."),
+                "The method and the physical character of the system: "
+                "functional, basis, charge and spin, smearing, solvent -- "
+                "and the SCF solver and mixer that suit it."),
     "stage": ("Convergence targets",
-              "How fine and how converged: the basis and grids, the "
-              "tolerances, the k-points and the windows -- what a staged "
-              "sequence tightens as it goes."),
+              "How fine and how converged -- what a staged sequence "
+              "tightens as it goes."),
     "budget": ("Compute & budget",
-               "How much compute: the iteration caps, and how the "
-               "diagonaliser is spread across ranks.  Scales with system "
+               "How much compute: the iteration caps.  Scales with system "
                "size; does NOT change what counts as converged."),
     "output": ("Output files",
-               "What the run WRITES -- trajectories, logs, geometry "
-               "snapshots, and which files are staged beside the input.  "
-               "Changes what you get back, never the answer."),
+               "What the run writes -- trajectories, logs, geometry "
+               "snapshots -- and how much the generated input explains "
+               "itself.  Changes what you get back, never the answer."),
     "staging": ("Run card",
                 "How each stage runs -- ranks, threads, memory, GPU, "
                 "retries, restart -- answered on that stage's run card on "
@@ -167,6 +164,85 @@ if tuple(GROUP_WORDS) != GROUPS:      # one vocabulary, in one order
     raise RuntimeError("template.GROUP_WORDS must name every group of "
                        "template.GROUPS, in its order")
 
+
+#: EACH ENGINE'S NAME, as a person reads it -- served with a form of one
+#: engine's own settings, before every card title (*SIESTA · Raman*,
+#: `web/form-schema.md` § 1.3), and with the chemistry card's states.
+ENGINE_WORDS = {"siesta": "SIESTA", "pyscf": "PySCF"}
+
+
+class Result(NamedTuple):
+    """One result a kind of calculation gives (`engines/template.md`
+    § 6.2a): its key -- what an item's ``result`` names -- and the card's
+    title and the one line under it, saying what it gives and what it
+    costs."""
+    key: str
+    title: str
+    line: str
+
+
+#: THE RESULTS EACH KIND GIVES, in the order a person decides them
+#: (`engines/template.md` § 6.2a) -- the cards a form of the kind draws
+#: after *Setup*, an item naming one for the kind drawn in it
+#: (:func:`card_of`).  A kind not listed keeps its group cards.
+RESULTS: Dict[str, Tuple[Result, ...]] = {
+    "vibration": (
+        Result("modes", "Frequencies and mode shapes",
+               "Relax the structure first -- unless you say it is already "
+               "relaxed -- then take the force constants: every "
+               "vibrational mode, its frequency and how the atoms move.  "
+               "Everything below is computed from these modes."),
+        Result("infrared", "Infrared",
+               "How strongly each mode absorbs infrared light -- from how "
+               "the dipole changes as the mode moves.  Cheap on SIESTA and "
+               "for a free molecule on PySCF; with atoms held and Raman "
+               "off, PySCF takes 6 extra SCFs per free atom."),
+        Result("raman", "Raman",
+               "How strongly each mode scatters laser light -- from how "
+               "the polarizability changes as the mode moves.  The "
+               "expensive one: extra calculations at displaced "
+               "geometries."),
+        Result("thermochemistry", "Thermochemistry",
+               "The zero-point energy, and the energy, entropy and free "
+               "energy at a temperature -- the vibrational part on SIESTA "
+               "and with atoms held, the free molecule's whole answer on "
+               "PySCF (with its translation and rotation).  No extra "
+               "calculation."),
+        Result("probe", "Orbital energies along a mode",
+               "How the frontier orbital energies move when the molecule "
+               "is pushed along a mode -- two extra SCFs per mode "
+               "picked."),
+    ),
+}
+
+
+class Card(NamedTuple):
+    """One card a form of a kind draws (`template.cards`): its key -- a
+    group's or a result's -- its title and line, and whether its settings
+    are drawn under the category legends (a result's card is not: its
+    title already says what they are for)."""
+    key: str
+    title: str
+    subtitle: Optional[str]
+    legends: bool
+
+
+def cards_of_every_kind() -> Tuple[Card, ...]:
+    """Every card any kind draws -- the groups' and every kind's results'."""
+    return tuple({c.key: c for k in (None, *RESULTS)
+                  for c in cards(k or "")}.values())
+
+
+def cards(kind: str) -> Tuple[Card, ...]:
+    """The cards a form of a ``kind`` calculation draws, in order
+    (`engines/template.md` § 6.2a): *Setup*, the kind's results, then the
+    other groups.  The Setup card's line is chosen by the fields a form
+    shows (:func:`setup_words`), so its ``subtitle`` here is ``None``."""
+    groups = [Card(g, t, sub, True) for g, (t, sub) in GROUP_WORDS.items()]
+    results = [Card(r.key, r.title, r.line, False)
+               for r in RESULTS.get(kind, ())]
+    return tuple(groups[:1] + results + groups[1:])
+
 #: THE SETUP CARD'S LINE, one for each set of its fields a form shows -- what
 #: to fill in, with an example (the user, 2026-10-10: "you can be elaborate
 #: for different situations").  A SIESTA form shows the system label and the
@@ -174,17 +250,16 @@ if tuple(GROUP_WORDS) != GROUPS:      # one vocabulary, in one order
 #: shared panel the folder alone, for a cited structure pair.
 SETUP_WORDS = {
     frozenset({"system_label", "psml_lib"}):
-        "Start here.  Give the run a name and pick its pseudopotential "
-        "folder.  The name begins every file the run writes -- for example "
-        "water, so its files are water_01_coarse.fdf, water.XV and so on.  "
+        "Give the run a name and pick its pseudopotential folder.  The name "
+        "begins every file the run writes -- for example water, so its "
+        "files are water_01_<stage>.fdf, water.XV and so on.  "
         "The folder holds one .psml file for each element of the structure "
         "-- for example pseudopotential/, with O.psml and H.psml for water.  "
-        "Nothing can be built until both are filled in.",
+        "Nothing can be built until the folder is filled in.",
     frozenset({"job_name"}):
-        "Start here.  Give the run a name.  It begins every file the run "
-        "writes -- for example water, so its script is water_01_coarse.py "
-        "and its log water_01_coarse.log.  Nothing can be built until it is "
-        "filled in.",
+        "Give the run a name.  It begins every file the run writes -- for "
+        "example water, so its script is water_01_<stage>.py and its log "
+        "water_01_<stage>.log.",
     frozenset({"psml_lib"}):
         "Pick the pseudopotential folder: one .psml file for each element of "
         "the junction -- for example pseudopotential/, with Au.psml, C.psml, "
@@ -203,6 +278,38 @@ def setup_words(shown) -> str:
         raise ValueError(f"the Setup card has no line for a form showing "
                          f"{sorted(key)} -- add one to template.SETUP_WORDS")
     return SETUP_WORDS[key]
+
+
+#: THE RUN PROFILE CARD'S LINE, by what a form draws in it: the electronic
+#: state alone -- the Spectrum tab's part both engines share, the charge
+#: and spin decided before the engine -- or the method without it -- each
+#: engine's own part there; a form drawing both says the card's own line
+#: (`GROUP_WORDS`).
+PROFILE_STATE_WORDS = ("The charge and spin of the system -- one answer for "
+                       "both engines.  Leave a field blank and it is worked "
+                       "out from the structure; the chemistry card above "
+                       "says what, and why.")
+PROFILE_METHOD_WORDS = ("How the electrons are computed: the method, and "
+                        "the solver settings that suit it.")
+
+
+def card_line(card: str, shown) -> Optional[str]:
+    """The line under ``card`` on a form drawing the fields ``shown`` (their
+    names) in it -- true of what that form shows (`web/form-schema.md`
+    § 1.3): the Setup card's by its fields (:func:`setup_words`), the Run
+    profile's by whether it holds the electronic state, the method or both;
+    any other card's own line."""
+    shown = set(shown)
+    if card == "setup":
+        return setup_words(shown)
+    if card == "profile":
+        state = shown & set(STATE_ITEMS) - {"method"}
+        if state and shown <= set(STATE_ITEMS):
+            return PROFILE_STATE_WORDS
+        if not state:
+            return PROFILE_METHOD_WORDS
+    words = dict((c.key, c.subtitle) for c in cards_of_every_kind())
+    return words.get(card)
 
 
 def stage_words(stage: str) -> str:
@@ -326,7 +433,7 @@ class Item:
     choices: Optional[Tuple[Union[str, int], ...]] = None
     range:   Optional[Tuple[float, float]] = None
     unit:    Optional[str] = None
-    group:   Optional[str] = None           # workflow_group: profile/stage/budget
+    group:   Optional[str] = None           # the card, unless a result names one
 
     # --- what a SURFACE needs (generator.md § 3.1a) -------------------- #
     # The UI is built FROM the template rather than merely generated from the
@@ -386,6 +493,24 @@ class Item:
     #: Ask :func:`offered`; why a choice is not offered is
     #: :func:`why_not_offered`'s.
     offered: Tuple[Tuple[str, Tuple[Any, ...]], ...] = ()
+    #: WHICH RESULT OF THE KIND THIS SETTING IS FOR (§ 6.2a), as ``(kind,
+    #: result)`` pairs, each result one of :data:`RESULTS` for its kind --
+    #: the card it is drawn in (:func:`card_of`).  Where it is drawn and
+    #: nothing else: a catalogue fact, never written into a calculation's
+    #: template.
+    result: Tuple[Tuple[str, str], ...] = ()
+    #: THE VALUES OTHER SETTINGS MUST HOLD for this one to enter the
+    #: calculation (§ 5), as ``(name, values)`` pairs, every one holding --
+    #: *Raman for* only while *Compute Raman* is on.  Otherwise it enters
+    #: nothing: the form greys it out, keeping its value, and the settings
+    #: gate says so (:func:`inactive_why`).  Catalogue-only, like
+    #: ``result``.
+    active_when: Tuple[Tuple[str, Tuple[Any, ...]], ...] = ()
+    #: THE WORDS A PERSON READS FOR EACH CHOICE (§ 5), as ``(choice,
+    #: words)`` pairs -- *All modes* for ``all``: what a form's list shows
+    #: and a message says (:func:`choice_words`); the value written stays
+    #: the choice.  Catalogue-only, like ``result``.
+    choice_labels: Tuple[Tuple[Any, str], ...] = ()
 
     #: Citation keys into ``docs/science/references.bib`` -- the one
     #: bibliography the whole validation design argues from (user,
@@ -630,6 +755,14 @@ class Item:
         if self.role_values and not self.role:
             _refuse("'role_values' names a rung's own answer to a `role` item, "
                     "and this item declares no `role`", where=self.name)
+        # § 6.2a: a result is one the kind gives -- a misspelling would draw
+        # the setting on no card and send its warnings nowhere.
+        for _k, _r in self.result:
+            if _r not in {r.key for r in RESULTS.get(_k, ())}:
+                _refuse(f"result.{_k} = {_r!r} is not one of the results "
+                        f"{a_kind(_k)} gives "
+                        f"({', '.join(r.key for r in RESULTS.get(_k, ())) or 'none listed'}; "
+                        f"template.RESULTS)", where=self.name)
 
     @property
     def is_set(self) -> bool:
@@ -766,7 +899,7 @@ def _toml_key(k: Any) -> str:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "launch", "type",
-                   "choices", "value", "source", "default", "engine_default", "recommended", "offered", "optional", "required",
+                   "choices", "value", "source", "default", "engine_default", "recommended", "offered", "result", "active_when", "choice_labels", "optional", "required",
                    "allocation", "run_card",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "above", "at_least", "tightens", "tier",
@@ -848,6 +981,12 @@ def _item_payload(it: Item) -> Dict[str, Any]:
             (offered_table.setdefault(engine, {}) if engine
              else offered_table)[kind] = list(members)
         out["offered"] = offered_table
+    if it.result:
+        out["result"] = dict(it.result)
+    if it.active_when:
+        out["active_when"] = {k: list(v) for k, v in it.active_when}
+    if it.choice_labels:
+        out["choice_labels"] = {str(c): w for c, w in it.choice_labels}
     if it.refs:
         out["refs"] = list(it.refs)
     if it.allocation:
@@ -947,6 +1086,25 @@ def catalogue() -> "Template":
             _refuse("a run setting states no value -- its default is "
                     "`default`, the one every reader asks "
                     "(engines/template.md § 5.4)", where=it.name)
+        # WHAT GREYS A SETTING OUT IS A SETTING OF THE SAME CALCULATION (§ 5):
+        # an item serving every engine and kind this one does, each value
+        # one its own type takes -- else the form would wait on a field it
+        # never draws, and the gate on a value no config can hold.
+        by_name = {o.name: o for o in parsed.items}
+        for other_name, values in it.active_when:
+            other = by_name.get(other_name)
+            engines_here = it.engines or parsed.engines
+            if other is None or any(
+                    other.engines and e not in other.engines
+                    for e in engines_here) or any(
+                    other.calculations and k not in other.calculations
+                    for k in (it.calculations or _calculation_kinds())):
+                _refuse(f"active_when names {other_name!r}, which is not an "
+                        f"item of every engine and kind this one serves "
+                        f"(engines/template.md § 5)", where=it.name)
+            for v in values:
+                _check_raw_value(it.name, f"active_when.{other_name}", v,
+                                 other.type, other.choices)
     return parsed
 
 
@@ -1025,6 +1183,11 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # this kind's -- a narrowed `choices` here would refuse it at
             # read time with the reader's bare words instead.
             offered=(),
+            # ...nor where the form draws it or what greys it out (§ 6.2a,
+            # § 5): the catalogue's, asked of the catalogue.
+            result=(),
+            active_when=(),
+            choice_labels=(),
         )
         for it in select(parsed, engine=eng, calculation=calculation)
         # NO RUN SETTING, valueless or not: it is the job request's
@@ -1371,6 +1534,60 @@ def _offered_from(name: str, raw, type_: str, choices,
     return tuple(out)
 
 
+def _result_from(name: str, raw) -> Tuple[Tuple[str, str], ...]:
+    """The ``result`` table of an item (§ 6.2a): a calculation kind ->
+    one of that kind's results.  A key that is no kind is refused, as
+    ``offered``'s is -- a table nothing asks; the result itself is checked
+    by the item (:class:`Item`)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, Mapping) or not raw or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in raw.items()):
+        _refuse('`result` must be a table keyed by calculation kind, each '
+                'value a result of that kind -- e.g. result = { vibration = '
+                '"raman" }', where=name)
+    kinds = _calculation_kinds()
+    unknown = sorted(set(raw) - set(kinds))
+    if unknown:
+        _refuse(f"`result` names {', '.join(map(repr, unknown))}, which is "
+                f"not a calculation kind ({', '.join(kinds)})", where=name)
+    return tuple((str(k), str(v)) for k, v in raw.items())
+
+
+def _active_when_from(name: str, raw) -> Tuple[Tuple[str, Tuple[Any, ...]], ...]:
+    """The ``active_when`` table of an item (§ 5): another item's name ->
+    the values it must hold, a non-empty list.  That each name is an item
+    and each value passes its type is the catalogue's to check, holding
+    every item (:func:`catalogue`)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, Mapping) or not raw or not all(
+            isinstance(k, str) and isinstance(v, list) and v
+            for k, v in raw.items()):
+        _refuse('`active_when` must be a table of other settings, each a '
+                'non-empty list of the values it must hold -- e.g. '
+                'active_when = { compute_raman = [true] }', where=name)
+    if name in raw:
+        _refuse("`active_when` names the item itself", where=name)
+    return tuple((str(k), tuple(v)) for k, v in raw.items())
+
+
+def _choice_labels_from(name: str, raw, choices) -> Tuple[Tuple[Any, str], ...]:
+    """The ``choice_labels`` table of an item (§ 5): each choice, as TOML
+    spells a key, -> its words.  A key that names no choice, or empty
+    words, is refused -- a label nothing shows."""
+    if raw is None:
+        return ()
+    by_key = {str(c): c for c in (choices or ())}
+    if not isinstance(raw, Mapping) or not raw or any(
+            k not in by_key or not isinstance(v, str) or not v.strip()
+            for k, v in raw.items()):
+        _refuse("`choice_labels` must be a table of the item's choices, each "
+                "with its words -- e.g. choice_labels = { all = \"All "
+                "modes\" }", where=name)
+    return tuple((by_key[k], v.strip()) for k, v in raw.items())
+
+
 def _stages_from(name: str, raw) -> Tuple[str, ...]:
     """``stages`` as read (§ 6.4): a list of rung roles, or the name of a
     set of them (:data:`ROLE_SETS` -- ``"scf"``, every rung that runs an
@@ -1669,6 +1886,10 @@ def _item_from(name: str, body: Any) -> Item:
                                 keys=_calculation_kinds()),
         offered=_offered_from(name, body.get("offered"), type_, choices,
                               tuple(body.get("engines", ()) or ())),
+        result=_result_from(name, body.get("result")),
+        active_when=_active_when_from(name, body.get("active_when")),
+        choice_labels=_choice_labels_from(name, body.get("choice_labels"),
+                                          choices),
         above=_above_from(name, body, type_),
         at_least=_above_from(name, body, type_, key="at_least"),
         tightens=_tightens_from(name, body.get("tightens")),
@@ -2088,6 +2309,90 @@ def offered(item: "Item", engine: str, kind: str) -> Tuple[Any, ...]:
         if key in table:
             return table[key]
     return tuple(item.choices or ())
+
+
+def offered_by_any(item: "Item", engines, kind: str) -> Tuple[Any, ...]:
+    """Every choice ``item`` offers a ``kind`` calculation on any of
+    ``engines``, in the item's own order -- what a field drawn once for
+    every engine of the kind offers (§ 6.2a); the chosen engine's checks
+    refuse, naming why, a choice it cannot run."""
+    sets = [set(offered(item, e, kind)) for e in engines]
+    return tuple(c for c in (item.choices or ())
+                 if any(c in s for s in sets))
+
+
+def result_of(item: "Item", kind: str) -> Optional[str]:
+    """The result of a ``kind`` calculation ``item`` is for, or ``None``
+    (§ 6.2a)."""
+    return dict(item.result).get(kind)
+
+
+def card_of(item: "Item", kind: str) -> Optional[str]:
+    """THE CARD ``item`` IS DRAWN IN on a form of a ``kind`` calculation --
+    its result's when it names one for the kind, else its group's (§ 6.2a).
+    One rule for the form and for where a warning about it is shown."""
+    return result_of(item, kind) or item.group
+
+
+def shared_by_engines(kind: str) -> frozenset:
+    """The items one catalogue row serves on EVERY engine that runs a
+    ``kind`` calculation (`electronic_state.engines_for`) -- drawn once,
+    before the engine is chosen, on a page offering the kind on several
+    (§ 6.2a).  Empty for a kind one engine runs: nothing is shared then."""
+    from .electronic_state import engines_for
+    engines = engines_for(kind)
+    if len(engines) < 2:
+        return frozenset()
+    cat = catalogue()
+    per_engine = [{it.name for it in select(cat, engine=e, calculation=kind)}
+                  for e in engines]
+    return frozenset(set.intersection(*per_engine))
+
+
+def choice_words(item: "Item", value: Any) -> str:
+    """``value`` of ``item`` as a person reads it -- a tick box *on* or
+    *off*; a choice's words (``choice_labels``), quoted; else as a refusal
+    quotes a value (:func:`shown`)."""
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    words = dict(item.choice_labels).get(value)
+    return f'"{words}"' if words else shown(value)
+
+
+def active_words(item: "Item", *, names: bool = False) -> Optional[str]:
+    """What ``item`` waits on (§ 5, ``active_when``), as a person reads it
+    -- *"it takes effect only while Compute Raman intensities is on"* --
+    or ``None`` for an item that waits on nothing.  The form shows it
+    beside a greyed-out field; the settings gate (:func:`inactive_why`)
+    says it with each setting's name, ``names``, as the template spells
+    it."""
+    if not item.active_when:
+        return None
+    cat = {it.name: it for it in catalogue().items}
+
+    def _named(n: str) -> str:
+        label = getattr(cat.get(n), "label", "") or ""
+        if not label:
+            return n
+        return f"{label} ({n})" if names else label
+
+    def _said(n: str, v: Any) -> str:
+        return choice_words(cat[n], v) if n in cat else shown(v)
+    return ("it takes effect only while "
+            + " and ".join(f"{_named(n)} is "
+                           + " or ".join(_said(n, v) for v in vs)
+                           for n, vs in item.active_when))
+
+
+def inactive_why(item: "Item", values: Mapping[str, Any]) -> Optional[str]:
+    """Why ``item`` enters nothing given the other settings' ``values``
+    (§ 5, ``active_when``) -- *"it takes effect only while Compute Raman
+    intensities (compute_raman) is on"* -- or ``None`` when every setting
+    it waits on holds one of its values.  Asked by the settings gate; the
+    form shows the same words beside the field (:func:`active_words`)."""
+    if all(values.get(n) in vs for n, vs in item.active_when):
+        return None
+    return active_words(item, names=True)
 
 
 def why_not_offered(name: str, value: Any, engine: str, kind: str) -> str:
@@ -2772,13 +3077,33 @@ class Retired(NamedTuple):
     #: The values that run as before without it: `jobset migrate` removes
     #: the item holding one of these (or none), and refuses any other by
     #: name -- what the calculation was is kept, never rounded.  ``None``:
-    #: every value -- nothing a calculation ran ever read it.
+    #: every value -- nothing a calculation ran ever read it, or migrate
+    #: states what it said in today's items (:attr:`migrate_does`).
     runs: Optional[Tuple[Any, ...]] = ()
+    #: The engines whose schema retired it -- an item one engine keeps and
+    #: another retired (`es_mode_selection`: PySCF's probe, no longer
+    #: SIESTA's).  Empty: every engine.
+    engines: Tuple[str, ...] = ()
+    #: What `jobset migrate` does with it, as the refusal says it: takes it
+    #: out, or -- an item whose value today's items say -- states them from
+    #: it (SIESTA's Raman selector: Compute Raman and Raman for).
+    migrate_does: str = "takes it out"
+
+    def retired_on(self, engine: str) -> bool:
+        """Whether ``engine``'s schema retired the item (:attr:`engines`)."""
+        return not self.engines or engine in self.engines
 
     def runs_without(self, value: Any) -> bool:
         """Whether a calculation holding ``value`` runs as before without
         the item (:attr:`runs`)."""
         return self.runs is None or value in self.runs
+
+
+#: SIESTA's Raman selector before 2.45.0 -- retired on SIESTA alone, PySCF's
+#: orbital probe keeping it; `jobset migrate` states Compute Raman and Raman
+#: for from it (`engines/vibration.md` § 5.11 § 9).
+SIESTA_RAMAN_SELECTOR = ("es_mode_selection", "es_explicit_indices",
+                         "freq_min_cm1", "freq_max_cm1")
 
 
 #: Items a schema once declared and no longer does -- read by the refusal
@@ -2811,6 +3136,22 @@ RETIRED_ITEMS: Dict[str, Retired] = {
                           ("md_target_temperature", "its thermostat's "
                            "target"),
                           ("md_length_timestep", "its time step"))},
+    **{name: Retired(
+        f"a SIESTA vibration's {what}, fixed by the kind until 2.45.0, "
+        f"when Compute IR became a setting of both engines and the "
+        f"force-constant block writes the charges when it is on -- "
+        f"engines/vibration.md 5.3", "2.45.0", runs=None)
+       for name, what in (("charge_hirshfeld", "Hirshfeld charges"),
+                          ("charge_voronoi", "Voronoi charges"))},
+    **{name: Retired(
+        f"SIESTA's Raman modes are Compute Raman and Raman for since "
+        f"2.45.0; {name} is PySCF's orbital probe's alone -- "
+        f"engines/vibration.md 3.1", "2.45.0", runs=None,
+        engines=("siesta",),
+        migrate_does=("states Compute Raman and Raman for from it -- an "
+                      "explicit list of modes, or a stage's own value, is "
+                      "yours to restate as Raman for"))
+       for name in SIESTA_RAMAN_SELECTOR},
 }
 
 
@@ -2846,7 +3187,7 @@ def why_not_an_item(name: str, *, value: Any = None,
                     f"cannot be run again")
         return (f"{name} was retired from the schema ({r.why}) -- "
                 f"`molbuilder jobset migrate` in this calculation's folder "
-                f"takes it out")
+                f"{r.migrate_does}")
     if name in RENAMED_ITEMS:
         new, why, _at = RENAMED_ITEMS[name]
         return (f"{name} is now {new} ({why}) -- `molbuilder jobset migrate` "
