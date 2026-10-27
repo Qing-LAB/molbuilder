@@ -512,8 +512,9 @@ wavelength is entered afterwards, like the infrared's light direction, and
 changed or compared on the same runs. It asks only a broadening above zero
 (`Optical.Broaden`), which near a resonance is a setting to check, not a
 constant. (The measured Raman intensity carries, besides the polarizability,
-a laser-dependent factor and a temperature factor — formulas on the same
-numbers, settled with the contract.)
+a laser-dependent factor and a temperature factor; molbuilder reports the
+strength, on both engines, and applies neither — decided 2026-10-26,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 13, M4-d.)
 
 The cell's polarizability along $\hat e$ at the frequency $\omega$, as a
 polarizability volume:
@@ -615,6 +616,69 @@ equilibrium polarizability, the same for every mode, reported once.
 $\delta Q$ = 0.0301 amu$^{1/2}$ Å for both real modes (each free atom
 carries $\lvert\mathbf L\rvert$ = 0.7043 amu$^{-1/2}$); no Raman number is given
 here — Raman is not built (§ 5).
+
+### 3.2a From a laser wavelength to a Raman strength — the steps *(M4, 2026-10-26)*
+
+**A new wavelength costs no calculation**: every step reads the absorption
+spectra the run already stored (`<label>.optical.nc`, one per geometry), so
+a laser changed on the page is a new number in a second
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10).
+
+1. **The wavelength as a photon energy**:
+
+   $$
+   \hbar\omega_L\,[\mathrm{eV}] = \frac{1239.842}{\lambda\,[\mathrm{nm}]}
+   $$
+
+   | laser | $\hbar\omega_L$ |
+   |---|---|
+   | 532 nm | 2.331 eV |
+   | 633 nm | 1.959 eV |
+   | 785 nm | 1.579 eV |
+
+2. **Each geometry's spectrum smoothed to the width asked** — the run spread
+   every transition as a Gaussian of its own width $\sigma_{\mathrm{run}}$
+   (`Optical.Broaden`); a wider $\sigma$ is one more Gaussian of
+   $\sqrt{\sigma^2-\sigma_{\mathrm{run}}^2}$. The laser does not enter here.
+3. **The real part at the laser's energy**, by Kramers–Kronig (§ 3.1):
+
+   $$
+   \varepsilon_1(\omega_L) - 1 = \frac{2}{\pi}\,
+   \mathrm{P}\!\int_0^{E_{\max}}
+   \frac{\omega'\,\varepsilon_2(\omega')}{\omega'^2-\omega_L^2}\,d\omega' .
+   $$
+
+   This is where the laser acts: a transition whose energy is near
+   $\hbar\omega_L$ weighs heavily (pre-resonance), one far below it almost
+   nothing; $\omega_L = 0$ gives the static value shown beside.
+4. **The polarizability at the laser**:
+   $\alpha_{\hat e\hat e}(\omega_L) = \frac{V_{\mathrm{cell}}}{4\pi}\,[\varepsilon_1(\omega_L)-1]$,
+   in Å³.
+5. **Its change along each mode**, both sides at the same $\omega_L$:
+
+   $$
+   \frac{\partial\alpha_{\hat e\hat e}}{\partial Q_\nu}(\omega_L) =
+   \frac{\alpha_{\hat e\hat e}(+\delta Q;\,\omega_L) - \alpha_{\hat e\hat e}(-\delta Q;\,\omega_L)}{2\,\delta Q}
+   $$
+
+6. **The strength** $R_\nu(\hat e;\omega_L) = \bigl(\partial\alpha_{\hat e\hat e}/\partial Q_\nu\bigr)^2$
+   in Å⁴/amu, ranked against the strongest real mode.
+
+**On H₂** (the proof of concept, [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.11 § 12): $\alpha$ = 1.32 Å³ static and 1.36 Å³ at 633 nm; $R$ = 23.4
+and 25.8 Å⁴/amu — its gap is far from the laser, so the laser moves it
+little. In a junction the gold's near-Fermi transitions fall to almost
+nothing at 633 nm while the molecule's near 2 eV grow (the table of § 3.1).
+
+**What the laser does not change**: the polarizability is taken at the
+laser's frequency for the light going in and coming out — the usual
+approximation while the vibration's energy is small beside the laser's — and
+the measured intensity's factors, the scattered light's
+$(\tilde\nu_L-\tilde\nu_\nu)^4$ and the temperature's
+$1/\bigl(1-e^{-hc\tilde\nu_\nu/k_BT}\bigr)$ over $\tilde\nu_\nu$, are not
+applied: the strength is reported, on both engines — the factors an option
+later ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 13,
+M4-d).
 
 ### 3.3 What the optical calculation is, and is not
 

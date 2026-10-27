@@ -2542,29 +2542,126 @@ an unmigrated one naming migrate, as it refuses a retired item
 (`template.RETIRED_ITEMS`). `status` and the Results ladder read an old
 calculation's two stages by their folders, as today.
 
-#### 10. Raman, presented — at the laser and the width a person asks
+#### 10. Raman, presented — at the laser and the width a person asks *(designed 2026-10-26, M4; the user: "agree with your M4 recommendations … need export, and api to support netcdf file reading")*
 
-`spectra/raman.raman_view(laser_nm, broaden_ev)`, the pattern of
-`infrared_view` (§ 5.10 ②), over the data file read through the one door
-(`ncdata.reading`):
+**What it is**: after a SIESTA vibration whose optical phase ran, each picked
+mode's Raman strength at a laser the person names, derived when asked from
+the $\varepsilon_2$ the run stored (`<label>.optical.nc`) — no new calculation; a new
+laser is a new number in a second. Nothing derived is written into the
+calculation: the result keeps a SIESTA mode's `raman_activity_a4_amu`
+null (§ 8), and the view is served beside it.
 
-1. each frame's `ε₂` broadened to the asked width — a Gaussian of
-   `√(σ_view² − σ_run²)`, since two Gaussians make one; a width below the
-   run's is refused, saying the run's;
-2. `ε₁` by Kramers–Kronig (principal value; the spins summed) and
-   `α_êê(ω) = V/4π·[ε₁(ω) − 1]` at the laser and at zero;
-3. per mode, `∂α/∂Q = [α(+δQ) − α(−δQ)] / 2δQ`, `R(ê) = (∂α/∂Q)²` in
-   Å⁴/amu, its rank against the strongest real mode; frame 0's `α` once.
+**The one derivation** — `spectra/raman.raman_view(result, laser_nm,
+broaden_ev)`, the pattern of `infrared_view` (§ 5.10 ②), over the data file
+read through its one reader (`spectra.optical_data.read_optical_data`,
+through `ncdata.reading`). Per frame:
 
-Every number states its laser and width: near a resonance, and for a metal's
-near-Fermi transitions, the width changes `α`. The doors: the load door's
-asks `laser_nm` and `broaden_ev` beside the infrared's (`web-api.md`), and
-`molbuilder.postprocess.raman_view`. The spectrum viewer draws Raman for a
-result whose `raman_route` is `optical` — *Laser (nm)* and *Broadening (eV)*
-beside *Light along*; no laser, no Raman numbers, the lane says why; the
-direction as the run fixed it; the static value beside it (D-f); the Methods
-paragraph gains its sentence. **Not designed**: the named set's share (D-e),
-after R1.
+1. **The spectrum**, the spin channels summed, on the run's photon-energy
+   grid.
+2. **Broadened to the width asked** — a Gaussian of
+   $\sqrt{\sigma^2-\sigma_{\mathrm{run}}^2}$, since two Gaussians make one
+   (exact, § 12), in SIESTA's own convention of `Optical.Broaden`;
+   $\sigma_{\mathrm{run}}$ the optical deck's, read from the data file's
+   `/settings`. The run's own width is the narrowest there is: a smaller one
+   is refused, saying the run's.
+3. **$\varepsilon_1$ by Kramers–Kronig**, at the laser's energy
+   $\hbar\omega_L = 1239.84198/\lambda[\mathrm{nm}]$ eV and at zero:
+
+   $$
+   \varepsilon_1(\omega) - 1 = \frac{2}{\pi}\,\mathrm{P}\!\int_0^{E_{\max}}
+   \frac{\omega'\,\varepsilon_2(\omega')}{\omega'^2-\omega^2}\,d\omega' ,
+   $$
+
+   the principal value taken by subtracting the pole's value and adding its
+   closed-form integral, the trapezoid on the run's uniform grid up to its
+   `Optical.Energy.Maximum`; the static integrand from the grid's first
+   energy above zero.
+4. **$\alpha_{\hat e\hat e}(\omega) = \frac{V}{4\pi}\,[\varepsilon_1(\omega) - 1]$**
+   in Å³, $V$ the reference structure's cell volume.
+
+Per picked mode, from its two frames:
+
+$$
+\frac{\partial\alpha}{\partial Q} = \frac{\alpha(+\delta Q) - \alpha(-\delta Q)}{2\,\delta Q}
+\quad[\text{Å}^2/\mathrm{amu}^{1/2}],
+\qquad
+R(\hat e) = \Bigl(\frac{\partial\alpha}{\partial Q}\Bigr)^2
+\quad[\text{Å}^4/\mathrm{amu}],
+$$
+
+at the laser and static;
+ranked by the laser's against the strongest real mode, no rank at or below
+the Raman channel's band floor (`activity.CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU`).
+Frame 0's $\alpha$, at the laser and static, is said once. A mode with a side not
+done is a row naming the side and why — never a number from one side. **It
+answers**: the laser, the width asked and the run's, $\hat e$, $\delta$, the
+equilibrium $\alpha$, and per mode its frequency, $\delta Q$,
+$\partial\alpha/\partial Q$ and $R$ at the laser and static, its rank and
+its state.
+
+**What the person sees** (the decisions, § 13): **the laser is the person's
+to name** — no default; until one is typed the Raman lane says *type the
+laser's wavelength — the strength depends on it*, with 532, 633 and 785 nm
+offered (M4-b); **the width starts at the run's own** — any other starting
+number would be one molbuilder invented (M4-a); **the quantity is named as
+what it is** — *Raman strength, light along z (Å⁴/amu)*, the static value
+beside it — never under PySCF's *Raman activity*, the tumbling molecule's
+$45a'^2 + 7\gamma'^2$, a different number (the method's § 3.2, M4-c); **strengths,
+not intensities** — the laser-frequency and temperature factors of a measured
+intensity are not applied, on either engine (M4-d). Every number states its
+laser and width: near a resonance, and for a metal's near-Fermi transitions,
+the width changes $\alpha$. The Methods paragraph gains its sentence: the route,
+$\hat e$, $\delta$, the laser, the width, and *independent states, no local field*
+(the method's § 3.3).
+
+**The doors** — one derivation, asked four ways:
+
+| door | asks | answers |
+|---|---|---|
+| the load door, `POST /api/spectra/load` | `raman: {laser_nm, broaden_ev?}` beside `infrared`, read by `spectra.raman.read_ask` | `results.raman`, the view; a view the result cannot give — no optical route, a width below the run's — `results.raman_said`, the result still loading |
+| the export, `GET /api/spectra/export` and `molbuilder jobset export` | `format` `netcdf` or `csv`; `laser_nm`, `broaden_ev` (the page's boxes; the command's `--laser-nm`, `--broaden-ev`) | the calculation's vibration data files as they are, and the view composed now (below) |
+| a script, `molbuilder.postprocess` | `raman_view(path, laser_nm=, broaden_ev=None)`; `read_optical_data(path)`; `read_raman_data(path)` | the same view; the optical calls' data file as data; an exported view as data — each with its atom index map |
+| a notebook, with no molbuilder | `xarray.open_dataset(path, group="frames")` | every data file reads as NetCDF-4 alone (`model/datafiles.md` § 0) |
+
+**The export of a vibration calculation** — one composition,
+`spectra/export.export(calc, fmt, *, laser_nm=None, broaden_ev=None)`, the
+shape and the zip the transport export has (`Exported`, one shape for both,
+moved where both reach it) — **what is already there, and the view at the
+laser named**: `<label>.spectra.nc` and, on a SIESTA run with an optical
+phase, `<label>.optical.nc`, each copied as its writer wrote it, and, when a
+laser is named, `<label>.raman.nc`, the view composed now through the
+data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 1,
+`molbuilder/raman-view@1`), citing the two files it was derived from by name
+and sha256. **NetCDF**: the files; **CSV**: each file's tables and README
+(`ncdata.as_tables`), a folder each. A download is one zip
+(`<label>.vibration-netcdf.zip`, `<label>.vibration-csv.zip`); the command
+writes into the folder named, outside the calculation, refused where the
+name is there already. No laser named on a SIESTA result with optical calls:
+the export holds the data files and says the view is not in it. **Refused by
+name**: a form not one of the two; a calculation with no result yet; a laser
+named for a result whose Raman is not the optical route (a PySCF result
+stores its activity); a width below the run's; a data file that does not
+read, in its reader's words. Nothing is written into the calculation, and the
+ledger has no line of it.
+
+**`<label>.raman.nc`** (`spectra/raman.py`'s variable table; written only by
+an export):
+
+```text
+/            attributes: schema, label, what -- the Raman strengths of a
+             SIESTA vibration's picked modes at a laser, derived from its
+             optical calls' eps2; laser_nm, broaden_ev, run_broaden_ev,
+             direction, delta_ang, derived_from (JSON: each data file's
+             name and sha256), molbuilder_version
+/equilibrium alpha_static_a3, alpha_laser_a3 -- frame 0's
+/modes       mode(mode) -- the result's numbering
+             frequency_cm1(mode)  dq_amu12_ang(mode)
+             dalpha_dq_static_a2_per_amu12(mode)  dalpha_dq_laser_a2_per_amu12(mode)
+             strength_static_a4_amu(mode)  strength_laser_a4_amu(mode)
+             relative(mode)  state(mode)  why(mode)
+```
+
+**Not designed**: the named set's share (D-e), after R1.
 
 #### 11. What changes — the code and the contract
 
@@ -2580,7 +2677,7 @@ after R1.
 | **the job's Python** | `spectra/siesta_vibration.py` (`plan`, `record`, `finish` — the two steps run inside each call's run script, `runwrap`'s `steps`), the `.EPSIMG`'s one reader (`parse/engines/siesta_epsimg_reader.py`, travelling) and its registered parser (`parse/engines/siesta_epsimg.py`), the coordinates writer (`siesta/deck_lines.py`), the displacement rule's one function; `selection`, `calcdirs`, `paths`, `vibration_phases` in the bundle |
 | **the result** | `spectra/results.py`: `optical`, `raman_route` `optical`, `raman_fd_step_ang`, `phase_raman` on SIESTA (schema 13) — `phase_ir` and `ir_route` `charges` on SIESTA with § 10's view (M4); `spectra/datafile.py` (@7); `spectra/optical_data.py` (its `Var` table); `ncdata.AXES`; the finish's refusal of a v3 `vibration` block |
 | **the reader of decks** | `parse/fdf.py`: `%block Label < Filename`, as libfdf reads it, for every caller of `read_fdf` |
-| **the view** | `spectra/raman.py`; the load door (`raman` view, its asks); `postprocess`; `methods`; the viewer — `_ramanOf`, the two boxes, and every gate read by route (§ 8) |
+| **the view** | `spectra/raman.py` (the derivation, its ask's reader, the `raman.nc` variable table); the load door (`raman` view, its asks); `spectra/export.py` and `GET /api/spectra/export`, `jobset export` for a vibration (the export's one shape shared with transport's); `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`; the viewer — `_ramanOf`, the two boxes, the Export buttons, and every gate read by route (§ 8); the finish writing `phase_ir` `complete` and `ir_route` `charges` once the charges are stored |
 | **the catalogue** | the optical items; the selector's `engines` gains `siesta` and its help says both; the charge switch as items |
 | **the sweep** | `displacement_sweep.collect_sweep` reads each stage's `fc` call below its run; `jobset migrate` for a `relax → freq` description |
 | **the contract** | this section becomes the rules of § 2.2, § 5.2a–§ 5.5, § 5.8, § 5.9 as built; `job-system.md` *The task* (the one-case paragraph, the state diagram's vibration rows), § 5.4; `project-layout.md` § 1.6.2 (the opener on two floors), § 5 (the manifest regenerated); `job-contracts.md`'s rows; `running-a-job.md` § 3.6; `run-reports.md`; `web/results.md`; `web/spectra.md` § 3.2, § 9b.3; `web-api.md` |
@@ -2619,6 +2716,11 @@ Not measured here: a junction's optical cost and its `.contrib.EPSIMG` size
 | D2 | every call done and the finish not: the last call runs again, its record step finishing the run — or a verb that runs the finish alone | **decided 2026-10-26, as recommended**: the last call again (§ 6) |
 | D4 | `[optical] resumes`: a retry in place continues the SCF from the density the try left (`DM.UseSaveDM`) — or runs the call again from its seed | **decided 2026-10-26, as recommended**: `true` |
 | C4 | prep stating the count and the sizes beside the wall (§ 9) | **decided 2026-10-26, as recommended**: built with M3, beside the `.EPSIMG` size |
+| M4-a | the width the page starts at | **decided 2026-10-26, as recommended**: the run's own (`Optical.Broaden`, 0.027 eV by default) — a value the run states; wider is a keystroke, narrower impossible |
+| M4-b | the laser before the person names one | **decided 2026-10-26, as recommended**: none — no Raman numbers until one is typed, 532, 633 and 785 nm offered |
+| M4-c | what SIESTA's Raman column shows | **decided 2026-10-26, as recommended**: `R(ê)` at the laser, named *Raman strength, light along …*, the static value beside it — never under PySCF's *activity* |
+| M4-d | the measured intensity's laser and temperature factors | **decided 2026-10-26, as recommended**: not applied in M4 — strengths on both engines; **an option later** (the user, 2026-10-26: "add the Stokes shift factor as an option later"): the scattered light's `(ν̃_L − ν̃_ν)⁴` and the temperature's `1/(1 − e^(−hcν̃_ν/kT))` over `ν̃_ν`, applied to the strength on request, on both engines, the plain strength kept beside it (plan § 1ae, *Open after it*) |
+| M4-e | an export and a script's reading of the Raman data | **asked by the user, 2026-10-26** ("need export, and api to support netcdf file reading"): the vibration calculation's export (§ 10) and `postprocess`'s three readers |
 
 #### 14. Tests — each with the silent failure it catches
 
@@ -2627,6 +2729,7 @@ Not measured here: a junction's optical cost and its `.contrib.EPSIMG` size
 | CO₂, carbon held, not stated relaxed, selector `all`, through `jobset init → prep → launch` — the SIESTA vibration e2e | e2e | a phase not joined to the one before (the index's `fc` coordinates' sha256 is `relax`'s output's); a call not made through its run script (its output, session log, monitor log and conclusion in its folder, each read by the run door as a point); the index, the result and the data file disagreeing; the data file not reading (its reader and `xarray.load_dataset`); the result's phases and route wrong for the run (`phase_relaxation` complete, `phase_raman` complete, `raman_route` `optical`); the run's state read *queued* before the first call and *finished* only with the finish's entry; one `start` and one `finish` in the index's notification record; **the symmetry**: the stretch whose oxygens move together reads `R(ẑ)` ≈ 0 against the one whose oxygens move apart — CO₂'s mutual exclusion |
 | the same, launched again warm after the person stopped it once an optical call started (`molbuilder jobs stop`) — a copy of it launched again cold, stopped, then launched warm | e2e | a relaunch running a done call again (`relax` and `fc` taken over, each `.continued-from` and index entry naming the run that computed it, its start and end that run's; the launch runs only the optical calls); an optical call's record standing on what only a run computing its own force constants writes |
 | `raman_view`'s Kramers–Kronig on a Lorentz oscillator's `ε₂` (closed-form `ε₁`); Gaussian sticks spread at `σ_run` then to `σ_view` equal the same spread at `σ_view` | API | the principal value, the units or the broadening's composition wrong |
+| the CO₂ run exported at a laser — NetCDF and CSV — its files read back through `postprocess.read_optical_data` and `read_raman_data` and through `xarray`: the view read back equals the load door's for the same laser and width, `derived_from` names the two files by their sha256, and the symmetric stretch's `R(ẑ)` reads ≈ 0 | e2e (the CO₂ run) | an export that writes another number than the page shows; a data file a notebook cannot open; a view cut from its source |
 | a deck with `%block … < coordinates.fdf` read through the fdf reader equals the same deck written inline; `deck_atoms` on it | API | the include not read: every deck reader would see no atoms |
 | **retired**: the two-stage road's tests — `test_siesta_vibration_e2e.py`'s *unticked, the ladder relaxes first* and the sweep at the relaxed geometry rows; `test_vibration_render_gate.py` and `test_siesta_vibration_deck.py`'s `vibration_stages` / `stage_role` rows | — | each replaced by the phase's row above |
 
@@ -2892,6 +2995,24 @@ states of itself (`SpectraResults.atom_index_map_stated`, a result before
 v10 its user column alone). molbuilder's own read,
 `molbuilder.sidecars.spectra.parse_spectra_json(path)`, returns the typed
 `SpectraResults`, through the gates of § 6.7.
+
+**A SIESTA run's optical calls and its Raman** (§ 5.11 § 8, § 10): the
+optical calls' data file `<label>.optical.nc` beside the result, every
+frame's `ε₂` on the light's energies, and an exported view
+`<label>.raman.nc`, each a NetCDF-4 file any reader opens:
+
+```python
+from molbuilder.postprocess import raman_view, read_optical_data, read_raman_data
+v = raman_view("siesta_PDT.spectra.json", laser_nm=633)   # the run's own width
+for m in v.modes:
+    print(m.mode, m.frequency_cm1, m.strength_laser_a4_amu, m.relative)
+opt = read_optical_data("siesta_PDT.optical.nc")         # every frame, its eps2
+r = read_raman_data("siesta_PDT.raman.nc")               # an export, as data
+
+import xarray as xr                                       # no molbuilder needed
+frames = xr.open_dataset("siesta_PDT.optical.nc", group="frames")
+eps2 = frames.eps2.sel(frame=0).sum("spin")               # frame 0, both spins
+```
 
 ### 6.9 What each file of a vibration holds
 

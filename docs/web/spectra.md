@@ -319,6 +319,42 @@ named *IR — the whole system, along z (km/mol)*. A held PySCF result written
 before schema 12 keeps no vector: the column stays the orientation average,
 and the line beside *Light along* says the direction cannot be applied to it.
 
+### 3.3 The Raman of a SIESTA result, at a laser *(designed 2026-10-26, M4)*
+
+A SIESTA result whose Raman route is `optical` — its optical calls ran
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) — offers
+two boxes beside *Light along*:
+
+- **Laser wavelength (nm)** — empty until the person types one, with 532,
+  633 and 785 nm offered: the strength depends on the laser, so no number is
+  shown before one is named, and the Raman lane says *type the laser's
+  wavelength — the strength depends on it*;
+- **Electronic broadening (eV)** — the width the absorption spectrum is
+  smoothed to before the polarizability is taken, starting at the run's own
+  (`Optical.Broaden`) and refused below it, the run's said. It is not the
+  chart's *Lorentzian FWHM (cm⁻¹)*, the lines' width on the frequency axis.
+
+A change to either asks the load door again (§ 6), and the door answers
+`raman` from `spectra.raman.raman_view`. **The page computes nothing**: the
+modes table's Raman column shows $R(\hat e)$ at the laser, its heading the
+quantity's name — *Raman strength, light along z, 633 nm, 0.027 eV
+(Å⁴/amu)* — with the static value beside it; the chart's Raman lane draws
+those strengths with the chart's own line width; the run summary says *Raman:
+SIESTA's optical calculation at $\pm\delta Q$ along each picked mode, $\delta$ = … Å; at …
+nm, broadened to … eV (the run's … eV)*. A PySCF result's column stays its
+*Raman activity*, the stored tumbling-molecule number — the two quantities
+never share a name. **Every Raman gate reads the result's route**
+(`raman_route`), never PySCF's switch: the phase dots, *all phases
+complete*, the table's columns, the running phrase. The laser and the width
+are remembered with the other view preferences (§ 7).
+
+**Export** — in the page's header, *CSV* · *NetCDF*, for a result on disk:
+the calculation's vibration data files and, when a laser is typed, the Raman
+view at the boxes' laser and width, downloaded
+(`GET /api/spectra/export`; what is in it, § 5.11 § 10 of the vibration
+contract); a refusal in its words beside the buttons. The table's own *CSV*
+of the rows on screen stays as it is.
+
 ## 4. Clicking a mode — the 3D animation
 
 Click a stick in the chart or a row in the table, open the **Mode visualisation**
