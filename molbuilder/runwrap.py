@@ -303,10 +303,8 @@ def _run_index_block(names, stdout_role: str, target_env: str) -> str:
         f'_concluded="{_bash_name(names, ".concluded")}"\n'
         f'echo "{RUN_INDEX_LINE} $_run_n  ->  $_out_file"\n'
         f"# --- The job's python: its env's own (running-a-job.md 2) ---\n"
-        f'_mb_env="${{CONDA_PREFIX:-}}"\n'
-        f'if [ "${{_mb_env##*/}}" != "{env_name}" ] '
-        f'|| [ ! -x "$_mb_py" ]; then\n'
-        f'    echo "ERROR: this job has no python of its env \'{env_name}\' -- '
+        + env_python_check(env_name)
+        + f'    echo "ERROR: this job has no python of its env \'{env_name}\' -- '
         f'CONDA_PREFIX is ${{CONDA_PREFIX:-<unset>}}, and '
         f'${{_mb_py:-<no python>}} is not there.  The activation did not '
         f'take, or the env holds no python of its own: rebuild it on this '
@@ -1879,6 +1877,189 @@ _THREAD_SOURCE_WORDS = {
 }
 
 
+def env_entry(machine_record, env_name: str) -> Tuple[str, str]:
+    """HOW A SHELL ENTERS ``env_name`` ON THE MACHINE A SCRIPT IS FOR -- the
+    one rendering every generated script enters an environment by: a run
+    script its engine's, a sequence of groups' walk molbuilder's own
+    (`job-system.md` § 6.0, *The walk*) -- off THAT MACHINE'S RECORD
+    (``machine_record.env_init``, `configuration.md` § 4; `running-a-job.md`
+    § 5.2).  Returns ``(preamble, activation)``: the record's preamble,
+    every absolute path it sources checked before it is sourced (``exit
+    78``, naming it), and the record's activation of ``env_name``, the line
+    to run.  The script defines ``_log`` (:data:`LOG_FUNCTION`).  Refused
+    when no record states the activation: it has no default."""
+    env_init = dict(getattr(machine_record, "env_init", None) or {})
+    if not env_init.get("activation"):
+        from .scheduler.record import probe_command
+        raise WrapperError(
+            "no record says how a shell enters an environment on the machine "
+            "this script is for, so no wrapper can be written -- the "
+            "activation has no default (docs/configuration.md § 4).  On "
+            "that machine, declare it in molbuilder.json --\n"
+            "    \"env_init\": {\"activation\": \"conda activate\", "
+            "\"preamble\": \"source <conda root>/etc/profile.d/conda.sh\"}\n"
+            "  (or \"source activate\" after \"module load mamba\" where a "
+            "module gives the toolchain) -- then "
+            f"`{probe_command(None)}`, and copy its record here when that "
+            "machine is not this one.")
+    _preamble_chunks = ([("target", env_init["preamble"].rstrip("\n"))]
+                        if env_init.get("preamble") else [])
+    _activation_form = env_init["activation"]
+    _scope_labels = {
+        "target": "TARGET PREAMBLE (from the target machine's record)",
+    }
+    if _preamble_chunks:
+        _rendered_chunks = [
+            f"# === {_scope_labels.get(scope, scope.upper())} ===\n{text}\n"
+            for scope, text in _preamble_chunks
+        ]
+        # EVERY ABSOLUTE PATH THE PREAMBLE SOURCES IS CHECKED BEFORE IT IS
+        # SOURCED (2026-08-24, live hit on Sol).
+        #
+        # The preamble is baked VERBATIM from the machine that ran `prep`.
+        # A bundle travels -- that is the whole point of it naming no
+        # machine -- so an absolute path that exists on the workstation
+        # need not exist on the cluster, and nothing at prep time can know
+        # that: on the preparing machine the file is right there.  The only
+        # code that runs on the TARGET is this script, so the check has to
+        # be here.
+        #
+        # Without it bash says
+        #     line 196: /home/.../conda.sh: No such file or directory
+        # and dies -- naming neither the config key that put the path
+        # there, nor the machine it was baked on, nor what to do.
+        _srcs = _preamble_source_targets(_preamble_chunks)
+        _guard = ""
+        if _srcs:
+            _lines = ["# --- Preamble preflight (paths baked elsewhere) ---"]
+            for _pth in _srcs:
+                _lines += [
+                    f'if [ ! -r "{_pth}" ]; then',
+                    '    _log ERROR "baked preamble sources a file that '
+                    'does not exist on this machine:"',
+                    f'    _log ERROR "    {_pth}"',
+                    # SINGLE-quoted: bash runs backticks inside a
+                    # double-quoted string.
+                    "    _log ERROR 'It was baked verbatim from the "
+                    "preamble of the record prep read, and this machine "
+                    "is not the one that record describes.'",
+                    "    _log ERROR 'Fix: environment.json beside task.json, "
+                    "the record this calculation was prepared with, carries "
+                    "this preamble -- edit its env_init.preamble (for "
+                    "example: module load mamba), or correct the record of "
+                    "that machine and prep the calculation anew, from the "
+                    "state saved before its first prep; or edit the source "
+                    "line below.'",
+                    '    exit 78',           # EX_CONFIG
+                    "fi",
+                ]
+            _guard = "\n".join(_lines) + "\n\n"
+        _preamble_block = (
+            "# --- Baked preamble (verbatim from the target's record) ---\n"
+            + _guard
+            + "_log STAGE \"running baked preamble\"\n"
+            + "\n".join(_rendered_chunks)
+            + "\n"
+        )
+    else:
+        _preamble_block = (
+            "# --- Baked preamble (none) ---\n"
+            "# (the target's record states no preamble)\n"
+            "\n"
+        )
+
+    return _preamble_block, f"{_activation_form} {env_name}"
+
+
+#: The structured log helper every generated script defines -- its lines in
+#: the session log's own format (`wrapper_log.LOG_LINE`), on stderr.
+LOG_FUNCTION = (
+    f"_log() {{\n"
+    f"    printf '{LOG_LINE}\\n' \"$(date '+{LOG_CLOCK}')\" \"$1\" \"$2\" >&2\n"
+    f"}}\n")
+
+#: THE JOB'S PYTHON -- the activated env's own, never the first ``python3``
+#: on PATH (`running-a-job.md` § 2.2a): set right after the activation.
+JOB_PYTHON = '_mb_py="${CONDA_PREFIX:+$CONDA_PREFIX/bin/python3}"\n'
+
+
+def env_bootstrap(machine_record, env_name: str, *,
+                  help_guard: bool = False) -> str:
+    """THE ENVIRONMENT ENTERED -- the one bootstrap every generated script
+    runs before its own logic: a run script into its engine's environment,
+    a sequence of groups' walk into molbuilder's own (`job-system.md`
+    § 6.0, *The walk*).  Nounset off while the site's scripts run, the
+    record's preamble and its activation of ``env_name``
+    (:func:`env_entry`), nounset back on; then the job's python,
+    ``$_mb_py`` (:data:`JOB_PYTHON`), and what the activation gave, in the
+    log.  It runs under ``set -e``, which the caller holds: a preamble line
+    that fails stops the script at that line (`running-a-job.md` § 2.0a).
+    ``help_guard``: a run script's -- a help request runs none of it.  The
+    script defines ``_log`` (:data:`LOG_FUNCTION`)."""
+    preamble, activation = env_entry(machine_record, env_name)
+    on, off, ind = (('if [ "$_mb_help" = "0" ]; then\n', "fi\n", "  ")
+                    if help_guard else ("", "", ""))
+    return (
+        "# The env bootstrap (preamble ``module load``, conda/mamba\n"
+        "# ``activate``) sources EXTERNAL scripts not under our control.\n"
+        "# Conda activate.d hooks (e.g. cuda-nvcc's, which references an\n"
+        "# unset NVCC_PREPEND_FLAGS) abort under the wrapper's ``set -u``.\n"
+        "# Disable nounset for the bootstrap ONLY; restore it before our\n"
+        "# own logic (where -u still catches real bugs).\n"
+        "#\n"
+        "# NOTE `set -e` IS NOT DISABLED HERE, AND MUST NOT BE.  This\n"
+        "# script runs unattended on a compute node, on an allocation.  A\n"
+        "# preamble that fails means the job is about to run in the wrong\n"
+        "# environment with nobody reading the output -- dying at the\n"
+        "# failed line is the cheap outcome (running-a-job.md 2.0a).\n"
+        "set +u\n"
+        + ("# A help request runs NONE of the bootstrap: asking what a script\n"
+           "# does must not require a working preamble or activation -- a\n"
+           "# broken module line would kill -h at the activation, three\n"
+           "# screens before the usage text it asked for (U10, 2026-08-12).\n"
+           if help_guard else "")
+        + on
+        + preamble
+        + "# --- Activation (verbatim from the target's record) ---\n"
+        + f'_log STAGE "{activation}"\n'
+        + f"{activation}\n"
+        + off
+        + "set -u\n"
+        + "\n"
+        # THE JOB'S PYTHON -- the activated env's own, never the first
+        # `python3` on PATH (`running-a-job.md` § 2): a site's activation can
+        # leave its own python ahead of the env's (`source activate` under a
+        # mamba 2.x module, Sol, 2026-08-21 and 2026-10-24), which ran the
+        # job's monitor, its ending reader, its finish and a PySCF deck on an
+        # interpreter without the env's packages.  Every python a script
+        # runs is this one, checked after (:func:`env_python_check`).
+        + JOB_PYTHON
+        + on
+        + f'{ind}_log INFO "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
+        + f'{ind}_log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
+        + f'{ind}_log INFO "job python: '
+          f'${{_mb_py:-(none: no CONDA_PREFIX after activation)}}"\n'
+        + off
+        + "\n")
+
+
+def env_python_check(env_name: str) -> str:
+    """The head of the one check every script makes after its activation
+    (`running-a-job.md` § 2.2a): ``CONDA_PREFIX`` names ``env_name`` and its
+    python, ``$_mb_py``, is there -- the ``if`` whose body the script
+    writes, its own way of stopping."""
+    return (f'_mb_env="${{CONDA_PREFIX:-}}"\n'
+            f'if [ "${{_mb_env##*/}}" != "{env_name}" ] '
+            f'|| [ ! -x "$_mb_py" ]; then\n')
+
+
+def host_env_name() -> str:
+    """molbuilder's own environment's name -- its recipe's, the one with no
+    engine category (`envs.recipes`, `configuration.md` § 2.1c)."""
+    from .envs.recipes import builtin_recipes
+    return next(r.name for r in builtin_recipes() if r.category is None)
+
+
 def render_run_wrapper(script_path: Path, *,
                        names,
                         resources: "Resources",
@@ -3113,92 +3294,11 @@ def render_run_wrapper(script_path: Path, *,
     if _rec_sg is None and _project_dir is not None:
         from .scheduler import machine_for
         _rec_sg = machine_for(_project_dir)
-    _tsg = dict(getattr(_rec_sg, "env_init", None) or {})
-    if not _tsg.get("activation"):
-        from .scheduler.record import probe_command
-        raise WrapperError(
-            "no record says how a shell enters an environment on the machine "
-            "this script is for, so no wrapper can be written -- the "
-            "activation has no default (docs/configuration.md § 4).  On "
-            "that machine, declare it in molbuilder.json --\n"
-            "    \"env_init\": {\"activation\": \"conda activate\", "
-            "\"preamble\": \"source <conda root>/etc/profile.d/conda.sh\"}\n"
-            "  (or \"source activate\" after \"module load mamba\" where a "
-            "module gives the toolchain) -- then "
-            f"`{probe_command(None)}`, and copy its record here when that "
-            "machine is not this one.")
-    _preamble_chunks = ([("target", _tsg["preamble"].rstrip("\n"))]
-                        if _tsg.get("preamble") else [])
-    _activation_form = _tsg["activation"]
-    _scope_labels = {
-        "target": "TARGET PREAMBLE (from the target machine's record)",
-    }
-    if _preamble_chunks:
-        _rendered_chunks = [
-            f"# === {_scope_labels.get(scope, scope.upper())} ===\n{text}\n"
-            for scope, text in _preamble_chunks
-        ]
-        # EVERY ABSOLUTE PATH THE PREAMBLE SOURCES IS CHECKED BEFORE IT IS
-        # SOURCED (2026-08-24, live hit on Sol).
-        #
-        # The preamble is baked VERBATIM from the machine that ran `prep`.
-        # A bundle travels -- that is the whole point of it naming no
-        # machine -- so an absolute path that exists on the workstation
-        # need not exist on the cluster, and nothing at prep time can know
-        # that: on the preparing machine the file is right there.  The only
-        # code that runs on the TARGET is this script, so the check has to
-        # be here.
-        #
-        # Without it bash says
-        #     line 196: /home/.../conda.sh: No such file or directory
-        # and dies -- naming neither the config key that put the path
-        # there, nor the machine it was baked on, nor what to do.
-        _srcs = _preamble_source_targets(_preamble_chunks)
-        _guard = ""
-        if _srcs:
-            _lines = ["# --- Preamble preflight (paths baked elsewhere) ---"]
-            for _pth in _srcs:
-                _lines += [
-                    f'if [ ! -r "{_pth}" ]; then',
-                    '    _log ERROR "baked preamble sources a file that '
-                    'does not exist on this machine:"',
-                    f'    _log ERROR "    {_pth}"',
-                    # SINGLE-quoted: bash runs backticks inside a
-                    # double-quoted string.
-                    "    _log ERROR 'It was baked verbatim from the "
-                    "preamble of the record prep read, and this machine "
-                    "is not the one that record describes.'",
-                    "    _log ERROR 'Fix: environment.json beside task.json, "
-                    "the record this calculation was prepared with, carries "
-                    "this preamble -- edit its env_init.preamble (for "
-                    "example: module load mamba), or correct the record of "
-                    "that machine and prep the calculation anew, from the "
-                    "state saved before its first prep; or edit the source "
-                    "line below.'",
-                    '    exit 78',           # EX_CONFIG
-                    "fi",
-                ]
-            _guard = "\n".join(_lines) + "\n\n"
-        _preamble_block = (
-            "# --- Baked preamble (verbatim from the target's record) ---\n"
-            + _guard
-            + "_log STAGE \"running baked preamble\"\n"
-            + "\n".join(_rendered_chunks)
-            + "\n"
-        )
-    else:
-        _preamble_block = (
-            "# --- Baked preamble (none) ---\n"
-            "# (the target's record states no preamble)\n"
-            "\n"
-        )
 
     env_activation = (
-        f"# Structured log helper.\n"
-        f"_log() {{\n"
-        f"    printf '{LOG_LINE}\\n' \"$(date '+{LOG_CLOCK}')\" \"$1\" \"$2\" >&2\n"
-        f"}}\n"
-        f"\n"
+        "# Structured log helper.\n"
+        + LOG_FUNCTION
+        + f"\n"
         f"# Single unified EXIT cleanup (one trap -- a second ``trap ...\n"
         f"# EXIT`` would REPLACE the first, so all teardown lives here).\n"
         f"# No-ops unless the relevant vars were set, so it is safe for\n"
@@ -3289,47 +3389,8 @@ def render_run_wrapper(script_path: Path, *,
         f'_log INFO "argv:       $0 $*"\n'
         f'_log INFO "log file:   $_runwrap_log"\n'
         + _scheduler_context_block()
-        + f"\n"
-        f"# The env bootstrap (preamble ``module load``, conda/mamba\n"
-        f"# ``activate``) sources EXTERNAL scripts not under our control.\n"
-        f"# Conda activate.d hooks (e.g. cuda-nvcc's, which references an\n"
-        f"# unset NVCC_PREPEND_FLAGS) abort under the wrapper's ``set -u``.\n"
-        f"# Disable nounset for the bootstrap ONLY; restore it before our\n"
-        f"# own logic (where -u still catches real bugs).\n"
-        f"#\n"
-        f"# NOTE `set -e` IS NOT DISABLED HERE, AND MUST NOT BE.  This\n"
-        f"# script runs unattended on a compute node, on an allocation.  A\n"
-        f"# preamble that fails means the job is about to run in the wrong\n"
-        f"# environment with nobody reading the output -- dying at the\n"
-        f"# failed line is the cheap outcome (running-a-job.md 2.0a).\n"
-        f"set +u\n"
-        f"# A help request runs NONE of the bootstrap: asking what a script\n"
-        f"# does must not require a working preamble or activation -- a\n"
-        f"# broken module line would kill -h at the activation, three\n"
-        f"# screens before the usage text it asked for (U10, 2026-08-12).\n"
-        f'if [ "$_mb_help" = "0" ]; then\n'
-        f"{_preamble_block}"
-        f"# --- Activation (verbatim from the target's record) ---\n"
-        f'_log STAGE "{_activation_form} {target_env}"\n'
-        f"{_activation_form} {target_env}\n"
-        f"fi\n"
-        f"set -u\n"
-        f"\n"
-        # THE JOB'S PYTHON -- the activated env's own, never the first
-        # `python3` on PATH (`running-a-job.md` § 2): a site's activation can
-        # leave its own python ahead of the env's (`source activate` under a
-        # mamba 2.x module, Sol, 2026-08-21 and 2026-10-24), which ran the
-        # job's monitor, its ending reader, its finish and a PySCF deck on an
-        # interpreter without the env's packages.  Every python this job
-        # runs is this one; checked once the run index is known
-        # (`_run_index_block`), for every engine alike.
-        f'_mb_py="${{CONDA_PREFIX:+$CONDA_PREFIX/bin/python3}}"\n'
-        f'if [ "$_mb_help" = "0" ]; then\n'
-        f'  _log INFO "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
-        f'  _log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
-        f'  _log INFO "job python: ${{_mb_py:-(none: no CONDA_PREFIX after activation)}}"\n'
-        + "fi\n"
-        "\n"
+        + "\n"
+        + env_bootstrap(_rec_sg, target_env, help_guard=True)
     )
 
     # Launch + diagnostics.  The command is run, not exec'd, for both

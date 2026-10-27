@@ -1492,7 +1492,13 @@ _SIESTA = Recipe(
                     # the job's finish (`engines/vibration.md` § 6.10.5-6);
                     # sisl brings it, and it is listed for its own reason.
                     "numpy", "ase", "sisl", "netcdf4"),
-    verify_argv=("siesta", "--version"),
+    # The self-test imports what a job's own python needs from this env --
+    # numpy and netCDF4, for a vibration's finish (above) -- and then asks
+    # SIESTA its version; a missing import fails it before the banner
+    # (`engines/vibration.md` § 6.10.6; the user, 2026-10-26: "siesta can
+    # check for numpy and netcdf4").
+    verify_argv=("bash", "-c",
+                 "python -c 'import numpy, netCDF4' && siesta --version"),
     verify_expect_contains="siesta",
 )
 
@@ -2508,7 +2514,9 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             ' toolchain.  The bare-name shims are created by: '
             f'{_hints.fix_cmd("install", "molbuilder-siesta-gpu")}" >&2 ;; '
             'esac; '
-            "siesta --version",
+            # numpy and netCDF4 for a vibration's finish, as in
+            # `_SIESTA`'s self-test.
+            "python -c 'import numpy, netCDF4' && siesta --version",
         ),
         verify_expect_contains="siesta",
         system_preconditions=(

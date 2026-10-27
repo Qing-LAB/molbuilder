@@ -3152,13 +3152,14 @@ run is not written into after it ends ([`execution/project-layout.md`](?doc=exec
 its recipe — `molbuilder-pySCF`, `molbuilder-siesta` and
 `molbuilder-siesta-gpu` (`envs/recipes.py`; approved by the user,
 2026-10-14). The PySCF env's self-test imports it (`import pyscf, geometric,
-netCDF4`); the SIESTA envs' self-tests run `siesta --version` alone and
-import neither numpy nor netCDF4. **It is stopped early, never after the
-expensive part**: the PySCF deck writes its first result before any heavy
-work (§ 4.9), and the SIESTA job's `loads` check (`runwrap._finish_check_block`,
-§ 5.5) imports the finish with numpy and `netCDF4` before the force-constant
-run starts — that check, not the env's self-test, is what stops a SIESTA job
-whose env lacks them.
+netCDF4`), and the SIESTA envs' self-tests import numpy and netCDF4
+before `siesta --version` (approved by the user, 2026-10-26), so an env that
+lacks them fails when it is installed or checked. **A job is stopped early,
+never after the expensive part**: the PySCF deck writes its first result
+before any heavy work (§ 4.9), and the SIESTA job's `loads` check
+(`runwrap._finish_check_block`, § 5.5) imports the finish with numpy and
+`netCDF4` before the force-constant run starts — that check is what stops a
+SIESTA job whose env lacks them.
 The bundle rule — `configuration.md` § 2.3, I23 and the PySCF bundle's rule in
 `runwrap.py` — holds `netCDF4` beside numpy, imported at load by `ncdata`,
 the data-file framework the result is written through; I15 (one structure

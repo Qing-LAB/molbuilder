@@ -2717,20 +2717,31 @@ stamped as the job went is said on the launch's line and in the ledger
 written before it went.
 
 **The walk** is the one walk script (`submit._walk_script`), each step a
-group's launch (a `WalkCommand`, shell words run as they stand):
+group's launch (a `WalkCommand`, shell words run as they stand). **It runs
+molbuilder in molbuilder's own environment, entered as every job enters
+its environment** (`runwrap.env_bootstrap`, `running-a-job.md` § 2.2a,
+§ 5.2): before its first step the walk runs the preamble of the machine
+record the calculation was prepared with — every path it sources checked
+first, a line that fails stopping the walk there, as it stops a run
+script — and that record's activation of `molbuilder`; molbuilder's python
+is then the
+environment's own, `$_mb_py`, and a walk whose activation did not give it —
+`CONDA_PREFIX` not naming `molbuilder`, or no python there — stops before
+any group, its log saying which. The environment is installed on that
+machine, as every engine's is:
 
 ```bash
-( cd "<molbuilder's folder>" && "<python>" -m molbuilder jobset launch task --group 2 \
+<the record's preamble>
+<the record's activation> molbuilder
+_mb_py="${CONDA_PREFIX:+$CONDA_PREFIX/bin/python3}"
+( cd "<molbuilder's folder>" && "$_mb_py" -m molbuilder jobset launch task --group 2 \
     --bundle "<the calculation's full path>" --mode direct --foreground --yes \
     --in-sequence <seq> --in-job "${MB_JOB_ID:-$(hostname)-$$}" )
 ```
 
-— **the molbuilder that sent the sequence**: its interpreter, run from the
-folder its package was imported from — the source checkout it runs from, or
-the environment it is installed in — which the job's node must see (a
-cluster's shared home; one it cannot run stops the walk at its first step,
-said in its log). A step that exits nonzero stops the
-walk; its log, `launch/<seq>.log`, holds every group's launch as it printed
+— run from the folder molbuilder's package was imported from, which the
+job's node must see (a cluster's shared home). A step that exits nonzero
+stops the walk; its log, `launch/<seq>.log`, holds every group's launch as it printed
 it, and each group's own walk keeps its own log. **The wall each run is told**
 (`running-a-job.md` § 3.6): sent to a queue, the job's — the sequence's wall,
 every group's summed — counted from the job's start, as every member of a

@@ -2240,7 +2240,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
                  empties: Optional[Dict[int, str]] = None,
                  empty_at_end: Optional[str] = None,
                  walls: Optional[Sequence[Optional[int]]] = None,
-                 one_start: bool = False) -> str:
+                 one_start: bool = False, enters: str = "") -> str:
     """THE ONE WALK SCRIPT -- what runs several members one after another in
     one submission: a benchmark's trials (a shelf sent to a queue, or its
     unlaunched trials run here, `generator.md` § 4.3a), a group's stages
@@ -2281,6 +2281,9 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     sent job's is (``MB_WALL_S``, `running-a-job.md` § 3.6) -- its own
     card's, ``None`` for one stating none; on a queue the job's line tells
     every member the job's wall, from the job's start.
+    ``enters``: the environment the walk's own steps run in, entered before
+    the first -- a sequence's, whose steps run molbuilder: molbuilder's own,
+    by the one bootstrap every script uses (`runwrap.env_bootstrap`).
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
@@ -2292,8 +2295,8 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "# MODEL HOLDS (job-system.md § 6): this file is the launcher layer",
         "# only -- ordering, starts and bounds.  Env activation and the",
         "# engine launch stay in each member's own .run.sh, exactly as when",
-        "# it runs alone; nothing here re-implements module load / source",
-        "# activate.",
+        "# it runs alone.  A walk whose own steps run molbuilder enters",
+        "# molbuilder's environment by the same bootstrap (runwrap.env_bootstrap).",
         "set -u",
         # THE RUN'S START, once for every member, where the members share
         # one wall (running-a-job.md § 3.6): a job's header said it; run
@@ -2310,6 +2313,9 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         'job=${MB_JOB_ID:-none} node=$(hostname) '
         'alloc_ntasks=${MB_NTASKS:-unset} '
         'alloc_cpus=${MB_CPUS_PER_TASK:-unset}" >> "$LOG"',
+        # THE WALK'S OWN ENVIRONMENT, where its steps run molbuilder (a
+        # sequence's): entered here, once, before the first step.
+        *([enters] if enters else []),
         "fails=0",
         # EACH STEP'S FLAG, where a step builds on another: 1 once it ran
         # and succeeded, 0 when it failed or was not run.
@@ -3284,6 +3290,39 @@ def _held_by(held, number: int, base) -> str:
             + "\n  (job-system.md § 6.0, *A sequence of groups*; R-L45)")
 
 
+def _molbuilder_env_entry(machine) -> str:
+    """MOLBUILDER'S OWN ENVIRONMENT, entered by a walk whose steps run
+    molbuilder -- a sequence of groups' (`job-system.md` § 6.0, *The walk*):
+    the one bootstrap every generated script enters its environment by
+    (`runwrap.env_bootstrap`), under ``set -e`` as a run script's is -- a
+    preamble line that fails stops the walk there -- then the check every
+    script makes after its activation: a walk whose activation did not
+    give it molbuilder's python stops before any group, its log saying
+    which.  The environment is installed on that machine, as every
+    engine's is."""
+    from ..runwrap import (LOG_FUNCTION, WrapperError, env_bootstrap,
+                           env_python_check, host_env_name)
+    host = host_env_name()
+    try:
+        boot = env_bootstrap(machine, host)
+    except WrapperError as exc:
+        raise SubmitError(str(exc)) from None
+    return ("# --- molbuilder's own environment (job-system.md § 6.0) ---\n"
+            + LOG_FUNCTION
+            # THE WALK'S STEPS RUN WITHOUT `set -e` (a member that fails
+            # leaves the rest to run); its bootstrap runs with it.
+            + "set -e\n"
+            + boot
+            + "set +e\n"
+            + env_python_check(host)
+            + f"    _log ERROR \"molbuilder's environment '{host}' was not "
+              f"entered -- CONDA_PREFIX is ${{CONDA_PREFIX:-<unset>}}, and "
+              f"${{_mb_py:-<no python>}} is not there: no group was "
+              f"launched\"\n"
+            + "    exit 1\n"
+            + "fi")
+
+
 def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                    machine, mode: str, time_s: Optional[int], told,
                    one: bool) -> LaunchPlan:
@@ -3306,7 +3345,6 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     (`sequence.Record`), both before the job goes, since the job reads
     them."""
     import shlex
-    import sys
     from ..runfiles import LAUNCH_DIR
     from .commands import block, prep_sequence_lines
     from .group import sequence_names
@@ -3354,14 +3392,16 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     log = f"{LAUNCH_DIR}/{names.name('.log')}"
     rec_path = record_path(base, names)
     # THE WALK: each group's launch, in order, the first that does not
-    # finish ending it -- THE MOLBUILDER SENDING IT, its interpreter run
-    # from the folder its package was imported from, which the job's node
-    # must see; the calculation by its full path; the job's address as its
-    # walk knows it (`job-system.md` § 6.0, *The walk*).
-    import molbuilder as _mb
-    home = Path(_mb.__file__).resolve().parent.parent
+    # finish ending it -- molbuilder in its own environment, entered by the
+    # machine record's activation (:func:`_molbuilder_env_entry`), run from
+    # the folder its package is in (`repo_root`), which the job's node must
+    # see; the calculation by its full path; the job's address as its walk
+    # knows it (`job-system.md` § 6.0, *The walk*).
+    from .. import repo_root
+    home = repo_root()
+    enters = _molbuilder_env_entry(machine)
     steps = [(f"group {g['number']}", str(home), WalkCommand(
-        " ".join([shlex.quote(sys.executable), "-m", "molbuilder", "jobset",
+        " ".join(['"$_mb_py"', "-m", "molbuilder", "jobset",
                   "launch", "task", "--group", str(g["number"]), "--bundle",
                   shlex.quote(str(base)), "--mode", "direct", "--foreground",
                   "--yes", "--in-sequence", shlex.quote(names.stem),
@@ -3372,7 +3412,8 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     script = _walk_script(names.stem, steps,
                           where=f"groups {words} in sequence, one job",
                           member_word="group", log=log,
-                          needs=[None] + list(range(len(steps) - 1)))
+                          needs=[None] + list(range(len(steps) - 1)),
+                          enters=enters)
     sequence = {"name": names.stem, "groups": groups, "record": rec_path}
     if mode == "direct":
         sub = Submission(names.stem, ["bash", walk_name], base, True, [],

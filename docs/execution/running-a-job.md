@@ -237,11 +237,14 @@ place for logic:
 - **molbuilder is not importable there.** It is deliberately never
   pip-installed into any env, so `import molbuilder` fails on the job's
   python. The wrapper is self-contained at run time by
-  design (§ 2). One step on the node is the launcher layer's, not the job's:
-  a sequence of groups' walk runs each group's launch with the host's
-  molbuilder — the interpreter that sent the sequence,
+  design (§ 2). One job runs molbuilder itself on the node: one that sends
+  several groups launches each next group with
   `-m molbuilder jobset launch task --group N … --in-sequence`, run from the
-  folder its package was imported from, which the job's node must see
+  folder molbuilder's package is in, which the job's node must see. It runs
+  it in molbuilder's own environment, entered as a run script enters its
+  engine's: the machine record's preamble and activation
+  (`runwrap.env_bootstrap`, § 5.2), then that environment's own python,
+  `$_mb_py`, checked before the first group
   ([`job-system.md`](?doc=execution/job-system.md) § 6.0, *The walk*). Every
   other walk step runs a run script with `bash`, and the scheduler header
   runs no Python.
