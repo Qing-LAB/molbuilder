@@ -194,9 +194,7 @@ already fixed. **Earlier**: SCI1 (2.41.0), SCI3, SCI6, SCI8 (2.44.0), WF1
 (2.41.0), DOC7 (2.43.0), the current integrated two ways and `gf_files`'
 second fdf reader (2.43.2). **Dropped as polish**: BE9, WF11, DOC16's asides.
 **Left** — re-derived at their lines when taken: BE8, BE12, WF10 (not
-located), UI7–UI10, UI13–UI16, DOC5, DOC13, DOC14; and **one design call for
-the user**, WF3's other half — a voltage *removed* from the description after
-its rung was launched is still read the description's way.
+located), UI7–UI10, UI13–UI16, DOC5, DOC13, DOC14.
 
 **Science.** SCI1 — the device's Fermi level is moved to the seed's frame
 with the last NEGF step's `ts-Vha`; the periodic step's is the right one
@@ -740,7 +738,7 @@ is [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-con
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **§ 1ad.2's findings left** — BE8, BE12, WF10, UI7–UI10, UI13–UI16, DOC5, DOC13, DOC14, each re-derived at its line when taken; WF3's removed voltage, the user's call | § 1ad.2 | the rest of the review's errors; 2.46.3 fixed the others |
+| **1** | **§ 1ad.2's findings left** — BE8, BE12, WF10, UI7–UI10, UI13–UI16, DOC5, DOC13, DOC14, each re-derived at its line when taken | § 1ad.2 | the rest of the review's errors; 2.46.3 fixed the others |
 | **2** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | the user's ask; half built |
 | **3** | **§ 1ae M5 — the vibration contract closed**, with § 1ac's proofs: R1 measured, 3a water on both engines, 3b the Raman proof | § 1ae, § 1ac | what was built in 2.42–2.44 is checked against the science before more is built on it |
 | **4** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |
