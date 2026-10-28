@@ -19,13 +19,13 @@
 (function () {
     "use strict";
 
-    /* A TRANSPORT POINT AS THE UI NAMES IT -- `Frame 2 of 3 · 0.2 V` -- the
-     * one wording the report's table and legend use too
-     * (`lib/results/point-words.js`; results.md § 2.5).  A module, loaded
-     * once; the ladder is drawn once it is. */
-    let _pointWords = null;
+    /* A POINT OF A RUN AS THE UI NAMES IT -- `Frame 2 of 3 · 0.2 V`, *the
+     * force constants* -- the one wording the report's table and legend use
+     * too (`lib/results/point-words.js`; results.md § 2.5).  A module,
+     * loaded once; the ladder is drawn once it is. */
+    let _runPointWords = null;
     const _wordsReady = import("/static/lib/results/point-words.js")
-        .then((m) => { _pointWords = m.pointWords; });
+        .then((m) => { _runPointWords = m.runPointWords; });
 
     const $ = (id) => document.getElementById(id);
 
@@ -369,8 +369,7 @@
                 const row = document.createElement("tr");
                 row.className = "is-run";
                 row.appendChild(td(""));
-                const words = r.bias_v != null
-                    ? _pointWords(r.frame, r.of, r.bias_v) : "";
+                const words = _runPointWords(r);
                 const name = r.run + (words ? " \u00b7 " + words : "");
                 row.appendChild(td(name));
                 row.appendChild(td(chip(r.state)));

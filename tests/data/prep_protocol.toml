@@ -207,6 +207,21 @@ saved = { shape = "flat" }
 save_refused = ["shape is fixed once it has produced", "coarse is prepared"]
 
 # ===================================================================== #
+#  A KIND THAT FIXES THE SHAPE SHOWS IT FIXED                           #
+#  (`web/task-setup.md` § 4; `task.fixed_by_kind`)                      #
+# ===================================================================== #
+
+[[case]]
+name = "a SIESTA vibration is hierarchical, the kind's -- its one run's calls each in a folder of its own -- so Task setup's shape card shows it fixed and Save refuses flat in the card's words (engines/vibration.md 5.11 1)"
+calculation = "vibration"
+stage = "freq"
+saved = { shape = "flat" }
+# The description's own reader refuses it -- the description cannot be --
+# so Save answers as for every description its reader refuses.
+save_status = 400
+save_refused = ["A SIESTA vibration is hierarchical, and no other shape is taken", "each run in a folder of its own"]
+
+# ===================================================================== #
 #  THE SAVE, BEFORE PREP WRITES -- ALWAYS, AND SAID                     #
 #  (`checkpointing.md` § 9; user, 2026-10-03: "always save through      #
 #  checkpoint, notify user, ... name of the checkpoint clearly shows   #

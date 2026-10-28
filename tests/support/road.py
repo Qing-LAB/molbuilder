@@ -427,7 +427,8 @@ def calls_made(calls: Path):
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
 # `save_refused`'s words, the sentence the folder answer gave the shape card
-# before (`shape_fixed`), or taken.
+# before (`shape_fixed`) -- with `save_status`, 409 unless the row says
+# (400: the description's own reader refused it) -- or taken.
 #
 # 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
 # (`probe_said`, lines any of the probes printed) and what the record it
@@ -739,7 +740,8 @@ def _road_saved(case, bundle) -> None:
         if "shape" in case["saved"]:          # another shape, taken: free
             assert card["shape_fixed"] is None, card["shape_fixed"]
         return
-    assert r.status_code == 409, (r.status_code, said)
+    assert r.status_code == case.get("save_status", 409), (r.status_code,
+                                                          said)
     for words in case["save_refused"]:
         assert words in said, said
     assert card["shape_fixed"] == {"shape": shape, "why": said}, (

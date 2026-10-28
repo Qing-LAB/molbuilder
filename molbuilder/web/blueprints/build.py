@@ -2661,12 +2661,14 @@ def _default_groups_of(folder, task) -> dict:
 
 def _folder_fixed(task) -> Optional[dict]:
     """The stages ``task.fixed_by_kind`` fixes, ``{"stages"}``, as the stage
-    table reads them; ``None`` for a kind that fixes nothing, or no
-    description.  The shape it fixes reaches the page as ``shape_fixed``,
+    table reads them; ``None`` for a kind that fixes none -- a SIESTA
+    vibration fixes its shape alone -- or no description.  The shape it fixes reaches the page as ``shape_fixed``,
     with why (`prep.shape_fixed`)."""
     from molbuilder.task import fixed_by_kind
-    fixed = fixed_by_kind(getattr(task, "calculation", ""))
-    return None if fixed is None else {"stages": list(fixed["stages"])}
+    fixed = fixed_by_kind(getattr(task, "calculation", ""),
+                          getattr(task, "engine", ""))
+    return (None if fixed is None or fixed["stages"] is None
+            else {"stages": list(fixed["stages"])})
 
 
 def _folder_extension(task, folder) -> Optional[dict]:

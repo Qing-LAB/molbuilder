@@ -373,6 +373,44 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     assert written[ident].source == "person", written[ident].source
 
 
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_a_vibration_described_flat_is_refused_on_siesta_alone(
+        tmp_path, monkeypatch, engine):
+    """`engines/vibration.md` § 5.11 § 1, `web/task-setup.md` § 4: a SIESTA
+    vibration is hierarchical, the kind's (`task.fixed_by_kind`) -- its
+    description's reader refuses the flat shape, saying why, and writes
+    nothing; a PySCF vibration, one deck in one folder, takes it.
+
+    THE SILENT FAILURE: a SIESTA vibration described flat, its relaxation,
+    force constants and optical calls run in one directory, each writing
+    over the last one's .DM and .XV -- the description's reader the one
+    door that stops it.
+
+    MUTATION THIS MUST FAIL AGAINST: the reader's shape check removed;
+    `fixed_by_kind` answering transport alone."""
+    from click.testing import CliRunner
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "P" / "structure" / "h2.xyz").write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    res = CliRunner().invoke(describe_cmd, [
+        "--structure", "P/structure/h2.xyz", "--bundle", "P/frequency/V",
+        "--engine", engine, "--shape", "flat",
+        "--calculation", "vibration", "--name", "V"])
+    task_json = tree / "P" / "frequency" / "V" / "task.json"
+    if engine == "pyscf":
+        assert res.exit_code == 0, res.output
+        assert task_of(task_json.parent).shape == "flat"
+        return
+    assert res.exit_code != 0, res.output
+    assert ("A SIESTA vibration is hierarchical, and no other shape is "
+            "taken") in res.output, res.output
+    assert "each run in a folder of its own" in res.output, res.output
+    assert not task_json.exists()
+
+
 def test_init_refuses_a_folder_that_already_holds_a_calculation(
         tmp_path, monkeypatch):
     """One calculation per folder (user, 2026-10-01): `init` on a described

@@ -103,19 +103,38 @@ _JOB_KEYS = ("allocation", "execution", "bench", "notify")
 _JOB_STAGE_KEYS = ("group", "execution")
 _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 
-def fixed_by_kind(calculation: str) -> Optional[Dict[str, Any]]:
-    """WHAT A CALCULATION KIND FIXES, so its description states it and no
-    surface offers another (`engines/transport.md` § 3.8.2a,
-    `web/task-setup.md` § 5.3; user, 2026-10-11): ``{"shape", "stages"}``
-    for transport -- hierarchical; its five rungs, every one, in order (the
-    seed among them: the device starts from its density, user
-    2026-10-12) -- and ``None`` for a kind that fixes neither.  The reader's
-    check asks it, and Task setup's folder answer serves it, so the two
-    cannot disagree."""
-    if calculation != "transport":
-        return None
-    from .paths import KIND_ROLES
-    return {"shape": "hierarchical", "stages": KIND_ROLES["transport"]}
+def fixed_by_kind(calculation: str, engine: str
+                  ) -> Optional[Dict[str, Any]]:
+    """WHAT A CALCULATION KIND FIXES on ``engine``, so its description states
+    it and no surface offers another (`engines/transport.md` § 3.8.2a,
+    `web/task-setup.md` § 4, § 5.3; user, 2026-10-11): ``{"shape", "said",
+    "stages"}`` -- for transport, hierarchical and its five rungs, every
+    one, in order (the seed among them: the device starts from its
+    density, user 2026-10-12); for a SIESTA vibration, hierarchical, its
+    stages its own (``None``): its one run's SIESTA calls each in a folder
+    of its own (`engines/vibration.md` § 5.11 § 1); ``None`` for a kind
+    that fixes neither.  ``said`` is the shape and why, the one sentence
+    the reader's check refuses another shape with and the shape card
+    shows (`prep.shape_fixed`).  The reader's check
+    asks it, and Task setup's folder answer serves it, so the two cannot
+    disagree."""
+    if calculation == "transport":
+        from .paths import KIND_ROLES
+        return {"shape": "hierarchical", "stages": KIND_ROLES["transport"],
+                "said": "A transport calculation is hierarchical, and no "
+                        "other shape is taken -- its five stages exchange "
+                        "files through their own attempts, which the flat "
+                        "shape has no directories to hold "
+                        "(engines/transport.md § 2a.11)."}
+    if calculation == "vibration" and engine == "siesta":
+        return {"shape": "hierarchical", "stages": None,
+                "said": "A SIESTA vibration is hierarchical, and no other "
+                        "shape is taken -- its one run's SIESTA calls, the "
+                        "relaxation, the force constants and the optical "
+                        "calls, each run in a folder of its own: in one "
+                        "directory they would write over each other's .DM "
+                        "and .XV (engines/vibration.md § 5.11 § 1)."}
+    return None
 
 
 #: A slot citation names its junction explicitly, by its tree-relative
@@ -318,6 +337,11 @@ class Task:
                 f"(varies={self.varies!r}, stages={self.stages!r}) -- "
                 "'varies' is what differs ACROSS the stages, so neither is "
                 "meaningful without the other (engines/stages.md 6.5)")
+        # THE SHAPE A KIND FIXES (`fixed_by_kind`): no description of it
+        # holds another (`web/task-setup.md` § 4).
+        fixed = fixed_by_kind(self.calculation, self.engine)
+        if fixed is not None and self.shape != fixed["shape"]:
+            raise ValueError(fixed["said"])
         # The composite's own pairing (engines/transport.md § 3.1): slots
         # belong to transport alone; transport requires the junction slot,
         # carries no structure block, and each citation names its attempt.
@@ -333,14 +357,7 @@ class Task:
                     "task: a transport calculation carries no 'structure' "
                     "block -- its structure IS the junction citation, "
                     "copied in at prep (engines/transport.md § 3.1)")
-            fixed = fixed_by_kind(self.calculation)
-            if self.shape != fixed["shape"]:
-                raise ValueError(
-                    f"task: a transport calculation is {fixed['shape']} "
-                    f"(got {self.shape!r}) -- its five stages exchange "
-                    f"files through their own attempts, which the flat "
-                    f"shape has no directories to hold "
-                    f"(engines/transport.md § 2a.11)")
+            fixed = fixed_by_kind(self.calculation, self.engine)
             names = tuple(st.name for st in (self.stages or ()))
             if names != tuple(fixed["stages"]):
                 raise ValueError(

@@ -484,7 +484,7 @@ result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
 attempts, a benchmark's trials, a bias sweep's points — each with its state, its
 folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
-`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, deck, validation, copied_from}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it, where another run-once rung carries all three `null` —, `opens` relative
+`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, deck, validation, copied_from}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a SIESTA vibration's call its phase, its name and, for an optical call, its mode, side and frequency beside them (`vibration_phases.Call.to_wire`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it, where another run-once rung carries all three `null` —, `opens` relative
 to the root — the run door's answer for that folder (`runs.openable`), so
 **a transmission run's is the root's `task.json`, with its
 `point`** (§ 2): its result is the report at that bias (§ 0.1), and its row's *open*
@@ -834,7 +834,11 @@ PDOS is asked, and its stop asks at the frame it stopped on
 one wording**: the frame is MolView's and the voltage the report's, a point is
 found by the pair of them and nothing else, and every place a point is named
 — the legend, the table, the ladder — says it as `lib/results/point-words.js`
-does, the frame bar's numbers through MolView's `toDisplay`. The device's
+does, the frame bar's numbers through MolView's `toDisplay`; the ladder's row
+for a SIESTA vibration's call, by the same module, as its phase says it —
+*the relaxation*, *the force constants*, *the equilibrium*, *mode 3
+(2548 cm⁻¹), +δQ* (`callWords`; `runPointWords` names any run's point from
+its wire form). The device's
 *all frames* is the one SCF plot drawing several runs on one axis
 (`lib/scfplot/scfplot.js`, which takes a list of runs, one or many).
 

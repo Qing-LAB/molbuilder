@@ -840,7 +840,7 @@ def api_transport_describe() -> Any:
             varies=tuple(sorted({n for b in bags.values() for n in b})),
             stages=tuple(stages_for_transport(bags))), citation)
             if finished is not None else Task(
-            engine=engine, shape=fixed_by_kind("transport")["shape"],
+            engine=engine, shape=fixed_by_kind("transport", engine)["shape"],
             run=derive_run(typed, citation,
                            stage_names=TRANSPORT_STAGES),
             structure=None, calculation="transport",

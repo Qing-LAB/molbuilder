@@ -139,25 +139,3 @@ def test_every_atom_held_is_refused_by_the_gate():
                for i in issues)
 
 
-def test_a_flat_calculation_is_refused_before_any_deck(tmp_path, monkeypatch):
-    """A SIESTA vibration runs as one run in phases, each SIESTA call in a
-    folder of its own, which the flat layout cannot hold -- in one directory
-    the calls would write over each other's `.DM` and `.XV` -- so `prep`
-    refuses the description before any sort or deck is written, naming the
-    shape to describe it with (`engines/vibration.md` § 5.11).  The road's
-    CO2 described flat.
-
-    MUTATION THIS MUST FAIL AGAINST: the check not made (the stage's phase
-    folders and `job-set.json` are written into the bundle root).
-    """
-    from support.road import (CO2, describe_calculation, group_words, jobset)
-    bundle = describe_calculation(tmp_path, monkeypatch, shape="flat",
-                                  name="CO2", calculation="vibration",
-                                  structure=CO2)
-    r = jobset("prep", "task", *group_words(bundle, "freq"),
-               "--bundle", bundle, "--target", "this")
-    assert r.exit_code != 0, r.output
-    assert "the flat layout cannot hold" in r.output, r.output
-    assert "--shape hierarchical" in r.output, r.output
-    for written in ("*.fdf", "job-set.json", "*/*.fdf"):
-        assert not list(bundle.glob(written)), f"{written} before refusing"

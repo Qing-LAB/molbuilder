@@ -111,21 +111,6 @@ def sweep_stages(task) -> List[str]:
     return [s.name for s in task.stages]
 
 
-def stages_share_a_directory(task) -> bool:
-    """Whether two stages of ``task`` would run in one directory -- the flat
-    layout, where every stage writes the same ``<label>.FC`` and
-    ``<label>.spectra.json`` and the second overwrites the first's result.
-    Asked of the layout (`paths.Shape.stage_dir`): `prep` refuses a SIESTA
-    vibration on it (`engines/vibration.md` § 5.11), and `summarize` reads
-    a calculation described before by it."""
-    from ..jobset.naming import stage_home
-    from ..paths import Shape
-    shape = Shape.named(task.shape)
-    names = sweep_stages(task)
-    dirs = {shape.stage_dir(stage_home(None, task, n).token) for n in names}
-    return len(dirs) < len(names)
-
-
 def why_no_sweep(task) -> Optional[str]:
     """Why ``task`` -- a vibration's description -- has no displacement
     sweep to compare, in the sentence `summarize task` refuses with, or
@@ -145,11 +130,6 @@ def why_no_sweep(task) -> Optional[str]:
                 f"more.  Describe another stage with its own fc_displacement "
                 f"(or mesh_cutoff), prep and launch it, then summarize again "
                 f"(engines/vibration.md 5.9)")
-    if stages_share_a_directory(task):
-        return ("the force-constant stages share one directory (the flat "
-                "layout), so each overwrote the last one's <label>.FC and "
-                "spectrum: a sweep needs the hierarchical layout "
-                "(engines/vibration.md 5.9)")
     return None
 
 
@@ -159,8 +139,7 @@ def collect_sweep(calc, *,
     A16): every force-constant stage's newest attempt, read where its
     run wrote it, and the comparison.  Raises :class:`SweepError` when there
     is nothing a sweep can be: a PySCF vibration (its Hessian is analytic),
-    fewer than two force-constant stages, stages sharing a directory, no
-    stage with a result yet, or stages that describe different atoms or were
+    fewer than two force-constant stages, no stage with a result yet, or stages that describe different atoms or were
     measured at different geometries."""
     from .. import __version__ as _mb_version
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
@@ -521,6 +500,6 @@ def sweep_table_text(record: Dict[str, Any]) -> str:
 
 
 __all__ = ["SWEEP_SCHEMA", "SweepError", "sweep_path", "match_modes",
-           "stages_share_a_directory", "why_no_sweep", "collect_sweep",
+           "why_no_sweep", "collect_sweep",
            "write_sweep",
            "sweep_table_text"]

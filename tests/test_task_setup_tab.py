@@ -501,14 +501,18 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     # ...AND, ONCE DESCRIBED, EVERY VALUE SHARED BY EVERY STAGE IS ECHOED with
     # whose it is (`task-setup.md` § 3, obligation 3): no stage may change
     # one, so no column of the stage table shows it.  The calculation's
-    # identity is one; a value a stage may set is none of them.
+    # identity is one; a value a stage may set is none of them.  Saved as
+    # the page saves the hand-over: its proposed ladder and groups, and the
+    # shape the kind fixes, the one the card offers (§ 4).
     over = _json.loads(rendered["handover_text"])
     described = {"schema": over["task_schema"], "engine": over["engine"],
-                 "calculation": over["calculation"], "shape": "flat",
+                 "calculation": over["calculation"], "shape": "hierarchical",
                  "run": over["run"], "structure": over["structure"],
-                 "varies": [], "stages": [{"name": "relax", "overrides": {}}]}
+                 "varies": over["proposed_varies"],
+                 "stages": over["proposed_stages"]}
     s = save_both(d, described, {"schema": over["job_request_schema"],
-                                 "stages": {"relax": {"group": 1}}},
+                                 "stages": {n: {"group": g} for n, g
+                                            in over["proposed_groups"].items()}},
                   web_client)
     assert s.status_code == 200, s.get_json()
     shared = {r["name"]: r for r in _folder(web_client, d)["template"]["shared"]}

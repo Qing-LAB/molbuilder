@@ -271,9 +271,13 @@ make ([`stages.md § 6.7`](?doc=engines/stages.md),
 
 **A kind that fixes the shape shows it fixed.** A transport calculation is
 hierarchical — its five rungs exchange files through their own attempts
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) — so on a
-transport folder the card shows that shape, says the kind fixes it, and offers
-no other.
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) — and so is a
+SIESTA vibration — its one run's SIESTA calls each run in a folder of their
+own ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 1) — so on
+their folders the card shows that shape, says why, and offers no other. The
+sentence is the kind's (`task.fixed_by_kind`): the description's own reader
+refuses another shape with it, so a Save that sends one is refused, 400, in
+the words the card shows.
 
 **It is fixed once the calculation has produced.** Before the first produce it is
 free to change; after, it would orphan every deck, output and warm file. So once
@@ -478,9 +482,9 @@ the Stages card has:
 | **words** | *each rung's own values over the template — set first on the Transport tab, changed here after Describe*, in place of the refinement sentence of § 9's *add a stage* |
 | **the window, fitted** | a calculation that reuses a finished one: under the table, the transmission's window **fitted to the finished grid** — the range asked and how many times finer, the fitted ends and count, and *use these*, which writes them on the transmission's row, adding their columns first as a preset does (`setRowValues`; `lib/transport/fit.js`, the one builder the Transport tab draws too; [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 
-What a kind fixes — its shape and its stages — is one answer,
-`task.fixed_by_kind`, which the reader's check asks and the folder answer
-serves (`fixed`); the page keeps no list. *(Measured 2026-10-11 on
+What a kind fixes — its shape and its stages; a SIESTA vibration its shape
+alone — is one answer, `task.fixed_by_kind`, which the reader's check asks and
+the folder answer serves (`fixed`, `shape_fixed`); the page keeps no list. *(Measured 2026-10-11 on
 `AuBDTAu/transport/transport_lowbias`: the card offered + Add stage, × on
 every rung, the refinement sentence and a picker naming no rung; the shape
 card offered Flat, which Save then refused; and the reader accepted a ladder

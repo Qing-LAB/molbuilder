@@ -588,24 +588,12 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
     `compute_raman` off the optical calls).  Each phase's run script
     is rendered with its own `resumes` and its two Python steps
     (:attr:`Rung.wrapper_at`)."""
-    from ..paths import Shape
     from ..siesta.vibration_phases import (FC, RELAX, Call, phase, phases_on,
                                            run_size_words)
     from ..transport.sort import deck_sort_key, sort_by
     from ..warmfiles import warm_list
     from .naming import stage_home
     base, task = calc.base, calc.task
-    # THE SHAPE IS HIERARCHICAL ONLY (§ 5.11): three SIESTA calls in one
-    # directory would write over each other's .DM and .XV, and every stage
-    # its .FC and spectrum.
-    if not Shape.named(task.shape).keeps_attempts_as_directories:
-        raise PrepError(
-            "a SIESTA vibration runs as one run in phases -- its "
-            "relaxation, its force constants and its optical calls each a "
-            "SIESTA call in a folder of its own -- which the flat layout "
-            "cannot hold: in one directory the calls would write over each "
-            "other's .DM and .XV (engines/vibration.md 5.11).  Describe it "
-            "with --shape hierarchical.")
     # THE GEOMETRY IN THE USER ORDER, then sorted as every prep sorts
     # (`model/overview.md` § 2.2a, I3-I5): the structure as given, every
     # phase's deck at it.  THE ORDER RECORD RIDES THE COPY into its deck's
@@ -2325,7 +2313,8 @@ def shape_fixed(calc) -> Optional[Dict[str, str]]:
     ``None`` while it may still change (`web/task-setup.md` § 4).
 
     Two reasons, one answer: the calculation's KIND fixes it
-    (`task.fixed_by_kind` -- a transport calculation is hierarchical), or the
+    (`task.fixed_by_kind` -- a transport calculation and a SIESTA vibration
+    are hierarchical), or the
     calculation has PRODUCED (:func:`prepared_stages`) -- a prepared stage
     lies where the shape put it, and another shape would orphan every deck,
     output and warm file there; the way back is the state saved before its
@@ -2333,14 +2322,10 @@ def shape_fixed(calc) -> Optional[Dict[str, str]]:
     shape card and by the save that refuses another shape, so the two say
     the same thing."""
     from ..task import fixed_by_kind
-    from ..template import a_kind
     task = calc.task
-    kind = fixed_by_kind(task.calculation)
+    kind = fixed_by_kind(task.calculation, task.engine)
     if kind is not None:
-        said = a_kind(task.calculation)
-        return {"shape": kind["shape"],
-                "why": f"{said[:1].upper()}{said[1:]} is {kind['shape']} -- "
-                       f"the kind fixes it, so no other is offered."}
+        return {"shape": kind["shape"], "why": kind["said"]}
     done = prepared_stages(calc) if task.shape else []
     if not done:
         return None

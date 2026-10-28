@@ -949,6 +949,61 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
     assert unexpected == [], f"the page reported JS errors: {unexpected}"
 
 
+def test_the_ladder_names_each_call_of_the_run_in_its_words(
+        real_co2_vibration, page, monkeypatch):
+    """**The calculation's ladder, looked at** (`web/results.md` § 2.4, § 2.5
+    *one wording*; `engines/vibration.md` § 5.11 § 7): opened at the
+    calculation's root, the Results tab lists every call of the shared run
+    under its stage, each row named by its run and by the call in the page's
+    words -- *the relaxation*, *the force constants*, *the equilibrium*,
+    each picked mode's two sides at its frequency
+    (`lib/results/point-words.js`).
+
+    THE SILENT FAILURE: every call's row reading ``run-0`` alone -- eight
+    rows of one name, a person unable to tell the relaxation from an
+    optical call without opening each.
+
+    MUTATION THIS MUST FAIL AGAINST: the ladder naming a row from its
+    voltage alone (a transport point's words only)."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.siesta.vibration_phases import FC, RELAX, calls_of
+    from support.live_server import serve
+    run = real_co2_vibration
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(run.tree))
+
+    # WHAT EACH ROW IS NAMED BY, the contract's words for each call the
+    # run's index lists, read by its one reader.
+    def said(c):
+        if c.phase == RELAX:
+            return "the relaxation"
+        if c.phase == FC:
+            return "the force constants"
+        if c.mode is None:
+            return "the equilibrium"
+        return (f"mode {c.mode} ({round(c.frequency_cm1)} cm\u207b\u00b9), "
+                + ("+\u03b4Q" if c.side > 0 else "\u2212\u03b4Q"))
+    calls = calls_of(_index_of(run))
+    assert {c.phase for c in calls} >= {RELAX, FC, "optical"}, calls
+    want = sorted(f"run-0 \u00b7 {said(c)}" for c in calls)
+
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    with serve() as base:
+        page.add_init_script(
+            "try { sessionStorage.setItem('molbuilder.current_dir', "
+            f"{json.dumps(str(run.bundle))}); }} catch (_) {{}}")
+        page.goto(f"{base}/results")
+        page.locator(".results-ladder").wait_for(state="visible",
+                                                  timeout=30000)
+        page.locator(".results-ladder-table tr.is-run").first.wait_for(
+            timeout=30000)
+        names = page.eval_on_selector_all(
+            ".results-ladder-table tr.is-run",
+            "rows => rows.map(r => r.children[1].textContent)")
+    assert sorted(names) == want, (names, want)
+    assert errors == [], errors
+
+
 def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
         real_co2_vibration, page, monkeypatch):
     """**The shared run's Raman, on its page** (`web/spectra.md` § 3.3),
