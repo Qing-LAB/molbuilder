@@ -1637,16 +1637,17 @@ def _choice_labels_from(name: str, raw, choices) -> Tuple[Tuple[Any, str], ...]:
 
 def _stages_from(name: str, raw) -> Tuple[str, ...]:
     """``stages`` as read (§ 6.4): a list of rung roles, or the name of a
-    set of them (`kind_table.ROLE_SETS` -- ``"scf"``, every rung that runs
-    an SCF), read as its roles.  A name no set has is refused, naming the
-    sets."""
+    set of them -- what its rungs compute (`kind_table.COMPUTES`: ``"scf"``,
+    every rung that runs an SCF) -- read as its roles.  A name no set has
+    is refused, naming the sets."""
     if raw is None:
         return ()
     if isinstance(raw, str):
-        if raw not in _kinds.ROLE_SETS:
+        if raw not in _kinds.COMPUTES:
             _refuse(f"stages names the set {raw!r}, which is not one -- the "
-                    f"sets are {', '.join(sorted(_kinds.ROLE_SETS))}; or list "
-                    f"the roles (engines/template.md § 6.4)", where=name)
+                    f"sets are what a rung computes, "
+                    f"{', '.join(_kinds.COMPUTES)}; or list the roles "
+                    f"(engines/template.md § 6.4)", where=name)
         return _kinds.role_set(raw)
     return tuple(raw)
 

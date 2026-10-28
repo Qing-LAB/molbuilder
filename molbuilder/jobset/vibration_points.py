@@ -117,16 +117,15 @@ def _also_needs(run, names, task, stage: str, base) -> Optional[str]:
 #: THE DECLARATION, named by the kind table (the pair's ``points``): a
 #: SIESTA vibration run's points are its SIESTA calls -- the relaxation's and
 #: the force constants' known at launch, the optical ones planned in the job.
-POINTS = PointsOf(kind="vibration",
-                   rung_points=_declared_rung_points,
-                   points_in=_declared_points_in,
-                   products_of=products_of,
-                   hands_on=_declared_hands_on,
-                   summary=_declared_summary,
-                   converges=lambda stage: True,
-                   verdict_counts=lambda stage, point: phase(
-                       point.phase).verdict_counts,
-                   record_says=_record_says,
-                   also_needs=_also_needs,
-                   containers=_declared_containers,
-                   planned_in_job=True, one_wall=True, unit="call")
+POINTS = PointsOf(rung_points=_declared_rung_points,
+                  points_in=_declared_points_in,
+                  products_of=products_of,
+                  hands_on=_declared_hands_on,
+                  summary=_declared_summary,
+                  converges=lambda stage: True,
+                  verdict_counts=lambda stage, point: phase(
+                      point.phase).verdict_counts,
+                  record_says=_record_says,
+                  also_needs=_also_needs,
+                  containers=_declared_containers,
+                  planned_in_job=True, one_wall=True, unit="call")

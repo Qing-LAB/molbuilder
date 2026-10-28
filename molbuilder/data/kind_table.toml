@@ -11,16 +11,30 @@
 # A part that is code is named "module:NAME" and resolved by the floor it
 # lives on (`kind_table.part`), never imported here.
 #
+# A kind's ladder (docs/execution/job-system.md § 5.4) is read off its
+# roles: a kind without roles is INDEPENDENT -- one calculation tuned stage
+# by stage, each stage continuing from the one before; a kind with roles is
+# LINKED, each stage building on what the kind says -- the inputs its rungs
+# take from the rungs it names (its part's `inputs`, and the `gather` that
+# takes them at a first launch), or, with no `inputs`, nothing of another
+# stage, each built on the calculation's structure.
+#
+# A kind's `description`: what its description carries beyond every kind's
+# fields -- `cites`, the slot it cites instead of holding a structure (its
+# structure IS that citation, copied in at prep, and its identity is the
+# citation); `carries`, the fields only it may state -- `bias` stated
+# whenever carried, its voltages a list from 0.0.
+#
 # A part's `words`: the engine's own name for the kind, where it has one --
 # the program that runs it on that engine.
 #
 # A rung's role (`roles`): what the rung does, named by the kind -- what a
 # catalogue item's `stages` names (`engines/template.md` § 6.4) -- and what
-# it computes: "scf", an SCF; "fermi", an SCF and its lead's Fermi level,
-# the energy the junction is read against; "product", no SCF at all.  How
-# a pair's stages play the roles (`stage_roles`): "own", a stage's role its
-# name; "every", each stage every role; or the list of roles each stage
-# plays.
+# it computes: "scf", an SCF; "product", no SCF at all -- each also the
+# named set of roles a catalogue item's `stages` may cite.  How a pair's
+# stages play the roles (`stage_roles`): "own", its stages are its rungs --
+# every role, in order, a stage's role its name; "every", each stage every
+# role; or the list of roles each stage plays.
 
 [optimization]
 noun = "optimization"
@@ -67,19 +81,29 @@ stage_roles = ["force_constants"]
 noun = "transport calculation"
 roles = [
     { name = "seed",         computes = "scf" },
-    { name = "electrode_L",  computes = "fermi" },
-    { name = "electrode_R",  computes = "fermi" },
+    { name = "electrode_L",  computes = "scf" },
+    { name = "electrode_R",  computes = "scf" },
     { name = "device",       computes = "scf" },
     { name = "transmission", computes = "product" },
 ]
 
+[transport.description]
+# Its relaxed junction, cited (engines/transport.md § 3.1); the electrode
+# rename (§ 4); its voltages, a list from 0.0 (§ 2a.10); the finished
+# calculation it extends (§ 2a.16).
+cites = "junction"
+carries = ["swap_electrodes", "bias", "reuses"]
+
 [transport.on.siesta]
 words = "TranSIESTA"
+# Its stages are its rungs, every one, in order (the seed among them: the
+# device starts from its density, user 2026-10-12).
 stage_roles = "own"
 shape = "hierarchical"
 why = "A transport calculation is hierarchical, and no other shape is taken -- its five stages exchange files through their own attempts, which the flat shape has no directories to hold (engines/transport.md § 2a.11)."
-# Its stages are its rungs, every one, in order (the seed among them: the
-# device starts from its density, user 2026-10-12).
-stages = "rungs"
 points = "molbuilder.jobset.transport_points:POINTS"
 rung = "molbuilder.jobset.prep:transport_rung_of"
+# Which rung hands which file to which (the ladder's DAG), and the gather
+# that takes them at a rung's first launch (engines/transport.md § 6.1).
+inputs = "molbuilder.transport.stages:inputs_of"
+gather = "molbuilder.jobset.gather:gather_sources"

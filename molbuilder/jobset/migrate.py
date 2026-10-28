@@ -433,7 +433,7 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
     records (`Job.members`; prepared alone, a group of its own); one not
     prepared repeats the number above only where the stage above is not
     prepared either, no stage of that group is one it builds on
-    (`group.upstream_of`) and their run cards share one allocation
+    (`ladder.upstream_of`) and their run cards share one allocation
     (`group.card_shares`) -- else one more.  A prepared group whose
     members are not one after another in the ladder cannot be stated by a
     number, and is refused by name: which jobs to keep is the person's.

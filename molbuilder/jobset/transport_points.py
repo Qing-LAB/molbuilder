@@ -42,8 +42,7 @@ def _converges(stage: str) -> bool:
 #: THE DECLARATION, named by the kind table (the pair's ``points``): a
 #: transport rung's points are a frame of the cited set and a voltage each,
 #: decided at prep.
-POINTS = PointsOf(kind="transport",
-                  rung_points=_declared_rung_points,
+POINTS = PointsOf(rung_points=_declared_rung_points,
                   points_in=_declared_points_in,
                   products_of=_declared_products,
                   hands_on=_declared_hands_on,

@@ -11,10 +11,9 @@ members in the ladder's order.
 
 This module answers the group's questions, each in one place:
 
-* **does a stage build on another** (:func:`upstream_of`) -- the one fact
-  the description already states: a transport rung's inputs
-  (`transport.stages.stage_inputs`), an independent stage's stage before
-  (`ladder.source_stage`) -- and so
+* **does a stage build on another** (`ladder.upstream_of`) -- the one fact
+  the description already states, the ladder's: the inputs a linked kind's
+  rungs take, an independent stage's stage before -- and so
   **the numbers a new calculation takes** (:func:`default_groups`,
   :func:`fresh_groups`) and **whether the stated ones keep it**
   (:func:`check_groups`);
@@ -78,38 +77,17 @@ def card_shares(request, stage: str) -> dict:
     return {f: card.get(f) for f in SHARED}
 
 
-def upstream_of(task, stage: str,
-                template_text: Optional[str] = None) -> Set[str]:
-    """The stages ``stage`` builds on, as the description states it: a
-    transport rung's inputs, an independent stage's stage before it (none
-    for one set `restart: clean`, or the first)."""
-    if getattr(task, "calculation", None) == "transport":
-        from ..transport.stages import inputs_of
-        return {src for src, _f in inputs_of(task, stage)}
-    from .ladder import source_stage
-    src = source_stage(task, stage, template_text)
-    return {src} if src else set()
-
-
-def linked(task, stage: str,
-           template_text: Optional[str] = None) -> bool:
-    """Whether what ``stage`` builds on is its KIND's -- a transport rung's
-    inputs -- which no override changes; ``False`` for an independent
-    ladder's stage, which builds on the stage before it only while its
-    `restart` continues (`job-system.md` § 5.4)."""
-    return getattr(task, "calculation", None) == "transport"
-
-
 def may_join(task, request, stage: str, members: Sequence[str],
              template_text: Optional[str] = None) -> bool:
     """Whether ``stage`` may share the job ``members`` make, the group
     above it, by default (`execution/job-request.md` § 3.3: the defaults
     repeat the number above wherever that is allowed): it builds on none of
-    them (:func:`upstream_of`), and its run card states what theirs do on
+    them (`ladder.upstream_of`), and its run card states what theirs do on
     what a job shares (:func:`card_shares`) -- else prep would refuse the
     group (`job-system.md` R-P13).  The one rule every writer of numbers
     asks -- a new calculation's (:func:`default_groups`) and an older one's
     (`migrate`)."""
+    from .ladder import upstream_of
     return (bool(members)
             and not upstream_of(task, stage, template_text)
             & set(members)
@@ -125,16 +103,19 @@ def why_not_join(task, request, stage: str, members: Sequence[str],
     it may.  The two conditions :func:`may_join` asks, each in words."""
     if not members:
         return None
+    from .ladder import independent, upstream_of
     fed = upstream_of(task, stage, template_text) & set(members)
     if fed:
         named_ = ", ".join(f"`{n}`" for n in members if n in fed)
-        kind_s = linked(task, stage, template_text)
+        # THE OTHER WAY OUT, where there is one: an independent stage
+        # builds on the stage before it only while it continues; a linked
+        # stage's input is its kind's, whatever its overrides say.
         return (f"`{stage}` builds on {named_}, in the group above: one job "
                 f"runs its members one after another with nothing handed "
                 f"between them"
-                + ("" if kind_s else
-                   " -- or, for it to start from its own deck, set its "
-                   "`restart` override to `clean`"))
+                + (" -- or, for it to start from its own deck, set its "
+                   "`restart` override to `clean`" if independent(task)
+                   else ""))
     if card_shares(request, stage) != card_shares(request, members[0]):
         return (f"`{stage}`'s run card states other values than the group "
                 f"above's on what one job shares; set them alike, or give "
@@ -190,6 +171,7 @@ def check_groups(task, request, template_text: Optional[str] = None
     § 3.3): one job runs its members one after another with nothing handed
     between them.  The numbers are the request's; what a stage builds on,
     the description's."""
+    from .ladder import independent, upstream_of
     seen: dict = {}
     for st in task.stages:
         number = request.group_of(st.name)
@@ -203,17 +185,16 @@ def check_groups(task, request, template_text: Optional[str] = None
             # builds on the stage before it only while it continues, so set
             # clean it builds on nothing; a linked stage's input is its
             # kind's, whatever its overrides say.
-            kind_s = linked(task, st.name, template_text)
             return (f"`{st.name}` is in group {number} with {on}, which "
                     f"it builds on: one job runs its members one after "
                     f"another with nothing handed between them, so "
                     f"`{st.name}` would start before you have looked at "
                     f"what {on} produced (execution/job-request.md § 3.3).  "
                     f"Give `{st.name}` a new group -- one more than the "
-                    f"group above" + ("." if kind_s else
-                                      f"; or, for it to start from its own "
+                    f"group above" + (f"; or, for it to start from its own "
                                       f"deck rather than from {on}, set its "
-                                      f"`restart` override to `clean`."))
+                                      f"`restart` override to `clean`."
+                                      if independent(task) else "."))
         members.append(st.name)
     return None
 
@@ -442,7 +423,7 @@ def names_for(base, task, members: Sequence[str]) -> GroupNames:
 
 
 __all__ = ["GroupError", "SHARED", "card_shares",
-           "upstream_of", "linked", "may_join",
+           "may_join",
            "default_groups", "fresh_groups",
            "check_groups", "envelope", "number_of", "named", "members_of",
            "same_members", "formed_again", "header_of",

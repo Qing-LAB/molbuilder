@@ -25,14 +25,13 @@ def _pairs():
 @pytest.mark.parametrize("calculation, engine", _pairs(),
                          ids=lambda x: str(x))
 def test_every_part_a_pair_names_resolves(calculation, engine):
-    """The run of points' declaration and the rung's builder a pair names
-    are importable -- the floor that asks finds them."""
+    """Every code part a pair names -- its run of points' declaration, its
+    rung's builder, its rungs' inputs and their gather -- is importable:
+    the floor that asks finds it."""
     got = kind_table.kind(calculation).on(engine)
-    for key in ("points", "rung"):
-        ref = getattr(got, key)
-        if ref is not None:
-            assert kind_table.part(ref, record=f"{calculation} on {engine}",
-                                   key=key) is not None
+    for key in kind_table.PART_REFS:
+        if getattr(got, key) is not None:
+            assert kind_table.part_of(calculation, engine, key) is not None
 
 
 @pytest.mark.parametrize("engine", engine_table.engines())
@@ -67,18 +66,19 @@ _KIND_ROWS = [
     ("a role computing what no role computes",
      '[k]\nnoun = "k"\nroles = [{name = "a", computes = "dft"}]\n'
      '[k.on.siesta]\nstage_roles = "own"\n', "computes one of"),
-    ("a part that names no module",
-     '[k]\nnoun = "k"\n[k.on.siesta]\npoints = "POINTS"\n', "names no part"),
     ("a role named twice",
      '[k]\nnoun = "k"\nroles = [{name = "a", computes = "scf"}, '
      '{name = "a", computes = "scf"}]\n[k.on.siesta]\nstage_roles = "own"\n',
      "roles names a twice"),
-    ("its rungs as the stages of a kind without roles",
-     '[k]\nnoun = "k"\n[k.on.siesta]\nstages = "rungs"\n',
-     "on a kind without roles"),
     ("roles that are not tables",
      '[k]\nnoun = "k"\nroles = [1]\n[k.on.siesta]\n',
      "roles is a list of tables"),
+    ("a rung's inputs without the gather that takes them",
+     '[k]\nnoun = "k"\n[k.on.siesta]\ninputs = "m:f"\n',
+     "come together"),
+    ("inputs on a kind without roles",
+     '[k]\nnoun = "k"\n[k.on.siesta]\n'
+     'inputs = "m:f"\ngather = "m:g"\n', "inputs on a kind without roles"),
 ]
 
 

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..runrecord import LaunchRecordError
-from .ladder import independent, source_stage
+from .ladder import independent, inputs_of, stage_before
 
 
 @dataclasses.dataclass(frozen=True)
@@ -363,7 +363,7 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
                             by_default=False, concluded=concluded, state=state,
                             converged=converged), None
     try:
-        prev = source_stage(task, stage, template_text)
+        prev = stage_before(task, stage, template_text)
         if prev is None:
             return None, None
         return _by_default(calc, stage, prev, verdict=verdict, bench=bench)
@@ -405,25 +405,25 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
         return FLAT_HAS_NO_ATTEMPTS + (
             "  A stage starts clean by its override `restart: clean`."
             if independent(task) else "")
-    if getattr(task, "calculation", None) == "transport":
-        # A TRANSPORT RUNG'S INPUTS ARE ITS KIND'S: gathered from the rungs
-        # upstream (`gather.gather_sources`), never named.
-        return ("--from / --cold name what a stage continues from; a "
-                "transport rung takes its inputs from the rungs upstream, "
-                "gathered by its kind at its first launch, and anew with "
-                "--gather when it is launched again (engines/transport.md "
-                "§ 6.1, job-system.md § 5.4).")
+    if inputs_of(task) is not None:
+        # A LINKED RUNG'S INPUTS ARE ITS KIND'S: gathered from the rungs
+        # upstream (the gather its pair names), never named.
+        from ..kind_table import kind
+        return (f"--from / --cold name what a stage continues from; "
+                f"{kind(task.calculation).with_article}'s rung takes its "
+                f"inputs from the rungs upstream, gathered by its kind at "
+                f"its first launch, and anew with --gather when it is "
+                f"launched again (job-system.md § 5.4).")
     if not independent(task):
-        # A VIBRATION'S STAGE -- one run in phases on SIESTA, PySCF's one
-        # deck -- builds on the calculation's structure; a run of another
-        # stage is not its input (a `freq` run's `.XV` is a displaced
-        # geometry), and a first launch has nothing to start cold from
-        # (`engines/vibration.md` § 5.11 § 6: `--cold` is a launch again's).
+        # ANY OTHER LINKED STAGE -- a vibration's, one run in phases on
+        # SIESTA, PySCF's one deck -- builds on the calculation's structure;
+        # a run of another stage is not its input (a `freq` run's `.XV` is
+        # a displaced geometry), and a first launch has nothing to start
+        # cold from (`--cold` is a launch again's).
         return (f"{'--from ' + repr(from_attempt) if from_attempt else '--cold'}"
                 f": `{stage}` builds on the calculation's structure -- no "
                 f"run of another stage is its input, and its first launch "
-                f"takes nothing to start cold from (engines/vibration.md "
-                f"5.11).")
+                f"takes nothing to start cold from (job-system.md § 5.4).")
     if from_attempt:
         p = PurePosixPath(str(from_attempt))
         if p.is_absolute() or ".." in p.parts:
@@ -656,7 +656,7 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     from ..paths import attempts_in
     from .naming import stage_home
     base, task = Path(calc.base), calc.task
-    prev = source_stage(task, stage, calc.template_text)
+    prev = stage_before(task, stage, calc.template_text)
     if prev is None:
         return None
     got, refused = _by_default(calc, stage, prev, verdict=False)

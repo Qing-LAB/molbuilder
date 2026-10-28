@@ -398,11 +398,13 @@ def _order_said(task, base: Path) -> list:
 
 
 def _cited_pair_path(task, base: Path) -> Optional[Path]:
-    """A transport calculation's cited structure pair (`engines/transport.md`
-    § 3.1), fenced to the projects tree -- ``None`` for a cited run's
-    folder, and for any other kind of calculation."""
-    citation = ((task.slots or {}).get("junction")
-                if task.calculation == "transport" else None)
+    """A citing kind's cited structure pair (the kind table's
+    ``description.cites`` -- a transport calculation's junction,
+    `engines/transport.md` § 3.1), fenced to the projects tree -- ``None``
+    for a cited run's folder, and for a kind that cites nothing."""
+    from ..kind_table import kind
+    cites = kind(task.calculation).description.cites
+    citation = (task.slots or {}).get(cites) if cites else None
     if not citation:
         return None
     from ..projects import OutsideRoot, contain, find_projects_root
@@ -1046,11 +1048,9 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # structure as described, unless the kind composes or reorders it -- a
     # transport junction and its leads; a SIESTA vibration's held-first
     # copy.
-    from ..kind_table import pair, part
-    _pair = pair(str(task.calculation), str(task.engine))
-    builds = (part(_pair.rung, record=f"{_pair.kind} on {_pair.engine}",
-                   key="rung")
-              if _pair is not None and _pair.rung else _described_rung)
+    from ..kind_table import part_of
+    builds = (part_of(str(task.calculation), str(task.engine), "rung")
+              or _described_rung)
     rung = builds(calc, pset, seam=seam, sweep=sweep, log=log, plan=plan,
                   contours=contours)
     if notes is not None:
@@ -2086,8 +2086,8 @@ class PrepAnswer:
     #: The stage's deck, by file name.
     deck: Optional[str] = None
     pipeline_log: Optional[Path] = None
-    #: A LINKED stage -- its kind gives its rungs roles (the kind table)
-    #: -- which builds on what its kind says, never on the stage before it:
+    #: A LINKED stage -- its ladder's (`ladder.independent`) -- which
+    #: builds on what its kind says, never on the stage before it:
     #: when it takes nothing from another run, both doors say so without
     #: "the first stage, or one that starts clean".
     linked: bool = False
@@ -2611,9 +2611,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     # THE STAGE'S FIRST RUN -- opened with its own files (`_open_attempts`);
     # what it takes from another run is its first launch's.  Flat keeps no
     # attempt directories: the run is the calculation's folder.
-    from ..kind_table import kind as _kind
+    from .ladder import independent
     from .materialize import SweepRun
-    out.linked = bool(_kind(task.calculation).roles)
+    out.linked = not independent(task)
     if flat:
         out.flat = True
         run_dir = base

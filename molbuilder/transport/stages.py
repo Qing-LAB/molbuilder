@@ -60,10 +60,9 @@ TRANSPORT_STAGES = _kind("transport").role_names
 #: (``computes``, `execution/architecture.md` § 3.3).
 #:
 #: * ``"scf"`` — did the SCF converge, and at what energy.  The seed hands the
-#:   device a density; the device hands TBtrans a Hamiltonian.
-#: * ``"fermi"`` — an SCF *and* the lead's Fermi level, which is the reference
-#:   the whole junction is measured against (§ 2a.13): T(E) is relative to it
-#:   and ``G = G0 * T(E_F)`` is evaluated at it.
+#:   device a density; the device hands TBtrans a Hamiltonian; a lead hands
+#:   the device its Hamiltonian and its Fermi level, the reference the whole
+#:   junction is measured against (§ 2a.13).
 #: * ``"product"`` — **not an SCF at all.**  TBtrans runs none: there is
 #:   nothing to converge and no total energy, and its result is the
 #:   transmission the record already carries in its own ``points`` blocks.

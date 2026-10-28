@@ -6523,7 +6523,7 @@ none of it: it was text `siesta` never read.
   `write_subs.F`, `outcoor.f`) and its own options read none
   (`m_tbt_options.F90`). The catalogue says the same with `stages`: the eight
   SCF items declare the four SCF rungs (and vibration's two roles) — the set
-  `stages = "scf"` names once (`kind_table.ROLE_SETS`, `template.md` § 6.4) — so the
+  `stages = "scf"` names once (the roles that compute an SCF, `kind_table.role_set`, `template.md` § 6.4) — so the
   transmission's tab never offers them and `prep` refuses one there by name
   (§ 2a.13 Class C, § 3.8.9) — and so, since 2026-10-11, do the diagonaliser
   items (`block_size`, `parallel_over_k`, `diag_algorithm`, `use_gpu`) and

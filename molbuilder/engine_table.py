@@ -82,11 +82,6 @@ def _engine(name: str, body: object) -> Engine:
         raise EngineTableError(
             f"{where}: computes_in {body['computes_in']!r} is not one of "
             f"{', '.join(COMPUTES_IN)}")
-    for key in ("config", "seam"):
-        if ":" not in str(body[key]):
-            raise EngineTableError(
-                f"{where}: {key} {body[key]!r} names no part -- "
-                f"\"module:NAME\"")
     if not isinstance(body["one_process"], bool):
         raise EngineTableError(f"{where}: one_process is true or false")
     return Engine(name=name, words=str(body["words"]),

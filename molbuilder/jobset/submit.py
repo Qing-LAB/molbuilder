@@ -1064,18 +1064,18 @@ def _plan_member(calc, job, *, writes: Plan,
     # WHAT THE LAUNCH WAS TOLD, each flag where it is read: `--gather` takes
     # a transport rung's inputs anew, when it is launched again; `--from`
     # and `--gather` are two answers; the flat layout keeps no run to name.
-    if gather and task.calculation != "transport":
+    from .ladder import inputs_of
+    inputs = inputs_of(task)
+    if gather and inputs is None:
         raise SubmitError(
-            "--gather takes a transport rung's inputs anew from the "
-            "rungs upstream; a stage of this calculation continues from "
-            "a run, named with --from (job-system.md § 5.4).")
-    if gather:
-        from ..transport.stages import inputs_of
-        if not inputs_of(task, job.name):
-            raise SubmitError(
-                f"--gather takes a transport rung's inputs anew from the "
-                f"rungs upstream, and {job.name} takes none -- it is "
-                f"launched again without it (job-system.md § 5.4, R-L14).")
+            "--gather takes a rung's inputs anew from the rungs upstream, "
+            "where its kind names them, and this calculation's rungs take "
+            "none (job-system.md § 5.4).")
+    if gather and not inputs(task, job.name):
+        raise SubmitError(
+            f"--gather takes a rung's inputs anew from the rungs upstream, "
+            f"and {job.name} takes none -- it is launched again without it "
+            f"(job-system.md § 5.4, R-L14).")
     if first and gather:
         raise SubmitError(GATHER_AT_FIRST)
     if not first and from_attempt and gather:
@@ -3074,11 +3074,14 @@ def _across(calc, stage: str, m: "_Member"):
 
 
 def _gathered_now(calc, stage: str):
-    """A transport rung's gather, read now (`gather.gather_sources`, its three
-    gates) -- or the refusal, in the gather's words, before anything is
-    sent (`job-system.md` § 6.0, step 1)."""
+    """A rung's gather, read now -- the one its pair names (`ready.gather_of`,
+    a transport rung's three gates) -- or the refusal, in the gather's
+    words, before anything is sent (`job-system.md` § 6.0, step 1).  Asked
+    only for a rung whose kind names its inputs (`--gather`, checked at
+    the launch's door)."""
     from .errors import PrepError, user_error_as_prep
-    from .gather import gather_sources
+    from .ready import gather_of
+    gather_sources = gather_of(calc.task)
     try:
         with user_error_as_prep():
             return gather_sources(calc, stage)

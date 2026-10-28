@@ -36,7 +36,6 @@ class PointsOf:
     kind's own type (`transport.stages.Point`, `siesta.vibration_phases.
     Call`), with ``rel`` (its folder below the stage or a run), ``words()``
     and ``to_wire()`` alike (`job-system.md`, *A point*)."""
-    kind: str
     #: ``(calc, stage, *, read=None) -> (point, ...)``: the rung's points
     #: as PREPARED -- the folders prep writes a deck into below the stage,
     #: what a first launch opens -- ``()`` for a rung that runs once.
@@ -116,13 +115,9 @@ def points_of(task) -> Optional[PointsOf]:
     """``task``'s pair's declaration -- the part the kind table names
     (``points``, `execution/architecture.md` § 3.3) -- or ``None`` for a
     pair whose every rung runs once."""
-    from ..kind_table import pair, part
-    got = pair(str(getattr(task, "calculation", "")),
-               str(getattr(task, "engine", "")))
-    if got is None or got.points is None:
-        return None
-    return part(got.points, record=f"{got.kind} on {got.engine}",
-                key="points")
+    from ..kind_table import part_of
+    return part_of(str(getattr(task, "calculation", "")),
+                   str(getattr(task, "engine", "")), "points")
 
 
 def walls_of(task, n: int) -> int:

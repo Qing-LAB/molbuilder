@@ -3,12 +3,16 @@
 runs on (`execution/architecture.md` § 3.3).
 
 **What differs between kinds is a field here, never a branch** (A18): a
-kind's name as a person reads it, its rungs' roles and what each computes,
-the results it gives; and on each engine it runs on, the engine's own name
-for it, the shape it fixes and why, the stages it fixes, its run of points
-and its rung's builder.  The
-engines a kind runs on are its parts -- no second list says which engine
-runs which kind -- and each is the engine table's (`engine_table`).
+kind's name as a person reads it, its rungs' roles and what each computes --
+a kind with roles has a linked ladder, one without an independent one
+(`job-system.md` § 5.4) -- the results it gives, and what its description
+carries beyond every kind's fields; and on each engine it runs on, the
+engine's own name for it, the shape it fixes and why, how its stages play
+its roles (its rungs, every one in order, where a stage's role is its
+name), and the code parts the pair names -- its run of points, its rung's
+builder, the inputs its rungs take and their gather.  The engines a kind
+runs on are its parts -- no second list says which engine runs which kind
+-- and each is the engine table's (`engine_table`).
 
 Floor 1 (`execution/architecture.md` § 2.1): data, read once; it imports no
 kind and no engine.  A part that is code is named ``module:NAME`` and
@@ -28,18 +32,24 @@ from .paths import SHAPES
 #: The file, beside the parameter catalogue.
 TABLE_FILE = Path(__file__).resolve().parent / "data" / "kind_table.toml"
 
-#: What a rung computes: an SCF; an SCF and its lead's Fermi level, the
-#: energy the junction is read against; or a product that runs no SCF.
-COMPUTES = ("scf", "fermi", "product")
+#: What a rung computes: an SCF, or a product that runs none.  Each is also
+#: a named set of roles a catalogue item's ``stages`` may cite
+#: (`engines/template.md` § 6.4; :func:`role_set`) -- ``"scf"``, every rung
+#: that runs an SCF.
+COMPUTES = ("scf", "product")
 
-#: The named sets of roles a catalogue item's ``stages`` may cite
-#: (`engines/template.md` § 6.4), each read off the roles' own fact: ``scf``,
-#: every rung that runs an SCF.
-ROLE_SETS = {"scf": ("scf", "fermi")}
+#: The fields a description may carry beyond every kind's -- each a
+#: kind's to carry (``description.carries``): the electrode rename, the
+#: voltages -- stated whenever carried -- the finished calculation it
+#: extends.
+DESCRIPTION_FIELDS = ("swap_electrodes", "bias", "reuses")
 
-_KIND_KEYS = ("noun", "roles", "results", "on")
-_PART_KEYS = ("words", "shape", "why", "stages", "stage_roles", "points",
-              "rung")
+_KIND_KEYS = ("noun", "roles", "results", "description", "on")
+_PART_KEYS = ("words", "shape", "why", "stage_roles", "points", "rung",
+              "inputs", "gather")
+
+#: The parts a pair may name, each ``module:NAME`` (:func:`part_of`).
+PART_REFS = ("points", "rung", "inputs", "gather")
 
 
 class KindTableError(ValueError):
@@ -67,6 +77,17 @@ class Result:
 
 
 @dataclass(frozen=True)
+class Description:
+    """What a kind's description carries beyond every kind's fields."""
+    #: The slot it cites instead of holding a structure -- its structure IS
+    #: that citation, and its identity is the citation -- or ``None``: it
+    #: holds a structure.
+    cites: Optional[str] = None
+    #: The fields only it may state (:data:`DESCRIPTION_FIELDS`).
+    carries: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class KindOnEngine:
     """A kind's part on one engine: what the pair decides."""
     kind: str
@@ -77,17 +98,27 @@ class KindOnEngine:
     shape: Optional[str] = None
     #: The one sentence every surface says the fixed shape in.
     why: Optional[str] = None
-    #: The stages it fixes, in order, or ``None``.
-    stages: Optional[Tuple[str, ...]] = None
-    #: How its stages play the kind's roles: ``"own"``, a stage's role its
-    #: name; ``"every"``, each stage every role; or the roles each stage
-    #: plays -- ``None`` for a kind without roles.
+    #: How its stages play the kind's roles: ``"own"``, its stages its rungs
+    #: -- every role, in order, a stage's role its name; ``"every"``, each
+    #: stage every role; or the roles each stage plays -- ``None`` for a
+    #: kind without roles.
     stage_roles: Any = None
+    #: The stages it fixes, in order -- its rungs, where ``stage_roles`` is
+    #: ``"own"`` -- or ``None``.
+    stages: Optional[Tuple[str, ...]] = None
     #: ``module:NAME`` of its run of points' declaration (floor 4), or
     #: ``None`` for a pair whose every rung runs once.
     points: Optional[str] = None
     #: ``module:NAME`` of its rung's builder (the conductor's), or ``None``.
     rung: Optional[str] = None
+    #: For a kind whose rungs take inputs: ``module:NAME`` of
+    #: ``(task, stage) -> [(stage upstream, file)]``, which rung hands which
+    #: file (floor 3, `jobset.ladder`) -- ``None`` where a stage builds on
+    #: no other.
+    inputs: Optional[str] = None
+    #: With ``inputs``: ``module:NAME`` of the gather that takes them at a
+    #: rung's first launch (the ready door's, `jobset.ready`).
+    gather: Optional[str] = None
 
     @property
     def fixed_shape(self) -> Optional[Dict[str, str]]:
@@ -104,8 +135,14 @@ class CalculationKind:
     name: str
     #: Its name as a person reads it -- *transport calculation*.
     noun: str
+    #: Its rungs' roles -- a kind with roles has a LINKED ladder, each
+    #: stage building on what its kind says; one without, an INDEPENDENT
+    #: one, each stage continuing from the one before (`job-system.md`
+    #: § 5.4).
     roles: Tuple[Role, ...] = ()
     results: Tuple[Result, ...] = ()
+    #: What its description carries beyond every kind's fields.
+    description: Description = Description()
     #: Its part on each engine it runs on, by the engine's name.
     parts: Mapping[str, KindOnEngine] = None  # type: ignore[assignment]
 
@@ -155,13 +192,6 @@ def _part(kind: str, engine: str, body: object,
         _refuse(where, "a fixed shape and its sentence, `why`, come together")
     if shape is not None and shape not in SHAPES:
         _refuse(where, f"shape {shape!r} is not one of {', '.join(SHAPES)}")
-    stages = body.get("stages")
-    if stages == "rungs" and not roles:
-        _refuse(where, "stages = \"rungs\" on a kind without roles")
-    if stages == "rungs":
-        stages = roles
-    elif stages is not None:
-        _refuse(where, "stages is \"rungs\" -- the kind's rungs, in order")
     sr = body.get("stage_roles")
     if roles and sr is None:
         _refuse(where, "no stage_roles -- how its stages play the kind's "
@@ -177,15 +207,17 @@ def _part(kind: str, engine: str, body: object,
     elif sr is not None and sr not in ("own", "every"):
         _refuse(where, f"stage_roles {sr!r} is \"own\", \"every\" or a "
                        f"list of roles")
-    for key in ("points", "rung"):
-        if body.get(key) is not None and ":" not in str(body[key]):
-            _refuse(where, f"{key} {body[key]!r} names no part -- "
-                           f"\"module:NAME\"")
+    if ("inputs" in body) != ("gather" in body):
+        _refuse(where, "a rung's inputs and the gather that takes them come "
+                       "together")
+    if "inputs" in body and not roles:
+        _refuse(where, "inputs on a kind without roles -- its stages "
+                       "continue from the one before")
     return KindOnEngine(kind=kind, engine=engine, words=body.get("words"),
-                        shape=shape, why=why,
-                        stages=tuple(stages) if stages else None,
-                        stage_roles=sr,
-                        points=body.get("points"), rung=body.get("rung"))
+                        shape=shape, why=why, stage_roles=sr,
+                        stages=tuple(roles) if sr == "own" else None,
+                        points=body.get("points"), rung=body.get("rung"),
+                        inputs=body.get("inputs"), gather=body.get("gather"))
 
 
 def _kind(name: str, body: object, engines: Tuple[str, ...]
@@ -222,6 +254,17 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
         twice = sorted({n for n in named if named.count(n) > 1})
         if twice:
             _refuse(where, f"{key} names {', '.join(twice)} twice")
+    desc = body.get("description", {})
+    if not isinstance(desc, dict) or set(desc) - {"cites", "carries"}:
+        _refuse(where, "description is a table of cites and carries")
+    carries = desc.get("carries", [])
+    if (not isinstance(carries, list)
+            or set(carries) - set(DESCRIPTION_FIELDS)):
+        _refuse(where, f"description.carries is a list of "
+                       f"{', '.join(DESCRIPTION_FIELDS)}")
+    if "cites" in desc and not (isinstance(desc["cites"], str)
+                                and desc["cites"]):
+        _refuse(where, "description.cites is the slot's name")
     on = body.get("on") or {}
     if not on:
         _refuse(where, "no part on any engine -- the engines it runs on are "
@@ -234,6 +277,9 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     parts = {e: _part(name, e, b, names) for e, b in on.items()}
     return CalculationKind(name=name, noun=str(body["noun"]),
                            roles=tuple(roles), results=tuple(results),
+                           description=Description(
+                               cites=desc.get("cites"),
+                               carries=tuple(carries)),
                            parts=parts)
 
 
@@ -270,17 +316,36 @@ def pair(calculation: str, engine: str) -> Optional[KindOnEngine]:
     return got.parts.get(str(engine)) if got is not None else None
 
 
+def carrying(field: str) -> Tuple[str, ...]:
+    """The kinds whose description may state ``field``
+    (:attr:`Description.carries`), in the table's order -- what a refusal
+    of it on another kind names."""
+    return tuple(k for k, rec in _table().items()
+                 if field in rec.description.carries)
+
+
 def role_set(name: str) -> Tuple[str, ...]:
-    """The roles a named set cites (:data:`ROLE_SETS`), across every kind,
-    in the table's order; :class:`KindTableError` naming the sets for a
-    name none has."""
-    if name not in ROLE_SETS:
+    """The roles that compute ``name`` (:data:`COMPUTES`) -- the named set a
+    catalogue item's ``stages`` cites -- across every kind, in the table's
+    order; :class:`KindTableError` naming the sets for a name none is."""
+    if name not in COMPUTES:
         raise KindTableError(
-            f"no set of roles {name!r} -- the sets are "
-            f"{', '.join(sorted(ROLE_SETS))}")
-    computes = ROLE_SETS[name]
+            f"no set of roles {name!r} -- the sets are what a rung "
+            f"computes: {', '.join(COMPUTES)}")
     return tuple(r.name for k in _table().values() for r in k.roles
-                 if r.computes in computes)
+                 if r.computes == name)
+
+
+def part_of(calculation: str, engine: str, key: str) -> Any:
+    """THE CODE PART ``calculation``'s pair on ``engine`` names under
+    ``key`` (:data:`PART_REFS`), imported now -- by the floor that asks,
+    the one the part lives on -- or ``None`` where the pair names none, or
+    there is no such pair (the description's reader refuses that)."""
+    got = pair(calculation, engine)
+    ref = getattr(got, key) if got is not None else None
+    if ref is None:
+        return None
+    return part(ref, record=f"{calculation} on {engine}", key=key)
 
 
 def part(ref: str, *, record: str, key: str) -> Any:
@@ -297,6 +362,7 @@ def part(ref: str, *, record: str, key: str) -> Any:
             f"{record}'s {key}, {ref!r}, does not resolve: {exc}") from exc
 
 
-__all__ = ["TABLE_FILE", "COMPUTES", "ROLE_SETS", "KindTableError", "Role",
-           "Result", "KindOnEngine", "CalculationKind", "kinds", "kind", "pair",
-           "role_set", "part"]
+__all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "PART_REFS",
+           "Description", "carrying", "KindTableError", "Role", "Result",
+           "KindOnEngine", "CalculationKind", "kinds", "kind", "pair",
+           "role_set", "part_of", "part"]

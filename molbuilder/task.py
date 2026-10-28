@@ -233,10 +233,11 @@ class Task:
     #: THE COMPOSITE'S INPUTS (engines/transport.md § 2a.14, § 3.1) -- slot name ->
     #: an EXPLICIT directory citation (a tree-relative path whose FILES
     #: satisfy the 4.1b condition; ruling Q1 + the 2026-08-29 amendment).
-    #: Only ``calculation="transport"`` may carry slots, and it must
-    #: carry exactly ``{"junction": ...}``; a transport description
-    #: carries NO ``structure`` block, because its structure IS the
-    #: citation, copied in at prep (strict composition, ruling Q2).
+    #: Only a kind that cites (the kind table's ``description.cites`` -- a
+    #: transport calculation's ``junction``) may carry slots, and it must
+    #: carry exactly that one; its description carries NO ``structure``
+    #: block, because its structure IS the citation, copied in at prep
+    #: (strict composition, ruling Q2).
     #: Absent-is-a-state: empty writes no key.
     slots: Dict[str, str] = field(default_factory=dict)
 
@@ -274,9 +275,11 @@ class Task:
         """How this description treats its bias list, by the three names
         every surface uses (`engines/transport.md` § 2a.10): `single-bias`
         for one voltage; `low-bias-approximation` or `self-consistent` for
-        several, by the stated switch.  None for a kind without a bias.
-        Stated, never inferred from how many points ran."""
-        if self.calculation != "transport":
+        several, by the stated switch.  None for a kind without a bias (the
+        kind table's ``description.carries``).  Stated, never inferred from
+        how many points ran."""
+        from .kind_table import kind as _kind
+        if "bias" not in _kind(self.calculation).description.carries:
             return None
         return ("single-bias" if len(self.bias) <= 1
                 else "low-bias-approximation" if self.low_bias_approximation
@@ -325,39 +328,40 @@ class Task:
                     f"{', '.join(fixed.stages)} (got "
                     f"{', '.join(names) or 'none'}) -- the kind table's "
                     f"(execution/architecture.md § 3.3)")
-        # The composite's own pairing (engines/transport.md § 3.1): slots
-        # belong to transport alone; transport requires the junction slot,
-        # carries no structure block, and each citation names its attempt.
-        if self.calculation == "transport":
-            if set(self.slots) != {"junction"}:
+        # WHAT THE KIND'S DESCRIPTION CARRIES BEYOND EVERY KIND'S FIELDS
+        # (the kind table's ``description``): a kind that cites carries that
+        # one slot and no structure block -- its structure IS the citation
+        # (engines/transport.md § 3.1); a field only some kinds carry is
+        # refused on any other, naming those that do.
+        desc = _kind(self.calculation).description
+        if desc.cites:
+            if set(self.slots) != {desc.cites}:
                 raise ValueError(
-                    "task: a transport calculation carries exactly one "
-                    f"slot, 'junction' (got {sorted(self.slots) or 'none'})"
-                    " -- the relaxed junction it composes from "
-                    "(engines/transport.md § 3.1)")
+                    f"task: {_kind(self.calculation).with_article} carries "
+                    f"exactly one slot, {desc.cites!r} (got "
+                    f"{sorted(self.slots) or 'none'}) -- what it composes "
+                    f"from")
             if self.structure is not None:
                 raise ValueError(
-                    "task: a transport calculation carries no 'structure' "
-                    "block -- its structure IS the junction citation, "
-                    "copied in at prep (engines/transport.md § 3.1)")
+                    f"task: {_kind(self.calculation).with_article} carries "
+                    f"no 'structure' block -- its structure IS the "
+                    f"{desc.cites} citation, copied in at prep")
         else:
             if self.slots:
                 raise ValueError(
-                    f"task: 'slots' belongs to calculation='transport' "
-                    f"alone (this is {self.calculation!r})")
-            for key in ("swap_electrodes", "reuses"):
-                if getattr(self, key):
-                    raise ValueError(
-                        f"task: {key!r} belongs to calculation='transport' "
-                        f"alone (this is {self.calculation!r})")
-            if self.bias:
-                raise ValueError(
-                    f"task: 'bias' belongs to calculation='transport' "
-                    f"alone (this is {self.calculation!r})")
+                    f"task: 'slots' belongs to a kind that cites -- "
+                    f"{_carriers(None)} -- not {self.calculation!r}")
             if self.structure is None:
                 raise ValueError(
-                    "task: 'structure' is required for every calculation "
-                    "except transport")
+                    f"task: 'structure' is required for "
+                    f"{_kind(self.calculation).with_article}; only a kind "
+                    f"that cites carries none ({_carriers(None)})")
+        from .kind_table import DESCRIPTION_FIELDS
+        for key in DESCRIPTION_FIELDS:
+            if getattr(self, key) and key not in desc.carries:
+                raise ValueError(
+                    f"task: {key!r} belongs to {_carriers(key)} alone (this "
+                    f"is {self.calculation!r})")
         for name, cite in self.slots.items():
             if not isinstance(cite, str) or not _CITATION_RE.fullmatch(cite):
                 raise ValueError(
@@ -372,12 +376,12 @@ class Task:
                 f"its folder's tree-relative path (no leading '/', no '..', "
                 f"no whitespace); got {self.reuses!r} "
                 f"(engines/transport.md § 2a.16)", where="reuses")
-        if self.calculation == "transport" and not self.bias:
+        if "bias" in desc.carries and not self.bias:
             raise DescriptionError(
-                "task: a transport description states its voltages -- [0.0] "
-                "for a single bias (engines/transport.md 2a.10); one written "
-                "before 2.16.3 states none: `jobset migrate` writes it",
-                where="bias")
+                f"task: {_kind(self.calculation).with_article}'s description "
+                f"states its voltages -- [0.0] for a single bias "
+                f"(engines/transport.md 2a.10); one written before 2.16.3 "
+                f"states none: `jobset migrate` writes it", where="bias")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)
                    for v in self.bias):
@@ -503,12 +507,13 @@ class Task:
         calculation look identical from inside the file -- and quietly
         rewriting the id would be the *"append a digit and carry on"* that
         § 3 rule 3 rules out, one layer up."""
-        # transport: the coordinates ARE the cited attempt, so the
+        # A KIND THAT CITES: the coordinates ARE the cited attempt, so the
         # citation is the identity's second half (run-identity.md § 2's
         # rule, extended by engines/transport.md § 3.1 -- an id that
         # named no input would collide across every junction).
-        identity = (self.slots.get("junction", "")
-                    if self.calculation == "transport"
+        from .kind_table import kind as _kind
+        cites = _kind(self.calculation).description.cites
+        identity = (self.slots.get(cites, "") if cites
                     else self.structure.formula)
         expected = run_id(self.run.name, identity,
                           stage_names=self._stage_names())
@@ -659,11 +664,13 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 "names a section of the engine's warm-file vocabulary "
                 "(job-contracts.md 4.2a)")
 
-    if calc == "transport":
+    from .kind_table import kind as _kind
+    cites = _kind(calc).description.cites
+    if cites:
         if "structure" in obj:
-            _refuse("a transport calculation carries no 'structure' "
-                    "block -- its structure IS the junction citation, "
-                    "copied in at prep (engines/transport.md § 3.1)",
+            _refuse(f"{_kind(calc).with_article} carries no 'structure' "
+                    f"block -- its structure IS the {cites} citation, "
+                    f"copied in at prep (engines/transport.md § 3.1)",
                     where="structure")
         structure = None
     else:
@@ -942,12 +949,24 @@ def _written_before(obj: Mapping[str, Any]) -> List[str]:
     if "centre_junction" in obj:
         out.append("its junction centred, with no `centre_junction` (2.6.0)")
     bias = obj.get("bias")
-    if obj.get("calculation") == "transport" and (
+    from .kind_table import carrying, kind as _kind
+    calc = obj.get("calculation")
+    if calc in carrying("bias") and (
             bias is None
             or (isinstance(bias, Mapping) and not bias.get("voltages_v"))):
-        out.append("a transport calculation's voltages, [0.0] for a single "
-                   "bias (2.16.3)")
+        out.append(f"{_kind(calc).with_article}'s voltages, [0.0] for a "
+                   f"single bias (2.16.3)")
     return out
+
+
+def _carriers(field: Optional[str]) -> str:
+    """The kinds whose description carries ``field`` -- with ``None``, the
+    kinds that cite -- as a refusal names them (the kind table's
+    ``description``): *calculation='transport'*."""
+    from .kind_table import carrying, kind, kinds
+    names = (carrying(field) if field else
+             tuple(k for k in kinds() if kind(k).description.cites))
+    return " or ".join(f"calculation={k!r}" for k in names) or "no kind"
 
 
 # --------------------------------------------------------------------- #

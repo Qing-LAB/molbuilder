@@ -7,10 +7,11 @@ doors that already decide it.  **Described** -- not prepared: preparable.
 **Prepared**, never launched: **ready to launch** when what its first
 launch takes is there, else **waits for** what it names -- the door that
 decides what it takes, the same one launch asks: an independent stage's
-continuation (the stage before it, its newest run finished), a transport
-rung's gather (`gather.gather_sources`, its three gates); a SIESTA
-vibration's one run takes nothing from another stage
-(`engines/vibration.md` § 5.11).  **Launched**: the run doors answer.
+continuation (the stage before it, its newest run finished); a linked
+kind's rung that takes inputs, the gather its pair names (:func:`gather_of`
+-- a transport rung's, its three gates); any other linked stage nothing
+from another stage (a SIESTA vibration's one run, `engines/vibration.md`
+§ 5.11).  **Launched**: the run doors answer.
 Nothing here decides a second way, and nothing is written.
 
 **A group** is the stages one number holds (`engines/stages.md` § 2),
@@ -493,14 +494,25 @@ def regrouped(calc, stage: str) -> Optional[str]:
             + block(prep_group_lines(numbers, base=base)))
 
 
+def gather_of(task):
+    """``(calc, stage) -> gathered`` -- the gather that takes a linked
+    kind's rung's inputs at its first launch, the part its pair names in the
+    kind table (``gather``), resolved here, the floor that asks -- or
+    ``None`` for a ladder whose rungs take no inputs (`jobset.ladder.
+    inputs_of`)."""
+    from ..kind_table import part_of
+    return part_of(str(task.calculation), str(task.engine), "gather")
+
+
 def first_launch_takes(calc, stage: str, job, *,
                        from_attempt: Optional[str] = None,
                        cold: bool = False, verdict: bool = True):
     """``(continuation, gather, refusal)`` -- what ``stage``'s first launch
     takes (`job-system.md` § 6.0, step 1), from the one door per kind, read
-    now, every kind's refusal with it: a transport rung's gather, the three
-    gates (`engines/transport.md` § 6.1), each point its own for a rung that
-    runs per point -- its inputs its kind's, never named; a SIESTA
+    now, every kind's refusal with it: a rung's gather where its pair names
+    one (:func:`gather_of` -- a transport rung's, the three gates,
+    `engines/transport.md` § 6.1), each point its own for a rung that runs
+    per point -- its inputs its kind's, never named; a SIESTA
     vibration's run nothing -- its calls build on each other inside the run
     (`engines/vibration.md` § 5.11), ``cold`` and ``from_attempt`` refused
     by the one door (`continuation.cannot_be_named`); an independent
@@ -516,18 +528,19 @@ def first_launch_takes(calc, stage: str, job, *,
     from .continuation import continuation_answer
     from .materialize import continuation_files
     from .errors import PrepError, user_error_as_prep
-    from .gather import gather_sources
     base, task = Path(calc.base), calc.task
-    if task.calculation == "transport":
+    gather_sources = gather_of(task)
+    if gather_sources is not None:
         # ITS INPUTS ARE ITS KIND'S, never named: `--from` / `--cold`
         # refused by the one door, as a swept rung's are -- but a rung of
         # points of a calculation that reuses a finished one, whose first
         # launch takes that calculation's points over: `--cold` takes none
         # (`engines/transport.md` § 2a.16).
-        from ..transport.stages import frames_of, rung_points
         from .continuation import cannot_be_named
+        from .points import points_of
+        pts = points_of(task)
         why = (None if cold and not from_attempt and task.reuses
-               and rung_points(task, stage, frames=frames_of(base))
+               and pts is not None and pts.rung_points(calc, stage)
                else cannot_be_named(base, task, stage, from_attempt, cold))
         if why:
             return None, None, why
@@ -560,23 +573,24 @@ def at_launch(calc, stage: str, *, job=None) -> List[dict]:
     """What ``stage``'s first launch will take, said before any run is read
     (`job-system.md` § 5.0, *a preview*) -- ``[{"from", "files", "line"}]``,
     the line *at launch: takes <files> from <stage>'s newest run, which must
-    have finished*: a transport rung one per stage upstream, its files by
-    the ladder's DAG; an independent stage its restart files (``job``'s,
+    have finished*: a rung that takes inputs one per stage upstream, its
+    files by its pair's (`ladder.inputs_of` -- a transport rung's, the
+    ladder's DAG); an independent stage its restart files (``job``'s,
     when prepared; ``files`` ``None`` before) from the stage before it, by
     the pair's rule the launch copies by (`model.warm_carry`) against that
     stage's job in the calculation's plan, ``calc`` as the verb read it
     (A16); ``[]`` for a stage that builds on nothing."""
+    from .ladder import inputs_of, stage_before
     task = calc.task
-    if task.calculation == "transport":
-        from ..transport.stages import inputs_of
+    inputs = inputs_of(task)
+    if inputs is not None:
         by: Dict[str, List[str]] = {}
-        for up, fn in inputs_of(task, stage):
+        for up, fn in inputs(task, stage):
             by.setdefault(up, []).append(fn)
         return [{"from": up, "files": fns,
                  "line": f"at launch: takes {', '.join(fns)} from `{up}`'s "
                          f"newest run, which must have finished"}
                 for up, fns in by.items()]
-    from .ladder import stage_before
     prev = stage_before(task, stage, calc.template_text)
     if prev is None:
         return []
