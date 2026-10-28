@@ -575,6 +575,91 @@ apart, `&surface=state`). Its card keeps the title *Run profile*: a shared
 part's titles name no engine, one engine's own carry its name — the user's
 rule, 2026-10-27 (`web/form-schema.md` § 1.3).
 
+## 1ak. One system for a calculation's files — the code, the page and the folders as one design, driven by declared data *(2026-10-28; proposed, waiting on the user)*
+
+*(The user, 2026-10-28: "did you make sure your work did not [bypass] existing
+parser framework and make sure you are not handcrafting code to work with dir
+and files? this needs to be systematically and holistically evaluated"; "the
+goal is to have the code, ui and file structure all part of a logical, well
+organized modularized system design"; "different situations should be mainly
+driven by config file and meta data as appropriate, minimize handcrafting code
+or design when possible".)*
+
+**What the review of 2026-10-28 measured** (two fresh agents — the directory
+door end to end, and the description reader with the tests — each finding
+read again in the code):
+
+| group | what | whose |
+|---|---|---|
+| errors on the roads | **E1** a SIESTA vibration's hand-over: the shape card offers *flat* and Save refuses it — `shape_fixed` is asked only of a calculation that opens, and the page's hand-over branch never reads it (2.47.5's p1 reached a described folder only); **E2** `/api/results/dir` re-lists the door's fields by hand and drops `at_work`; **E3** what a run of points' folder opens answered by `folder_answer` and not by `openable`; **E4** that fallback loses a transmission point and the page calls the file *not in this folder* | mine (E1 shipped; E2–E4 p3, not committed) |
+| structure | the run door (`runs.py`, floor 2) calls up into `calculation.open` (floor 3) and `continuation` (floor 4) for a run of points' root — since 2.42, extended by p3's `at_work`; a run's points walked three times per answer (`point_rows`, `every_run`, `at_work`) beside the one per-point reader; the calculation opened twice per answer; a vibration's phases read from two doors | 2.42 on, and mine |
+| files by hand | about a dozen in the door, status and export: `export.py` composes the `.spectra.nc` beside the result; `transmission_point` rebuilds the run folder and calls transport's points directly; `_openable` and `on_label_at` answer "the run's result" by two filters; *is this point opened* by `is_dir()` in four places; `continuation.done` composes `shared/.copied-from`; `_warm_present`, `_held` compose names and test `is_file`; the ladder never lists a run in phases' own result | older |
+| the page | the browser composes paths (`rootDir + "/" + r.opens`, the deck's **View**, p3's `record_dir`), decides from a path's shape that a row opens the report, and picks a run by a file's basename | older, and mine |
+| tests | support helpers and e2e build `01_coarse/run-0`, `04_device/run-0/v0.2`, `task.json`, `job-request.json`, `CO2.fc-sweep.json` by hand; read the bench plan as raw JSON; parse the ledger by hand twice; hand-build the hand-over → description dict four times (which hid E1) | older, and mine |
+| kinds by code | **54 branches** on a kind's or engine's name (`calculation == "transport"`, `engine == "siesta"`) in 25 modules, beside the kind facts that ARE data, scattered over seven tables — `paths.KIND_ROLES`, `paths.ROLE_SETS`, `jobset.points.DECLARED`, `prep.RUNGS`, `template.RESULTS`, `electronic_state.KINDS`, `task.fixed_by_kind` (itself two branches, mine) | older, and mine |
+
+**The design — three declarations, one job per floor.**
+
+*The declarations, data:*
+
+- **D1 · the kind table** — one record per (engine, calculation): the shape it
+  fixes and why; the stages it fixes; its roles; its run-of-points
+  declaration; its rung builders; its results; what each of its folders opens
+  (a transport calculation's root, its description; a transmission point, the
+  report at that point; a run of points' root, its run's result, else its point
+  at work). The seven tables become its fields, read through one door; **a
+  branch on a kind's name is the defect** — each of the 54 is judged: a fact of
+  the kind becomes a field of its record, and what remains is genuinely an
+  engine's own code (SIESTA's deck writer is SIESTA's).
+- **D2 · the file catalogue**, `runfiles.WRITTEN` (built): every file — its
+  role, the folder kind it lies in, its reader — and, as fields, which folder
+  kind opens it, so *what a folder opens* is a lookup, not a branch.
+- **D3 · the folder record**, `calcdir.json` read by `calcdirs.where` (built):
+  what a folder is — a calculation, a stage's, an attempt, a point (a bias
+  point, a vibration's call), a container, the engine's scratch, a shared
+  folder, a benchmark, a trial. **A folder's kind decides everything asked of
+  it**, by D1 and D2.
+
+*The floors, each one job (`execution/architecture.md` § 2):*
+
+| floor | its job | its doors | it never |
+|---|---|---|---|
+| 1 · names | the tree's grammar and the declarations | `calcdirs.where`, `paths`, `runfiles`, the kind table | — |
+| 1 · readers | one file kind, one reader | the parse registry, `ending_of`, `run_status`, `run_record` | read a folder, or a file not its own |
+| 2 · the run door | ONE run's folder | `run_of`, `state_of`, `record_of`, `openable`, `about`, `declared`, `view_of`, `folder_answer` for one folder | open a calculation, a plan or a point; call above floor 2 |
+| 4 · a run of points | its points, read once | `points_of(kind)`; `point_rows` — the one walk, each row its point's wire form, words, folder, state and whether it has written; `points_state` over the rows; the point at work, a selection over them | walk the points twice |
+| 6 · observe | the views composed over 2 and 4 | the ladder (`jobset_status`; `every_run` from `point_rows`, a run of points' root listed with its own result); the run of points' view — its state, its point at work and that point's record, what it opens | compose a path or a word the doors below state |
+| 7 · surfaces | a door's answer, served whole | `/api/results/dir`: the run door's answer, with the ladder at a root and the run of points' view at its root; every path a full path, every point with its words, a file opened outside the folder with why | keep a list of the answer's fields |
+| the page | shows what it is sent | the picker, the Run panel, the ladder, the presenters | compose a path, test a file's name, decide from a path's shape; its own translations are MolView's frame display and the one wording of a point (`web/results.md` § 2.5) |
+
+**What each finding becomes**: E1 — the card's shape is the kind table's,
+asked of a hand-over as of a description; E2 — the route serves the answers
+whole; E3, E4 — one *what it opens* at floor 6, the page reading why; the
+floor breach and the three walks — floors 2, 4 and 6 as above; files by hand
+— each to its floor-1 or floor-2 door; the page — floor 7 sends paths, words
+and why; the tests — every artifact through these doors, the support helpers
+first (one hand-over → description helper, taking the shape from the folder
+answer); the 54 branches — the kind table. p3 is rebuilt on floors 4 and 6;
+p4 falls out of floor 2's one *what it opens*.
+
+**The order** — each a milestone: contract first, code bottom-up, two
+review rounds:
+
+| # | milestone | done when |
+|---|---|---|
+| S0 | **E1** (an error on the road, a last-number move): the hand-over's shape card and Save from `fixed_by_kind`; a road-table row through the hand-over | a SIESTA vibration's hand-over shows *hierarchical* fixed, with why |
+| S1 | **the contract**: `architecture.md` § 2.1 and § 3.2 (the kind table as a door; the run door's limits; the run of points' view on floor 6), `model/parse.md` § 5 (the folder kinds and what each opens, as data), `project-layout.md` § 1.4a, `web/results.md` and `web-api.md` (the page shows; the wire carries paths, words and why) | the user's yes |
+| S2 | **the kind table** — the seven tables into one record per (engine, kind), then the 54 branches judged one by one | no branch on a kind's name but an engine's own code |
+| S3 | **the floors**: floor 2 limited, floor 4's one walk, floor 6's views, floor 7 serving whole, the page showing — p3 rebuilt, p4 with it, the ladder listing a run in phases' result | the review's structure, files and page rows closed |
+| S4 | **the tests through the doors** — the support helpers first | no test composes a run's path or a file's name |
+| S5 | two review rounds over S0–S4 | — |
+
+**Decisions waiting on the user**: (a) S2's reach — the whole kind table
+and all 54 branches, or the folder and door ones first; (b) whether
+`molbuilder describe` takes the shape a kind fixes when `--shape` is left
+out, as the web door does (today it refuses); (c) p3's uncommitted code —
+recommended: set aside and rebuilt on S3.
+
 ## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; SIESTA's vibration redesigned 2026-10-25 as one run in phases, Raman its optical phase (the user's B); R-a, R-c and R1 decided as recommended, 2026-10-25 — to build)*
 
 *Checked 2026-10-27*: rows 1, 2, 4, 5 and A built (2.35.2–2.44.0), the
@@ -777,7 +862,7 @@ is [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-con
 | # | what | where | why here |
 |---|---|---|---|
 | **1** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | **done 2.47.0** |
-| **2** | **§ 1ae — the page errors M5's review measured** (p1, p2 built 2.47.5; p3, p4 left; M5 itself closed 2026-10-28, 2.47.2–2.47.4); § 1ac's proofs — 3a water on both engines, 3b the Raman proof — the user's to run on Sol, molbuilder checking the results with them (the user, 2026-10-27: *"you can focus on workflow, let me submit scientific result and you can help me detect issues later"*) | § 1ae, § 1ac | what was built in 2.42–2.44 is written as rules before more is built on it |
+| **2** | **§ 1ak — one system for a calculation's files, driven by declared data** (proposed 2026-10-28, waiting on the user's yes: S0 the hand-over's shape card, then the contract, the kind table, the floors, the tests; § 1ae's p3 and p4 rebuilt within it; M5 closed 2026-10-28, 2.47.2–2.47.4); § 1ac's proofs — 3a water on both engines, 3b the Raman proof — the user's to run on Sol, molbuilder checking the results with them (the user, 2026-10-27: *"you can focus on workflow, let me submit scientific result and you can help me detect issues later"*) | § 1ae, § 1ac | what was built in 2.42–2.44 is written as rules before more is built on it |
 | **3** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |
 | **4** | **N6 (b) — the engine's own memory analysis** for a stage's first run | § 1u | the user's feature, (a) built |
 | **5** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |
