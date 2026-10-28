@@ -683,31 +683,29 @@ def to_engine(struct: Structure, *,
 #: atoms are placed in the box, so every engine hears it (§ 2.1).
 ATOMS_OUTSIDE = "cell.atoms_outside"
 
-#: The engines that build the atoms as ONE MOLECULE in free space, whatever
-#: the structure's cell: PySCF's ``gto.M`` is gas phase.  Such an engine
-#: computes a cluster -- isolated on all three axes, no cell -- so its
-#: electron count is a molecule's, a vibration removes a free cluster's
-#: motions, and it has no box to judge.
-MOLECULAR = frozenset({"pyscf"})
-
 _CLUSTER = ("isolated", "isolated", "isolated")
 
 
 def engine_axis_kinds(engine: str, struct: Structure) -> Tuple[str, str, str]:
     """The axis kinds ``engine`` computes ``struct`` on -- the one door every
     question about the CALCULATION asks, rather than the structure's own field
-    (§ 2.1): a cluster's on an engine in :data:`MOLECULAR`, else the
-    structure's.  The structure keeps its kinds either way."""
-    if engine in MOLECULAR:
+    (§ 2.1): a cluster's on an engine that computes one molecule in free
+    space (:func:`computes_in_cell`), else the structure's.  The structure
+    keeps its kinds either way."""
+    if not computes_in_cell(engine):
         return _CLUSTER
     return tuple(struct.axis_kind or _CLUSTER)
 
 
 def computes_in_cell(engine: str) -> bool:
-    """Whether ``engine`` computes in the structure's cell.  An engine in
-    :data:`MOLECULAR` computes in free space; its box only places the atoms
-    (§ 6.0)."""
-    return engine not in MOLECULAR
+    """Whether ``engine`` computes in the structure's cell -- its record's
+    word (`engine_table`, ``computes_in``).  An engine that builds the atoms
+    as ONE MOLECULE in free space, whatever the cell -- PySCF's ``gto.M`` is
+    gas phase -- computes a cluster: its electron count a molecule's, a
+    vibration removing a free cluster's motions, no box to judge; its box
+    only places the atoms (§ 6.0)."""
+    from .engine_table import engine as _engine, engines
+    return not (engine in engines() and _engine(engine).free_space)
 
 
 def box_findings_for(engine: str, findings: Sequence[Issue]) -> List[Issue]:

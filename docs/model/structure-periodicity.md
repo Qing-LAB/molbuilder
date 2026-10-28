@@ -159,7 +159,7 @@ Three consumers follow from that one rule, and all three were bugs before they d
 The axis kinds are the STRUCTURE's; the axes a calculation is computed on are
 the ENGINE's to say. An engine that computes in a cell — SIESTA, TranSIESTA —
 takes the structure's kinds. An engine that builds the atoms as one molecule in
-free space — PySCF's `gto.M`, named in `cell.MOLECULAR` — computes a cluster:
+free space — PySCF's `gto.M`, its record in the engine table saying `computes_in = "free space"` ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3) — computes a cluster:
 isolated on all three axes whatever the structure's, and no cell. **One door
 answers it, `cell.engine_axis_kinds(engine, struct)`, and every question about
 the calculation that two engines would answer differently asks it** rather than

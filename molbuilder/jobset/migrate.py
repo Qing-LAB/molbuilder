@@ -719,9 +719,9 @@ def _migrate_records(rec: "_Records"):
             # set (`scf`), is the one stage's to state.  Any other value the
             # retired stage set for its own run is a conflict, named -- one
             # run in phases computes every phase at one value.
-            from ..paths import KIND_ROLES
+            from ..kind_table import kind
             from ..template import catalogue, select
-            others = set(KIND_ROLES["vibration"]) - {"relaxation"}
+            others = set(kind("vibration").role_names) - {"relaxation"}
             relaxation_items = {
                 it.name for it in select(catalogue(), engine="siesta",
                                          stages=("relaxation",))

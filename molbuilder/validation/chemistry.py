@@ -264,14 +264,16 @@ def check_electronic_state(struct: Structure, cfg, *,
     is an electron count, and ``check_species_labels`` owns that finding.
     """
     from ..chemistry import every_label_resolves
-    from ..electronic_state import KINDS, electronic_state, engines_for
+    from ..electronic_state import electronic_state
+    from ..kind_table import kind as _kind, kinds as _kinds
     from ..template import engine_name
 
     # Whose schema this config is -- the one answer (`template.engine_name`),
     # never an isinstance ladder here.  An engine that does not run the kind
     # has no electronic state to judge.
     engine = engine_name(type(cfg))
-    if calculation not in KINDS or engine not in engines_for(calculation):
+    if (calculation not in _kinds()
+            or engine not in _kind(calculation).engines):
         return []
     out = _transport_charge(cfg) if calculation == "transport" else []
     if not every_label_resolves(struct):
@@ -355,7 +357,8 @@ def _spin_findings(struct: Structure, st, engine: str,
     :func:`check_electronic_state`)."""
     from ..chemistry import check_spin_charge_parity
     from ..electronic_state import FREE, count_must_float
-    from ..template import (a_kind, catalogue, is_member, offered, one,
+    from ..kind_table import kind as _kind
+    from ..template import (catalogue, is_member, offered, one,
                             why_not_offered)
 
     t, c, q = st.spin_treatment, st.unpaired_electrons, st.net_charge
@@ -367,7 +370,7 @@ def _spin_findings(struct: Structure, st, engine: str,
         return [Issue(
             "error",
             f"{item} = {r.value} ({r.said}) cannot run here: "
-            f"{a_kind(calculation)} on {engine} does not offer it -- "
+            f"{_kind(calculation).with_article} on {engine} does not offer it -- "
             f"{why_not_offered(item, r.value, engine, calculation)}.  "
             f"It offers {', '.join(map(str, can))}.",
             f"config.{item}")]
@@ -393,7 +396,7 @@ def _spin_findings(struct: Structure, st, engine: str,
                         + (f"; its count floats here -- {floats}" if floats
                            else "") + ")")
         way = (f"State {' or '.join(ways)}." if ways else
-               f"{a_kind(calculation)[:1].upper()}{a_kind(calculation)[1:]} "
+               f"{_kind(calculation).with_article[:1].upper()}{_kind(calculation).with_article[1:]} "
                f"on {engine} offers restricted alone -- "
                f"{why_not_offered('spin_treatment', 'unrestricted', engine, calculation)}"
                f" -- so the count is 0.")

@@ -59,7 +59,7 @@ def test_round_trip_and_no_structure_block():
     ("electrode_L", "seed", "electrode_R", "device", "transmission"),
 ], ids=["without-the-seed", "out-of-order"])
 def test_a_ladder_is_its_five_rungs_every_one(names):
-    """`engines/transport.md` § 3.8.2a, `task.fixed_by_kind` (user,
+    """`engines/transport.md` § 3.8.2a, the kind table (user,
     2026-10-12: "Always keep the seed"): a transport description's stages
     are the five rungs, every one, in order -- the reader refuses any other
     list, naming the five.  Without the seed the device's SCF would start
@@ -75,8 +75,27 @@ def test_a_ladder_is_its_five_rungs_every_one(names):
              structure=None, calculation="transport",
              slots={"junction": _CITE}, bias=(0.0, 0.2),
              low_bias_approximation=False, varies=(), stages=stages)
-    assert ("stages are its five rungs, every one, in order -- seed, "
+    assert ("stages are its rungs, every one, in order -- seed, "
             "electrode_L, electrode_R, device, transmission") in str(got.value)
+
+
+def test_a_kind_on_an_engine_it_does_not_run_on_is_refused_by_the_reader():
+    """`execution/architecture.md` § 3.3: a kind asked on an engine it has
+    no part for is refused by the one door, naming the engines it runs on
+    -- the reader every road reads a description through, so a hand-written
+    transport description on PySCF stops here and not as an error deep in
+    resolve.
+
+    MUTATION THIS MUST FAIL AGAINST: the reader asking the lenient
+    ``kind_table.pair`` (None for the pair) instead of the kind's part."""
+    with pytest.raises(ValueError) as got:
+        Task(engine="pyscf", shape="hierarchical",
+             run=Run(name="T", id=run_id("T", _CITE, stage_names=_STAGES)),
+             structure=None, calculation="transport",
+             slots={"junction": _CITE}, bias=(0.0,), varies=(),
+             stages=_stages())
+    assert ("a transport calculation does not run on 'pyscf' -- it runs on "
+            "siesta") in str(got.value)
 
 
 @pytest.fixture

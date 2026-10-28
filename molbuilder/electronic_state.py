@@ -32,7 +32,7 @@ state can say *"-3 -- three deprotonated phosphates"* rather than a number.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, FrozenSet, Optional
+from typing import Any, Dict, Optional
 
 from .chemistry import (
     ChemistryAnalysis,
@@ -62,28 +62,9 @@ FREE = "free"
 #: the form offers a list and a template reads ``unpaired_electrons = 2``.
 COUNTS = tuple(range(0, 11)) + (FREE,)
 
-#: The calculation kinds a state is asked for.
-KINDS = ("optimization", "vibration", "transport")
-
 #: Treatments under which SIESTA stops on ``Spin.Fix``, so the count can only
 #: float (``read_options.F90``: ``if (nspin .ne. 2) call die(...)``).
 ALWAYS_FREE = frozenset({"non-collinear", "spin-orbit"})
-
-#: WHICH ENGINES RUN WHICH KIND -- SIESTA all three, PySCF optimization and
-#: vibration.  The choices each pair offers are the catalogue's, on the
-#: state's own items (`offered`, `engines/template.md` § 6.3a;
-#: `science/chemistry-correctness.md` § 2a.3), with the reasons
-#: `template.why_not_offered` gives.
-_RUNS: Dict[str, FrozenSet[str]] = {
-    "siesta": frozenset(KINDS),
-    "pyscf": frozenset({"optimization", "vibration"}),
-}
-
-def engines_for(kind: str) -> tuple:
-    """The engines that run ``kind``, so a form for an engine that does not
-    run the kind has no state to ask for."""
-    return tuple(e for e, kinds in _RUNS.items() if kind in kinds)
-
 
 def count_must_float(engine: str, kind: str, treatment: str) -> Optional[str]:
     """Why the unpaired-electron count can only float here, or ``None``.
@@ -221,9 +202,10 @@ def electronic_state(struct: Structure, cfg: Any, *,
     gate) asks ``every_label_resolves`` first and stands down -- the label
     check owns that finding.
     """
-    if kind not in KINDS:
-        raise ValueError(f"electronic_state: kind must be one of {KINDS}, "
-                         f"not {kind!r}")
+    from .kind_table import kinds
+    if kind not in kinds():
+        raise ValueError(f"electronic_state: kind must be one of "
+                         f"{kinds()}, not {kind!r}")
     from .template import engine_name
     engine = engine_name(type(cfg))
     facts = analyze_structure(struct)

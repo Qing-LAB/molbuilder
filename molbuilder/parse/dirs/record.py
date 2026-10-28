@@ -590,12 +590,9 @@ def _setup(f: RunFiles) -> Dict[str, Any]:
     return setup_rows(f)
 
 
+from ...engine_table import engines as _engines  # noqa: E402
 from ..engines.siesta_grammar import (PHASE_NEGF as _PHASE_NEGF,  # noqa: E402
                                       PHASE_PERIODIC as _PHASE_PERIODIC)
-
-#: The engines a run record is composed for; a row whose ``engines`` is
-#: ``()`` answers for each.
-_ENGINES = ("siesta", "pyscf")
 
 #: The timing instrument's figures (§ 5c): the headline phase's, and each
 #: phase's own under its name.
@@ -664,7 +661,9 @@ def _one_source(rows: Tuple[Contributor, ...]) -> None:
     field inside another's -- for an engine both serve."""
     owner: Dict[Tuple[str, str], str] = {}
     for row in rows:
-        for engine in (row.engines or _ENGINES):
+        # A row whose ``engines`` is ``()`` answers for every engine the
+        # engine table holds (`execution/architecture.md` § 3.3).
+        for engine in (row.engines or _engines()):
             for field_ in row.fields:
                 for (other, eng), name in owner.items():
                     if eng == engine and name != row.name and (

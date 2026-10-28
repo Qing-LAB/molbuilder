@@ -1,9 +1,9 @@
 """The template — a calculation's parameter catalogue, as one TOML file.
 
 **Module:** L1, floor 1 -- the catalogue and the template format.  Imports
-the standard library and the ground floor alone (``identity``, ``paths``,
-``persist``; inside functions ``electronic_state``, ``config.stages``,
-``kmesh``); imported by the engines' producers, ``validation/task``,
+the standard library and the ground floor alone (``identity``,
+``kind_table``, ``persist``; inside functions ``engine_table``, ``kmesh``);
+imported by the engines' producers, ``validation/task``,
 ``resolve`` and every layer above.  Nothing here touches the filesystem or a
 scheduler: the template FILE's name and read are ``template_file``'s.
 
@@ -56,7 +56,7 @@ from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
                     Optional, Sequence, Tuple, Union)
 
 from .identity import stage_key
-from .paths import KIND_ROLES, ROLE_SETS
+from . import kind_table as _kinds
 from .persist import check_schema
 
 
@@ -165,55 +165,17 @@ if tuple(GROUP_WORDS) != GROUPS:      # one vocabulary, in one order
                        "template.GROUPS, in its order")
 
 
-#: EACH ENGINE'S NAME, as a person reads it -- served with a form of one
-#: engine's own settings, before every card title (*SIESTA · Raman*,
-#: `web/form-schema.md` § 1.3), and with the chemistry card's states.
-ENGINE_WORDS = {"siesta": "SIESTA", "pyscf": "PySCF"}
+def _results_of(kind: str) -> Tuple["_kinds.Result", ...]:
+    """The results a ``kind`` gives, in the order a person decides them --
+    its record's (`kind_table`, `engines/template.md` § 6.2a); ``()`` for
+    no kind, a form of no kind's own."""
+    return _kinds.kind(kind).results if kind in _kinds.kinds() else ()
 
 
-class Result(NamedTuple):
-    """One result a kind of calculation gives (`engines/template.md`
-    § 6.2a): its key -- what an item's ``result`` names -- and the card's
-    title and the one line under it, saying what it gives and what it
-    costs."""
-    key: str
-    title: str
-    line: str
-
-
-#: THE RESULTS EACH KIND GIVES, in the order a person decides them
-#: (`engines/template.md` § 6.2a) -- the cards a form of the kind draws
-#: after *Setup*, an item naming one for the kind drawn in it
-#: (:func:`card_of`).  A kind not listed keeps its group cards.
-RESULTS: Dict[str, Tuple[Result, ...]] = {
-    "vibration": (
-        Result("modes", "Frequencies and mode shapes",
-               "Relax the structure first -- unless you say it is already "
-               "relaxed -- then take the force constants: every "
-               "vibrational mode, its frequency and how the atoms move.  "
-               "Everything below is computed from these modes."),
-        Result("infrared", "Infrared",
-               "How strongly each mode absorbs infrared light -- from how "
-               "the dipole changes as the mode moves.  Cheap on SIESTA and "
-               "for a free molecule on PySCF; with atoms held and Raman "
-               "off, PySCF takes 6 extra SCFs per free atom."),
-        Result("raman", "Raman",
-               "How strongly each mode scatters laser light -- from how "
-               "the polarizability changes as the mode moves.  The "
-               "expensive one: extra calculations at displaced "
-               "geometries."),
-        Result("thermochemistry", "Thermochemistry",
-               "The zero-point energy, and the energy, entropy and free "
-               "energy at a temperature -- the vibrational part on SIESTA "
-               "and with atoms held, the free molecule's whole answer on "
-               "PySCF (with its translation and rotation).  No extra "
-               "calculation."),
-        Result("probe", "Orbital energies along a mode",
-               "How the frontier orbital energies move when the molecule "
-               "is pushed along a mode -- two extra SCFs per mode "
-               "picked."),
-    ),
-}
+def _roles_of(kind: str) -> Tuple[str, ...]:
+    """A ``kind``'s rungs' roles (`kind_table`); ``()`` for a kind without
+    roles, or none named."""
+    return _kinds.kind(kind).role_names if kind in _kinds.kinds() else ()
 
 
 class Card(NamedTuple):
@@ -229,7 +191,7 @@ class Card(NamedTuple):
 
 def cards_of_every_kind() -> Tuple[Card, ...]:
     """Every card any kind draws -- the groups' and every kind's results'."""
-    return tuple({c.key: c for k in (None, *RESULTS)
+    return tuple({c.key: c for k in (None, *_kinds.kinds())
                   for c in cards(k or "")}.values())
 
 
@@ -240,7 +202,7 @@ def cards(kind: str) -> Tuple[Card, ...]:
     shows (:func:`setup_words`), so its ``subtitle`` here is ``None``."""
     groups = [Card(g, t, sub, True) for g, (t, sub) in GROUP_WORDS.items()]
     results = [Card(r.key, r.title, r.line, False)
-               for r in RESULTS.get(kind, ())]
+               for r in _results_of(kind)]
     return tuple(groups[:1] + results + groups[1:])
 
 #: THE SETUP CARD'S LINE, one for each set of its fields a form shows -- what
@@ -328,6 +290,24 @@ def _refuse(msg: str, *, where: str = "") -> NoReturn:
 # --------------------------------------------------------------------- #
 #  One item                                                             #
 # --------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class NotOffered:
+    """WHY A CHOICE IS NOT OFFERED, where it holds (§ 6.3a): ``on`` an
+    engine, a calculation kind or ``"<engine>.<kind>"`` -- ``""`` wherever
+    a value is withheld; ``values`` the withheld choices it explains --
+    ``()`` every one withheld there; ``why`` the reason, read from the
+    engine's source."""
+    on: str
+    values: Tuple[Any, ...]
+    why: str
+
+    def holds(self, value: Any, engine: str, kind: str) -> bool:
+        """Whether this row explains ``value`` withheld from a ``kind``
+        calculation on ``engine``."""
+        return (self.on in ("", engine, kind, f"{engine}.{kind}")
+                and (not self.values or is_member(value, self.values)))
+
 
 @dataclass(frozen=True)
 class Item:
@@ -491,10 +471,16 @@ class Item:
     #: for an item two engines share whose choices differ -- the TOML dotted
     #: key ``siesta.transport``).  No entry for the kind means every choice.
     #: Ask :func:`offered`; why a choice is not offered is
-    #: :func:`why_not_offered`'s.
+    #: :func:`why_not_offered`'s, from :attr:`not_offered`.
     offered: Tuple[Tuple[str, Tuple[Any, ...]], ...] = ()
+    #: WHY A CHOICE ``offered`` WITHHOLDS IS WITHHELD (§ 6.3a), one row per
+    #: reason (:class:`NotOffered`), the first that holds the one a refusal
+    #: gives (:func:`why_not_offered`).  Catalogue-only, like ``result``:
+    #: never written into a calculation's template.
+    not_offered: Tuple[NotOffered, ...] = ()
     #: WHICH RESULT OF THE KIND THIS SETTING IS FOR (§ 6.2a), as ``(kind,
-    #: result)`` pairs, each result one of :data:`RESULTS` for its kind --
+    #: result)`` pairs, each result one its kind's record gives
+    #: (`kind_table`) --
     #: the card it is drawn in (:func:`card_of`).  Where it is drawn and
     #: nothing else: a catalogue fact, never written into a calculation's
     #: template.
@@ -645,7 +631,7 @@ class Item:
     #: k-density is an electrode's. Without this there is no basis on which to
     #: route an override to the rung that owns it, and a surface has to guess.
     #:
-    #: THE NAMES ARE ROLES (:data:`KIND_ROLES`, plan § 5w K4): a transport
+    #: THE NAMES ARE ROLES (the kind table's, plan § 5w K4): a transport
     #: rung by its name, a vibration's ``relaxation`` or ``force_constants``
     #: whatever the stage is called (:func:`stage_roles`).  Each kind reads
     #: its own roles here, and a kind without roles reads every item on every
@@ -728,18 +714,18 @@ class Item:
         # kind and states no `calculations`; its names are held to every
         # kind's roles.)
         if self.stages:
-            _kinds = [k for k in (self.calculations or tuple(KIND_ROLES))
-                      if k in KIND_ROLES]
-            _known = {r for k in _kinds for r in KIND_ROLES[k]}
+            _with = [k for k in (self.calculations or _kinds.kinds())
+                     if _roles_of(k)]
+            _known = {r for k in _with for r in _roles_of(k)}
             for _s in self.stages:
                 if _s not in _known:
                     _refuse(f"stages names {_s!r}, which is no rung role of "
                             f"the kinds that carry this item -- they are "
                             f"{', '.join(sorted(_known)) or '(none)'} "
                             f"(engines/template.md § 6.4)", where=self.name)
-            for _k in (k for k in self.calculations if k in KIND_ROLES):
-                if not set(self.stages) & set(KIND_ROLES[_k]):
-                    _refuse(f"stages names no rung of {a_kind(_k)}, which "
+            for _k in (k for k in self.calculations if _roles_of(k)):
+                if not set(self.stages) & set(_roles_of(_k)):
+                    _refuse(f"stages names no rung of {_kinds.kind(_k).with_article}, which "
                             f"carries this item -- none of its rungs would "
                             f"read it (engines/template.md § 6.4)",
                             where=self.name)
@@ -758,11 +744,11 @@ class Item:
         # § 6.2a: a result is one the kind gives -- a misspelling would draw
         # the setting on no card and send its warnings nowhere.
         for _k, _r in self.result:
-            if _r not in {r.key for r in RESULTS.get(_k, ())}:
+            if _r not in {r.key for r in _results_of(_k)}:
                 _refuse(f"result.{_k} = {_r!r} is not one of the results "
-                        f"{a_kind(_k)} gives "
-                        f"({', '.join(r.key for r in RESULTS.get(_k, ())) or 'none listed'}; "
-                        f"template.RESULTS)", where=self.name)
+                        f"{_kinds.kind(_k).with_article} gives "
+                        f"({', '.join(r.key for r in _results_of(_k)) or 'none listed'}; "
+                        f"the kind table)", where=self.name)
 
     @property
     def is_set(self) -> bool:
@@ -899,7 +885,7 @@ def _toml_key(k: Any) -> str:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "launch", "type",
-                   "choices", "value", "source", "default", "engine_default", "recommended", "offered", "result", "active_when", "choice_labels", "optional", "required",
+                   "choices", "value", "source", "default", "engine_default", "recommended", "offered", "not_offered", "result", "active_when", "choice_labels", "optional", "required",
                    "allocation", "run_card",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "above", "at_least", "tightens", "tier",
@@ -1045,6 +1031,23 @@ def catalogue() -> "Template":
     directly; that is a different file and not this one.
     """
     parsed = read_template(load_catalogue())
+    # THE CATALOGUE'S ENGINES AND KINDS ARE THE TABLES' (`execution/
+    # architecture.md` § 3.3): the file serves every engine the engine
+    # table holds and no other, and every kind an item names is one the
+    # kind table holds -- a name with no record is a row nothing asks.
+    from .engine_table import engines as _engines
+    if set(parsed.engines) != set(_engines()):
+        _refuse(f"engines = {list(parsed.engines)}, and the engine table "
+                f"holds {', '.join(_engines())} -- one list of engines, the "
+                f"engine table's")
+    for it in parsed.items:
+        for key in ("calculations", "citation", "role", "shared",
+                    "required"):
+            stray = [k for k in getattr(it, key) if k not in _kinds.kinds()]
+            if stray:
+                _refuse(f"{key} names {', '.join(map(repr, stray))}, which "
+                        f"the kind table does not hold "
+                        f"({', '.join(_kinds.kinds())})", where=it.name)
     # A KIND IS NEVER STARTED ON A CHOICE IT REFUSES (§ 6.3a): the value a
     # kind's template starts at -- its recommendation, else the default --
     # is among what that kind is offered.  Asked of the MASTER FILE, once:
@@ -1098,7 +1101,7 @@ def catalogue() -> "Template":
                     other.engines and e not in other.engines
                     for e in engines_here) or any(
                     other.calculations and k not in other.calculations
-                    for k in (it.calculations or _calculation_kinds())):
+                    for k in (it.calculations or _kinds.kinds())):
                 _refuse(f"active_when names {other_name!r}, which is not an "
                         f"item of every engine and kind this one serves "
                         f"(engines/template.md § 5)", where=it.name)
@@ -1455,13 +1458,6 @@ _TYPE_CHECKS = {
 }
 
 
-def _calculation_kinds() -> Tuple[str, ...]:
-    """The calculation kinds a table may be keyed by -- the electronic
-    state's `KINDS`, asked lazily (that module reaches this one)."""
-    from .electronic_state import KINDS
-    return tuple(KINDS)
-
-
 def _table_from(name: str, key: str, raw, type_: str, choices, *,
                 keyed_by: str, example: str,
                 keys: Optional[Tuple[str, ...]] = None
@@ -1505,7 +1501,7 @@ def _offered_from(name: str, raw, type_: str, choices,
                 'engine and then kind -- e.g. offered = { vibration = '
                 '["CG", "FIRE"] } or offered = { siesta.transport = '
                 '["restricted"] }', where=name)
-    kinds = _calculation_kinds()
+    kinds = _kinds.kinds()
     out = []
     for key, val in raw.items():
         if isinstance(val, Mapping):                    # an engine's table
@@ -1534,6 +1530,57 @@ def _offered_from(name: str, raw, type_: str, choices,
     return tuple(out)
 
 
+def _not_offered_from(name: str, raw, type_: str, choices, engines,
+                      offered) -> Tuple[NotOffered, ...]:
+    """The ``not_offered`` rows of an item (§ 6.3a), each checked: only on
+    an item with ``offered``; ``on`` an engine the item serves, a kind the
+    kind table holds, or the pair; every value one of the item's choices;
+    ``why`` a sentence."""
+    if raw is None:
+        return ()
+    if not offered:
+        _refuse("`not_offered` says why a choice `offered` withholds is "
+                "withheld, and this item withholds none", where=name)
+    if not isinstance(raw, list) or not raw or not all(
+            isinstance(r, Mapping) for r in raw):
+        _refuse('`not_offered` is a list of rows -- [[item.<name>.'
+                'not_offered]] with on = "siesta", values = [...], why = '
+                '"..."', where=name)
+    from .engine_table import engines as _all_engines
+    served = tuple(engines) or _all_engines()
+    kinds = _kinds.kinds()
+    out = []
+    for i, row in enumerate(raw):
+        at = f"not_offered[{i}]"
+        unknown = sorted(set(row) - {"on", "values", "why"})
+        if unknown:
+            _refuse(f"`{at}` has unknown key(s) {', '.join(unknown)} -- a "
+                    f"row states on, values and why", where=name)
+        why = row.get("why")
+        if not isinstance(why, str) or not why.strip():
+            _refuse(f"`{at}` states no why -- the reason, read from the "
+                    f"engine's source", where=name)
+        on = row.get("on", "")
+        engine, dot, kind = str(on).partition(".")
+        if not isinstance(on, str) or not (
+                on == "" or (dot and engine in served and kind in kinds)
+                or (not dot and (on in served or on in kinds))):
+            _refuse(f"`{at}.on` is {on!r} -- an engine this item serves "
+                    f"({', '.join(served)}), a calculation kind "
+                    f"({', '.join(kinds)}) or \"<engine>.<kind>\"",
+                    where=name)
+        values = row.get("values", [])
+        if not isinstance(values, list):
+            _refuse(f"`{at}.values` is a list of the item's choices",
+                    where=name)
+        for v in values:
+            _check_raw_value(name, f"{at}.values", v, type_, choices)
+        out.append(NotOffered(on=on, values=tuple(_shape(v, type_)
+                                                  for v in values),
+                              why=why.strip()))
+    return tuple(out)
+
+
 def _result_from(name: str, raw) -> Tuple[Tuple[str, str], ...]:
     """The ``result`` table of an item (§ 6.2a): a calculation kind ->
     one of that kind's results.  A key that is no kind is refused, as
@@ -1546,7 +1593,7 @@ def _result_from(name: str, raw) -> Tuple[Tuple[str, str], ...]:
         _refuse('`result` must be a table keyed by calculation kind, each '
                 'value a result of that kind -- e.g. result = { vibration = '
                 '"raman" }', where=name)
-    kinds = _calculation_kinds()
+    kinds = _kinds.kinds()
     unknown = sorted(set(raw) - set(kinds))
     if unknown:
         _refuse(f"`result` names {', '.join(map(repr, unknown))}, which is "
@@ -1590,16 +1637,17 @@ def _choice_labels_from(name: str, raw, choices) -> Tuple[Tuple[Any, str], ...]:
 
 def _stages_from(name: str, raw) -> Tuple[str, ...]:
     """``stages`` as read (§ 6.4): a list of rung roles, or the name of a
-    set of them (:data:`ROLE_SETS` -- ``"scf"``, every rung that runs an
-    SCF), read as its roles.  A name no set has is refused, naming the sets."""
+    set of them (`kind_table.ROLE_SETS` -- ``"scf"``, every rung that runs
+    an SCF), read as its roles.  A name no set has is refused, naming the
+    sets."""
     if raw is None:
         return ()
     if isinstance(raw, str):
-        if raw not in ROLE_SETS:
+        if raw not in _kinds.ROLE_SETS:
             _refuse(f"stages names the set {raw!r}, which is not one -- the "
-                    f"sets are {', '.join(sorted(ROLE_SETS))}; or list the "
-                    f"roles (engines/template.md § 6.4)", where=name)
-        return ROLE_SETS[raw]
+                    f"sets are {', '.join(sorted(_kinds.ROLE_SETS))}; or list "
+                    f"the roles (engines/template.md § 6.4)", where=name)
+        return _kinds.role_set(raw)
     return tuple(raw)
 
 
@@ -1883,9 +1931,13 @@ def _item_from(name: str, body: Any) -> Item:
         recommended=_table_from(name, "recommended", body.get("recommended"),
                                 type_, choices, keyed_by="calculation kind",
                                 example="recommended = { vibration = 0.01 }",
-                                keys=_calculation_kinds()),
+                                keys=_kinds.kinds()),
         offered=_offered_from(name, body.get("offered"), type_, choices,
                               tuple(body.get("engines", ()) or ())),
+        not_offered=_not_offered_from(name, body.get("not_offered"), type_,
+                                      choices,
+                                      tuple(body.get("engines", ()) or ()),
+                                      body.get("offered")),
         result=_result_from(name, body.get("result")),
         active_when=_active_when_from(name, body.get("active_when")),
         choice_labels=_choice_labels_from(name, body.get("choice_labels"),
@@ -2086,14 +2138,17 @@ def stage_role_rule(engine: str, kind: str) -> Optional[Dict[str, Any]]:
     is one run in three phases, and carries every phase's role
     (`engines/vibration.md` § 5.11 § 9: the stage's one resolved
     configuration feeds every phase's deck); a PySCF vibration relaxes
-    inside its one deck, so each of its rungs is the force-constant run."""
-    if kind not in KIND_ROLES:
+    inside its one deck, so each of its rungs is the force-constant run --
+    the pair's own word in the kind table (``stage_roles``).  A kind with
+    roles asked on an engine it does not run on is refused by the kind's
+    part (`kind_table.KindTableError`, naming the engines it runs on)."""
+    if not _roles_of(kind):
         return None
-    if kind == "transport":
+    rule = _kinds.kind(kind).on(str(engine)).stage_roles
+    if rule == "own":
         return {"named": {}, "otherwise": None}
     return {"named": {},
-            "otherwise": (list(KIND_ROLES[kind]) if str(engine) == "siesta"
-                          else ["force_constants"])}
+            "otherwise": list(_roles_of(kind) if rule == "every" else rule)}
 
 
 def stage_roles(engine: str, kind: str, stage: Optional[str]
@@ -2142,17 +2197,17 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
     removed from the card it is stated on."""
     it = one(catalogue(), name, engine=engine)
     if it.calculations and kind not in it.calculations:
-        return (f"which {a_kind(kind)} does not carry -- no rung of it reads "
+        return (f"which {_kinds.kind(kind).with_article} does not carry -- no rung of it reads "
                 f"it, so the value would change nothing (engines/template.md "
                 f"6.3)")
     roles = stage_roles(engine, kind, stage) or (stage,)
     # ...THE RUNGS OF THIS KIND that read it, never another kind's roles.
-    mine = [r for r in it.stages if r in KIND_ROLES.get(kind, it.stages)]
+    mine = [r for r in it.stages if r in (_roles_of(kind) or it.stages)]
     who = " / ".join(mine)
     rung = (repr(stage) if roles == (stage,)
             else f"{stage!r} (its {' + '.join(roles)} rung)")
     return (f"which only the {who} rung{'s' if len(mine) > 1 else ''} "
-            f"of {a_kind(kind)} read{'' if len(mine) > 1 else 's'}, not "
+            f"of {_kinds.kind(kind).with_article} read{'' if len(mine) > 1 else 's'}, not "
             f"{rung} -- {then} (engines/template.md 6.4, the `stages` "
             f"declaration)")
 
@@ -2216,7 +2271,7 @@ def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
     """``{item: value}`` -- those of :func:`fixed_answers` that EVERY rung
     of a ``kind`` calculation reads: on a kind without roles all of them;
     on one with roles, those whose ``stages`` names every role
-    (`paths.KIND_ROLES`) -- SIESTA's per-step forces and coordinates on an
+    (the kind table's) -- SIESTA's per-step forces and coordinates on an
     optimization and a vibration, which every rung writes; not on a
     transport calculation, whose transmission writes neither (§ 6.4;
     `engines/transport.md` § 6.1b).
@@ -2225,7 +2280,7 @@ def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
     holds a config to: only a render that skipped `resolve` can hold
     another value.
     """
-    roles = set(KIND_ROLES.get(kind, ()))
+    roles = set(_roles_of(kind))
     stages = {it.name: set(it.stages)
               for it in select(catalogue(), engine=engine)}
     return {name: value
@@ -2267,13 +2322,13 @@ def why_not(item: "Item", value: Any, *, engine: str,
     held = fixed(item.name, kind) if triple and len(value) == 3 else {}
     for i, (want, why) in held.items():
         if value[i] != want:
-            return (f", whose {AXES[i]} component {a_kind(kind)} fixes at "
+            return (f", whose {AXES[i]} component {_kinds.kind(kind).with_article} fixes at "
                     f"{want!r}: {why}")
     if (item.offered and item.name not in STATE_ITEMS and item.choices
             and is_member(value, item.choices)):
         can = offered(item, engine, kind)
         if not is_member(value, can):
-            return (f", which {a_kind(kind)} does not offer: "
+            return (f", which {_kinds.kind(kind).with_article} does not offer: "
                     f"{why_not_offered(item.name, value, engine, kind)}.  It "
                     f"offers {', '.join(map(str, can))}")
     parts = [v for i, v in enumerate(value if triple else (value,))
@@ -2289,14 +2344,6 @@ def why_not(item: "Item", value: Any, *, engine: str,
             return (f": {'each component' if triple else 'it'} must be "
                     f"at least {bound} -- {why}")
     return None
-
-
-def a_kind(kind: str) -> str:
-    """``kind`` with its article, as a refusal says it: *an optimization*,
-    *a vibration*, *a transport calculation* -- the one kind whose name is
-    not a noun for the calculation."""
-    noun = "transport calculation" if kind == "transport" else kind
-    return f"{'an' if noun[:1] in 'aeiou' else 'a'} {noun}"
 
 
 def offered(item: "Item", engine: str, kind: str) -> Tuple[Any, ...]:
@@ -2336,11 +2383,11 @@ def card_of(item: "Item", kind: str) -> Optional[str]:
 
 def shared_by_engines(kind: str) -> frozenset:
     """The items one catalogue row serves on EVERY engine that runs a
-    ``kind`` calculation (`electronic_state.engines_for`) -- drawn once,
+    ``kind`` calculation (its parts in the kind table) -- drawn once,
     before the engine is chosen, on a page offering the kind on several
-    (§ 6.2a).  Empty for a kind one engine runs: nothing is shared then."""
-    from .electronic_state import engines_for
-    engines = engines_for(kind)
+    (§ 6.2a).  Empty for a kind one engine runs: nothing is shared then;
+    a kind the kind table does not hold refused by it, naming the kinds."""
+    engines = _kinds.kind(kind).engines
     if len(engines) < 2:
         return frozenset()
     cat = catalogue()
@@ -2398,51 +2445,15 @@ def inactive_why(item: "Item", values: Mapping[str, Any]) -> Optional[str]:
 def why_not_offered(name: str, value: Any, engine: str, kind: str) -> str:
     """Why a ``kind`` calculation on ``engine`` is not offered ``value`` for
     ``name`` -- the clause a refusal puts after *"which a <kind> does not
-    offer"*.  Each reason read from the engine's source (§ 6.3a;
-    `science/chemistry-correctness.md` § 2a.3)."""
-    if name == "spin_treatment":
-        if value == "restricted-open" and engine == "siesta":
-            return "SIESTA has no restricted open-shell formalism"
-        if value in ("non-collinear", "spin-orbit"):
-            if engine == "pyscf":
-                return ("PySCF's molecular SCF here is collinear"
-                        if value == "non-collinear" else
-                        "PySCF's molecular SCF here has no spin-orbit "
-                        "coupling")
-            if kind == "transport":
-                return ("TranSIESTA stops on more than two spin components "
-                        "(m_transiesta.F90: 'transiesta does not work for "
-                        "non-collinear or spin-orbit')")
-        if engine == "pyscf" and kind == "vibration":
-            if value == "restricted-open":
-                return ("PySCF has no analytic ROHF/ROKS Hessian, and the "
-                        "vibration deck takes the analytic Hessian")
-            if value == "unrestricted":
-                return ("the spectrum record carries one spin channel: a "
-                        "PySCF vibration's orbital block is written one "
-                        "channel wide and its reader refuses a second "
-                        "(engines/vibration.md § 3.1; plan § 5w K17)")
-    if name == "unpaired_electrons":
-        if engine == "pyscf" and value == "free":
-            return ("PySCF fixes the moment: it occupies exactly N-up and "
-                    "N-down from mol.spin (pyscf/scf/uhf.py) -- state the "
-                    "count, 0 for a closed shell, 1 for a doublet, 2 for a "
-                    "triplet")
-        if engine == "pyscf" and kind == "vibration":
-            return "a PySCF vibration is restricted: every electron paired"
-        if kind == "transport":
-            return ("TranSIESTA cannot hold a fixed total spin ('Fixing spin "
-                    "is not possible in TranSiesta', m_ts_options.F90): under "
-                    "unrestricted the count floats")
-    if name == "relax_type" and kind == "vibration":
-        if value == "none":
-            return ("none relaxes nothing: relax_type names the relaxer a "
-                    "vibration's relax stage uses, and whether that stage "
-                    "runs at all is already_relaxed's to say")
-    if name == "solution_method" and value == "transiesta":
-        return ("transiesta is a transport device's solver: an open-boundary "
-                "run needs the electrodes only a transport calculation builds")
-    return f"{a_kind(kind)} on {engine} does not run it"
+    offer"*: the first of the item's ``not_offered`` rows that holds
+    (§ 6.3a), each reason read from the engine's source
+    (`science/chemistry-correctness.md` § 2a.3); a value no row explains
+    said as the kind on the engine not running it."""
+    item = one(catalogue(), name, engine=engine)
+    for row in (item.not_offered if item is not None else ()):
+        if row.holds(value, engine, kind):
+            return row.why
+    return f"{_kinds.kind(kind).with_article} on {engine} does not run it"
 
 
 #: The role item no rung answers with ONE value: each point of the
@@ -2555,7 +2566,7 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
                          f"{', '.join(HOMES)} (engines/template.md 5.4)")
     name, run = item.name, is_run_setting(item)
     if item.calculations and kind not in item.calculations:
-        return (f", which {a_kind(kind)} does not carry -- no rung of it "
+        return (f", which {_kinds.kind(kind).with_article} does not carry -- no rung of it "
                 f"reads it, so the value would change nothing "
                 f"(engines/template.md 6.3)")
     if home == "flag" and not item.allocation:
@@ -3209,7 +3220,7 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_answers", "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
-           "a_kind", "as_declared", "why_not", "why_not_an_item",
+           "as_declared", "why_not", "why_not_an_item",
            "HOMES", "SAID", "TRIAL_PINS", "GRID_AXES", "is_run_setting",
            "home_of", "why_not_in",
            "accepts", "spell", "shown", "read_text", "default_of"]

@@ -166,7 +166,7 @@ def test_the_handover_carries_the_proposed_ladder(web_client,
                                                   isolated_projects_root,
                                                   engine, calculation,
                                                   params, ladder, shape):
-    from molbuilder.task import fixed_shape
+    from molbuilder.kind_table import kind
     rendered = web_client.post("/api/task-setup/handover", json=dict(
         _envelope(), engine=engine, name="probe", calculation=calculation,
         params=params)).get_json()
@@ -187,7 +187,7 @@ def test_the_handover_carries_the_proposed_ladder(web_client,
     (d / rendered["handover_name"]).write_text(rendered["handover_text"])
     said = _folder(web_client, d)["shape_fixed"]
     assert (said or {}).get("shape") == shape, said
-    assert said == fixed_shape(calculation, engine), said
+    assert said == kind(calculation).on(engine).fixed_shape, said
 
 
 # --------------------------------------------------------------------- #

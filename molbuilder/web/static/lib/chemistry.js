@@ -118,7 +118,7 @@
     }
 
     /** One engine's state as the card's lines, headed by the engine's name
-     *  as the server says it (`template.ENGINE_WORDS`).  Each reason is the
+     *  as the server says it (the engine table's `words`).  Each reason is the
      *  server's own phrasing (`Resolved.said`), the one a deck comment
      *  carries. */
     function _stateBlock(name, st) {

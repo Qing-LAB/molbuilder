@@ -447,7 +447,7 @@ The spin, **at that charge**, and knowing whether the structure repeats:
 the atoms as one gas-phase molecule whatever cell the structure carries
 (`validation/pyscf.py` says so of a periodic structure), so a PySCF calculation is
 finite: parity binds it (ES3; `gto.M` refuses a mismatch) and no moment floats
-(ES6). `cell.MOLECULAR` names such engines, and *finite* is read from the axes
+(ES6). The engine table says which engines compute so (`computes_in = "free space"`, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), and *finite* is read from the axes
 the engine computes with — every one isolated — through the one door,
 `cell.engine_axis_kinds` ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1). Judged by the axes alone, a
 periodic structure handed to PySCF was told to float an iron moment PySCF cannot
@@ -556,10 +556,11 @@ value outside it when the description is written, and by the settings gate,
 which holds the RESOLVED treatment and count to it and refuses anything else
 by name, saying where the value came from (ES4) — on a transport calculation
 on the junction, before the state is handed to the rungs; each refusal's
-reason is `template.why_not_offered`'s. Every entry is read from the engine's source,
+reason is the item's own, declared beside the set (`not_offered`, [`engines/template.md`](?doc=engines/template.md)
+§ 6.3a; `template.why_not_offered`). Every entry is read from the engine's source,
 not from a manual's prose. *Which engines run which kind* is a different fact
-and stays `electronic_state.engines_for`'s: SIESTA runs all three, PySCF
-optimization and vibration.
+and is the kind table's — a kind's parts ([`execution/architecture.md`](?doc=execution/architecture.md)
+§ 3.3): SIESTA runs all three, PySCF optimization and vibration.
 
 | `spin_treatment` | SIESTA optimization · vibration | SIESTA transport | PySCF optimization · single point | PySCF vibration |
 |---|---|---|---|---|

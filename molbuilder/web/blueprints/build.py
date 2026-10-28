@@ -165,22 +165,23 @@ def _analyze_response(struct, body):
     """The ONE analyze answer for a structure and the forms' items."""
     from dataclasses import asdict
     from molbuilder.chemistry import analyze_structure
-    from molbuilder.electronic_state import (KINDS, electronic_state,
-                                             engines_for)
+    from molbuilder.electronic_state import electronic_state
+    from molbuilder import kind_table
 
     kind = body.get("kind") or ""
     if not kind:
         return _unstated(kind=kind)
-    if kind not in KINDS:
+    if kind not in kind_table.kinds():
         return jsonify({"ok": False,
-                        "error": f"kind must be one of {', '.join(KINDS)}, "
+                        "error": f"kind must be one of "
+                                 f"{', '.join(kind_table.kinds())}, "
                                  f"not {kind!r}"}), 400
     forms = body.get("forms")
     if forms is not None and not isinstance(forms, dict):
         return jsonify({"ok": False,
                         "error": "`forms` maps an engine to its form's "
                                  "items"}), 400
-    runs = engines_for(kind)
+    runs = kind_table.kind(kind).engines
     if not forms:
         forms = {engine: {} for engine in runs}
     # The facts need every label to name an element (the answer is an
@@ -192,7 +193,7 @@ def _analyze_response(struct, body):
         return jsonify({"ok": False, "error": str(exc).strip("'")}), 400
     states = {}
     for engine, items in forms.items():
-        # WHO RUNS WHICH KIND is `electronic_state.engines_for`'s (§ 2a.3):
+        # WHO RUNS WHICH KIND is the kind table's (its parts, § 2a.3):
         # a form for an engine that does not run this kind has no state to
         # ask for.
         if engine not in runs:
@@ -210,7 +211,7 @@ def _analyze_response(struct, body):
         except (TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         states[engine] = electronic_state(struct, cfg, kind=kind).as_dict()
-    from molbuilder.template import ENGINE_WORDS
+    from molbuilder.engine_table import engine as _engine
     return jsonify({
         "ok":          True,
         "kind":        kind,
@@ -218,9 +219,9 @@ def _analyze_response(struct, body):
         "metals":      facts.metals,
         "metal_hints": [asdict(h) for h in facts.metal_hints],
         "state":       states,
-        # EACH ENGINE'S NAME, from its one home (`template.ENGINE_WORDS`):
-        # the card heads each state with it.
-        "engine_words": {e: ENGINE_WORDS[e] for e in states},
+        # EACH ENGINE'S NAME, from its one home (the engine table): the
+        # card heads each state with it.
+        "engine_words": {e: _engine(e).words for e in states},
     })
 
 
@@ -833,6 +834,9 @@ def api_build_schema(engine: str):
     calculation = str(request.args.get("calculation") or "")
     if not calculation:
         return _unstated(calculation=calculation)
+    refused = _not_in_tables(calculation=calculation)
+    if refused:
+        return refused
     surface = request.args.get("surface") or None
     if engine == "common":
         if surface not in (None, "state"):
@@ -864,6 +868,24 @@ def _unstated(**said):
                     "error": (f"the request states no "
                               f"{' and no '.join(missing)} -- every caller "
                               f"states it; nothing is assumed")}), 400
+
+
+def _not_in_tables(*, calculation: str, engine: Optional[str] = None):
+    """A 400 in the tables' own sentence (`execution/architecture.md`
+    § 3.3) for a kind the kind table does not hold and, with ``engine``,
+    an engine the engine table does not hold or one the kind does not run
+    on -- ``None`` when the tables hold them.  The route's boundary: the
+    door refuses, the route says it as its own."""
+    from molbuilder.engine_table import EngineTableError, engine as _engine
+    from molbuilder.kind_table import KindTableError, kind as _kind
+    try:
+        asked = _kind(calculation)
+        if engine is not None:
+            _engine(engine)
+            asked.on(engine)
+    except (KindTableError, EngineTableError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return None
 
 
 @bp.route("/api/build/preflight", methods=["POST"])
@@ -1021,7 +1043,7 @@ def api_task_setup_handover():
     "send to tab" hand-off, and this obeys it -- the transfer goes through disk,
     so the receiving tab reads files like every other reader and nothing depends
     on state you cannot see in the folder.  Task setup finishes the job: it asks
-    for the shape -- or starts at the one the kind fixes (`task.fixed_shape`,
+    for the shape -- or starts at the one the kind fixes (the kind table,
     `web/task-setup.md` § 4) -- takes the stages, and on a successful save
     writes the real ``task.json`` and removes this file.
     """
@@ -1208,12 +1230,14 @@ def api_task_setup_handover():
 
     from molbuilder.jobset.group import fresh_groups
     from molbuilder.jobset.ladder import fresh_stages
-    from molbuilder.task import derive_run, fixed_shape, fresh_varies
+    from molbuilder.kind_table import pair
+    from molbuilder.task import derive_run, fresh_varies
     proposed = fresh_stages(calculation, engine)
     # WHAT THE HAND-OVER WAITS ON -- the keys Task setup still asks; a shape
-    # the kind fixes is not asked (`task.fixed_shape`, `web/task-setup.md`
-    # § 4), and the file's own words say the same.
-    fixed = fixed_shape(calculation, engine)
+    # the kind fixes is not asked (its part in the kind table,
+    # `web/task-setup.md` § 4), and the file's own words say the same.
+    _pair = pair(calculation, engine)
+    fixed = _pair.fixed_shape if _pair is not None else None
     awaiting = ["stages"] if fixed else ["shape", "stages"]
     groups = fresh_groups(proposed, engine=engine, calculation=calculation,
                           template_text=template_text)
@@ -1784,6 +1808,9 @@ def api_task_setup_value():
     if not (engine and kind and name and home):
         return _unstated(engine=engine, calculation=kind, item=name,
                          home=home)
+    refused = _not_in_tables(calculation=kind, engine=engine)
+    if refused:
+        return refused
     if home not in _T.HOMES:
         return jsonify({"ok": False, "error": (
             f"home {home!r} is not one of {', '.join(_T.HOMES)}")}), 400
@@ -1938,8 +1965,9 @@ def api_task_setup_columns():
     _calc_kind = str(request.args.get("calculation") or "")
     if not engine or not _calc_kind:
         return _unstated(engine=engine, calculation=_calc_kind)
-    if engine not in ("siesta", "pyscf"):
-        return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
+    refused = _not_in_tables(calculation=_calc_kind, engine=engine)
+    if refused:
+        return refused
 
     from molbuilder import template as _T
     out = []
@@ -2608,7 +2636,7 @@ def api_task_setup_folder():
         "refused": refused,
         # WHAT THE KIND FIXES of the stage table -- a transport description's
         # five rungs, in order -- by the reader's own answer
-        # (`task.fixed_by_kind`), so the page offers no stage-table control
+        # (the kind table), so the page offers no stage-table control
         # the reader refuses (`web/task-setup.md` § 5.3); null for every
         # other kind.
         "fixed": _folder_fixed(_task),
@@ -2671,16 +2699,16 @@ def _default_groups_of(folder, task) -> dict:
 
 
 def _folder_fixed(task) -> Optional[dict]:
-    """The stages ``task.fixed_by_kind`` fixes, ``{"stages"}``, as the stage
-    table reads them; ``None`` for a kind that fixes none -- a SIESTA
-    vibration fixes its shape alone -- or no description.  The shape it
-    fixes reaches the page as ``shape_fixed``, with why
-    (`prep.shape_fixed`)."""
-    from molbuilder.task import fixed_by_kind
-    fixed = fixed_by_kind(getattr(task, "calculation", ""),
-                          getattr(task, "engine", ""))
-    return (None if fixed is None or fixed["stages"] is None
-            else {"stages": list(fixed["stages"])})
+    """The stages a kind's part on its engine fixes (the kind table),
+    ``{"stages"}``, as the stage table reads them; ``None`` for a pair that
+    fixes none -- a SIESTA vibration fixes its shape alone -- or no
+    description.  The shape it fixes reaches the page as ``shape_fixed``,
+    with why (`prep.shape_fixed`)."""
+    from molbuilder.kind_table import pair
+    fixed = pair(getattr(task, "calculation", ""),
+                 getattr(task, "engine", ""))
+    return (None if fixed is None or not fixed.stages
+            else {"stages": list(fixed.stages)})
 
 
 def _folder_extension(task, folder) -> Optional[dict]:
@@ -2807,16 +2835,17 @@ def _folder_frame_set(task, folder):
 def _folder_shape_fixed(calc, task, handover) -> Optional[dict]:
     """The shape card's answer (`web/task-setup.md` § 4): ``prep.shape_fixed``
     of a calculation that opens -- by its kind, or once it has produced --
-    and before one opens, the shape its kind fixes (`task.fixed_shape`): a
+    and before one opens, the shape its kind fixes (the kind table): a
     description's, or a hand-over's from the engine and kind it carries, as
     `_folder_bench_refusal` asks them; ``None`` while it may change.
     Fail-soft, like the folder's other parts: what its readers refuse -- a
     plan written before the reader's format -- is ``{"error"}``, said on
     the shape card."""
     if calc is None:
-        from molbuilder.task import fixed_shape
+        from molbuilder.kind_table import pair
         kind = _folder_kind(task, handover)
-        return fixed_shape(*kind) if kind is not None else None
+        fixed = pair(*kind) if kind is not None else None
+        return fixed.fixed_shape if fixed is not None else None
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.prep import shape_fixed
     try:

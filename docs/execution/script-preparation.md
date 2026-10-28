@@ -215,7 +215,8 @@ of the steps' opening and closing that had drifted from them — no progress
 seed, no once-per-line filter, no provenance in its log, its job built by hand.
 
 **What a kind declares is one record, its rung** (`jobset/prep.py`, `Rung`,
-built by the kind's entry in `RUNGS`, keyed by engine and kind): the structure
+built by the builder its part in the kind table names, `rung` —
+[`architecture.md`](?doc=execution/architecture.md) § 3.3): the structure
 step's answer, which every step after it reads. It says what the decks
 describe and which program each deck is; the config each element renders from
 (a lead's own label, the junction's electronic state folded in); what else the

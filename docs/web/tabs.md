@@ -309,7 +309,7 @@ as its five parts, below):
    (§ 2a.10); then the **engine strip** — one tab per engine molbuilder
    knows, the panel the calculation is described on, an engine that runs no
    transport drawn disabled with its reason (§ 3.8.8: TranSIESTA live,
-   PySCF-NEGF disabled); in it, one **tab per rung**, each holding that rung's own
+   PySCF disabled); in it, one **tab per rung**, each holding that rung's own
    settings as its override bag (§ 3.8.2a), its cards folded where the rung
    does not own the group, the rung-fixed items echoed read-only. The
    transmission's tab offers no SCF setting (tbtrans runs none, § 6.1b). For a

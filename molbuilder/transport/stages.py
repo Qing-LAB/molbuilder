@@ -1,11 +1,12 @@
 """The transport composite's five stages — `engines/transport.md`
 § 1 and § 2a.11.
 
-This module owns TWO facts and the renders that follow from them:
+This module holds two facts and the renders that follow from them:
 
 * **The ladder** (:data:`TRANSPORT_STAGES`): the five stages in
-  dependency order.  Fixed by design, not configurable -- every
-  description holds all five (`task.fixed_by_kind`).
+  dependency order -- the kind's roles, read from the kind table, which
+  owns them; fixed by design, not configurable -- every description holds
+  all five (its part's ``stages``).
 * **The per-rung bags, as stages** (:func:`stages_for_transport`).  Which
   rung READS an override is the catalogue's ``stages`` declaration, asked
   through the one door every kind's description check and ``resolve`` ask
@@ -42,19 +43,21 @@ from typing import Dict, List, Optional, Tuple
 
 from ..structure import frame_words
 from ..identity import rung_label
-from ..paths import KIND_ROLES, frame_token
+from ..kind_table import kind as _kind
+from ..paths import frame_token
 from ..parse.engines import siesta_grammar as _G
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
 #: dependency order.  ``molbuilder describe`` writes exactly these into
 #: ``task.json``; `prep` names its rungs from the same tuple.  They are the
-#: kind's rung ROLES too, so their one home is the catalogue's role
-#: vocabulary (`paths.KIND_ROLES`, `engines/template.md` § 6.4).
-TRANSPORT_STAGES = KIND_ROLES["transport"]
+#: kind's rung ROLES too, so their one home is the kind table
+#: (`execution/architecture.md` § 3.3, `engines/template.md` § 6.4).
+TRANSPORT_STAGES = _kind("transport").role_names
 
 #: **WHICH FACT EACH RUNG ANSWERS WITH** — a column, because the five rungs
 #: do not answer the same question and reading them as if they did is a
-#: defect with a visible face.
+#: defect with a visible face; each role's own fact in the kind table
+#: (``computes``, `execution/architecture.md` § 3.3).
 #:
 #: * ``"scf"`` — did the SCF converge, and at what energy.  The seed hands the
 #:   device a density; the device hands TBtrans a Hamiltonian.
@@ -64,13 +67,7 @@ TRANSPORT_STAGES = KIND_ROLES["transport"]
 #: * ``"product"`` — **not an SCF at all.**  TBtrans runs none: there is
 #:   nothing to converge and no total energy, and its result is the
 #:   transmission the record already carries in its own ``points`` blocks.
-STAGE_FACT = {
-    "seed":         "scf",
-    "electrode_L":  "fermi",
-    "electrode_R":  "fermi",
-    "device":       "scf",
-    "transmission": "product",
-}
+STAGE_FACT = {r.name: r.computes for r in _kind("transport").roles}
 
 
 def resolvable_override_names() -> frozenset:
@@ -363,21 +360,28 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     return warm_declaration("siesta", task_label, "transport", base_dir)
 
 
-#: EACH ENGINE'S NAME ON THE TRANSPORT TAB -- the program that runs the
-#: open-boundary calculation on it (`engines/transport.md` § 3.8.8).
-ENGINE_WORDS = {"siesta": "TranSIESTA", "pyscf": "PySCF-NEGF"}
+def _label(engine: str) -> str:
+    """An engine's name on the transport tab: the program that runs the
+    open-boundary calculation on it -- its part's own name for the kind
+    (*TranSIESTA*) -- else the engine's own (`engine_table`), for one that
+    runs no transport (§ 3.8.8)."""
+    from ..engine_table import engine as _engine
+    from ..kind_table import pair
+    on = pair("transport", engine)
+    return (on.words if on is not None and on.words
+            else _engine(engine).words)
 
 
 def engine_tabs() -> List[Dict[str, object]]:
     """The transport tab's engine strip, one entry per engine molbuilder
-    knows (`runfiles.engines`), those that run a transport calculation
-    first (`electronic_state.engines_for`): its name, its word here,
+    knows (`engine_table.engines`), those that run a transport calculation
+    first (its parts in the kind table): its name, its word here,
     whether it runs one, and, for one that does not, why -- the disabled
     tab's title (§ 3.8.8)."""
-    from ..electronic_state import engines_for
-    from ..runfiles import engines
-    runs = engines_for("transport")
-    return [{"name": e, "label": ENGINE_WORDS.get(e, e), "runs": e in runs,
+    from ..engine_table import engines
+    from ..kind_table import kind
+    runs = kind("transport").engines
+    return [{"name": e, "label": _label(e), "runs": e in runs,
              "why": why_no_transport(e)}
             for e in sorted(engines(), key=lambda e: e not in runs)]
 
@@ -386,16 +390,16 @@ def why_no_transport(engine: str) -> Optional[str]:
     """Why ``engine`` cannot describe a transport calculation, or ``None``
     when it can -- one sentence for the disabled tab and every door that
     refuses the engine (§ 3.8.8)."""
-    from ..electronic_state import engines_for
-    from ..runfiles import engines
-    runs = engines_for("transport")
+    from ..engine_table import engines
+    from ..kind_table import kind
+    runs = kind("transport").engines
     if engine in runs:
         return None
-    ships = " and ".join(ENGINE_WORDS.get(e, e) for e in runs)
+    ships = " and ".join(_label(e) for e in runs)
     if engine not in engines():
         return (f"{engine!r} is no engine molbuilder knows; transport ships "
                 f"on {ships}")
-    return (f"no {ENGINE_WORDS.get(engine, engine)} backend is built yet; "
+    return (f"no {_label(engine)} transport backend is built yet; "
             f"transport ships on {ships}")
 
 
@@ -470,8 +474,8 @@ def stages_for_transport(bags=None):
 
 
 # --------------------------------------------------------------------- #
-#  The declaration a reader of a transport rung's points asks           #
-#  (`jobset.points`; `engines/transport.md` § 2a.11)                     #
+#  The count of a transport rung's points, as its declaration as a     #
+#  rung of points asks it (`jobset.transport_points`; § 2a.11)           #
 # --------------------------------------------------------------------- #
 
 def points_summary(pts) -> str:
@@ -484,40 +488,3 @@ def points_summary(pts) -> str:
     return (f"{n_done} of {len(pts)} points done ({n_frames} "
             f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
             f"voltage{'' if n_volts == 1 else 's'})")
-
-
-def _declared_rung_points(calc, stage: str, *, read=None):
-    return rung_points(calc.task, stage, frames=frames_of(calc.base, read=read))
-
-
-def _declared_summary(rows, run, names) -> str:
-    return points_summary(rows)
-
-
-def _declared_points_in(run, task, stage: str, base):
-    return points_in(run, task, stage, base=base)
-
-
-def _declared_products(stage: str, label: str, base, point=None):
-    return products_of(stage, label, base_dir=base)
-
-
-def _declared_hands_on(stage: str, label: str, base):
-    return hands_on(stage, label, base)
-
-
-def _converges(stage: str) -> bool:
-    return STAGE_FACT.get(stage, "scf") != "product"
-
-
-from ..jobset.points import PointsOf  # noqa: E402 -- the declaration's type
-
-#: THE DECLARATION (`jobset.points.DECLARED`): a transport rung's points
-#: are a frame of the cited set and a voltage each, decided at prep.
-POINTS = PointsOf(kind="transport",
-                  rung_points=_declared_rung_points,
-                  points_in=_declared_points_in,
-                  products_of=_declared_products,
-                  hands_on=_declared_hands_on,
-                  summary=_declared_summary,
-                  converges=_converges)

@@ -247,7 +247,7 @@ and two copies of a contract drift.
 way this section once predicted.**  A hand-over exists because Task setup
 owns questions the sending tab leaves open (shape, stages, what varies).
 The composite leaves NONE open: its rungs and the hierarchical shape are
-fixed by the kind (`task.fixed_by_kind`: all five, the seed among them), the
+fixed by the kind (its part in the kind table, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3: all five, the seed among them), the
 electronic contract — its spin included — is
 defaulted into the template from the cited run at `molbuilder describe`, where the shared
 panel edits it for every rung, and the knobs ride the stages' override bags.

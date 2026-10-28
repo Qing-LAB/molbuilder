@@ -1,0 +1,85 @@
+# THE KIND TABLE -- every kind of calculation molbuilder describes, and its
+# part on each engine it runs on (docs/execution/architecture.md § 3.3).
+# Read by one reader, `kind_table.py` (`kind(name)`, `CalculationKind.on`);
+# shared code names no kind -- it asks this record (rule A18).
+#
+# A kind's own facts sit in its table; what the pair decides sits in its
+# `on.<engine>` table, and the engines a kind runs on are those tables --
+# no second list says which engine runs which kind.  The engines are the
+# engine table's (`engine_table.toml`); a part naming another is refused.
+#
+# A part that is code is named "module:NAME" and resolved by the floor it
+# lives on (`kind_table.part`), never imported here.
+#
+# A part's `words`: the engine's own name for the kind, where it has one --
+# the program that runs it on that engine.
+#
+# A rung's role (`roles`): what the rung does, named by the kind -- what a
+# catalogue item's `stages` names (`engines/template.md` § 6.4) -- and what
+# it computes: "scf", an SCF; "fermi", an SCF and its lead's Fermi level,
+# the energy the junction is read against; "product", no SCF at all.  How
+# a pair's stages play the roles (`stage_roles`): "own", a stage's role its
+# name; "every", each stage every role; or the list of roles each stage
+# plays.
+
+[optimization]
+noun = "optimization"
+
+[optimization.on.siesta]
+
+[optimization.on.pyscf]
+
+
+[vibration]
+noun = "vibration"
+roles = [
+    { name = "relaxation",      computes = "scf" },
+    { name = "force_constants", computes = "scf" },
+    { name = "optical",         computes = "scf" },
+]
+# THE RESULTS IT GIVES, in the order a person decides them
+# (`engines/template.md` § 6.2a) -- the cards a form of the kind draws after
+# *Setup*; which of them an engine gives is its catalogue items'.
+results = [
+    { key = "modes", title = "Frequencies and mode shapes", line = "Relax the structure first -- unless you say it is already relaxed -- then take the force constants: every vibrational mode, its frequency and how the atoms move.  Everything below is computed from these modes." },
+    { key = "infrared", title = "Infrared", line = "How strongly each mode absorbs infrared light -- from how the dipole changes as the mode moves.  Cheap on SIESTA and for a free molecule on PySCF; with atoms held and Raman off, PySCF takes 6 extra SCFs per free atom." },
+    { key = "raman", title = "Raman", line = "How strongly each mode scatters laser light -- from how the polarizability changes as the mode moves.  The expensive one: extra calculations at displaced geometries." },
+    { key = "thermochemistry", title = "Thermochemistry", line = "The zero-point energy, and the energy, entropy and free energy at a temperature -- the vibrational part on SIESTA and with atoms held, the free molecule's whole answer on PySCF (with its translation and rotation).  No extra calculation." },
+    { key = "probe", title = "Orbital energies along a mode", line = "How the frontier orbital energies move when the molecule is pushed along a mode -- two extra SCFs per mode picked." },
+]
+
+[vibration.on.siesta]
+# Its one stage is one run in three phases, and carries every phase's role
+# (`engines/vibration.md` § 5.11 § 9).
+stage_roles = "every"
+shape = "hierarchical"
+why = "A SIESTA vibration is hierarchical, and no other shape is taken -- its one run's SIESTA calls, the relaxation, the force constants and the optical calls, each run in a folder of its own: in one directory they would write over each other's .DM and .XV (engines/vibration.md § 5.11 § 1)."
+points = "molbuilder.jobset.vibration_points:POINTS"
+rung = "molbuilder.jobset.prep:siesta_vibration_rung_of"
+
+[vibration.on.pyscf]
+# It relaxes inside its one deck, so each of its stages is the
+# force-constant run.
+stage_roles = ["force_constants"]
+
+
+[transport]
+noun = "transport calculation"
+roles = [
+    { name = "seed",         computes = "scf" },
+    { name = "electrode_L",  computes = "fermi" },
+    { name = "electrode_R",  computes = "fermi" },
+    { name = "device",       computes = "scf" },
+    { name = "transmission", computes = "product" },
+]
+
+[transport.on.siesta]
+words = "TranSIESTA"
+stage_roles = "own"
+shape = "hierarchical"
+why = "A transport calculation is hierarchical, and no other shape is taken -- its five stages exchange files through their own attempts, which the flat shape has no directories to hold (engines/transport.md § 2a.11)."
+# Its stages are its rungs, every one, in order (the seed among them: the
+# device starts from its density, user 2026-10-12).
+stages = "rungs"
+points = "molbuilder.jobset.transport_points:POINTS"
+rung = "molbuilder.jobset.prep:transport_rung_of"

@@ -530,8 +530,8 @@ through one door on floor 1:
 
 | declaration | what it is the list of | its file · its door |
 |---|---|---|
-| **the kind table** | the calculation kinds, each with its part on every engine it runs on | `molbuilder/kind_table.toml` · `kind_table.kind`, `CalculationKind.on` |
-| **the engine table** | the engines | `molbuilder/engine_table.toml` · `engine_table.engine` |
+| **the kind table** | the calculation kinds, each with its part on every engine it runs on | `molbuilder/data/kind_table.toml` · `kind_table.kind`, `CalculationKind.on` |
+| **the engine table** | the engines | `molbuilder/data/engine_table.toml` · `engine_table.engine` |
 | **the file catalogue** | every file molbuilder writes: its role, where it lies in each shape, who writes it and when, its reader, the calculations whose result it is | `runfiles.WRITTEN` · `runfiles` (§ 3.2) |
 | **the folder record** | what each folder is — a calculation's root by its description, any other folder by the record its creator stamps on it | `calcdir.json` · `calcdirs.where` ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) |
 
@@ -540,12 +540,14 @@ declares, and copy nothing that is declared elsewhere: what a file is and its
 name — the file catalogue; which settings an engine offers a kind, each
 setting's choices and why one is not offered, and the settings retired — the
 parameter catalogue (`template`: an item's `engines`, `calculations`,
-`offered`, `why_not_offered`, `RETIRED_ITEMS`); what a run hands on — the
+`offered`, `not_offered`, `RETIRED_ITEMS`); what a run hands on — the
 warm-file vocabularies. **The two tables are the lists of kinds and engines**:
 every other declaration that names one — a file catalogue row's engine, a
-warm-file vocabulary's sections, a parameter's `engines` and `calculations` —
-is checked against them when it loads, and a name with no record is refused
-naming the file and the key.
+shipped warm-file vocabulary's sections (a kind its engine runs, or a role of
+one), the parameter catalogue's engines and each item's kinds
+(`calculations`, `citation`, `role`, `shared`, `required`) — is checked
+against them when it loads, and a name with no record is refused naming the
+file and the key.
 
 **A kind's record** says what is the kind's whichever engine runs it:
 

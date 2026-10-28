@@ -584,7 +584,7 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
     happen to sit in the file.
     """
     from molbuilder import template as _T
-    from molbuilder.electronic_state import engines_for
+    from molbuilder.kind_table import kind as _kind
 
     parsed = _T.catalogue()
     if (surface in ("state", "common")) != (engine is None):
@@ -595,7 +595,7 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
     # chosen -- their electronic state in its own part, beside the answer
     # it is worked into -- and left out of each engine's own part.
     common = _T.shared_by_engines(calculation)
-    engines = engines_for(calculation) if engine is None else (engine,)
+    engines = _kind(calculation).engines if engine is None else (engine,)
     items = _T.select(parsed, engine=engine)
     if surface == "state":
         items = [it for it in items
@@ -760,7 +760,8 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str = "p",
         out["card_prefix"] = rung
         out["stage_words"] = _T.stage_words(rung)
     elif surface == "own":
-        out["card_prefix"] = _T.ENGINE_WORDS[engine]
+        from molbuilder.engine_table import engine as _engine
+        out["card_prefix"] = _engine(engine).words
     return out
 
 

@@ -663,13 +663,14 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `launch` | `kind = "wrapper"` — the words the run script passes the engine on its command line for this item, a table by the program it starts (`Job.program`, the engine's own by default): `launch.siesta = ["-fdf", "MaxWalltime={left}:s", "-fdf", "MaxWalltime.Slack={slack}:s"]`, the placeholders the script fills; a program not named takes the item some other way (a PySCF deck reads its environment) or not at all (`tbtrans`). The run script renders the words, never spells them ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
-| `result` | **which result of the calculation this setting is for**, on a kind whose form is laid out by its results — a vibration's *Frequencies and mode shapes*, *Infrared*, *Raman*, *Thermochemistry*, *Orbital energies along a mode* (§ 6.2a) — a table keyed by kind, `result = { vibration = "raman" }`, each value one of that kind's results (`template.RESULTS`); a kind or a result it does not list is refused at parse time. **It only decides where the setting is drawn**, as `category` does: no deck changes with it, and it is not written into a calculation's template |
+| `result` | **which result of the calculation this setting is for**, on a kind whose form is laid out by its results — a vibration's *Frequencies and mode shapes*, *Infrared*, *Raman*, *Thermochemistry*, *Orbital energies along a mode* (§ 6.2a) — a table keyed by kind, `result = { vibration = "raman" }`, each value one of that kind's results (the kind table's `results`); a kind or a result it does not list is refused at parse time. **It only decides where the setting is drawn**, as `category` does: no deck changes with it, and it is not written into a calculation's template |
 | `choice_labels` | **the words a person reads for each choice** — `choice_labels = { all = "All modes", range = "Modes in a frequency range" }`: what a form's list shows and a message says (`template.choice_words`); the value written stays the choice. Every key a choice of the item. Catalogue-only, like `result` |
 | `active_when` | **the values other settings must hold for this one to enter the calculation** — `active_when = { compute_raman = [true], raman_modes = ["range"] }`, every named setting at one of its listed values (2026-10-27). Otherwise the setting enters nothing: the form draws it greyed out, keeping its value and saying what it waits on (`template.active_words`), and the settings gate says once that a value given to it enters nothing (`template.inactive_why`; a value at the kind's default says nothing) — never a refusal for that, since nothing it holds is run, and **no advice about it**: no recommended range, no check of the run it would join (the orbital probe's displacement under `skip`). A value no setting can hold is still refused, as anywhere (§ 5.3): the template holds it, and it would run the day the switch is turned on. Each named setting is an item of the catalogue serving the same engines, each listed value passes that item's own type. Catalogue-only, like `result` |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the vibration items — 21 at 2.45.0 — stay out of an optimization template by declaration |
 | `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows as a blank field's hint and what `molbuilder describe` and the form doors write into that kind's template when nobody chose, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, § 5.3) |
 | `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.transport = ["restricted", "unrestricted"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
+| `not_offered` | **why a choice is not offered, beside it** — a list of rows `{ on, values, why }` (§ 6.3a, 2026-10-28): `on` an engine the item serves, a calculation kind or `"<engine>.<kind>"` — absent, wherever a value is withheld; `values` the withheld choices it explains — absent, every one withheld there; `why` the reason, read from the engine's source. A refusal of a value outside `offered` gives the first row that holds (`template.why_not_offered`). Checked at parse time: only on an item with `offered`, `on` naming an engine the item serves or a kind, every value one of the item's choices. Catalogue-only, never written into a calculation's template |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `run_card` | **a row on every run card from the start**, blank until stated — `run_card = true` on every run setting, the `execution` category's items (2026-10-11 for the launch's, 2.27.0 for the rest; [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2b). One boolean, read by the run card through `/api/task-setup/sweepable`; it states no value and decides nothing prep does |
@@ -677,7 +678,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
 | `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`, and since 2.1.0 on the device's `ts_hartree_fix` and the transmission's `tbt_solution_method`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
 | `role_values` | **a rung whose role gives another answer than `value`**, by the rung's name — `role_values = { device = "transiesta" }` on `solution_method`. Only on a `role` item; each value passes the item's own `type` at parse time, as `recommended`'s do. Like `recommended`, a catalogue key: it does not travel into a calculation's template, whose role items hold no value — `resolve` asks the catalogue (`template.role_answers`) |
-| `stages` | **which rungs of the kind read it, by the rung's ROLE** — `stages = ["electrode_L", "electrode_R"]` on a lead's item, `stages = ["relaxation"]` on the relaxation settings (2026-09-30, plan § 5w K4) — or **the name of a set of roles**, `stages = "scf"`: every rung that runs an SCF, never the transmission, on the solver, mixer, tolerance, diagonaliser and GPU items alike (`paths.ROLE_SETS`, beside the roles; a fact fifteen rows share, stated once — 2026-10-12), read as its roles, a name no set has refused; only those rungs may carry their own value, and on a `role` item, which nobody sets, it names the rungs that write it. Absent means every rung reads it (§ 6.4). **With `shared`, one value carried by the named rungs only** — `electrodes_bulk`, `stages = ["device", "transmission"]` (TD11, 2026-10-11): no stage sets its own, the other rungs' decks never write it, and the shared panel and Task setup say which rungs it is for (`template.shared_scope_words`); a refusal says why (`why_shared`) |
+| `stages` | **which rungs of the kind read it, by the rung's ROLE** — `stages = ["electrode_L", "electrode_R"]` on a lead's item, `stages = ["relaxation"]` on the relaxation settings (2026-09-30, plan § 5w K4) — or **the name of a set of roles**, `stages = "scf"`: every rung that runs an SCF, never the transmission, on the solver, mixer, tolerance, diagonaliser and GPU items alike (`kind_table.ROLE_SETS`, read off what each role computes; a fact fifteen rows share, stated once — 2026-10-12), read as its roles, a name no set has refused; only those rungs may carry their own value, and on a `role` item, which nobody sets, it names the rungs that write it. Absent means every rung reads it (§ 6.4). **With `shared`, one value carried by the named rungs only** — `electrodes_bulk`, `stages = ["device", "transmission"]` (TD11, 2026-10-11): no stage sets its own, the other rungs' decks never write it, and the shared panel and Task setup say which rungs it is for (`template.shared_scope_words`); a refusal says why (`why_shared`) |
 | `tightens` | **which way a ladder makes this item tighter** — `"down"` for a tolerance, `"up"` for a mesh cutoff (2026-09-30, plan § 5w K4). Set where [`tuning.md`](?doc=engines/tuning.md) § 2 gives a tier table and nowhere else; the ladder check reads it on every engine ([`stages.md`](?doc=engines/stages.md) § 4 R3) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
@@ -1307,7 +1308,8 @@ among the method's.
 
 **A kind lists its results in the order a person decides them**, each with
 a title and one line saying what it gives and what it costs. They live in
-one place, `template.RESULTS`:
+one place, the kind's `results` in the kind table
+([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3):
 
 | kind | its results, in order |
 |---|---|
@@ -1322,7 +1324,7 @@ in its `group`'s card — the same rule decides where a warning about it is
 shown, so a warning always sits beside its field. A kind's cards come in
 this order: *Setup*, then the kind's results, then *Run profile*,
 *Convergence targets*, *Compute & budget*, *Output files*; each with its
-title and line, from `GROUP_WORDS` and `RESULTS`, served with every form of
+title and line, from `GROUP_WORDS` and the kind's `results`, served with every form of
 the kind as the schema's `cards` ([`web/form-schema.md`](?doc=web/form-schema.md)
 § 1.3). A result's card draws its settings without the category headings —
 its title already says what they are for — its basic settings before its
@@ -1335,8 +1337,8 @@ card changes where it is drawn and nothing else.
 calculation tab**, which offers the vibration on two engines and asks for the
 engine after the settings (the Structure-optimization tab draws each engine's
 form whole). There, a setting
-that is one catalogue row for every engine that runs the kind
-(`electronic_state.engines_for`) is drawn once, before the engine is
+that is one catalogue row for every engine that runs the kind (its parts in
+the kind table, `template.shared_by_engines`) is drawn once, before the engine is
 chosen — the charge and spin in the chemistry card, beside the answer they
 are worked into, the others under *The calculation*; each engine's form
 then shows only that engine's own settings. One row is one meaning and one default on every
@@ -1643,9 +1645,27 @@ but the electronic state's, whose values are resolved from the structure at
 render: the settings gate holds those RESOLVED values to the sets, saying
 where each came from (`science/chemistry-correctness.md` § 2a.3, ES4). The
 gate also holds a rendered deck's other values to the set of the kind the
-deck renders as — its backstop for a render that skipped `resolve`. **Why** a choice is not offered is prose in one function,
-`template.why_not_offered`, beside `why_role` and `why_shared` — each reason
-read from the engine's source (`science/chemistry-correctness.md` § 2a.3).
+deck renders as — its backstop for a render that skipped `resolve`. **Why a choice is not offered is declared beside it** — `not_offered`, a
+list of rows, each a reason and where it holds:
+
+```toml
+[[item.spin_treatment.not_offered]]
+on = "siesta"                   # an engine, a kind, or "<engine>.<kind>"
+values = ["restricted-open"]    # absent: every value withheld there
+why = "SIESTA has no restricted open-shell formalism"
+```
+
+`on` names an engine the item serves, a calculation kind, or the pair —
+absent, wherever a value is withheld; `values` the withheld choices it
+explains — absent, every one withheld there. A refusal's reason is the first
+row, in the file's order, that holds for the engine, the kind and the value
+(`template.why_not_offered`); a value no row explains is said as *"a <kind>
+on <engine> does not run it"*. Each reason is read from the engine's source
+(`science/chemistry-correctness.md` § 2a.3). The rows are checked when the
+catalogue loads: they stand only on an item with `offered`, `on` names an
+engine the item serves or a kind the kind table holds, every value is one of
+the item's choices, and `why` is a sentence. The rows are the catalogue's
+alone, like `result`: no calculation's template carries them.
 
 **A kind is never started on a choice it refuses**: the value its template
 starts at — its recommendation, else the item's default — is among its
@@ -1823,7 +1843,7 @@ back rather than a rung's part in a ladder.
 at all; `stages` says which RUNGS of such a kind read it, naming each rung by
 what it does in the kind:
 
-| kind | its rungs' roles (`paths.KIND_ROLES`) | a stage's roles (`template.stage_roles`) |
+| kind | its rungs' roles (the kind table's `roles`, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3) | a stage's roles (`template.stage_roles`, from the part's `stage_roles`) |
 |---|---|---|
 | transport | `seed`, `electrode_L`, `electrode_R`, `device`, `transmission` | its name — the five rungs are fixed |
 | vibration | `relaxation`, `force_constants`, `optical` | a SIESTA stage carries every role: its one run relaxes, measures the force constants and runs the optical calls, each phase's deck rendering the items of its role ([`vibration.md`](?doc=engines/vibration.md) § 5.11 § 9); a PySCF vibration relaxes inside its one deck, so each of its rungs is the force-constant run (§ 5.2a there) |
@@ -1833,7 +1853,7 @@ what it does in the kind:
 |---|---|
 | no `stages` | **every rung of the kind reads it** — the ordinary case |
 | `stages = [...]` | only rungs of these roles read it, and only they may carry their own value. On a `role` item, which nobody sets, it names the rungs that write it — a lead's `TS.HS.Save` |
-| `stages = "<set>"` | the same, for the roles of a named set (`paths.ROLE_SETS`) — `"scf"`, every rung that runs an SCF. A calculation's own template writes the roles out |
+| `stages = "<set>"` | the same, for the roles of a named set (`kind_table.ROLE_SETS`, read off what each role computes) — `"scf"`, every rung that runs an SCF. A calculation's own template writes the roles out |
 
 **One door asks it, for every kind** — `template.reads(item, engine, kind,
 stage)`, and for a rung's overrides `template.unread_overrides`: the

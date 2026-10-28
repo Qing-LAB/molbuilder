@@ -2130,7 +2130,7 @@ finish (§ 7a).
 > § 3. The relaxation is the run's first phase, as PySCF's Phase 0
 > is (§ 4.2). **The shape is hierarchical only**: three SIESTA calls in one
 > directory would write over each other's `.DM` and `.XV`, so the kind fixes
-> it (`task.fixed_by_kind`): the description's reader refuses another shape,
+> it (its SIESTA part in the kind table, `execution/architecture.md` § 3.3): the description's reader refuses another shape,
 > and Task setup's shape card shows it fixed, in one sentence
 > ([`web/task-setup.md`](?doc=web/task-setup.md) § 4).
 
@@ -2596,15 +2596,17 @@ the count (§ 9).
 
 #### 9. The settings — one stage's card, a section per phase
 
-**The roles are the phases'.** `paths.KIND_ROLES["vibration"]` names the
-three phases' roles, `("relaxation", "force_constants", "optical")` — one
-table, the `PHASES` row carrying its `role`; with one stage, an item's
+**The roles are the phases'.** The kind table names the vibration's three
+roles, `relaxation`, `force_constants`, `optical`, each computing an SCF
+([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), and
+the `PHASES` row carries its `role`; with one stage, an item's
 `stages = ["relaxation"]` names **the phase whose deck renders it**, and the
 stage's one resolved configuration feeds every phase's deck, each part
-taking its items (§ 4): a SIESTA vibration rung carries every role
-(`template.stage_roles`, a tuple — `reads` is any-of), a PySCF rung
-`force_constants`; `ROLE_SETS["scf"]` holds `optical`; a stage override
-applies to every phase; the stage table offers one row.
+taking its items (§ 4): a SIESTA vibration rung carries every role (its
+part's `stage_roles = "every"`; `template.stage_roles`, a tuple — `reads` is
+any-of), a PySCF rung `force_constants`; the named set `"scf"` holds
+`optical`; a stage override applies to every phase; the stage table offers
+one row.
 
 | phase | items |
 |---|---|
@@ -2807,8 +2809,8 @@ counterpart, junction theory's polarizability projected on the molecule
 
 | piece | where |
 |---|---|
-| **one stage on both engines** | `pyscf/stages.vibration_stages`; the shape SIESTA's fixes, `task.fixed_by_kind`; `paths.KIND_ROLES["vibration"]`, the phases' roles (§ 9); `ladder.independent` false for the kind (§ 6) |
-| **a rung of points, declared** | `jobset/points.py`: one `PointsOf` per kind — its points as prepared (transport: the bias item × the cited set; the vibration: `relax` and `fc`), the points a run holds (the vibration's optical ones, planned in the job, those its index lists), its point type (`transport.stages.Point`, `vibration_phases.Call`), what makes a point done, what a run needs beyond its points (the vibration's finish), its containers, one wall or one per point; prep, launch's walk, `materialize`, `continuation` (`point_rows`, `points_state`, `done`), `runstatus` (`run_folders`, `_sweep_status`, `stage_run_state`, `every_run`), `ready`, `prepared_with` and the run door ask it |
+| **one stage on both engines** | `pyscf/stages.vibration_stages`; the shape SIESTA's fixes, its part in the kind table; the kind table's vibration roles, the phases' (§ 9); `ladder.independent` false for the kind (§ 6) |
+| **a rung of points, declared** | one `PointsOf` per pair that runs per point, named by the pair's `points` in the kind table — `jobset/vibration_points.py`, `jobset/transport_points.py` — the type and its doors (`points_of`) in `jobset/points.py`: its points as prepared (transport: the bias item × the cited set; the vibration: `relax` and `fc`), the points a run holds (the vibration's optical ones, planned in the job, those its index lists), its point type (`transport.stages.Point`, `vibration_phases.Call`), what makes a point done, what a run needs beyond its points (the vibration's finish), its containers, one wall or one per point; prep, launch's walk, `materialize`, `continuation` (`point_rows`, `points_state`, `done`), `runstatus` (`run_folders`, `_sweep_status`, `stage_run_state`, `every_run`), `ready`, `prepared_with` and the run door ask it |
 | **the phases** | `siesta/vibration_phases.py`: `PHASES`, `Call`, the index's writer and reader (a `runfiles.WRITTEN` row, a registry parser), `summary` (the state's words); `runfiles.fixed`'s `coordinates.fdf` row |
 | **the run door and the view** | `runs.folder_answer` of one folder; the run of points' view (`runstatus.points_view`, floor 6) at its root and its calls' folders, and `run_answer` for a file at its root, the run's state (§ 7); `materialize.open_sweep_run`; the opener's travelling core (`calcdirs` + `paths` in the bundle, `bring_files`' copier); the progress-log seed copied with the deck |
 | **prep** | each phase's deck and run script in the stage's phase folder (`spec_for(part=)`, § 4); the structure's `coordinates.fdf` beside each; the count and sizes beside the wall; `Job.phases` the phases the run walks; each phase's run script with its own section's `resumes` |

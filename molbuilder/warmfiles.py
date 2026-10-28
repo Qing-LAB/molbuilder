@@ -374,6 +374,21 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
         raise WarmFilesError(
             f"{path}: no [base] section.  Every engine has one -- it may "
             f"be empty, but its absence reads as a truncated file.")
+    if path == _rules_path(engine):
+        # THE SHIPPED VOCABULARY'S SECTIONS ARE THE TABLES' NAMES
+        # (`execution/architecture.md` § 3.3): a kind this engine runs, or
+        # a role of one -- a vibration's optical call is a run of its own
+        # kind of warm state.  A section naming neither is one nothing asks.
+        from .kind_table import kind, kinds
+        ours = [k for k in kinds() if engine in kind(k).engines]
+        known = set(ours) | {r for k in ours for r in kind(k).role_names}
+        stray = [name for name, _ in sections
+                 if name != "base" and name not in known]
+        if stray:
+            raise WarmFilesError(
+                f"{path}: section(s) {', '.join(stray)} name no kind "
+                f"{engine} runs and no role of one (the kind table: "
+                f"{', '.join(sorted(known))}) -- a section nothing asks.")
     return WarmFilesDoc(engine=engine, sections=tuple(sections),
                         path=str(path), resumes=tuple(resumes),
                         along=tuple(along), scratch=tuple(scratch),

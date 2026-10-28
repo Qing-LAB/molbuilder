@@ -213,7 +213,8 @@ def test_a_hand_over_of_a_kind_that_fixes_its_shape_starts_at_it(
     MUTATIONS THIS MUST FAIL AGAINST: the folder answer asking the shape
     only of a calculation that opens; the page's hand-over branch not
     reading the answer."""
-    from molbuilder.task import fixed_shape, of as task_of
+    from molbuilder.kind_table import kind
+    from molbuilder.task import of as task_of
     from molbuilder.web.app import create_app
     from support.envelope import envelope
     from conftest import write_pseudos
@@ -232,7 +233,7 @@ def test_a_hand_over_of_a_kind_that_fixes_its_shape_starts_at_it(
         (d / f["name"]).write_text(f["text"])
     (d / out["template_name"]).write_text(out["template_text"])
     (d / out["handover_name"]).write_text(out["handover_text"])
-    fixed = fixed_shape("vibration", "siesta")
+    fixed = kind("vibration").on("siesta").fixed_shape
 
     _open(page, flask_server, d)
     page.wait_for_selector("#ts-shape-fixed:not([hidden])", timeout=20000)

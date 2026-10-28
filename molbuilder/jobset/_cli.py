@@ -405,8 +405,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
 
     from ..describe import DescribeError
     from ..task import Stage, Task, derive_run, fresh_varies
-    # The ladder is the transport module's fact (one door): five stages
-    # in dependency order, every one (`task.fixed_by_kind`).
+    # The ladder is the kind's: its five rungs in dependency order, every
+    # one (the kind table's roles, its part's `stages`).
     from ..transport.stages import TRANSPORT_STAGES
 
     for given, flag, why in (
@@ -834,9 +834,10 @@ def describe_cmd(structure, bundle: str, shape: str,
     if shape is None:
         # EXPLICIT ON THE COMMAND LINE, where no card shows the outcome
         # (user, 2026-10-28) -- and a kind that fixes the shape says which,
-        # in its own sentence (`task.fixed_shape`, `web/task-setup.md` § 4).
-        from ..task import fixed_shape
-        fixed = fixed_shape(calculation, engine)
+        # in its own sentence (the kind table, `web/task-setup.md` § 4).
+        from ..kind_table import pair
+        _pair = pair(calculation, engine)
+        fixed = _pair.fixed_shape if _pair is not None else None
         raise click.ClickException(
             "--shape is required -- never assumed or inferred."
             + (f"  {fixed['why']}  Describe it with --shape "
@@ -905,13 +906,11 @@ def describe_cmd(structure, bundle: str, shape: str,
             # call.  A --stage-strategy names the optimization ladder's
             # tiers, which grade nothing here: the convergence settings are
             # the template's, recommended tight (`template.md` § 6.3a).
-            from ..pyscf.stages import VIBRATION_ENGINES
-            if engine not in VIBRATION_ENGINES:
-                raise click.ClickException(
-                    f"calculation 'vibration' runs on pyscf (analytic "
-                    f"Hessian, intensities) or siesta (force constants, "
-                    f"frequencies and mode shapes only); engine "
-                    f"{engine!r} has no vibration deck.")
+            from ..kind_table import KindTableError, kind as _kind
+            try:
+                _kind("vibration").on(engine)
+            except KindTableError as exc:
+                raise click.ClickException(str(exc))
             if stage_strategy:
                 raise click.ClickException(
                     "--stage-strategy names the optimization ladder's "

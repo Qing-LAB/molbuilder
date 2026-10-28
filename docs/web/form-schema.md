@@ -222,7 +222,7 @@ decides which cards fold.
 **What a card says is the schema's** *(2026-10-09)*. The cards, their order,
 their titles and the line under each come with the schema as its `cards` —
 a list in drawing order: *Setup*, a kind's result cards, then the groups' —
-from their one homes, `template.GROUP_WORDS` and `template.RESULTS`
+from their one homes, `template.GROUP_WORDS` and the kind's `results` in the kind table
 (`template.cards`) — served as `source_words` is, so the renderer keeps no
 copy. **The Setup card's line follows the fields the
 form shows** (`template.SETUP_WORDS`, chosen by `setup_words`): a SIESTA

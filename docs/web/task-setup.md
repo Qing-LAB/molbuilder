@@ -275,7 +275,7 @@ hierarchical — its five rungs exchange files through their own attempts
 SIESTA vibration — its one run's SIESTA calls each run in a folder of their
 own ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 1) — so on
 their folders the card shows that shape, says why, and offers no other. The
-sentence is the kind's (`task.fixed_shape`): the description's own reader
+sentence is the kind's part's on the engine (its `why` in the kind table, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3): the description's own reader
 refuses another shape with it, so a Save that sends one is refused, 400, in
 the words the card shows. **A hand-over of such a kind** is answered the
 same, from the engine and kind it carries: the card starts at that shape —
@@ -486,7 +486,7 @@ the Stages card has:
 | **the window, fitted** | a calculation that reuses a finished one: under the table, the transmission's window **fitted to the finished grid** — the range asked and how many times finer, the fitted ends and count, and *use these*, which writes them on the transmission's row, adding their columns first as a preset does (`setRowValues`; `lib/transport/fit.js`, the one builder the Transport tab draws too; [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 
 What a kind fixes — its shape and its stages; a SIESTA vibration its shape
-alone — is one answer, `task.fixed_by_kind`, which the reader's check asks and
+alone — is one answer, the kind's part on the engine in the kind table ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), which the reader's check asks and
 the folder answer serves (`fixed`, `shape_fixed`); the page keeps no list. *(Measured 2026-10-11 on
 `AuBDTAu/transport/transport_lowbias`: the card offered + Add stage, × on
 every rung, the refinement sentence and a picker naming no rung; the shape

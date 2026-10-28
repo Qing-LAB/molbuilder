@@ -276,41 +276,67 @@ def screen_pseudos(species, cfg, base: Path) -> None:
               "propor IMAX=0 crash that only appeared at high rank counts.")
 
 
+def _relabel(engine: str) -> Callable:
+    """``(config, label) -> config`` for ``engine``: the label written into
+    the setting its record in the engine table names as the one that names
+    a calculation's files (``identity_field`` -- ``system_label``,
+    ``job_name``)."""
+    from ..engine_table import engine as _engine
+    field = _engine(engine).identity_field
+    return lambda cfg, label: dataclasses.replace(cfg, **{field: label})
+
+
+def siesta_seam() -> EngineSeam:
+    """SIESTA's seam -- the part its record in the engine table names
+    (``seam``)."""
+    from ..engine_table import config_class as _config_class
+    from ..siesta.input import spec_for as _siesta_spec
+    from ..siesta.stages import traits_for, warm_for
+    return EngineSeam(config_cls=_config_class("siesta"),
+                      spec_for=_siesta_spec,
+                      suffix=deck_role("siesta"),
+                      relabel=_relabel("siesta"),
+                      warm_for=warm_for, traits_for=traits_for,
+                      sibling_artifacts=_siesta_sibling_artifacts,
+                      provide_data=siesta_provide_pseudos,
+                      shared_package=_siesta_shared_package)
+
+
+def pyscf_seam() -> EngineSeam:
+    """PySCF's seam -- the part its record in the engine table names
+    (``seam``).  NO ``provide_data`` and NO ``sibling_artifacts``, and both
+    absences are ANSWERS rather than omissions (`script-preparation.md` § 4,
+    W5): PySCF's basis sets ship inside PySCF, so there is no file to put in
+    the calculation; and its script's own text instructs nothing to be run
+    beside it, so there is no promise to keep.  NO ``shared_package``: there
+    is nothing in the calculation for every job to link to."""
+    from ..engine_table import config_class as _config_class
+    from ..pyscf.input import spec_for as _pyscf_spec
+    from ..pyscf.stages import traits_for as _pyscf_traits
+    from ..pyscf.stages import warm_for as _pyscf_warm
+    return EngineSeam(config_cls=_config_class("pyscf"),
+                      spec_for=_pyscf_spec,
+                      suffix=deck_role("pyscf"),
+                      relabel=_relabel("pyscf"),
+                      warm_for=_pyscf_warm, traits_for=_pyscf_traits)
+
+
 def engine_seam(engine: str) -> EngineSeam:
-    if engine == "siesta":
-        from ..config.siesta import SiestaConfig
-        from ..siesta.input import spec_for as _siesta_spec
-        from ..siesta.stages import traits_for, warm_for
-        return EngineSeam(config_cls=SiestaConfig, spec_for=_siesta_spec,
-                          suffix=deck_role("siesta"),
-                          relabel=lambda cfg, label: dataclasses.replace(
-                              cfg, system_label=label),
-                          warm_for=warm_for, traits_for=traits_for,
-                          sibling_artifacts=_siesta_sibling_artifacts,
-                          provide_data=siesta_provide_pseudos,
-                          shared_package=_siesta_shared_package)
-    if engine == "pyscf":
-        from ..config.pyscf import PySCFConfig
-        from ..pyscf.input import spec_for as _pyscf_spec
-        from ..pyscf.stages import traits_for as _pyscf_traits
-        from ..pyscf.stages import warm_for as _pyscf_warm
-        # NO ``provide_data`` and NO ``sibling_artifacts``, and both absences
-        # are ANSWERS rather than omissions (`script-preparation.md` § 4, W5):
-        # PySCF's basis sets ship inside PySCF, so there is no file to put in
-        # the calculation; and its script's own text instructs nothing to be
-        # run beside it, so there is no promise to keep.
-        return EngineSeam(config_cls=PySCFConfig, spec_for=_pyscf_spec,
-                          suffix=deck_role("pyscf"),
-                          relabel=lambda cfg, label: dataclasses.replace(
-                              cfg, job_name=label),
-                          warm_for=_pyscf_warm, traits_for=_pyscf_traits)
-        # NO ``shared_package``: PySCF's basis sets ship inside PySCF, so
-        # there is nothing in the calculation for every job to link to.
-    raise PrepError(
-        f"no deck writer for engine {engine!r}. An engine supplies its "
-        f"catalogue rows and an answer at each preparation step "
-        f"(script-preparation.md § 4); this backend has neither for that "
-        f"name.")
+    """What ``engine`` supplies for `prep` to run its steps over it -- the
+    seam its record in the engine table names (``seam``,
+    `execution/architecture.md` § 3.3); an engine the table does not hold
+    refused, saying an engine supplies its catalogue rows and an answer at
+    each preparation step."""
+    from ..engine_table import EngineTableError, engine as _engine
+    from ..kind_table import part
+    try:
+        rec = _engine(str(engine))
+    except EngineTableError as exc:
+        raise PrepError(
+            f"no deck writer for engine {engine!r}. An engine supplies its "
+            f"catalogue rows and an answer at each preparation step "
+            f"(script-preparation.md § 4); {exc}") from exc
+    return part(rec.seam, record=f"engine {rec.name}", key="seam")()
 
 
 def _siesta_shared_package(base: Path, plan=None) -> List[str]:
@@ -327,5 +353,6 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
                   for p in view.glob(base / PSEUDO_DIRNAME, "*.psml"))
 
 
-__all__ = ["EngineSeam", "engine_seam", "pseudo_dir", "screen_pseudos",
+__all__ = ["EngineSeam", "engine_seam", "siesta_seam", "pyscf_seam",
+           "pseudo_dir", "screen_pseudos",
            "siesta_provide_pseudos"]

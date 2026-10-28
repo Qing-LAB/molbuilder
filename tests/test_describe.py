@@ -390,7 +390,7 @@ _SHAPE_ROWS = [
 def test_the_shape_a_kind_fixes_on_the_command_line(
         tmp_path, monkeypatch, engine, shape, kind_shape, outcome):
     """`engines/stages.md` § 6.7: a SIESTA vibration is hierarchical, the
-    kind's (`task.fixed_by_kind`) -- its description's reader refuses
+    pair's (its part in the kind table) -- its description's reader refuses
     another shape in the kind's one sentence, and nothing is written;
     `describe` still asks for ``--shape``, its refusal naming the kind's
     shape and why; a PySCF vibration takes either shape.
@@ -402,7 +402,7 @@ def test_the_shape_a_kind_fixes_on_the_command_line(
     which shape a kind takes.
 
     MUTATION THIS MUST FAIL AGAINST: the reader's shape check removed;
-    `fixed_by_kind` answering transport alone; the refusal not naming the
+    the table fixing transport's shape alone; the refusal not naming the
     kind's shape."""
     from support.road import describe
     r, bundle = describe(tmp_path, monkeypatch, shape=shape, name="V",

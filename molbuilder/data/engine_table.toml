@@ -1,0 +1,43 @@
+# THE ENGINE TABLE -- every engine molbuilder runs
+# (docs/execution/architecture.md § 3.3).  Read by one reader,
+# `engine_table.py` (`engine(name)`); shared code names no engine -- it asks
+# this record (rule A18).  The engines the kind table's parts name, the file
+# catalogue's rows name (`runfiles`), the parameter catalogue serves
+# (`template.catalogue`) and the warm-file vocabularies sit under
+# (`warmfiles`) are these, each checked where that declaration loads.
+#
+# A fact another declaration holds stays there: an engine's deck and its
+# other files are the file catalogue's, the settings it offers and why one is
+# not offered the parameter catalogue's.
+#
+# A part that is code is named "module:NAME" and resolved by the floor it
+# lives on (`kind_table.part`), never imported here.
+
+[siesta]
+# Its name as a person reads it -- before a form's every card title, and in
+# the chemistry card's states (`web/form-schema.md` § 1.3).
+words = "SIESTA"
+# The setting that names a calculation's files.
+identity_field = "system_label"
+# The dataclass a template is rebuilt into (floor 1, `config/`).
+config = "molbuilder.config.siesta:SiestaConfig"
+# What it supplies for prep to run its steps over it (floor 3,
+# `jobset/engines.py`'s `EngineSeam`; `script-preparation.md` § 4).
+seam = "molbuilder.jobset.engines:siesta_seam"
+# What it computes the atoms in: the structure's own cell.
+computes_in = "cell"
+# A run is MPI ranks, each with its threads.
+one_process = false
+
+[pyscf]
+words = "PySCF"
+identity_field = "job_name"
+config = "molbuilder.config.pyscf:PySCFConfig"
+seam = "molbuilder.jobset.engines:pyscf_seam"
+# PySCF's `gto.M` is gas phase: one molecule in free space, whatever the
+# structure's cell -- its electron count a molecule's, a vibration removing
+# a free cluster's motions, no box to judge.
+computes_in = "free space"
+# ONE process -- a Python script with OpenMP threads -- so its request asks
+# one task.
+one_process = true

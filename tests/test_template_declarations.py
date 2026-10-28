@@ -152,11 +152,14 @@ def test_range_unit_and_group_come_from_the_CATALOGUE():
     'offered = { siesta = { vibraton = ["CG"] } }',
     "offered = { siesta = {} }",
     'recommended = { vibraton = "CG" }',
+    'offered = { vibration = ["CG"] }\n'
+    'not_offered = [{ on = "vibraton", values = ["FIRE"], why = "w" }]',
 ])
 def test_a_misspelled_kind_is_refused_by_name(table):
     """`engines/template.md` § 6.3a: a per-kind table keyed by a name that
     is no calculation kind is a table nothing asks -- for `offered`, every
-    refusal the kind was meant to carry silently gone (the K2 review).
+    refusal the kind was meant to carry silently gone (the K2 review); for a
+    `not_offered` row, its reason never given.
     API-level because the road cannot reach it: the catalogue is authored,
     not described."""
     from molbuilder import template as T

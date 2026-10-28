@@ -3,10 +3,10 @@ point, and the doors every reader of its points asks (`job-system.md`, *The
 task*, *a run of points*; `engines/transport.md` § 2a.11;
 `engines/vibration.md` § 5.11 § 11).
 
-MODULE  jobset.points (floor 2: reads the description's kind; each kind's
-        own module is imported when its declaration is asked for)
-ROLE    one table, keyed by the calculation kind, so that no reader of a
-        run's points asks ``calculation == "transport"``: prep's conductor
+MODULE  jobset.points (floor 4: a run of points; each pair's declaration is
+        named by the kind table and imported when asked for)
+ROLE    one door, the pair's declaration, so that no reader of a run's
+        points asks ``calculation == "transport"``: prep's conductor
         writes one deck per prepared folder, launch walks a run's points and
         takes the done ones over, `status`, Task setup, the Results ladder
         and the record read each point's own files -- each through the
@@ -15,17 +15,16 @@ USED-BY `jobset.submit`, `jobset.continuation`, `jobset.runstatus`,
         `jobset.ready`, `jobset.prepared_with`, `runs`
 
 A transport calculation's points are a frame of the cited set and a voltage,
-decided at prep (`transport.stages`); a SIESTA vibration's are the SIESTA
-calls of its one run -- its phases' -- the first known at launch, the
-optical ones planned in the job (`siesta.vibration_phases`).  Both are read
+decided at prep (`jobset.transport_points`); a SIESTA vibration's are the
+SIESTA calls of its one run -- its phases' -- the first known at launch, the
+optical ones planned in the job (`jobset.vibration_points`).  Both are read
 alike: a point is a folder below the run holding that point's deck, run
 script, output and records.
 """
 from __future__ import annotations
 
-import importlib
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Optional
 
 
 @dataclass(frozen=True)
@@ -113,26 +112,17 @@ class PointsOf:
         return min(n, 1) if self.one_wall else n
 
 
-#: THE KINDS THAT RUN A RUNG PER POINT, each by where its declaration is --
-#: ``(engine, calculation) -> "module:NAME"``, the module imported when
-#: asked, so this floor imports no kind.  A kind not here runs every rung
-#: once.
-DECLARED: Dict[Tuple[str, str], str] = {
-    ("siesta", "transport"): "molbuilder.transport.stages:POINTS",
-    ("siesta", "vibration"): "molbuilder.siesta.vibration_phases:POINTS",
-}
-
-
 def points_of(task) -> Optional[PointsOf]:
-    """``task``'s kind's declaration (:data:`DECLARED`), or ``None`` for a
-    kind whose every rung runs once."""
-    key = (str(getattr(task, "engine", "")),
-           str(getattr(task, "calculation", "")))
-    where = DECLARED.get(key)
-    if where is None:
+    """``task``'s pair's declaration -- the part the kind table names
+    (``points``, `execution/architecture.md` § 3.3) -- or ``None`` for a
+    pair whose every rung runs once."""
+    from ..kind_table import pair, part
+    got = pair(str(getattr(task, "calculation", "")),
+               str(getattr(task, "engine", "")))
+    if got is None or got.points is None:
         return None
-    module, _, name = where.partition(":")
-    return getattr(importlib.import_module(module), name)
+    return part(got.points, record=f"{got.kind} on {got.engine}",
+                key="points")
 
 
 def walls_of(task, n: int) -> int:
@@ -151,5 +141,5 @@ def rung_points_of(calc, stage: str) -> tuple:
     return tuple(pts.rung_points(calc, stage)) if pts is not None else ()
 
 
-__all__ = ["PointsOf", "DECLARED", "points_of", "walls_of",
+__all__ = ["PointsOf", "points_of", "walls_of",
            "rung_points_of"]

@@ -13,9 +13,10 @@ ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         (``<label>_<stage>-run<N>.phases.json``, :func:`write_index` /
         :func:`read_index`) lists every call: what it is, from what, how it
         ended -- written by launch for the calls it opens and by the run's
-        own python for the rest, rewritten whole.  :data:`POINTS` is the
-        kind's declaration as a rung of points (`jobset.points`).
-USED-BY `jobset.prep`, `jobset.submit`, `jobset.points`,
+        own python for the rest, rewritten whole.  The kind's declaration
+        as a rung of points is floor 4's, `jobset.vibration_points`, which
+        asks this module's calls, their state and the run's count.
+USED-BY `jobset.prep`, `jobset.submit`, `jobset.vibration_points`,
         `spectra.siesta_vibration`, `parse.sidecars.vibration_phases`
 """
 from __future__ import annotations
@@ -28,11 +29,11 @@ from typing import Any, Dict, List, Optional, Tuple
 # VIBRATION_COMPANIONS`), where the package is not installed.
 try:                                       # inside molbuilder
     from ..persist import check_schema, json_text, read_json, write_bytes
-    from ..runfiles import FIRST_ATTEMPT, ROLE_PHASES, ROLE_SPECTRA, compose
+    from ..runfiles import ROLE_PHASES, compose
 except ImportError:                        # beside a job
     from persist import (check_schema, json_text,  # type: ignore[no-redef]
                          read_json, write_bytes)
-    from runfiles import FIRST_ATTEMPT, ROLE_PHASES, ROLE_SPECTRA, compose
+    from runfiles import ROLE_PHASES, compose
 
 SCHEMA = "molbuilder/vibration-phases@1"
 
@@ -48,7 +49,7 @@ class PhaseRule:
     #: `spec_for`'s ``part`` -- which sections the phase's deck holds (§ 4).
     part: str
     #: The rung role the phase's deck renders -- the catalogue's `stages`
-    #: vocabulary (`paths.KIND_ROLES["vibration"]`, § 5.11 § 9): the one
+    #: vocabulary (the kind table's vibration roles, § 5.11 § 9): the one
     #: link between a phase's folder name and the items its deck reads.
     role: str
     #: The catalogue item that turns the phase off, and the value that does:
@@ -68,7 +69,7 @@ class PhaseRule:
     #: Whether a call's VERDICT counts toward done -- its SCF converged
     #: (`_run_ending.not_done_why`): not a relaxation's, done finished,
     #: converged or not (§ 5, § 6).  Read by this machine's done door
-    #: (:data:`POINTS`) and by the job's own record step.
+    #: (`jobset.vibration_points`) and by the job's own record step.
     verdict_counts: bool
     #: The warm-files section a call of this phase reads, launched again
     #: not done (§ 6).
@@ -275,7 +276,8 @@ def add_call(index: Dict[str, Any], call: Call, **facts) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------- #
-#  The kind's declaration as a rung of points (`jobset.points`)          #
+#  The run's count, size and files, as its declaration as a rung of     #
+#  points asks them (`jobset.vibration_points`)                          #
 # --------------------------------------------------------------------- #
 
 def summary(rows, phases=()) -> str:
@@ -376,123 +378,7 @@ def force_constants_call(run_dir) -> Path:
     return Path(run_dir) / Call(FC, FC).rel
 
 
-def _job_phases(calc, stage: str) -> Tuple[str, ...]:
-    """The phases the stage's job was prepared with, as its row in the
-    calculation's plan records them (`model.Job.phases`, written by prep)
-    -- the plan as ``calc`` holds it: a prep's, with its rows merged in,
-    else the one on disk; ``()`` for a stage prepared without phases, or
-    none prepared."""
-    job = calc.job(stage)
-    return tuple(getattr(job, "phases", ()) or ())
-
-
-def _declared_rung_points(calc, stage: str, *, read=None
-                          ) -> Tuple[Call, ...]:
-    """The calls known before the job -- one each for the relaxation and
-    the force constants the stage runs (:func:`_job_phases`); the optical
-    calls exist only once the force constants have run."""
-    return tuple(Call(p, p) for p in _job_phases(calc, stage)
-                 if p in (RELAX, FC))
-
-
-def _declared_points_in(run, task, stage: str, base) -> List[Tuple[Path, Call]]:
-    """A run's calls -- those its index lists (:func:`read_index`), each
-    with its folder below the run; before launch wrote the index, the calls
-    prep opened, the plan's row's phases (`Job.phases`).  The index is the
-    run's one, written at its first launch (a run folder holds one run of
-    points; a call's retries are the call's own)."""
-    from ..jobset.naming import stage_home
-    run = Path(run)
-    names = stage_home(base, task, stage).names(task.shape)
-    path = index_path(run, names, FIRST_ATTEMPT)
-    if not path.is_file():
-        # BEFORE LAUNCH WROTE THE INDEX: the calls prep opened -- the
-        # plan's row's phases (`Job.phases`), as a transport rung lists its
-        # prepared points.
-        from ..jobset.model import JobSet
-        plan = JobSet.of(base)
-        job = plan.job(stage) if plan is not None else None
-        return [(run / Call(p, p).rel, Call(p, p))
-                for p in (getattr(job, "phases", None) or ())
-                if p in (RELAX, FC)]
-    return [(run / c.rel, c) for c in calls_of(read_index(path))]
-
-
-def _declared_hands_on(stage: str, label: str, base) -> list:
-    return []
-
-
-def _declared_containers(calc, stage: str) -> Tuple[str, ...]:
-    """The folders a run holds besides its calls, opened with the run
-    (§ 5.11 § 2): the optical calls' container, when the stage's job runs
-    the optical phase -- the plan step puts each call below it."""
-    return (OPTICAL,) if OPTICAL in _job_phases(calc, stage) else ()
-
-
-def _declared_summary(rows, run, names) -> str:
-    """The count's words for `status` (`points.PointsOf.summary`): the
-    phases the run walks read off its index."""
-    path = index_path(run, names, FIRST_ATTEMPT)
-    try:
-        phases = read_index(path).get("phases") or ()
-    except (OSError, ValueError):
-        phases = ()
-    return summary(rows, phases)
-
-
-def _record_says(run, names, point: Call) -> Optional[str]:
-    """What the run's index says against ``point`` being done: its record
-    step's failure, where it failed (§ 5.11 § 7) -- ``None`` with no index
-    yet, or no entry."""
-    path = index_path(run, names, FIRST_ATTEMPT)
-    if not path.is_file():
-        return None
-    row = entry_of(read_index(path), point) or {}
-    return row.get("record_error") or None
-
-
-def _also_needs(run, names, task, stage: str, base) -> Optional[str]:
-    """What the run needs beyond its calls done: its finish ended with exit
-    0 (the index's entry) and its result on disk (§ 5.11 § 7)."""
-    path = index_path(run, names, FIRST_ATTEMPT)
-    if not path.is_file():
-        return "no index of its calls"
-    fin = (read_index(path).get("finish") or {})
-    if fin.get("ended") is None:
-        return "the finish did not end"
-    if fin.get("exit") not in (0, "0"):
-        return f"the finish exited {fin.get('exit')}: no result"
-    from ..runs import on_label_at
-    if on_label_at(run, ROLE_SPECTRA) is None:
-        return "the finish left no result at the run's root"
-    return None
-
-
-try:
-    from ..jobset.points import PointsOf
-except ImportError:                        # beside a job: the declaration is this machine's
-    PointsOf = None
-
-#: THE DECLARATION (`jobset.points.DECLARED`): a SIESTA vibration run's
-#: points are its SIESTA calls -- the relaxation's and the force constants'
-#: known at launch, the optical ones planned in the job.
-POINTS = (PointsOf(kind="vibration",
-                   rung_points=_declared_rung_points,
-                   points_in=_declared_points_in,
-                   products_of=products_of,
-                   hands_on=_declared_hands_on,
-                   summary=_declared_summary,
-                   converges=lambda stage: True,
-                   verdict_counts=lambda stage, point: phase(
-                       point.phase).verdict_counts,
-                   record_says=_record_says,
-                   also_needs=_also_needs,
-                   containers=_declared_containers,
-                   planned_in_job=True, one_wall=True, unit="call")
-          if PointsOf is not None else None)
-
-
 __all__ = ["SCHEMA", "RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES",
            "phase", "phases_on", "IR_CHARGES", "Call", "index_path", "empty_index",
            "read_index", "write_index", "calls_of", "entry_of", "add_call",
-           "summary", "products_of", "force_constants_call", "POINTS"]
+           "summary", "products_of", "force_constants_call"]

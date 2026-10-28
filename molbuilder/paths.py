@@ -44,7 +44,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 #: The two layouts, and the vocabulary both the description and the tree
 #: check against.  It lives HERE, not in ``task``, so this module imports
@@ -52,36 +52,6 @@ from typing import Dict, Optional, Tuple
 #: A description DECLARES the shape and nothing infers it
 #: (`engines/stages.md` § 6.7).
 SHAPES = ("flat", "hierarchical")
-
-#: THE RUNG ROLES each kind's ``stages`` names (`engines/template.md` § 6.4,
-#: plan § 5w K4): which
-#: rung of a kind reads an item, named by what the rung DOES -- the kind's
-#: own vocabulary.  Transport's roles are its five rungs, by name; a
-#: vibration's are the three phases of its one run -- the relaxation, the
-#: force-constant run and the optical calls (`engines/vibration.md` § 5.11
-#: § 9; each `siesta.vibration_phases.PHASES` row names its role), which
-#: one SIESTA stage carries all of.  A kind absent here has no roles: every
-#: rung reads every item the kind carries (an optimization ladder is one
-#: calculation tuned N ways).  It lives HERE, beside ``SHAPES``, for the
-#: same reason: ``task`` checks a transport ladder against it
-#: (``task.fixed_by_kind``), and the catalogue (``template``) reads it too.
-KIND_ROLES: Dict[str, Tuple[str, ...]] = {
-    "transport": ("seed", "electrode_L", "electrode_R", "device",
-                  "transmission"),
-    "vibration": ("relaxation", "force_constants", "optical"),
-}
-
-#: NAMED SETS OF THOSE ROLES, which a catalogue item's ``stages`` cites by
-#: name (`engines/template.md` § 6.4) -- a fact many items share, stated
-#: once.  ``scf``: every rung that runs an SCF -- transport's seed, leads and
-#: device, a vibration's three phases (an optical call is a single point)
-#: -- and never the transmission, whose ``tbtrans`` runs none and has no
-#: GPU path (`engines/transport.md` § 6.1b).
-ROLE_SETS: Dict[str, Tuple[str, ...]] = {
-    "scf": ("seed", "electrode_L", "electrode_R", "device", "relaxation",
-            "force_constants", "optical"),
-}
-
 
 @dataclass(frozen=True)
 class Shape:

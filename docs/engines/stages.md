@@ -587,7 +587,7 @@ stage is in the description or it is not. Removing one that left files leaves
 them untouched and keeps its number taken
 ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2); a transport
 ladder keeps every rung, its seed among them — the leads and the device start
-from its density (user, 2026-10-12; `task.fixed_by_kind`). A description written before carries
+from its density (user, 2026-10-12; the kind table's `stages`, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3). A description written before carries
 `"enabled"` on every stage — refused by name, naming `jobset migrate`, which
 removes a `true`; a stage switched off it refuses by name, since whether that
 stage now runs or leaves the description is the person's (one policy for a state against the design: an explicit error,
@@ -1359,10 +1359,12 @@ they never asked for, which `project-layout.md § 8` had already rejected. A
 the file itself carries what was chosen. That is the same rule as `varies`
 (§ 6.2): intent is recorded, never reconstructed.
 
-**A kind may fix it** (`task.fixed_by_kind`): a transport calculation and a
-SIESTA vibration are hierarchical — their rungs, or their run's calls, each
-need a folder of their own — and the description's reader refuses another,
-in the kind's one sentence (`task.fixed_shape`), on every road. **The web
+**A kind may fix it** — its part on the engine in the kind table
+([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3): a
+transport calculation and a SIESTA vibration are hierarchical — their rungs,
+or their run's calls, each need a folder of their own — and the description's
+reader refuses another, in the part's one sentence (its `why`), on every
+road. **The web
 surface starts at that shape**, its card saying why ([`web/task-setup.md`](?doc=web/task-setup.md)
 § 4); **`molbuilder describe` still asks for `--shape`** — on the command line
 no card shows the outcome, so the choice is written in the command, and its

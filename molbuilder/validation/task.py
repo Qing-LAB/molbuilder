@@ -309,20 +309,19 @@ def bench_points_fit_their_items(request) -> List[Issue]:
 
 
 def _shipped() -> Dict[str, Any]:
-    """The engines this backend has a generator for, resolved lazily.
-
-    Lazily because importing an engine config at module scope would drag the
-    whole engine stack into anything that imports ``validation``.
-    """
-    from ..config.pyscf import PySCFConfig
-    from ..config.siesta import SiestaConfig
-    return {"siesta": SiestaConfig, "pyscf": PySCFConfig}
+    """The engines this backend has a generator for, each with its config
+    class -- the engine table's (`engine_table.config_class`), resolved
+    lazily, since importing an engine config at module scope would drag the
+    whole engine stack into anything that imports ``validation``."""
+    from ..engine_table import config_class, engines
+    return {e: config_class(e) for e in engines()}
 
 
-def config_class_for(task, generators=None):
+def config_class_for(task):
     """The engine-config dataclass *task*'s engine is generated from, or None.
 
-    ONE OWNER for the engine -> config resolution.  `web/blueprints/build.py`
+    The engine -> config resolution is the engine table's
+    (`engine_table.config_class`); this asks it for a task.  `web/blueprints/build.py`
     renders this task's preflight findings for the browser, and
     `issues_to_json` needs the dataclass to resolve each finding's ``card``
     -- without it the key is OMITTED and the page cannot attach the finding
@@ -336,8 +335,7 @@ def config_class_for(task, generators=None):
     :func:`preflight` reports as its first error, and which leaves the caller
     exactly where it was before, rather than raising on the refusal path.
     """
-    known = dict(generators if generators is not None else _shipped())
-    return known.get(task.engine)
+    return _shipped().get(task.engine)
 
 
 def _names_exist(task, cls, fields) -> List[Issue]:

@@ -20,7 +20,7 @@ class TestTransportSchemaEndpoint:
     @pytest.mark.parametrize("query, refused", [
         ("", "engine must name the engine"),
         ("?engine=orca", "'orca' is no engine molbuilder knows"),
-        ("?engine=pyscf", "no PySCF-NEGF backend is built yet"),
+        ("?engine=pyscf", "no PySCF transport backend is built yet"),
         ("?engine=siesta", None),
     ])
     def test_the_engine_is_named_never_defaulted(self, web, query, refused):

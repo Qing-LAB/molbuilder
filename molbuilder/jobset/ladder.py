@@ -25,11 +25,11 @@ def source_stage(task, stage: str, template_text: Optional[str] = None
 
 def independent(task) -> bool:
     """An INDEPENDENT ladder, whose stages continue one from another: a kind
-    without rung roles (`paths.KIND_ROLES`).  A linked stage's input is
+    without rung roles (the kind table).  A linked stage's input is
     its kind's: a transport rung's gather (`gather.gather_sources`); a
     SIESTA vibration's one run takes nothing from another stage."""
-    from ..paths import KIND_ROLES
-    return task.calculation not in KIND_ROLES
+    from ..kind_table import kind
+    return not kind(task.calculation).roles
 
 
 def resolved_stages(task, template_text: Optional[str] = None) -> list:
@@ -82,7 +82,7 @@ def fresh_stages(calculation: str, engine: str) -> tuple:
     start -- ONE stage carrying no overrides, the calculation that is just
     the template (`engines/stages.md` § 6.5), named by the shared ladder
     vocabulary.  A transport calculation proposes nothing here: its rungs
-    are fixed by the kind (`task.fixed_by_kind`)."""
+    are fixed by the kind (its part in the kind table)."""
     if calculation == "vibration":
         from ..pyscf.stages import vibration_stages
         return tuple(vibration_stages(engine))

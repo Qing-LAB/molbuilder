@@ -7,7 +7,7 @@ template ⊕ the rung's overrides ⊕ its run card resolved
 (:func:`transport_spec`, :func:`at_frame`, :func:`at_point`) and its
 pseudopotentials (:func:`provide_pseudos`).
 
-Asked by prep's conductor, which writes the rung (`prep._transport_rung_of`),
+Asked by prep's conductor, which writes the rung (`prep.transport_rung_of`),
 and by the gather, which renders an upstream rung NOW to compare it with the
 deck its run ran (`gather.rung_deck_now`; `engines/transport.md` § 6.1) --
 one builder, so the two cannot render a rung two ways.
@@ -139,7 +139,7 @@ def transport_parts(task, stage: str, composed, config):
     electronic state.
 
     ONE DOOR, asked by the conductor through the rung
-    (:func:`_transport_rung_of`) and by the gather when it renders an
+    (`prep.transport_rung_of`) and by the gather when it renders an
     upstream rung NOW (:func:`transport_rung`, plan § 5w K11, T-F30).
     """
     from ..transport.deck import SHAPE_OF_RUNG

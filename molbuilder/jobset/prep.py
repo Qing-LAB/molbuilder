@@ -497,8 +497,9 @@ class Rung:
     """What one rung's decks are written from -- the structure step's
     answer, read by every step after it (`script-preparation.md` § 3.0).
 
-    A kind with steps of its own builds one (:data:`RUNGS`); every other
-    kind is a calculation of its described structure, one deck per element
+    A pair with steps of its own builds one -- its builder the part the
+    kind table names (``rung``); every other pair is a calculation of its
+    described structure, one deck per element
     (:func:`_described_rung`).  The conductor (:func:`prep_calculation`)
     reads these and never asks which kind it is in."""
     #: The structure the decks describe.
@@ -571,8 +572,8 @@ def _described_rung(calc, pset, *, seam, sweep, log, plan,
                 render_kind=calc.task.calculation)
 
 
-def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
-                           contours=None) -> Rung:
+def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
+                             contours=None) -> Rung:
     """A SIESTA vibration's rung -- ONE RUN IN PHASES (`engines/vibration.md`
     § 5.11): the relaxation, the force constants and the optical calls,
     each phase a point of the run with its own deck, written for its part
@@ -680,8 +681,8 @@ def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
                     job, phases=[p.name for p in on]))
 
 
-def _transport_rung_of(calc, pset, *, seam, sweep, log, plan,
-                       contours=None) -> Rung:
+def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
+                      contours=None) -> Rung:
     """A transport rung (`engines/transport.md`): its four steps of its own.
 
     **compose** -- the junction and its leads, composed from the cited
@@ -758,15 +759,6 @@ def _transport_rung_of(calc, pset, *, seam, sweep, log, plan,
                 points=points, at_point=at_point,
                 struct_at=lambda pt: at_frame(struct, pt),
                 provide_data=provide_data, job_facts=job_facts)
-
-
-#: THE KINDS WITH STEPS OF THEIR OWN, keyed by ``(engine, kind)``, each with
-#: the builder of its rung (`script-preparation.md` § 3.0) -- data the one
-#: conductor reads.  Every other kind is :func:`_described_rung`.
-RUNGS = {
-    ("siesta", "vibration"): _siesta_vibration_rung,
-    ("siesta", "transport"): _transport_rung_of,
-}
 
 
 @dataclass(frozen=True)
@@ -1054,10 +1046,13 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # structure as described, unless the kind composes or reorders it -- a
     # transport junction and its leads; a SIESTA vibration's held-first
     # copy.
-    rung = RUNGS.get((str(task.engine), str(task.calculation)),
-                     _described_rung)(calc, pset, seam=seam,
-                                      sweep=sweep, log=log, plan=plan,
-                                      contours=contours)
+    from ..kind_table import pair, part
+    _pair = pair(str(task.calculation), str(task.engine))
+    builds = (part(_pair.rung, record=f"{_pair.kind} on {_pair.engine}",
+                   key="rung")
+              if _pair is not None and _pair.rung else _described_rung)
+    rung = builds(calc, pset, seam=seam, sweep=sweep, log=log, plan=plan,
+                  contours=contours)
     if notes is not None:
         notes.extend(rung.said)
     # The DATA FILES the engine will open, before any deck is written: a
@@ -2091,7 +2086,7 @@ class PrepAnswer:
     #: The stage's deck, by file name.
     deck: Optional[str] = None
     pipeline_log: Optional[Path] = None
-    #: A LINKED stage -- its kind gives its rungs roles (`paths.KIND_ROLES`)
+    #: A LINKED stage -- its kind gives its rungs roles (the kind table)
     #: -- which builds on what its kind says, never on the stage before it:
     #: when it takes nothing from another run, both doors say so without
     #: "the first stage, or one that starts clean".
@@ -2313,19 +2308,19 @@ def shape_fixed(calc) -> Optional[Dict[str, str]]:
     ``None`` while it may still change (`web/task-setup.md` § 4).
 
     Two reasons, one answer: the calculation's KIND fixes it
-    (`task.fixed_by_kind` -- a transport calculation and a SIESTA vibration
-    are hierarchical), or the
+    (its part in the kind table -- a transport calculation and a SIESTA
+    vibration are hierarchical), or the
     calculation has PRODUCED (:func:`prepared_stages`) -- a prepared stage
     lies where the shape put it, and another shape would orphan every deck,
     output and warm file there; the way back is the state saved before its
     first prep (`job-system.md` § 5.0).  Asked by the page that draws the
     shape card and by the save that refuses another shape, so the two say
     the same thing."""
-    from ..task import fixed_shape
+    from ..kind_table import pair
     task = calc.task
-    kind = fixed_shape(task.calculation, task.engine)
-    if kind is not None:
-        return kind
+    fixed = pair(task.calculation, task.engine)
+    if fixed is not None and fixed.fixed_shape is not None:
+        return fixed.fixed_shape
     done = prepared_stages(calc) if task.shape else []
     if not done:
         return None
@@ -2616,9 +2611,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     # THE STAGE'S FIRST RUN -- opened with its own files (`_open_attempts`);
     # what it takes from another run is its first launch's.  Flat keeps no
     # attempt directories: the run is the calculation's folder.
-    from ..paths import KIND_ROLES
+    from ..kind_table import kind as _kind
     from .materialize import SweepRun
-    out.linked = task.calculation in KIND_ROLES
+    out.linked = bool(_kind(task.calculation).roles)
     if flat:
         out.flat = True
         run_dir = base

@@ -208,7 +208,7 @@ save_refused = ["shape is fixed once it has produced", "coarse is prepared"]
 
 # ===================================================================== #
 #  A KIND THAT FIXES THE SHAPE SHOWS IT FIXED                           #
-#  (`web/task-setup.md` § 4; `task.fixed_by_kind`)                      #
+#  (`web/task-setup.md` § 4; its part in the kind table)              #
 # ===================================================================== #
 
 [[case]]

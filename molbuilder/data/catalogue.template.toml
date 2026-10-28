@@ -172,6 +172,9 @@ role = ["transport"]
 role_values = { device = "transiesta" }
 # transiesta is a transport device's, fixed by its rung (SO-C13)
 offered = { optimization = ["diagon", "OMM"], vibration = ["diagon", "OMM"] }
+not_offered = [
+    { values = ["transiesta"], why = "transiesta is a transport device's solver: an open-boundary run needs the electrodes only a transport calculation builds" },
+]
 kind = "engine"
 category = ["method", "convergence"]
 engines = ["siesta"]
@@ -493,6 +496,9 @@ engine_default = { value = "CG", source = "SIESTA 5.4.2 read_options.F90:1281: d
 recommended = { vibration = "Broyden" }
 # a vibration's `relax` stage relaxes: no relaxation is not one
 offered = { vibration = ["CG", "Broyden", "FIRE"] }
+not_offered = [
+    { on = "vibration", values = ["none"], why = "none relaxes nothing: relax_type names the relaxer a vibration's relax stage uses, and whether that stage runs at all is already_relaxed's to say" },
+]
 result = { vibration = "modes" }
 group = "stage"
 label = "Relaxation algorithm"
@@ -1149,13 +1155,43 @@ Left blank it is worked out from the structure: unrestricted for an open-d metal
 # WHAT EACH ENGINE RUNS, PER KIND (`engines/template.md` § 6.3a; read from
 # each engine's source, `science/chemistry-correctness.md` § 2a.3) -- the
 # form offers only these, and `resolve` and the settings gate refuse the rest
-# by name (`template.why_not_offered`).
+# by name, with the first `not_offered` row below that holds.
 [item.spin_treatment.offered]
 siesta.optimization = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
 siesta.vibration    = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
 siesta.transport    = ["restricted", "unrestricted"]
 pyscf.optimization  = ["restricted", "restricted-open", "unrestricted"]
 pyscf.vibration     = ["restricted"]
+
+[[item.spin_treatment.not_offered]]
+on = "siesta"
+values = ["restricted-open"]
+why = "SIESTA has no restricted open-shell formalism"
+
+[[item.spin_treatment.not_offered]]
+on = "pyscf"
+values = ["non-collinear"]
+why = "PySCF's molecular SCF here is collinear"
+
+[[item.spin_treatment.not_offered]]
+on = "pyscf"
+values = ["spin-orbit"]
+why = "PySCF's molecular SCF here has no spin-orbit coupling"
+
+[[item.spin_treatment.not_offered]]
+on = "transport"
+values = ["non-collinear", "spin-orbit"]
+why = "TranSIESTA stops on more than two spin components (m_transiesta.F90: 'transiesta does not work for non-collinear or spin-orbit')"
+
+[[item.spin_treatment.not_offered]]
+on = "pyscf.vibration"
+values = ["restricted-open"]
+why = "PySCF has no analytic ROHF/ROKS Hessian, and the vibration deck takes the analytic Hessian"
+
+[[item.spin_treatment.not_offered]]
+on = "pyscf.vibration"
+values = ["unrestricted"]
+why = "the spectrum record carries one spin channel: a PySCF vibration's orbital block is written one channel wide and its reader refuses a second (engines/vibration.md § 3.1; plan § 5w K17)"
 
 [item.unpaired_electrons]
 # 2S = N-up - N-down, and NOT the multiplicity 2S+1 -- or `free`, a moment that
@@ -1193,6 +1229,19 @@ SIESTA writes a count as Spin.Fix + Spin.Total beside Spin polarized, and nothin
 siesta.transport   = [0, "free"]
 pyscf.optimization = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 pyscf.vibration    = [0]
+
+[[item.unpaired_electrons.not_offered]]
+on = "pyscf"
+values = ["free"]
+why = "PySCF fixes the moment: it occupies exactly N-up and N-down from mol.spin (pyscf/scf/uhf.py) -- state the count, 0 for a closed shell, 1 for a doublet, 2 for a triplet"
+
+[[item.unpaired_electrons.not_offered]]
+on = "pyscf.vibration"
+why = "a PySCF vibration is restricted: every electron paired"
+
+[[item.unpaired_electrons.not_offered]]
+on = "transport"
+why = "TranSIESTA cannot hold a fixed total spin ('Fixing spin is not possible in TranSiesta', m_ts_options.F90): under unrestricted the count floats"
 
 [item.job_name]
 kind = "produce"

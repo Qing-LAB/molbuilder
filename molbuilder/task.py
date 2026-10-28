@@ -103,52 +103,6 @@ _JOB_KEYS = ("allocation", "execution", "bench", "notify")
 _JOB_STAGE_KEYS = ("group", "execution")
 _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 
-def fixed_by_kind(calculation: str, engine: str
-                  ) -> Optional[Dict[str, Any]]:
-    """WHAT A CALCULATION KIND FIXES on ``engine``, so its description states
-    it and no surface offers another (`engines/transport.md` § 3.8.2a,
-    `web/task-setup.md` § 4, § 5.3; user, 2026-10-11): ``{"shape", "why",
-    "stages"}`` -- for transport, hierarchical and its five rungs, every
-    one, in order (the seed among them: the device starts from its
-    density, user 2026-10-12); for a SIESTA vibration, hierarchical, its
-    stages its own (``None``): its one run's SIESTA calls each in a folder
-    of its own (`engines/vibration.md` § 5.11 § 1); ``None`` for a kind
-    that fixes neither.  ``why`` is the shape and its reason, the one
-    sentence the reader's check refuses another shape with, the shape card
-    shows and `molbuilder describe` says (:func:`fixed_shape`).  The reader's check
-    asks it, and Task setup's folder answer serves it, so the two cannot
-    disagree."""
-    if calculation == "transport":
-        from .paths import KIND_ROLES
-        return {"shape": "hierarchical", "stages": KIND_ROLES["transport"],
-                "why": "A transport calculation is hierarchical, and no "
-                        "other shape is taken -- its five stages exchange "
-                        "files through their own attempts, which the flat "
-                        "shape has no directories to hold "
-                        "(engines/transport.md § 2a.11)."}
-    if calculation == "vibration" and engine == "siesta":
-        return {"shape": "hierarchical", "stages": None,
-                "why": "A SIESTA vibration is hierarchical, and no other "
-                        "shape is taken -- its one run's SIESTA calls, the "
-                        "relaxation, the force constants and the optical "
-                        "calls, each run in a folder of its own: in one "
-                        "directory they would write over each other's .DM "
-                        "and .XV (engines/vibration.md § 5.11 § 1)."}
-    return None
-
-
-def fixed_shape(calculation: str, engine: str) -> Optional[Dict[str, str]]:
-    """THE SHAPE A KIND FIXES, and why -- ``{"shape", "why"}`` from
-    :func:`fixed_by_kind`, or ``None`` for a kind that fixes none: what the
-    shape card shows for a description or a hand-over alike
-    (`web/task-setup.md` § 4), and `molbuilder describe` says when no shape
-    is given."""
-    fixed = fixed_by_kind(calculation, engine)
-    if fixed is None:
-        return None
-    return {"shape": fixed["shape"], "why": fixed["why"]}
-
-
 #: A slot citation names its junction explicitly, by its tree-relative
 #: path (`engines/transport.md` § 3.1): a finished relaxation run's folder,
 #: or a structure pair's .xyz -- what makes it citable is what it holds,
@@ -349,11 +303,28 @@ class Task:
                 f"(varies={self.varies!r}, stages={self.stages!r}) -- "
                 "'varies' is what differs ACROSS the stages, so neither is "
                 "meaningful without the other (engines/stages.md 6.5)")
-        # THE SHAPE A KIND FIXES (`fixed_by_kind`): no description of it
-        # holds another (`web/task-setup.md` § 4).
-        fixed = fixed_by_kind(self.calculation, self.engine)
-        if fixed is not None and self.shape != fixed["shape"]:
-            raise ValueError(fixed["why"])
+        # A KIND THE KIND TABLE HOLDS, ON AN ENGINE IT RUNS ON
+        # (`execution/architecture.md` § 3.3), each refused in the table's
+        # sentence; and what its part on this engine fixes -- the shape,
+        # and the stages, every one, in order -- held by no description of
+        # it otherwise (`web/task-setup.md` § 4, § 5.3).  An engine the
+        # engine table does not hold is the preflight's to refuse, naming
+        # the engines there are (`validation.task.preflight`, row 1).
+        from .engine_table import engines as _engines
+        from .kind_table import kind as _kind
+        fixed = (_kind(self.calculation).on(self.engine)
+                 if str(self.engine) in _engines() else None)
+        if fixed is not None and fixed.shape and self.shape != fixed.shape:
+            raise ValueError(fixed.why)
+        if fixed is not None and fixed.stages:
+            names = tuple(st.name for st in (self.stages or ()))
+            if names != fixed.stages:
+                raise ValueError(
+                    f"task: {_kind(self.calculation).with_article}'s stages "
+                    f"are its rungs, every one, in order -- "
+                    f"{', '.join(fixed.stages)} (got "
+                    f"{', '.join(names) or 'none'}) -- the kind table's "
+                    f"(execution/architecture.md § 3.3)")
         # The composite's own pairing (engines/transport.md § 3.1): slots
         # belong to transport alone; transport requires the junction slot,
         # carries no structure block, and each citation names its attempt.
@@ -369,15 +340,6 @@ class Task:
                     "task: a transport calculation carries no 'structure' "
                     "block -- its structure IS the junction citation, "
                     "copied in at prep (engines/transport.md § 3.1)")
-            fixed = fixed_by_kind(self.calculation, self.engine)
-            names = tuple(st.name for st in (self.stages or ()))
-            if names != tuple(fixed["stages"]):
-                raise ValueError(
-                    f"task: a transport calculation's stages are its five "
-                    f"rungs, every one, in order -- "
-                    f"{', '.join(fixed['stages'])} (got "
-                    f"{', '.join(names) or 'none'}) "
-                    f"(engines/transport.md § 3.8.2a)")
         else:
             if self.slots:
                 raise ValueError(
@@ -1045,7 +1007,7 @@ def write_task(base, task: Task):
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Run", "StructureRef", "Stage", "Task",
            "derive_run", "of", "from_text", "path_of",
-           "varies_for", "write_task", "fixed_by_kind", "fixed_shape"]
+           "varies_for", "write_task"]
 
 
 #: See the note beside § 2 above.  Derived here, where `Stage` is in scope.

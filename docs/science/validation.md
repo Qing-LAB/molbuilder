@@ -433,16 +433,17 @@ otherwise went with F25, 2026-10-08)*.
 
 ## 6. Adding a new engine
 
-1. Declare what it can run: the kinds in `electronic_state.engines_for`'s
-   table (and in `cell.MOLECULAR` if it builds the atoms as one molecule in
-   free space — then every question about the calculation's axes, the box's
-   advice among them, is answered for a cluster:
-   [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
-   § 2.1), and on
-   the state's two items the choices each of its kinds offers (`offered` with
-   the engine's key, [`engines/template.md`](?doc=engines/template.md) § 6.3a —
-   no `free` among its counts if it cannot float a moment), with a reason in
-   `template.why_not_offered` for what it cannot. The form then offers exactly
+1. Declare what it can run: its record in the engine table — with
+   `computes_in = "free space"` if it builds the atoms as one molecule in
+   free space, and then every question about the calculation's axes, the
+   box's advice among them, is answered for a cluster
+   ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
+   § 2.1) — and a part on each kind it runs in the kind table
+   ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3); and
+   on the state's two items the choices each of its kinds offers (`offered`
+   with the engine's key, [`engines/template.md`](?doc=engines/template.md)
+   § 6.3a — no `free` among its counts if it cannot float a moment), with a
+   `not_offered` row saying why for what it cannot. The form then offers exactly
    that, and `resolve` and the gate refuse the rest by name (ES4).
 2. Give its config the four state items from `config/state.py` (the factories
    every engine's config uses), and `method` if it has one.
@@ -451,8 +452,8 @@ otherwise went with F25, 2026-10-08)*.
 4. Register its validator in `_ENGINE_VALIDATORS`; the state's findings come to it
    through `validate()` without a line of its own. Pin its decks through prep.
 
-No endpoint change: `/api/structure/analyze` answers every engine
-`engines_for` names for the kind.
+No endpoint change: `/api/structure/analyze` answers every engine the kind
+has a part on in the kind table.
 
 ---
 

@@ -621,7 +621,7 @@ def api_transport_describe() -> Any:
     the other kinds hand to Task setup because that tab owns questions
     they cannot answer — shape, stages, what varies.  Transport has
     none open: the ladder and the hierarchical shape are fixed by the
-    kind (`task.fixed_by_kind`), the identity derives from the citation,
+    kind (the kind table), the identity derives from the citation,
     the knobs ride the stages' override bags.  So this door writes the
     finished description in one act, through the writer `molbuilder describe`
     takes (`describe.write_description`), into a folder that holds none
@@ -646,7 +646,8 @@ def api_transport_describe() -> Any:
     person's; its job request.
     """
     from molbuilder.projects import projects_root
-    from molbuilder.task import Task, derive_run, fixed_by_kind
+    from molbuilder.kind_table import kind as _kind
+    from molbuilder.task import Task, derive_run
     from molbuilder.transport.compose import (ComposeError,
                                              refuse_failed_citation,
                                              resolve_citation)
@@ -840,7 +841,7 @@ def api_transport_describe() -> Any:
             varies=tuple(sorted({n for b in bags.values() for n in b})),
             stages=tuple(stages_for_transport(bags))), citation)
             if finished is not None else Task(
-            engine=engine, shape=fixed_by_kind("transport", engine)["shape"],
+            engine=engine, shape=_kind("transport").on(engine).shape,
             run=derive_run(typed, citation,
                            stage_names=TRANSPORT_STAGES),
             structure=None, calculation="transport",

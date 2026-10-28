@@ -203,9 +203,10 @@ def pseudopotential_findings(struct: Structure, cfg, *,
     already there count as at `prep` (`web/handover-procedure.md` § 2.2,
     plan § 5w K20)."""
     from ..chemistry import every_label_resolves
-    from ..electronic_state import KINDS, electronic_state
+    from ..electronic_state import electronic_state
+    from ..kind_table import kinds as _kinds
     state = (electronic_state(struct, cfg, kind=calculation)
-             if calculation in KINDS and every_label_resolves(struct)
+             if calculation in _kinds() and every_label_resolves(struct)
              else None)
     return _check_siesta_pseudo_coverage(struct, cfg, dest_dir=dest_dir,
                                          relativistic=_relativistic(state))
@@ -597,9 +598,10 @@ def _validate_siesta(struct: Structure, cfg,
     # element: the state is an electron count, and the label check above
     # owns that finding.
     from ..chemistry import every_label_resolves
-    from ..electronic_state import KINDS, electronic_state
+    from ..electronic_state import electronic_state
+    from ..kind_table import kinds as _kinds
     state = (electronic_state(struct, cfg, kind=calculation)
-             if calculation in KINDS and every_label_resolves(struct)
+             if calculation in _kinds() and every_label_resolves(struct)
              else None)
 
     # Pseudopotential coverage (the actionable use of pseudos.py).
