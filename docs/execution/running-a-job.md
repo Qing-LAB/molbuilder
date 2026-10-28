@@ -772,7 +772,7 @@ run_status(run_dir, basename, *, launch=<not asked>, run=None, launched_in=None)
 | caller | `launch` | `match` |
 |---|---|---|
 | `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `runs.concluded` (`state_of`: the run door, and the scheduler asked once where it can — § 4.2, *Asked once, written once*) — an attempt's, each point's for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), a trial's, or a flat stage's newest run's own `<basename>-run<N>.run.json` | the stage's stem |
-| the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runs.run_answer` — the viewers | the run's, through the same door | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
+| the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runstatus.run_answer` — the viewers | the run's, through the same door | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
 | the monitor's closing line | not asked | its run's stem |
 
 `run_status` has no answer *there is no run here*: asked without `launch`, a

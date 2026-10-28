@@ -678,11 +678,13 @@ decides it (`project-layout.md` § 1.4a):
   that stage's newest run index (with none launched, its one prepared stage);
   and it opens at the first role its calculation produces
   (`runfiles.result_roles`) in which that run has a file a parser claims —
-  but a transport calculation's transmission run, which opens its
-  calculation's report, the root's `task.json`, at its point
-  (`runs.transmission_point`);
+  or what its calculation kind's record declares a folder of that rung opens
+  (`architecture.md` § 3.3) — a transport calculation's transmission run,
+  its calculation's report, the root's `task.json`, at its point;
 * **a container** — the calculation's own product at its root, when it has
-  one; its runs are the folders below it;
+  one, and at a run of points' root its own result, or nothing (what a reader
+  opens there before it is written is the run of points' view's,
+  `architecture.md` § 3.2); its runs are the folders below it;
 * **a folder no calculation claims** — it holds no run of ours: the
   catalogue's dotted roles are tried, the calculations' products and the
   progress log first, then the engines' stdout, newest file first, each

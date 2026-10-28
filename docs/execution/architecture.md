@@ -22,14 +22,14 @@ depth** (`L1`/`L2`/`L3`), a different and coarser grouping than this one;
 
 ---
 
-## 0. The goal: one workflow, flexible in five directions
+## 0. The goal: one workflow, flexible in six directions
 
 *Stated 2026-08-11 (user): **"we need a unified and flexible workflow."** Every
 rule below serves this; if a rule and this section disagree, this section is what
 the rule was for.*
 
-> **There is ONE way to run a calculation, and it bends in five places rather
-> than forking into five systems.**
+> **There is ONE way to run a calculation, and it bends in six places rather
+> than forking into six systems.**
 
 ```mermaid
 flowchart TB
@@ -38,12 +38,14 @@ flowchart TB
     W --> A2["<b>environment</b><br/>workstation · HPC"]
     W --> A3["<b>shape</b><br/>flat · hierarchical"]
     W --> A4["<b>engine</b><br/>SIESTA · PySCF · …"]
-    W --> A5["<b>kind</b><br/>run · benchmark · study"]
+    W --> A5["<b>job kind</b><br/>run · benchmark · study"]
+    W --> A6["<b>calculation kind</b><br/>optimization · vibration · transport"]
     A1 --> R["<b>the same run directory,<br/>the same deck, the same wrapper</b>"]
     A2 --> R
     A3 --> R
     A4 --> R
     A5 --> R
+    A6 --> R
 ```
 
 **What each axis is allowed to change, and what it may never touch:**
@@ -53,16 +55,18 @@ flowchart TB
 | **surface** — browser or terminal | how you *say* it | the files written (§ 11) | you |
 | **environment** — workstation or HPC | one flag, one extra file, two floor-1 facts (§ 9) | floors 2, 3, 4, 6, 7 — and the inner `.run.sh` **byte for byte** | the target's record, probed on that machine (`jobset probe`, its activation **declared** in that machine's `molbuilder.json`) and read at `prep` |
 | **shape** — flat or hierarchical | where results sit, and what survives | every rule in `project-layout.md`; only *depth* differs | `task.json`'s `shape`, once |
-| **engine** — SIESTA, PySCF, … | which items exist and what keyword each becomes | the template format, the routes, the verbs, the layout | the engine's own metadata |
-| **kind** — run · benchmark · study | **how many configurations get rendered** | every step of `prep`, which loops rather than branches | the length of the `ParameterSet`, at `prep` step 2 |
+| **engine** — SIESTA, PySCF, … | which items exist and what keyword each becomes | the template format, the routes, the verbs, the layout | its items in the catalogue, and its record in the engine table (§ 3.3) |
+| **calculation kind** — optimization · vibration · transport | the shape it fixes, its rungs and what each does, which rungs run per point, what each of its folders opens, the fields and checks its description carries | the verbs, the floors, the layout's grammar, the run door — one code path for every calculation | its record in the kind table (§ 3.3) |
+| **job kind** — run · benchmark · study | **how many configurations get rendered** | every step of `prep`, which loops rather than branches | the length of the `ParameterSet`, at `prep` step 2 |
 
 **One property makes it unified, and it is worth naming because everything else
 follows from it:** *every axis is a **value read at one point**, never a branch
 that grows a second code path.* A shape is a field somebody set; an environment
-is what floor 1 found; an engine is a `kind` on an item; **a benchmark is a list
-with more than one element.** No axis is a fork.
+is what floor 1 found; an engine is the items the catalogue offers it and its
+record; **a calculation kind is its record in the kind table**; **a benchmark is
+a list with more than one element.** No axis is a fork.
 
-> **The fifth axis is a length, not a fork.** `project-layout.md` § 2.3.1a says
+> **The job kind is a length, not a fork.** `project-layout.md` § 2.3.1a says
 > it in words —
 > *"benchmarking is `prep` whose parameters are a set rather than a point"* — and
 > [`generator.md`](?doc=execution/generator.md) makes it an object, so **a
@@ -183,6 +187,7 @@ flowchart TB
       direction LR
       Y1["jobset/materialize.py"]; Y2["jobset/continuation.py"]
       Y3["jobset/gather.py"]; Y4["jobset/ready.py"]; Y5["jobset/reuse.py"]
+      Y6["jobset/points.py"]
     end
     subgraph F3["<b>3 · plan &amp; render</b> — values, each job's ask, and the text of every file"]
       direction LR
@@ -204,7 +209,7 @@ flowchart TB
       N8["calcdirs.py"]; N9["runrecord.py"]; N10["parse/"]
       N11["jobset/ledger.py"]; N12["jobset/errors.py"]; N13["jobset/machine.py"]
       N14["jobset/planned.py"]; N15["joblist.py"]; N16["jobset/sequence.py"]
-      N17["template.py"]; N18["warmfiles.py"]
+      N17["template.py"]; N18["warmfiles.py"]; N19["kind_table.py"]; N20["engine_table.py"]
     end
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
     F5 -.-> F1
@@ -223,16 +228,23 @@ floor 1 doing the job it exists for.
 
 | # | floor | the decision it owns | files | **entry points** | what it writes | it must never |
 |---|---|---|---|---|---|---|
-| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says; whether a job launched from this machine is going; every parameter an engine takes, and what a file of a template or a warm-files vocabulary says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `deck_record` (the grammar of a deck's blocks, and the one door of *the same calculation*, each engine's reading registered by the surfaces — [`job-request.md`](?doc=execution/job-request.md) § 6) · `template` (the catalogue of every parameter and the template format — the template FILE's door is `template_file`, floor 2) · `warmfiles` (the engines' warm-file and scratch vocabularies, and a calculation's own) · `scheduler/` (the record, the probe, the fit, the queue a job names bound to the record; a queue job's cluster, whether the queue lists it and how, its cancel) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) · `joblist` (each launch's address, and whether that job is going — `job-system.md` § 6.0a) · `jobset/sequence` (a sequence of groups' launch record — `job-system.md` § 6.0, *A sequence of groups*) | `resolve_stage_ref` · `stage_token` · `parse_token` · `rung_label` (the label a rung's files are named on — a lead's own stem) · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `calcdirs.described` (is a folder a calculation's root — the description's file, by its name, there) · `calcdirs.where` (where a folder is — its calculation, what it is, and the stage, run, trial and point it sits in) · `catalogue` · `select` · `one` · `read_template` · `warm_list` · `is_scratch` / `scratch_families` · `machine_for` (the record read) · `calculation_environment` (the calculation's copy, read) · `require_activation` · `resolve_environment` (the probe's) · `fit` · `place` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` · `joblist.write` / `every` / `going_here` / `signal_here` · `joblist.is_going` (the one answer to *is this job going* — its process, or its scheduler's list, `None` where this machine cannot tell — which `molbuilder jobs`, `jobset scratch` and whether a sequence still going holds a group, `ready.held_by_sequence`, ask) · `joblist.inside` (the job a reader runs inside — a group's launch inside a sequence's job — whose runs it reads by their own files) with `joblist.Asked` (each scheduler's cluster, asked once a command) and `joblist.scheduler_of` (the scheduler its calculation's copy of the record names) · `queue.cluster` / `listed` / `cancel` · `sequence.write_record` / `read_record` / `sent` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers · a job's address, `<state dir>/jobs/<id>.json` · a sequence's `launch/<seq>.launch.json` | know what a calculation is — a stage, a ladder, a plan |
-| **2** | **description** | what the person asked for — what to compute (the description) and how and where to run it (the job request, [`job-request.md`](?doc=execution/job-request.md)) — and the run a file belongs to, read with it | `task` · `job_request` (the job request's door) · `template_file` (the template file's door) · `runs` · `task_reader` (the Results tab's reader of a transport calculation's description, registered by the surfaces) | `task.of` · `write_task` · `job_request.of` · `template_file.of` · `derive_run` · `varies_for` · `place_of` · `run_of` · `on_label_at` · `about` · `openable` · `transmission_point` · `folder_answer` | `task.json` · the template · `job-request.json` | the description: **name a machine**; the job request: **state what is computed** — nothing in one read as the other (A17) |
+| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says; whether a job launched from this machine is going; every parameter an engine takes, and what a file of a template or a warm-files vocabulary says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `deck_record` (the grammar of a deck's blocks, and the one door of *the same calculation*, each engine's reading registered by the surfaces — [`job-request.md`](?doc=execution/job-request.md) § 6) · `template` (the catalogue of every parameter and the template format — the template FILE's door is `template_file`, floor 2) · `warmfiles` (the engines' warm-file and scratch vocabularies, and a calculation's own) · `scheduler/` (the record, the probe, the fit, the queue a job names bound to the record; a queue job's cluster, whether the queue lists it and how, its cancel) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) · `joblist` (each launch's address, and whether that job is going — `job-system.md` § 6.0a) · `jobset/sequence` (a sequence of groups' launch record — `job-system.md` § 6.0, *A sequence of groups*) · `kind_table` · `engine_table` (the kind table and the engine table, each its data file read once — § 3.3) | `kind_table.kind` · `CalculationKind.on` · `engine_table.engine` (a calculation kind's record, its part on one engine, an engine's record — § 3.3) · `resolve_stage_ref` · `stage_token` · `parse_token` · `rung_label` (the label a rung's files are named on — a lead's own stem) · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `calcdirs.described` (is a folder a calculation's root — the description's file, by its name, there) · `calcdirs.where` (where a folder is — its calculation, what it is, and the stage, run, trial and point it sits in) · `catalogue` · `select` · `one` · `read_template` · `warm_list` · `is_scratch` / `scratch_families` · `machine_for` (the record read) · `calculation_environment` (the calculation's copy, read) · `require_activation` · `resolve_environment` (the probe's) · `fit` · `place` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` · `joblist.write` / `every` / `going_here` / `signal_here` · `joblist.is_going` (the one answer to *is this job going* — its process, or its scheduler's list, `None` where this machine cannot tell — which `molbuilder jobs`, `jobset scratch` and whether a sequence still going holds a group, `ready.held_by_sequence`, ask) · `joblist.inside` (the job a reader runs inside — a group's launch inside a sequence's job — whose runs it reads by their own files) with `joblist.Asked` (each scheduler's cluster, asked once a command) and `joblist.scheduler_of` (the scheduler its calculation's copy of the record names) · `queue.cluster` / `listed` / `cancel` · `sequence.write_record` / `read_record` / `sent` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers · a job's address, `<state dir>/jobs/<id>.json` · a sequence's `launch/<seq>.launch.json` | open a calculation — its description, its ladder or its plan (the kind table declares what a kind fixes; it reads no calculation) |
+| **2** | **description** | what the person asked for — what to compute (the description) and how and where to run it (the job request, [`job-request.md`](?doc=execution/job-request.md)) — and the run a file belongs to, read with it | `task` · `job_request` (the job request's door) · `template_file` (the template file's door) · `runs` · `task_reader` (the Results tab's reader of a transport calculation's description, registered by the surfaces) | `task.of` · `write_task` · `job_request.of` · `template_file.of` · `derive_run` · `varies_for` · `place_of` · `run_of` · `state_of` · `record_of` · `on_label_at` · `about` · `openable` · `folder_answer` | `task.json` · the template · `job-request.json` | the description: **name a machine**; the job request: **state what is computed** — nothing in one read as the other (A17); the run door: **compose a view over several runs or points** — it answers the one folder it is handed, reading only that folder, the folder its run's launch record lies in, the stage's folder prep wrote its deck in and the calculation's description; it opens no calculation, reads no plan and walks no run of points (§ 3.2) |
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** — and the names that plan gives a stage, a job and their files | `calculation` (the calculation, opened once, with the plan it holds) · `resolve` · `jobset/model` · `jobset/sweep_reader` (the Results tab's reader of a benchmark's plan, registered by the surfaces) · `jobset/naming` · `jobset/ladder` · `jobset/engines` · `jobset/placement` · `jobset/group` · `jobset/shelves` · `jobset/transport_rung` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `calculation.open` · `Calculation.job` (a stage's row in the plan) · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.of` / `write` / `validate` · `warm_declaration` · `stage_home` · `job_dir_names` · `stage_refs` · `run_names` · `open_container` · `source_stage` · `stage_before` · `fresh_stages` · `engine_seam` · `placed` · `queue_table` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** |
-| **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` · `jobset/gather` · `jobset/ready` · `jobset/reuse` (a transport calculation that reuses a finished one, `engines/transport.md` § 2a.16) | `open_run` · `hand_over` · `latest_attempt` · `ever_launched` · `continuation_answer` · `usable` · `gather_sources` · `composed_for_prep` (a transport calculation's junction, composed at prep only while no stage is launched) · `task_state` · `readiness` · `launched_without` · `regrouped` · `first_launch_takes` · `held_by_sequence` (a group a sequence still going holds, `job-system.md` § 6.0) · `scratch_in` · `decide` (the manifest: each group copied in or prepared here, each rung of points' take-over, each transmission point's sharing) · `copy_in` · `takes_over` · `take_into` · `shared_into` | the folder tree; `run-<n>/` | know about a queue |
+| **4** | **layout** | where every file sits; which run feeds which; a **run of points** — one run whose rung runs per point (a bias sweep's voltages, a SIESTA vibration's calls), each point in a folder of its own inside the run — its points | `jobset/materialize` · `jobset/continuation` · `jobset/gather` · `jobset/ready` · `jobset/reuse` (a transport calculation that reuses a finished one, `engines/transport.md` § 2a.16) · `jobset/points` (a run of points: its kind's declaration, § 3.3), and each kind's run-of-points declaration | `points_of` · `point_rows` (a run of points' points with their state — § 3.2) · `points_state` · `point_of` (the point a folder is — § 3.2) · `open_run` · `hand_over` · `latest_attempt` · `ever_launched` · `continuation_answer` · `usable` · `gather_sources` · `composed_for_prep` (a transport calculation's junction, composed at prep only while no stage is launched) · `task_state` · `readiness` · `launched_without` · `regrouped` · `first_launch_takes` · `held_by_sequence` (a group a sequence still going holds, `job-system.md` § 6.0) · `scratch_in` · `decide` (the manifest: each group copied in or prepared here, each rung of points' take-over, each transmission point's sharing) · `copy_in` · `takes_over` · `take_into` · `shared_into` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/submit` · `jobset/agreement` · `jobset/ask` | `check_trial_starts_cold` · the one sender | `launch/` scripts — and through floor 1, `run.json` | decide physics |
-| **6** | **observe** | where has it got to | `jobset/runstatus` · `jobset/summarize` · `jobset/memory` | `jobset_status` · `render_status` · `render_stage_status` · `job_members` · `run_folders` (every run of a stage on the hierarchical layout, as folders) · `scratch_answer` (which of a calculation's scratch a run still going keeps; it removes nothing) · `run_summarize_jobset` · `memory.need` · `memory.largest` (the memory a stage, and a job, needs — [`job-request.md`](?doc=execution/job-request.md) § 3.1a) | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
-| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobs_cli` · `web` | `molbuilder describe` · `molbuilder jobset {prep,launch,summarize,status,scratch,probe,machines,migrate}` · `molbuilder jobs {status,stop}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s, `launch`'s and `migrate`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry; `migrate`'s its refusals) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
+| **6** | **observe** | where has it got to — the views a reader is shown, composed over floors 2 and 4 | `jobset/runstatus` · `jobset/summarize` · `jobset/memory` | `views_of` (the views a folder is read with, composed once per answer — § 3.2) · `jobset_status` · `every_run` (the ladder's every run, each with its state and what it opens) · `points_view` (a run of points, as a reader sees it — § 3.2) · `run_answer` (how the run a file belongs to is doing, for a viewer that follows it: a run's file by the run door, a file at a run of points' root by its view) · `render_status` · `render_stage_status` · `job_members` · `run_folders` (every run of a stage on the hierarchical layout, as folders — a run of points' through its declaration's walk, no state asked) · `scratch_answer` (which of a calculation's scratch a run still going keeps; it removes nothing) · `run_summarize_jobset` · `memory.need` · `memory.largest` (the memory a stage, and a job, needs — [`job-request.md`](?doc=execution/job-request.md) § 3.1a) | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
+| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobs_cli` · `web` | `molbuilder describe` · `molbuilder jobset {prep,launch,summarize,status,scratch,probe,machines,migrate}` · `molbuilder jobs {status,stop}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s, `launch`'s and `migrate`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry; `migrate`'s its refusals) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12); **keep a list of a door's fields** — a route serves a door's answer whole, beside the views it adds; **decide which views a folder is read with** — floor 6's `views_of` does; **send a path the page must join** — every path the page opens or sends back is whole, so it joins none — the absolute path the server resolves a request's path to (`files._resolve_within_roots`); a name the page only shows — a run's `run-0`, a stage's folder name, the output a status speaks from — stays a name |
 
 **Every `jobset` module has a floor**, so an import into any of them can be
-judged; the table names each. **`parse/` is floor 1**: a reader turns a file, or a run folder's files, into facts and knows no
+judged; the table names each. **`kind_table` and `engine_table` are floor 1**:
+each reads its data file and imports no kind and no engine — a part that is
+code is named in a record and resolved by the floor it lives on (§ 3.3). **A
+kind's own modules sit on floors by what they hold**: a run of points'
+declaration is floor 4's, whichever kind's it is, so it is never kept beside
+what a lower floor reads — the transport rungs' points and what each computes
+(`transport/stages`), the phases of a SIESTA vibration, which travel beside
+its job (`siesta/vibration_phases`, floor 1). **`parse/` is floor 1**: a reader turns a file, or a run folder's files, into facts and knows no
 calculation — which is what lets launch (5) and the layout (4) ask how a run
 ended without reaching up. The readers of a calculation's OWN records, which
 read through their owners' doors — a transport calculation's `task.json`, a
@@ -387,6 +399,7 @@ classDiagram
 | **`Resources`** | 3 | *what does this job ask the machine for?* — the fields of [`job-contracts.md § 6.2`](?doc=execution/job-contracts.md), in the exchange vocabulary | **two roles, and they are not the same answer twice.** A **surface** assembles *the ask* from what the person said — `--np`, the Build tab's form — which is what [`generator.md § 4.1a`](?doc=execution/generator.md) means by *"stated in the command, at prep"*. `resolve.py` then produces *the per-element allocation*, the ask ⊕ this sweep point's machine axes, one per `ParameterSet` element. § 4.1's containment (capability ⊇ allocation ⊇ sweep) is exactly the relationship between them |
 | **`Shape`** | 1 | *flat or hierarchical — how deep do this calculation's files go?* | `Shape.named`, from the description — never inferred from the disk |
 | **`Where`** | 1 | *where is this folder in its calculation?* — its calculation's folder, what it is, its record's role, the stage, run, trial and point it sits in, the run's own folder ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) | `calcdirs.where` |
+| **`CalculationKind`** · **`Engine`** | 1 | *what does this kind of calculation decide, on this engine — and what is this engine?* — their records in the kind table and the engine table (§ 3.3) | `kind_table.kind`, `CalculationKind.on`, `engine_table.engine` — each table read once from its file |
 | **`Run`** | 2 | *which run is this file of, and where are its files?* — its calculation and description, its folder, the label its files are named on, its stage, its run index; its files by role ([`project-layout.md`](?doc=execution/project-layout.md) § 5) | `run_of` |
 | **`Declared`** | 2 | *what did this run declare about its atoms?* — the held atoms, regions and annotations, the axis kinds and the cell its atoms were placed in, its stated parameters: its own deck's records | `declared` |
 | **`StageHome`** | 3 | *where does this stage live, and what is its number?* — read off the disk: a stage with a folder keeps its number, one without takes the next unused ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) | `stage_home` |
@@ -475,9 +488,14 @@ calculation's own list *or* the shipped one; a GPU job by its count *or* by
 | **the GPU request** | `gpu_request(resources)` → `GpuRequest(uses, count)` — a job's `use_gpu` as `resolve` carries it from the job's own values, and its count; a GPU run with no count, or a count for a run that does not use the GPU, is refused — at prep before anything is written, of the job the stage resolves to (`prep._resolve_stage`; the Task setup card shows the entry's preview of it), by the run card or `--gpus`, either engine ([`gpu.md`](?doc=execution/gpu.md) G5) | 3 | the header, the run script, prep's placement and its queue list, a benchmark's trials, their shelves and their report, the Task setup card |
 | **what a queue offers, and how a job fits it** | `Domain.devices`, `node_types` and the record's limits; `fit(row, request)` with the job's whole request — the nodes that hold it, each limit it is over; it refuses nothing ([`scheduler.md`](?doc=execution/scheduler.md) R6) | 1 | prep (the placement, and the one request of every job that walks several members), the queue list, a benchmark's cells, the Task setup card |
 | **the shape** | `Shape.named(task.shape)` — asked, never inferred from what is on disk | 1 | every reader of the layout |
+| **what a calculation kind is, and what an engine is** *(2026-10-28)* | `kind_table.kind(calculation)` → `CalculationKind`: its name as a person reads it, its rungs' roles and what each computes, whether its stages are linked, its results, what its root and a rung's folder open, what its description carries and the checks it asks, its hand-over; `CalculationKind.on(engine)`, its part on one engine — the shape it fixes and why, the stages it fixes and the ladder a new description starts from, how its stages play the roles, its run of points, its rung's builder, its benchmark, its sum, its retired stages — an engine it does not run on refused, naming those it does; `engine_table.engine(name)` → `Engine`: its name as a person reads it, the setting that names its files, its config class and seam, what it computes in, how its runs run (§ 3.3) | 1 | every reader of a fact of a kind or an engine: the description's reader and `molbuilder describe` (the shape and stages a kind fixes), Task setup's folder answer and hand-over, the catalogue (roles, results), prep (the rung's builder, the benchmark, the seam), the run of points (its declaration), `summarize` (its sum), the preflight (retired stages, the checks), the run door (what a folder opens) |
 | **where a folder is** *(2026-10-21)* | `calcdirs.where(folder)` → `Where` — the calculation's folder (`root_of`: the one `task.json` is in, or the one the folder's `calcdir.json` names), what the folder is (the calculation, a stage's, an attempt, a point's, the engine's scratch, a benchmark's, a trial, support), its record's role, the stage, run, trial and point it sits in, and the run's own folder it lies in (`run_folder`, where the run's launch record lies), read off its place in the names the layout gives its folders ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a, *Where am I*); a folder no calculation claims answers empty | 1 | what a folder is, with its description (`runs.place_of` — the run door, the Results tab's `place`), the checkpoint panel (*is this a calculation's folder*), the transport record's route, whose benchmark a folder is and its stage (`materialize.bench_owner`, `bench_stage_of` — the bench summary, `status`, `launch`) |
 | **the run a file belongs to, and its files** | `run_of(path)` → `Run` — where the folder is (`calcdirs.where`; its role, at a root, the description's shape), the description (`task.of`), the label molbuilder's files are named on (the description's; a benchmark trial's `<label>-<point>`, `paths.trial_label`), the stage — the one its folder's path names, else the one a reader asks about in a folder several stages share (`run_of(path, stage)`, a flat calculation's) — and the run index; its files read back with that label through `runfiles`: one by role (`Run.file(role, run)`), its deck (`Run.deck`), the folder prep wrote its files in — its folder with the `run-<n>` level taken out: the stage's, or a bias point's within it; a flat run's and a benchmark trial's own folder (`Run.prepared`) — and there the stage's deck (`Run.stage_deck`) and the check written beside it (`Run.report`, the `.validation.txt` — none once a re-prep has written a deck there that is another calculation), a file named on its label alone, as an engine names its own and a run its result — SIESTA's `.FC` and `.ORB_INDX`, a vibration's `.spectra.json` — (`Run.on_label(role)`; at the root of a run in phases, where the run's own record step writes its result, `on_label_at(folder, role)` — the one door a reader of a stage's result takes, whichever shape the run has, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2), its engine output at its run index (`Run.stdout`), every output of its stage newest run first (`Run.outputs`), its session log — the one whose first section is its run (`Run.session_log`). A reader takes a run's files at its one run index, so what it reports never mixes two runs. **A folder speaks for one run**: the highest stage launched, by its launch records — none launched, the folder's one stage with a deck — then that stage's newest run, by one rule (`runrecord.newest_run`): where a stage's runs share the folder, its newest launched run, by its launch records; in a folder of the run's own, its newest try, the highest index its files reached. A file's time decides nothing. A folder that states no place — no `task.json`, no `calcdir.json` naming its root (`calcdirs.where`) — holds no run of ours. What a file is — its catalogue row, or *not written by molbuilder* — is `about(path)`, on the same door *(B11)* | 2 | the Results tab's folder answer and its file card, the run record, the viewers' loads and run answer, the structure reader (an engine's own `.xyz`), `summarize` (a benchmark trial's figures), the transport record, prep (the geometry a relaxation left), continuation (what a run concluded), `xv2xyz`, the transport citation (a cited run's folder) -- status and launch's re-launch ask a run's state by the stem they compose (`run_status`, `ending`) |
-| **what a folder opens** | `openable(folder)` → `(path, trail)` — the run it speaks for's result; a transmission run's, its calculation's report, the root's `task.json`, at the point `transmission_point(folder)` reads off its folder (`<NN>_transmission/run-<n>/<point>`); a container's product; a folder no calculation claims, `parse.dirs.openable_in` | 2 | the folder's answer (`folder_answer`), the ladder's run rows (`every_run`), the trajectory load, the relaxation record, the transport citation |
+| **what a folder opens** | `openable(folder)` → `(path, trail)`, of the one folder it is handed, asked of three of the declarations (§ 3.3): what the folder is (`calcdirs.where`); what its kind declares a folder of that rung opens (the kind table — a transport calculation's root, its description, through which its report is opened; a transmission run's folder, its calculation's report); else the first result role its calculation produces in which the folder holds a file of its run a parser claims (the catalogue, `runfiles.result_roles`) — a container's product the same way, a run of points' root its own result or nothing; a folder no calculation claims, `parse.dirs.openable_in` ([`model/parse.md`](?doc=model/parse.md) § 5.2). What a run of points opens before its own result is written is its view's (below) | 2 | the folder's answer (`folder_answer`), the views (`every_run`, `points_view`), the trajectory load, the structure inspector's record (`/api/results/contract`), the Modify tab's load from a folder, the relaxation record, the transport citation |
+| **a run of points' points** *(2026-10-28)* | the run's kind's declaration walks them, `PointsOf.points_in` — each point the run holds, its folder and the point in its one wire form, in the walk's order, nothing asked of a run; `point_rows(run, …)` → those points with their state — done, or as its run reads (`runs.concluded`) — whether it is done and why not, whether its run holds an engine output, what it started from and what it is a copy of. **A run's points are read once per answer**: a view asks `point_rows` once and composes everything it shows from the rows | 4 | the status door (`points_state`), the views (`points_view`, `every_run`), the transport record; `run_folders` (the memory a stage needs) the walk alone, no state |
+| **a run of points, as a reader sees it** *(2026-10-28)* | `points_view(calc, run)` → its state and its count in the kind's words (`points_state`), **the point at work** — the point running; else the last, in the walk's order, whose run holds an engine output; none before any has — with that point's record (the run door's `record_of` of the point's folder) and what its folder opens, and **what the run opens**: its own result where its root holds one (`openable` of the root), else the point at work's — the one answer a reader opens wherever this view is served | 6 | `views_of` (below) — `/api/results/dir`; the ladder's row for the run |
+| **the point a folder is** *(2026-10-28)* | `point_of(folder)` → the point, in its one wire form, that a folder of a rung with points is: a point's folder, its point; a run of a rung that runs once, its one point; a transmission point's `shared/`, the point it lies in — from its kind's declaration (`points_of`); `None` for any other folder | 4 | `views_of` — a transmission folder's report opened at its point — and the ladder's rows (`every_run`) |
+| **the views a folder is read with** *(2026-10-28)* | `views_of(folder)` → `{ladder, points, point}`: what is asked of a folder beyond its own answer, by what it is ([`model/parse.md`](?doc=model/parse.md) § 5.2) — at a calculation's root, its **ladder** (`jobset_status`, each stage's every run, `every_run`, in one wire form); at a run of points' root and each of its points' folders, the **run of points' view** (`points_view`); at a folder of a rung with points, **the point it is** (`point_of`). The calculation is opened once (`calculation.open`) and its description handed to the run door, so one answer reads it once | 6 | `/api/results/dir`, which serves the folder's answer and these beside it, whole; Task setup's folder answer (each stage's runs) |
 | **what a run declared about its atoms** | `declared(run)` → `Declared` — from the run's own deck (`Run.deck`): its `atom-metadata` block (held atoms, regions, annotations), its `engine-offset` record (the axis kinds, the cell its atoms were placed in), its stated parameters. The calculation's structure pair is reached only through the description; nothing is looked for beside an output by its name *(B12; D19 is its first reader)* | 2 | `view_of` (below), the codec reading an engine's own structure file (`model/structure-periodicity.md` § 6.0) |
 | **what a run says about the structure it ran on** | `view_of(run, output=, traj=, n_atoms=, lattice=)` → `RunView` — three sources, one question: the labels and held atoms its deck declared for a structure of `n_atoms` (`Declared.atom_metadata_for`), the box from its output's `lattice` or its deck's record (`Declared.frame`), and what it says about itself, `info.calculation` and `info.relaxation` (`parse.dirs.run_info` of its deck and `output`); `RunView.structure(elements, positions)` makes one geometry step of the run a `Structure` with all of it. A file no run of ours holds is viewed alone: its lattice and its own record | 2 | the Results trajectory's load (`/api/watch/load`), `xv2xyz --from-run`, the transport citation (a cited run: its result through `openable`, parsed by the registry, its last step viewed) |
 | **what molbuilder writes, and what each file is** | `runfiles.WRITTEN` — every file molbuilder writes into a calculation folder, one row each: its name (a role on the label, or a fixed name), where it sits in each shape, what it holds, who writes it and when, its door, its kind; the names a stage will have, per shape (`manifest`), and the glob family (`patterns`) are its readings. A fixed name's owner takes it from the catalogue *(B13)* | 1 | the Task setup card, the Results file card (through `about`), `--cold`'s sweep, [`project-layout.md`](?doc=execution/project-layout.md) § 5 — rendered from it |
@@ -497,6 +515,138 @@ removed after its prep (the numbers), an output that ended with no marker (the
 end), a calculation whose own list withholds `.DM` (the restart files), `--gpus`
 on a run that does not use a GPU (the request). A door is asked; it is never
 worked around.
+
+### 3.3 The declarations — every situation is a record
+
+*(The user, 2026-10-28: "different situations should be mainly driven by
+config file and meta data as appropriate, minimize handcrafting code or design
+when possible"; "organized data driven branch handling could reduce error and
+provide better extensibility".)*
+
+**What differs between one calculation and another — its kind, its engine,
+the folder a reader stands in, the file it holds — is a record, and the code
+reads the record.** Four declarations answer every such question, each read
+through one door on floor 1:
+
+| declaration | what it is the list of | its file · its door |
+|---|---|---|
+| **the kind table** | the calculation kinds, each with its part on every engine it runs on | `molbuilder/kind_table.toml` · `kind_table.kind`, `CalculationKind.on` |
+| **the engine table** | the engines | `molbuilder/engine_table.toml` · `engine_table.engine` |
+| **the file catalogue** | every file molbuilder writes: its role, where it lies in each shape, who writes it and when, its reader, the calculations whose result it is | `runfiles.WRITTEN` · `runfiles` (§ 3.2) |
+| **the folder record** | what each folder is — a calculation's root by its description, any other folder by the record its creator stamps on it | `calcdir.json` · `calcdirs.where` ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) |
+
+**A fact that has a home keeps it.** The two tables hold what nothing else
+declares, and copy nothing that is declared elsewhere: what a file is and its
+name — the file catalogue; which settings an engine offers a kind, each
+setting's choices and why one is not offered, and the settings retired — the
+parameter catalogue (`template`: an item's `engines`, `calculations`,
+`offered`, `why_not_offered`, `RETIRED_ITEMS`); what a run hands on — the
+warm-file vocabularies. **The two tables are the lists of kinds and engines**:
+every other declaration that names one — a file catalogue row's engine, a
+warm-file vocabulary's sections, a parameter's `engines` and `calculations` —
+is checked against them when it loads, and a name with no record is refused
+naming the file and the key.
+
+**A kind's record** says what is the kind's whichever engine runs it:
+
+- its name as a person reads it — *an optimization*, *a transport
+  calculation*;
+- its rungs' roles, each named by what the rung does — a transport
+  calculation's seed, leads, device and transmission; a vibration's
+  relaxation, force constants and optical calls — and what the rung computes:
+  an SCF, an SCF and its lead's Fermi level, or a product that runs no SCF;
+- whether its stages are one calculation tuned stage by stage, each continuing
+  from the one before (an optimization's), or each its own program, taking its
+  inputs from the rungs its kind names (a transport calculation's);
+- the results it gives, in the order a person decides them, each a card a
+  form of the kind draws ([`engines/template.md`](?doc=engines/template.md)
+  § 6.2a) — which of them an engine gives is its catalogue items';
+- what its root opens where that is not one of its runs' results — a
+  transport calculation's, its description, through which its report is
+  opened — and what the folder of one of its rungs opens where that is not
+  the run's own result: a transmission run's, its calculation's report at the
+  point the folder is;
+- what its description carries beyond every kind's fields — a transport
+  calculation cites a junction instead of holding a structure, states its
+  voltages and may extend a finished calculation — what its identity is made
+  of, and the label its rungs' files are named on where a rung has its own (a
+  lead's);
+- the checks it asks of its description and its structure;
+- which tab hands it over to Task setup, or that it describes on its own tab;
+- whether a structure stated relaxed keeps the frame its engine computed it
+  in.
+
+**Its part on each engine it runs on** says what the pair decides:
+
+- the engine's own name for it, where there is one — *TranSIESTA*;
+- the shape it fixes and why, in the one sentence every surface says it in
+  ([`web/task-setup.md`](?doc=web/task-setup.md) § 4);
+- the stages it fixes — a transport calculation's are its rungs, in order —
+  the ladder a new description starts from, and whether a ladder's tiers
+  (`--stage-strategy`) apply;
+- how its stages play the roles: a SIESTA vibration's one stage plays every
+  role, a PySCF vibration's stages the force constants', a transport rung its
+  own;
+- whether a rung runs per point, and that run's declaration (a part, below);
+- the builder of its rung, for a pair with steps of its own (a part);
+- whether it takes a benchmark, or why not;
+- what `summarize` adds up for it (a part) — a transport calculation's I–V, a
+  SIESTA vibration's displacement sweep;
+- the stages a description of it may no longer hold, with the way out
+  (`jobset migrate`).
+
+**The engines a kind runs on are its parts**: no second list says which engine
+runs which kind, and a kind asked on an engine it has no part for is refused
+by the one door, in one sentence naming the engines it runs on.
+
+**An engine's record** says:
+
+- its name as a person reads it — *SIESTA*, *PySCF*;
+- the setting that names a calculation's files — `system_label`, `job_name`;
+- its config class — the floor-1 dataclass a template is rebuilt into
+  (`config/`, a part) — and its seam (a part, floor 3: its deck writer, the
+  readers of its warm files and traits, its data files and its shared
+  package — `jobset/engines.py`'s `EngineSeam`,
+  [`script-preparation.md`](?doc=execution/script-preparation.md) § 4);
+- what it computes in — a molecule in free space, whatever the structure's
+  cell (PySCF), or the structure's cell;
+- whether a run is one process with threads (PySCF) or ranks;
+- what its run script runs and how — its launch line, its threads, the step
+  after the engine, the environment a GPU run activates;
+- its stage presets, and whether it has a benchmark lane.
+
+**A part that is code is named, and lives on the floor that resolves it.** A
+record names each as `module:NAME`, and the floor that asks resolves it — the
+conductor a rung's builder, the run of points (floor 4) its declaration,
+`summarize` (floor 6) its sum, `jobset/engines.engine_seam` the seam for
+floor 3 and the surfaces, any floor the config class. The part's module stands
+on that floor: it uses that floor and those below, never one above. A module
+holding parts of two floors is two modules — a kind's run of points'
+declaration (floor 4) is never kept beside facts a lower floor reads, and a
+module that travels beside a job holds no part of a higher floor. **Each door
+says what it cannot answer**: a table's door reads data only, and refuses a
+kind, an engine or a key its file does not hold, naming the file and the key;
+the floor that resolves a part refuses a name that does not resolve, naming
+the record and the key.
+
+**What stays code, deliberately**, by package, so it can be reviewed:
+
+- **an engine's own modules choose by kind**, because what they choose is
+  that engine's language — `siesta/`, `pyscf/`, `config/siesta.py`,
+  `config/pyscf.py`, `validation/siesta.py`, `validation/pyscf.py`,
+  `parse/engines/`, `parse/coords/`;
+- **a kind's own modules choose by engine, and refuse another kind at their
+  doors** — `transport/`, and the vibration's `spectra/`.
+
+Shared code — every other module — compares no kind's or engine's name (A18):
+it asks the record.
+
+**So a new kind is** a record in the kind table, its own modules, its
+catalogue items, its file catalogue rows and its warm-file sections; **a new
+engine** is a record in the engine table, its config class and seam, its
+catalogue items, its file catalogue rows and warm-file vocabulary, and the
+environment its runs activate — no branch in shared code changes. A new folder
+is its creator's record (`calcdir.json`), a new file a catalogue row.
 
 ---
 
@@ -988,6 +1138,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A15** | **one door per fact.** Each fact in § 3.2 is answered by its door alone; a reader asks it and never works the fact out from the files itself | **review**, and each door's case table — a disagreement found is a row of it |
 | **A16** *(2026-10-19)* | **a record is read through its owner's door, and the door takes the folder.** The name of a record molbuilder writes into a calculation — `task.json`, `job-request.json`, `job-set.json`, the template, `run.json`, the warm files, the machine record, the pipeline log, the last-run mark, the ledger — is the catalogue's (`runfiles.WRITTEN`, B13), taken from it by the record's owner alone (`task`, `job_request`, `jobset.model`, `template_file`, `runrecord`, `warmfiles`, `scheduler.record`, `pipeline_log`, `jobset.ledger`); a path to one is formed only by that owner (`task.path_of`, `JobSet.path_of`, `template_path`, `warmfiles.path_of`) -- the description's by the ground floor, which answers whether a folder is a calculation's root without reading it (`calcdirs.description_path`, which `task.path_of` gives its writer), for its writer and for migrate. A reader asks the owner's door with the FOLDER — `task.of`, `job_request.of`, `JobSet.of`, `template_file.of` — and the door forms the path, reads, and answers `None` for a record that is not there: no caller joins the name to a folder, probes the path, or reads its bytes. A verb opens its calculation once (`calculation.open`) and passes the object down — the readiness doors take it, the launch planner takes it, the status door takes it; a function that takes a calculation's folder and reads a record its caller holds is the defect, and its signature carries the object instead. A refusal is the door's, said once (`calculation.refusal`); a boundary — the CLI, a route — translates the kind of exception into its own and never re-words or prefixes it. The one second open of a verb is the launch's send, which plans again from the folder as it is (`job-system.md` § 6.0, step 4). Raw reads exist in `jobset/migrate` alone: the description, the template and the plans are read once (`migrate._Records`) and every step reads the decided bodies; the machine record and the run records are read once each by the step that rewrites them. | **review** against this row at every milestone; `tests/test_calculation_door.py` — the refusals through the one door |
 | **A13** | **a run shows its end point.** The launch values the run will be executed with are displayed as what it is launched with carries them — its header where a scheduler runs it, else its run script — read back by each writer's own reader, never re-derived by the surface; a value stated nowhere is the prep's refusal, never a blank | `test_bench_grid_card.py::test_a_run_preview_carries_its_header_line_for_line`, through the browser's door; `tests/test_task_setup_prep_e2e.py` on the page |
+| **A18** *(2026-10-28)* | **a situation is a record, never a branch.** What differs between calculation kinds, engines, folders and files is a field of its record — the kind table, the engine table, the folder record, the file catalogue (§ 3.3) — read through its door; shared code compares no kind's or engine's name (`calculation == "transport"`, `engine == "siesta"`). An engine's own modules choose by kind, and a kind's own modules choose by engine and refuse another kind at their doors — listed by package in § 3.3, *What stays code* | **review**, against this row and § 3.3's list at every milestone; the tables' doors — a kind, an engine or a key their file does not hold, refused naming the file and the key; and the floor that resolves a part — a name that does not resolve, refused naming the record and the key |
 
 > **A1, A4, A7 and A8 are about the shape of the source** — who may spell a name,
 > who may build an object, who may import whom, who may take one apart — and no

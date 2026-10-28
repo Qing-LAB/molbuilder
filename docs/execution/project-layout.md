@@ -587,6 +587,16 @@ says it — the root by its description, any other by its record — and nothing
 above a folder is searched for: one with neither, a folder a person made inside
 a run among them, answers an empty `Where` and is read alone (below).
 
+**What a folder is decides everything asked of it** — its place, its role and
+its calculation kind's record ([`architecture.md`](?doc=execution/architecture.md)
+§ 3.3), never its name's shape. What each folder is asked, and what it opens,
+is one table, the directory door's ([`model/parse.md`](?doc=model/parse.md)
+§ 5.2): a run is asked its state and its record; a run of points' root —
+`run-<n>/` of a rung that runs per point — is read as its run of points: its
+state, its points, and the point it is at
+([`architecture.md`](?doc=execution/architecture.md) § 3.2); a calculation's
+root, in either shape, its ladder; the engine's scratch, nothing.
+
 #### Absence narrows the answer; it does not refuse the directory
 
 **A directory with no record is still readable — it is read alone.** This is

@@ -790,7 +790,10 @@ only a reader of the calculation knows: what the folder IS, the description it
 belongs to, the label its files are named on, and the run it speaks for.
 `/api/results/dir` serves it. **A question that must see the whole directory
 goes there; one that does not, does not**: `run_status` for one run,
-`engine_of` and `runfiles.find` each have one home already.
+`engine_of` and `runfiles.find` each have one home already. **It answers one
+folder**: a view over several — a calculation root's ladder, a run of points
+as a reader sees it — is floor 6's, served beside this answer by the route
+(`execution/architecture.md` § 3.2).
 
 ### 5.0 The answer — one reader per field
 
@@ -801,8 +804,8 @@ goes there; one that does not, does not**: `run_status` for one run,
 | `status` | how it is doing (`running-a-job.md` § 4.2) — the run the folder speaks for, `null` for a container or a folder not ours | `/api/results/dir` — served, not yet shown for a run folder (`web/results.md` § 0.4) |
 | `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
 | `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
-| `files` | per file its role, label, stage — read back with the run's label — whether a parser reads it, and what it is (`about`, the catalogue's line or *not written by molbuilder*) | the picker; the file card (`web/results.md` § 3b) |
-| `report` · `point` | the file the folder opens when it lies outside it — a transmission run's calculation report, `task.json` — as a `files` row with its `path`, and the point it opens it at, `{frame, of, bias_v}` (`runs.transmission_point`); `null` for every other folder | the picker, which lists the report first and announces the point; the viewer, which selects it; the file card (`web/results.md` § 2, § 3b) |
+| `files` | per file its whole `path`, its role, label, stage — read back with the run's label — whether a parser reads it, and what it is (`about`, the catalogue's line or *not written by molbuilder*) | the picker; the file card (`web/results.md` § 3b) |
+| `report` | the file the folder opens when it lies outside it — a transmission run's, its calculation's report, `task.json`, as its kind's record declares (`execution/architecture.md` § 3.3) — as a `files` row with its `path`; `null` for every other folder. The point it opens it at is the point the folder is (`point_of`, floor 4), served beside this answer (`views_of`, `execution/architecture.md` § 3.2) | the picker, which lists the report first; the file card (`web/results.md` § 2, § 3b) |
 
 **What the directory IS decides what is asked of it** (`project-layout.md`
 § 1.4a). A container is not a run: no `status` and no `record`, though its own
@@ -831,9 +834,9 @@ exists to mark.
   `*.molwatch.log` **whose footer concludes the run** — a seeded log without a
   conclusion would otherwise outvote a real result (§ 5.5).
 - **`openable`** is *what should a person see*: the calculation's product, then
-  the engine's own output, then the progress log (§ 5.5) — and for a
-  transmission run, its calculation's report at its point (§ 5.0's `report` ·
-  `point`).
+  the engine's own output, then the progress log (§ 5.5) — or what the kind's
+  record declares a folder of its rung opens: for a transmission run, its
+  calculation's report (§ 5.0's `report`), at its point (§ 5.2).
 
 So a directory whose run has written only its seeded log has an `openable` and
 no `active_source`; that is correct in both directions.
@@ -876,22 +879,39 @@ titled "unchanged in behaviour", which was true of the move out of the web
 layer and stopped being true the day the ladder was replaced. § 5.5 carries
 the rule; this is where it is applied.)*
 
-The run door's `openable` asks **four** questions of four owners, and the first
-one decides whether the other three apply at all — a folder of ours is opened
-at its run's own result, read back with the run's label — a transmission
-run's being its calculation's report, the root's `task.json`, at its point
-(`runs.transmission_point`) — (`runs.folder_answer`);
-`parse/dirs/rundir.py::openable_in` answers a folder read without its run, by
-dotted role alone:
+The run door's `openable` asks **five** questions of five owners, of the one
+folder it is handed, and the first one decides whether the others apply at
+all — a folder of ours is opened at its run's own result, read back with the
+run's label, or at what its kind declares a folder of that rung opens
+(`runs.folder_answer`); `parse/dirs/rundir.py::openable_in` answers a folder
+read without its run, by dotted role alone:
 
 | question | owner | reader |
 |---|---|---|
-| **what is this directory?** | the **directory** | `calcdir.json`, or `task.json` at a root |
+| **what is this directory?** | the **directory** | `calcdir.json`, or `task.json` at a root (`calcdirs.where`) |
 | what calculation is this? | the **calculation** | `of` → its `task.json` |
+| does its kind say what a folder of this place opens? | the **kind's record** — what its root opens, and a rung's folder where that is not its own result | `kind_table.kind` ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3) |
 | what does it produce? | the **catalogue** | `runfiles.result_roles` |
 | can anything open it? | the **registry** | `detect()` |
 
-> **THE FIRST QUESTION IS NEW, AND THE OTHER THREE WERE ASKED WITHOUT IT**
+**What each folder is asked, and what it opens** — the one rule, every reader
+of a folder asking it: the run door answers the folder itself, and the views it
+is read with beside it are floor 6's (`views_of`,
+[`execution/architecture.md`](?doc=execution/architecture.md) § 3.2):
+
+| the folder (`calcdirs.where`) | its own answer — the run door | the views it is read with — floor 6 | what a reader opens |
+|---|---|---|---|
+| **a run** — an attempt, a flat benchmark's trial, a point of a run of points | everything: its state, its record | a point's folder, the run of points' view of its run and the point it is | its run's result (the catalogue's result roles); where its kind's record declares its rung's folder opens otherwise, that — a transmission run's folder, its calculation's report, at the point the folder is (a rung that runs once: its one point) |
+| **a flat calculation's root** — its stages' runs share it | everything, of the run it speaks for: its state, its record | its ladder — its stages, each stage's runs by run number | the result of the run it speaks for |
+| **a hierarchical calculation's root** | no state, no record | its ladder — its stages, each stage's every run | what its kind's record says its root opens — a transport calculation's description, through which its report is opened; else a result at the root, where one is |
+| **a run of points' root** — a stage's attempt whose rung runs per point | no state, no record; its own result, or nothing (`openable`) | the run of points' view: its state and count, the point at work and that point's record | the view's: the run's own result once its root holds one, until then the point at work's |
+| **a benchmark's folder** | no state, no record | — (its trials compared, the bench summary) | its sweep's `job-set.json` |
+| **any other container** — a stage's folder, a trial holding its attempts | no state, no record: its runs are the folders below it | — | a result in it, where one is |
+| **the engine's scratch** — a device run's `tsgf/` | nothing | — | nothing |
+| **a transmission point's `shared/`** | read with the point it lies in | the point it lies in (`point_of`) | what that point opens |
+| **a folder no calculation claims** | nothing claimed: read alone | — | the newest file of a role a run writes that a parser claims (`openable_in`) |
+
+> **THE FIRST QUESTION IS NEW, AND THE OTHERS WERE ASKED WITHOUT IT**
 > *(2026-09-19)*. This table had three rows and the first read *"what
 > calculation is this? — the **directory** — `task.json`"*. The code took that
 > at its word and read `task.json` from the handed directory, which is the
@@ -904,25 +924,27 @@ dotted role alone:
 > § 1.4a now has the directory state it**, and the walk and its
 > constant are deleted.
 >
-> Asking *what is this directory* first is what stops the other three being
+> Asking *what is this directory* first is what stops the others being
 > asked of something that is not a run: § 1.4's container-or-run rule is
 > answerable now, so a stage directory is not parsed for a result it does not
 > hold, and a `pseudos/` folder is not reported as a calculation in progress.
 
-**"I don't know" is one of its answers, and it narrows the other three rather
+**"I don't know" is one of its answers, and it narrows the others rather
 than refusing them** (`project-layout.md` § 1.4a). A directory with no record —
 one written before this rule, or an attempt copied out of its calculation — is
 read ALONE: its files, which of them a parser claims, which one to open, and
 how its run ended if one did. What it cannot answer is everything relational —
-which calculation, which rung, which siblings — and **the door says which of the
-two answers it is giving**, so a partial answer is never mistaken for a
-complete one. The three that remain are directory-local questions and were
-always answerable without help.
+which calculation, which rung, which siblings, what its kind declares — and
+**the door says which of the two answers it is giving**, so a partial answer is
+never mistaken for a complete one. The questions that remain — which files a
+run writes, and which a parser claims — are directory-local and were always
+answerable without help.
 
 **There is no preference order to tune.** A vibration run is *for* its
 `.spectra.json` (on SIESTA written at the run's root by the force-constant
-call's record step and again by the finish, `engines/vibration.md` § 5.11 § 3); an optimization for its trajectory; a transport calculation for its
-report, opened through its description, `task.json` (the record is composed on
+call's record step and again by the finish, `engines/vibration.md` § 5.11 § 3); an optimization for its trajectory — each its calculation's result
+roles in the catalogue; a transport calculation for its report, opened through
+its description, `task.json` — its kind's record (the record is composed on
 read; `<label>.transport.json` is `summarize task`'s copy). The same file is the
 live view during the run and the
 result after it, so nothing switches at conclusion — the old rung 1,
@@ -1142,15 +1164,9 @@ from `parse.dirs.job` or `parse.dirs.rundir` directly.
 
 #### What a viewer should open — the CALCULATION decides
 
-The door's fourth question is answered the way the other three are: by
-delegation, not by a ladder.
-
-| question | owner | reader |
-|---|---|---|
-| **what is this directory?** | the **directory** | `calcdir.json`, or `task.json` at a root |
-| what calculation is this? | the **calculation** | `of` → its `task.json` |
-| what does it produce? | the **catalogue** | `runfiles.result_roles` |
-| can anything open it? | the **registry** | `detect()` |
+The door's question is answered as the others are: by delegation, not by a
+ladder — § 5.2's five questions, five owners, and its table of what each
+folder opens.
 
 **There is no preference order to tune.** A vibration run is *for* its
 `.spectra.json` — a PySCF deck rewrites it atomically at each phase boundary
@@ -1609,7 +1625,10 @@ record
 
 `verdict.state` and `detail` are `run_status`'s words for the directory
 (§ 2b's map); `verdict.ended` is the latest run's `run_state` and `converged`
-its phases'; `earlier[].ended` is the same for each earlier run.
+its phases'; `earlier[].ended` is the same for each earlier run. **`deck.path`
+is whole** — the absolute path the Run panel's **View** opens, joined to
+nothing (`web/results.md` § 0.3); what the run continued from and what its
+deck was gathered from are as the run's records state them, said as words.
 
 ### 5d.1b How it is composed — a declared table, one reader per file
 

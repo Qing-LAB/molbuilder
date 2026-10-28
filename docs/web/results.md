@@ -40,10 +40,10 @@ flowchart LR
 | the folder is | the picker opens | shown by | its data |
 |---|---|---|---|
 | **one run** — an attempt directory, or one rung's files in a flat calculation | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`; a PySCF run's stdout no parser claims, so its progress log opens — `parse.md` § 5.5), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
-| **a run in phases' root** — a SIESTA vibration's `run-<n>/`, holding its calls' folders ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2) | the run's result, the spectrum its record step wrote at the root, opened as a container's product (`runs.openable`); its index and its notification record listed beside it as aspects, never opened first; each call's folder opens as one run | the spectra viewer | as one run's |
+| **a run of points' root** — a SIESTA vibration's `run-<n>/`, holding its calls' folders ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2); a bias sweep's `run-<n>/`, holding its points' ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | the run's own result where its root holds one — a vibration's spectrum, its record step's — and until then the result of the point at work (§ 3a); a vibration's index and notification record listed beside it as aspects, never opened first; each point's folder opens as one run | the spectra viewer, or the point's own; the Run panel of the point at work, under the run's count (§ 3a) | as one run's; the run of points' view (§ 0.2) |
 | **a calculation root** | a result file at the root if it holds one, **beside** the **ladder** — each rung's state and **every run of the calculation**, any of which is opened here when picked (§ 2.4) | the ladder card, and the picked run's presenter | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
-| **a transport calculation** | its **`task.json`** — the description is the report's handle, as a benchmark's `job-set.json` is (the registry's `transport-task` parser claims only a transport calculation's); `<label>.transport.json` is `summarize task`'s copy for the command line, opened as a file. A **transmission run's** result is this report at its point: its ladder row opens the report with that bias selected (§ 2.4), and so does the run's own folder — the run door answers it with the calculation's `task.json` and the point (§ 2) | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize task` wrote |
+| **a transport calculation** | its **`task.json`** — the description is the report's handle, as a benchmark's `job-set.json` is (the registry's `transport-task` parser claims only a transport calculation's); `<label>.transport.json` is `summarize task`'s copy for the command line, opened as a file. A **transmission run's** result is this report at its point, as its kind's record declares ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3): its ladder row opens the report with that bias selected (§ 2.4), and so does the run's own folder — the run door answers it with the calculation's `task.json`, the run of points' view with the point (§ 2) | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize task` wrote |
 | **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize task` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
 | **a folder not marked as part of a calculation** | whatever result it holds, read alone | as above | as above |
 | **a device run's `tsgf/`** (role `scratch`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | nothing: the sidebar says *the engine's scratch of the run above* and lists what it holds; no file in it opens | — | — |
@@ -59,8 +59,10 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 | part | module | what it does |
 |---|---|---|
-| the folder's answer | `runs.py` — the run door's `folder_answer` ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2), served by `web/blueprints/results.py::api_results_dir` | where the folder is (`place`: run · container · scratch · not marked; its calculation, what it is, and the stage, run, trial and point it sits in, the point as its folder — [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.4a, *Where am I*), its engine, the file to open (`openable`) — a transmission run's, its calculation's report, with that report's own row (`report`) and the point it opens at (`point`, § 2); per file, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b); for a calculation root, the ladder |
-| the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place`, `ladder`, `record`, the folder's `files` and, for a transmission run's folder, its `point` |
+| the folder's answer | `runs.py` — the run door's `folder_answer`, of the one folder ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2, floor 2) | where the folder is (`place`: run · container · scratch · not marked; its calculation, what it is, and the stage, run, trial and point it sits in, the point as its folder — [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.4a, *Where am I*), its engine, the file to open (`openable`) — a transmission run's, its calculation's report, with that report's own row (`report`, § 2); per file, its whole path, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b) |
+| the views | `jobset/runstatus.py`, floor 6 — `views_of`, over the run door and a run of points' rows (`continuation.point_rows`) | at a calculation root, flat or hierarchical, the **ladder** (`jobset_status`, each stage's every run inside it, § 2.4); at a run of points' root and each of its points' folders, the **run of points' view** (`points_view`): its state and count, the point at work with its record and the file it opens, what the run opens (§ 3a); at a folder of a rung with points, **the point it is** (`point_of`, § 2) |
+| the route | `web/blueprints/results.py::api_results_dir`, floor 7 | the folder's answer **whole**, and beside it what `views_of` answers — `ladder`, `points`, `point`; it lists no field of either and decides no view, so a field a door adds reaches the page with nothing changed here |
+| the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable` — where `points` is served, the view's `points.opens` — and announces the choice with `place`, `ladder`, `points`, `point`, `record` and the folder's `files` |
 | the file card | `lib/results/file-card.js` (§ 3b) | what the file in hand is — the dropdown's, or one clicked in the sidebar inside the folder whose files the card holds (after a run is picked off the ladder, that run's folder): what it holds and who wrote it, or *not written by molbuilder* |
 | the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
 | the controller | `results/viewer.js` | picks the presenter for the announced file, disposes the old one, mounts the new one; with nothing to show, the card that says what the folder is, and its ladder |
@@ -81,6 +83,18 @@ answers its own question — *which rung is next*, *which setting is fastest*,
   a benchmark's or a transport calculation's, and none is built from another.
 - **The server says what a file is; the browser does not guess from its
   name** (§ 2.3).
+- **The page shows what it is sent, and composes no path.** Every path the
+  page opens or sends back is whole — a file's, a run's folder, the file a
+  ladder row opens, the deck a record names: the absolute path the server
+  resolves a request's path to — so the page joins none to another; a name it
+  only shows (a run's `run-0`, a stage's folder) stays a name. **It knows where
+  a file lies by the answer it holds, never by a path's prefix or a base
+  name**: a file of the folder is one of its `files`, the report is the
+  `report` row, the point at work's file its own row, a picked run's folder
+  its row's `dir`; a row that opens its calculation's report says so
+  (`opens_report`). Its own translations are MolView's frame display and the
+  one wording of a point (`lib/results/point-words.js`, § 2.5). Which
+  presenter shows a file stays the presenter registry's (`presenters.md`).
 
 ### 0.4 Designed, not built yet
 
@@ -133,10 +147,10 @@ outside it is not mirrored, and the sidebar highlights nothing.
 
 **A transmission run's folder answers its calculation's report.** TBtrans
 writes no file a viewer reads on its own — its result is the report at its
-point (§ 0.1) — so the run door answers such a folder with the calculation's
-`task.json` and the point, `{frame, of, bias_v}` (`runs.openable` for the file,
-`runs.transmission_point` for the point — the one rule the ladder's run rows
-read too, § 2.4). The menu lists the report first, under its heading, and
+point (§ 0.1), as its kind's record declares — so the run door answers such
+a folder with the calculation's `task.json` (`openable`), and the point the
+folder is, `{frame, of, bias_v}` (`point_of`) — a rung that runs once, its one
+point — the point the ladder's row for the run names too (§ 2.4). The menu lists the report first, under its heading, and
 opens it with that point selected, as the ladder row's *open* does; the
 folder's own files stay listed below it, and the meta line gives the report
 its age alone, counting the folder's own files. The header says so —
@@ -362,11 +376,13 @@ Two rules keep this from hiding anything:
 > for, its result), and — for a run — its
 > `status` (`run_status` with its launch record,
 > [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) and its
-> `record` (§ 3a); per file, its `role`, `label`, `stage`, `parser` and `about` (§ 3b). What a
-> directory is decides what is asked of it, and that rule is the run door's,
-> not the route's: a container has no state and no record — but a run of
-points' folder, a SIESTA vibration's `run-<n>/`, which is served its run's
-state (`runs.points_root_state`); a folder that does
+> `record` (§ 3a); per file, its whole `path`, its `role`, `label`, `stage`, `parser` and `about` (§ 3b). What a
+> directory is decides what is asked of it, and that rule is the directory
+> door's ([`model/parse.md`](?doc=model/parse.md) § 5.2), not the route's: a
+> container has no state and no record — a run of points' root is read as its
+> run of points instead, by the view floor 6 composes (`points_view`: its
+> state, its points, the point at work and that point's record), which the
+> route serves beside the folder's answer; a folder that does
 > not say what it is holds no run of ours: listed, with nothing claimed and no
 > state asked. The picker is the route's browser consumer and decides nothing from a
 > filename; `presenters.md` § 2 is where that answer becomes each viewer's
@@ -376,13 +392,14 @@ state (`runs.points_root_state`); a folder that does
 > `ladder` by consuming `jobset/runstatus.py::jobset_status`, the one ladder
 > door (§ 2.4), and copies none of it.
 >
-> **One question is genuinely still open:** `openable` is one answer per
-> DIRECTORY, and a ladder needs one answer across five. Neither `absorbs` nor
-> the route can state it today. `stages.md` § 6.7 puts the layout in
-> `task.json` and forbids inferring it from data, so the ladder's shape has a
-> home already — what is missing is the route saying *which rung speaks for
-> the calculation*. It reaches every multi-rung calculation, not just
-> transport, so it wants deciding before code moves.
+> **One answer per directory, and a view across several beside it.**
+> `openable` answers one folder. What a reader needs across folders — a
+> calculation root's ladder, every run of it with what each opens; a run of
+> points with the point it is at — is a view floor 6 composes over the run
+> door, and the one door that says which views a folder is read with is
+> `views_of` ([`execution/architecture.md`](?doc=execution/architecture.md)
+> § 3.2): the route serves the folder's answer and those views beside it, and
+> decides none of it.
 
 > **✅ That rename landed on 2026-08-10 and this section was not updated
 > until 2026-09-08.** The trajectory log is named for **the deck that produced
@@ -435,7 +452,8 @@ before anything is prepared too — and `null` for anything else (a rung's direc
 root is itself the run: it answers a state and a record like any run directory
 (§ 3a) — before any stage has run, its first stage's (*pending*, by ladder
 order; two prepared stages answered nothing until 2026-10-19) — and its
-stages' runs are listed by run number (below), not as a ladder of folders. A bias sweep's rung is one run, its state the one rule
+stages' runs are listed by run number (below), not as a ladder of folders —
+its ladder served beside the run it is (`views_of`). A bias sweep's rung is one run, its state the one rule
 `status` asks (`continuation.points_state`): *running* while a point runs, or
 between two points while its job is going (a sequence's group launch reading
 its own job's run by its points instead, [`execution/job-system.md`](?doc=execution/job-system.md) § 6.0); *queued* while nothing it walks
@@ -482,12 +500,16 @@ have different run results in one place such that result tab would be able to
 show them (don't have to get into individual run dir to probe, and rather
 result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
-attempts, a benchmark's trials, a bias sweep's points — each with its state, its
-folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
-`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, deck, validation, copied_from}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a SIESTA vibration's call its phase, its name and, for an optical call, its mode, side and frequency beside them (`vibration_phases.Call.to_wire`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it, where another run-once rung carries all three `null` —, `opens` relative
-to the root — the run door's answer for that folder (`runs.openable`), so
+attempts, a benchmark's trials, a run of points as the run it is — its state
+and count, the file it opens: its own result, else the point at work's
+(`points_view`) — and each of its points below it, each with its state, its
+folder and the file it opens (the ladder's view, `views_of`, each stage's runs
+in it, `runstatus.every_run`, a run of points' rows read once,
+`continuation.point_rows`: under each `stages[]` row,
+`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, opens_report, deck, validation, copied_from}]`, every path whole — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a SIESTA vibration's call its phase, its name and, for an optical call, its mode, side and frequency beside them (`vibration_phases.Call.to_wire`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it (`point_of`), where another run-once rung carries all three `null` —, `opens` the run door's answer for that folder
+(`runs.openable`), so
 **a transmission run's is the root's `task.json`, with its
-`point`** (§ 2): its result is the report at that bias (§ 0.1), and its row's *open*
+`point`**, and `opens_report` says so (§ 2): its result is the report at that bias (§ 0.1), and its row's *open*
 re-announces the calculation with that point — its frame and its voltage — as the report's selection (the handle's `selectPoint({frame, bias})`) — and when the panel shows another file of the calculation, `<label>.transport.json` opened as a file, the ladder says so: *open the report first — choose task.json in the Result file menu* *(the user, 2026-10-10)*
 (§ 2.5), never a file of its own — TBtrans writes none a viewer reads); the states are
 status's reading of each run (`run_state_of`), which reads **every** attempt,
@@ -496,7 +518,7 @@ so a launched run that has not ended is never hidden behind a newer one.
 folder would open, with its Run panel: the page asks the run door for that
 folder (`/api/results/dir`) and announces its file with the root's ladder kept
 — while the sidebar stays on the calculation, the record read in the run's
-own folder (`record_dir`, whose file names the Run panel's **View** joins to),
+own folder, its deck named whole (the Run panel's **View** opens it as sent),
 and the Result file menu's first row saying which, `(showing <file>, a run off
 the ladder)`, so the menu never names a file that is not shown (§ 2.2);
 a folder that does not answer is said under the ladder, and a pick overtaken
@@ -521,7 +543,7 @@ the record's `current`, [`job-request.md`](?doc=execution/job-request.md) § 6):
 keeps it so, and the check there is the run's too; one that changed the
 calculation draws an earlier run no *check report*. Each opens in the
 sidebar's file viewer, as the Run panel's **View** does (§ 3a); the panel
-keeps its result. The server names both files, root-relative, on each run of
+keeps its result. The server names both files, whole, on each run of
 `runs[]` (`deck`, `validation`, `runstatus.every_run`); a button whose file is
 not there is not drawn. So a transport calculation's every input — each
 rung's, each frame's and each voltage's — is one click from the ladder.
@@ -920,6 +942,24 @@ hidden where there is no record: a container (a stage directory, or a
 hierarchical calculation root, whose ladder is § 2.4's), and a folder with no
 run in it.
 
+**A run of points' folder shows the point at work** *(the user, 2026-10-28:
+"go with your recommendation")* — a SIESTA vibration's `run-<n>/`, whose
+points are its calls, and a bias sweep's run. The folder is not one run: its
+points are, each in a folder of its own, so it has no record of its own. The
+run of points' view (floor 6, `points_view`, served beside the folder's
+answer as `points`) carries **the point the run is at** — the point that is
+running; else the last, in the walk's order, whose run holds an engine output;
+none before any has — with that point's record, its one wire form, its folder
+and the row of the file it opens, each path whole. The panel leads with the
+run's count — the view's detail, *relax done · fc done · optical 7 of 21* —
+and names the point in the page's one wording (`lib/results/point-words.js`,
+§ 2.5), *at work: mode 12 (1250 cm⁻¹), −δQ*; its Deck section is that
+point's. **What the folder opens is the view's** (`points.opens`): the run's
+own result once its root holds one, until then the point at work's file,
+listed first by its row — the relaxation's trajectory while it runs.
+Re-read with the directory, as every record is: a Reload shows the point the
+run has moved on to, and the run's result once it is written.
+
 **A fact has one source; the page may show it twice.** The panel and a
 viewer that states the same fact read it from the same file through the same
 reader — the trajectory viewer's runtime line (SIESTA version · solver) and
@@ -1040,7 +1080,9 @@ run's process ended (`runrecord.ending` —
 Run panel and `jobset status` give. The server sends it with the file:
 `/api/watch/load`, `/api/watch/data` and `/api/spectra/load` each carry
 `run: {state, detail, live}` for the run the file belongs to — its folder,
-and the run its name reads back to (`runs.run_answer`) — or `null` for
+and the run its name reads back to (`runstatus.run_answer`: the run door's
+state for a run's file, the run of points' view for a file at a run of
+points' root) — or `null` for
 a file that belongs to no run, an upload. A run whose launch record does not
 read is `unreadable`, never live, the file named in its `detail` — the
 viewer stops and says it *(it carried a `problem` no page read beside the

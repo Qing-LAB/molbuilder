@@ -575,7 +575,7 @@ apart, `&surface=state`). Its card keeps the title *Run profile*: a shared
 part's titles name no engine, one engine's own carry its name — the user's
 rule, 2026-10-27 (`web/form-schema.md` § 1.3).
 
-## 1ak. One system for a calculation's files — the code, the page and the folders as one design, driven by declared data *(2026-10-28; proposed, waiting on the user)*
+## 1ak. One system for a calculation's files — the code, the page and the folders as one design, driven by declared data *(2026-10-28; the direction agreed — the user: "unified and well layered/structured api and framework is the right way to go"; S0 built 2.47.6; S1's contract written, reviewed and revised — its three choices agreed by the user)*
 
 *(The user, 2026-10-28: "did you make sure your work did not [bypass] existing
 parser framework and make sure you are not handcrafting code to work with dir
@@ -596,41 +596,17 @@ read again in the code):
 | files by hand | about a dozen in the door, status and export: `export.py` composes the `.spectra.nc` beside the result; `transmission_point` rebuilds the run folder and calls transport's points directly; `_openable` and `on_label_at` answer "the run's result" by two filters; *is this point opened* by `is_dir()` in four places; `continuation.done` composes `shared/.copied-from`; `_warm_present`, `_held` compose names and test `is_file`; the ladder never lists a run in phases' own result | older |
 | the page | the browser composes paths (`rootDir + "/" + r.opens`, the deck's **View**, p3's `record_dir`), decides from a path's shape that a row opens the report, and picks a run by a file's basename | older, and mine |
 | tests | support helpers and e2e build `01_coarse/run-0`, `04_device/run-0/v0.2`, `task.json`, `job-request.json`, `CO2.fc-sweep.json` by hand; read the bench plan as raw JSON; parse the ledger by hand twice; hand-build the hand-over → description dict four times (which hid E1) | older, and mine |
-| kinds by code | **54 branches** on a kind's or engine's name (`calculation == "transport"`, `engine == "siesta"`) in 25 modules, beside the kind facts that ARE data, scattered over seven tables — `paths.KIND_ROLES`, `paths.ROLE_SETS`, `jobset.points.DECLARED`, `prep.RUNGS`, `template.RESULTS`, `electronic_state.KINDS`, `task.fixed_by_kind` (itself two branches, mine) | older, and mine |
+| kinds by code | **54 branches** found first — about 40 more by S1's review (below) — on a kind's or engine's name (`calculation == "transport"`, `engine == "siesta"`) in 25 modules, beside the kind facts that ARE data, scattered over seven tables — `paths.KIND_ROLES`, `paths.ROLE_SETS`, `jobset.points.DECLARED`, `prep.RUNGS`, `template.RESULTS`, `electronic_state.KINDS`, `task.fixed_by_kind` (itself two branches, mine) | older, and mine |
 
-**The design — three declarations, one job per floor.**
-
-*The declarations, data:*
-
-- **D1 · the kind table** — one record per (engine, calculation): the shape it
-  fixes and why; the stages it fixes; its roles; its run-of-points
-  declaration; its rung builders; its results; what each of its folders opens
-  (a transport calculation's root, its description; a transmission point, the
-  report at that point; a run of points' root, its run's result, else its point
-  at work). The seven tables become its fields, read through one door; **a
-  branch on a kind's name is the defect** — each of the 54 is judged: a fact of
-  the kind becomes a field of its record, and what remains is genuinely an
-  engine's own code (SIESTA's deck writer is SIESTA's).
-- **D2 · the file catalogue**, `runfiles.WRITTEN` (built): every file — its
-  role, the folder kind it lies in, its reader — and, as fields, which folder
-  kind opens it, so *what a folder opens* is a lookup, not a branch.
-- **D3 · the folder record**, `calcdir.json` read by `calcdirs.where` (built):
-  what a folder is — a calculation, a stage's, an attempt, a point (a bias
-  point, a vibration's call), a container, the engine's scratch, a shared
-  folder, a benchmark, a trial. **A folder's kind decides everything asked of
-  it**, by D1 and D2.
-
-*The floors, each one job (`execution/architecture.md` § 2):*
-
-| floor | its job | its doors | it never |
-|---|---|---|---|
-| 1 · names | the tree's grammar and the declarations | `calcdirs.where`, `paths`, `runfiles`, the kind table | — |
-| 1 · readers | one file kind, one reader | the parse registry, `ending_of`, `run_status`, `run_record` | read a folder, or a file not its own |
-| 2 · the run door | ONE run's folder | `run_of`, `state_of`, `record_of`, `openable`, `about`, `declared`, `view_of`, `folder_answer` for one folder | open a calculation, a plan or a point; call above floor 2 |
-| 4 · a run of points | its points, read once | `points_of(kind)`; `point_rows` — the one walk, each row its point's wire form, words, folder, state and whether it has written; `points_state` over the rows; the point at work, a selection over them | walk the points twice |
-| 6 · observe | the views composed over 2 and 4 | the ladder (`jobset_status`; `every_run` from `point_rows`, a run of points' root listed with its own result); the run of points' view — its state, its point at work and that point's record, what it opens | compose a path or a word the doors below state |
-| 7 · surfaces | a door's answer, served whole | `/api/results/dir`: the run door's answer, with the ladder at a root and the run of points' view at its root; every path a full path, every point with its words, a file opened outside the folder with why | keep a list of the answer's fields |
-| the page | shows what it is sent | the picker, the Run panel, the ladder, the presenters | compose a path, test a file's name, decide from a path's shape; its own translations are MolView's frame display and the one wording of a point (`web/results.md` § 2.5) |
+**The design is the contract now** (S1): the four declarations — the kind
+table and the engine table (`kind_table.toml`, `engine_table.toml`, one
+reader each on floor 1), the file catalogue, the folder record — in
+`execution/architecture.md` § 3.3 with rule A18; one job per floor in § 2.1
+and § 3.2 — the run door one folder, a run of points' points read once per
+answer (`point_rows`) and the point a folder is (`point_of`) on floor 4, the
+views (`views_of`: the ladder, the run of points' view, the point) and
+`run_answer` on floor 6, a route serving whole on floor 7, the page composing
+no path; what each folder is asked and opens, `model/parse.md` § 5.2.
 
 **What each finding becomes**: E1 — the card's shape is the kind table's,
 asked of a hand-over as of a description; E2 — the route serves the answers
@@ -639,8 +615,9 @@ floor breach and the three walks — floors 2, 4 and 6 as above; files by hand
 — each to its floor-1 or floor-2 door; the page — floor 7 sends paths, words
 and why; the tests — every artifact through these doors, the support helpers
 first (one hand-over → description helper, taking the shape from the folder
-answer); the 54 branches — the kind table. p3 is rebuilt on floors 4 and 6;
-p4 falls out of floor 2's one *what it opens*.
+answer); every branch on a kind's or an engine's name — the kind table and
+the engine table. p3 is rebuilt on floors 4 and 6; p4 falls out of floor 2's
+one *what it opens*.
 
 **The order** — each stage: contract first, code bottom-up, and **a
 fresh-agent review at its end** — its findings verified in the code, triaged
@@ -651,17 +628,120 @@ stages")*:
 | # | milestone | done when |
 |---|---|---|
 | S0 | **E1** (an error on the road, a last-number move): the hand-over's shape card and Save from `fixed_by_kind`; a road-table row through the hand-over | **built 2.47.6** — a SIESTA vibration's hand-over starts at *hierarchical*, fixed, with why; `describe` without `--shape` names the kind's shape (the CLI stays explicit, the user's decision of 2026-10-28). Its review: card, Save, reader and CLI agree on every road; the hand-over's own words and two contract rows fixed with it; to S2 — `fixed_by_kind`'s branches and `points.DECLARED` keyed differently (transport on any engine, SIESTA only), `fixed_shape` a second door; to S4 — the road helper's record paths by name, a protocol row running a prep it does not need |
-| S1 | **the contract**: `architecture.md` § 2.1 and § 3.2 (the kind table as a door; the run door's limits; the run of points' view on floor 6), `model/parse.md` § 5 (the folder kinds and what each opens, as data), `project-layout.md` § 1.4a, `web/results.md` and `web-api.md` (the page shows; the wire carries paths, words and why) | the user's yes |
-| S2 | **the kind table** — the seven tables into one record per (engine, kind), then the branches judged one by one (a 55th found in S0's review: the hand-over's sender tab named by kind) | no branch on a kind's name but an engine's own code |
-| S3 | **the floors**: floor 2 limited, floor 4's one walk, floor 6's views, floor 7 serving whole, the page showing — p3 rebuilt, p4 with it, the ladder listing a run in phases' result | the review's structure, files and page rows closed |
+| S1 | **the contract**: `architecture.md` § 2.1 and § 3.2 (the kind table as a door; the run door's limits; the run of points' view on floor 6), `model/parse.md` § 5 (the folder kinds and what each opens, as data), `project-layout.md` § 1.4a, `web/results.md` and `web-api.md` (the page shows; the wire carries paths, words and why) | **written and revised 2026-10-28** — `execution/architecture.md` § 0 (six axes: the calculation kind beside the job kind), § 2.1 (floors: the two tables on 1, the run door one folder, a run of points and `point_of` on 4, `views_of`, the views and `run_answer` on 6, a route serving whole and a path whole on 7; a kind's own modules by what they hold), § 3, § 3.2 (the kind door; what a folder opens; a run of points' points; a run of points as a reader sees it; the point a folder is; the views a folder is read with), **§ 3.3 the declarations** (four; a fact with a home keeps it, the two tables the lists the others are checked against; the kind's record, its part per engine, the engine's record; a part named `module:NAME` living on the floor that resolves it; what stays code by package), A18; `model/parse.md` § 5 (one folder; § 5.2's five questions and its table of what each folder is asked and opens; the record's deck path whole); `project-layout.md` § 1.4a; `web/results.md` § 0.1–§ 0.3, § 2, § 2.3, § 2.4, § 3a; `web-api.md` `/api/results/dir`; the rows naming the old doors in `architecture.md`, `job-contracts.md`, `running-a-job.md`, `engines/vibration.md`. **Its review** (two fresh agents, the tables and the floors, every finding read again in the code): the kind/engine split corrected (roles, results, the benchmark, the sum and the retired stages are the pair's where the code says so); facts with a home kept there; the tables renamed apart from the scheduler kinds; a part's floor; `point_of` and `views_of` added (a transmission that runs once, `shared/`, the route deciding no view); a flat root's ladder; what a run of points' root opens; a whole path defined; the page knowing where a file lies by its answer. The chapters that name today's homes are swept in S2, as the records move |
+| S2 | **the kind table and the engine table** — first the inventory: every branch on a kind's or engine's name in `molbuilder/`, read in its function and judged (the table below, with the review's locators); then the two files and their readers, the seven tables and their kin into them (below), each branch into its field; the parts named and moved to their floors — a run of points' declaration out of `siesta/vibration_phases` and `transport/stages` into floor-4 modules, the rung builders out of the conductor, the config class one part (`validation.task._shipped` and `config_class_for` go); the other declarations' names checked against the tables at load; the chapters naming the old homes swept (`engines/template.md` § 6.2a, § 6.4, `web/task-setup.md`, `engines/stages.md`, `engines/vibration.md`, `engines/transport.md`, `science/chemistry-correctness.md`, `science/validation.md`, `web/web-api.md`, `execution/job-contracts.md`) | no branch on a kind's or engine's name in shared code (A18); the review's two rounds clean |
+| S3 | **the floors**: floor 2 limited (`points_root_state`, `transmission_point` and the `transport` branches leave the run door), floor 4's rows read once per answer and `point_of`, floor 6's `views_of` — the ladder view with each stage's runs in it, at a flat root too, a run of points listed as the run it is; the run of points' view; `run_answer` — floor 7 serving whole, every path the page opens whole, the record's deck path whole; the page knowing where a file lies by its answer — p3 rebuilt, p4 with it | the review's structure, files and page rows closed |
 | S4 | **the tests through the doors** — the support helpers first | no test composes a run's path or a file's name |
 | S5 | two review rounds over S0–S4 | — |
 
-**Decisions waiting on the user**: (a) S2's reach — the whole kind table
-and all 54 branches, or the folder and door ones first; (b) whether
-`molbuilder describe` takes the shape a kind fixes when `--shape` is left
-out, as the web door does (today it refuses); (c) p3's uncommitted code —
-recommended: set aside and rebuilt on S3.
+**Decided 2026-10-28**: (a) S2's reach — the kind table, every branch on
+a kind's name judged into it; the engine's branches into the engine table,
+the seam a lookup of it; an engine's own modules choosing by kind stay, listed
+(`architecture.md` § 3.3, *What stays code*); (b) `molbuilder describe` stays
+explicit — `--shape` asked, its refusal naming the shape a kind fixes and why
+(*"cli shall be more explicit because on web user typically has visual
+guidance and know the final outcome"*; built 2.47.6); (c) p3's uncommitted
+code set aside (the job's scratch, `p3-setaside/`) and rebuilt on S3.
+
+**Agreed with S1** *(the user, 2026-10-28: "go with your recommendation on all
+three")*: (d) **the kind table is a data
+file** — `molbuilder/kind_table.toml`, one reader `kind_table.py`, and the
+engine table beside it, `engine_table.toml` and `engine_table.py` (named apart
+from `scheduler.kinds`), as the scheduler
+kinds are (`scheduler/kinds.toml`, `scheduler.md` § 6a) — the user's *"driven
+by config file and meta data"*; a part that is code is named in it as
+`module:NAME` and resolved by the floor it lives on (the rule
+`jobset.points.DECLARED` keeps today, moved into the record); (e) **one record
+per kind, with a part per engine it runs on** — refining *one record per
+(engine, kind)*: a kind's roles, results' order and description fields are the
+kind's whichever engine runs it, and the shape, fixed stages, how stages play
+the roles, the run of points, the rung builder, the benchmark, the sum and the
+retired stages are the pair's, so nothing is written twice; the engines a
+kind runs on are its parts (no second list — `electronic_state._RUNS`,
+`pyscf.stages.VIBRATION_ENGINES` go); (f) **`run_answer` moves to floor 6**
+— a file at a run of points' root answers its run's state, which only the
+points can say.
+
+**What S2 moves into the records** — the seven tables, each a field:
+`paths.KIND_ROLES` and `ROLE_SETS` (a rung's role and whether it runs an
+SCF), `jobset.points.DECLARED` (the pair's run of points), `prep.RUNGS` (the
+pair's rung builder), `template.RESULTS` (the kind's results),
+`electronic_state.KINDS` and `_RUNS` (the kinds, and which engines run them —
+the records' keys), `task.fixed_by_kind` (the pair's shape and stages);
+and their kin the review found — `transport/stages.STAGE_FACT` (what a rung
+computes, beside `ROLE_SETS`), `kmesh._FIXED_ON_TRANSPORT` and `LEAD_RUNGS`,
+`identity._LEAD_REGION_OF`; `template.ENGINE_WORDS`,
+`transport/stages.ENGINE_WORDS`, `cell.MOLECULAR`, `placement.one_process`,
+`validation.task._shipped` and `engines.engine_seam`'s branches into the engine
+table — then every branch, each judged again against the record (the first
+verdict, 2026-10-28: KIND — a field of the kind's record; PAIR — of its part
+on an engine; ENGINE — of the engine's; CATALOGUE — a fact the parameter
+catalogue already declares; OWN — an engine's or a kind's own module, which
+stays; line numbers as of 2.47.5, a locator only):
+
+| # | where | what it decides | verdict | becomes |
+|---|---|---|---|---|
+| 1 | cell.py:628 | a vibration stated relaxed keeps its engine frame | KIND | `frame_when_stated_relaxed: kept` |
+| 2 | runs.py:1017 | a transmission point's folder opens the report at its point | KIND | `opens.point: report_at_point` (rung) |
+| 3 | runs.py:1087 | a transport root opens its description | KIND | `opens.root: description` |
+| 4 | task_reader.py:62 | the description read as a report only for transport | KIND | the same `opens.root` field |
+| 5 | task.py:121 | transport fixes shape + five stages | KIND | `shape`, `stages` |
+| 6 | task.py:129 | SIESTA vibration fixes shape | KIND (engine-qualified) | `shape` on the (siesta, vibration) record |
+| 7 | task.py:325 | a bias treatment exists for transport | KIND | `description.bias` |
+| 8 | task.py:360 | transport carries a junction slot, no structure | KIND | `description.slots`, `description.structure` |
+| 9 | task.py:413 | transport states its voltages | KIND | `description.bias: required` |
+| 10 | task.py:549 | the id's identity: junction citation vs formula | KIND | `identity_from` |
+| 11 | transport/record.py:881 | transport's own doors refuse another kind | OWN (the kind's module) | stays |
+| 12–13 | summarize.py:752/754 | what `summarize` does per kind | PAIR | the pair's sum (a part) |
+| 14 | validation/task.py:93 | the retired `relax` stage, naming migrate | PAIR | the pair's retired stages |
+| 15 | transport/reuse.py:51 | reuse refuses another kind | OWN | stays |
+| 16 | _cli.py:806 | `--reuses` only for transport | KIND | `description.reuses` |
+| 17 | _cli.py:844 | describe's road per kind | KIND | `describer` |
+| 18 | _cli.py:901 | the vibration ladder | KIND | `fresh_ladder` (with ladder.py:86) |
+| 19 | _cli.py:1859 | `--tolerance-cm1` only for a vibration | PAIR | the pair's sum and its options |
+| 20 | migrate.py:1412 | the Raman selector retired on SIESTA | CATALOGUE | `template.RETIRED_ITEMS` (`Retired.engines`) |
+| 21 | prep.py:405 | the junction citation at prep | KIND | `description.slots` |
+| 22 | prep_inputs.py:398/408 | no bench for transport; none off SIESTA | PAIR, ENGINE | the pair's benchmark; the engine's benchmark lane |
+| 23 | build.py:1038 | no hand-over for transport | KIND | `handover` |
+| 24 | ladder.py:86 | the fresh ladder per kind | KIND | `fresh_ladder` |
+| 25 | points.py:9 | docstring only | — | — |
+| 26–27 | ready.py:521/570 | a rung's inputs gathered (transport) | KIND | `inputs` |
+| 28 | submit.py:1067 | `--gather` only for transport | KIND | `inputs` |
+| 29 | electronic_state.py:308 | SIESTA's method is DFT | CATALOGUE | the `method` item's `engines` and `offered` |
+| 30 | runwrap.py:951 | the run script's held-atom preview | ENGINE | engine record |
+| 31 | runwrap.py:2325 | SIESTA's GPU env category | ENGINE | engine record `gpu_environment` |
+| 32 | template.py:2404–2445 | SIESTA has no ROKS; every `why_not_offered` reason | CATALOGUE | the item's `offered` and its reason, beside it |
+| 33–34 | parse/dirs/setup.py:163/181 | the deck read; keyword-less items | ENGINE | engine record |
+| 35 | chemistry.py:426 | SIESTA's restricted half-filled hint | ENGINE | engine record |
+| 36–38 | build.py:208/917/1057 | config from params per engine | ENGINE | the seam's config builder |
+| 39 | build.py:1094 | pseudopotential findings for SIESTA | ENGINE | the seam's data files |
+| 40 | build.py:1128 | the restart identity group | ENGINE | engine record |
+| 41 | build.py:3011 | stage presets per engine | ENGINE | engine record |
+| 42 | engines.py:280 | the seam picked by `if` | ENGINE | the seam table's lookup |
+| 43 | cli.py:392 | `validate`'s config class | ENGINE | the seam's config class |
+| 44 | pyscf/input.py:213 | PySCF's deck by kind | OWN (engine module) | stays |
+| 45–46 | siesta/input.py:593/636 | SIESTA's deck by kind | OWN | stays |
+| 47 | validation/siesta.py:565 | SIESTA validator's vibration path | OWN | stays |
+| 48 | validation/siesta.py:583 | junction boundary: refused on transport, warned elsewhere — **written twice** (pyscf.py:264) | KIND | `checks.junction_boundary` |
+| 49 | validation/siesta.py:639 | frozen atoms consumed, not on vibration/transport | KIND | `checks.frozen_consumed` |
+| 50 | validation/siesta.py:684 | the device's bias window | OWN | stays |
+| 51 | chemistry.py:276 | transport's charge rule | KIND | `checks.charge` |
+| 52 | chemistry.py:287 | peptide protonation not on transport | KIND | `checks.protonation` |
+| 53 | validation/pyscf.py:220 | PySCF validator's vibration path | OWN | stays |
+| 54 | validation/pyscf.py:264 | junction boundary (twice, see 48) | KIND | `checks.junction_boundary` |
+| 55 | build.py, the hand-over door's `_what` | which tab sent the hand-over, named by `if calculation == 'vibration'` | KIND | `handover.from` (the sending tab) |
+| 56 | task.py:503, :700, :983 | a lead's label tail; the structure block (#8's second site); the migrate hint | to judge — KIND | — |
+| 57 | electronic_state.py:97, :103, :289 | `count_must_float` on SIESTA / transport; the transport charge rule (#51's second home) | to judge — KIND, ENGINE | — |
+| 58 | template.py:2092–2095, :2298 | `stage_role_rule` (SIESTA all roles, PySCF `force_constants`); `a_kind`'s noun | PAIR (how stages play the roles); KIND (its name) | — |
+| 59 | kmesh.py:195, :224; validation/chemistry.py:298 | the transport k-mesh's fixed axis and lead rungs; a chemistry check by kind | to judge — KIND (a role's fact) | — |
+| 60 | prep.py:1269, :2621; group.py:86, :100; ladder.py:32; continuation.py:408 | whether a deck relaxes; whether a ladder's stages are linked — two answers today (`group.linked` transport only, `ladder.independent` by `KIND_ROLES`) | KIND — one field, linked | — |
+| 61 | prep_inputs.py:408; placement.py:176; cell.py:691/701 | the bench lane off SIESTA; one process (PySCF); free space (PySCF) | ENGINE | — |
+| 62 | runwrap.py:771, :995, :2273, :2484, :3466 (beside #30, #31) | the run script's launch line, threads, finish, GPU environment | ENGINE (its run script) | — |
+| 63 | runfiles.py:1040 | PySCF's code bundle | to judge — ENGINE | — |
+| 64 | build.py:900, :1036, :1844, :1941; parse/dirs/setup.py:156 | lists of known engines | the engine table's list | — |
+| 65 | build.py:2783; _cli.py:899, :936, :950, :952, :1865 | describe's per-engine ladder dict, config class and identity field; a surface's kind test | ENGINE (identity field, presets, config class); PAIR | — |
+| 66 | migrate.py:141, :704, :767 | old shapes a rewrite names | to judge — PAIR (retired stages) or the rewrite's own | — |
+| 67 | spectra/displacement_sweep.py:122; spectra/infrared.py:163, :214; spectra/vibrational_analysis.py:298; web/blueprints/spectra.py:270 | the vibration's own modules by engine; a route's | OWN (the kind's `spectra/`), the route to judge | — |
 
 ## 1ac. A SIESTA vibration's optical activity, and the displacement *(2026-10-24; the charge switch built 2.35.2; the infrared and the displacement reference built 2.36.0; the review and the user's choices 2.37.0; SIESTA's vibration redesigned 2026-10-25 as one run in phases, Raman its optical phase (the user's B); R-a, R-c and R1 decided as recommended, 2026-10-25 — to build)*
 
