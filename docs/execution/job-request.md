@@ -845,8 +845,10 @@ rung's deck computes now ([`engines/transport.md`](?doc=engines/transport.md)
 § 6.1); prep, of a launched stage (§ 5); the run record's `current` and the
 run door's `Run.report` — whether the stage's deck, and the check written beside
 it, are still the calculation the run ran ([`model/parse.md`](?doc=model/parse.md)
-§ 5d; [`architecture.md`](?doc=execution/architecture.md) § 3.2). **Not** by a launch, which compares nothing
-([`job-system.md`](?doc=execution/job-system.md) § 6.0).
+§ 5d; [`architecture.md`](?doc=execution/architecture.md) § 3.2). **Not** of what a launch sends: a
+stage's own files go as prep wrote them ([`job-system.md`](?doc=execution/job-system.md) § 6.0);
+what a first launch asks is of the runs it takes from — the gather's, and a
+take-over's in a calculation that reuses a finished one.
 
 **A deck's comments record what it was rendered with** — PROVENANCE's
 `resolved-defaults`, BENCH-MARKS' rank count — and nothing reads them as a

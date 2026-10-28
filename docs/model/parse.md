@@ -1487,7 +1487,7 @@ window from its own input:
 | `loop_elapsed_s` | one spin pass of TBtrans's k-point × energy **loop** — not the engine's wall: its set-up before the loop is outside it | the `.out`'s `tbt: Completed in S s`, one per pass | the reading pass, `now()["tbtrans"]["passes"][i]["loop_elapsed_s"]` (§ 5d.5) | the progress words (`tbtrans.loop_words`); summed over a point's passes, the transport record's point `loop_elapsed_s` and the rung's `measured.loop_elapsed_s` — the rung row's time a finished point's loop took (`engines/transport.md` § 2a.12) |
 
 `[UTIL-SUMMARY]` carries no duration — CPU and per-GPU means and a bound
-verdict, nothing else (`monitor.py::UtilAccumulator.summary`) — so no window
+verdict, nothing else (`monitor.py::UtilAccum.summary`) — so no window
 has a second source to reconcile.
 
 **Where two sources genuinely do exist, one door already reconciles them.** The

@@ -615,7 +615,7 @@ says `gnorm(eV/Ang)` scaled it as a force, and the reader converts it back.
   `<token>` is the stage's artifact token, **digit-first**
   (`01_coarse`, [`job-contracts.md` § 6.3](?doc=execution/job-contracts.md)),
   never an identifier-shaped `stageN`. One reader owns the grammar
-  (`parse/engines/molwatch.py::parse_convergence_line`); the two readers that
+  (`parse/engines/molwatch_grammar.py::parse_convergence_line`); the two readers that
   spelled it privately both assumed letter-first identifiers and silently
   dropped every staged header (found 2026-08-19).
 - **The footer** is the run's conclusion: `# concluded: <stamp>` on a clean

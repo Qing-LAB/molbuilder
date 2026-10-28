@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.46.4.** Since the last handover (2026-10-20, kept
+**Where we are: 2.46.5.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -75,9 +75,10 @@ prepared with, and the fifteen decisions (2.41.0); SIESTA's vibration as one
 run in phases and its Raman at a laser (2.42.0–2.44.1); the vibration form by
 result (2.45.0); a frame set saying what its numbers mean, and the charge and
 spin in the Spectrum tab's chemistry card (2.46.0–2.46.2); the review's shipped
-errors (2.46.3); Save refusing to change a stage that has run (2.46.4).
+errors (2.46.3); Save refusing to change a stage that has run (2.46.4); launch re-checking
+nothing, and stale words put right (2.46.5).
 
-**Last checked**: the fast batch on 2.46.4 (6,877 passed); the real-junction e2e on 2.46.4 (188 passed); the stopped-run e2e on 2.46.3 (8 passed); the SIESTA CO₂ vibration e2e on
+**Last checked**: the fast batch on 2.46.5 (6,877 passed); the real-junction e2e on 2.46.4 (188 passed); the stopped-run e2e on 2.46.3 (8 passed); the SIESTA CO₂ vibration e2e on
 2.45.0 (8 passed); every road of 2.45.0–2.46.0 through the pages and the
 printed commands (vibration → frame set → transport on the H chain).
 
@@ -193,8 +194,13 @@ STAGE-PLAN written twice, the two finished-calculation openers; WF8 was
 already fixed. **Earlier**: SCI1 (2.41.0), SCI3, SCI6, SCI8 (2.44.0), WF1
 (2.41.0), DOC7 (2.43.0), the current integrated two ways and `gf_files`'
 second fdf reader (2.43.2). **Dropped as polish**: BE9, WF11, DOC16's asides.
-**Left** — re-derived at their lines when taken: BE8, BE12, WF10 (not
-located), UI7–UI10, UI13–UI16, DOC5, DOC13, DOC14.
+**Fixed 2.46.5**: UI7–UI10, DOC5, DOC14 (the dead code names and the
+label checklist that contradicted *labels are the user's*), BE12's stale
+`web-api.md` clauses — the error itself went with 2.42.0's `relax` stage —
+and DOC13 by the plan's consolidation (2026-10-27). **Not reproduced on
+2.46.4**: BE8 (`status`, `status <stage>`, on described, prepared and
+finished junctions). **Left**: WF10, never located; UI13–UI16 are polish,
+dropped.
 
 **Science.** SCI1 — the device's Fermi level is moved to the seed's frame
 with the last NEGF step's `ts-Vha`; the periodic step's is the right one
@@ -738,7 +744,7 @@ is [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-con
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **§ 1ad.2's findings left** — BE8, BE12, WF10, UI7–UI10, UI13–UI16, DOC5, DOC13, DOC14, each re-derived at its line when taken | § 1ad.2 | the rest of the review's errors; 2.46.3 fixed the others |
+| **1** | **A benchmark cell of uneven ranks per GPU kept** (GKN) — trials named by their total ranks, `G3N32C1`, the even-split drop deleted; contract first | § 0a, GKN | the user's rule: a request is prepared, never vetoed |
 | **2** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | the user's ask; half built |
 | **3** | **§ 1ae M5 — the vibration contract closed**, with § 1ac's proofs: R1 measured, 3a water on both engines, 3b the Raman proof | § 1ae, § 1ac | what was built in 2.42–2.44 is checked against the science before more is built on it |
 | **4** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |
@@ -785,14 +791,17 @@ contracts and the user's own rules, each re-derived when its row is taken:*
 count and the largest cores per rank, so every group fits (as 2.26.0
 builds it); **WAE** — the *written as the job ended* check's sub-second edge,
 never observed: dropped; **RL42** — launch re-checks nothing (prep decides,
-launch runs): the launch-time check of a missing run script is dropped;
+launch runs): the launch-time check of a missing run script is dropped (2.46.5);
 **V1.9's remainder** — no broad hash: a cited pair edited afterwards is
 refused already, and an edit between stages is not designed for;
 **F11** — a walk to see a killed point's kill line: our own test gap, not a
 decision; **SCHED-R's advance signal** — beyond what the person requests:
 not added; **GATHER-WARM** — a warm `--gather` relaunch keeping done points
-from the old upstream run names the wrong upstream for them: an error to
-fix, verified first; **GKN** — a benchmark cell of uneven ranks per GPU
+from the old upstream run — re-checked 2026-10-27: reached only by
+relaunching a finished device cold and then gathering a transmission that
+had points done, no road a person takes (a change goes back to before the
+first launch, 2.46.4); the contract states which run the device facts come
+from (`engines/transport.md` § 2a.12), no change; **GKN** — a benchmark cell of uneven ranks per GPU
 (32 on 3) is dropped against the rule that a request is prepared, never
 vetoed: kept, its trials named by their total ranks — a fix.
 Step 6's designs — V1.25's amplitude, V1.26, K22 — are brought with their
@@ -847,8 +856,8 @@ listed — stays here as step 3's detail:
 | **BENCH-2** | engines / bench | **BENCH-MARKS' field list is a second, hand-kept source**: `script_emit.SIESTA_BENCH_FIELDS` (e.g. `BlockSize` `pow2` there, `int` in the catalogue); only the type is checked against the catalogue (`tests/test_template_declarations.py`) | 2.24.0 docs sweep | open |
 | **BENCH-SHELF** | engines / bench | **Two benchmark findings that only a real shelf on a cluster can confirm** (the six-agent review, 2026-10-24; both read off the code, neither seen on a run): **(I)** a shelf walks its trials inside one job (`submit.py`), and each trial's monitor reads the job's cgroup memory counter (`monitor.py`, `memory.peak` / `memory.max_usage_in_bytes`), which `utilisation()` prefers — so every trial after a shelf's first may report the shelf's peak as its own, labelled *kernel counter* ([`bench-summary.md`](?doc=web/bench-summary.md) § 3 says the peak is the trial's own); **(J)** the measurement pins (`template.py`, `prep_inputs.py`) leave the run's 600 s `wall_slack` in force, so on a 15-minute queue (`htc`/`debug`) each trial has 300 s of compute and a trial starting after ~5 min may stop `OUT_OF_TIME` at its first check, read failed and never ranked ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6). | six-agent review, benchmarks reader | **unconfirmed** — to confirm, one 2-trial shelf on Sol's `htc`/`debug`: the second trial's `UTIL-BASIS` peak against its own `util.csv` (I), and whether the second trial stops at its first check (J); a fix only after that |
 | **DOC-SMALL** | various | **Small text errors in code found by the docs sweep**: `molbuilder jupyter --help` says a restart "does not destroy notebook state" while `serve_daemon` stops it; `web/app.py` cites "deployment.md § 1.3" (no such section); `ui-contract` § 1's stylesheet order broken in the index, spectra, modify and results pages; the ruler notice written twice (`modify/viewer.js` ~669, `periodicity.js` ~268); `checkpoint.js` ~982 cites L4 where the rule is L3; the zip export carrying an engine's scratch is § 1v's; dangling codes (D3–D5, `M5:`, the unit-11 review) in launch's comments | 2.24.0 docs sweep and review | open — step 3 (tidy) |
-| **RL42** | execution / launch | **R-L42 (a run script missing) is checked by two builders only** (`_plan_stage` run here, `_bench_trials`): a group's walk, a run of points' walk and a queue send meet it at run time — make it one check where every submission is built, or drop it as a launch-time re-check (the user's rule: prep decides, launch runs) | 2.24.0 launch review | settled 2026-10-27 by the user's rule (prep decides, launch runs): the launch-time check is dropped — to do |
-| **GATHER-WARM** | transport | **A warm `--gather` relaunch of a run of points takes its done points over with their old inputs** (N3 round 1, U1): the run's points then rest on two upstream runs, and the record reads every point's device facts from the run the first point names (`record.gathered_device_run`); the deck-agreement gate holds, so the difference is at SCF tolerance. Settled 2026-10-27: the record names the wrong upstream run for the points taken over — an error, to verify and fix | N3 | open — a fix |
+| **RL42** | execution / launch | **R-L42 (a run script missing) is checked by two builders only** (`_plan_stage` run here, `_bench_trials`): a group's walk, a run of points' walk and a queue send meet it at run time — make it one check where every submission is built, or drop it as a launch-time re-check (the user's rule: prep decides, launch runs) | 2.24.0 launch review | done 2.46.5 — the launch-time check dropped, by the user's rule (prep decides, launch runs) |
+| **GATHER-WARM** | transport | **A warm `--gather` relaunch of a run of points takes its done points over with their old inputs** (N3 round 1, U1): the run's points then rest on two upstream runs, and the record reads every point's device facts from the run the first point names (`record.gathered_device_run`); the deck-agreement gate holds, so the difference is at SCF tolerance. Re-checked 2026-10-27: reached only by relaunching a finished device cold, no road a person takes; the contract states the run (§ 2a.12) | N3 | closed — no change |
 | **E13** | engine / science | **The first real junction walk — BDT–Au on Sol. DROPPED BY THE CONSOLIDATION.** Named in the roadmap and again in `transport-design` § 7's *"order of proof"* as the run that follows P6. plan.md has the machine-blocked infrastructure (E5 — archived 2026-09-10 — and E7) and the browser and deck walks (W12 — archived 2026-09-10 — and E11) but no row for the transport composite's first real science run | roadmap · `transport-design` § 7 | **the Sol half only** — after § 5u step 4; the workstation half ran 2026-09-29 (the Au–BDT–Au ladder to T(E) on `claude-au-bdt-au`, TD8's acceptance ladder) and is archived *(2026-10-08)* · *Re-checked 2026-10-09:* open — the Sol half only; the workstation half closed by TD8 and Q15's run E. |
 | **E14** | science / references | **Reed 2006 and Stokbro 2003 into `science/references.bib`.** `engines/transport.md` § 8 cites both (and Solomon 2008 beside them); none is in the `.bib`, and the rule is that an entry is added when a passage cites it. The 2026-10-08 archive reason — *no live document cites them* — was untrue | roadmap § 7.3 | **reopened 2026-10-09** — each entry checked against the paper before it goes in (§ 7.3) |
 | **V1** | engine / science / web | **The vibration calculation — one path on two engines.** The contract is [`engines/vibration.md`](?doc=engines/vibration.md) (§ 10 says what stands); the science is [`science/normal-modes.md`](?doc=science/normal-modes.md); the design and the first audit are archived (`archive/2026-09-24-*`). Built 2026-09-21 → 24: one harmonic path with the rank rule and its gate against PySCF, one mass convention, stationarity on the free atoms, the runs write the pair, the Hessian over the free atoms with the two measured corrections, the SIESTA arm (deck on a sorted copy, `atom-permutation.json` with its key, the `.FC` reader, `summarize run`, the warm-file section, the kind's start state), the equilibrium block optional, the wrapper's banner. **Open, the sub-rows:** | `engines/vibration.md` § 10 | open · *Re-checked 2026-10-09:* a container: V1.11, V1.15 and V1.38 narrowed, V1.25 unblocked, V1.31 archived. |

@@ -352,17 +352,11 @@ A backend joins the way every calculation KIND joins: it is **described** (a
 catalogue rows, not a registration. To satisfy the contracts above, a new engine
 must:
 
-1. **Declare which sidecar labels it consumes** (in the engine module's docstring) —
-   everything else gets a Stage-3B notice.
-2. **Add a schema-endpoint pre-fill** for any label that maps to a form field
-   (mirror `_seed_frozen_indices_from_sidecar`).
-3. **Add a preflight divergence warn** (Stage-3A) and an **unrecognized-label notice**
-   (Stage-3B) for every sidecar field it does *not* consume.
-4. **Emit boundary conditions verbatim** from config (Stage 2) — no silent union, no
+1. **Read only the labels molbuilder owns** (Stage 3: the frozen label; a
+   transport calculation's partition) — every other label rides along
+   untouched, read by nothing and named by no check.
+2. **Emit boundary conditions verbatim** from config (Stage 2) — no silent union, no
    run-time sidecar reads.
 
-Tests must pin each: a future engine that silently absorbs or drops a label has to
-fail loudly. The spectra tests are the template — divergence + unrecognized-label at
-the engine layer (`tests/spectra/test_engine.py::test_sidecar_frozen_divergence_warns`,
-`::test_sidecar_regions_unrecognized_warn`) and apply-failure at the render layer
-(`tests/spectra/test_blueprint.py::test_render_with_corrupt_sidecar_surfaces_notice`).
+Tests must pin each: a future engine that silently absorbs or drops a label it
+owns has to fail loudly.

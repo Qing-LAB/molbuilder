@@ -2438,21 +2438,12 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     return "\n".join(lines)
 
 
-def _no_run_script(what: str, run_name: str, folder: Path,
-                   way: str) -> SubmitError:
-    """A run script missing where its run is started -- the one refusal of
-    every door that starts one (a stage, a trial), with its way back."""
-    return SubmitError(f"{what}: {run_name} is not in {folder}.  To write "
-                       f"it, {way}")
-
-
 def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *, shape,
                   mode: str, jobs=None) -> List[_Member]:
     """A benchmark's walk: its trials still to run -- of ``jobs``, all of
     them by default -- each through the trial's planner
     (:func:`_plan_trial`: where it runs, and whether it was launched) and
-    its gates: its deck agrees with its launch, it starts cold, its run
-    script is where it is run.  The walk here and a queue's shelves both
+    its gates: its deck agrees with its launch, it starts cold.  The walk here and a queue's shelves both
     send this answer; a trial launched before is passed over by name
     (``plan.skipped``)."""
     pending: List[_Member] = []
@@ -2472,10 +2463,6 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *, shape,
         except TrialNotCold as e:
             raise SubmitError(str(e)) from e
         run_name = m.names.name(".run.sh")
-        if not (m.read_from / run_name).exists():
-            raise _no_run_script(f"trial {job.name!r}", run_name,
-                                 m.read_from,
-                                 rollback("the benchmark's prep", base=base))
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, run_name)]
         pending.append(m)
@@ -3508,14 +3495,6 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, run_name, sbatch_name)]
         if mode == "direct":
-            # The wrapper is required where it is RUN -- and a dry run is
-            # this plan, shown: it says the refusal the launch would meet.
-            if not (m.read_from / run_name).exists():
-                # THE PREP THAT WROTE IT, again (`job-system.md` § 5.0).
-                raise _no_run_script(
-                    f"job {job.name!r}", run_name, m.read_from,
-                    rollback("the benchmark's prep", base=base)
-                    if jobset.kind == KIND_SWEEP else _redo(calc, job))
             # TOLD ITS CARD'S WALL, as a sent job is told its header's
             # (`running-a-job.md` § 3.6).
             plan.submissions.append(Submission(

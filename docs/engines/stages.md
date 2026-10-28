@@ -771,7 +771,7 @@ say, not this contract's; **the catalogue carries it**, each item's `tightens`
 where `tuning.md` § 2 gives a tier table, and read on every engine
 *(2026-09-30, plan § 5w K4: a table of SIESTA's four stood in
 `validation/stages.py` until then, M11 PO-C14)*. **Only rungs of one role are
-compared** (`template.stage_role`, `template.md` § 6.4): a ladder tightens one
+compared** (`template.stage_roles`, `template.md` § 6.4): a ladder tightens one
 calculation as it goes, and rungs that are different programs on different cells
 — transport's five, a vibration's relaxation and its force constants — are not
 one calculation tuned twice, so a transport rung's own tolerance never reads as

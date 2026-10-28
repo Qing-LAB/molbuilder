@@ -3764,9 +3764,11 @@ only read, never changed.
       command line:  molbuilder describe --calculation transport --reuses O
                          [--slot junction=<the frame set's .xyz>]
                          [--bias ...] [--window LO,HI [--finer N]]
-      Transport tab: pick O's folder; change the voltages, the window, the
-                     device's or the transmission's settings; if you want,
-                     "Cite a frame set of this junction..."; press Describe
+      Transport tab: "Choose junction..." and pick O's folder; change the
+                     voltages, the window, the device's or the
+                     transmission's settings; if you want, "a frame set of
+                     it" and "Choose a frame set..."; press "Describe this
+                     calculation"
       -> the plan: what will be copied from O, what will be computed new,
          and why
  |
@@ -6294,11 +6296,11 @@ another calculation, refused by name, naming every difference — the keyword,
 the block row or the atom, as the run had it and as it renders now — never
 which molbuilder wrote the deck. So a calculation carries across an upgrade of
 molbuilder that changed only how molbuilder writes its decks. **What is compared is the run's deck against the
-deck its stage renders now — nothing else**: launch's check that a stage's
-prepared files are still what prep writes — at a first launch, and at one that
-takes its inputs anew (`job-system.md` § 6.0, step 1) — compares every file
-prep writes, its stamps masked, because preparing a stage again costs nothing
-(`prep task --group N`).
+deck its stage renders now — nothing else**: prep alone checks that a stage's
+prepared files are still what it writes, comparing every file, its stamps
+masked (`prep.prepared_differs`), because preparing a stage again costs
+nothing (`prep task --group N`); a launch sends what prep wrote and compares
+none of it (`job-system.md` § 6.0).
 
 **Why each stage needs a different text, in one line each** — this is the
 per-stage axis that § 3.2's floor-3 migration has to serve, and it is the

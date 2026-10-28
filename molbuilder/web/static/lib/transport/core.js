@@ -231,8 +231,9 @@ const WORKSPACE_TAG = "transport";
                 formContainer.appendChild(strip);
                 panels.forEach(function (p) { formContainer.appendChild(p.panel); });
                 // AN EXTENSION OFFERS ITS PER-VOLTAGE STAGES ALONE: the
-                // fixed ones' tabs are drawn, their values sent as the
-                // finished calculation's, but not shown (§ 2a.16,
+                // fixed ones' tabs are drawn but not shown, every field
+                // locked and never collected -- the describe door writes
+                // the finished calculation's own values for them (§ 2a.16,
                 // *On the page*).
                 if (_extend) {
                     var offered = rungs.filter(function (r) {

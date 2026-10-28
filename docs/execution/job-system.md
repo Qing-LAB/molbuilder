@@ -700,7 +700,7 @@ flowchart TD
     AG --> FN["run-N: new, or the one a refused send opened,<br/>emptied whole — then filled"]
     F0 --> PL["the submission: one job, a group's walk,<br/>a run's points' walk —<br/>the header its prep wrote"]
     FN --> PL
-    PL -- refused --> R19["R-L18 · R-L29 · R-L31 · R-L42 · R-L44"]
+    PL -- refused --> R19["R-L18 · R-L29 · R-L31 · R-L44"]
     PL -- "the scheduler asked: mode ask" --> AK["each line asked of the scheduler, its kind's ask —<br/>nothing saved or sent; what was asked recorded"]
     PL --> SH["shown: each member, what it takes and from which run;<br/>the exact line, every value of its header"]
     SH -- "a dry run" --> DRY["nothing asked, nothing written —<br/>the ledger included"]
@@ -791,7 +791,6 @@ they are typed, and written down too.
 | **R-L39** | a benchmark's trial named that was launched before | read what it measured — `summarize bench`; to measure it again, the state saved before the benchmark's prep | `submit._plan_trial` |
 | **R-L40** | a benchmark whose trials — of the side `--only` names — are all launched, or `--only` a side the sweep has none of | `summarize bench` | `submit._all_launched`, `submit._plan_shelves` |
 | **R-L41** | `launch bench` on a calculation that takes no benchmark, with no stage named, on a stage with no benchmark prepared, a trial the sweep does not hold — a trial is named by its point (`G1K4C6`) — or the kind the line says is not the set's | the benchmark's prep; the stages with one prepared; the sweep's trials; the kind the set is | `_cli._stage_bench_dir` (`prep_inputs.bench_refusal`), `_cli._load_bench_set`, `_cli._pick_trial`, `_cli._check_kind` |
-| **R-L42** | a run script missing where it is started: a stage, or a benchmark's named trial, run here (`submit._plan_stage`); a trial a benchmark's walk starts (`submit._bench_trials`) | its group prepared again, or the restore; a benchmark, the state saved before its prep | `submit._no_run_script` |
 | **R-L43** | a benchmark's trials in more than one container, or not shelved as its prep shelved them | the state saved before the benchmark's prep | `submit._one_container`, `shelves.shelves_of` |
 | **R-L44** | a stage, a group, a run of points or a benchmark's shelf sent to a queue, or asked of it, whose header states no wall (its scheduler kind's `wall` directive) and no `--time` restates one — prep writes one into every header, so this one was edited since; the header named | prepared again where nothing of it was launched, or the state saved before it was edited restored (`molbuilder checkpoint list`); `--time` states the wall for this launch alone | `submit._sbatch_request` |
 | **R-L45** | a sequence of groups (§ 6.0, *A sequence of groups*) with a group not prepared; a group a sequence still going holds, launched alone or in another sequence; under `submit` or `ask`, no header prep wrote for exactly these groups; a flag that speaks for one stage (`--stage`, `--cold`, `--from`, `--gather`) | the group's prep; `molbuilder jobs stop` of the job that holds it; `prep task --group … --one-job`; the stage launched alone | `submit._plan_sequence`, `submit._plan_sequence`, the header by the sequence's name; a group launched alone, `submit._planned` (`ready.held_by_sequence`) |
@@ -813,7 +812,7 @@ on a workstation:
 | 2 | `launch task` (it offers group 1 alone) | launched — one job, three runs one after another; the state saved first, `… · before launch task group 1 (seed, electrode_L, electrode_R)` | waits for seed | waits |
 | 3 | — group 1 finishes | finished | **ready to launch** — takes `lowbias.DM` from `01_seed/run-0`, each lead's `.TSHS` from its run | waits for device |
 | 4 | `launch task` (it offers group 2) | finished | launched — the state saved; the three files copied into `04_device/run-0`, with `.gathered-from` | waits for device's run, running |
-| 5 | — the device finishes; you look at it, and change its `mixing_weight` on Task setup | finished | finished — not prepared again: to run it changed, restore the state saved before the first launch of group 2 (device), and prep anew | **waits for**: device's newest run did not run the deck its description gives now — the same restore named |
+| 5 | — the device finishes; you look at it, and change its `mixing_weight` on Task setup | finished | finished — Save refuses: the device has run; it names `mixing_weight` and the way back, the state saved before the first launch of group 2 (device) ([`web/task-setup.md`](?doc=web/task-setup.md) § 8) | ready to launch — takes the device's newest run |
 
 *An optimization ladder*, `coarse → medium → tight`, `tight`'s override
 `restart: clean` — its groups 1 2 2, since `tight` builds on nothing and so
