@@ -512,7 +512,10 @@ def result_of(run: ForceConstantRun,
         relaxation_stage=rec.get("relaxation_stage"),
         temperature_K=float(rec["temperature_K"]),
         config={"engine": "siesta", "calculation": "vibration",
-                "stage": rec.get("stage")},
+                "stage": rec.get("stage"),
+                # HOW IT WAS COMPUTED -- the functional, the basis, the mesh
+                # -- as the force-constant deck states it (§ 6.2).
+                "deck": _deck_cited(run.deck)},
         engine_metadata={
             "fc_file": Path(run.fc.path).name,
             "fc_displacement_ang": run.fc.displacement_ang,
@@ -877,6 +880,19 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
                                    f"{call.mode}"),
                  planned=stamp())
     return len(frames)
+
+
+def _deck_cited(deck: Path) -> dict:
+    """``{name, sha256, keywords}`` -- the force-constant deck as the result
+    cites it (`engines/vibration.md` § 6.2): every keyword it states as it
+    writes it, by its spelling; its blocks -- the geometry, the k-points, a
+    basis -- in the deck itself, named by its sha256.  The geometry the
+    result states from its own source, the structure."""
+    spelled: dict = {}
+    params = read_fdf(read_deck(deck), spelled_out=spelled)[0]
+    return {"name": deck.name, "sha256": sha256_of(deck),
+            "keywords": {spelled.get(key, key): " ".join(value)
+                         for key, value in params.items()}}
 
 
 def _optical_settings(here: _CallHere, index: dict) -> dict:

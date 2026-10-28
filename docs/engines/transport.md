@@ -3069,6 +3069,9 @@ part — their rows, masses and average — is laid out by their post-process
 | `transmission_by_spin` | frame, bias_v, spin, energy_ev | raw | T(E) as each point's `.TBT.AVTRANS` file states it, channel by channel |
 | `dos_total_by_spin` | frame, bias_v, spin, energy_ev | raw | each spin channel's device DOS, as its `.TBT.AVDOS` states it — a non-polarized point's one channel |
 | `current_by_spin_a` | frame, bias_v, spin | raw | the current TBtrans printed for each channel — a non-polarized point's one channel, half the junction's total; the fill value for a point whose energies two runs computed |
+| `iv_kt_ev` · `iv_window_lowest_ev` · `iv_window_highest_ev` | — | given · derived | under the low-bias approximation, the leads' $k_B T$ in the integral — the device run's electronic temperature — and the 0 V transmission's lowest and highest energy it integrates over; NaN where the I–V is TBtrans's own |
+| `weight_sum` · `weight_tolerance` | — | derived · given | where every frame states a weight, their sum and how far from 1 it may be; NaN otherwise |
+| `frequency_cm1` · `temperature_k` · `zero_point_amplitude_amu12_ang` · `max_displacement_ang` · `sigma_amu12_ang` | — | given · derived | a mode's frame set's structure rows that carry a unit, each as the set writes it, with its meaning ([`model/structure.md`](?doc=model/structure.md) § 2.2f); NaN where it writes none |
 | `iv_current_by_spin_a` | frame, iv_bias_v, spin | derived | each spin's I–V current, a polarized calculation's, as the record states it (`iv.current_up_a`, `current_down_a`); the fill value for a non-polarized one, whose spins carry half the total each |
 | `tbt_k_points` · `tbt_k_method` · `loop_elapsed_s` | frame, bias_v | raw | the transverse k-points the point's TBtrans run used and how they were chosen, and its passes' loop time summed (`model/parse.md` § 5c.1, § 5d.5) |
 | `copied_from` · `shared_from` · `shared_held` · `shared_computed` | frame, bias_v | state | a calculation that reuses a finished one (§ 2a.16): the run a point is a copy of; the finished point whose energies it shares, how many it holds and how many its own run computes — a point not done too |
@@ -3102,11 +3105,16 @@ part — their rows, masses and average — is laid out by their post-process
 | `rung_state` · `rung_detail` · `rung_scf_converged` · `rung_energy_ev` · `rung_fermi_ev` · `rung_scf_cycles` | rung | state · raw | each once-run rung's state and the run door's sentence for it, convergence, energy, Fermi level — the device's the zero T(E)'s energies are measured from, the leads' at $\pm eV/2$ from it under bias — and its SCF history's length |
 | `rung_scf_iscf` · `rung_scf_energy_ev` · `rung_scf_delta_e_ev` · `rung_scf_ddmax` · `rung_scf_dhmax_ev` · `rung_scf_ef_ev` | rung, scf_cycle | raw | each once-run rung's SCF rows, as the device's |
 
-**Every variable says what it is**: `units` — one spelling a unit, the
-ångström `angstrom` and the ampere `A` — `long_name`, `definition` — how it is
-obtained, the formula for a derived one — and, for a raw one, `source`, the
-file it was read from. The file says what it is: `schema`
-(`molbuilder/transport-data@6`), the label, the treatment and what it means
+**Every variable says what it is**: `units` — one spelling a unit
+([`model/datafiles.md`](?doc=model/datafiles.md) § 2c), the ångström
+`angstrom` and the ampere `A`; a text none — `long_name`, `definition` — how
+it is obtained, the formula for a derived one — and, for a raw one,
+`source`, the file it was read from. The file says what it is
+(`model/datafiles.md` § 2b): its `title`, `schema`
+(`molbuilder/transport-data@7`), the molbuilder that wrote it, its `source`
+— the calculation's runs, each named in `provenance_chain` and
+`point_folder` — `Conventions` `CF-1.8` and `unit_meanings`; the label, the
+treatment and what it means
 (`treatment_note`), whether the low-bias approximation was made
 (`low_bias_approximation`, 1 or 0), what each spin's current means (`current_means`, JSON),
 the calculation's own records as they read when it was written —
@@ -3115,21 +3123,21 @@ and `job_request` (its `job-request.json`), each the file's text — the
 provenance chain (`provenance_chain`, JSON: each rung's run and what it was
 gathered from, a run of points' points), the citation and its
 kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
-(`iv_computed`; under the low-bias approximation its `iv_kt_ev`, `iv_window_ev`
-and `iv_notes`, JSON, each note with the `frame` and the `bias_v` it is
+(`iv_computed`; under the low-bias approximation its `iv_notes`, JSON, each
+note with the `frame` and the `bias_v` it is
 about — the voltages the window does not reach, and a frame's own note (its
 0 V transmission not run) with `bias_v` null); wherever the
-structure states rows, the vocabulary's structure rows and `info.vibration`
-where it states them, every row as written with its meaning
+structure states rows, the vocabulary's structure rows that carry no unit —
+a text, a count — and `info.vibration` where it states them, every row as written with its meaning
 (`structure_rows`, JSON) — the frames' average's variables each naming in
 its `definition` the rule and weights it was taken with, *Σ_f weight_f
 T_f(E) over the frame set's `sampling_rule` at its `sampling_nodes` frames*,
 or the variable that does — what is
-said of the weights (`frame_warnings`), and where every frame states a weight
-their sum, the tolerance and — where the frames state a mode — what a mode's
-average assumes; the Fermi levels each in its run's
-frame (`fermi_frames`) and each run's SCF tolerances (`scf_criteria`), as JSON;
-and `Conventions` `CF-1.8`. The large arrays are compressed (zlib), which a
+said of the weights (`frame_warnings`), and where every frame states a
+weight — the frames stating a mode — what a mode's average assumes; the
+Fermi levels each in its run's
+frame (`fermi_frames`) and each run's SCF tolerances (`scf_criteria`), as
+JSON. The large arrays are compressed (zlib), which a
 reader undoes by itself.
 
 **Reading it in a notebook, or a script** — the post-processing document,

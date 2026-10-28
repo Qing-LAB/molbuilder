@@ -615,7 +615,18 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
     return tuple(Var(r.name, ("frame",), r.kind, r.unit_spelled, r.words,
                      _defined(r.means, "model/structure.md 2.2f"),
                      auxiliary=True)
-                 for r in FRAME_ROWS) + (
+                 for r in FRAME_ROWS) + tuple(
+        # A STRUCTURE ROW WITH A UNIT, a quantity: a variable of no
+        # dimension (`model/datafiles.md` § 2).
+        Var(r.name, (), r.kind, r.unit_spelled, r.words,
+            _defined(r.means, "model/structure.md 2.2f"))
+        for r in STRUCTURE_ROWS if r.unit) + (
+        Var("weight_sum", (), "derived", "1", "the frames' weights, summed",
+            "sum_f weight_f, checked against 1 within weight_tolerance; the "
+            "fill value where the frames state no weights"),
+        Var("weight_tolerance", (), "given", "1", "the weights' tolerance",
+            "how far from 1 their sum may be; the fill value where the "
+            "frames state no weights"),
         Var("frame_rows", ("frame",), "given", "", "the frame's rows",
             "every row the frame states, as written: a JSON list of its rows "
             "(model/structure.md 2.2f)", dtype=str, auxiliary=True),
@@ -683,11 +694,12 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     vocabulary's numbers in their own variables, the fill value where a
     frame states none, and every row as written in ``frame_rows`` -- the
     masses, the frames' average at each voltage and why it is none there
-    (``index`` placing a voltage on ``biases``), and the attributes: the
-    vocabulary's structure rows and ``info.vibration`` where stated, every
-    row as written, what is said of the weights, their sum, and what the
-    average assumes.  An attribute takes a number or a text: any other
-    value is said as text."""
+    (``index`` placing a voltage on ``biases``), the vocabulary's
+    structure rows -- one with a unit a variable of no dimension, the fill
+    value where the set states none; a text or a count an attribute, any
+    other value said as text -- ``info.vibration`` where stated, every row
+    as written, what is said of the weights, their sum and its tolerance,
+    and what the average assumes."""
     from .frameset import read
     from .ncdata import json_attr
     rows = read(structure) if structure is not None else None
@@ -721,7 +733,9 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     if rows is not None:
         for r in STRUCTURE_ROWS:
             v = rows.value(r.name)
-            if v is not None:
+            if r.unit:
+                values[r.name][...] = _or_nan(v)
+            elif v is not None:
                 attrs[r.name] = (v if _number(v) is not None
                                  or isinstance(v, str) else str(v))
         info = (structure.info or {}).get(INFO_KEY)
@@ -732,8 +746,8 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
         attrs["structure_rows"] = json_attr(list(rows.structure))
         attrs["frame_warnings"] = json_attr(warnings_of(rows))
         if rows.weights is not None:
-            attrs["weight_sum"] = float(average.get("weight_sum"))
-            attrs["weight_tolerance"] = float(average.get("tolerance"))
+            values["weight_sum"][...] = float(average.get("weight_sum"))
+            values["weight_tolerance"][...] = float(average.get("tolerance"))
             attrs["average_assumptions"] = json_attr(
                 list(average.get("assumptions") or ()))
 

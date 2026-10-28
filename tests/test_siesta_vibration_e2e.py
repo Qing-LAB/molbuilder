@@ -496,6 +496,14 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     # THE LAUNCH ENDS WITH THE RESULT: the record step wrote it (§ 5.11 § 3).
     d = _the_result(run)
     _common_assertions(d, optical=True)
+    # HOW IT WAS COMPUTED, the force-constant deck cited (§ 6.2): by its
+    # sha256, every keyword as the engine read it.
+    from molbuilder.persist import sha256_of
+    cited = d["config"]["deck"]
+    assert (cited["name"], cited["sha256"]) == (
+        fc[2].deck.name, sha256_of(fc[2].deck)), cited
+    assert {fdf_key(k): v.split() for k, v in cited["keywords"].items()} \
+        == fc[0], cited["keywords"]
     assert d["relaxation"]["converged"] is True
     assert d["relaxation"]["already_relaxed"] is False
     assert d["phase_relaxation"] == "complete"

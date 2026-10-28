@@ -60,7 +60,7 @@ from . import siesta_grammar as _G
 from .tbtrans import PRINTED_HALF_DECIMAL_EV, averaged_files, read_averaged
 
 #: The digest's schema, stated in it.
-DIGEST_SCHEMA = "molbuilder/tbt-digest@3"
+DIGEST_SCHEMA = "molbuilder/tbt-digest@4"
 #: The claims THIS PROCESS holds -- the readings its threads run, each by
 #: its claim's path and when it began: a claim naming this process and
 #: absent here is no reading of ours (a copy, a restored state).
@@ -507,7 +507,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
              "is atom i's first orbital, the last one past the last "
              "orbital", dtype="i4"),
          np.arange(n_atoms + 1, dtype="i4")),
-        (Var("firsto", ("atom_bound",), "raw", "",
+        (Var("firsto", ("atom_bound",), "raw", "1",
              "the geometry's first orbital of each atom",
              "0-based, and one past the last orbital", source=data,
              dtype="i4"),
@@ -521,10 +521,10 @@ def _digest_variables(path: Path, result: TransmissionResult,
         (Var("reciprocal_vector", ("reciprocal_vector",), "coordinate", "",
              "reciprocal lattice vector", "b1, b2, b3", dtype=str),
          np.asarray(["b1", "b2", "b3"], dtype=object)),
-        (Var("position", ("atom", "xyz"), "raw", "Angstrom",
+        (Var("position", ("atom", "xyz"), "raw", "angstrom",
              "each atom's position", "x, y, z", source=data),
          np.asarray(meta["xyz"], dtype=float)),
-        (Var("cell", ("cell_vector", "xyz"), "raw", "Angstrom",
+        (Var("cell", ("cell_vector", "xyz"), "raw", "angstrom",
              "the cell's three vectors", "one a row", source=data),
          np.asarray(meta["cell"], dtype=float)),
         (Var("device_atom", ("device_atom",), "coordinate", "1",
@@ -535,11 +535,11 @@ def _digest_variables(path: Path, result: TransmissionResult,
         (Var("kpoint", ("kpoint",), "coordinate", "1", "k-point index",
              "from 0, in the data file's order", dtype="i4"),
          np.arange(len(meta["wkpt"]), dtype="i4")),
-        (Var("kpt", ("kpoint", "reciprocal_vector"), "raw", "reduced",
-             "the k-points averaged over", "in the cell's reciprocal "
-             "vectors", source=data),
+        (Var("kpt", ("kpoint", "reciprocal_vector"), "raw", "1",
+             "the k-points averaged over", "fractions of the cell's "
+             "reciprocal vectors b1, b2, b3", source=data),
          np.asarray(meta["kpt"], dtype=float)),
-        (Var("wkpt", ("kpoint",), "raw", "", "each k-point's weight",
+        (Var("wkpt", ("kpoint",), "raw", "1", "each k-point's weight",
              "the data file's own; they sum to 1", source=data),
          np.asarray(meta["wkpt"], dtype=float)),
         (Var("lead", ("lead",), "coordinate", "",
@@ -547,11 +547,19 @@ def _digest_variables(path: Path, result: TransmissionResult,
              source=data, dtype=str),
          np.asarray(meta["electrodes"], dtype=object)),
         (Var("lead_mu", ("lead",), "raw", "eV",
-             "each lead's chemical potential", "", source=data),
+             "each lead's chemical potential", "on the energy axis's "
+             "scale, as the data file states it", source=data),
          np.asarray(meta["mu_ev"], dtype=float)),
         (Var("lead_kT", ("lead",), "raw", "eV",
-             "each lead's electronic temperature", "", source=data),
+             "each lead's electronic temperature",
+             "k_B T of the lead's Fermi distribution, as the data file "
+             "states it", source=data),
          np.asarray(meta["kT_ev"], dtype=float)),
+        (Var("device_eta", (), "raw", "eV",
+             "the device region's eta",
+             "the imaginary part added to the energy of the device's "
+             "Green's function, as the data file states it", source=data),
+         np.asarray(meta["eta_ev"], dtype=float)),
     ]
     if meta["elements"]:
         rows.append((Var("element", ("atom",), "coordinate", "",
@@ -576,7 +584,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
             ("dos", "dos_total", "the device's k-averaged DOS")):
         if key in av:
             rows.append((Var(name, ("energy_ev",), "raw",
-                             "1/eV" if key == "dos" else "", what,
+                             "1/eV" if key == "dos" else "1", what,
                              "TBtrans's own average, as it printed it",
                              source=files[key]),
                          np.asarray(av[key], dtype=float)))
@@ -587,7 +595,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
                          "orders them", dtype="i4"),
                      np.arange(len(av["eigenchannels"]), dtype="i4")))
         rows.append((Var("eigenchannel_transmission",
-                         ("eigenchannel", "energy_ev"), "raw", "",
+                         ("eigenchannel", "energy_ev"), "raw", "1",
                          "each eigenchannel's k-averaged transmission",
                          "TBtrans's own average, as it printed it",
                          source=files["eigenchannels"]),
@@ -607,22 +615,18 @@ def _digest_variables(path: Path, result: TransmissionResult,
 def _write_digest(path: Path, result: TransmissionResult,
                   meta: Dict[str, Any], atoms) -> None:
     """The reading kept beside the data file -- self-describing, so a
-    person's own script may read it alone (`model/parse.md` § 5e): every
-    variable stating itself, its atoms' index map among them, through the
-    variable record's one writing loop (`ncdata`), handed to the one writer
-    whole (`persist.write_bytes`)."""
+    person's own script may read it alone (`model/parse.md` § 5e): the file
+    stating itself, its source the files its variables were read from
+    (`model/datafiles.md` § 2b), every variable stating itself, its atoms'
+    index map among them, through the variable record's one writing loop
+    (`ncdata`), handed to the one writer whole (`persist.write_bytes`)."""
     from molbuilder import __version__
-    from molbuilder.ncdata import NC_LOCK, as_bytes, in_memory, write_group
+    from molbuilder.ncdata import (NC_LOCK, as_bytes, in_memory, state,
+                                   write_group)
     from molbuilder.persist import write_bytes
     dims, variables, values = _digest_variables(path, result, meta, atoms)
+    read_from = dict.fromkeys(v.source for v in variables if v.source)
     attrs = {
-        "title": ("a TBtrans data file, read: the device's DOS per orbital "
-                  "averaged over its k-points, with what the file states of "
-                  "its geometry and its electrodes, and TBtrans's own "
-                  "k-averaged quantities"),
-        "Conventions": "CF-1.8",
-        "schema": DIGEST_SCHEMA,
-        "written_by": f"molbuilder {__version__}",
         "data_file": path.name,
         # As text: a size or a time past 2**31 is no NetCDF int.
         "data_file_size": str(result.version[0]),
@@ -640,10 +644,15 @@ def _write_digest(path: Path, result: TransmissionResult,
         "orbital_types": ("not stated by the data file: the device run's "
                           "<label>.ORB_INDX names each orbital's l and m, "
                           "in the same order"),
-        "device_eta_ev": meta["eta_ev"],
     }
     with NC_LOCK:
         ds = in_memory(digest_of(path).name)
+        state(ds, title=("a TBtrans data file, read: the device's DOS per "
+                         "orbital averaged over its k-points, with what the "
+                         "file states of its geometry and its electrodes, "
+                         "and TBtrans's own k-averaged quantities"),
+              schema=DIGEST_SCHEMA, molbuilder_version=__version__,
+              source="read from " + ", ".join(read_from))
         write_group(ds, dims, variables, values)
         ds.setncatts(attrs)
         data = as_bytes(ds)

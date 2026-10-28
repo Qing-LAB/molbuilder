@@ -67,9 +67,10 @@ def test_a_vocabulary_row_without_its_meaning_is_said_once_by_name(reader):
     """...beside the frames, at every reader, never refused: one line naming
     the row, however many frames write it without a note."""
     import json
-    from molbuilder.frame_average import (FRAME_ROWS, answer, average_block,
-                                          fill_data_file)
+    from molbuilder.frame_average import (answer, average_block,
+                                          data_file_variables, fill_data_file)
     from molbuilder.frameset import read
+    from molbuilder.ncdata import Var, empty
     s = _frames(_OWN)
     for f in range(2):
         s.set_customized("displacement_ang", 0.1 * f, unit="angstrom",
@@ -79,8 +80,9 @@ def test_a_vocabulary_row_without_its_meaning_is_said_once_by_name(reader):
         said = average["warnings"]
     elif reader == "data file":
         attrs = {}
-        values = {n: [None, None]
-                  for n in ("frame_rows", *(r.name for r in FRAME_ROWS))}
+        # THE FRAME PART'S VALUES as the writer starts them, from its table.
+        sizes = {"frame": 2, "atom": 2, "bias_v": 0, "energy_ev": 0}
+        values = {v.name: empty(v, sizes) for v in data_file_variables(Var)}
         fill_data_file(values, attrs, s, average, [], lambda v, vs: 0)
         said = json.loads(attrs["frame_warnings"])
     else:

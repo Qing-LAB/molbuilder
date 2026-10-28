@@ -2232,7 +2232,9 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     for var in VARIABLES:
         attrs = attrs_of[var.name]
         assert attrs["long_name"] and attrs["definition"], var.name
-        assert "units" in attrs and attrs["kind"] == var.kind, var.name
+        # A NUMBER STATES ITS UNIT, A TEXT NONE (`model/datafiles.md` § 2).
+        assert ("units" in attrs) == (var.dtype is not str), var.name
+        assert attrs["kind"] == var.kind, var.name
         if var.kind == "raw":
             assert attrs["source"], var.name
     one = read_data_file(data_file_path(junction.bundle, "T"))["variables"]

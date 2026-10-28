@@ -18,7 +18,7 @@ from molbuilder.ncdata import Var
 
 _ENERGY = Var("energy_ev", ("energy_ev",), "coordinate", "eV", "energy",
               "relative to E_F")
-_T = Var("transmission", ("energy_ev",), "raw", "", "T(E)",
+_T = Var("transmission", ("energy_ev",), "raw", "1", "T(E)",
          "as the run states it", source="T.TBT.AVTRANS_L-R")
 
 

@@ -9,13 +9,17 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         derived, state, coordinate), its units, its words; :data:`AXES` --
         every axis of every data file, one name for one concept, which
         :func:`check_axes` holds every group to (`model/datafiles.md` § 2a);
-        :func:`empty` --
+        :data:`UNITS` -- every unit's one spelling and its meaning, which
+        :func:`check_said` holds every variable to (§ 2c); :func:`state`
+        -- the file's own title, schema, molbuilder version and source
+        (§ 2b); :func:`empty` --
         the array a variable starts as, its fill stated; :func:`write_group`
         -- a group's dimensions and variables written from a table of
         :class:`Var`, each with its attributes and its CF ``coordinates``,
-        the atom axis given as its atom index map; :func:`in_memory` /
-        :func:`as_bytes` -- the file built in memory and handed to the one
-        atomic writer (`persist.write_bytes`); :func:`reading` -- the one
+        the atom axis given as its atom index map, a group's title with
+        them; :func:`in_memory` / :func:`as_bytes` -- the file built in
+        memory and handed to the one atomic writer (`persist.write_bytes`)
+        once it states itself; :func:`reading` -- the one
         door every NetCDF file molbuilder opens goes through, one access and
         one handle at a time under :data:`NC_LOCK` (:class:`OpenedTwice` a
         file opened again inside its own access); :func:`read_variables` /
@@ -164,6 +168,65 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
 )}
 
 
+#: ONE SPELLING FOR EACH UNIT (`model/datafiles.md` § 2c): every unit a data
+#: file states a number in, with what it means in words -- the writer refuses
+#: a number in another spelling, and each file states the meanings of the
+#: units it uses (``unit_meanings``).  A new unit is a row here and there, in
+#: the change that first writes it.
+UNITS: Dict[str, str] = {
+    "1": "no unit -- a count, an index, a fraction or a flag",
+    "%": "per cent",
+    "s": "second",
+    "K": "kelvin",
+    "V": "volt",
+    "A": "ampere",
+    "e": "the elementary charge, 1.602176634e-19 C",
+    "eV": "electronvolt, 1.602176634e-19 J",
+    "1/eV": "per electronvolt",
+    "Eh": "hartree, the atomic unit of energy, 27.211386 eV",
+    "Eh^2": "hartree squared",
+    "Eh/K": "hartree per kelvin",
+    "Eh/bohr": "hartree per bohr, the atomic unit of force (1 bohr = "
+               "0.529177 angstrom)",
+    "atm": "standard atmosphere, 101325 Pa",
+    "G0": "the conductance quantum, 2e^2/h = 7.748092e-5 S",
+    "nm": "nanometre",
+    "cm-1": "wavenumber, per centimetre",
+    "km/mol": "kilometre per mole",
+    "angstrom": "angstrom, 1e-10 m",
+    "angstrom^3": "cubic angstrom",
+    "amu": "the unified atomic mass unit (dalton), 1.66053907e-27 kg",
+    "amu^1/2 angstrom": "square-root amu times angstrom",
+    "amu^-1/2": "per square-root amu",
+    "angstrom^2/amu^1/2": "square angstrom per square-root amu",
+    "D/(angstrom amu^1/2)": "debye (3.33564e-30 C m) per angstrom per "
+                            "square-root amu",
+    "angstrom^4/amu": "angstrom to the fourth per amu",
+}
+
+
+def check_said(var: Var) -> None:
+    """A VARIABLE SAYS WHAT IT IS (`model/datafiles.md` § 2): its long name
+    and its definition stated; a number in one of :data:`UNITS`' spellings
+    (``1`` where it has no unit); a text with no unit -- else refused,
+    naming the variable."""
+    if not var.long_name.strip() or not var.definition.strip():
+        raise ValueError(
+            f"variable {var.name} states no "
+            f"{'long_name' if not var.long_name.strip() else 'definition'}: "
+            f"every value says what it is (model/datafiles.md 2)")
+    if var.dtype is str:
+        if var.units:
+            raise ValueError(
+                f"variable {var.name} is text and states the unit "
+                f"{var.units!r}: a text has no unit (model/datafiles.md 2c)")
+    elif var.units not in UNITS:
+        raise ValueError(
+            f"variable {var.name} states the unit {var.units!r}, which is "
+            f"not a spelling of model/datafiles.md 2c (ncdata.UNITS): one "
+            f"spelling for each unit, '1' for none")
+
+
 def check_axes(dims: Mapping[str, Any], variables: Sequence[Var]) -> None:
     """EVERY AXIS A ROW OF :data:`AXES`, WITH ITS COORDINATE
     (`model/datafiles.md` § 2a): each dimension a group creates or its
@@ -240,7 +303,7 @@ def unflag(value) -> Optional[bool]:
 
 
 def number_attr(value) -> float:
-    """A nullable number as an attribute: NaN where the record states
+    """A nullable number as the file holds it: NaN where the record states
     none."""
     return float("nan") if value is None else float(value)
 
@@ -260,10 +323,13 @@ def json_attr(value) -> str:
 
 
 def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
-                values: Mapping[str, np.ndarray]) -> None:
-    """``dims`` created on ``group`` (a dataset or a group) and every
+                values: Mapping[str, np.ndarray], *,
+                title: Optional[str] = None) -> None:
+    """``dims`` created on ``group`` (a dataset or a group) -- a group of the
+    file its ``title``, one sentence of what it holds (`model/datafiles.md`
+    § 2b); the root's is the file's own statement's (:func:`state`) -- and every
     variable of ``variables`` written from ``values[name]`` with its
-    attributes -- ``kind``, ``units``, ``long_name``, ``definition``, its
+    attributes -- ``kind``, ``units`` (a number's), ``long_name``, ``definition``, its
     ``source`` where raw, ``flag_values`` where a flag, ``atom_index`` where
     its values are atom indices, and the CF ``coordinates`` naming each
     auxiliary coordinate along its dimensions.  Numbers are compressed; the
@@ -275,8 +341,20 @@ def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
     each column it knows as a variable on the axis -- and an axis given as
     a bare number is refused, as is a map whose atom count is not the
     axis's.  **Every axis is a row of** :data:`AXES` **with its coordinate**
-    (:func:`check_axes`)."""
+    (:func:`check_axes`); **every variable says what it is**
+    (:func:`check_said`)."""
+    if group.parent is None:
+        if title is not None:
+            raise ValueError("the file's own title is its root statement's "
+                             "(ncdata.state, model/datafiles.md 2b)")
+    elif not str(title or "").strip():
+        raise ValueError("a group states what it holds -- its title "
+                         "(model/datafiles.md 2b)")
+    else:
+        group.setncattr("title", str(title))
     check_axes(dims, variables)
+    for var in variables:
+        check_said(var)
     atoms = dims.get(ATOM_AXIS)
     if atoms is not None and not isinstance(atoms, AtomIndexMap):
         raise ValueError(
@@ -315,7 +393,8 @@ def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
         # `coordinates`): every auxiliary coordinate along its dimensions.
         labels = ([] if var.kind == "coordinate" or var.auxiliary else
                   [a.name for a in auxiliary if a.dims[0] in var.dims])
-        nc.setncatts({"kind": var.kind, "units": var.units,
+        nc.setncatts({"kind": var.kind,
+                      **({} if var.dtype is str else {"units": var.units}),
                       "long_name": var.long_name,
                       "definition": var.definition,
                       **({"source": var.source} if var.source else {}),
@@ -391,8 +470,78 @@ def in_memory(name: str) -> "netCDF4.Dataset":
     return netCDF4.Dataset(name, "w", memory=4096, format="NETCDF4")
 
 
+#: The conventions every data file follows (`model/datafiles.md` § 2c).
+CONVENTIONS = "CF-1.8"
+
+#: WHAT A FILE'S ROOT STATES OF ITSELF, beside its title (§ 2b): which file it
+#: is, the molbuilder that wrote it, and how its data were made.
+ROOT_FACTS = ("schema", "molbuilder_version", "source")
+
+
+def state(ds, *, title: str, schema: str, molbuilder_version: str,
+          source: str) -> None:
+    """THE FILE'S OWN FACTS on its root (`model/datafiles.md` § 2b): its
+    ``title`` -- one sentence of what it holds --, its
+    ``schema``, the ``molbuilder_version`` that wrote it, its ``source`` --
+    the engine and its version that computed its data, or the files it was
+    derived from -- and the ``Conventions`` it follows; one not stated is
+    refused, naming it."""
+    facts = {"title": title, "schema": schema,
+             "molbuilder_version": molbuilder_version, "source": source}
+    missing = [k for k, v in facts.items() if not str(v or "").strip()]
+    if missing:
+        raise ValueError(f"a data file states its {', '.join(missing)} "
+                         f"(model/datafiles.md 2b)")
+    ds.setncatts({**{k: str(v) for k, v in facts.items()},
+                  "Conventions": CONVENTIONS})
+
+
+def _groups(group, path: str = "/"):
+    """``group`` and every group below it, each with its path."""
+    yield path, group
+    for name, g in group.groups.items():
+        yield from _groups(g, f"{path}{name}/")
+
+
+def _check_stated(ds) -> None:
+    """THE FILE STATES ITSELF (`model/datafiles.md` § 2b): its root its
+    title and :data:`ROOT_FACTS`, every group its title, and no real number
+    kept as an attribute -- a quantity is a variable, its unit and meaning
+    said; an attribute is text, a count or a flag.  Then the
+    meaning of each unit its variables use, ``unit_meanings``."""
+    missing = [k for k in ("title", *ROOT_FACTS) if k not in ds.ncattrs()]
+    if missing:
+        raise ValueError(f"the file states no {', '.join(missing)} "
+                         f"(model/datafiles.md 2b)")
+    used: Dict[str, str] = {}
+    for path, g in _groups(ds):
+        if not str(g.getncattr("title") if "title" in g.ncattrs()
+                   else "").strip():
+            raise ValueError(f"group {path} states no title -- what it holds "
+                             f"(model/datafiles.md 2b)")
+        for k in g.ncattrs():
+            v = np.asarray(g.getncattr(k))
+            if v.dtype.kind == "f":
+                raise ValueError(
+                    f"{path} keeps the number {k} as an attribute: a number "
+                    f"with a unit is a variable, its unit and meaning said "
+                    f"(model/datafiles.md 2)")
+        for var in g.variables.values():
+            if "units" in var.ncattrs():
+                u = str(var.getncattr("units"))
+                used[u] = UNITS[u]
+    ds.setncattr("unit_meanings", json_attr(dict(sorted(used.items()))))
+
+
 def as_bytes(ds: "netCDF4.Dataset") -> bytes:
-    """The in-memory dataset closed, as the file's bytes."""
+    """The in-memory dataset closed, as the file's bytes -- once it states
+    itself (:func:`_check_stated`); one that does not is closed and
+    refused, naming what it lacks."""
+    try:
+        _check_stated(ds)
+    except ValueError:
+        ds.close()
+        raise
     return bytes(ds.close())
 
 
@@ -656,7 +805,8 @@ def exported(files: Mapping[str, bytes], fmt: str, *, stem: str,
     return Exported(name, out, said)
 
 
-__all__ = ["Var", "Axis", "AXES", "check_axes", "ATOM_AXIS", "FLAG_FILL", "NC_LOCK", "as_tables", "empty",
+__all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
+           "check_axes", "check_said", "state", "ATOM_AXIS", "FLAG_FILL", "NC_LOCK", "as_tables", "empty",
            "read_atom_index_map", "size_of", "flag", "unflag", "number_attr",
            "reading", "OpenedTwice",
            "unnumber_attr", "json_attr", "write_group", "in_memory",

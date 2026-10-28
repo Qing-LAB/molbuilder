@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.46.6.** Since the last handover (2026-10-20, kept
+**Where we are: 2.47.0.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -77,11 +77,15 @@ result (2.45.0); a frame set saying what its numbers mean, and the charge and
 spin in the Spectrum tab's chemistry card (2.46.0–2.46.2); the review's shipped
 errors (2.46.3); Save refusing to change a stage that has run (2.46.4); launch re-checking
 nothing, and stale words put right (2.46.5); a benchmark keeping every
-declared cell, its trials named by their ranks in all (2.46.6).
+declared cell, its trials named by their ranks in all (2.46.6); every data
+file saying what it is, in the file — its title, schema, molbuilder version
+and source, every group's title, every number a variable in one spelling of
+its unit — and a SIESTA vibration result citing the deck it was computed
+from (2.47.0).
 
-**Last checked**: the fast batch on 2.46.6 (6,874 passed, its one failure a
-stale test row fixed); the real-runs road e2e on 2.46.6 (19 passed); the real-junction e2e on 2.46.4 (188 passed); the stopped-run e2e on 2.46.3 (8 passed); the SIESTA CO₂ vibration e2e on
-2.45.0 (8 passed); every road of 2.45.0–2.46.0 through the pages and the
+**Last checked**: the fast batch on 2.47.0 (6,884 passed); the PySCF and
+SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.0 (207 passed),
+the CO₂ vibration e2e again with the deck cited (8 passed); the real-runs road e2e on 2.46.6 (19 passed); the stopped-run e2e on 2.46.3 (8 passed); every road of 2.45.0–2.46.0 through the pages and the
 printed commands (vibration → frame set → transport on the H chain).
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-27) — proposed, the
@@ -746,7 +750,7 @@ is [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-con
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | the user's ask; half built |
+| **1** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | **done 2.47.0** |
 | **2** | **§ 1ae M5 — the vibration contract closed**, with § 1ac's proofs: R1 measured, 3a water on both engines, 3b the Raman proof | § 1ae, § 1ac | what was built in 2.42–2.44 is checked against the science before more is built on it |
 | **3** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |
 | **4** | **N6 (b) — the engine's own memory analysis** for a stage's first run | § 1u | the user's feature, (a) built |
@@ -829,7 +833,7 @@ user's. This machine's was repaired on 2026-10-18.
 5. this section records the commits, the review and its outcome — and only
    then does the next step start.
 
-A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-27 on 2.46.1 (6,876 passed, none failed); the real-junction e2e ran 2026-10-27 on 2.46.0 (186 passed); the SIESTA CO₂ vibration e2e ran 2026-10-27 on 2.45.0 (8 passed); the e2e batch last ran whole 2026-10-16 (396, all passing).
+A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-27 on 2.47.0 (6,884 passed, none failed); the real-junction e2e and the PySCF and SIESTA CO₂ vibration e2e ran 2026-10-27 on 2.47.0 (207 passed); the e2e batch last ran whole 2026-10-16 (396, all passing).
 
 **The Q19 row** — the three passes, its phase 1 done and its later phases
 listed — stays here as step 3's detail:

@@ -1561,7 +1561,8 @@ write <label>.spectra.json beside the run:  engine 'siesta', the SIESTA version 
     intensities null, the MO block null, thermo = the vibrational sums (§ 4.7's second regime),
     hessian_scope 'free'|'all', removed_motions, relaxation (the verdict below and the ladder's record),
     engine_metadata {fc_file, fc_displacement_ang, fc_range_engine_1based, fc_asymmetry_max_ev_ang2,
-    reference_force_criterion_ev_ang}, config {engine, calculation, stage}
+    reference_force_criterion_ev_ang}, config {engine, calculation, stage,
+    deck {name, sha256, keywords}}
 ```
 
 The finish refuses — as the job's failure, with the reason in the session log —
@@ -2501,7 +2502,9 @@ its route `none` and its phase `running`, so it reads as asked. **The
 probe** is PySCF's alone: by its `es_mode_selection`, which a SIESTA
 `config` never holds, so on SIESTA it is *not computed on this route* — the
 one capability one route lacks. A SIESTA result's `config` carries the
-engine, the kind and the stage (§ 6.2) — *Raman for* as asked and the modes
+engine, the kind, the stage and the force-constant deck it was computed
+from — its name, its sha256 and every keyword it states as written: the
+functional, the basis, the mesh (§ 6.2) — *Raman for* as asked and the modes
 it picked are the optical citation's and the index's; its `phase_es` stays
 `not requested`.
 
@@ -2526,20 +2529,24 @@ own files as the finish reads them, whether this run computed it or took it
 over (§ 6): a run that took its force constants over has no result at its
 root until its finish.
 
-**Its variables** — the calculation in words at its root: *SIESTA's optical
+**Its variables** — the calculation in words, its title: *SIESTA's optical
 calculation: ε₂(ω) for a field along ê, first-order perturbation over
 independent states, at the equilibrium geometry and at ±δQ along each
 selected mode*; every SIESTA parameter the calls read under `/settings`
 (`spectra/optical_data.py`, schema
-`molbuilder/optical-data@1`; the framework's rules are
-[`model/datafiles.md`](?doc=model/datafiles.md)):
+`molbuilder/optical-data@2`, `@1` — `delta_ang` an attribute — read as it
+is; the framework's rules are
+[`model/datafiles.md`](?doc=model/datafiles.md), every group titled):
 
 ```text
-/                     attributes: schema, label, what -- the calculation in
-                      words, run, siesta_version, molbuilder_version
-/settings             attributes: keywords (JSON: each Optical.* key and
+/                     attributes: title -- the calculation in words, schema,
+                      molbuilder_version, source -- SIESTA's version and the
+                      run, Conventions, unit_meanings, label, run,
+                      siesta_version
+/settings             delta_ang -- angstrom, of no dimension
+                      attributes: keywords (JSON: each Optical.* key and
                       OpticalCalculation as written), direction, selection
-                      (JSON: asked, applied), delta_ang, deck_name, deck_text,
+                      (JSON: asked, applied), deck_name, deck_text,
                       deck_sha256
 /structure            the result's own layout (spectra.datafile.
                       write_structure_group): atom(atom) -- the user index,
@@ -2733,7 +2740,7 @@ laser named**: `<label>.spectra.nc` and, on a SIESTA run with an optical
 phase, `<label>.optical.nc`, each copied as its writer wrote it, and, when a
 laser is named, `<label>.raman.nc`, the view composed now through the
 data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 1,
-`molbuilder/raman-view@1`), citing the two files it was derived from by name
+`molbuilder/raman-view@2`), citing the two files it was derived from by name
 and sha256. **NetCDF**: the files; **CSV**: each file's tables and README
 (`ncdata.as_tables`) — flat for one file, a folder each for several. A
 download is one zip
@@ -2753,15 +2760,18 @@ ledger has no line of it.
 an export):
 
 ```text
-/            attributes: schema, label, what -- the Raman strengths of a
-             SIESTA vibration's picked modes at a laser, derived from its
-             optical calls' eps2; laser_nm, photon_energy_ev, broaden_ev,
-             run_broaden_ev, direction, delta_ang, cell_volume_a3, spins
-             (the channels summed), band_floor_a4_amu, run, siesta_version,
-             derived_from (JSON: each data file's name and sha256),
-             molbuilder_version
-/equilibrium what; alpha_static_a3, alpha_laser_real_a3,
-             alpha_laser_imag_a3 -- frame 0's
+/            laser_nm  photon_energy_ev  broaden_ev  run_broaden_ev
+             delta_ang  cell_volume_a3  band_floor_a4_amu -- each of no
+             dimension, its unit stated
+             attributes: title -- the Raman strengths of a SIESTA
+             vibration's picked modes at a laser, derived from its optical
+             calls' eps2, and how; schema, molbuilder_version, source --
+             the files it was derived from and the SIESTA that computed
+             them, Conventions, unit_meanings, label, direction, spins (the
+             channels summed), run, siesta_version, derived_from (JSON:
+             each data file's name and sha256)
+/equilibrium alpha_static_a3  alpha_laser_real_a3  alpha_laser_imag_a3 --
+             frame 0's, angstrom^3
 /modes       mode(mode) -- the result's numbering
              frequency_cm1(mode)  dq_amu12_ang(mode)
              dalpha_dq_static_a2_per_amu12(mode)
@@ -2770,6 +2780,9 @@ an export):
              strength_static_a4_amu(mode)  strength_laser_a4_amu(mode)
              relative(mode)  state(mode)  why(mode)
 ```
+
+A view exported before 2.47.0 (`raman-view@1`, its numbers attributes) is
+refused by its reader with the way back: the view exported again.
 
 **Not designed**: the named set's share (D-e), after R1.
 
@@ -2897,7 +2910,7 @@ refused by name.
 | `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3), and `converged` is its verdict against the criterion on every route — after the relaxation, under the person's statement, at SIESTA's reference step (§ 4.2, § 4.3, § 5.5); SIESTA writes `enabled` true when the run's `relax` call ran — its relaxation record, from the run's index (§ 5.11 § 3), gives `n_steps` — and false when the box was ticked, `already_relaxed` as the person's statement, the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
 | `thermo` | both | `regime`, the headline temperature — and pressure for `rrho`, `null` for `vibrational-only` — with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
-| `config` | both | what the description held (the PySCF config as a dict; on SIESTA the engine, kind and stage) |
+| `config` | both | how it was computed: what the description held (the PySCF config as a dict); on SIESTA the engine, kind and stage, and `deck` — the force-constant deck by name and sha256 with every keyword it states as written (the functional, the basis, the mesh), its blocks — the geometry, the k-points — in the deck itself (since 2.47.0) |
 | `methods_text` · `bibliography_keys` | both | the composed paragraph and the keys it cites (§ 4.10) — at load, a view shown adds its sentence (§ 5.10 ②, § 5.11 § 10), the Raman's with its citation among the keys |
 | `engine_metadata` | both | engine-specific facts; SIESTA: `fc_file`, `fc_displacement_ang`, `fc_range_engine_1based`, `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` (§ 5.5). `fc_range_engine_1based` is `FC.First … FC.Last` in SIESTA's numbering — the deck's held-first order, 1-based — named as the engine's here and in `fc-sweep.json`'s stage rows: an engine fact, not an atom's identity ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
 | `optical` | SIESTA, from v13 | `{data_file, data_sha256, direction, displacement_ang, selection, reference, modes}` — the optical calls' citation (§ 5.11 § 8): `data_file` the calls' data file at the run's root and `data_sha256` its bytes', `direction` the light's three components (`Optical.Vector`), `displacement_ang` $\delta$, `selection` `{asked, applied}`, `reference` frame 0's state, `modes[]` `{mode, frequency_cm1, dq_amu12_ang, plus, minus}` — each side's state `finished`, `failed` or `pending`, by the run's one done rule. `null` where no optical call was planned, and on PySCF; refused when a key is not one of these or a state not one of the three |
@@ -3302,14 +3315,20 @@ value — `.sel(mode=7)`, `.sel(temperature_k=298.15)`.
                       /structure, free_atom, mode, removed and xyz in /modes,
                       mo in /equilibrium, es and window in
                       /modes/electronic_structure, temperature_k in /thermo/grid
-                      attributes: schema "molbuilder/spectra-data@7", json_sha256,
+                      ir_fd_step_ang  raman_fd_step_ang
+                      relaxation_max_force_eh_bohr
+                      relaxation_max_force_all_atoms_eh_bohr -- the scalar
+                      blocks' numbers, each of no dimension
+                      attributes: title, schema "molbuilder/spectra-data@8",
+                      molbuilder_version, source -- the engine and its
+                      version, Conventions, unit_meanings, json_sha256,
                       spectra_schema_version 13, engine, engine_version,
-                      molbuilder_version, timestamp, label, methods_text,
-                      bibliography_keys; the scalar blocks -- phase_*, ir_route,
-                      ir_fd_step_ang, raman_route, raman_fd_step_ang, hessian_scope,
-                      n_atoms_in_hessian, hessian_density_fit, relaxation.* --
-                      as attributes; config, engine_metadata, runtime_info,
-                      optical and relaxation.record as JSON-text attributes
+                      timestamp, label, methods_text, bibliography_keys; the
+                      scalar blocks' texts, counts and flags -- phase_*,
+                      ir_route, raman_route, hessian_scope,
+                      n_atoms_in_hessian, hessian_density_fit, relaxation.*;
+                      config, engine_metadata, runtime_info, optical and
+                      relaxation.record as JSON text
 /structure            atom(atom) -- the user index  xyz(xyz)  cell_vector(cell_vector)
                       element(atom)  position_ang(atom, xyz)  mass_amu(atom)
                       held(atom)  cell_ang(cell_vector, xyz)  axis_kind(xyz)
@@ -3317,7 +3336,8 @@ value — `.sel(mode=7)`, `.sel(temperature_k=298.15)`.
                       attributes atoms_listed_by "user_index",
                       atom_index_base 0 -- the atom index map
                       attribute structure_json: Structure.to_dict(), whole
-/equilibrium          scf_energy_eh, homo_idx (attributes)  mo(mo)  mo_energy_eh(mo)
+/equilibrium          scf_energy_eh -- of no dimension  mo(mo)  mo_energy_eh(mo)
+                      attribute homo_idx
 /modes                mode(mode) -- 1-based, the JSON's index_1based
                       xyz(xyz)  removed(removed)  frequency_cm1(mode)
                       free_atom(free_atom)     -- which atom each row is,
@@ -3332,22 +3352,33 @@ value — `.sel(mode=7)`, `.sel(temperature_k=298.15)`.
                       removed_motion(removed, free_atom, xyz)
     /modes/electronic_structure   the probe of § 4.8, one row per selected mode:
                       es(es) -- the mode's 1-based index  window(window)
-/thermo               regime, temperature_K, pressure_atm, zpe_eh, h_eh, s_eh_k,
-                      g_eh, ... (attributes)
-    /thermo/grid      temperature_k(temperature_k) in K: every curve of § 4.7
+/thermo               temperature_K  pressure_atm  zpe_eh  u_vib_eh  h_eh  s_eh_k
+                      g_eh -- each of no dimension
+                      attributes regime, n_modes, n_imag_excluded,
+                      n_rigid_removed, note
+    /thermo/grid      temperature_k(temperature_k) in K: every curve of § 4.7,
+                      of no temperature where the result draws none; attribute
+                      curves -- the ones it holds
 /partial_charges      the force-constant run's charges (§ 5.10 ②), when the result
                       states them: fc_step(fc_step) -- 0 the reference  atom(atom)
                       displaced_atom(fc_step) -- by user index  displaced_axis(fc_step)
                       displaced_side(fc_step)  hirshfeld_charge_e(fc_step, atom)
-                      voronoi_charge_e(fc_step, atom)  attributes displacement_ang,
-                      partitions -- the partitions it holds
+                      voronoi_charge_e(fc_step, atom)  displacement_ang -- of
+                      no dimension  attribute partitions -- the partitions it
+                      holds
 ```
+
+Every group states its title, and every number its unit
+([`model/datafiles.md`](?doc=model/datafiles.md) § 2b–2c): the canonical
+eigenvector in `amu^-1/2`, the dipole change in `D/(angstrom amu^1/2)`.
 
 A file of an earlier version is read as it is: `spectra-data@1` and `@2`
 name four axes' values `index_1based`, `free_atom_index`, `mode_index_1based`
 and `temperatures_K`; `@3` names the temperatures `temperature`; `@1`–`@4`
 hold no `/partial_charges`; `@1`–`@5` no `dipole_derivative_d_per_ang_amu12`;
-`@1`–`@6` no `optical` citation.
+`@1`–`@6` no `optical` citation; `@1`–`@7` keep the scalar blocks' numbers,
+`/equilibrium`'s `scf_energy_eh` and `/partial_charges`' `displacement_ang`
+as attributes, read from there, and state no title or source.
 
 **The atoms are listed by user index, and the file says so** *(since
 2.32.0 — [`model/overview.md`](?doc=model/overview.md) § 2.2b)*: `/structure`

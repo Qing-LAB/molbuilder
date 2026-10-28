@@ -13,7 +13,8 @@ USED-BY the record step of each optical call and the run's finish
         (`spectra.siesta_vibration`)
 
 **The groups** (`model/datafiles.md`): ``/`` what the calculation is, in
-words, the run, SIESTA's version and the molbuilder that prepared it;
+words, and how it was computed -- SIESTA's version and the run -- with the
+molbuilder that prepared it (§ 2b);
 ``/settings`` every optical keyword as the deck wrote it, the direction, the
 selection as asked and as applied, ``δ``, and the optical deck's whole text
 and sha256; ``/structure`` the reference geometry -- the result's own
@@ -41,7 +42,7 @@ try:                                        # inside molbuilder
     from ..atom_permutation import AtomIndexMap
     from ..ncdata import (NC_LOCK, Var, as_bytes, empty, in_memory,
                           json_attr, number_attr, read_variables, reading,
-                          unnumber_attr, write_group)
+                          state, unnumber_attr, write_group)
     from ..persist import write_bytes
     from ..structure import Structure as _Structure
     from .datafile import read_structure_group, write_structure_group
@@ -49,16 +50,17 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes, empty,  # type: ignore[no-redef]
                         in_memory, json_attr, number_attr, read_variables,
-                        reading, unnumber_attr, write_group)
+                        reading, state, unnumber_attr, write_group)
     from persist import write_bytes  # type: ignore[no-redef]
     from structure import Structure as _Structure  # type: ignore[no-redef]
     from spectra_datafile import (  # type: ignore[no-redef]
         read_structure_group, write_structure_group)
 
-DATA_SCHEMA = "molbuilder/optical-data@1"
-READABLE_DATA_SCHEMAS = (DATA_SCHEMA,)
+DATA_SCHEMA = "molbuilder/optical-data@2"
+#: ``@1`` kept ``δ`` as an attribute of ``/settings``, read as it is.
+READABLE_DATA_SCHEMAS = ("molbuilder/optical-data@1", DATA_SCHEMA)
 
-#: WHAT THE CALCULATION IS, in words -- the file's own first sentence.
+#: WHAT THE CALCULATION IS, in words -- the file's own title.
 WHAT = ("SIESTA's optical calculation: the imaginary part of the dielectric "
         "function, eps2, for a field along the direction /settings states -- "
         "first-order perturbation over the self-consistent states, with no "
@@ -83,6 +85,15 @@ _FRAME_KEYS = ("call", "mode", "frequency_cm1", "side", "dq_amu12_ang",
 class OpticalDataError(ValueError):
     """The payload does not lay out as this file, or the file is not one
     this molbuilder reads -- the message names the key or the schema."""
+
+
+#: The settings' one number, ``/settings``' variable.
+_SETTINGS_VARS = (
+    Var("delta_ang", (), "given", "angstrom",
+        "the displacement of the atom that moves most",
+        "each displaced frame moves the mode's largest atom by delta: "
+        "dQ = delta / max_k |L_k| (engines/vibration.md 5.11 3)"),
+)
 
 
 def _frame_vars(label: str) -> Tuple[Var, ...]:
@@ -117,12 +128,12 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "the mode's frequency", "the harmonic frequency; NaN at frame 0"),
         Var("side", ("frame",), "given", "1", "the side of the displacement",
             "+1 or -1 along the mode; 0 at frame 0", dtype="i4"),
-        Var("dq_amu12_ang", ("frame",), "given", "amu^1/2 Angstrom",
+        Var("dq_amu12_ang", ("frame",), "given", "amu^1/2 angstrom",
             "the displacement along the mode",
             "dQ = delta / max_k |L_k| in mass-weighted coordinates: the atom "
             "that moves most moves by delta (engines/vibration.md 5.11 3); "
             "NaN at frame 0"),
-        Var("position_ang", ("frame", "atom", "xyz"), "raw", "Angstrom",
+        Var("position_ang", ("frame", "atom", "xyz"), "raw", "angstrom",
             "the atom's position",
             "the geometry the call computed at, in the user order; NaN for a "
             "call that wrote none", source=out),
@@ -148,7 +159,7 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "the integral of eps2 against the electrons it should count, as "
             "SIESTA states it -- 1 when every transition is in the range",
             source=f"{epsimg}, its header"),
-        Var("drude_wp2_ha2", ("frame", "spin"), "raw", "Ha^2",
+        Var("drude_wp2_ha2", ("frame", "spin"), "raw", "Eh^2",
             "the Drude plasma frequency squared",
             "the intraband term SIESTA computes beside eps2 and leaves out "
             "of it", source=f"{epsimg}, its header"),
@@ -199,23 +210,29 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
         source="the optical payload's atom_index_map")
     n_atoms = atoms.n_atoms
     settings = dict(payload.get("settings") or {})
+    run = str(payload.get("run") or "")
+    siesta_version = str(payload.get("siesta_version") or "")
     with NC_LOCK:
         ds = in_memory(p.name)
-        ds.setncatts({
-            "schema": DATA_SCHEMA, "label": label, "Conventions": "CF-1.8",
-            "what": WHAT, "run": str(payload.get("run") or ""),
-            "siesta_version": str(payload.get("siesta_version") or ""),
-            "molbuilder_version": str(payload.get("molbuilder_version")
-                                      or "")})
+        state(ds, title=WHAT, schema=DATA_SCHEMA,
+              molbuilder_version=str(payload.get("molbuilder_version") or ""),
+              source=f"computed by SIESTA {siesta_version} in {run}")
+        ds.setncatts({"label": label, "run": run,
+                      "siesta_version": siesta_version})
         g = ds.createGroup("settings")
         g.setncatts({
             "keywords": json_attr(settings.get("keywords") or {}),
             "direction": json_attr(settings.get("direction")),
             "selection": json_attr(settings.get("selection")),
-            "delta_ang": number_attr(settings.get("delta_ang")),
             "deck_name": str(settings.get("deck_name") or ""),
             "deck_text": str(settings.get("deck_text") or ""),
             "deck_sha256": str(settings.get("deck_sha256") or "")})
+        write_group(g, {}, _SETTINGS_VARS,
+                    {"delta_ang": np.asarray(
+                        number_attr(settings.get("delta_ang")))},
+                    title="what the optical calls were asked: every optical "
+                          "keyword as the deck wrote it, the direction, the "
+                          "selection, delta, and the deck itself")
         write_structure_group(ds, structure, atoms,
                               masses=payload.get("masses_amu"))
         g = ds.createGroup("frames")
@@ -256,7 +273,10 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
                         f"the calls share one grid -- {len(spins)} spin "
                         f"channel(s) by {grid.size} photon energies")
                 values["eps2"][k] = e.T
-        write_group(g, dims, vars_, values)
+        write_group(g, dims, vars_, values,
+                    title="one row per optical call: its mode, side and "
+                          "dQ, the geometry it computed at, its state, its "
+                          "SCF facts and its eps2")
         data = as_bytes(ds)
     write_bytes(p, data)
     return p
@@ -279,11 +299,14 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
             out[key] = str(attrs.get(key, ""))
         g = ds["settings"]
         sa = {k: g.getncattr(k) for k in g.ncattrs()}
+        held = read_variables(g)
         out["settings"] = {
             "keywords": json.loads(str(sa["keywords"])),
             "direction": json.loads(str(sa["direction"])),
             "selection": json.loads(str(sa["selection"])),
-            "delta_ang": unnumber_attr(sa["delta_ang"]),
+            "delta_ang": unnumber_attr(held["delta_ang"]["data"]
+                                       if "delta_ang" in held
+                                       else sa["delta_ang"]),
             "deck_name": str(sa["deck_name"]),
             "deck_text": str(sa["deck_text"]),
             "deck_sha256": str(sa["deck_sha256"])}

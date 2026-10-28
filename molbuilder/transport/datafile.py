@@ -42,9 +42,10 @@ from .stages import same_volts
 #: k-points and loop time, what a point shares or is a copy of, every NEGF
 #: row's charges, each run's phases, the calculation's own records and its
 #: provenance (`engines/transport.md` § 2a.12, *Export*; the user,
-#: 2026-10-23).  An older file is refused by its version, and `summarize
-#: task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@6"
+#: 2026-10-23); ``@7``: the file states itself, its numbers variables
+#: (`model/datafiles.md` § 2b).  An older file is refused by its version,
+#: and `summarize task` writes it again.
+DATA_SCHEMA = "molbuilder/transport-data@7"
 
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
@@ -201,6 +202,18 @@ def _variables() -> Tuple[Var, ...]:
             "over that frame's 0 V transmission, E in eV, f the Fermi "
             "function at iv_kt_ev; the fill value at a voltage whose window "
             "and Fermi tails reach past the transmission's (iv_notes)"),
+        Var("iv_kt_ev", (), "given", "eV", "the I-V's k_B T",
+            "k_B T of the leads' Fermi functions in the low-bias integral, "
+            "the device run's electronic temperature; NaN where the I-V is "
+            "TBtrans's own"),
+        Var("iv_window_lowest_ev", (), "derived", "eV",
+            "the low-bias integral's lowest energy",
+            "the 0 V transmission's lowest energy, E - E_F; NaN where the "
+            "I-V is TBtrans's own"),
+        Var("iv_window_highest_ev", (), "derived", "eV",
+            "the low-bias integral's highest energy",
+            "the 0 V transmission's highest energy, E - E_F; NaN where the "
+            "I-V is TBtrans's own"),
         Var("iv_current_by_spin_a", ("frame", "iv_bias_v", "spin"),
             "derived", "A", "the I-V's current, by spin channel",
             "a polarized calculation's, each spin's as the record states it; "
@@ -443,8 +456,10 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     readings just made (`tbtnc.read_points`) -- say a file that failed to
     read, or that another reading holds, in that outcome's words.
     :class:`DataFileError` names what does not lay out on one grid."""
+    from .. import __version__
     from ..frame_average import fill_data_file, with_meanings
-    from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, write_group
+    from ..ncdata import (NC_LOCK, as_bytes, empty, in_memory, state,
+                          write_group)
     from .compose import recorded_junction
     from .record import iv_notes_placed, order_unstated_said
     from ..paths import frame_token
@@ -657,7 +672,6 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     average = record.get("average") or {}
 
     attrs: Dict[str, Any] = {
-        "schema": DATA_SCHEMA,
         "label": str(record.get("label") or task.label),
         "treatment": str(record.get("treatment") or ""),
         # WHETHER THE LOW-BIAS APPROXIMATION WAS MADE, 1 or 0
@@ -689,8 +703,9 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     # HOW THE I-V WAS COMPUTED, as the record states it (§ 2a.10).
     attrs["iv_computed"] = str(iv.get("computed") or "")
     if iv.get("kt_ev") is not None:
-        attrs["iv_kt_ev"] = float(iv["kt_ev"])
-        attrs["iv_window_ev"] = [float(x) for x in iv["window_ev"]]
+        values["iv_kt_ev"][...] = float(iv["kt_ev"])
+        values["iv_window_lowest_ev"][...], \
+            values["iv_window_highest_ev"][...] = iv["window_ev"]
     # EACH NOTE PLACED BY ITS FRAME AND VOLTAGE (`record.iv_notes_placed`):
     # the record keys them by its table's rows, an axis this file has not.
     attrs["iv_notes"] = json_attr([
@@ -701,11 +716,20 @@ def data_file_bytes(base_dir, task, record: Dict, *,
     attrs["scf_criteria"] = json_attr(
         {name: by_stage[name]["scf_criteria"] for name in TRANSPORT_STAGES
          if (by_stage.get(name) or {}).get("scf_criteria")})
-    attrs["Conventions"] = "CF-1.8"
 
-    # THE FILE, through the variable record's one writing loop (`ncdata`).
+    # THE FILE, through the variable record's one writing loop (`ncdata`),
+    # stating itself (`model/datafiles.md` § 2b).
     with NC_LOCK:
         ds = in_memory("transport.nc")
+        state(ds, title=(f"the transport calculation {attrs['label']}: "
+                         f"every result on its grid -- frame x voltage x "
+                         f"energy -- with the frames' average and every "
+                         f"run's convergence"),
+              schema=DATA_SCHEMA, molbuilder_version=__version__,
+              source=("derived from the calculation's runs -- TranSIESTA's "
+                      "output and TBtrans's files, each rung's run named in "
+                      "provenance_chain and each point's in point_folder; "
+                      "each variable's source names its file"))
         # A FRAME ROW'S DEFINITION is its meaning as the set writes it
         # (`model/datafiles.md` § 2).
         write_group(ds, dims, with_meanings(VARIABLES, junction), values)

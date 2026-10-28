@@ -2021,9 +2021,10 @@ does not hold a reading, is no kept reading. Whether one is current is
 read from its attributes alone, never its tables.
 
 **The digest describes itself, so a person's own script may read it alone**
-(NetCDF-4, `molbuilder/tbt-digest@3`, every variable with its units and what
+(NetCDF-4, `molbuilder/tbt-digest@4`, every variable with its units and what
 it is, every axis a row of [`model/datafiles.md`](?doc=model/datafiles.md)
-§ 2a with its coordinate): the energies relative to the leads' Fermi level
+§ 2a with its coordinate; its title, schema, the molbuilder that read it and
+its source — the files its variables were read from — § 2b): the energies relative to the leads' Fermi level
 (`energy_ev`, eV, full precision); the device's DOS per orbital (1/eV) over
 `device_orbital`, each orbital's atom beside it (`device_orbital_atom`), and
 the geometry's first orbital of each atom; each atom's position and the cell
@@ -2031,10 +2032,10 @@ the geometry's first orbital of each atom; each atom's position and the cell
 TBtrans read beside it, `<label>.TS.HSX`, when it is there and is the data
 file's geometry (the data file states no elements); the k-points and their
 weights; each lead's name, chemical potential and temperature (eV), the
-device's η; TBtrans's own k-averaged T(E), eigenchannels, total DOS and the
-leads' DOS, each naming the text file it came from; and the data file's
-name, size, time and what it states of itself, with the molbuilder that read
-it. **Its atoms are listed by engine index** — TBtrans's geometry,
+device's η (`device_eta`, eV); TBtrans's own k-averaged T(E), eigenchannels,
+total DOS and the leads' DOS, each naming the text file it came from; and
+the data file's name, size, time and what it states of itself. A digest of
+an earlier schema is no kept reading: the next reading writes it anew. **Its atoms are listed by engine index** — TBtrans's geometry,
 TranSIESTA's order, the device run's — **and it carries its atom index map**
 ([`model/overview.md`](?doc=model/overview.md) § 2.2b):
 `atoms_listed_by` `engine_index`, `atom_index_base` `0`, and per atom

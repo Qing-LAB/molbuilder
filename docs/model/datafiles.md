@@ -31,6 +31,7 @@ six things, each kept by one piece of code:
 | promise | kept by |
 |---|---|
 | **every value says what it is** — its units, its meaning, how it was obtained, the file it came from — readable with no molbuilder installed | the variable record, `ncdata.Var` (§ 2) |
+| **every file and every group says what it is** — what it holds, which schema, which molbuilder wrote it, how its data were made — and each unit it uses, in words | the root's statement and each group's title, required by the one writer (§ 2b), one spelling for each unit (§ 2c) |
 | **every file says which atoms its rows are** — listed by user index or engine index, each atom's index in both lists, counting from 0 | the atom index map, given to the writer as the atom axis itself (§ 3; `model/overview.md` § 2.2b) |
 | **one shape for each kind** — one structure at one voltage is a 1 × 1 grid, never a different layout; a value not computed is the stated fill, never left out | each file's variable table and the one writer (§ 3) |
 | **a file is written whole or not at all, and read as one version** | the one writer's atomic write; a long reading's version check at every step (§ 3, § 4) |
@@ -45,11 +46,11 @@ by a second reader: it is that composition on its grid, for analysis.
 
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
-| `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same bytes | `molbuilder/transport-data@6` | `engines/transport.md` § 2a.12 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@7` (`@1`–`@6` read as they are) | `engines/vibration.md` § 6.10.5 |
-| `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@3` | `model/parse.md` § 5e |
-| `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@1` | `engines/vibration.md` § 5.11 § 8 |
-| `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@1` | `engines/vibration.md` § 5.11 § 10 |
+| `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same bytes | `molbuilder/transport-data@7` | `engines/transport.md` § 2a.12 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@8` (`@1`–`@7` read as they are) | `engines/vibration.md` § 6.10.5 |
+| `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@4` | `model/parse.md` § 5e |
+| `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@2` (`@1` read as it is) | `engines/vibration.md` § 5.11 § 8 |
+| `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@2` | `engines/vibration.md` § 5.11 § 10 |
 
 **An engine's NetCDF files molbuilder reads** come through the same door
 (§ 4): TBtrans's `<label>.TBT.nc` (through sisl, `sile=True`) and SIESTA's
@@ -72,12 +73,86 @@ named once, read by the writer and the reader alike:
 | `auxiliary` | a label beside an axis (CF auxiliary coordinate, named in each variable's `coordinates`): an atom's element, a frame's folder |
 | `atom_index` | its values are atom indices, counting by the file's atom index map (`free_atom`, a digest's `device_orbital_atom`) |
 
+**Every variable says what it is**: its long name and its definition,
+never empty; a number its unit in one spelling of § 2c — `1` where it has
+none; a text no unit. **A quantity is a variable**, over its axes or over
+none (a variable of no dimension: a step, a window's ends, a temperature):
+never an attribute, which holds text — a sentence, a name, a record as JSON
+— a count or a flag. The one writer refuses each (§ 3).
+
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill (`empty`); a boolean an `int8`
 with `flag_values 0 1` (`flag`); an empty list a dimension of length 0; a
-nested record JSON text (`json_attr`). **The file says what it is**: its
-`schema`, and each chapter's attributes. A result with parts is written in
+nested record JSON text (`json_attr`). A result with parts is written in
 groups (the vibration result's `/structure`, `/equilibrium`, `/modes`).
+
+## 2b. The file and each group say what they are
+
+*(Proposed 2026-10-27 — "one rule in the shared writer: every file and group
+says what it is, plus the versions and the units of numbers stored as
+attributes; then each file's own gaps get filled" — and the user's yes: "go
+ahead with the NetCDF self-description".)*
+
+| attribute | on | says |
+|---|---|---|
+| `title` | the root, and every group | one sentence: what the file holds — the calculation and the result — or what the group holds |
+| `schema` | the root | which file this is, at which version: `molbuilder/<file>@<n>` |
+| `molbuilder_version` | the root | the molbuilder that wrote it |
+| `source` | the root | how its data were made: the engine and its version that computed them, or the files it was derived from |
+| `Conventions` | the root | `CF-1.8` |
+| `unit_meanings` | the root | each unit spelling the file's variables use, in words (§ 2c) |
+
+The root's are written by the file's own statement (`ncdata.state`), a
+group's title with its variables (`write_group(…, title=)`), and
+`unit_meanings` by the writer from the units the variables state; the one
+writer refuses a file whose root or any group lacks one (`ncdata.as_bytes`).
+**The writer states no time of its own**: a file composed again from the
+same records is the same bytes — an export is the data file `summarize`
+writes (§ 1) — and when its data were made is its sources' own record (each
+run's launch and end, `run.json`); a time a record holds — the vibration
+result's `timestamp` — is that record's, carried as it is.
+
+## 2c. Units — one spelling each
+
+**Every unit a data file states a number in is a row of the table below**,
+spelled one way in every file; `ncdata.UNITS` holds the same rows, and the
+one writer refuses a number in another spelling. A new unit is a row here
+and there, in the change that first writes it.
+
+| spelling | means |
+|---|---|
+| `1` | no unit — a count, an index, a fraction or a flag |
+| `%` | per cent |
+| `s` | second |
+| `K` | kelvin |
+| `V` | volt |
+| `A` | ampere — never ångström |
+| `e` | the elementary charge, 1.602176634×10⁻¹⁹ C |
+| `eV` | electronvolt |
+| `1/eV` | per electronvolt |
+| `Eh` | hartree, the atomic unit of energy, 27.211386 eV |
+| `Eh^2` | hartree squared |
+| `Eh/K` | hartree per kelvin |
+| `Eh/bohr` | hartree per bohr, the atomic unit of force (1 bohr = 0.529177 Å) |
+| `atm` | standard atmosphere, 101325 Pa |
+| `G0` | the conductance quantum, 2e²/h = 7.748092×10⁻⁵ S |
+| `nm` | nanometre |
+| `cm-1` | wavenumber, per centimetre |
+| `km/mol` | kilometre per mole |
+| `angstrom` | ångström, 10⁻¹⁰ m |
+| `angstrom^3` | cubic ångström |
+| `amu` | the unified atomic mass unit (dalton) |
+| `amu^1/2 angstrom` | square-root amu times ångström |
+| `amu^-1/2` | per square-root amu |
+| `angstrom^2/amu^1/2` | square ångström per square-root amu |
+| `D/(angstrom amu^1/2)` | debye (3.33564×10⁻³⁰ C m) per ångström per square-root amu |
+| `angstrom^4/amu` | ångström to the fourth per amu |
+
+**CF-1.8 and its units**: CF reads a unit through UDUNITS, which has no
+name for the hartree, the conductance quantum or a square-root mass; those
+are spelled as the table says, and every file states each spelling it uses
+in words (`unit_meanings`, § 2b), so a reader without molbuilder reads what
+a number is in.
 
 ## 2a. The axes — one name for one concept, in every file
 
@@ -156,12 +231,16 @@ data file's reader takes `@1`–`@3`'s names for the new ones; a digest before
 
 ## 3. Writing — one writer
 
-`ncdata.write_group(group, dims, variables, values)` writes a group's
-dimensions and variables from the table, each with its attributes and its
+`ncdata.write_group(group, dims, variables, values, title=)` writes a group's
+title, dimensions and variables from the table, each with its attributes and its
 `coordinates`. **Every axis it creates or its variables use is a row of
 § 2a** (`ncdata.AXES`), with a coordinate of its own name in the row's units
 — else it refuses, naming § 2a (`ncdata.check_axes`); a group states its own
-axes, never one its parent created. **The atom axis is given as its atom index map, never a
+axes, never one its parent created. **Every variable says what it is**
+(`ncdata.check_said`, § 2): a long name, a definition, a number's unit
+from § 2c. **The file states itself** (`ncdata.state`, § 2b) before it is
+closed; `ncdata.as_bytes` refuses a root or a group that does not, and an
+attribute holding a real number. **The atom axis is given as its atom index map, never a
 count** (`dims={"atom": atoms, …}`, an `AtomIndexMap`): the writer states
 `atoms_listed_by`, `atom_index_base` and, where a column is missing,
 `atom_index_why` as the group's attributes, and `user_atom_index` /
@@ -275,7 +354,8 @@ A new kind of result is a data file when a reader outside molbuilder needs
 its values on a grid. It is added as the files above were: a `Var` table in
 its own module, every variable with its units and words, every axis a row of
 § 2a — an axis already named there used by its name, a new one added there
-first; one writer through
+first — every unit a row of § 2c; its root's statement and each group's
+title (§ 2b); one writer through
 `write_group`, its atom axis — if it holds atoms — given as the map from the
 door that knows the atoms' columns (`model/overview.md` § 2.2b, F2); a
 `schema` string, versioned when a variable changes; its reader through
