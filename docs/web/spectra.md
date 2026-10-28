@@ -472,7 +472,7 @@ computes neither size. *(A second spelling of the constant lived in the tab unti
 2026-09-24.)*
 
 and the Cartesian displacement of atom $i$ is $Q_{\mathrm{rms}}\times L_i$, with **$L$** the
-mass-weighted eigenvector normalised so $\sum_i m_i\lvert L_i\rvert^2 = 1$ (`eigenvector_canonical`).
+Cartesian eigenvector normalised so $\sum_i m_i\lvert L_i\rvert^2 = 1$ (`eigenvector_canonical`, in amu$^{-1/2}$).
 The mass carried in that normalisation is what makes the amplitude **atom-specific**:
 a heavier nucleus in the same mode moves as $1/\sqrt{m}$.
 

@@ -497,13 +497,26 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     d = _the_result(run)
     _common_assertions(d, optical=True)
     # HOW IT WAS COMPUTED, the force-constant deck cited (§ 6.2): by its
-    # sha256, every keyword as the engine read it.
+    # sha256, every keyword and block as the engine read them but the
+    # geometry, and each species' pseudopotential SIESTA opened beside it.
+    from molbuilder.parse.fdf import GEOMETRY_KEYS
     from molbuilder.persist import sha256_of
     cited = d["config"]["deck"]
     assert (cited["name"], cited["sha256"]) == (
         fc[2].deck.name, sha256_of(fc[2].deck)), cited
     assert {fdf_key(k): v.split() for k, v in cited["keywords"].items()} \
-        == fc[0], cited["keywords"]
+        == {k: v for k, v in fc[0].items() if k not in GEOMETRY_KEYS}
+    assert {fdf_key(k): [r.split() for r in rows]
+            for k, rows in cited["blocks"].items()} \
+        == {k: v for k, v in fc[1].items() if k not in GEOMETRY_KEYS}
+    assert "kgrid_Monkhorst_Pack" in cited["blocks"], sorted(cited["blocks"])
+    species = [r[2] for r in fc[1][fdf_key("ChemicalSpeciesLabel")]]
+    assert cited["pseudopotentials"] == [
+        {"species": s, "name": f"{s}.psml",
+         "sha256": sha256_of(fc[2].deck.parent / f"{s}.psml")}
+        for s in species], cited["pseudopotentials"]
+    # ...each by the spelling the deck writes (vibration_deck: the run).
+    assert cited["keywords"]["MD.TypeOfRun"] == "FC", cited["keywords"]
     assert d["relaxation"]["converged"] is True
     assert d["relaxation"]["already_relaxed"] is False
     assert d["phase_relaxation"] == "complete"

@@ -692,7 +692,9 @@ generator writes ([`engines/vibration.md`](?doc=engines/vibration.md)
 § 5.10 ③; a person's script may write the same), constants of the frames'
 post-process, `molbuilder/frame_average.py` (`ROWS`, `MASS_CHANNEL`,
 `INFO_KEY`): the names a page says in words, the frame rows the data file keeps
-as variables of their own, the structure rows as its attributes. The names
+as variables of their own, a structure row whose value is a number as a
+variable of no dimension and one whose value is a name — `sampling_rule`,
+`mass_source` — as an attribute. The names
 carry their units; a row's `unit` field, when written, spells the same unit in
 ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`, and `1` for a name with
 none (—), the dimensionless unit the data file writes — and one of these names

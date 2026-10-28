@@ -69,8 +69,8 @@ try:                                        # inside molbuilder
     from ..parse.engines.siesta_reader import SiestaReader
     from ..parse.engines._run_ending import (ending_of, not_done_why,
                                              verdict_of)
-    from ..parse.fdf import (deck_atoms, fdf_key, read_deck, read_fdf,
-                             system_label)
+    from ..parse.fdf import (GEOMETRY_KEYS, deck_atoms, fdf_key, read_deck,
+                             read_fdf, system_label)
     from ..runfiles import compose
     from ..structure import Structure
     from ..parse.contract import relaxation_of_output
@@ -92,9 +92,10 @@ try:                                        # inside molbuilder
     from ..persist import sha256_of
     from .optical_data import write_optical_data
     from ..runfiles import (COORDINATES_FILE, FIRST_ATTEMPT, MONITOR_BUNDLE,
-                            PSEUDO_DIR, ROLE_OPTICAL, ROLE_SPECTRA,
+                            PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL, ROLE_SPECTRA,
                             VIBRATION_BUNDLE,
-                            RunNames, beside_the_deck, find, parse)
+                            RunNames, beside_the_deck, find, fixed_name,
+                            parse)
     from ..paths import frame_token, run_folder_of
     from ..runrecord import newest_run, read_continued_from, stamp
     from ..siesta.deck_lines import coordinates_text
@@ -116,8 +117,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_reader import SiestaReader
     from _run_ending import (ending_of,  # type: ignore[no-redef]
                              not_done_why, verdict_of)
-    from fdf import (deck_atoms, fdf_key, read_deck,  # type: ignore[no-redef]
-                     read_fdf, system_label)
+    from fdf import (GEOMETRY_KEYS, deck_atoms,  # type: ignore[no-redef]
+                     fdf_key, read_deck, read_fdf, system_label)
     from runfiles import compose
     from structure import Structure
     from contract import relaxation_of_output  # type: ignore[no-redef]
@@ -138,9 +139,9 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from planned import Plan, bring
     from persist import sha256_of  # type: ignore[no-redef]
     from runfiles import (COORDINATES_FILE, FIRST_ATTEMPT,  # type: ignore[no-redef]
-                          MONITOR_BUNDLE, PSEUDO_DIR, ROLE_OPTICAL,
+                          MONITOR_BUNDLE, PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL,
                           ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck, find,
-                          parse)
+                          fixed_name, parse)
     from paths import frame_token, run_folder_of  # type: ignore[no-redef]
     from runrecord import (newest_run,  # type: ignore[no-redef]
                            read_continued_from, stamp)
@@ -883,16 +884,30 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
 
 
 def _deck_cited(deck: Path) -> dict:
-    """``{name, sha256, keywords}`` -- the force-constant deck as the result
-    cites it (`engines/vibration.md` § 6.2): every keyword it states as it
-    writes it, by its spelling; its blocks -- the geometry, the k-points, a
-    basis -- in the deck itself, named by its sha256.  The geometry the
-    result states from its own source, the structure."""
+    """``{name, sha256, keywords, blocks, pseudopotentials}`` -- the
+    force-constant deck as the result cites it (`engines/vibration.md`
+    § 6.2): every keyword and block it states, as it writes them, by their
+    spelling, but its geometry (`parse.fdf.GEOMETRY_KEYS`), which the result
+    states from its own source, the structure; and each species'
+    pseudopotential -- the file SIESTA opened beside the deck,
+    ``<label>.psml`` (`runfiles.PSEUDO_FILE`) -- by name and sha256.  The
+    deck's sha256 is its file's alone."""
     spelled: dict = {}
-    params = read_fdf(read_deck(deck), spelled_out=spelled)[0]
+    params, blocks = read_fdf(read_deck(deck), spelled_out=spelled)
+    species = [str(row[2]) for row
+               in blocks.get(fdf_key("ChemicalSpeciesLabel")) or ()]
+    pseudos = [(label, fixed_name(PSEUDO_FILE, element=label))
+               for label in species]
     return {"name": deck.name, "sha256": sha256_of(deck),
             "keywords": {spelled.get(key, key): " ".join(value)
-                         for key, value in params.items()}}
+                         for key, value in params.items()
+                         if key not in GEOMETRY_KEYS},
+            "blocks": {spelled.get(key, key): [" ".join(r) for r in rows]
+                       for key, rows in blocks.items()
+                       if key not in GEOMETRY_KEYS},
+            "pseudopotentials": [{"species": label, "name": name,
+                                  "sha256": sha256_of(deck.parent / name)}
+                                 for label, name in pseudos]}
 
 
 def _optical_settings(here: _CallHere, index: dict) -> dict:

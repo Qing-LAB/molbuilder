@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.47.0.** Since the last handover (2026-10-20, kept
+**Where we are: 2.47.1.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -81,11 +81,12 @@ declared cell, its trials named by their ranks in all (2.46.6); every data
 file saying what it is, in the file — its title, schema, molbuilder version
 and source, every group's title, every number a variable in one spelling of
 its unit — and a SIESTA vibration result citing the deck it was computed
-from (2.47.0).
+from (2.47.0); the data files' fresh-eyes review — two errors, every value's
+meaning said right, the deck cited whole with its pseudopotentials (2.47.1).
 
-**Last checked**: the fast batch on 2.47.0 (6,884 passed); the PySCF and
-SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.0 (207 passed),
-the CO₂ vibration e2e again with the deck cited (8 passed); the real-runs road e2e on 2.46.6 (19 passed); the stopped-run e2e on 2.46.3 (8 passed); every road of 2.45.0–2.46.0 through the pages and the
+**Last checked**: the fast batch on 2.47.1 (6,889 passed); the SIESTA CO₂
+vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF
+vibration e2e on 2.47.0; the real-runs road e2e on 2.46.6 (19 passed); the stopped-run e2e on 2.46.3 (8 passed); every road of 2.45.0–2.46.0 through the pages and the
 printed commands (vibration → frame set → transport on the H chain).
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-27) — proposed, the
@@ -833,7 +834,7 @@ user's. This machine's was repaired on 2026-10-18.
 5. this section records the commits, the review and its outcome — and only
    then does the next step start.
 
-A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-27 on 2.47.0 (6,884 passed, none failed); the real-junction e2e and the PySCF and SIESTA CO₂ vibration e2e ran 2026-10-27 on 2.47.0 (207 passed); the e2e batch last ran whole 2026-10-16 (396, all passing).
+A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-27 on 2.47.1 (6,889 passed, none failed); the real-junction e2e and the SIESTA CO₂ vibration e2e ran 2026-10-27 on 2.47.1 (196 passed), the PySCF vibration e2e on 2.47.0; the e2e batch last ran whole 2026-10-16 (396, all passing).
 
 **The Q19 row** — the three passes, its phase 1 done and its later phases
 listed — stays here as step 3's detail:

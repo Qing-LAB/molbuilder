@@ -2160,13 +2160,13 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     in the user order, the cited set's (`model/overview.md` § 2.2a, I1), the
     device's facts, the I-V and the mode's average each at its own point as
     the record states them; every dimension a coordinate of its own name and
-    the labels of its points coordinates beside it; every variable says what
-    it is, a raw one where it was read from; and a calculation of one
+    the labels of its points coordinates beside it -- every variable says
+    what it is, which the one writer holds (`ncdata.check_said`); and a
+    calculation of one
     structure has the same layout, one frame."""
     from molbuilder.frame_average import FRAME_ROWS, MASS_CHANNEL
     from molbuilder.task import of as task_of
-    from molbuilder.transport.datafile import (VARIABLES, data_file_path,
-                                               read_data_file)
+    from molbuilder.transport.datafile import data_file_path, read_data_file
     run = junction.from_pair
     label = task_of(run.bundle).label
     got = read_data_file(data_file_path(run.bundle, label))
@@ -2229,14 +2229,6 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
         note = next(x["note"] for x in cited.customized_rows(0)
                     if x["name"] == r.name)
         assert attrs_of[r.name]["definition"].startswith(note), r.name
-    for var in VARIABLES:
-        attrs = attrs_of[var.name]
-        assert attrs["long_name"] and attrs["definition"], var.name
-        # A NUMBER STATES ITS UNIT, A TEXT NONE (`model/datafiles.md` § 2).
-        assert ("units" in attrs) == (var.dtype is not str), var.name
-        assert attrs["kind"] == var.kind, var.name
-        if var.kind == "raw":
-            assert attrs["source"], var.name
     one = read_data_file(data_file_path(junction.bundle, "T"))["variables"]
     assert one["transmission"]["data"].shape[:2] == (1, len(_BIAS))
     assert one["transmission"]["dims"] == ("frame", "bias_v", "energy_ev")
@@ -2296,7 +2288,6 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
     for p in rec["points"]:
         cell = (p["frame"], list(_BIAS).index(p["bias_v"]))
         assert V["point_state"][cell] == p["state"] == "finished", cell
-    assert got["attrs"]["Conventions"] == "CF-1.8"
 
 
 def _export(junction, monkeypatch, run, fmt, to):

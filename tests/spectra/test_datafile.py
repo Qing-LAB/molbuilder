@@ -44,6 +44,8 @@ def _with_everything():
                          "g_eh": [0.01, 0.008]}}
     r.removed_motions = {"count": 1, "patterns": [[[1.0, 0.0, 0.0],
                                                    [0.0, 0.0, 0.0]]]}
+    # THE ROUTE'S STEP, a number of the root (PySCF's finite difference).
+    r.raman_route, r.raman_fd_step_ang = "finite-difference", 0.005
     r.__post_init__()
     return r
 

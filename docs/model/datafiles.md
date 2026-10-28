@@ -46,7 +46,7 @@ by a second reader: it is that composition on its grid, for analysis.
 
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
-| `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same bytes | `molbuilder/transport-data@7` | `engines/transport.md` § 2a.12 |
+| `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@7` | `engines/transport.md` § 2a.12 |
 | `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@8` (`@1`–`@7` read as they are) | `engines/vibration.md` § 6.10.5 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@4` | `model/parse.md` § 5e |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@2` (`@1` read as it is) | `engines/vibration.md` § 5.11 § 8 |
@@ -78,7 +78,10 @@ never empty; a number its unit in one spelling of § 2c — `1` where it has
 none; a text no unit. **A quantity is a variable**, over its axes or over
 none (a variable of no dimension: a step, a window's ends, a temperature):
 never an attribute, which holds text — a sentence, a name, a record as JSON
-— a count or a flag. The one writer refuses each (§ 3).
+— a count or a flag. The one writer refuses a variable that does not say
+what it is, and a real number kept as an attribute (§ 3); a whole number it
+cannot tell from a count, so a quantity kept as one is the writer's own
+error to avoid.
 
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill (`empty`); a boolean an `int8`
@@ -107,10 +110,15 @@ group's title with its variables (`write_group(…, title=)`), and
 `unit_meanings` by the writer from the units the variables state; the one
 writer refuses a file whose root or any group lacks one (`ncdata.as_bytes`).
 **The writer states no time of its own**: a file composed again from the
-same records is the same bytes — an export is the data file `summarize`
-writes (§ 1) — and when its data were made is its sources' own record (each
-run's launch and end, `run.json`); a time a record holds — the vibration
-result's `timestamp` — is that record's, carried as it is.
+same records holds the same groups, variables, values and attributes — an
+export is the data file `summarize` writes (§ 1) — and when its data were
+made is its sources' own record (each run's launch and end, `run.json`); a
+time a record holds — the vibration result's `timestamp` — is that record's,
+carried as it is. **Its bytes are not the same**: the HDF5 library under
+NetCDF-4 stamps the file's root header with the time it was built (four
+times and their checksum), so two compositions a second apart differ in
+those bytes alone; a file is compared by what it holds, never by its
+sha256.
 
 ## 2c. Units — one spelling each
 
@@ -169,7 +177,7 @@ naming this section — in every file, every group, the root's included.
 **The rules:**
 
 1. **One concept, one name; one name, one concept** — in every file. The
-   energy relative to the leads' Fermi level is `energy_ev` in the transport
+   energy relative to the leads' Fermi level at 0 V is `energy_ev` in the transport
    data file and in the digest alike; `xyz` is a Cartesian component wherever
    it appears, and never a cell vector's.
 2. **How a name is made**: lowercase, words joined by `_`, singular. The
@@ -208,7 +216,7 @@ naming this section — in every file, every group, the root's included.
 | `frame` | a frame set's frames — a transport calculation's structures, a vibration's optical calls (the reference geometry, then each mode's two sides) | from 0, as MolView's API counts | 1 | transport, optical |
 | `bias_v` | the voltages computed | each voltage | V | transport |
 | `iv_bias_v` | the I–V's voltages | each voltage | V | transport |
-| `energy_ev` | energy relative to the leads' Fermi level | each energy, ascending | eV | transport, digest |
+| `energy_ev` | energy relative to the leads' Fermi level at 0 V — under a bias V the left lead's chemical potential sits at +V/2 on it and the right's at −V/2 | each energy, ascending | eV | transport, digest |
 | `spin` | spin channels | `up` and `down` — or, unpolarized, the one channel by the spin its deck states | — | transport, optical |
 | `lead` | the two leads | their names as TBtrans names them | — | transport, digest |
 | `region` | molbuilder's regions of the junction | `L-electrode`, `bridge`, `R-electrode` | — | transport |
@@ -223,7 +231,7 @@ naming this section — in every file, every group, the root's included.
 | `window` | an orbital's place in the probe's window | from 0, ascending energy | 1 | vibration |
 | `temperature_k` | the thermochemistry's temperatures | each temperature | K | vibration |
 | `fc_step` | a SIESTA force-constant run's steps | from 0, step 0 the reference geometry, then each displacement in SIESTA's order | 1 | vibration (`/partial_charges`) |
-| `photon_energy_ev` | the light's energy, ħω — a concept apart from `energy_ev`, which is an electron's energy relative to the leads' Fermi level | each photon energy as SIESTA wrote it, ascending | eV | optical |
+| `photon_energy_ev` | the light's energy, ħω — a concept apart from `energy_ev`, which is an electron's energy relative to the leads' Fermi level at 0 V | each photon energy as SIESTA wrote it, ascending | eV | optical |
 
 **Files written before these names** read as rule 5 says: the vibration
 data file's reader takes `@1`–`@3`'s names for the new ones; a digest before
@@ -238,7 +246,7 @@ title, dimensions and variables from the table, each with its attributes and its
 — else it refuses, naming § 2a (`ncdata.check_axes`); a group states its own
 axes, never one its parent created. **Every variable says what it is**
 (`ncdata.check_said`, § 2): a long name, a definition, a number's unit
-from § 2c. **The file states itself** (`ncdata.state`, § 2b) before it is
+from § 2c, a raw one its source. **The file states itself** (`ncdata.state`, § 2b) before it is
 closed; `ncdata.as_bytes` refuses a root or a group that does not, and an
 attribute holding a real number. **The atom axis is given as its atom index map, never a
 count** (`dims={"atom": atoms, …}`, an `AtomIndexMap`): the writer states
@@ -294,7 +302,8 @@ with `xr.load_dataset` (whole, no handle kept), or close an
 
 Any data file molbuilder writes, laid out for a spreadsheet from its bytes:
 **one long table per set of axes** in each group, named by them
-(`frame_bias_v_energy_ev.csv`), a group's tables keeping its enclosing
+(`frame_bias_v_energy_ev.csv`), the variables of no dimension in its
+`scalars.csv`, one row; a group's tables keeping its enclosing
 groups' axes; each axis a column under its own name, each variable a column
 named with its units, a value not stated an empty cell; and a `README.txt`
 in the variables' own words — every variable's definition and source, the

@@ -486,7 +486,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
             "device_atom": len(meta["device"])}
     rows = [
         (Var("energy_ev", ("energy_ev",), "coordinate", "eV", "energy",
-             "relative to the leads' Fermi level (TBtrans's E - E_F), at the "
+             "TBtrans's E - E_F: E_F the leads' Fermi level at 0 V; under a bias V the left lead's chemical potential sits at +V/2 on this axis and the right's at -V/2, at the "
              "data file's full precision, ascending", source=data),
          np.asarray(result.energy_ev, dtype=float)),
         (Var("device_orbital", ("device_orbital",), "coordinate", "1",
@@ -600,7 +600,8 @@ def _digest_variables(path: Path, result: TransmissionResult,
                          "TBtrans's own average, as it printed it",
                          source=files["eigenchannels"]),
                      np.asarray(av["eigenchannels"], dtype=float)))
-    for key, what in (("lead_spectral", "spectral DOS"),
+    for key, what in (("lead_spectral", "spectral DOS -- the device's DOS "
+                       "of the states coming in from it"),
                       ("lead_bulk", "bulk DOS")):
         for lead, values in av.get(key, {}).items():
             rows.append((Var(f"{key}_dos_{lead}", ("energy_ev",), "raw",
@@ -728,9 +729,9 @@ def energies(path) -> Tuple[float, ...]:
     """Data file ``path``'s energies, at full precision, ascending: its
     kept reading's, or the file's own energy list (a small read)."""
     from molbuilder.ncdata import reading
-    got = _digest(Path(path), part=("energy",))
-    if got is not None and "energy" in got:
-        return tuple(float(e) for e in got["energy"])
+    got = _digest(Path(path), part=("energy_ev",))
+    if got is not None and "energy_ev" in got:
+        return tuple(float(e) for e in got["energy_ev"])
     with reading(path, sile=True) as tbt:
         return tuple(sorted(float(e) for e in tbt.E))
 

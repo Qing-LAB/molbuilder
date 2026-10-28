@@ -1562,7 +1562,7 @@ write <label>.spectra.json beside the run:  engine 'siesta', the SIESTA version 
     hessian_scope 'free'|'all', removed_motions, relaxation (the verdict below and the ladder's record),
     engine_metadata {fc_file, fc_displacement_ang, fc_range_engine_1based, fc_asymmetry_max_ev_ang2,
     reference_force_criterion_ev_ang}, config {engine, calculation, stage,
-    deck {name, sha256, keywords}}
+    deck {name, sha256, keywords, blocks, pseudopotentials}}
 ```
 
 The finish refuses — as the job's failure, with the reason in the session log —
@@ -2503,8 +2503,9 @@ probe** is PySCF's alone: by its `es_mode_selection`, which a SIESTA
 `config` never holds, so on SIESTA it is *not computed on this route* — the
 one capability one route lacks. A SIESTA result's `config` carries the
 engine, the kind, the stage and the force-constant deck it was computed
-from — its name, its sha256 and every keyword it states as written: the
-functional, the basis, the mesh (§ 6.2) — *Raman for* as asked and the modes
+from — its name, its sha256, every keyword and block it states as written
+but its geometry (the functional, the basis, the mesh, the k-points, the
+species) and each species' pseudopotential by name and sha256 (§ 6.2) — *Raman for* as asked and the modes
 it picked are the optical citation's and the index's; its `phase_es` stays
 `not requested`.
 
@@ -2910,7 +2911,7 @@ refused by name.
 | `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3), and `converged` is its verdict against the criterion on every route — after the relaxation, under the person's statement, at SIESTA's reference step (§ 4.2, § 4.3, § 5.5); SIESTA writes `enabled` true when the run's `relax` call ran — its relaxation record, from the run's index (§ 5.11 § 3), gives `n_steps` — and false when the box was ticked, `already_relaxed` as the person's statement, the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
 | `thermo` | both | `regime`, the headline temperature — and pressure for `rrho`, `null` for `vibrational-only` — with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
-| `config` | both | how it was computed: what the description held (the PySCF config as a dict); on SIESTA the engine, kind and stage, and `deck` — the force-constant deck by name and sha256 with every keyword it states as written (the functional, the basis, the mesh), its blocks — the geometry, the k-points — in the deck itself (since 2.47.0) |
+| `config` | both | how it was computed: what the description held (the PySCF config as a dict); on SIESTA the engine, kind and stage, and `deck` (since 2.47.0) — the force-constant deck by name and sha256 (the deck file's alone); `keywords` and `blocks`, every keyword and block it states as written, by their spelling, but its geometry (`parse.fdf.GEOMETRY_KEYS`: the coordinates and the lattice, which the result states from the structure) — the functional, the basis, the mesh, the k-points, the species; and `pseudopotentials`, each species' `<label>.psml` SIESTA opened beside the deck, by name and sha256 (since 2.47.1) |
 | `methods_text` · `bibliography_keys` | both | the composed paragraph and the keys it cites (§ 4.10) — at load, a view shown adds its sentence (§ 5.10 ②, § 5.11 § 10), the Raman's with its citation among the keys |
 | `engine_metadata` | both | engine-specific facts; SIESTA: `fc_file`, `fc_displacement_ang`, `fc_range_engine_1based`, `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` (§ 5.5). `fc_range_engine_1based` is `FC.First … FC.Last` in SIESTA's numbering — the deck's held-first order, 1-based — named as the engine's here and in `fc-sweep.json`'s stage rows: an engine fact, not an atom's identity ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
 | `optical` | SIESTA, from v13 | `{data_file, data_sha256, direction, displacement_ang, selection, reference, modes}` — the optical calls' citation (§ 5.11 § 8): `data_file` the calls' data file at the run's root and `data_sha256` its bytes', `direction` the light's three components (`Optical.Vector`), `displacement_ang` $\delta$, `selection` `{asked, applied}`, `reference` frame 0's state, `modes[]` `{mode, frequency_cm1, dq_amu12_ang, plus, minus}` — each side's state `finished`, `failed` or `pending`, by the run's one done rule. `null` where no optical call was planned, and on PySCF; refused when a key is not one of these or a state not one of the three |
@@ -3150,7 +3151,7 @@ SIESTA from the label (§ 5.4).
 | file | where | holds | written by |
 |---|---|---|---|
 | `<label>.spectra.json` | the run's root on SIESTA (§ 5.11 § 2); the attempt on PySCF | **the result**: every mode's frequency and both eigenvector forms, the strengths the engine computes (`null` where not computed), the removed motions, the thermochemistry, the stationarity verdict, the steps of every finite difference (§ 6.2–6.4); read it as § 6.8 says | the run itself (§ 5.5) |
-| `<label>.spectra.nc` | beside the `.spectra.json`, written with it at every write | **the same result as structured data** (§ 6.10.5): NetCDF-4 groups `/structure`, `/equilibrium`, `/modes` (`/modes/electronic_structure`), `/thermo` (`/thermo/grid`), `/partial_charges` where the result states them, every variable stating its units, long name, definition and kind, the scalar blocks as attributes, the structure whole as JSON text beside its arrays, the JSON's sha256 | the run itself, through the one writer (`sidecars.spectra.write_spectra_payload`) |
+| `<label>.spectra.nc` | beside the `.spectra.json`, written with it at every write | **the same result as structured data** (§ 6.10.5): NetCDF-4 groups `/structure`, `/equilibrium`, `/modes` (`/modes/electronic_structure`), `/thermo` (`/thermo/grid`), `/partial_charges` where the result states them, every variable stating its units, long name, definition and kind, the scalar blocks' numbers as variables of no dimension and their texts, counts and flags as attributes, the structure whole as JSON text beside its arrays, the JSON's sha256 | the run itself, through the one writer (`sidecars.spectra.write_spectra_payload`) |
 | `<label>.optical.nc` | the run's root, a SIESTA run whose optical calls were planned | **the optical calls as data** (§ 5.11 § 8): every frame's $\varepsilon_2$ over the photon energies, its mode, side, $\delta Q$ and geometry, its state and the run that computed it, its SCF facts, and the settings the calls read; the result cites it by name and sha256 | the force constants' record step, every frame pending; each optical call's record step; the finish (`spectra.optical_data.write_optical_data`) |
 | `<label>.fc-sweep.json` | the calculation root | a SIESTA displacement sweep's comparison: each stage and what it varied (with units), every mode's frequency per stage matched by shape, how far the force constants moved, the paths of every stage's own files, and the stages without a result with their state (§ 5.9) | `jobset summarize task` |
 | `<label>.FC` · `<label>.FCC` | each SIESTA force-constant attempt | **the raw force constants**: one header (atoms, the displacement in Å), then one row of three numbers in eV/Å² per displaced atom, direction, side and atom (§ 5.4); `.FCC` the same with the held atoms' rows zeroed | SIESTA |
@@ -3326,9 +3327,10 @@ value — `.sel(mode=7)`, `.sel(temperature_k=298.15)`.
                       timestamp, label, methods_text, bibliography_keys; the
                       scalar blocks' texts, counts and flags -- phase_*,
                       ir_route, raman_route, hessian_scope,
-                      n_atoms_in_hessian, hessian_density_fit, relaxation.*;
+                      n_atoms_in_hessian, hessian_density_fit,
+                      relaxation_<key> for the relaxation block's;
                       config, engine_metadata, runtime_info, optical and
-                      relaxation.record as JSON text
+                      relaxation_record as JSON text
 /structure            atom(atom) -- the user index  xyz(xyz)  cell_vector(cell_vector)
                       element(atom)  position_ang(atom, xyz)  mass_amu(atom)
                       held(atom)  cell_ang(cell_vector, xyz)  axis_kind(xyz)

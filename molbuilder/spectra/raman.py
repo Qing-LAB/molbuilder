@@ -538,14 +538,15 @@ def _view_vars():
         Var("delta_ang", (), "given", "angstrom",
             "the displacement of the atom that moves most",
             "each frame moves the mode's largest atom by delta: "
-            "dQ = delta / max_k |L_k|"),
+            "dQ = delta / max_k |L_k|, max_k |L_k| the length of the largest atom's displacement vector"),
         Var("cell_volume_a3", (), "derived", "angstrom^3",
             "the cell's volume V", "the reference structure's, in "
             "alpha = V/4pi (eps - 1)"),
         Var("band_floor_a4_amu", (), "given", "angstrom^4/amu",
             "the Raman channel's band floor",
             "at or below it the strongest mode sets no relative scale: "
-            "relative is NaN"),
+            "relative is NaN -- set on the Placzek activity's scale, which "
+            "runs above the strength R (engines/vibration.md 5.11 10)"),
     )
 
 
@@ -555,10 +556,13 @@ def _equilibrium_vars():
     return (
         Var("alpha_static_a3", (), "derived", "angstrom^3",
             "the polarizability, static", "V/4pi (eps1 - 1) at zero "
-            "frequency, light along the direction"),
+            "frequency, light along the direction; eps1 by Kramers-Kronig "
+            "over the stored spectrum, cut at its highest energy"),
         Var("alpha_laser_real_a3", (), "derived", "angstrom^3",
             "the polarizability at the laser, its real part",
-            "V/4pi (eps1 - 1) at the laser's frequency"),
+            "V/4pi (eps1 - 1) at the laser's frequency; eps1 by "
+            "Kramers-Kronig over the stored spectrum, cut at its highest "
+            "energy"),
         Var("alpha_laser_imag_a3", (), "derived", "angstrom^3",
             "the polarizability at the laser, its imaginary part",
             "V/4pi eps2 at the laser's frequency -- zero off any electronic "
@@ -575,8 +579,8 @@ def _mode_vars():
             "the mode's frequency", "the harmonic frequency"),
         Var("dq_amu12_ang", ("mode",), "given", "amu^1/2 angstrom",
             "the displacement along the mode",
-            "dQ = delta / max_k |L_k|: the atom that moves most moves by "
-            "delta"),
+            "dQ = delta / max_k |L_k|, max_k |L_k| the length of the largest atom's displacement vector: the atom that moves most "
+            "moves by delta"),
         Var("dalpha_dq_static_a2_per_amu12", ("mode",), "derived",
             "angstrom^2/amu^1/2", "the polarizability's change, static",
             "[alpha(+dQ) - alpha(-dQ)] / 2dQ at zero frequency"),

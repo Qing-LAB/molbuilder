@@ -108,10 +108,10 @@ class SpectraDataError(ValueError):
 # --------------------------------------------------------------------- #
 
 def _number(name: str, kind: str, units: str, long_name: str,
-            definition: str) -> Var:
+            definition: str, source: str = "") -> Var:
     """A block's number: a variable of no dimension, NaN where the result
     states none (`model/datafiles.md` § 2)."""
-    return Var(name, (), kind, units, long_name, definition)
+    return Var(name, (), kind, units, long_name, definition, source=source)
 
 
 #: The top-level scalars, as attributes of the root: ``key -> kind`` --
@@ -148,13 +148,16 @@ _RELAXATION = {
     "enabled": "flag?", "already_relaxed": "flag?", "n_steps": "int",
     "max_force_eh_bohr": _number(
         "relaxation_max_force_eh_bohr", "raw", "Eh/bohr",
-        "the largest force on a free atom",
-        "at the geometry the Hessian is taken at -- the force the "
-        "relaxation is judged by (engines/vibration.md 4.3)"),
+        "the largest force component on a free atom",
+        "the largest absolute Cartesian component, at the geometry the "
+        "Hessian is taken at -- the force the relaxation is judged by "
+        "(engines/vibration.md 4.3)",
+        source="the engine's forces at that geometry"),
     "max_force_all_atoms_eh_bohr": _number(
         "relaxation_max_force_all_atoms_eh_bohr", "raw", "Eh/bohr",
-        "the largest force on any atom",
-        "held atoms included, at the same geometry"),
+        "the largest force component on any atom",
+        "the largest absolute Cartesian component, held atoms included, "
+        "at the same geometry", source="the engine's forces at that geometry"),
     "converged": "flag?", "warning": "text", "record": "json",
 }
 #: The ``thermo`` block but its grid, as attributes and variables of
@@ -170,10 +173,15 @@ _THERMO = {
     "zpe_eh": _number("zpe_eh", "derived", "Eh", "the zero-point energy",
                       "the harmonic ZPE"),
     "u_vib_eh": _number("u_vib_eh", "derived", "Eh",
-                        "the vibrational internal energy",
-                        "U_vib at the temperature"),
-    "h_eh": _number("h_eh", "derived", "Eh", "the enthalpy",
-                    "H at the temperature, as the regime defines it"),
+                        "the vibrational thermal energy",
+                        "U_vib at the temperature, the zero-point energy "
+                        "excluded"),
+    "h_eh": _number("h_eh", "derived", "Eh", "the enthalpy, as the regime "
+                    "sums it",
+                    "rrho: H at the temperature; vibrational-only: the "
+                    "vibrational sums above the electronic energy, no kT -- "
+                    "not an enthalpy, as the note says (engines/vibration.md "
+                    "4.7)"),
     "s_eh_k": _number("s_eh_k", "derived", "Eh/K", "the entropy",
                       "S at the temperature, as the regime defines it"),
     "g_eh": _number("g_eh", "derived", "Eh", "the free energy",
@@ -184,15 +192,16 @@ _THERMO = {
 #: The thermo grid's curves (`normal_modes.vibrational_thermo_grid`).
 _GRID_CURVES = (
     ("zpe_eh", "Eh", "the zero-point energy", "the harmonic ZPE at this temperature"),
-    ("u_vib_eh", "Eh", "the vibrational internal energy", "U_vib at this temperature"),
-    ("h_eh", "Eh", "the enthalpy", "H at this temperature, as the regime defines it"),
+    ("u_vib_eh", "Eh", "the vibrational thermal energy", "U_vib at this temperature, the zero-point energy excluded"),
+    ("h_eh", "Eh", "the enthalpy, as the regime sums it", "at this temperature: rrho H; vibrational-only the vibrational sums above the electronic energy, not an enthalpy (engines/vibration.md 4.7)"),
     ("s_eh_k", "Eh/K", "the entropy", "S at this temperature, as the regime defines it"),
     ("g_eh", "Eh", "the free energy", "G = H - T*S at this temperature"),
 )
 #: A mode's electronic-structure probe (`engines/vibration.md` § 4.8).
 _ES_SCALARS = (
     ("amplitude_ang", "angstrom", "the displacement amplitude",
-     "how far along the mode the probe displaced, each way"),
+     "the push each way along the mode's display form: its largest "
+     "Cartesian component moves by it (engines/vibration.md 4.8)"),
     ("scf_energy_eq_eh", "Eh", "the SCF energy at equilibrium",
      "E_SCF at the equilibrium geometry"),
     ("scf_energy_minus_eh", "Eh", "the SCF energy at -amplitude",
@@ -430,24 +439,29 @@ def _mode_vars() -> Tuple[Var, ...]:
             "normalised so that the sum over atoms of m |L|^2 is 1, m in "
             "amu: the form intensities and amplitudes pair with (§ 6.3)"),
         Var("eigenvector_display", ("mode", "free_atom", "xyz"), "derived",
-            "1", "the eigenvector for drawing", "max |L| = 1 (§ 6.3)"),
+            "1", "the eigenvector for drawing",
+            "scaled so its largest Cartesian component is 1 (§ 6.3)"),
         Var("zero_point_amplitude_amu12_ang", ("mode",), "derived",
             "amu^1/2 angstrom", "the zero-point amplitude",
             "sqrt(hbar / (2 omega)) in mass-weighted coordinates (§ 6.6)"),
         Var("zero_point_displacement_ang", ("mode", "free_atom", "xyz"),
             "derived", "angstrom", "the zero-point displacement",
             "each atom's displacement at the zero-point amplitude (§ 6.6)"),
-        Var("ir_intensity_km_mol", ("mode",), "raw", "km/mol",
-            "the IR intensity", "as the engine computed it; NaN where not",
-            source="the engine"),
-        Var("raman_activity_a4_amu", ("mode",), "raw", "angstrom^4/amu",
-            "the Raman activity", "as the engine computed it; NaN where not",
-            source="the engine"),
-        Var("dipole_derivative_d_per_ang_amu12", ("mode", "xyz"), "raw",
+        Var("ir_intensity_km_mol", ("mode",), "derived", "km/mol",
+            "the IR intensity", "the orientation average of |dmu/dQ|^2, "
+            "in km/mol (constants.IR_KM_MOL_PER_D2_A2_AMU; "
+            "engines/vibration.md 4.6); NaN where not computed"),
+        Var("raman_activity_a4_amu", ("mode",), "derived", "angstrom^4/amu",
+            "the Raman activity", "Placzek's orientation-averaged activity "
+            "45 a'^2 + 7 gamma'^2 from the polarizability's derivatives "
+            "along the mode (engines/vibration.md 4.6); NaN where not "
+            "computed"),
+        Var("dipole_derivative_d_per_ang_amu12", ("mode", "xyz"), "derived",
             "D/(angstrom amu^1/2)", "the dipole change along the mode",
-            "dmu/dQ, the vector the IR intensity is the orientation average "
-            "of (engines/vibration.md § 4.6); NaN where the engine kept none",
-            source="the engine"),
+            "dmu/dQ: the engine's dipole derivatives dmu/dR projected on "
+            "the canonical eigenvector -- the vector the IR intensity is "
+            "the orientation average of (engines/vibration.md § 4.6); NaN "
+            "where none was kept"),
         Var("ir_active", ("mode",), "derived", "1", "whether IR active",
             "the activity class's IR verdict (§ 6.6); -1 where not computed",
             dtype="i1", flag=True),

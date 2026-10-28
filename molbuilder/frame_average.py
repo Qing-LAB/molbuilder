@@ -58,7 +58,8 @@ class Row:
     one), how a page says it -- its ``words`` and its ``page_unit`` -- and
     what it means, ``means``: the words its maker writes as the row's
     ``note``, so the set says what each number is wherever it is read
-    (`model/structure.md` § 2.2f)."""
+    (`model/structure.md` § 2.2f).  ``text``: a row whose value is a name,
+    never a number."""
     name: str
     where: str
     kind: str
@@ -66,6 +67,7 @@ class Row:
     words: str
     page_unit: Optional[str]
     means: str
+    text: bool = False
 
     @property
     def unit_spelled(self) -> str:
@@ -114,7 +116,7 @@ ROWS: Tuple[Row, ...] = (
         "(sigma sqrt(2 pi)), and sum_f weight_f X_f approximates that "
         "Gaussian's average of a property X -- exactly when X is a "
         "polynomial in q of degree below 2n; a response not smooth over the "
-        "spread, a level crossing E_F, is averaged poorly"),
+        "spread, a level crossing E_F, is averaged poorly", text=True),
     Row("sampling_nodes", "structure", "given", None,
         "Nodes", None,
         "n, the rule's number of nodes, one frame at each -- three "
@@ -126,7 +128,8 @@ ROWS: Tuple[Row, ...] = (
         "masses q is measured with and the mode vector L is normalised "
         "with, sum_A m_A |L_A|^2 = 1.  standard atomic weights: the "
         "isotope-averaged standard atomic weights (chemistry.atomic_mass) "
-        "a molbuilder vibration's deck states, as its result states them"),
+        "a molbuilder vibration's deck states, as its result states them",
+        text=True),
     Row("displacement_ang", "frame", "measured", "angstrom",
         "Displacement", "Å",
         "the frame's plain displacement from frame 0, sqrt(sum_A |R_A - "
@@ -613,14 +616,14 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
     the frames' average at each voltage, each naming the rule it was taken
     at."""
     return tuple(Var(r.name, ("frame",), r.kind, r.unit_spelled, r.words,
-                     _defined(r.means, "model/structure.md 2.2f"),
+                     _defined(r, r.means, "model/structure.md 2.2f"),
                      auxiliary=True)
                  for r in FRAME_ROWS) + tuple(
-        # A STRUCTURE ROW WITH A UNIT, a quantity: a variable of no
-        # dimension (`model/datafiles.md` § 2).
+        # A STRUCTURE ROW'S NUMBER, a variable of no dimension
+        # (`model/datafiles.md` § 2); a name, an attribute.
         Var(r.name, (), r.kind, r.unit_spelled, r.words,
-            _defined(r.means, "model/structure.md 2.2f"))
-        for r in STRUCTURE_ROWS if r.unit) + (
+            _defined(r, r.means, "model/structure.md 2.2f"))
+        for r in STRUCTURE_ROWS if not r.text) + (
         Var("weight_sum", (), "derived", "1", "the frames' weights, summed",
             "sum_f weight_f, checked against 1 within weight_tolerance; the "
             "fill value where the frames state no weights"),
@@ -649,7 +652,7 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
             "is taken at"),
         Var("average_conductance_change_percent", ("bias_v",), "derived",
             "%", "the averaged conductance's change",
-            "100 (<G> - G_0) / G_0, in per cent of frame 0's, <G> as "
+            "100 (<G> - G_f0) / G_f0, G_f0 frame 0's conductance, <G> as "
             "average_conductance_g0 is taken"),
         Var("average_why", ("bias_v",), "state", "",
             "why the frames' average is none",
@@ -663,28 +666,28 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
     )
 
 
-def _defined(means: str, said_in: str) -> str:
-    """A frame row's variable ``definition``: what the row means, and where
-    that meaning is said -- the vocabulary's table, or the frame set."""
-    return (f"{means} ({said_in}; the fill value where the frame states "
-            f"none)")
+def _defined(row: Row, means: str, said_in: str) -> str:
+    """A row's variable ``definition``: what the row means, and where that
+    meaning is said -- the vocabulary's table, or the frame set."""
+    who = "the frame" if row.where == "frame" else "the set"
+    return f"{means} ({said_in}; the fill value where {who} states none)"
 
 
 def with_meanings(variables: Tuple[Any, ...], structure) -> Tuple[Any, ...]:
     """``variables`` -- the data file's table, :func:`data_file_variables`
-    among them -- with each frame row's ``definition`` the meaning the
-    structure's frames write for it (its ``note``, the first frame stating
-    one), the vocabulary's where they write none (`model/datafiles.md` § 2:
-    a cited value keeps what it means)."""
+    among them -- with each row's ``definition`` the meaning the set writes
+    for it (its ``note``: the structure's, or the first frame stating one),
+    the vocabulary's where it writes none (`model/datafiles.md` § 2: a cited
+    value keeps what it means)."""
     from dataclasses import replace
     from .frameset import read
     rows = read(structure) if structure is not None else None
     if rows is None:
         return tuple(variables)
-    notes = {r.name: _note(rows, r.name, "frame") for r in FRAME_ROWS}
-    return tuple(replace(v, definition=_defined(notes[v.name],
-                                                "as the frame set writes it"))
-                 if notes.get(v.name) else v for v in variables)
+    said = {r.name: (r, _note(rows, r.name, r.where)) for r in ROWS}
+    return tuple(replace(v, definition=_defined(
+        said[v.name][0], said[v.name][1], "as the frame set writes it"))
+        if v.name in said and said[v.name][1] else v for v in variables)
 
 
 def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
@@ -695,11 +698,11 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     frame states none, and every row as written in ``frame_rows`` -- the
     masses, the frames' average at each voltage and why it is none there
     (``index`` placing a voltage on ``biases``), the vocabulary's
-    structure rows -- one with a unit a variable of no dimension, the fill
-    value where the set states none; a text or a count an attribute, any
-    other value said as text -- ``info.vibration`` where stated, every row
-    as written, what is said of the weights, their sum and its tolerance,
-    and what the average assumes."""
+    structure rows -- a number a variable of no dimension, the fill value
+    where the set states none or writes no number; a name an attribute, as
+    text -- ``info.vibration`` where stated, every row as written, what is
+    said of the weights, their sum and its tolerance, and what the average
+    assumes."""
     from .frameset import read
     from .ncdata import json_attr
     rows = read(structure) if structure is not None else None
@@ -733,11 +736,10 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     if rows is not None:
         for r in STRUCTURE_ROWS:
             v = rows.value(r.name)
-            if r.unit:
+            if not r.text:
                 values[r.name][...] = _or_nan(v)
             elif v is not None:
-                attrs[r.name] = (v if _number(v) is not None
-                                 or isinstance(v, str) else str(v))
+                attrs[r.name] = str(v)
         info = (structure.info or {}).get(INFO_KEY)
         if isinstance(info, dict):
             for k in ("run", "result_sha256"):

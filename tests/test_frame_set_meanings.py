@@ -20,8 +20,9 @@ _OWN = "a Boltzmann weight at 300 K over the frames' harmonic energies"
 
 def _frames(note=None):
     """Two frames of H2, each stating its ``weight`` with ``note`` as its
-    meaning and its displacement with the vocabulary's, and a structure row
-    the vocabulary does not know."""
+    meaning and its displacement with the vocabulary's; the structure its
+    ``temperature_k`` with ``note``, and a row the vocabulary does not
+    know."""
     from molbuilder.frame_average import ROWS
     from molbuilder.structure import Structure
     means = {r.name: r.means for r in ROWS}
@@ -31,6 +32,7 @@ def _frames(note=None):
         s.set_customized("weight", 0.5, frame=f, note=note)
         s.set_customized("displacement_ang", 0.1 * f, unit="angstrom",
                          frame=f, note=means["displacement_ang"])
+    s.set_customized("temperature_k", 300.0, unit="K", note=note)
     s.set_customized("bond", "H-H", note="the bond the frames stretch")
     return s
 
@@ -47,12 +49,14 @@ def _said(reader, s, name):
                 + definition["columns"] if r["name"] == name)
 
 
+@pytest.mark.parametrize("row", ["weight", "temperature_k"],
+                         ids=["a frame row", "a structure row"])
 @pytest.mark.parametrize("reader", ["data file", "page"])
 @pytest.mark.parametrize("note", [_OWN, None], ids=["the set's", "none"])
-def test_a_cited_weight_says_the_meaning_the_set_writes(reader, note):
+def test_a_cited_row_says_the_meaning_the_set_writes(row, reader, note):
     from molbuilder.frame_average import ROWS
-    vocabulary = next(r.means for r in ROWS if r.name == "weight")
-    said = _said(reader, _frames(note), "weight")
+    vocabulary = next(r.means for r in ROWS if r.name == row)
+    said = _said(reader, _frames(note), row)
     assert (note or vocabulary) in said, said
     if note:
         assert vocabulary not in said, said

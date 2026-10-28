@@ -149,7 +149,8 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("frame", "a frame set's frames", "1"),
     Axis("bias_v", "the voltages computed", "V"),
     Axis("iv_bias_v", "the I-V's voltages", "V"),
-    Axis("energy_ev", "energy relative to the leads' Fermi level", "eV"),
+    Axis("energy_ev", "energy relative to the leads' Fermi level at 0 V",
+         "eV"),
     Axis("spin", "spin channels", ""),
     Axis("lead", "the two leads", ""),
     Axis("region", "molbuilder's regions of the junction", ""),
@@ -207,14 +208,18 @@ UNITS: Dict[str, str] = {
 
 def check_said(var: Var) -> None:
     """A VARIABLE SAYS WHAT IT IS (`model/datafiles.md` § 2): its long name
-    and its definition stated; a number in one of :data:`UNITS`' spellings
-    (``1`` where it has no unit); a text with no unit -- else refused,
-    naming the variable."""
+    and its definition stated; a raw one where it was read from; a number in
+    one of :data:`UNITS`' spellings (``1`` where it has no unit); a text with
+    no unit -- else refused, naming the variable."""
     if not var.long_name.strip() or not var.definition.strip():
         raise ValueError(
             f"variable {var.name} states no "
             f"{'long_name' if not var.long_name.strip() else 'definition'}: "
             f"every value says what it is (model/datafiles.md 2)")
+    if var.kind == "raw" and not var.source.strip():
+        raise ValueError(
+            f"variable {var.name} is raw and states no source: a raw value "
+            f"names where it was read from (model/datafiles.md 2)")
     if var.dtype is str:
         if var.units:
             raise ValueError(

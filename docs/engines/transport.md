@@ -3071,7 +3071,7 @@ part — their rows, masses and average — is laid out by their post-process
 | `current_by_spin_a` | frame, bias_v, spin | raw | the current TBtrans printed for each channel — a non-polarized point's one channel, half the junction's total; the fill value for a point whose energies two runs computed |
 | `iv_kt_ev` · `iv_window_lowest_ev` · `iv_window_highest_ev` | — | given · derived | under the low-bias approximation, the leads' $k_B T$ in the integral — the device run's electronic temperature — and the 0 V transmission's lowest and highest energy it integrates over; NaN where the I–V is TBtrans's own |
 | `weight_sum` · `weight_tolerance` | — | derived · given | where every frame states a weight, their sum and how far from 1 it may be; NaN otherwise |
-| `frequency_cm1` · `temperature_k` · `zero_point_amplitude_amu12_ang` · `max_displacement_ang` · `sigma_amu12_ang` | — | given · derived | a mode's frame set's structure rows that carry a unit, each as the set writes it, with its meaning ([`model/structure.md`](?doc=model/structure.md) § 2.2f); NaN where it writes none |
+| `mode_index_1based` · `frequency_cm1` · `temperature_k` · `zero_point_amplitude_amu12_ang` · `max_displacement_ang` · `sigma_amu12_ang` · `sampling_nodes` | — | given · derived | a mode's frame set's structure rows whose value is a number, each as the set writes it, with its meaning — the set's `note`, the vocabulary's where it writes none ([`model/structure.md`](?doc=model/structure.md) § 2.2f); NaN where it writes none, or writes no number |
 | `iv_current_by_spin_a` | frame, iv_bias_v, spin | derived | each spin's I–V current, a polarized calculation's, as the record states it (`iv.current_up_a`, `current_down_a`); the fill value for a non-polarized one, whose spins carry half the total each |
 | `tbt_k_points` · `tbt_k_method` · `loop_elapsed_s` | frame, bias_v | raw | the transverse k-points the point's TBtrans run used and how they were chosen, and its passes' loop time summed (`model/parse.md` § 5c.1, § 5d.5) |
 | `copied_from` · `shared_from` · `shared_held` · `shared_computed` | frame, bias_v | state | a calculation that reuses a finished one (§ 2a.16): the run a point is a copy of; the finished point whose energies it shares, how many it holds and how many its own run computes — a point not done too |
@@ -3093,13 +3093,13 @@ part — their rows, masses and average — is laid out by their post-process
 | `average_why` · `average_conductance_why` | bias_v | state | why the average is none — at every voltage the reason there is none (one structure, the weights not stated), or the frames this voltage's waits for — and why the averaged conductance or its change is none |
 | `point_state` | frame, bias_v | state | the transmission point's run state, the run door's word (`finished`, `failed`, `pending` …) — beside `done` |
 | `device_state` · `device_detail` · `device_scf_converged` | frame, bias_v | state | the device point's run state and the run door's sentence for it, and whether its SCF converged (1, 0) |
-| `device_energy_ev` · `device_negf_cycles` · `device_dq` | frame, bias_v | raw | the NEGF phase's last energy — never compared across points or calculations (§ 1.1) — how many NEGF cycles ran, and the last one's charge change |
-| `device_charge` | frame, bias_v, charge_part | raw | the last NEGF cycle's charges, column by column, as TranSIESTA printed them |
+| `device_energy_ev` · `device_negf_cycles` · `device_dq` | frame, bias_v | raw | the NEGF phase's last energy — never compared across points or calculations (§ 1.1) — how many NEGF cycles ran, and the last one's `dQ` — the charge its open boundaries did not conserve, every column summed less the neutral count (*The device's charges*) |
+| `device_charge` | frame, bias_v, charge_part | raw | the last NEGF cycle's Mulliken populations — electrons, positive, not a net charge — column by column, as TranSIESTA printed them |
 | `device_d_change_from_0v` | frame, bias_v | derived | $D(V) - D(0\ \mathrm{V})$: the bridge's net Mulliken population at this voltage less the same frame's at 0 V, both the last NEGF cycle's; the fill value where the frame has no finished 0 V point, and at 0 V itself 0 (§ 2a.12, *The device's charges*) |
 | `device_contour_poles` · `device_neq_emin_ev` · `device_neq_emax_ev` · `device_neq_points` | frame, bias_v | raw | the contour TranSIESTA echoed: its equilibrium contour's poles; under a bias, the non-equilibrium line's window and points |
 | `device_scf_cycles` | frame, bias_v | state | how many rows the device point's SCF history holds — the cycles beyond it are the fill value; −1, its own fill, where none ran (0 is a count) |
 | `device_scf_iscf` · `device_scf_energy_ev` · `device_scf_delta_e_ev` · `device_scf_ddmax` · `device_scf_dhmax_ev` · `device_scf_ef_ev` · `device_scf_dq` · `device_scf_vha_ev` · `device_scf_phase` | frame, bias_v, scf_cycle | raw | each SCF row of the device point's run, as SIESTA printed it: its own cycle number, the energy and its change, the density-matrix and Hamiltonian residuals, E_F, and on a NEGF row the charge change and the boundary potential; `phase` `periodic` or `negf` |
-| `device_scf_charge` | frame, bias_v, scf_cycle, charge_part | raw | every NEGF row's charges, column by column, as TranSIESTA printed them |
+| `device_scf_charge` | frame, bias_v, scf_cycle, charge_part | raw | every NEGF row's Mulliken populations, column by column, as TranSIESTA printed them |
 | `device_scf_phases` · `rung_scf_phases` | frame, bias_v · rung | state | each run's phases — periodic, negf — what each had to reach and how it ended (`scf_phases`, JSON) |
 | `rung_copied_from` | rung | state | a calculation that reuses a finished one: the run a once-run rung's newest run is a copy of |
 | `rung_state` · `rung_detail` · `rung_scf_converged` · `rung_energy_ev` · `rung_fermi_ev` · `rung_scf_cycles` | rung | state · raw | each once-run rung's state and the run door's sentence for it, convergence, energy, Fermi level — the device's the zero T(E)'s energies are measured from, the leads' at $\pm eV/2$ from it under bias — and its SCF history's length |
@@ -3127,8 +3127,8 @@ kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
 note with the `frame` and the `bias_v` it is
 about — the voltages the window does not reach, and a frame's own note (its
 0 V transmission not run) with `bias_v` null); wherever the
-structure states rows, the vocabulary's structure rows that carry no unit —
-a text, a count — and `info.vibration` where it states them, every row as written with its meaning
+structure states rows, the vocabulary's structure rows whose value is a
+name — `sampling_rule`, `mass_source` — and `info.vibration` where it states them, every row as written with its meaning
 (`structure_rows`, JSON) — the frames' average's variables each naming in
 its `definition` the rule and weights it was taken with, *Σ_f weight_f
 T_f(E) over the frame set's `sampling_rule` at its `sampling_nodes` frames*,

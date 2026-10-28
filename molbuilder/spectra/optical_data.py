@@ -92,7 +92,7 @@ _SETTINGS_VARS = (
     Var("delta_ang", (), "given", "angstrom",
         "the displacement of the atom that moves most",
         "each displaced frame moves the mode's largest atom by delta: "
-        "dQ = delta / max_k |L_k| (engines/vibration.md 5.11 3)"),
+        "dQ = delta / max_k |L_k|, max_k |L_k| the length of the largest atom's displacement vector (engines/vibration.md 5.11 3)"),
 )
 
 
@@ -130,7 +130,8 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "+1 or -1 along the mode; 0 at frame 0", dtype="i4"),
         Var("dq_amu12_ang", ("frame",), "given", "amu^1/2 angstrom",
             "the displacement along the mode",
-            "dQ = delta / max_k |L_k| in mass-weighted coordinates: the atom "
+            "dQ = delta / max_k |L_k| in mass-weighted coordinates, "
+            "max_k |L_k| the length of the largest atom's displacement vector: the atom "
             "that moves most moves by delta (engines/vibration.md 5.11 3); "
             "NaN at frame 0"),
         Var("position_ang", ("frame", "atom", "xyz"), "raw", "angstrom",
@@ -156,8 +157,10 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "SIESTA, launch to exit, as the call's session log measured it",
             source="the call's session log, its benchmark line"),
         Var("f_sum", ("frame", "spin"), "raw", "1", "the f-sum rule",
-            "the integral of eps2 against the electrons it should count, as "
-            "SIESTA states it -- 1 when every transition is in the range",
+            "SIESTA's Thomas-Reiche-Kuhn check: V times the integral of "
+            "omega eps2(omega) over the range, over 2 pi^2 N_e -- near 1 "
+            "when the interband transitions are in the range; the Drude "
+            "term is left out of eps2",
             source=f"{epsimg}, its header"),
         Var("drude_wp2_ha2", ("frame", "spin"), "raw", "Eh^2",
             "the Drude plasma frequency squared",

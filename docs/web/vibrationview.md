@@ -909,7 +909,8 @@ eigenvector (its largest absolute Cartesian component is 1 — `engines/vibratio
 whatever the user dragged.
 
 **Physical** — the atoms swing by as much as they actually do. The size comes from
-the mode's own frequency, using the mass-weighted eigenvector:
+the mode's own frequency, using the Cartesian eigenvector normalised so
+$\sum_i m_i\lvert L_i\rvert^2 = 1$ (`eigenvector_canonical`):
 
 ```
 zero-point:          Q_rms = √( ħ / 2ω )
