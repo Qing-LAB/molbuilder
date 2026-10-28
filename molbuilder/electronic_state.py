@@ -95,8 +95,8 @@ class Resolved:
     ``source`` is ``stated`` (in the template -- typed, or written there from
     the run a transport calculation cites), ``implied`` (by a stated item),
     ``recorded`` (by the run the structure came out of), ``detected`` (from
-    the structure) or ``rule`` (transport's charge; SIESTA's DFT; a count
-    that can only float, :func:`count_must_float`).
+    the structure) or ``rule`` (the charge a kind fixes; an engine's one
+    method; a count that can only float, :func:`count_must_float`).
     """
     value: Any
     source: str
@@ -265,13 +265,14 @@ def _recorded(struct: Structure) -> Optional[Dict[str, Resolved]]:
 
 def _charge(struct: Structure, cfg: Any, kind: str,
             recorded: Optional[Dict[str, Resolved]]) -> Resolved:
-    """The charge: transport's rule, a stated value (0 included), the run
-    the structure came out of, or the phosphate rule
-    (``model/chemistry.md`` § 1)."""
-    if kind == "transport":
-        return Resolved(0, "rule",
-                        "a transport junction is neutral: its boundaries are "
-                        "open and the leads set the electron number")
+    """The charge: the one the kind fixes (the kind table's ``charge`` -- a
+    transport junction's), a stated value (0 included), the run the
+    structure came out of, or the phosphate rule (``model/chemistry.md``
+    § 1)."""
+    from .kind_table import kind as _kind
+    fixed = _kind(kind).charge
+    if fixed is not None:
+        return Resolved(fixed.value, "rule", fixed.why)
     stated = getattr(cfg, "net_charge", None)
     if stated is not None:
         return Resolved(int(stated), "stated", "stated")
@@ -286,9 +287,14 @@ def _charge(struct: Structure, cfg: Any, kind: str,
 
 
 def _method(cfg: Any, engine: str) -> Resolved:
-    """``method`` is never blank: PySCF's is stated, SIESTA is DFT."""
-    if engine == "siesta":
-        return Resolved("DFT", "rule", "SIESTA is a density-functional code")
+    """``method`` is never blank: the engine's own where its catalogue
+    offers no choice (the engine table's ``method`` -- SIESTA's DFT), else
+    the config's, stated."""
+    from .engine_table import engine as _engine
+    rec = _engine(engine)
+    if rec.method is not None:
+        return Resolved(rec.method, "rule",
+                        f"{rec.words} is a {rec.method} code")
     return Resolved(cfg.method, "stated", "stated")
 
 

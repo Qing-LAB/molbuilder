@@ -28,6 +28,13 @@ seam = "molbuilder.jobset.engines:siesta_seam"
 computes_in = "cell"
 # A run is MPI ranks, each with its threads.
 one_process = false
+# Its method, where its catalogue offers no choice: a density-functional
+# code (the electronic state's `method`, science/chemistry-correctness.md
+# § 2a).
+method = "DFT"
+# Whether it has a benchmark lane: a benchmark's measurement pins name its
+# settings (execution/job-request.md § 3.4).
+benchmark = true
 
 [pyscf]
 words = "PySCF"
@@ -41,3 +48,5 @@ computes_in = "free space"
 # ONE process -- a Python script with OpenMP threads -- so its request asks
 # one task.
 one_process = true
+# No benchmark lane: the measurement pins name SIESTA's settings.
+benchmark = false

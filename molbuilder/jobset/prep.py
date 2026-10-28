@@ -479,10 +479,9 @@ def _structure_for(task, base: Path, pset):
     # whose input is stated relaxed, as THIS stage resolves it (``pset``,
     # the stage's own values over the template's -- the door every other
     # reader of `already_relaxed` asks).
-    from ..cell import entering, keeps_engine_frame
+    from ..cell import entering
     relaxed = bool(getattr(pset[0].render_config(), "already_relaxed", False))
-    return entering(struct, keep_engine_frame=keeps_engine_frame(
-        task.calculation, relaxed))
+    return entering(struct, keep_engine_frame=relaxed)
 
 
 # --------------------------------------------------------------------- #

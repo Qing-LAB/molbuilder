@@ -5,8 +5,10 @@ runs on (`execution/architecture.md` § 3.3).
 **What differs between kinds is a field here, never a branch** (A18): a
 kind's name as a person reads it, its rungs' roles and what each computes --
 a kind with roles has a linked ladder, one without an independent one
-(`job-system.md` § 5.4) -- the results it gives, and what its description
-carries beyond every kind's fields; and on each engine it runs on, the
+(`job-system.md` § 5.4) -- the results it gives, what its description
+carries beyond every kind's fields, the charge it fixes, why it takes no
+benchmark, and the tab that hands it over or where it describes itself;
+and on each engine it runs on, the
 engine's own name for it, the shape it fixes and why, how its stages play
 its roles (its rungs, every one in order, where a stage's role is its
 name), and the code parts the pair names -- its run of points, its rung's
@@ -44,7 +46,8 @@ COMPUTES = ("scf", "product")
 #: extends.
 DESCRIPTION_FIELDS = ("swap_electrodes", "bias", "reuses")
 
-_KIND_KEYS = ("noun", "roles", "results", "description", "on")
+_KIND_KEYS = ("noun", "roles", "results", "description", "charge",
+              "no_benchmark", "handover", "on")
 _PART_KEYS = ("words", "shape", "why", "stage_roles", "points", "rung",
               "inputs", "gather")
 
@@ -85,6 +88,13 @@ class Description:
     cites: Optional[str] = None
     #: The fields only it may state (:data:`DESCRIPTION_FIELDS`).
     carries: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FixedCharge:
+    """The charge a kind fixes, and why."""
+    value: int
+    why: str
 
 
 @dataclass(frozen=True)
@@ -143,6 +153,16 @@ class CalculationKind:
     results: Tuple[Result, ...] = ()
     #: What its description carries beyond every kind's fields.
     description: Description = Description()
+    #: The charge it fixes, with why, or ``None``: its charge is resolved
+    #: (`electronic_state`).
+    charge: Optional[FixedCharge] = None
+    #: Why it takes no benchmark, or ``None``: it takes one where its
+    #: engine has a benchmark lane.
+    no_benchmark: Optional[str] = None
+    #: The tab that hands it over to Task setup, by its key in
+    #: `web/tabs.py` -- or ``None``: it describes on its own tab, nothing
+    #: awaiting.
+    handover: Optional[str] = None
     #: Its part on each engine it runs on, by the engine's name.
     parts: Mapping[str, KindOnEngine] = None  # type: ignore[assignment]
 
@@ -265,6 +285,16 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     if "cites" in desc and not (isinstance(desc["cites"], str)
                                 and desc["cites"]):
         _refuse(where, "description.cites is the slot's name")
+    charge = body.get("charge")
+    if charge is not None and not (
+            isinstance(charge, dict) and set(charge) == {"value", "why"}
+            and isinstance(charge["value"], int)
+            and not isinstance(charge["value"], bool)):
+        _refuse(where, "charge is {value, why} -- the charge it fixes, a "
+                       "whole number, and why")
+    for key in ("no_benchmark", "handover"):
+        if key in body and not (isinstance(body[key], str) and body[key]):
+            _refuse(where, f"{key} is a sentence")
     on = body.get("on") or {}
     if not on:
         _refuse(where, "no part on any engine -- the engines it runs on are "
@@ -280,6 +310,11 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
                            description=Description(
                                cites=desc.get("cites"),
                                carries=tuple(carries)),
+                           charge=(FixedCharge(value=charge["value"],
+                                               why=str(charge["why"]))
+                                   if charge is not None else None),
+                           no_benchmark=body.get("no_benchmark"),
+                           handover=body.get("handover"),
                            parts=parts)
 
 
@@ -363,6 +398,6 @@ def part(ref: str, *, record: str, key: str) -> Any:
 
 
 __all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "PART_REFS",
-           "Description", "carrying", "KindTableError", "Role", "Result",
+           "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "KindOnEngine", "CalculationKind", "kinds", "kind", "pair",
            "role_set", "part_of", "part"]

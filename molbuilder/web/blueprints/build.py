@@ -1055,19 +1055,22 @@ def api_task_setup_handover():
     calculation = str(body.get("calculation") or "")
     if not engine or not calculation:
         return _unstated(engine=engine, calculation=calculation)
-    if engine not in ("siesta", "pyscf"):
+    refused = _not_in_tables(calculation=calculation, engine=engine)
+    if refused:
+        return refused
+    from molbuilder.kind_table import kind as _kind
+    _sender = _kind(calculation).handover
+    if _sender is None:
+        # NO HAND-OVER FOR A KIND THAT DESCRIBES ON ITS OWN TAB (the kind
+        # table's ``handover``, absent; user ruling 2026-08-29 for the
+        # composite): nothing is awaiting -- its stages, shape and identity
+        # are fixed by design -- so this door refuses by name.
         return jsonify({"ok": False,
-                        "error": f"unknown engine {engine!r}"}), 400
-    if calculation == "transport":
-        # NO HAND-OVER FOR THE COMPOSITE (user ruling 2026-08-29):
-        # nothing is awaiting -- the stages, the shape and the identity
-        # are all fixed by design -- so the Transport tab DESCRIBES
-        # directly through its own door and this one refuses by name.
-        return jsonify({"ok": False,
-                        "error": "transport describes on its own tab "
-                                 "(POST /api/transport/describe writes "
-                                 "the whole task.json -- nothing is "
-                                 "awaiting)"}), 400
+                        "error": f"{_kind(calculation).with_article} "
+                                 f"describes on its own tab -- nothing is "
+                                 f"awaiting"}), 400
+    from molbuilder.web.tabs import TABS
+    _sender = next(t["label"] for t in TABS if t["key"] == _sender)
 
     try:
         struct = _struct_from_body(body)
@@ -1204,10 +1207,9 @@ def api_task_setup_handover():
     # engine's origin is not carried into the calculation, so a flush face
     # it left is not this calculation's.  The pair is written as given, its
     # origin's record with it.
-    from molbuilder.cell import entering, keeps_engine_frame
+    from molbuilder.cell import entering
     struct, struct_notices = for_writing(struct, judged_as=lambda s: entering(
-        s, keep_engine_frame=keeps_engine_frame(
-            calculation, getattr(cfg, "already_relaxed", False))))
+        s, keep_engine_frame=bool(getattr(cfg, "already_relaxed", False))))
     try:
         # ``<label>.source.xyz`` -- the dotted segment is the reservation
         # (`job-contracts.md` § 6.3): every identity is validated
@@ -1256,9 +1258,7 @@ def api_task_setup_handover():
         # should not need a document open beside it to be understood.
         # The SENDER is the calculation kind's tab (E-B9): both tabs post
         # through the same shared door (lib/task-handover.js).
-        "_what":     f"A hand-over from the "
-                     f"{'Spectrum' if calculation == 'vibration' else 'Structure-optimization'} "
-                     f"tab, not a "
+        "_what":     f"A hand-over from the {_sender} tab, not a "
                      "description. It carries the parameters (in the .template.toml "
                      "beside it) plus what this calculation is OF. It is missing "
                      + " and ".join(f"`{k}`" for k in awaiting)
@@ -2990,12 +2990,17 @@ def _folder_kind(task, handover):
     """``(calculation, engine)`` of the folder's description, or of the
     hand-over it holds before one -- the kind and engine the folder answer's
     kind-decided parts ask with (`web/task-setup.md` § 4, § 11.1); ``None``
-    when there is neither to read."""
+    when there is neither to read, or the hand-over names a kind on an
+    engine the kind table does not hold."""
     if hasattr(task, "stages"):
         return str(task.calculation), str(task.engine)
     if isinstance(handover, dict) and "error" not in handover:
-        return (str(handover.get("calculation", "")),
-                str((handover.get("engine") or {}).get("name", "")))
+        # A HAND-OVER NAMING A PAIR THE KIND TABLE DOES NOT HOLD answers
+        # none of the kind-decided parts: its own reader refuses it.
+        from molbuilder.kind_table import pair
+        got = (str(handover.get("calculation", "")),
+               str((handover.get("engine") or {}).get("name", "")))
+        return got if pair(*got) is not None else None
     return None
 
 

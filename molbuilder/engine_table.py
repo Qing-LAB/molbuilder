@@ -21,7 +21,7 @@ import tomllib
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 #: The file, beside the parameter catalogue.
 TABLE_FILE = Path(__file__).resolve().parent / "data" / "engine_table.toml"
@@ -30,9 +30,11 @@ TABLE_FILE = Path(__file__).resolve().parent / "data" / "engine_table.toml"
 #: molecule in free space whatever the cell.
 COMPUTES_IN = ("cell", "free space")
 
-#: The keys an engine's table states, each required.
+#: The keys an engine's table states, each required ...
 _KEYS = ("words", "identity_field", "config", "seam", "computes_in",
-         "one_process")
+         "one_process", "benchmark")
+#: ... and those it states where it has one.
+_OPTIONAL = ("method",)
 
 
 class EngineTableError(ValueError):
@@ -57,6 +59,12 @@ class Engine:
     computes_in: str
     #: Whether a run is one process with threads, its request one task.
     one_process: bool
+    #: Whether it has a benchmark lane -- a benchmark's measurement pins
+    #: name its settings.
+    benchmark: bool
+    #: Its method, where its catalogue offers no choice -- SIESTA's DFT --
+    #: else ``None``: the config states it.
+    method: Optional[str] = None
 
     @property
     def free_space(self) -> bool:
@@ -70,7 +78,7 @@ def _engine(name: str, body: object) -> Engine:
     where = f"{TABLE_FILE.name} [{name}]"
     if not isinstance(body, dict):
         raise EngineTableError(f"{where} is not a table")
-    unknown = sorted(set(body) - set(_KEYS))
+    unknown = sorted(set(body) - set(_KEYS) - set(_OPTIONAL))
     missing = [k for k in _KEYS if k not in body]
     if unknown or missing:
         raise EngineTableError(
@@ -82,13 +90,16 @@ def _engine(name: str, body: object) -> Engine:
         raise EngineTableError(
             f"{where}: computes_in {body['computes_in']!r} is not one of "
             f"{', '.join(COMPUTES_IN)}")
-    if not isinstance(body["one_process"], bool):
-        raise EngineTableError(f"{where}: one_process is true or false")
+    for key in ("one_process", "benchmark"):
+        if not isinstance(body[key], bool):
+            raise EngineTableError(f"{where}: {key} is true or false")
     return Engine(name=name, words=str(body["words"]),
                   identity_field=str(body["identity_field"]),
                   config=str(body["config"]), seam=str(body["seam"]),
                   computes_in=str(body["computes_in"]),
-                  one_process=bool(body["one_process"]))
+                  one_process=bool(body["one_process"]),
+                  benchmark=bool(body["benchmark"]),
+                  method=body.get("method"))
 
 
 @lru_cache(maxsize=1)

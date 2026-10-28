@@ -394,21 +394,26 @@ def bench_refusal(engine: str, calculation: str):
     gate, the bench's own assembly (:func:`bench_inputs`, asked first,
     before any machine is read), and the Task setup tab -- a description's
     and a hand-over's -- which offers the Measure step only where `prep
-    bench` would take it (`job-system.md` § 5.3)."""
-    if calculation == "transport":
-        return ("a transport calculation has no benchmark sweep: its "
-                "parameters come from its own template and each rung's run "
-                "card, and its one axis is the bias list in task.json "
-                "(engines/transport.md 2a.10).")
+    bench` would take it (`job-system.md` § 5.3) -- from the two tables:
+    the kind's ``no_benchmark``, and the engine's ``benchmark`` lane."""
+    from ..engine_table import engine as _engine
+    from ..kind_table import kind as _kind
+    rec = _kind(calculation)
+    if rec.no_benchmark:
+        return (f"{rec.with_article} has no benchmark sweep: "
+                f"{rec.no_benchmark}.")
     # THE SEAM REFUSAL, BY NAME (E-J1).  The bench lane speaks SIESTA's
     # vocabulary today: the measurement pins name SiestaConfig fields
     # (`max_scf_iter`, `restart`, ...), and the GPU question is read under
     # SIESTA's `use_gpu`, so another engine's sweep could silently
     # enumerate a CPU grid (`engines/stages.md` § 6.8's recorded hazard).
-    if str(engine) != "siesta":
+    if not _engine(str(engine)).benchmark:
+        from ..engine_table import engines as _engines
+        lanes = " and ".join(_engine(e).words for e in _engines()
+                             if _engine(e).benchmark)
         return (f"this description's engine is {engine!r}, and the "
-                f"benchmark lane only speaks SIESTA today: its measurement "
-                f"pins (a capped-SCF probe run) name SIESTA settings, so a "
+                f"benchmark lane only speaks {lanes} today: its measurement "
+                f"pins (a capped-SCF probe run) name {lanes} settings, so a "
                 f"{engine} bench would measure nothing meaningful.  "
                 f"Benchmark support for other engines is a recorded design "
                 f"(execution/job-request.md § 3.4); for now, size the run from "

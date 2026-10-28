@@ -1125,7 +1125,7 @@ def test_the_handover_door_refuses_transport_by_name(web_client):
         engine="siesta", calculation="transport", name="T",
         junction=_T_CITE, bias=[0.0]))
     assert r.status_code == 400
-    assert "/api/transport/describe" in r.get_json()["error"]
+    assert "describes on its own tab" in r.get_json()["error"]
 
 
 def test_describe_attempt_stays_inside_the_tree(web_client):

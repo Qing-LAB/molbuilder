@@ -25,6 +25,12 @@
 # citation); `carries`, the fields only it may state -- `bias` stated
 # whenever carried, its voltages a list from 0.0.
 #
+# A kind's `handover`: the tab that hands it over to Task setup, by its key
+# in `web/tabs.py` -- with none, it describes on its own tab, nothing
+# awaiting.  Its `charge` {value, why}: the charge it fixes, where it fixes
+# one, and why.  Its `no_benchmark`: why it takes no benchmark, where it
+# takes none.
+#
 # A part's `words`: the engine's own name for the kind, where it has one --
 # the program that runs it on that engine.
 #
@@ -38,6 +44,7 @@
 
 [optimization]
 noun = "optimization"
+handover = "structure-optimization"
 
 [optimization.on.siesta]
 
@@ -46,6 +53,7 @@ noun = "optimization"
 
 [vibration]
 noun = "vibration"
+handover = "spectrum-calculation"
 roles = [
     { name = "relaxation",      computes = "scf" },
     { name = "force_constants", computes = "scf" },
@@ -79,6 +87,9 @@ stage_roles = ["force_constants"]
 
 [transport]
 noun = "transport calculation"
+# No `handover`: its stages, shape and identity are fixed, so it describes
+# on its own tab (POST /api/transport/describe), nothing awaiting.
+no_benchmark = "its parameters come from its own template and each rung's run card, and its one axis is the bias list in task.json (engines/transport.md 2a.10)"
 roles = [
     { name = "seed",         computes = "scf" },
     { name = "electrode_L",  computes = "scf" },
@@ -86,6 +97,10 @@ roles = [
     { name = "device",       computes = "scf" },
     { name = "transmission", computes = "product" },
 ]
+
+[transport.charge]
+value = 0
+why = "a transport junction is neutral: its boundaries are open, so the electrodes' chemical potentials set its electron number"
 
 [transport.description]
 # Its relaxed junction, cited (engines/transport.md § 3.1); the electrode

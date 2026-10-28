@@ -578,10 +578,14 @@ file and the key.
   voltages and may extend a finished calculation — what its identity is made
   of, and the label its rungs' files are named on where a rung has its own (a
   lead's);
-- the checks it asks of its description and its structure;
-- which tab hands it over to Task setup, or that it describes on its own tab;
-- whether a structure stated relaxed keeps the frame its engine computed it
-  in.
+- the charge it fixes, where it fixes one, and why — a transport junction is
+  neutral — read by the electronic state, and by the chemistry check, which
+  refuses a stated other;
+- why it takes no benchmark, where it takes none — a transport
+  calculation's one axis is its bias list;
+- which tab hands it over to Task setup (`web/tabs.py`'s key), or, with
+  none, that it describes on its own tab, nothing awaiting (a transport
+  calculation).
 
 **Its part on each engine it runs on** says what the pair decides:
 
@@ -597,7 +601,6 @@ file and the key.
 - for a linked kind whose rungs take inputs, which rung hands which file to
   which (a part) and the gather that takes them at a first launch (a part);
 - the builder of its rung, for a pair with steps of its own (a part);
-- whether it takes a benchmark, or why not;
 - what `summarize` adds up for it (a part) — a transport calculation's I–V, a
   SIESTA vibration's displacement sweep;
 - the stages a description of it may no longer hold, with the way out
@@ -618,10 +621,13 @@ by the one door, in one sentence naming the engines it runs on.
   [`script-preparation.md`](?doc=execution/script-preparation.md) § 4);
 - what it computes in — a molecule in free space, whatever the structure's
   cell (PySCF), or the structure's cell;
+- its method, where its catalogue offers no choice — SIESTA is a
+  density-functional code;
 - whether a run is one process with threads (PySCF) or ranks;
 - what its run script runs and how — its launch line, its threads, the step
   after the engine, the environment a GPU run activates;
-- its stage presets, and whether it has a benchmark lane.
+- its stage presets, and whether it has a benchmark lane — the measurement
+  pins of a benchmark name its settings.
 
 **A part that is code is named, and lives on the floor that resolves it.** A
 record names each as `module:NAME`, and the floor that asks resolves it — the
@@ -645,7 +651,16 @@ the record and the key.
   `config/pyscf.py`, `validation/siesta.py`, `validation/pyscf.py`,
   `parse/engines/`, `parse/coords/`;
 - **a kind's own modules choose by engine, and refuse another kind at their
-  doors** — `transport/`, and the vibration's `spectra/`.
+  doors** — `transport/`, and the vibration's `spectra/`;
+- **the electronic state's rules about two settings together, by engine** —
+  the count of unpaired electrons SIESTA (and TranSIESTA on a transport
+  calculation) cannot hold under a treatment
+  (`electronic_state.count_must_float`), and SIESTA's odd count under
+  restricted, run half-filled (`validation/chemistry`) — a rule of two
+  settings is a check, not a choice set ([`engines/template.md`](?doc=engines/template.md)
+  § 6.3a), and these are the state's own science, kept beside its
+  capability table ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+  § 2a.3).
 
 Shared code — every other module — compares no kind's or engine's name (A18):
 it asks the record.

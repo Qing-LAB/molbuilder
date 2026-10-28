@@ -275,30 +275,30 @@ def check_electronic_state(struct: Structure, cfg, *,
     if (calculation not in _kinds()
             or engine not in _kind(calculation).engines):
         return []
-    out = _transport_charge(cfg) if calculation == "transport" else []
+    fixed = _kind(calculation).charge
+    out = _charge_fixed(cfg, _kind(calculation)) if fixed is not None else []
     if not every_label_resolves(struct):
         return out
     st = electronic_state(struct, cfg, kind=calculation)
     # The charge's own advisory is a separate fact from the spin's, so it
-    # rides beside whichever spin finding holds -- except on a transport
-    # calculation, whose charge is 0 by rule and refused when stated (ES7):
-    # advice to state one there would be advice this family refuses.
+    # rides beside whichever spin finding holds -- except on a kind that
+    # fixes its charge, refused when stated (ES7): advice to state one
+    # there would be advice this family refuses.
     return (out + _spin_findings(struct, st, engine, calculation)
-            + _omm_spin(cfg, st, engine)
+            + _omm_spin(cfg, st)
             + (_check_peptide_protonation(struct, st.net_charge)
-               if calculation != "transport" else []))
+               if fixed is None else []))
 
 
-def _omm_spin(cfg, st, engine: str) -> List[Issue]:
+def _omm_spin(cfg, st) -> List[Issue]:
     """SIESTA's OMM solver runs a spin-polarized density only with the spin
     held: SIESTA 5.4.2 stops a polarized OMM run with no ``Spin.Fix`` at
     startup (`Src/m_dminim.F90`: *"OMM for spin unpolarized calculations
     only supports fixed spin!"*).  So OMM takes restricted, or unrestricted
     with a stated count -- refused here, before the run, never at the
-    engine's start."""
+    engine's start.  Only a SIESTA config holds a solution method."""
     from ..electronic_state import FREE
-    if (engine != "siesta"
-            or str(getattr(cfg, "solution_method", "") or "") != "OMM"
+    if (str(getattr(cfg, "solution_method", "") or "") != "OMM"
             or st.spin_treatment.value == "restricted"
             or (st.spin_treatment.value == "unrestricted"
                 and st.pinned is not None)):
@@ -315,39 +315,25 @@ def _omm_spin(cfg, st, engine: str) -> List[Issue]:
         "config.solution_method")]
 
 
-def _transport_charge(cfg) -> List[Issue]:
-    """ES7: a transport calculation carries no net charge.
+def _charge_fixed(cfg, kind) -> List[Issue]:
+    """ES7: a kind that fixes its charge carries no other -- a transport
+    calculation is neutral (the kind table's ``charge``).
 
-    The one place that reads the STATED charge of a transport config: the
-    state's rule makes the junction neutral (``electronic_state._charge``),
-    so a value in the template would otherwise be dropped without a word.
-
-    `engines/transport.md` 2a.7 defers net charge and gating, and the reason
-    is the boundary condition: a transport calculation is OPEN, so the
-    device's electron number is set by the electrodes' chemical potentials
-    and found by the contour integration rather than fixed by the deck --
-    and a lead is bulk metal that must stay neutral, because charging it
-    moves the Fermi level every downstream stage is measured against.  A
-    config can still carry a value -- a caller building it directly.
-    Silently neutralising someone's
-    charged junction is the defect; saying so is the fix.
-    """
+    The one place that reads the STATED charge of such a config: the
+    state's rule fixes it (``electronic_state._charge``), so a value in the
+    template would otherwise be dropped without a word -- silently
+    neutralising someone's charged junction is the defect; saying so is the
+    fix (`engines/transport.md` 2a.7 defers net charge and gating)."""
+    fixed = kind.charge
     charge = getattr(cfg, "net_charge", None)
-    if not charge:
+    if charge is None or int(charge) == fixed.value:
         return []
     return [Issue(
         "error",
-        f"net_charge = {int(charge):+d}, and a transport calculation "
-        f"cannot carry one.  Its boundaries are OPEN: the device's "
-        f"electron count is set by the electrodes' chemical potentials "
-        f"and found by the contour integration, not fixed by the deck, "
-        f"and the leads are bulk metal that must stay neutral -- a "
-        f"charged lead moves the Fermi level every stage is measured "
-        f"against.  Net charge and gating are deferred by ruling "
-        f"(engines/transport.md 2a.7); a gated or electrochemical "
-        f"junction is separate work.  Remove net_charge from this "
-        f"calculation's template, or relax the charged species as an "
-        f"OPTIMIZATION, where the keyword is honoured.",
+        f"net_charge = {int(charge):+d}, and {kind.with_article} carries "
+        f"{fixed.value:+d} -- {fixed.why}.  Net charge and gating are "
+        f"deferred by ruling (engines/transport.md 2a.7).  Remove "
+        f"net_charge from this calculation's template.",
         "config.net_charge")]
 
 

@@ -117,7 +117,7 @@ def test_the_engine_table_is_the_file_catalogue_s_list(tmp_path, monkeypatch):
     text = engine_table.TABLE_FILE.read_text() + (
         '\n[orca]\nwords = "ORCA"\nidentity_field = "x"\n'
         'config = "m:C"\nseam = "m:s"\ncomputes_in = "cell"\n'
-        'one_process = true\n')
+        'one_process = true\nbenchmark = false\n')
     table = tmp_path / "engine_table.toml"
     table.write_text(text)
     monkeypatch.setattr(engine_table, "TABLE_FILE", table)
