@@ -296,6 +296,86 @@ relaxation record is the one reader's, written by the Results tab's export
 (V1.31, closed 2026-09-29), and a PySCF run's level of theory has no reader yet
 ([`pyscf.md`](?doc=engines/pyscf.md) § 2; plan § 5w K18).
 
+### 2.2a A structure relaxed under other settings — the force it shows, and what that force does *(user, 2026-10-28)*
+
+**Why a relaxed structure shows a force here.** A force belongs to the
+geometry *and* to the settings that compute it: the k-points, the mesh
+cutoff, the reach of the basis orbitals (`PAO.EnergyShift`), the functional.
+A relaxation leaves the atoms at rest under its own settings. The vibration
+computes the forces again under its own (the reference step, § 2.2), and
+where the two differ, the same coordinates are no longer at rest. Measured on
+the AuBDTAu junction — the person's vibration of 2026-10-24, its 20 free atoms
+the molecule and the eight gold atoms at its two contacts:
+
+| | the relaxation | the vibration |
+|---|---|---|
+| k-points | 5×5×1 | 1×1×1 |
+| `MeshCutoff` | 400 Ry | 300 Ry |
+| `PAO.EnergyShift` | 0.005 Ry | 0.01 Ry |
+| largest force on the free atoms, the same coordinates | 0.0047 eV/Å | 0.38 eV/Å |
+
+The force sits at the contacts: 0.31–0.38 eV/Å on the gold atoms bonded to
+sulfur and 0.26 eV/Å on each sulfur, all along z; at most 0.13 eV/Å on a
+carbon and 0.15 eV/Å on a hydrogen. The gate names the settings that differ
+before the run (§ 2.2, *a different level of theory*), and the finish reports
+the force against the tolerance.
+
+**What the force itself does to the force constants: nothing.** SIESTA keeps
+the forces of the unmoved reference step and subtracts them from the forces
+of every nudge (`Src/ofc.f90`), and the finish averages the two sides of each
+nudge (`_two_sided_mean`, `parse/engines/siesta_fc.py`). The force constants
+are the curvature of the energy at the geometry as given; the leftover force
+is not in them.
+
+**What the force says: how far the geometry is from rest under the
+vibration's settings — and that is what moves the frequencies.** The
+curvature is taken where the atoms are, not where the vibration's settings
+would bring them to rest, and a curvature changes as the atoms move. Both
+are sized from the same run's own files:
+
+- *How far.* The run's force constants and its leftover force give the step
+  to rest, $\Delta x = H^{-1}F$: the ring's C–C bonds change by at most
+  0.001 Å, C–H by 0.003–0.004 Å, C–S by 0.010–0.012 Å, and Au–S by −0.02 to
+  +0.09 Å; along the softest motions the whole molecule tilts and slides by up
+  to 0.2 Å without changing a bond.
+- *How much the frequencies move over that step.* The two sides of a nudge
+  differ by how the curvature changes along it. From them, over the step
+  along the stiff motions (every mode above 150 cm⁻¹; no atom moves more
+  than 0.019 Å), every mode above 150 cm⁻¹ moves by −3.9 % to +1.6 %: the
+  ring stretches at 1300–1530 cm⁻¹ by under 1 %, the C–H stretches by
+  +1.3 to +1.6 % (+40 to +48 cm⁻¹). The one exception is a contact mode at
+  327 cm⁻¹, by −11 %. Each mode keeps its shape (its overlap with itself
+  0.75–1.00). The 30 modes below 150 cm⁻¹ — the gold, and the molecule's
+  tilts — move by 0.6 cm⁻¹ in the median, but for the two softest (35 and
+  52 cm⁻¹) the estimated change exceeds the curvature itself: they are
+  fragile, and these numbers say nothing more about them. This is an estimate,
+  not a run: the file holds the curvature's change along each nudged
+  coordinate, not the cross terms among three different ones.
+
+**Which modes are infrared- and Raman-active.** Which modes light sees is
+set mostly by the shape of the molecule and of each mode, and neither
+changes. The geometry is the one given — the BDT in it nearly centrosymmetric:
+inverted through its centre, no atom misses by more than 0.07 Å — and the
+mode shapes above hold. The heights are a separate matter: the infrared (from
+the charges) and the Raman (from the optical calls) are computed under the
+vibration's settings, and how much they move under the relaxation's has not
+been measured.
+
+**What is not measured — the settings' own effect.** Everything above
+compares points under the vibration's settings. How far the curvature under
+1×1×1 / 300 Ry / 0.01 Ry differs from the curvature under 5×5×1 / 400 Ry /
+0.005 Ry at the same geometry is measured only by taking the force constants
+under both. The leftover force shows where the two disagree: at the
+gold–sulfur contacts, not inside the ring.
+
+**For a frame set feeding transport** (§ 5.10 ③,
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.9): frame 0 is the
+geometry as given, and the transport computes under its own settings. Where
+those are the relaxation's — 5×5×1 / 400 Ry / 0.005 Ry on AuBDTAu — frame 0
+is at rest for the transport, and relaxing first under the vibration's
+settings would move it off that point. Whether to relax is the person's
+choice, the box of § 2.2.
+
 ### 2.3 Held atoms travel with the structure, never as a form field
 
 Which atoms are held is a fact about the **structure**: the `frozen_atoms`
@@ -1660,7 +1740,10 @@ surface.** A junction study is a chain: relax → find the vibrations →
 displace along one → compute transport. Done in one program, every step sees
 the same pseudopotentials, the same numerical orbitals, the same functional,
 the same slab and k-points; done in another, the mode displaced along is not a
-mode of the system the transport runs through. And the modes differ in the way
+mode of the system the transport runs through. One program is not by itself
+one set of settings: a vibration under lighter settings than the relaxation
+and the transport shows a leftover force at the relaxed geometry, and what
+that force does and does not change is § 2.2a. And the modes differ in the way
 that matters — a mode of BDT on gold includes the Au–S interface stretching,
 `Au ⟷ S — C₆H₄ — S ⟷ Au`, which is what modulates the electrode–molecule
 coupling and which an isolated-molecule calculation cannot produce.
