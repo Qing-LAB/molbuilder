@@ -456,7 +456,8 @@ Optical.PolarizationType  polarized
 ```
 
 with `Optical.Mesh` (its k-points), `Optical.NumberOfBands` (all bands by
-default) and `Optical.Energy.Maximum` (10 Ry by default). In SIESTA's words:
+default) and `Optical.Energy.Maximum` (SIESTA's default 10 Ry; molbuilder
+writes 3 Ry — *The cutoff*, below). In SIESTA's words:
 
 - `OpticalCalculation true`, with `Optical.PolarizationType polarized` and
   `Optical.Vector` $\hat e$: the imaginary part of the dielectric function for
@@ -518,6 +519,46 @@ constant. (The measured Raman intensity carries, besides the polarizability,
 a laser-dependent factor and a temperature factor; molbuilder reports the
 strength, on both engines, and applies neither — decided 2026-10-26,
 [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 13, M4-d.)
+
+**The cutoff — which pairs are computed, and what it changes** *(measured
+2026-10-28; the user: "go ahead with 3 Ry")*. `Optical.Energy.Maximum` is
+the top of the photon-energy axis the calculation runs on — not a field, and
+not an energy given to the molecule: no field is applied (above). A pair of
+states whose gap lies above it is skipped — SIESTA computes no dipole element
+for it (`Src/transition_rate.F:250`, `Src/optical.F:566`) — and the spectrum
+is written up to it. Each pair adds to $\alpha(\omega)$ its oscillator
+strength over $\Delta\varepsilon^2-\omega^2$ (atomic units), so at a
+visible laser a pair weighs about one over its gap squared: a pair at 40 eV
+counts about a four-hundredth of one at 2 eV for the same strength. And the
+pairs far up are not a molecule's: a localized basis has no continuum, a DZP
+basis describes optical properties reasonably below about 10 eV and a more
+complete one to about 20 eV [SiestaOptical2021], and its empty states above
+are artefacts of the confined orbitals — CO₂'s DZP basis, the highest 116 eV
+above $E_F$.
+
+Measured on our runs, read through molbuilder's own reader and its
+Kramers–Kronig integral (`spectra.raman.eps1_minus_one`), the spectrum cut at
+each energy against the full 10 Ry:
+
+| | where the spectrum ends | cut at 2 Ry | 3 Ry (41 eV) | 5 Ry (68 eV) |
+|---|---|---|---|---|
+| CO₂, $\alpha$ at 633 nm | 126 eV | −6.4 % | −1.1 % | −0.12 % |
+| CO₂, $\partial\alpha/\partial Q$, 1250 cm⁻¹, at 633 nm | — | +0.05 % | −0.34 % | −0.06 % |
+| a toy junction (H, periodic), $\partial\alpha/\partial Q$, 2548 cm⁻¹ | 34 eV | +0.17 % | 0.00 % | 0.00 % |
+| H₂, $\alpha$ at 633 nm | 65 eV | −0.05 % | −0.05 % | 0.00 % |
+
+The static values move the same way. **molbuilder writes 3 Ry**: the Raman
+derivative within 0.4 % of 10 Ry on every run measured — far inside what the
+method's own approximations (independent states, no local field, a DZP
+basis) leave — while the cost falls: in CO₂, half the pairs SIESTA computes
+at 10 Ry lie between 41 and 136 eV (from its eigenvalues, `<label>.EIG`), the
+optical step was 58 % of the call (9.7 of 16.7 s), and each spectrum file is
+30 % of the size. A person raises it for a basis with many more empty states,
+or to check a result against it. **The f-sum in the `.EPSIMG` header reads
+lower under a cutoff, by design**: it weighs each pair by its energy, so the
+pairs the cutoff drops are the ones it counts most — CO₂'s, 0.92 at 10 Ry, is
+76 % of that within 3 Ry — and it is not a check of $\alpha$; the check of
+the range is how far the Raman derivative moves when the cutoff is raised.
 
 The cell's polarizability along $\hat e$ at the frequency $\omega$, as a
 polarizability volume:
@@ -750,8 +791,10 @@ M4-d).
   of large numbers; how far it stands above the k-point mesh, the broadening
   and the band count is the person's judgement, with the settings stated
   beside the value.
-- **The integral needs the whole spectrum**: $\varepsilon_2$ up to
-  `Optical.Energy.Maximum` over enough bands (`Optical.NumberOfBands`).
+- **The integral needs the spectrum that weighs at the laser**: every pair
+  of states up to the cutoff, `Optical.Energy.Maximum`, over enough bands
+  (`Optical.NumberOfBands`) — a pair weighs about one over its energy
+  squared, so 3 Ry keeps all the basis describes (§ 3.1, *The cutoff*).
 
 ### 3.4 What is reported — the held gold's response kept, the named set's share beside it *(decided 2026-10-24)*
 
@@ -960,7 +1003,7 @@ nothing beyond reading what the runs wrote.
 | the charges' grain | Hirshfeld or Voronoi charges are integrated on SIESTA's real-space mesh, so an atom moved by $\delta$ against the mesh changes its charge a little even with no physics behind it | the same sweep, where it is run |
 | `MeshCutoff` | the vibration's own: its force constants and its charges are both taken on the mesh | a coarse mesh tells two equivalent atoms apart in the force constants, so their modes mix and a symmetry-forbidden mode borrows strength — measured on CO₂, the forbidden stretch at 0.5 % of the other at 150 Ry and $6.5\times10^{-8}$ at 500 Ry (§ 7) |
 | $\delta Q$ for Raman | $\delta/\max_k\lvert\mathbf L_k^{(\nu)}\rvert$ — the largest atom moved by $\delta$, the force constants' own linear range | — |
-| `Optical.Mesh`, `Optical.Broaden`, `Optical.NumberOfBands`, `Optical.Energy.Maximum` | the person's, stated with every value; a broadening above zero | the mesh: the ratios between the modes hold when it is refined [Gillet2013]; the broadening: stated beside every value, 0.1–0.2 eV in published work and at least the spacing between discrete transitions [Gillet2013]; the bands and range: the f-sum in the `.EPSIMG` header near 1 for a molecule (§ 3.1) |
+| `Optical.Mesh`, `Optical.Broaden`, `Optical.NumberOfBands`, `Optical.Energy.Maximum` | the person's, stated with every value; a broadening above zero | the mesh: the ratios between the modes hold when it is refined [Gillet2013]; the broadening: stated beside every value, 0.1–0.2 eV in published work and at least the spacing between discrete transitions [Gillet2013]; the bands: the f-sum in the `.EPSIMG` header near 1 for a molecule when the range reaches the basis's top; the range: how far the Raman derivative moves when the cutoff is raised — 0.34 % or less from 3 to 10 Ry on our runs, the f-sum reading lower under a cutoff by design (§ 3.1, *The cutoff*) |
 | the laser's wavelength | the person's, entered after the run | none needed: a parameter of the integral, not of the runs |
 | the charge sum | — | at every step the charge column over all atoms sums to zero (measured, § 7) |
 | symmetry | — | a mode the structure's symmetry forbids reads zero, the dipole taken about a centre on the symmetry element (as § 2.4's mode 6 does) |

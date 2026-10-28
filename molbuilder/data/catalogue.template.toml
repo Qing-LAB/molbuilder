@@ -3078,7 +3078,7 @@ label = "Optical resolution"
 tier = "advanced"
 help = """
 THE RUN'S RESOLUTION, not the width you will read the spectrum at.  SIESTA spreads every transition as a Gaussian of this width, on an energy grid a tenth of it, and writes only the spread spectrum (<label>.EPSIMG).  The width a person reads the Raman strength at -- 0.1 eV, 0.5 eV -- is applied when the result is presented (the Spectra page's Electronic broadening (eV) box) by spreading SIESTA's spectrum with one more Gaussian: two Gaussians compose into one, so it is the spectrum SIESTA would have written at that width, but for the few widths nearest the ends of its energy grid.  This number only sets the finest width you can ask for later, and the size of the file.
-0.002 Ry (0.027 eV) gives 50,001 energies up to 10 Ry: 2.7 MB of text per optical call, 320 MB over a junction's 121 calls.  Halving it doubles both.
+0.002 Ry (0.027 eV) gives 15,001 energies up to the 3 Ry cutoff (Optical spectrum cutoff): 0.8 MB of text per optical call, 96 MB over a junction's 121 calls.  Halving it doubles both.
 """
 
 [item.optical_energy_max]
@@ -3091,18 +3091,20 @@ anchor = "Optical.Energy.Maximum"
 engine_key = "Optical.Energy.Maximum"
 manual = "SIESTA 5.4.2 §6.20 'Optical properties' (Optical.Energy.Maximum, Optical.Energy.Minimum)"
 type = "float"
-value = 10.0
-default = 10.0
+value = 3.0
+default = 3.0
 engine_default = { value = 10.0, source = "SIESTA 5.4.2 manual, Optical properties: the manual's default, 10 Ry" }
 unit = "Ry"
 range = [0.5, 50.0]
 active_when = { compute_raman = [true] }
 result = { vibration = "raman" }
 group = "stage"
-label = "Optical energy range"
+label = "Optical spectrum cutoff"
 tier = "advanced"
 help = """
-How far up in photon energy ε₂(ω) is computed, in rydberg (10 Ry is 136 eV).  The polarizability at a laser energy comes from ε₂ at EVERY energy through the Kramers-Kronig integral, so the range must reach well past the transitions that matter -- the default covers every valence transition of an organic molecule or a gold junction.  Cutting it short changes α(0) and the Raman strengths; it saves only file size, since the cost is in the states, not the grid.
+A CUTOFF ON THE CALCULATION, in photon energy -- not a field and not an energy given to the molecule: the optical calculation applies no field at all.  What it computes, at the equilibrium and at each displaced geometry: SIESTA takes every pair of an occupied and an empty electronic state it has already solved, computes how strongly light polarized along the chosen direction couples the two (their dipole matrix element), and places that coupling at the energy between them -- together, the absorption spectrum ε₂(ω) (<label>.EPSIMG).  The polarizability at your laser, and so the Raman strength, is one integral over that spectrum (Kramers-Kronig), each pair weighing about one over its energy squared, so pairs far above the laser count little.
+This cutoff is the spectrum's top: a pair whose energy lies above it is skipped -- SIESTA computes no coupling for it -- and the spectrum is written up to it.  3 Ry (41 eV) keeps every valence excitation the basis describes: a DZP basis describes optical properties reasonably below about 10-20 eV, and its empty states far above are artefacts of the confined orbitals, not states a molecule has.  Measured on our runs against 10 Ry, the Raman derivative dα/dQ moved by 0.34 % or less (α itself by 1.1 % on CO2), while a molecule like CO2 needed half the couplings and each spectrum file is 30 % of the size (science/vibrational-optical-response.md § 3.1).
+A DEVIATION from SIESTA's own default, 10 Ry (136 eV): that range reaches only the basis's artefacts.  Raise it for a basis with many more empty states, or to check a result against it.
 """
 
 [item.optical_bands]

@@ -294,12 +294,14 @@ class SiestaConfig:
     # stage's own k-point grid), the run's resolution (the width a person
     # reads is applied when the result is presented, R-c), the energy
     # range and the bands -- each written against the manual, *Optical
-    # properties* (siesta/vibration_deck.py::optical_block).
+    # properties* (siesta/vibration_deck.py::optical_block).  The energy
+    # range is a cutoff on the pairs of states the calculation couples:
+    # 3 Ry, not SIESTA's 10 (the catalogue item's help; the method's § 3.1).
     optical_direction: Tuple[float, float, float] = field(
         default_factory=lambda: (0.0, 0.0, 1.0))
     optical_mesh: Optional[Tuple[int, int, int]] = None
     optical_broaden: float = 0.002
-    optical_energy_max: float = 10.0
+    optical_energy_max: float = 3.0
     optical_bands: Optional[int] = None
 
     # ``continue_retries`` -- the warm-retry budget.  engines/stages.md § 3

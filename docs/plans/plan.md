@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.47.6.** Since the last handover (2026-10-20, kept
+**Where we are: 2.47.7.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -86,7 +86,8 @@ meaning said right, the deck cited whole with its pseudopotentials (2.47.1);
 a SIESTA vibration's contract written as rules, every page telling the one
 stage (2.47.2), and read against its code by two rounds of fresh reviewers
 (2.47.3, 2.47.4); its shape fixed where every road reads it, and the ladder
-naming each call of its run (2.47.5); the hand-over's shape card (2.47.6).
+naming each call of its run (2.47.5); the hand-over's shape card (2.47.6);
+the optical calculation's cutoff at 3 Ry, measured (2.47.7).
 
 **Last checked**: the fast batch on 2.47.6's code before its review's revision (6,893 passed), the Task setup and describe tests after it (62), the Task setup browser files (26); the fast batch on 2.47.5 (6,891 passed); the ladder's e2e
 on the real CO₂ run on 2.47.5; the run-script, launch, warm-file and deck
