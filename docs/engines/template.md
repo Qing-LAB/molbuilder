@@ -2088,8 +2088,8 @@ Five obligations, each naming the reader it binds.
 
 **Three mechanism choices, each with the proposal the 2026-09-22
 structure-API audit made — all three ruled as proposed on 2026-09-29**
-([`plans/plan.md`](?doc=plans/plan.md) § 5u.2, TD5); all three built, the
-second and third on 2026-10-11 (plan § 5u.1, step 10):
+(the plan's § 5u.2, TD5, now [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md)); all three built, the
+second and third on 2026-10-11 (its § 5u.1, step 10):
 
 | the choice | proposed |
 |---|---|

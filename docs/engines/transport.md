@@ -5647,7 +5647,7 @@ person sees it.
 | **a known engine with no backend is a DISABLED tab** | *(the user's choice, against hiding it and against live fields)* — drawn from the known engines, disabled, its title saying what would make it live: *no PySCF transport backend is built yet; transport ships on TranSIESTA* — the tab named by the engine's part's own name for the kind where it has a part, else by the engine's. A disabled button cannot be chosen, so nothing can be described on it and no field of its can travel; what it buys is that the separation is visible on the page, and the tab goes live the day a backend registers |
 | **what does not change** | the citation, the region labels, the five derived stages, the bias and the shared panel are the **composite's**, not an engine's (§§ 3.1, 4, 5). Only the per-rung form is per-engine, because that is the only part of the surface whose vocabulary an engine owns |
 
-Status: ✅ **built 2026-10-11** (W30 ⑤, plan § 5u.1 step 8). The strip is
+Status: ✅ **built 2026-10-11** (W30 ⑤, the plan's § 5u.1 step 8, now [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md)). The strip is
 drawn by the page from `transport.stages.engine_tabs()` — one tab per engine
 molbuilder knows (the engine table), live where the engine runs a
 transport calculation (a part of the kind's in the kind table,
@@ -6533,7 +6533,7 @@ none of it: it was text `siesta` never read.
   for (`execution/gpu.md` G5), so the transmission's run card states none;
   and since 2026-10-13 the two the rung fixes, `write_forces` and
   `write_coor_step`: `tbtrans` writes neither, so the transmission's tab no
-  longer echoes them as fixed on (plan § 5u.1 row 13 ②), and the seed, the
+  longer echoes them as fixed on (the plan's § 5u.1 row 13 ②, now [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md)), and the seed, the
   leads and the device keep their one answer (`template.fixed_answers`,
   `template.md` § 6.4).
 * **The leads' bulk treatment is ONE value for the device and the
@@ -6567,7 +6567,7 @@ none of it: it was text `siesta` never read.
 * **`TBT.Verbosity` gets its catalogue row** (§ 2a.13, *what this map says is
   missing*), at `tbtrans`'s own default, 5 (`tbt_reinit_m.F90` 206).
 
-### 6.1c Before any device runs — the contour stated, vacuum by axis, TBtrans's outputs on *(M5 step 2; user, 2026-09-29: `plan.md` § 5u.2 TD1, TD3; W35 decision 7)*
+### 6.1c Before any device runs — the contour stated, vacuum by axis, TBtrans's outputs on *(M5 step 2; user, 2026-09-29: the plan's § 5u.2 TD1, TD3, now [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md); W35 decision 7)*
 
 #### The equilibrium contour: an energy, always written, with the count it gives
 
@@ -6689,7 +6689,7 @@ the run is saved as a pair (the Results tab's Export), its cell declared on
 the Cell page and the pair cited: the edit marks the pair's record outdated
 and keeps it (`model/structure.md` § 2.2a), and the citation reads its
 settings (§ 3.1). No transport-side declaration overrides what was cited
-*(the user, 2026-10-11, retiring `plan.md` § 5u.2's TD13)*.
+*(the user, 2026-10-11, retiring the plan's § 5u.2 TD13, now [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md))*.
 
 This replaces I12's fixed 3.0 Å warning
 (§ 5), which only warned, and whose one number was wrong both ways: a lead
