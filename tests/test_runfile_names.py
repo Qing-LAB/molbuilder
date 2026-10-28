@@ -198,7 +198,7 @@ def test_the_declared_keyword_round_trips_through_every_door(run):
 
 def test_a_hyphen_that_introduces_no_declared_keyword_is_not_a_counter():
     """`-v2` is not a counter, so it is part of the LABEL -- which is why a
-    bench trial's `bdt-G1K4C6` reads as a label and not as a qualifier."""
+    bench trial's `bdt-G1N4C6` reads as a label and not as a qualifier."""
     assert parse("my-job-v2.out", LABEL) is None
     assert parse("my-job-v2.out", "my-job-v2") == expect("my-job-v2", None,
                                                          ".out")

@@ -126,8 +126,8 @@ def test_the_users_matrix_enumerates_both_families(sol_calc):
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
     assert len(cpu) == 18 and len(gpu) == 18
-    assert sorted({p["K"] for p in cpu}) == [32, 64, 128]
-    assert all(p["G"] * p["K"] == 32 for p in gpu), \
+    assert sorted({p["N"] for p in cpu}) == [32, 64, 128]
+    assert all(p["N"] == 32 for p in gpu), \
         "np64/np128 GPU cells exceed the GPU nodes' 48 cores"
     assert {p["G"] for p in gpu} == {1, 2, 4}
     assert all(p["use_gpu"] is False for p in cpu)
@@ -136,7 +136,7 @@ def test_the_users_matrix_enumerates_both_families(sol_calc):
     assert all({"diag_algorithm", "block_size"} <= set(p) for p in points)
     out = "\n".join(notes)
     assert "left out (6)" in out, out
-    assert "G1K64C1" in out and "G1K128C1" in out
+    assert "G1N64C1" in out and "G1N128C1" in out
     assert "64 cores is over general's largest machine (48 cores)" in out
     # an axis is never a pin; the measurement pins still ride
     assert "block_size" not in pins and pins["max_scf_iter"] == 3
@@ -152,11 +152,11 @@ def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):
     g2 = next(p for p in points if p["G"] == 2)
     res = tr.to_resources(g2, None)
     assert res["gres"] == "gpu:2"
-    assert res["mpi_np"] == 2 * g2["K"]
+    assert res["mpi_np"] == g2["N"]
     # and a CPU point of the SAME translation asks for no device at all
     c = next(p for p in points if not p["G"])
     res_c = tr.to_resources(c, None)
-    assert "gres" not in res_c and res_c["mpi_np"] == c["K"]
+    assert "gres" not in res_c and res_c["mpi_np"] == c["N"]
 
 
 def test_a_queue_listing_several_cards_answers_the_most_gpus_a_node_holds(
@@ -226,8 +226,8 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     # ``diag_algorithm`` has ONE declared point, so it is a PIN, not an
     # axis (§ 4.3a: one point = the value in force) -- it reaches every
     # deck but never a name.  Only the multi-point axes coordinate.
-    b64 = deck("G0K4C1block_size64")
-    b128 = deck("G0K4C1block_size128")
+    b64 = deck("G0N4C1block_size64")
+    b128 = deck("G0N4C1block_size128")
     def kw(text, key):
         # the KEYWORD line, not the item's comment banner above it
         return next(l for l in text.splitlines()
@@ -238,7 +238,7 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     assert kw(b128, "BlockSize").split()[1] == "128"
     assert ".false." in kw(b64, "Diag.ELPA.GPU")
     assert "ELPA-1STAGE" in b64, "the one-point pin reaches the deck"
-    gpu = deck("G1K4C1block_size64")
+    gpu = deck("G1N4C1block_size64")
     assert ".true." in kw(gpu, "Diag.ELPA.GPU")
 
     js = json.loads(
@@ -284,20 +284,19 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     _prep_on(sol_calc, "general")
     shelves = shelf_headers(sol_calc, "coarse")
     assert len(shelves) == 4
-    cpu = shelves["bench-group-cpu-G0K4C1"]
+    cpu = shelves["bench-group-cpu-G0N4C1"]
     assert "#SBATCH -p general" in cpu
     assert not any(ln.startswith("#SBATCH --gres") for ln in cpu), cpu
     # The shelf token is the SAME spelling its trials carry:
-    # `G<gpus>K<ranks-per-gpu>C<cores>`, where 4 ranks over g devices is
-    # K = 4/g.
+    # `G<gpus>N<ranks>C<cores-per-rank>`, 4 ranks on each g.
     for g in (1, 2, 4):
-        header = shelves[f"bench-group-gpu-G{g}K{4 // g}C1"]
+        header = shelves[f"bench-group-gpu-G{g}N4C1"]
         assert "#SBATCH -p general" in header, header
         assert f"#SBATCH --gres=gpu:{g}" in header, header
     # widest first ACROSS shelves: the G4 group precedes G2 precedes G1
     assert [n for n in shelves if "-gpu-" in n] == [
-        "bench-group-gpu-G4K1C1", "bench-group-gpu-G2K2C1",
-        "bench-group-gpu-G1K4C1"]
+        "bench-group-gpu-G4N4C1", "bench-group-gpu-G2N4C1",
+        "bench-group-gpu-G1N4C1"]
     assert _submit_dry(sol_calc).count("rides the group") == 8
 
 
@@ -331,13 +330,13 @@ def test_the_shelves_submit_widest_first(sol_calc):
     # The shelf token is the SAME spelling its trials carry
     # (`G<gpus>K<ranks-per-gpu>C<cores>`), named in full, side and cell
     # (`generator.md` § 4.3a).
-    assert list(shelves) == ["bench-group-cpu-G0K4C1",
-                             "bench-group-cpu-G0K2C1"]
-    assert "#SBATCH -n 4" in shelves["bench-group-cpu-G0K4C1"]
-    assert "#SBATCH -n 2" in shelves["bench-group-cpu-G0K2C1"]
+    assert list(shelves) == ["bench-group-cpu-G0N4C1",
+                             "bench-group-cpu-G0N2C1"]
+    assert "#SBATCH -n 4" in shelves["bench-group-cpu-G0N4C1"]
+    assert "#SBATCH -n 2" in shelves["bench-group-cpu-G0N2C1"]
     out = _submit_dry(sol_calc)
     riders = [l.split()[1] for l in out.splitlines() if "rides the group" in l]
-    assert riders == ["G0K4C1", "G0K2C1"], riders
+    assert riders == ["G0N4C1", "G0N2C1"], riders
 
 
 def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
@@ -353,7 +352,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     _prep_on(sol_calc, "htc")
     # The trial's ARTIFACT directory, not a hardcoded container: the deck
     # lives in the attempt (`project-layout.md` § 1.5a).
-    _c = sol_calc / "01_coarse" / "bench" / "bench-G0K4C1block_size64"
+    _c = sol_calc / "01_coarse" / "bench" / "bench-G0N4C1block_size64"
     deck = next((latest_attempt(_c) or _c).glob("*.fdf"))
     text = deck.read_text()
     assert "DM.UseSaveDM" in text and ".false." in text
@@ -366,7 +365,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
         jobset_group, ["launch", "bench", "coarse", "--bundle",
                        str(sol_calc), "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code != 0
-    assert "WARM-start" in r.output and "G0K4C1block_size64" in r.output
+    assert "WARM-start" in r.output and "G0N4C1block_size64" in r.output
 
     deck.write_text(re.sub(r"^[ \t]*[A-Za-z.]*UseSave.*$", "",
                            text, flags=re.M))
@@ -383,23 +382,20 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
 
 def test_declared_gpu_count_is_exact(sol_calc):
     """User ruling, 2026-08-21 ("explicit is what we need"): declared
-    device counts are measured exactly -- no divisor invention -- and an
-    uneven (mpi_np, G) pair is dropped BY NAME (a trial counts its ranks per GPU),
-    never rounded."""
+    device counts are measured exactly -- no divisor invention -- and every
+    (mpi_np, G) pair is a trial, an uneven one too: 32 ranks on 3 GPUs is
+    prepared, its split said as a run's prep says it (`generator.md`
+    § 4.3; a request is prepared, never vetoed)."""
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [1, 2, 3]})
-    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None)
-    assert sorted(p["G"] for p in points) == [1, 2],         "exactly the declared counts that divide -- G4 must NOT appear"
-    assert all(p["G"] * p["K"] == 32 for p in points)
-
-
-def test_uneven_split_is_dropped_by_name(sol_calc):
-    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
-                        "use_gpu": [True], "gpu_count": [2, 3]})
     notes: list = []
-    bench_inputs(open_calculation(sol_calc), None, notes=notes)
+    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None,
+                                      notes=notes)
+    assert sorted(p["G"] for p in points) == [1, 2, 3], \
+        "exactly the declared counts -- G4 must NOT appear, G3 must"
+    assert all(p["N"] == 32 for p in points)
     out = "\n".join(notes)
-    assert "do not split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
+    assert "32 rank(s) / 3 GPU(s)" in out and "uneven" in out, out
 
 
 def test_a_gpu_count_past_the_record_is_kept_with_its_fit(sol_calc):
@@ -410,7 +406,7 @@ def test_a_gpu_count_past_the_record_is_kept_with_its_fit(sol_calc):
                         "gpu_count": [8]})
     notes: list = []
     points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
-    assert {(p["G"], p["K"]) for p in points} == {(8, 4)}
+    assert {(p["G"], p["N"]) for p in points} == {(8, 32)}
     assert "8 GPUs is over general's most GPUs on a node (4 GPUs)" \
         in "\n".join(notes)
 
@@ -421,17 +417,6 @@ def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
     with pytest.raises(PrepError) as e:
         bench_inputs(open_calculation(sol_calc), None)
     assert "silently ignored" in str(e.value)
-
-
-def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
-    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [True],
-                        "gpu_count": [3]})
-    with pytest.raises(PrepError) as e:
-        bench_inputs(open_calculation(sol_calc), None)
-    assert "no GPU cell is left" in str(e.value)
-    assert "even-split rule" in str(e.value), (
-        "the refusal must point at the rule that dropped each cell -- not "
-        "merely say that everything went")
 
 
 def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc):
@@ -448,28 +433,28 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc):
     points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
-    assert sorted({p["K"] for p in cpu}) == [32, 64], \
+    assert sorted({p["N"] for p in cpu}) == [32, 64], \
         "gpu_count must not touch the CPU family's rank counts"
     # a trial's TOTAL cores (ranks × cores-per-rank) are what a node must
     # hold, so EVERY np64 GPU cell is over the GPU nodes' 48 whatever its
     # G -- kept as declared, each named with its fit
-    assert sorted((p["G"], p["K"]) for p in gpu) == \
-        [(1, 32), (1, 64), (2, 16), (2, 32), (4, 8), (4, 16)]
+    assert sorted((p["G"], p["N"]) for p in gpu) == \
+        [(1, 32), (1, 64), (2, 32), (2, 64), (4, 32), (4, 64)]
     out = "\n".join(notes)
     assert "64 cores is over general's largest machine (48 cores)" in out
-    for cell in ("G1K64C1", "G2K32C1", "G4K16C1"):
+    for cell in ("G1N64C1", "G2N64C1", "G4N64C1"):
         assert cell in out, f"the kept cell {cell} must be named"
 
 
 def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
-    """gpu_count without mpi_np does NOT invent a rank grid: the K x C
-    half stays the machine's proposal, filtered to the declared device
+    """gpu_count without mpi_np does NOT invent a rank grid: the ranks
+    and cores stay the machine's proposal, filtered to the declared device
     counts."""
     _declare(sol_calc, {"use_gpu": [True], "gpu_count": [2]})
     points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None)
     assert points, "the probed ladder must survive the filter"
     assert {p["G"] for p in points} == {2}
-    assert len({p["K"] for p in points}) > 1,         "K must still range over the machine's proposal"
+    assert len({p["N"] for p in points}) > 1,         "N must still range over the machine's proposal"
 
 
 # --------------------------------------------------------------------- #
@@ -578,5 +563,5 @@ def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
     out = _submit_dry(flat_sol_calc)
     plans = [l for l in out.splitlines() if "WOULD run" in l]
     assert len(plans) == 4, out    # one CPU shelf + three GPU shelves
-    assert any("bench-group-cpu-G0K4C1 " in l for l in plans)
+    assert any("bench-group-cpu-G0N4C1 " in l for l in plans)
     assert sum("bench-group-gpu-" in l for l in plans) == 3

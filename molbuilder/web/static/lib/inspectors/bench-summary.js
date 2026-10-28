@@ -536,7 +536,7 @@
         if (choice.label) {
             verdict.classList.add("is-decided");
             /* The rationale is the server's sentence and already names the
-             * winner ("G1K4C1 fastest (1.8 s/iter); vs ..."), so printing
+             * winner ("G1N4C1 fastest (1.8 s/iter); vs ..."), so printing
              * the label in front of it says the name twice.  Show the
              * label alone only when there is no rationale to carry it. */
             const why = choice.rationale;

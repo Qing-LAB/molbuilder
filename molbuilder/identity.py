@@ -577,7 +577,7 @@ def is_ours(name: str, label: str) -> bool:
     against two prefixes rather than being written out twice. A benchmark
     relabels each point ``<label>-<coordinate>`` so its warm files can never
     meet the run's (`project-layout.md` § 2.3.2), and everything molbuilder
-    writes for that point is stemmed on the new label: ``bdt-G1K4C6_01_coarse.fdf``,
+    writes for that point is stemmed on the new label: ``bdt-G1N4C6_01_coarse.fdf``,
     its wrapper, its trajectory log -- matched against ``{label}`` alone, the
     whole trial set would read as engine restart state at the
     `run-identity.md` § 6 prompt, the one moment a person is asked to stop

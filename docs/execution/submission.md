@@ -124,12 +124,12 @@ otherwise.*
 ```
 $ molbuilder jobset launch bench coarse --mode submit
 about to submit:
-  bench-group-cpu-G0K48C1   -> domain htc
-    sbatch -J AuBDTAu/bench-group-cpu-G0K48C1 --export ALL,MB_LAUNCHED_BY=jobset-launch,MB_WALL_S=14400 launch/bench-group-cpu-G0K48C1.sbatch
-    header: -J bench-group-cpu-G0K48C1  -N 1  -n 48  -c 1  -t 0-04:00:00  -p htc  -q public  --mem=64G  -o launch/slurm.%j.out  -e launch/slurm.%j.err
-  bench-group-gpu-G1K48C1   -> domain htc
-    sbatch -J AuBDTAu/bench-group-gpu-G1K48C1 --export ALL,MB_LAUNCHED_BY=jobset-launch,MB_WALL_S=14400 launch/bench-group-gpu-G1K48C1.sbatch
-    header: -J bench-group-gpu-G1K48C1  -N 1  -n 48  -c 1  -t 0-04:00:00  -p htc  -q public  --gres=gpu:1  --gres-flags=enforce-binding  --mem=64G  -o launch/slurm.%j.out  -e launch/slurm.%j.err
+  bench-group-cpu-G0N48C1   -> domain htc
+    sbatch -J AuBDTAu/bench-group-cpu-G0N48C1 --export ALL,MB_LAUNCHED_BY=jobset-launch,MB_WALL_S=14400 launch/bench-group-cpu-G0N48C1.sbatch
+    header: -J bench-group-cpu-G0N48C1  -N 1  -n 48  -c 1  -t 0-04:00:00  -p htc  -q public  --mem=64G  -o launch/slurm.%j.out  -e launch/slurm.%j.err
+  bench-group-gpu-G1N48C1   -> domain htc
+    sbatch -J AuBDTAu/bench-group-gpu-G1N48C1 --export ALL,MB_LAUNCHED_BY=jobset-launch,MB_WALL_S=14400 launch/bench-group-gpu-G1N48C1.sbatch
+    header: -J bench-group-gpu-G1N48C1  -N 1  -n 48  -c 1  -t 0-04:00:00  -p htc  -q public  --gres=gpu:1  --gres-flags=enforce-binding  --mem=64G  -o launch/slurm.%j.out  -e launch/slurm.%j.err
   per-trial bound: none -- each trial runs until it ends, or the job's wall
   submit this? [Y/n]
 ```

@@ -108,10 +108,10 @@ _LABEL = re.compile(r"[A-Za-z0-9_-]+")
 #: rather than an edit to the parser.
 #:
 #: A benchmark point is deliberately NOT one.  It is a whole LABEL
-#: (``bdt-G1K4C6``), because a trial's warm files must never meet the run's
+#: (``bdt-G1N4C6``), because a trial's warm files must never meet the run's
 #: (`project-layout.md` § 2.3.2) -- a qualifier would put them back in one
 #: name-space, which is the thing the separate label prevents.  Measured
-#: 2026-09-07: ``bdt-G1K4C6_01_coarse-run2.out`` parses as that label with the
+#: 2026-09-07: ``bdt-G1N4C6_01_coarse-run2.out`` parses as that label with the
 #: same three segments, one level down, and returns None against ``bdt``.
 QUALIFIERS: "tuple[str, ...]" = ("run",)
 
@@ -178,7 +178,7 @@ FIELDS: "dict[str, Field]" = {
              "or a sequence of groups, its stages' tokens; a benchmark's "
              "side and shelf; a run of points' walk",
         shape=r"[A-Za-z0-9_.-]+",
-        example="bench-group-cpu-G0K4C1"),
+        example="bench-group-cpu-G0N4C1"),
     "random": Field(
         what="a temporary file's random part",
         shape=r"[A-Za-z0-9_.-]+",
@@ -2020,7 +2020,7 @@ class GroupNames:
                   cell: Optional[str] = None) -> "GroupNames":
         """A benchmark's walk: its trials run here, ``bench-group``; a shelf
         sent to a queue, named in full by its side and its machine cell,
-        ``bench-group-cpu-G0K4C1`` (`generator.md` § 4.3a)."""
+        ``bench-group-cpu-G0N4C1`` (`generator.md` § 4.3a)."""
         return cls("bench-group" + (f"-{side}-{cell}" if side else ""))
 
     @property

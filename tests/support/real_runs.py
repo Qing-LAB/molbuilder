@@ -487,7 +487,7 @@ def bench(tmp_path_factory) -> RealRun:
         _taken(run, "prep bench", "prep", "bench", "coarse",
                "--target", "this")
         _taken(run, "launch one trial", "launch", "bench", "coarse",
-               "G0K1C1", "--mode", "direct", "--foreground", "--yes")
+               "G0N1C1", "--mode", "direct", "--foreground", "--yes")
         _taken(run, "launch the benchmark", "launch", "bench", "coarse",
                "--mode", "direct", "--foreground", "--yes", "--trial-timeout", "5")
     return run

@@ -169,7 +169,7 @@ class TestTheDoorServesTheOneEnumerator:
         d = _post(client, bundle, {"mpi_np": [64], "omp_threads": [1],
                                    "use_gpu": [False]})
         labels = {c["label"] for c in d["cells"]}
-        assert labels == {"G0K64C1"}, (
+        assert labels == {"G0N64C1"}, (
             f"the in-flight 64 must be the whole grid, and the saved 16 must "
             f"not appear; got {sorted(labels)}")
 
@@ -182,8 +182,8 @@ class TestTheDoorServesTheOneEnumerator:
         d = _post(client, bundle, {"mpi_np": [48, 128], "omp_threads": [1],
                                    "use_gpu": [True], "gpu_count": [4]})
         cells = {c["label"]: c for c in d["cells"]}
-        assert _queues(cells["G4K12C1"]) == {"short": True}, cells
-        wide = cells["G4K32C1"]
+        assert _queues(cells["G4N48C1"]) == {"short": True}, cells
+        wide = cells["G4N128C1"]
         assert not wide["why"], f"a declared cell was left out: {wide}"
         assert _queues(wide) == {"short": False}, wide
         assert "the 128-core machines have no GPU" in wide["fit"][0]["line"]

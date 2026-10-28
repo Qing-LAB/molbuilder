@@ -546,7 +546,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     unnumbered ``.out`` its by-hand ``mpirun`` line writes.
 
     ``trial`` is the benchmark trial this deck is, by its point's name
-    (``G1K4C6``), or ``None`` for the run -- a render argument from `prep`,
+    (``G1N4C6``), or ``None`` for the run -- a render argument from `prep`,
     which alone knows, so the header names the command that launches THIS
     deck: a trial's is ``launch bench <stage> <trial>``, and the run's
     ``launch task <stage>`` would launch a different job (plan § 5w K12).

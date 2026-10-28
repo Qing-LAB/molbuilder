@@ -85,16 +85,19 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
         + (f"  (uneven: {remainder} device(s) carry one extra rank)"
            if remainder else "")
     ]
-    if ranks_per_gpu > MPS_MAX_CLIENTS_PER_DEVICE:
+    # THE BUSIEST DEVICE is what attaches or not: an uneven split puts one
+    # rank more on some.
+    busiest = ranks_per_gpu + (1 if remainder else 0)
+    if busiest > MPS_MAX_CLIENTS_PER_DEVICE:
         lines.append(
-            f"  WARNING {ranks_per_gpu} ranks/GPU exceeds MPS's own "
+            f"  WARNING {busiest} ranks/GPU exceeds MPS's own "
             f"ceiling of {MPS_MAX_CLIENTS_PER_DEVICE} clients/device -- "
             f"ranks past the {MPS_MAX_CLIENTS_PER_DEVICE}th on one device "
             f"will FAIL TO ATTACH, not just run slowly "
             f"(engines/tuning.md § 2.12).")
-    elif ranks_per_gpu > GPU_TUNED_RANKS_PER_DEVICE:
+    elif busiest > GPU_TUNED_RANKS_PER_DEVICE:
         lines.append(
-            f"  NOTE {ranks_per_gpu} ranks/GPU; this stack's tuned point "
+            f"  NOTE {busiest} ranks/GPU; this stack's tuned point "
             f"(no NCCL) is ~{GPU_TUNED_RANKS_PER_DEVICE} "
             f"(engines/tuning.md § 2.12).")
     return lines

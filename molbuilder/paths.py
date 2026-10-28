@@ -224,7 +224,7 @@ def attempts_in(container) -> "list[int]":
 
 #: What a TRIAL directory starts with.  Dash-joined, where the container is
 #: underscore-joined -- § 6.3's separator rule, and what keeps
-#: ``bench-G1K4C6`` (a trial) apart from ``bench_01_coarse`` (a container).
+#: ``bench-G1N4C6`` (a trial) apart from ``bench_01_coarse`` (a container).
 TRIAL_PREFIX = "bench-"
 
 

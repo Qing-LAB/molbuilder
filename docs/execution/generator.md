@@ -486,8 +486,11 @@ reports, and a person writes. The full ladder is
 > and an unknown socket count is no
 > ceiling, never one socket (R3). On a GPU description a declared `mpi_np` is the point's
 > total rank count, and the device count is **declared with `gpu_count`**
-> — exactly those counts, one shelf each; an uneven `(mpi_np, G)` pair is
-> dropped by name (the equal-share rule), a count beyond what the record
+> — exactly those counts, one shelf each; **every `(mpi_np, G)` pair is a
+> trial**, its ranks spread over its devices as a run spreads them, an
+> uneven split said (`ask.gpu_share_notes`, the sentence a run's prep says:
+> 32 ranks on 3 GPUs, two devices carrying one rank more) — a request is
+> prepared, never vetoed; a count beyond what the record
 > says a node carries is kept with its fit when the cell is declared whole
 > (§ 4.3a), and an ABSENT `gpu_count` keeps the divisor enumeration as the
 > proposal *(user, 2026-08-21: "explicit is what we need")*.
@@ -571,8 +574,8 @@ framework rule, not a script patch)*:
   the devices a G1 trial would hold of a `gres:4` one.  The value-axis
   cartesian shares shelves by construction, which is what keeps queue
   waits at #shelves instead of #trials.  Naming, in full always: a shelf is
-  `bench-group-<side>-<cell>` — `bench-group-cpu-G0K4C1`,
-  `bench-group-gpu-G2K16C1`, the cell in the same `G`/`K`/`C` spelling its
+  `bench-group-<side>-<cell>` — `bench-group-cpu-G0N4C1`,
+  `bench-group-gpu-G2N32C1`, the cell in the same `G`/`N`/`C` spelling its
   trials carry — whatever else the sweep holds; the walk of every
   unlaunched trial here is `bench-group`.
   The CPU side's groups ask **no `gres`**, so devices are never held
@@ -663,7 +666,7 @@ record holds no sizing at all — no wall, no memory (`project-layout.md`
 
 | part | what it is | crosses to another domain? |
 |---|---|---|
-| **`choice`** | the **mechanism** — which engine build, ranks per GPU, block size | **yes, unchanged** — provided the node type is comparable |
+| **`choice`** | the **mechanism** — which engine build, how many ranks on how many GPUs, block size | **yes, unchanged** — provided the node type is comparable |
 | **`points`** | each trial's measurement — its timings and what the monitor sampled, on the node it landed on | **no.** It is a measurement of specific nodes, which is why each trial records the machine it ran on (§ 4.4b) |
 
 > **⭐ The condition is checkable — but only against the MACHINE, and a queue

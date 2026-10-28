@@ -507,34 +507,6 @@ def test_a_bench_with_no_axes_is_the_machines_proposal_on_both_doors(
     assert any("combination(s) enumerated" in n for n in j["notes"]), j["notes"]
 
 
-def test_a_refusal_shows_what_it_points_at_on_both_doors(
-        web_client, described):
-    """A GPU bench whose every declared point is dropped refuses pointing
-    at the pairs it dropped -- and each door shows them with the sentence:
-    the terminal before it, the tab beside it.  The entry assembled the
-    list before refusing; a refusal that dropped it would be pointing at
-    nothing.  Here 3 ranks do not split evenly over 2 GPUs (`generator.md`
-    § 4.3a)."""
-    calc = Path(described)
-    _make_preppable(calc)
-    req = read_request(calc)
-    req["bench"] = {"mpi_np": [3], "omp_threads": [1], "use_gpu": [True],
-                    "gpu_count": [2]}
-    write_request(calc, req)
-    twin = _twin(calc, "calc-cli")
-
-    dropped = "mpi_np=3 x gpu_count=2"
-    st, j = _prep(web_client, dest=str(calc), kind="bench", stage="coarse",
-                  target=LOCAL_TARGET)
-    assert st == 400 and "dropped by the even-split rule" in j["error"], j
-    assert any(dropped in n for n in j["notes"]), j["notes"]
-    r = _cli("prep", "bench", "coarse", "--bundle", str(twin),
-             "--target", LOCAL_TARGET)
-    assert r.exit_code != 0, r.output
-    assert r.output.index(dropped) < r.output.index(
-        "dropped by the even-split rule"), r.output
-
-
 def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
         web_client, described):
     """A description that fails its own preflight -- a physics value in the

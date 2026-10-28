@@ -354,7 +354,7 @@ def test_a_benchmark_walks_its_unlaunched_trials_passing_the_launched_over(
     queue -- its walk, its log and its folder mark written, the launch in
     the ledger."""
     b = real_h2_bench.bundle
-    _said(real_h2_bench, "launch the benchmark", "G0K1C1",
+    _said(real_h2_bench, "launch the benchmark", "G0N1C1",
           "skipped -- already launched", "bench-group", "rides the group",
           "[ran]")
     launch = b / "01_coarse" / "bench" / "launch"

@@ -136,6 +136,12 @@ run_sh = ["molbuilder-siesta-gpu", "socket co-location"]
 said = ["gpu share  8 rank(s) / 2 GPU(s) = 4 rank(s)/GPU"]
 
 [[case]]
+name = "an uneven split is judged by its busiest device: 97 ranks on 2 GPUs put 49 on one, past MPS's ceiling of 48"
+run = { use_gpu = true, gpu_count = 2, mpi_np = 97 }
+said = ["gpu share  97 rank(s) / 2 GPU(s) = 48 rank(s)/GPU  (uneven: 1 device(s) carry one extra rank)",
+        "WARNING 49 ranks/GPU exceeds MPS's own ceiling of 48 clients/device"]
+
+[[case]]
 name = "fewer ranks than GPUs share none, said as it is"
 run = { use_gpu = true, gpu_count = 2, mpi_np = 1 }
 said = ["gpu share  1 rank(s) / 2 GPU(s): a GPU each, and 1 GPU(s) with no rank"]

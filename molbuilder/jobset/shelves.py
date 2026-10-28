@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict, List, Tuple
 
+from ..resolve import MACHINE_AXES
 from ..runfiles import GroupNames
 
 if TYPE_CHECKING:
@@ -26,10 +27,6 @@ if TYPE_CHECKING:
 class ShelfError(ValueError):
     """A sweep's trials cannot be shelved as prep wrote them -- the message
     says which trial and why."""
-
-
-#: The machine axes of a sweep coordinate, in the order they are spelled.
-MACHINE_AXES = ("G", "K", "C")
 
 
 def _uses_gpu(job) -> bool:
@@ -68,13 +65,23 @@ def _width(key) -> tuple:
 
 
 def _cell(jobs) -> str:
-    """A shelf's machine cell -- ``G2K24C1`` -- THE SPELLING ITS TRIALS
+    """A shelf's machine cell -- ``G2N48C1`` -- THE SPELLING ITS TRIALS
     CARRY, read off a trial's own point: every trial on a shelf shares one
     resource ask, so any member answers, and the value axes that differ
     between them are dropped -- the shelf is the machine cell, not the
     point."""
     from ..resolve import point_token
     pt = jobs[0].point or {}
+    if "K" in pt and "N" not in pt:
+        # A TRIAL NAMED BY ITS RANKS PER GPU, as a benchmark was prepared
+        # before 2.46.6 (`job-contracts.md` § 6.3): its trials are named by
+        # their ranks in all now, so it is prepared again.
+        raise ShelfError(
+            f"trial {jobs[0].name!r} is named by its ranks per GPU (K), as "
+            f"molbuilder before 2.46.6 prepared a benchmark; a trial is "
+            f"named by its ranks in all (N) now -- go back to the state "
+            f"saved before the benchmark's prep, and prepare it again "
+            f"(`molbuilder jobset prep bench <stage>`)")
     if not all(a in pt for a in MACHINE_AXES):
         raise ShelfError(
             f"trial {jobs[0].name!r} carries no machine point "

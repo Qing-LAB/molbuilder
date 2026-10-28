@@ -191,8 +191,8 @@ class MachineTranslation:
     `project-layout.md` § 2.3.1a splits the framework from the specialisation,
     and this is the specialisation's half stated as data: **which axes are
     ours** (``axes``) and **what machine ask each point implies**
-    (``to_resources``).  The benchmark's is ``("G", "K", "C")`` with
-    ``mpi_np = G·K, cpus_per_task = C`` and ``gres = gpu:G`` -- a count, no
+    (``to_resources``).  The benchmark's is :data:`MACHINE_AXES` with
+    ``mpi_np = N, cpus_per_task = C`` and ``gres = gpu:G`` -- a count, no
     card (`scheduler.md` R2a).  ``to_resources`` receives the
     ``Environment`` as well as the point (`generator.md` § 6.1: the
     environment is one of floor 3's inputs); none of the benchmark's
@@ -989,8 +989,14 @@ def _label_for(base: str, point: Mapping[str, Any],
 _SIESTA_LABEL_MAX = 48
 
 
+#: The machine axes of a benchmark trial's point, in the order they are
+#: spelled: ``G`` its GPUs, ``N`` its ranks in all, ``C`` each rank's cores
+#: (`job-contracts.md` § 6.3) -- ``G0`` a CPU trial.
+MACHINE_AXES = ("G", "N", "C")
+
+
 def point_token(point: Mapping[str, Any]) -> str:
-    """A sweep coordinate as one filename-safe token — ``G1K4C6``.
+    """A sweep coordinate as one filename-safe token — ``G1N4C6``.
 
     **One function, fed by data** — which is why a trial directory needs no
     naming rule of its own (`generator.md` § 5). Keys in the order the sweep
@@ -998,13 +1004,13 @@ def point_token(point: Mapping[str, Any]) -> str:
     directory listing should match the command they typed.
 
     **Concatenated, no inner separator** — `job-contracts.md` § 6.3 (the
-    cross-layer authority) renders the benchmark's coordinate ``bench-G1K4C6``:
+    cross-layer authority) renders the benchmark's coordinate ``bench-G1N4C6``:
     the ``-`` announces ONE qualifier, so a separator inside the token would
     read as more of them.  The token is an identifier, never a parser target: what varied
     lives in ``ParameterSet.axes`` and each element's ``point``, as data.
     """
     parts = []
-    _machine = ("G", "K", "C")
+    _machine = MACHINE_AXES
     for k, v in point.items():
         slug = _flat(v)
         if k == "use_gpu" and "G" in point:

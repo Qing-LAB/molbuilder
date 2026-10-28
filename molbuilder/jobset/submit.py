@@ -275,7 +275,7 @@ def _needs_header(mode: str, machine) -> bool:
 
 def _scheduler_job_name(jobset: JobSet, name: str) -> str:
     """What the scheduler lists: the calculation, then the job within it --
-    ``bdt_au/coarse``, ``bdt_au/G1K2C4``, ``bdt_au/bench-group-cpu``
+    ``bdt_au/coarse``, ``bdt_au/G1N2C4``, ``bdt_au/bench-group-cpu``
     (`job-system.md` § 6).
 
     The id first, because that is the thing you are trying to tell apart

@@ -126,13 +126,13 @@ implying one. That is the whole of the rule.
 │ trials ran on 2 kinds of node:                          │  ← B5: stated,
 │   48c 500G A100 (4 trials) · 128c 500G no gpu (2 trials)│     never judged
 │                                                         │
-┌ G4K12C1ELPA1STAGE   ● finished        62.6 s/iter ──────┐
+┌ G4N48C1ELPA1STAGE   ● finished        62.6 s/iter ──────┐
 │   np 48 · thr 1 · gpu:4                                 │
 │   on 48c 500G A100 (sol-g042)                           │  ← what the numbers
 │   peak 71.1 GB · cpu 88% · gpu 28% · vram 7.0 GB · 202 s│     below measure
 │   ran with: blocksize 64 · elpa_gpu nvidia-gpu          │
 └─────────────────────────────────────────────────────────┘
-┌ G0K48C1ELPA2STAGE   ● finished        91.1 s/iter ──────┐
+┌ G0N48C1ELPA2STAGE   ● finished        91.1 s/iter ──────┐
 │   np 48 · thr 1 · no gpu                                │
 │   on 128c 500G no gpu (sol-c221)                        │
 │   peak 51.3 GB · cpu 27% · 15 s                         │  ← no GPU row:
@@ -213,7 +213,7 @@ this be read"*), the HTTP refusals, and JSON.
 
 > **The file's directory is NOT the bundle.** `job_dir_names` hands out trial
 > directories relative to the **calculation root** (`01_coarse/bench/
-> bench-G1K1C1`), while a stage's sweep file sits at
+> bench-G1N1C1`), while a stage's sweep file sits at
 > `<calc>/<NN>_<stage>/bench/job-set.json`. Resolving the trials against the
 > file's own directory points at paths that do not exist — and the failure is
 > silent, not loud: every trial reads `unknown`, every measurement is `None`,

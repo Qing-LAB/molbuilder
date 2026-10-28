@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.46.5.** Since the last handover (2026-10-20, kept
+**Where we are: 2.46.6.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -76,9 +76,11 @@ run in phases and its Raman at a laser (2.42.0–2.44.1); the vibration form by
 result (2.45.0); a frame set saying what its numbers mean, and the charge and
 spin in the Spectrum tab's chemistry card (2.46.0–2.46.2); the review's shipped
 errors (2.46.3); Save refusing to change a stage that has run (2.46.4); launch re-checking
-nothing, and stale words put right (2.46.5).
+nothing, and stale words put right (2.46.5); a benchmark keeping every
+declared cell, its trials named by their ranks in all (2.46.6).
 
-**Last checked**: the fast batch on 2.46.5 (6,877 passed); the real-junction e2e on 2.46.4 (188 passed); the stopped-run e2e on 2.46.3 (8 passed); the SIESTA CO₂ vibration e2e on
+**Last checked**: the fast batch on 2.46.6 (6,874 passed, its one failure a
+stale test row fixed); the real-runs road e2e on 2.46.6 (19 passed); the real-junction e2e on 2.46.4 (188 passed); the stopped-run e2e on 2.46.3 (8 passed); the SIESTA CO₂ vibration e2e on
 2.45.0 (8 passed); every road of 2.45.0–2.46.0 through the pages and the
 printed commands (vibration → frame set → transport on the H chain).
 
@@ -744,16 +746,15 @@ is [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-con
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **A benchmark cell of uneven ranks per GPU kept** (GKN) — trials named by their total ranks, `G3N32C1`, the even-split drop deleted; contract first | § 0a, GKN | the user's rule: a request is prepared, never vetoed |
-| **2** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | the user's ask; half built |
-| **3** | **§ 1ae M5 — the vibration contract closed**, with § 1ac's proofs: R1 measured, 3a water on both engines, 3b the Raman proof | § 1ae, § 1ac | what was built in 2.42–2.44 is checked against the science before more is built on it |
-| **4** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |
-| **5** | **N6 (b) — the engine's own memory analysis** for a stage's first run | § 1u | the user's feature, (a) built |
-| **6** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |
-| **7** | **N12 group 4** — messages in the wrong words, unit spellings, a node's two core counts, dead whole-node code (`runwrap.py`, `jobset/model.py`), the sweep presenter's columns, `read_data_file`'s atom map, a copied device's provenance, PySCF's two convergence doors, `--one-job`'s nothing-to-write — brought for approval | this table | the six-agent review's last group |
-| **8** | **§ 1af — what a run reports, by kind**: the contract in `execution/run-reports.md` § 2, then the build | § 1af | its design agreed with the user |
-| **9** | **§ 1ag, § 1ah** — corrections to a junction's electronic structure; which modes get Raman | §§ 1ag, 1ah | planned, each designed with the user first |
-| **10** | **THE ORDER's steps 2–6** | below | as the table says |
+| **1** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | the user's ask; half built |
+| **2** | **§ 1ae M5 — the vibration contract closed**, with § 1ac's proofs: R1 measured, 3a water on both engines, 3b the Raman proof | § 1ae, § 1ac | what was built in 2.42–2.44 is checked against the science before more is built on it |
+| **3** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |
+| **4** | **N6 (b) — the engine's own memory analysis** for a stage's first run | § 1u | the user's feature, (a) built |
+| **5** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |
+| **6** | **N12 group 4** — messages in the wrong words, unit spellings, a node's two core counts, dead whole-node code (`runwrap.py`, `jobset/model.py`), the sweep presenter's columns, `read_data_file`'s atom map, a copied device's provenance, PySCF's two convergence doors, `--one-job`'s nothing-to-write — brought for approval | this table | the six-agent review's last group |
+| **7** | **§ 1af — what a run reports, by kind**: the contract in `execution/run-reports.md` § 2, then the build | § 1af | its design agreed with the user |
+| **8** | **§ 1ag, § 1ah** — corrections to a junction's electronic structure; which modes get Raman | §§ 1ag, 1ah | planned, each designed with the user first |
+| **9** | **THE ORDER's steps 2–6** | below | as the table says |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 
@@ -803,7 +804,7 @@ had points done, no road a person takes (a change goes back to before the
 first launch, 2.46.4); the contract states which run the device facts come
 from (`engines/transport.md` § 2a.12), no change; **GKN** — a benchmark cell of uneven ranks per GPU
 (32 on 3) is dropped against the rule that a request is prepared, never
-vetoed: kept, its trials named by their total ranks — a fix.
+vetoed: kept, its trials named by their total ranks (2.46.6).
 Step 6's designs — V1.25's amplitude, V1.26, K22 — are brought with their
 science when that step starts. **Only Sol can show** (the user's runs, when
 the user is there; none on this workstation, *the user, 2026-10-10*): E13 (the
@@ -919,9 +920,9 @@ listed — stays here as step 3's detail:
 | **W56-H** | tests / PySCF | **A PySCF relaxation with a held atom, end to end** — its progress log's `# frozen_atoms` line and a trajectory read with the atom held; only the vibration e2e holds one today (`test_vibration_e2e.py:501-537`) | W56 | open — M2n's batch |
 | **TST-R** | tests / front end | **Recorded by TST's replacements, not done** (each re-read 2026-10-18): (4) two of the sidebar's three file-slot readers redo what `openDir` → `setShared` → `renderSidebar` did (`lib/projects/list.js:636` `_renderList`, `:759` `openDir`, `:827-837` `restoreSelection`) — one reader wanted; (6) every SIESTA relaxation deck carries the same troubleshooting advice whatever it states (`siesta/input.py:1524-1531`: *shrink MD.MaxDispl to 0.02*, *loosen MD.MaxForceTol to 0.04*, literal, reading nothing of the deck's own values); (14) the spectra panel's hand-picked `REQUIRED_IDS` (`tests/test_results_blueprint.py:236`) want (14)'s mount test on a spectra run; (15) `results.html:246` loads the findings renderer's global and the only reader on the page is the Spectrum form's preflight (`lib/spectra/core.js:958, 976`) — nothing on Results draws a finding; the transport describe door's findings carry no `where` (`web/blueprints/transport.py:220, 230, 235`, against the description route's `:575-579`); no browser test opens a real spectrum and animates a mode through the Spectrum code (`test_siesta_vibration_e2e.py:363-512` clicks the ES and thermo tabs only; the `anim-*` ids are presence rows); no test reads a PySCF vibration's result file DURING its relaxation (an in-progress read — the equilibrium block absent whole, 2.16.3; the water e2e reads the file at its end) | TST (archived 2026-10-18), VVW | open — step 3 |
 | **SCHED-R** | scheduler / monitor | **SCHED-END's remainder** (built 2.12.0, archived 2026-10-18): why neither the wrapper's EXIT trap (`runwrap.py:3154`, `_mb_stop_monitor TERM`) nor the monitor (`monitor.py:2249-2256`, `_STOPPED_BY = "SIGTERM"`) recorded SIGTERM on Sol job 65999920 — the job's files, the user's; and the kind's advance signal (`sbatch --signal`), named only in a comment (`monitor.py:2248`), `scheduler/kinds.toml:46` carries none | SCHED-END | open — the first needs the user's files (Sol); the second settled 2026-10-27: no advance signal, beyond what the person requests |
-| **PAGE-PARITY** | Task setup | Three lines the page and the terminal say differently, found by the 2.11.0 review: a benchmark's "takes nothing from another run" (the page only), the resources line's memory cap (the terminal only), a benchmark continuation's label (*written at* vs *every trial's geometry*); and the card's pairs dropped by the even-split rule, shown once GKN is decided | the 2.11.0 review | open · *2026-10-18:* *takes nothing from another run* is on both sides now (`jobset/ready.py:85`, `_cli.py:1409`); the memory-cap line is the terminal's alone (`_cli.py:1444`); the benchmark label line not located |
+| **PAGE-PARITY** | Task setup | Three lines the page and the terminal say differently, found by the 2.11.0 review: a benchmark's "takes nothing from another run" (the page only), the resources line's memory cap (the terminal only), a benchmark continuation's label (*written at* vs *every trial's geometry*) | the 2.11.0 review | open · *2026-10-18:* *takes nothing from another run* is on both sides now (`jobset/ready.py:85`, `_cli.py:1409`); the memory-cap line is the terminal's alone (`_cli.py:1444`); the benchmark label line not located |
 | **EXCL** | execution / model | **`exclusive` — a request field nothing sets.** No flag, `allocation` key, run-card item or page writes it, so the header's whole-node branch (`--exclusive`, `--mem=0`) never renders; every `job-set.json` carries `"exclusive": null`, so removing the field needs the retired-key path (`jobset migrate`) | round 2 of the launch review, 2026-10-17 | open — step 3 · *2026-10-18:* `jobset/model.py:94`; readers `shelves.py:123`, `runwrap.py:4299,4429`, `scheduler/emit.py:103`; no writer |
-| **GKN** | bench / naming | **An uneven ranks-over-GPUs cell is dropped** (32 ranks on 3 GPUs) because a trial is named and sized by its ranks per GPU (`G3K?C1`, `mpi_np = G·K`) — not for the hardware, and no ELPA source says it cannot run (a run with the same numbers is prepared, its split said). Kept only by naming every trial by its total ranks (`G0N32C1`, `G3N32C1`) | the user, 2026-10-17 | settled 2026-10-27 by the user's rule (a request is prepared, never vetoed): kept, named by total ranks — a fix |
+| **GKN** | bench / naming | **An uneven ranks-over-GPUs cell is dropped** (32 ranks on 3 GPUs) because a trial is named and sized by its ranks per GPU (`G3K?C1`, `mpi_np = G·K`) — not for the hardware, and no ELPA source says it cannot run (a run with the same numbers is prepared, its split said). Kept only by naming every trial by its total ranks (`G0N32C1`, `G3N32C1`) | the user, 2026-10-17 | done 2.46.6 — kept, every trial named by its ranks in all (`G3N32C1`), its split said (the user's rule: a request is prepared, never vetoed) |
 | **Q11** | execution / scheduler | **The named-queue check in two doors** — `placement.launch_refusal` and `scheduler/place.place`. *Re-derived 2026-10-17:* launch asks neither; at prep `launch_refusal` answers first, so `place`'s two membership branches are not reached | the queue of 2026-10-02 | open — step 2: one door · *2026-10-18:* `jobset/placement.py:33`, `scheduler/place.py:48` |
 | **Q8** | configuration | **Ruled 2026-10-02, not built**: one `proxy.trust` setting replacing `auth.trust_proxy` and `rate_limit.trust_proxy` (`configuration.md` § 8); a benchmark's grid stated by the description, refused when it is not — no grid the machine proposes | the queue of 2026-10-02 | ruled, not built — step 2 · *2026-10-18:* `runtime_config.py:584,605-610` still `auth.trust_proxy` |
 | **Q2f** | code hygiene | **Absolute imports, package-wide** *(user, 2026-10-03: "i agree with a, but like a focused session for that with agents and reviews. let's finish this main goal of transport and framework related tasks")* — every `from ..x import y` inside `molbuilder/` becomes `from molbuilder.x import y`, the rule written into the conventions; **and the shipped files' imports in the same session** *(ruled 2026-10-06, W57 decision 1: "B, with Q2f as one session")*: each zip (`mb_monitor.pyz`, `mb_vibration.pyz`, `mb_pyscf.pyz`) keeps molbuilder's folder layout so the package's absolute import resolves inside it (user, 2026-10-06: "for the first form of import why can't we use absolute path?"); the try/except ImportError pairs leave the 22 shipped files. Until then a NEW module is written absolute | the queue of 2026-10-03 | agreed (option a) — its own focused session in step 3, as the user asked: a script with an agent review, then the full batch · *2026-10-18:* 1,899 relative imports in the package |

@@ -187,12 +187,12 @@ fastest.
 ```mermaid
 flowchart LR
     T["02_tight/<br/>the deck: mesh 300, Broyden"] --> X["<b>transform</b><br/>SCF capped at 3 · convergence off<br/>MD steps zeroed · cold start forced<br/>relabelled &lt;label&gt;-&lt;point&gt;"]
-    X --> P["bench-G1K2C5/ · bench-G1K4C5/ · bench-G2K4C5/ · …<br/>each one timed"]
-    P --> W["<b>bench-result.json</b><br/><i>choice</i>: elpa, G=1 K=4 C=6 — portable"]
+    X --> P["bench-G1N2C5/ · bench-G1N4C5/ · bench-G2N8C5/ · …<br/>each one timed"]
+    P --> W["<b>bench-result.json</b><br/><i>choice</i>: elpa, G=1 N=4 C=6 — portable"]
 ```
 
 What comes out is the *mechanism*: **`choice`** — which engine build, how many
-ranks per GPU — and it transfers to another cluster unchanged.
+ranks on how many GPUs — and it transfers to another cluster unchanged.
 
 **It names no wall and no memory.** A wall or a memory sized from a timing run
 is a guess about a run that has not happened, and a guess that reaches the
@@ -206,7 +206,7 @@ The trials live **under the stage they measure**, in their own container:
 02_tight/
 ├── bench/                    a self-contained benchmark bundle
 │   ├── bench-result.json     ← the answer; a few kilobytes of text
-│   └── bench-G1K4C5/         ← a trial: its deck, BDT_Au_relax-G1K4C5
+│   └── bench-G1N4C5/         ← a trial: its deck, BDT_Au_relax-G1N4C5
 │       └── run-0/            ← the trial's attempt, a throwaway run
 └── run-0/                    ← the real run, later
 ```

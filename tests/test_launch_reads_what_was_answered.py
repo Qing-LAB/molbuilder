@@ -57,9 +57,9 @@ class TestAStatedValueIsNeverLostQuietly:
         """A sweep holds six; a refusal you have to bisect a file to act on
         is most of the cost of the bug still being there."""
         with pytest.raises(ValueError) as e:
-            Job.from_dict({"name": "G0K48C1", "script": "x.fdf",
+            Job.from_dict({"name": "G0N48C1", "script": "x.fdf",
                            "resources": {"walltime": "4h"}})
-        assert "G0K48C1" in str(e.value)
+        assert "G0N48C1" in str(e.value)
 
     def test_a_sliver_of_memory_never_becomes_all_of_it(self):
         """SLURM reads `--mem=0` as ALL the node's memory, so rounding a

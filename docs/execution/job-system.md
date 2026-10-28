@@ -790,7 +790,7 @@ they are typed, and written down too.
 | **R-L38** | the calculation's copy of its machine's record is missing or does not read | a calculation is launched after its prep, which copies the record; its record's words | `submit._machine_of` (`record.calculation_environment`) |
 | **R-L39** | a benchmark's trial named that was launched before | read what it measured — `summarize bench`; to measure it again, the state saved before the benchmark's prep | `submit._plan_trial` |
 | **R-L40** | a benchmark whose trials — of the side `--only` names — are all launched, or `--only` a side the sweep has none of | `summarize bench` | `submit._all_launched`, `submit._plan_shelves` |
-| **R-L41** | `launch bench` on a calculation that takes no benchmark, with no stage named, on a stage with no benchmark prepared, a trial the sweep does not hold — a trial is named by its point (`G1K4C6`) — or the kind the line says is not the set's | the benchmark's prep; the stages with one prepared; the sweep's trials; the kind the set is | `_cli._stage_bench_dir` (`prep_inputs.bench_refusal`), `_cli._load_bench_set`, `_cli._pick_trial`, `_cli._check_kind` |
+| **R-L41** | `launch bench` on a calculation that takes no benchmark, with no stage named, on a stage with no benchmark prepared, a trial the sweep does not hold — a trial is named by its point (`G1N4C6`) — or the kind the line says is not the set's | the benchmark's prep; the stages with one prepared; the sweep's trials; the kind the set is | `_cli._stage_bench_dir` (`prep_inputs.bench_refusal`), `_cli._load_bench_set`, `_cli._pick_trial`, `_cli._check_kind` |
 | **R-L43** | a benchmark's trials in more than one container, or not shelved as its prep shelved them | the state saved before the benchmark's prep | `submit._one_container`, `shelves.shelves_of` |
 | **R-L44** | a stage, a group, a run of points or a benchmark's shelf sent to a queue, or asked of it, whose header states no wall (its scheduler kind's `wall` directive) and no `--time` restates one — prep writes one into every header, so this one was edited since; the header named | prepared again where nothing of it was launched, or the state saved before it was edited restored (`molbuilder checkpoint list`); `--time` states the wall for this launch alone | `submit._sbatch_request` |
 | **R-L45** | a sequence of groups (§ 6.0, *A sequence of groups*) with a group not prepared; a group a sequence still going holds, launched alone or in another sequence; under `submit` or `ask`, no header prep wrote for exactly these groups; a flag that speaks for one stage (`--stage`, `--cold`, `--from`, `--gather`) | the group's prep; `molbuilder jobs stop` of the job that holds it; `prep task --group … --one-job`; the stage launched alone | `submit._plan_sequence`, `submit._plan_sequence`, the header by the sequence's name; a group launched alone, `submit._planned` (`ready.held_by_sequence`) |
@@ -1405,7 +1405,7 @@ run coarse, looked at it, and launched tight.
 > copied between points.
 >
 > ```text
-> bench-G1K2C4/        ← G<gpus>K<ranks-per-gpu>C<cores-per-rank>,
+> bench-G1N2C4/        ← G<gpus>N<ranks>C<cores-per-rank>,
 >                        named by its SETTINGS, not a position;
 >                        its deck, wrapper and pseudopotentials are its own
 > ```
@@ -1556,7 +1556,7 @@ row of the translation table with no SLURM name.
 ### 4.2 The benchmark sweep
 
 `jobset prep bench <stage>` builds a **sweep** — one independent job per point
-of a `(GPUs, ranks-per-GPU, cores-per-rank)` grid enumerated from *this*
+of a `(GPUs, ranks, cores-per-rank)` grid enumerated from *this*
 machine's probed topology (`molbuilder/bench/grid.py::sweep_grid`), handed to
 the same five steps as a longer `ParameterSet`, **nothing carried between
 points** (they do not depend on each other). Because a sweep is just
@@ -1815,7 +1815,7 @@ molbuilder jobset <verb> bench <stage> [<trial>]  [options]
                     │      │       │        │
                     │      │       │        └─ launch bench only: WHICH trial
                     │      │       │           to launch, by its point's NAME
-                    │      │       │           (`G1K4C6` — the directory adds
+                    │      │       │           (`G1N4C6` — the directory adds
                     │      │       │           the `bench-` prefix,
                     │      │       │           job-contracts.md § 6.3).
                     │      │       │           Omitted, the sweep's
@@ -3077,7 +3077,7 @@ system** adds is submission and routing:
   > and dropped (§ 6.0), and the question shows the same plan before the
   > person has said yes.
 - **Job names read well.** A job's `-J` is `<calculation>/<job>` —
-  `bdt_au/coarse`, `bdt_au/G1K2C4`, `bdt_au/bench-group-cpu-G0K4C1` — on every door,
+  `bdt_au/coarse`, `bdt_au/G1N2C4`, `bdt_au/bench-group-cpu-G0N4C1` — on every door,
   so a `squeue` listing tells you which of your calculations each row belongs
   to, not just which stage.
 
@@ -3133,14 +3133,14 @@ flowchart LR
   UI"* ([`web/task-setup.md`](?doc=web/task-setup.md) § 6.2), and a benchmark
   measures what was asked
   ([`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)).
-- **The `(G, K, c)` grid** — `G` devices, `K` MPI ranks per device, `c`
+- **The `(G, N, c)` grid** — `G` devices, `N` MPI ranks in all, `c`
   cores per rank; each point runs in its own `bench-…/` folder named by its
   coordinate. **What the points ARE is the declaration's question, and
   [`generator.md § 4.3a`](?doc=execution/generator.md) is the owner**:
   declared `bench` entries (`mpi_np`, `gpu_count`, `omp_threads`, and any
   value settings) drive the trials exactly; only an ABSENT declaration
-  keeps the machine's own enumeration as the proposal (`K` from the probed
-  core ladder, `c` as a starved / one-socket / cross-socket bracket, `G`
+  keeps the machine's own enumeration as the proposal (ranks per device
+  from the probed core ladder, `c` as a starved / one-socket / cross-socket bracket, `G`
   over each rank count's divisors).
 
   **`G` is there only when the GPU is asked for** — the bench's `use_gpu`

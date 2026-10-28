@@ -47,7 +47,7 @@ refuses a hierarchical stage with no attempt open — § 1.6.2.)*
     run-0/  run-1/                      <- attempts: prep opens the first and copies its
                                            inputs in, launch each one after; launch writes run.json
       *-run0.out  *-run0.concluded      the output + the conclusion marker (rc inside)
-    bench/bench-G0K2C1/run-0/           <- a benchmark trial keeps attempts as a stage does (§ 1.5a)
+    bench/bench-G0N2C1/run-0/           <- a benchmark trial keeps attempts as a stage does (§ 1.5a)
   (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
 ```
 
@@ -564,7 +564,7 @@ benchmark is this*, `materialize.bench_owner`, `bench_stage_of`):
 | `role` | its record's: `container`, `run`, `scratch` or `shared` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — `None` at the root, whose description's `shape` says it (`runs.place_of`: flat a run, hierarchical a container) |
 | `stage` | the stage it sits in, by its token — `01_coarse` |
 | `run` | the attempt's index — `0` of `run-0` |
-| `trial` | the benchmark trial's point — `G1K4C6` of `bench-G1K4C6` |
+| `trial` | the benchmark trial's point — `G1N4C6` of `bench-G1N4C6` |
 | `point` | a point's folder, its path below the run or the stage — `v0.2`, `f001/v0.2` |
 | `run_folder` | the run's own `run-<n>/` the folder lies in — itself for an attempt, the one above a point's folder or a scratch folder: where the run's launch record lies |
 
@@ -1608,7 +1608,7 @@ because inside the allocation what the scheduler tells the job
 (`MB_NTASKS`, `MB_CPUS_PER_TASK`, said by its header) describes the
 envelope, and a flag-less wrapper falling back to it would silently
 measure the widest point instead of its own. Naming a
-trial (`jobset launch bench tight G1K8C2`) still launches that one alone.
+trial (`jobset launch bench tight G1N8C2`) still launches that one alone.
 A point is **re-measured** by restoring the state saved before the
 benchmark's prep and preparing it anew — a prepared benchmark is not prepared
 again (§ 1.5a).
@@ -1628,11 +1628,11 @@ sweep has finished,
 `bench-result.json` — a recommendation, not a decision:
 
 ```jsonc
-{ "choice":    { "label": "G1K4C6", "engine": "gpu",
+{ "choice":    { "label": "G1N4C6", "engine": "gpu",
                  "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:1" },
                  "mechanism": { "use_gpu": true,
                                 "diag_algorithm": "ELPA-1STAGE" },
-                 "rationale": "G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter" } }
+                 "rationale": "G1N4C6 fastest (2.3 s/iter); gpu-bound; vs G1N8C2 3.1 s/iter" } }
 ```
 *(the sample tracks `bench/result.py`'s writer — `choice.label` is the
 winning trial's id and its knobs ride under `knobs`; the flat-key sample
@@ -1664,8 +1664,8 @@ than one JSON dig per trial:
 
 ```
   point   machine  np  thr  gpu    algorithm    s/iter  iters  monitored  peak-mem  cpu%  gpu-sm%   vram  bound  state
-  G1K4C6  --        4    6  gpu:1  ELPA-1stage     2.3      3        41s     83.5G    34       91  18.2G  gpu    completed
-  G0K8C2  --        8    2  no gpu ELPA-1stage     3.1      3        58s     85.1G    52       --     --  cpu    completed
+  G1N4C6  --        4    6  gpu:1  ELPA-1stage     2.3      3        41s     83.5G    34       91  18.2G  gpu    completed
+  G0N8C2  --        8    2  no gpu ELPA-1stage     3.1      3        58s     85.1G    52       --     --  cpu    completed
 ```
 
 **Every column, every sweep.** A trial that asked for no GPU says `no gpu`,
@@ -1694,7 +1694,7 @@ And it PRINTS **the report** (it wrote `bench-recommendation.txt` beside the rec
 molbuilder bench recommendation -- 02_tight
 NOTHING APPLIES THIS.  It is what the benchmark found; the decision is yours to write.
 
-  G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter
+  G1N4C6 fastest (2.3 s/iter); gpu-bound; vs G1N8C2 3.1 s/iter
 
   it computed with
       diag_algorithm = 'ELPA-1STAGE'
@@ -2251,12 +2251,12 @@ described.**
 > measurement that would settle *"is the GPU worth it here?"* could not be run.
 >
 > **What replaced it:** the description answers, and the grid follows its
-> answer. `use_gpu = true` → the `(G, K, c)` grid, with `gres`; the
+> answer. `use_gpu = true` → the `(G, N, c)` grid, with `gres`; the
 > device count and type come from this machine's probe **or, on a
 > GPU-less login node, from the domain row's probed GPU inventory** —
 > only a machine with neither is refused by name
 > (`generator.md § 4.3a`, 2026-08-21). `use_gpu = false` → the
-> `(K, c)` grid from the same enumerator, no `gres`, no refusal. One
+> `(N, c)` grid from the same enumerator, no `gres`, no refusal. One
 > enumeration, two shapes.
 
 **The relabel and the forced cold are what make it safe to nest.** A trial that
@@ -2285,7 +2285,7 @@ directory at all.
 
 ```mermaid
 flowchart LR
-    D["<b>stage 02_tight</b><br/>its deck — the science"] --> T["<b>trials</b><br/>same science, made measurable<br/>bench-G1K2C5 · bench-G2K4C5 · …"]
+    D["<b>stage 02_tight</b><br/>its deck — the science"] --> T["<b>trials</b><br/>same science, made measurable<br/>bench-G1N2C5 · bench-G2N8C5 · …"]
     T --> W["<b>a number</b><br/>G · ranks · cores · mem · walltime"]
     W --> R["<b>the stage's real run</b><br/>its own deck, those resources"]
     R --> N["<b>stage 03</b><br/>continues from it"]
@@ -2492,7 +2492,7 @@ guess it for you.
 ### 4.4 Trials name themselves by their settings
 
 A sweep has no order — no trial follows another — so the name carries **what was
-tried**: `bench-G<gpus>K<ranks-per-gpu>C<cores-per-rank>`, which is what lets
+tried**: `bench-G<gpus>N<ranks>C<cores-per-rank>` — `N` the ranks in all — which is what lets
 `summarize` map a directory back to its point.
 
 **A name repeats nothing its data already states** *(L4, roadmap 7.10;
@@ -2509,8 +2509,8 @@ whole (`resolve.point_token`):
   trials' identities (`…ELPA1STAGE`/`…ELPA2STAGE` differ only past the
   cut).  The full coordinate lives untouched in the trial's `point` data.
 
-The **shape** is the shipped `point-G<g>K<k>C<c>` convention; the **prefix
-changes** (2026-08-07). `point` is grid vocabulary — it names nothing a person
+The **shape** is `G<g>N<n>C<c>` — GPUs, ranks in all, cores per rank — and
+the **prefix** is `bench-`: `point` is grid vocabulary — it names nothing a person
 would recognise in a directory listing — while `bench-` says what the directory
 belongs to. It is a rename with a parser cost, taken because the alternative is
 two names for one idea across layers (`job-contracts.md § 6.3`).

@@ -117,7 +117,7 @@ def _gpus_per_node(routing) -> "int | None":
 def _cells_on_the_queue(plan, *, routing, local_cores=None,
                         local_gpus=None):
     """Every enumerated bench cell, fit on the benchmark's queue --
-    ``[(fam, (g, k, c), fits, over)]`` in enumeration order: ``fits`` the
+    ``[(fam, (g, n, c), fits, over)]`` in enumeration order: ``fits`` the
     cell's fit on each queue of ``routing``, as ``{queue, holds, line}``
     (`scheduler.fit`, the one `place` itself asks, so a cell and a run get
     one reading), ``over`` the limits it is over -- empty when a node of
@@ -142,13 +142,13 @@ def _cells_on_the_queue(plan, *, routing, local_cores=None,
             out.append((fam, cell, said if over else (), over))
         return out
     out = []
-    for fam, (g, k, c) in plan:
+    for fam, (g, n, c) in plan:
         want_gpu = bool(fam and g)
-        req = Request(ranks=_cell_ranks(want_gpu, g, k), cpus_per_task=c,
+        req = Request(ranks=n, cpus_per_task=c,
                       gpus=g if want_gpu else None)
         fits = [fit(row, req) for row in routing]
         held = any(f.holds for f in fits)
-        out.append((fam, (g, k, c),
+        out.append((fam, (g, n, c),
                     tuple({"queue": f.domain, "holds": f.holds,
                            "line": f.line} for f in fits),
                     () if held else tuple(o for f in fits for o in f.over)))
@@ -164,8 +164,7 @@ def _local_over(cell, fam, cores_total, gpus_per_node):
     numbers (R4).
     """
     from ..scheduler.fit import Over
-    g, k, c = cell
-    ranks = _cell_ranks(fam, g, k)
+    g, ranks, c = cell
     over = []
     if cores_total and ranks * c > cores_total:
         over.append(Over("box_cores", "the target's probed node",
@@ -185,11 +184,11 @@ def _past_the_ask(fam, cell, ask) -> list:
         return []
     from ..scheduler.fit import Over
     from ..scheduler.quantities import parse_gres_flag
-    g, k, c = cell
+    g, n, c = cell
     gpus = g if (fam and g) else 0
     out = []
     for limit, asked, allowed, unit in (
-            ("ask_ranks", _cell_ranks(fam, g, k), ask.mpi_np, "ranks"),
+            ("ask_ranks", n, ask.mpi_np, "ranks"),
             ("ask_cpus", c, ask.cpus_per_task, "cores per rank"),
             ("ask_gpus", gpus,
              parse_gres_flag(ask.gres) if ask.gres not in (None, "")
@@ -200,29 +199,20 @@ def _past_the_ask(fam, cell, ask) -> list:
     return out
 
 
-def _cell_ranks(fam, g, k) -> int:
-    """How many ranks a cell runs -- ``G x K`` on the GPU family, ``K`` on
-    the CPU one.
-
-    ONE SPELLING, for the fit check, the shape line and the report.
-    """
-    return g * k if (fam and g) else k
-
-
-def _cell_label(g, k, c) -> str:
+def _cell_label(g, n, c) -> str:
     """A cell's name: the machine part of its trials' names, built by the
     one builder (`resolve.point_token` -- `job-contracts.md` § 6.3: "and by
     nothing else"), ``G0`` for a CPU cell on every machine.  A sweep with
     value axes crosses each cell with them, so its trials' names go on past
-    this one (``G0K48C1ELPA1stage``): the fit list names the cell, the
+    this one (``G0N48C1ELPA1stage``): the fit list names the cell, the
     directories its trials."""
-    from ..resolve import point_token
-    return point_token({"G": g, "K": k, "C": c})
+    from ..resolve import MACHINE_AXES, point_token
+    return point_token(dict(zip(MACHINE_AXES, (g, n, c))))
 
 
-def _cell_shape(g, k, c) -> str:
+def _cell_shape(g, n, c) -> str:
     """What a cell ASKS FOR, in words -- ranks, cores each, and GPUs."""
-    bit = f"{_cell_ranks(bool(g), g, k)} rank(s) x {c} core(s)"
+    bit = f"{n} rank(s) x {c} core(s)"
     return bit + (f" + {g} GPU(s)" if g else "")
 
 
@@ -655,7 +645,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
             raise PrepError(
                 f"this description asks for the GPU (use_gpu = "
                 f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "
-                f"benchmark enumerates a GPU grid (G × ranks-per-GPU × "
+                f"benchmark enumerates a GPU grid (GPUs × ranks × "
                 f"cores) -- and the record it reads ({_which}) "
                 + ("does not say how many GPUs a node has"
                    if node_gpus is None
@@ -714,12 +704,10 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # THE DECLARED DEVICE COUNTS (user, 2026-08-21: "explicit is what we
     # need").  Declared, gpu_count is exact: those G values and no others,
     # each its own shelf -- a cell declared whole kept whatever the record
-    # says, its fit on the queue saying what holds it (`scheduler.md` R6); a
-    # (mpi_np, G) pair that cannot split EVENLY is dropped by name below
-    # -- a trial is named and sized by its ranks per GPU (mpi_np = G·K),
-    # which an uneven split does not have, and a benchmark never rounds a
-    # number -- and refusing the whole prep would deny the divisible cells
-    # and the CPU family a rank count they hold fine.
+    # says, its fit on the queue saying what holds it (`scheduler.md` R6);
+    # every (mpi_np, G) pair is a cell, its ranks spread over its devices
+    # as a run spreads them, an uneven split said (`ask.gpu_share_notes`):
+    # a request is prepared, never vetoed (`generator.md` § 4.3).
     gpu_counts = ([int(v) for v in declared.get("gpu_count")]
                   if declared.get("gpu_count") else None)
     if gpu_counts and not any(families):
@@ -729,32 +717,18 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
             "device counts would be silently ignored.  Declare use_gpu "
             "= [true] (or the [true, false] axis), or drop gpu_count.")
 
-    #: The (mpi_np, gpu_count) pairs dropped by the even-split rule, for
-    #: the refusal that points at them.
-    dropped: list = []
-
     def _family_cells(fam):
-        """The machine cells of ONE family, as (G, K, C) -- G=0 is the CPU
-        family's held coordinate (plain ranks), G>=1 the device count with
-        G*K == the total rank count."""
+        """The machine cells of ONE family, as (G, N, C) -- G=0 is the CPU
+        family's held coordinate, G>=1 the device count, N the ranks in
+        all.  Declared counts are the counts, every pair a cell; the
+        machine's proposal (no gpu_count) ranges G over each rank count's
+        divisors."""
         if grid_declared:
             if fam:
-                counts = gpu_counts or range(1, gpn + 1)
-                cells = sorted({(g, r // g, c)
-                                for r in ranks for c in cores
-                                for g in counts if r % g == 0})
-                if gpu_counts:
-                    bad = sorted({(r, g) for r in ranks for g in gpu_counts
-                                  if r % g})
-                    if bad:
-                        dropped.extend(bad)
-                        note(
-                            "  dropped (a trial counts its ranks per GPU, "
-                            "and these do not split EVENLY over the "
-                            "GPUs): "
-                            + ", ".join(f"mpi_np={r} x gpu_count={g}"
-                                        for r, g in bad))
-                return cells
+                return sorted({(g, r, c)
+                               for r in ranks for c in cores
+                               for g in (gpu_counts or range(1, gpn + 1))
+                               if gpu_counts or r % g == 0})
             return [(0, r, c) for r in ranks for c in cores]
         # THE MACHINE PROPOSES FROM WHAT ITS RECORD SAYS: no cores per
         # socket, no proposal.
@@ -775,7 +749,9 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
         # carries: the grid ranges up to the largest declared.
         reach = max(gpu_counts) if (fam and gpu_counts) else (gpn if fam
                                                               else 1)
-        return [(g if fam else 0, k, c)
+        # The proposal counts ranks per device (`bench/grid.py`); a cell
+        # carries its ranks in all.
+        return [(g, g * k, c) if fam else (0, k, c)
                 for g, k, c in sweep_grid(reach, cps, ks, None)
                 if not (fam and gpu_counts) or g in gpu_counts]
 
@@ -810,14 +786,14 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # two renderings.
     if report is not None:
         report.extend(
-            {"label": _cell_label(g, k, c),
-             "shape": _cell_shape(g, k, c),
+            {"label": _cell_label(g, n, c),
+             "shape": _cell_shape(g, n, c),
              "family": "gpu" if fam else "cpu",
-             "ranks": _cell_ranks(fam, g, k), "cores_each": c,
+             "ranks": n, "cores_each": c,
              "gpus": (g if (fam and g) else 0),
              # The wire carries the SENTENCES: the browser renders prose.
              "fit": list(lines), "why": [i.message for i in why]}
-            for fam, (g, k, c), lines, why in checked)
+            for fam, (g, n, c), lines, why in checked)
 
     # The menu these cells are checked against is the TARGET's -- `prep --target sol` on a workstation reads
     # the record for Sol, a cluster you are not standing on at all
@@ -825,9 +801,9 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # QUEUES, and says so.
     note(f"  bench grid: {len(checked)} combination(s) enumerated, "
          f"{len(kept)} kept" + (f" on {named}" if named else ""))
-    for fam, (g, k, c), lines in kept:
-        note(f"    {_cell_label(g, k, c):<11} "
-             f"{_cell_shape(g, k, c):<37}")
+    for fam, (g, n, c), lines in kept:
+        note(f"    {_cell_label(g, n, c):<11} "
+             f"{_cell_shape(g, n, c):<37}")
         # EACH CELL'S FIT, said under it (`generator.md` § 4.3a) -- a
         # declared cell is kept whatever it says (R4, R6).
         for said in lines:
@@ -850,53 +826,41 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
                 "no node of the target's queues holds them" if menu else
                 "the target's probed node does not hold them")
              + ", or this prep's ask does not allow them:")
-        for fam, (g, k, c), why in crossed:
+        for fam, (g, n, c), why in crossed:
             # `.message`, NOT the finding itself, whose repr is not a
             # sentence.  The numbers are fields so callers can read them; the
             # SENTENCE is what a person is shown.
-            note(f"    {_cell_label(g, k, c):<11} "
-                 f"{_cell_shape(g, k, c):<37}  "
+            note(f"    {_cell_label(g, n, c):<11} "
+                 f"{_cell_shape(g, n, c):<37}  "
                  + "; ".join(w.message for w in why))
 
     cells = []
     for fam in families:
         fcells = [cell for f, cell, _dom in kept if f == fam]
         if fam and fcells:
-            # The GPU-sharing note (user, 2026-08-23): ALWAYS state
-            # ranks/GPU -- a cell's K -- warn past MPS's client ceiling, note
-            # past this stack's tuned point.  Whether the cores fit a node is
-            # each cell's fit above.  The two thresholds are the ones
-            # `ask.gpu_share_notes` states at a run's prep, so the two
-            # displays cannot disagree.
-            from .ask import (GPU_TUNED_RANKS_PER_DEVICE,
-                              MPS_MAX_CLIENTS_PER_DEVICE)
-            shares = sorted({(g, k) for g, k, c in fcells})
-            bits = []
-            for g, k in shares:
-                flag = ("  <- WARNING, past MPS's ceiling"
-                        if k > MPS_MAX_CLIENTS_PER_DEVICE else
-                        "  <- past the tuned point"
-                        if k > GPU_TUNED_RANKS_PER_DEVICE else "")
-                bits.append(f"G{g}K{k}: {k} rank(s)/GPU{flag}")
-            note("  GPU sharing in this family: " + ", ".join(bits))
+            # The GPU-sharing note (user, 2026-08-23): ALWAYS state the
+            # ranks per GPU, an uneven split said, warn past MPS's client
+            # ceiling, note past this stack's tuned point -- the one
+            # sentence a run's prep says (`ask.gpu_share_notes`), so a cell
+            # and a run cannot be said two ways.  Whether the cores fit a
+            # node is each cell's fit above.
+            from .ask import gpu_share_notes
+            note("  GPU sharing in this family:")
+            for g, n in sorted({(g, n) for g, n, c in fcells}):
+                for line in gpu_share_notes(g, n):
+                    note("  " + line)
         if fam and not fcells:
-            # every GPU cell was left out above, or fell to the
-            # even-split rule -- both are listed by name, so this names
-            # the consequence.
+            # every GPU cell was left out above, listed by name, so this
+            # names the consequence.
             if mixed:
                 note(
                     "  NOTE: no GPU cell is left -- this sweep measures "
                     "only the CPU family.")
             else:
-                # POINTING AT WHAT IS THERE: the cells left out, the pairs
-                # dropped, either or both.
-                seen = [w for w, there in (
-                    ("the cells left out", any(f for f, _c, _w in crossed)),
-                    ("the pairs dropped by the even-split rule",
-                     bool(dropped))) if there]
                 raise PrepError(
                     "no GPU cell is left"
-                    + (f" -- see {' and '.join(seen)} above" if seen else "")
+                    + (" -- see the cells left out above"
+                       if any(f for f, _c, _w in crossed) else "")
                     + ".  Adjust mpi_np / gpu_count in job-request.json, name a "
                       "queue whose GPU nodes hold them, or declare the cells "
                       "whole -- mpi_np, omp_threads and gpu_count: a "
@@ -916,37 +880,37 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
         combos = [{**c, name: v} for c in combos for v in vals]
 
     points = []
-    for fam, (g, k, c) in cells:
+    from ..resolve import MACHINE_AXES
+    for fam, cell in cells:
         # EVERY TRIAL CARRIES G -- ``G0`` for a CPU trial, on every
         # machine.
+        coord = dict(zip(MACHINE_AXES, cell))
         if mixed:
-            coord = {"G": g, "K": k, "C": c, "use_gpu": fam}
-        else:
-            coord = {"G": g, "K": k, "C": c}
+            coord["use_gpu"] = fam
         points.extend({**coord, **vc} for vc in combos)
 
     if mixed:
-        # ONE translation serves both families: G=0 maps to plain ranks
-        # and NO gres, G>=1 to G*K ranks plus the device ask -- which is
-        # what lets `launch` put the CPU group on an allocation that
-        # holds no device (§ 4.3a's split submission).
+        # ONE translation serves both families: N ranks each, G=0 with NO
+        # gres, G>=1 with the device ask -- which is what lets `launch` put
+        # the CPU group on an allocation that holds no device (§ 4.3a's
+        # split submission).
         translation = MachineTranslation(
-            axes=("G", "K", "C"),
+            axes=MACHINE_AXES,
             to_resources=lambda p, _env: (
-                {"mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
+                {"mpi_np": p["N"], "cpus_per_task": p["C"],
                  "gres": f"gpu:{p['G']}"} if p["G"] else
-                {"mpi_np": p["K"], "cpus_per_task": p["C"]}))
+                {"mpi_np": p["N"], "cpus_per_task": p["C"]}))
     elif on_gpu:
         translation = MachineTranslation(
-            axes=("G", "K", "C"),
+            axes=MACHINE_AXES,
             to_resources=lambda p, _env: {
-                "mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
+                "mpi_np": p["N"], "cpus_per_task": p["C"],
                 "gres": f"gpu:{p['G']}"})
     else:
         translation = MachineTranslation(
-            axes=("G", "K", "C"),
+            axes=MACHINE_AXES,
             to_resources=lambda p, _env: {
-                "mpi_np": p["K"], "cpus_per_task": p["C"]})
+                "mpi_np": p["N"], "cpus_per_task": p["C"]})
     # The trial pins -- schema values resolved like any other (`template.md`
     # § 8.1: rebuild and render, never splice): capped SCF, single point,
     # forced cold -- and ``scf_must_converge: False``, the switch that makes

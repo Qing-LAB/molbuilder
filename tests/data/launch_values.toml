@@ -327,7 +327,7 @@ bench = { mpi_np = [1], omp_threads = [1] }
 run = { time = "2-00:00:00", domain = "debug" }
 bench_header = ["#SBATCH -t 0-01:00:00", "#SBATCH -p cpu", "#SBATCH -q public"]
 bench_header_lacks = ["#SBATCH -q debug"]
-said = ["placed on cpu (", "bench-group-cpu-G0K1C1  header: -J bench-group-cpu-G0K1C1  -N 1  -n 1  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G",
+said = ["placed on cpu (", "bench-group-cpu-G0N1C1  header: -J bench-group-cpu-G0N1C1  -N 1  -n 1  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G",
         "1 core · 8 GB · 1h fits all 10 nodes of cpu"]
 launch = []
 

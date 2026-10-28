@@ -221,9 +221,9 @@ def test_a_run_keeps_the_calculations_own_label(template):
 
 
 def test_point_token_is_the_authoritys_rendering():
-    """`job-contracts.md` § 6.3: the coordinate is ONE qualifier — ``G1K4C6``,
+    """`job-contracts.md` § 6.3: the coordinate is ONE qualifier — ``G1N4C6``,
     concatenated, because a separator inside it would read as more qualifiers."""
-    assert point_token({"G": 1, "K": 4, "C": 6}) == "G1K4C6"
+    assert point_token({"G": 1, "N": 4, "C": 6}) == "G1N4C6"
     assert point_token({"mpi_np": 8, "block_size": 16}) == \
         "mpi_np8block_size16"
     assert "." not in point_token({"mesh_cutoff": 300.0})
@@ -234,10 +234,10 @@ def test_point_token_is_the_authoritys_rendering():
 #  The explicit-points form, and the specialisation's translation seam   #
 # --------------------------------------------------------------------- #
 
-_GKC = MachineTranslation(
-    axes=("G", "K", "C"),
-    # The benchmark's coupling: K ranks per GPU on G GPUs, C cores per rank.
-    to_resources=lambda p, env: {"mpi_np": p["G"] * p["K"],
+_GNC = MachineTranslation(
+    axes=("G", "N", "C"),
+    # The benchmark's coupling: N ranks on G GPUs, C cores per rank.
+    to_resources=lambda p, env: {"mpi_np": p["N"],
                                  "cpus_per_task": p["C"]})
 
 
@@ -245,22 +245,22 @@ def test_explicit_points_are_taken_verbatim_in_order(template):
     """A dependent enumeration is not a cross product: the caller hands the
     points themselves, and the set preserves them as given."""
     ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
-                 sweep=[{"G": 1, "K": 4, "C": 4}, {"G": 1, "K": 8, "C": 2}],
-                 translation=_GKC, stage=STAGE)
+                 sweep=[{"G": 1, "N": 4, "C": 4}, {"G": 1, "N": 8, "C": 2}],
+                 translation=_GNC, stage=STAGE)
     assert len(ps) == 2 and ps.is_sweep
-    assert [e.point for e in ps] == [{"G": 1, "K": 4, "C": 4},
-                                     {"G": 1, "K": 8, "C": 2}]
-    assert ps.axes == ("G", "K", "C")
+    assert [e.point for e in ps] == [{"G": 1, "N": 4, "C": 4},
+                                     {"G": 1, "N": 8, "C": 2}]
+    assert ps.axes == ("G", "N", "C")
 
 
 def test_the_translation_reaches_the_elements_resources(template):
     """The trial's rank count comes from the translated coordinate — the field
     that makes `Job.resources` copyable rather than re-derived (§ 5)."""
     ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
-                 sweep=[{"G": 1, "K": 4, "C": 2}], translation=_GKC, stage=STAGE)
+                 sweep=[{"G": 1, "N": 4, "C": 2}], translation=_GNC, stage=STAGE)
     assert ps[0].resources.mpi_np == 4
     assert ps[0].resources.cpus_per_task == 2
-    assert ps[0].label == "relax-G1K4C2"
+    assert ps[0].label == "relax-G1N4C2"
 
 
 def test_the_environment_reaches_the_translation(template):
@@ -289,13 +289,13 @@ def test_a_translated_ask_is_bounded_by_the_allocation_too(template):
     with pytest.raises(ResolveError, match=r"exceeds this prep's allocation"):
         resolve(template, _task(), SiestaConfig,
                 allocation=Resources(mpi_np=16),
-                sweep=[{"G": 1, "K": 32, "C": 1}], translation=_GKC, stage=STAGE)
+                sweep=[{"G": 1, "N": 32, "C": 1}], translation=_GNC, stage=STAGE)
 
 
 def test_an_axis_that_names_nothing_is_refused_without_a_translation(template):
     with pytest.raises(ResolveError, match=r"name\s+neither"):
         resolve(template, _task(), SiestaConfig, allocation=ALLOC,
-                sweep=[{"G": 1, "K": 4, "C": 6}], stage=STAGE)
+                sweep=[{"G": 1, "N": 4, "C": 6}], stage=STAGE)
 
 
 def test_an_orphan_axis_is_refused_even_with_a_translation(template):
@@ -304,23 +304,23 @@ def test_an_orphan_axis_is_refused_even_with_a_translation(template):
     directory while affecting nothing, the *present but not honoured* shape."""
     with pytest.raises(ResolveError, match=r"'mesh_cutof'"):
         resolve(template, _task(), SiestaConfig, allocation=ALLOC,
-                sweep=[{"G": 1, "K": 4, "C": 2, "mesh_cutof": 150}],
-                translation=_GKC, stage=STAGE)
+                sweep=[{"G": 1, "N": 4, "C": 2, "mesh_cutof": 150}],
+                translation=_GNC, stage=STAGE)
 
 
 def test_a_partial_coordinate_is_refused_by_name(template):
-    """A translation's axes travel together: a point carrying G without K and
+    """A translation's axes travel together: a point carrying G without N and
     C would make the machine ask a guess."""
-    with pytest.raises(ResolveError, match=r"'K'"):
+    with pytest.raises(ResolveError, match=r"'N'"):
         resolve(template, _task(), SiestaConfig, allocation=ALLOC,
-                sweep=[{"G": 1}], translation=_GKC, stage=STAGE)
+                sweep=[{"G": 1}], translation=_GNC, stage=STAGE)
 
 
 def test_a_run_with_a_translation_supplied_is_still_a_run(template):
     """No sweep + a translation on hand (the bench entry always passes its
     coupling) must not call it on the empty point — a run has no coordinate."""
     ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
-                 translation=_GKC, stage=STAGE)
+                 translation=_GNC, stage=STAGE)
     assert len(ps) == 1 and ps[0].point == {}
     assert ps[0].resources.mpi_np == ALLOC.mpi_np
 

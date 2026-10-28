@@ -173,7 +173,7 @@ def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
     assert js["kind"] == "sweep"
     names = [j["name"] for j in js["jobs"]]
     assert len(names) == len(set(names)) and len(names) >= 2
-    assert all(n.startswith("G1K") and "C" in n for n in names)
+    assert all(n.startswith("G1N") and "C" in n for n in names)
     # one deck per trial, named by the TRIAL's label + the stage token
     import re
     for n in names:
@@ -204,18 +204,17 @@ def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
 
 
 def test_each_trials_resources_carry_its_own_coordinate(calc):
-    """G·K ranks, C cores, G GPUs in gres -- a count, no card (scheduler.md
+    """N ranks, C cores, G GPUs in gres -- a count, no card (scheduler.md
     R2a) -- translated once, per element, never re-derived downstream
-    (generator.md § 5)."""
+    (generator.md § 5); the coordinate read from the trial's own point,
+    never cut out of its name (job-contracts.md § 6.3)."""
     js = _prep_bench(calc)
     for job in js["jobs"]:
-        g = int(job["name"][1])
-        k = int(job["name"][job["name"].index("K") + 1:job["name"].index("C")])
-        c = int(job["name"][job["name"].index("C") + 1:])
+        pt = job["point"]
         r = job["resources"]
-        assert r["mpi_np"] == g * k
-        assert r["cpus_per_task"] == c
-        assert r["gres"] == f"gpu:{g}"
+        assert r["mpi_np"] == pt["N"]
+        assert r["cpus_per_task"] == pt["C"]
+        assert r["gres"] == f"gpu:{pt['G']}"
 
 
 def test_trials_nest_inside_the_stage_they_measure(calc):
@@ -443,9 +442,11 @@ def test_the_benchmarks_prep_states_gpu_sharing(calc):
         "prep", "bench", "coarse", "--bundle", str(calc), "--np", "8",
         "--cpus-per-task", "8"])
     assert r.exit_code == 0, r.output
-    shares = [l for l in r.output.splitlines() if "GPU sharing" in l]
-    assert len(shares) == 1, r.output
-    assert "rank(s)/GPU" in shares[0], shares
+    lines = r.output.splitlines()
+    assert sum("GPU sharing" in l for l in lines) == 1, r.output
+    # ...EACH SHARE IN THE SENTENCE A RUN'S PREP SAYS (`ask.gpu_share_notes`)
+    said = [l for l in lines if "gpu share" in l]
+    assert said and all("rank(s)/GPU" in l for l in said), r.output
 
 
 def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
@@ -541,7 +542,7 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
 def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
     """The STOMP's true regression pin (U1 fixed it at the job-set level;
     this pins the WRAPPER TEXT, where the bug actually bit): every
-    trial's .run.sh bakes ITS OWN G*K rank default, not the base
+    trial's .run.sh bakes ITS OWN rank default, N, not the base
     allocation's -- a stomped wrapper launches every trial at the same
     np and the benchmark measures nothing."""
     import re
@@ -549,8 +550,7 @@ def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
     seen = set()
     for j in js["jobs"]:
         name = j["name"]
-        g = int(name[1])
-        k = int(name[name.index("K") + 1:name.index("C")])
+        n = j["point"]["N"]
         w = (_artifacts(calc, name)
              / f"JOB-{name}_01_coarse.run.sh").resolve().read_text()
         # ANCHORED to the assignment lines: the GPU policy block's
@@ -558,8 +558,8 @@ def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
         # which is exactly what an unanchored search matched first.
         vals = re.findall(r"^\s*_mpi_np_default=(\d+)$", w, re.M)
         assert vals, "wrapper carries no baked rank default"
-        assert all(int(v) == g * k for v in vals), (name, vals)
-        seen.add(g * k)
+        assert all(int(v) == n for v in vals), (name, vals)
+        seen.add(n)
     assert len(seen) > 1, "all wrappers share one rank count -- the stomp"
 
 
@@ -1173,8 +1173,8 @@ def test_the_declared_grid_is_the_sweep(calc):
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
     sweep, _pins, translation = bench_inputs(open_calculation(calc), None)
-    assert sweep == [{"G": 0, "K": 1, "C": 1}, {"G": 0, "K": 2, "C": 1}]
-    assert translation.axes == ("G", "K", "C")
+    assert sweep == [{"G": 0, "N": 1, "C": 1}, {"G": 0, "N": 2, "C": 1}]
+    assert translation.axes == ("G", "N", "C")
 
 
 def test_a_multi_point_value_entry_is_a_value_axis(calc):
@@ -1273,11 +1273,12 @@ def test_a_bad_enum_value_and_a_non_bool_are_refused_with_the_choices(calc):
 
 
 def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
-    """On a GPU description, G ranges over the divisors of each declared
-    rank count, so G*K equals the declared mpi_np exactly."""
+    """On a GPU description with no gpu_count, G ranges over the divisors
+    of each declared rank count (the proposal), each trial running the
+    declared mpi_np, N, exactly."""
     _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1]})
     sweep, _pins, _tr = bench_inputs(open_calculation(calc), None)
-    assert all(p["G"] * p["K"] == 4 for p in sweep)
+    assert all(p["N"] == 4 for p in sweep)
     assert {p["G"] for p in sweep} == {1}          # fixture probes one a100
 
 

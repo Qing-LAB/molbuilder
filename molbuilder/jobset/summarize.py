@@ -401,7 +401,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
            "NOTHING APPLIES THIS.  It is what the benchmark found; the "
            "decision is yours to write.",
            ""]
-    # The rationale already reads as a sentence ("G1K4C6 fastest (2.3
+    # The rationale already reads as a sentence ("G1N4C6 fastest (2.3
     # s/iter); vs ..."), so it is not labelled again.
     rationale = choice.get("rationale") or choice.get("label")
     if rationale:

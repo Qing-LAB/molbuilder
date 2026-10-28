@@ -497,12 +497,13 @@ per device help the other — is the whole reason the number of ranks
 sharing each GPU is something the benchmark *measures* instead of a fixed
 rule.
 
-**The coordinate: G × K × C, and what you declare.** A GPU trial is
-described by three numbers: **G** devices, **K** ranks *per device*, and
-**C** cores per rank. The scheduler is asked for `-n G·K` ranks (the
-total), `-c C` cores each, and — through `--gres`, the scheduler's
-request line for special resources such as GPUs — G devices. Ranks and
-devices are independent requests. In the job request (`job-request.json`'s `bench`) you declare the portable
+**The coordinate: G × N × C, and what you declare.** A GPU trial is
+described by three numbers: **G** devices, **N** ranks in all, and **C**
+cores per rank, and named by them (`bench-G2N32C1`). The scheduler is
+asked for `-n N` ranks, `-c C` cores each, and — through `--gres`, the
+scheduler's request line for special resources such as GPUs — G devices.
+Ranks and devices are independent requests; the ranks each device carries,
+N/G, follow, and need not be whole. In the job request (`job-request.json`'s `bench`) you declare the portable
 half, and since 2026-08-21 that includes the device count itself
 (*"explicit is what we need"* — until then G was derived from divisors):
 
@@ -518,17 +519,17 @@ half, and since 2026-08-21 that includes the device count itself
 
 — CPU trials at 32 and 64 total ranks; GPU trials at exactly 1, 2 and 4
 devices; both solvers rendered into every trial's input file. `mpi_np` is
-always the TOTAL rank count (`G·K`), so K follows as `mpi_np / G`. The
-rules around `gpu_count` are refusals, named drops and fits said, never
-silent repairs: a device count past what the record says a node carries is
+always the TOTAL rank count, N. The rules around `gpu_count` are
+refusals and fits said, never silent repairs: a device count past what the record says a node carries is
 **kept** when the cell is declared whole — its `mpi_np` and `omp_threads`
 declared too — its fit saying so, the scheduler deciding
 ([`execution/scheduler.md`](?doc=execution/scheduler.md) R6), and left out
 by its numbers in a cell whose ranks the machine proposed; a
-`(mpi_np, gpu_count)` pair that cannot split into equal shares is
-**dropped, and the dropped pair is printed by name** — a trial is counted
-by its ranks per GPU, which an uneven split does not have, and a benchmark
-never rounds your numbers; `gpu_count` on a bench whose `use_gpu` resolves to false
+`(mpi_np, gpu_count)` pair that does not split into equal shares is **a
+trial like any other**, its split said at prep — 32 ranks on 3 GPUs, two
+devices carrying one rank more — the sentence a run's prep says
+(`ask.gpu_share_notes`); ELPA's advice below, equal shares, is about speed,
+which is what a benchmark measures, never a reason to refuse a cell; `gpu_count` on a bench whose `use_gpu` resolves to false
 **refuses** rather than being silently ignored; and with `gpu_count`
 absent, the machine *proposes* — G ranges over each declared rank count's
 divisors, bounded by the recorded device count. The device count itself
@@ -559,7 +560,7 @@ flowchart TD
     TOPO -->|"device count + type<br/>(on a login node: the inventory answers)"| PREP
     DOM -->|"which partitions have GPUs?<br/>how many cores per node?"| PREP
     PREP --> CPU["CPU trials (G = 0)<br/>one per mpi_np × omp_threads"]
-    PREP --> GPU["GPU trials<br/>G = your gpu_count, exactly<br/>K = mpi_np / G — must divide evenly,<br/>else that pair is dropped BY NAME<br/>C = omp_threads, declared beside mpi_np"]
+    PREP --> GPU["GPU trials<br/>G = your gpu_count, exactly<br/>N = mpi_np, the ranks in all —<br/>an uneven split over the G devices said<br/>C = omp_threads, declared beside mpi_np"]
     GPU -->|"each cell's fit on the queue said;<br/>a cell declared whole kept whatever it says"| GPU
     CPU --> TRIALS["× the value settings = the trials,<br/>each input file carrying its own values"]
     GPU --> TRIALS
@@ -588,11 +589,12 @@ per GPU with MPS is the point to state on the run card for this kind of build
 what NCCL is and when it would change this is answered at the end of this
 section.
 
-**The node arithmetic — the 48 is a ceiling, not a target.** Per device,
-K ranks each holding C cores must fit the node: **K × C ≤ cores / G**.
-On a 48-core, 4-GPU node that is 12 cores per device, so `G4 K12 C1`
-fills the node exactly — while a 24-ranks-on-one-A100 layout
-(`G1 K24 C2`) spends the *whole node's* cores on one device and leaves
+**The node arithmetic — the 48 is a ceiling, not a target.** The N ranks,
+each holding C cores, must fit the node: **N × C ≤ cores** — per device,
+N/G ranks on the cores beside it.
+On a 48-core, 4-GPU node that is 12 cores per device, so `G4N48C1`
+(12 ranks a device) fills the node exactly — while a 24-ranks-on-one-A100
+layout (`G1N24C2`) spends the *whole node's* cores on one device and leaves
 three idle. The MPS limit of 48 is what *can attach*, not what is fast:
 once the GPU's compute units are fully busy, extra processes only wait in
 line on the device. **Threads are not required for GPU sharing** — one
@@ -609,8 +611,8 @@ assumption you can replace with a measurement — declare `omp_threads` as
 an axis, and the winning C is reported for you to write into `execution`.  One
 declaration measures the full-node layouts: `mpi_np: [24, 48]` ×
 `omp_threads: [1, 2]` × `gpu_count: [1, 2, 4]` enumerates each rank count
-over one, two and four GPUs — `G4 K12`, `G2 K24`, `G1 K48` (at the MPS
-ceiling) among them — with one and two threads each, every cell declared
+over one, two and four GPUs — `G4N48`, `G2N48`, `G1N48` (48 ranks on one
+device, at the MPS ceiling) among them — with one and two threads each, every cell declared
 and kept with its fit (a 48-rank, two-thread cell on a 48-core GPU node is
 said to fit no node there); without `gpu_count` the machine proposes the
 device counts, and a cell no GPU node holds is left out with its numbers —
@@ -635,8 +637,8 @@ states one, on purpose. **(2)** A GPU run states its device count —
 `gpu_count` on its run card, or `--gpus` at its prep — and one that states
 none is refused at prep: there is no default
 ([`execution/gpu.md`](?doc=execution/gpu.md) G5). **(3)** At launch, the wrapper
-counts the devices the scheduler actually granted, assigns ranks to
-devices in equal shares, pins each rank's memory to the socket that owns
+counts the devices the scheduler actually granted, spreads the ranks over
+the devices as evenly as they divide, pins each rank's memory to the socket that owns
 its GPU, and starts MPS when ranks outnumber devices — so the run adapts
 to the real allocation whatever the paperwork said.
 

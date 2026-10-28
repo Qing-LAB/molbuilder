@@ -141,11 +141,11 @@ def _sweep() -> JobSet:
     # in resources -- the case that broke the per-job-render model.
     return JobSet(
         name="sw", engine="siesta", kind="sweep",
-        jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
+        jobs=[Job(name="G1N1C4", script="job-gpu.fdf",
                   resources=Resources(mpi_np=1, cpus_per_task=4,
                                       use_gpu=True, gres="gpu:1",
                                       time="0-01:00:00", mem="8G")),
-              Job(name="G1K2C4", script="job-gpu.fdf",
+              Job(name="G1N2C4", script="job-gpu.fdf",
                   resources=Resources(mpi_np=2, cpus_per_task=4,
                                       use_gpu=True, gres="gpu:1",
                                       time="0-01:00:00", mem="8G"))])
@@ -214,7 +214,7 @@ def test_cli_prep_is_described_only(tree):
     assert "molbuilder describe" in r.output
     # nothing lays out a hand-built set: prep is the described route's
     # alone, and nothing was laid out here
-    assert not (tree / "bench-G1K1C4").exists()
+    assert not (tree / "bench-G1N1C4").exists()
 
 
 # --------------------------------------------------------------------- #
