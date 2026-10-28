@@ -41,10 +41,21 @@
 # A rung's role (`roles`): what the rung does, named by the kind -- what a
 # catalogue item's `stages` names (`engines/template.md` § 6.4) -- and what
 # it computes: "scf", an SCF; "product", no SCF at all -- each also the
-# named set of roles a catalogue item's `stages` may cite.  How a pair's
-# stages play the roles (`stage_roles`): "own", its stages are its rungs --
-# every role, in order, a stage's role its name; "every", each stage every
-# role; or the list of roles each stage plays.
+# named set of roles a catalogue item's `stages` may cite.  A role that is a
+# LEAD names the region of the junction it is cut from (`lead`): its files
+# are on that region's name, it samples the transport axis with its own
+# count, and a kind with leads is open along that axis on every other rung
+# (`execution/architecture.md` § 3.3).  The region's name has this one home
+# (`transport/sort.py` reads it), and a lead's name is no other kind's role.
+# How a pair's stages play the roles (`stage_roles`): "own", its stages are
+# its rungs -- every role, in order, a stage's role its name; "every", each
+# stage every role; or the list of roles each stage plays.
+#
+# A pair's `sum`: what `summarize task` adds up for it, a part -- with none,
+# its stages each write their own result.  Its `retired`: a stage older
+# versions wrote that it no longer holds beside its others -- the stage, the
+# role it played, the version that retired it and why -- which the reader
+# refuses naming `jobset migrate`, and migrate folds into the others.
 
 [optimization]
 noun = "optimization"
@@ -84,11 +95,19 @@ shape = "hierarchical"
 why = "A SIESTA vibration is hierarchical, and no other shape is taken -- its one run's SIESTA calls, the relaxation, the force constants and the optical calls, each run in a folder of its own: in one directory they would write over each other's .DM and .XV (engines/vibration.md § 5.11 § 1)."
 points = "molbuilder.jobset.vibration_points:POINTS"
 rung = "molbuilder.jobset.prep:siesta_vibration_rung_of"
+# Its stages' force constants compared, where it has two or more
+# (`engines/vibration.md` § 5.9).
+sum = "molbuilder.jobset.vibration_sum:SUM"
+retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIESTA vibration is one run in phases -- its relaxation the run's first call, switched by already_relaxed (engines/vibration.md 5.11)" }
 
 [vibration.on.pyscf]
 # It relaxes inside its one deck, so each of its stages is the
 # force-constant run.
 stage_roles = ["force_constants"]
+# A vibration's summary is the displacement sweep, which a PySCF vibration
+# never has -- its second derivatives are analytic -- and is refused naming
+# why (engines/vibration.md § 5.9).
+sum = "molbuilder.jobset.vibration_sum:SUM"
 
 
 [transport]
@@ -99,8 +118,8 @@ topic = "transport"
 no_benchmark = "its parameters come from its own template and each rung's run card, and its one axis is the bias list in task.json (engines/transport.md 2a.10)"
 roles = [
     { name = "seed",         computes = "scf" },
-    { name = "electrode_L",  computes = "scf" },
-    { name = "electrode_R",  computes = "scf" },
+    { name = "electrode_L",  computes = "scf", lead = "L-electrode" },
+    { name = "electrode_R",  computes = "scf", lead = "R-electrode" },
     { name = "device",       computes = "scf" },
     { name = "transmission", computes = "product" },
 ]
@@ -129,3 +148,6 @@ rung = "molbuilder.jobset.prep:transport_rung_of"
 # that takes them at a rung's first launch (engines/transport.md § 6.1).
 inputs = "molbuilder.transport.stages:inputs_of"
 gather = "molbuilder.jobset.gather:gather_sources"
+# Its transmission points read into the calculation's record and data file,
+# current against voltage (engines/transport.md § 2a.12).
+sum = "molbuilder.jobset.transport_sum:SUM"

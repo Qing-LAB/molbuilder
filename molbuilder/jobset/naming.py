@@ -40,7 +40,7 @@ class StageHome:
     #: The stage's folder, or ``None`` when no calculation folder was given.
     dir: Optional[Path]
     #: THE LABEL THE RUNG'S FILES ARE NAMED ON -- the calculation's, or a
-    #: transport lead's own stem (`identity.rung_label`).
+    #: transport lead's own stem (`kind_table.rung_label`).
     label: str = ""
 
     def names(self, shape: str) -> "RunNames":
@@ -66,7 +66,7 @@ def ladder_homes(base, task) -> Tuple[StageHome, ...]:
     stage where it was; a stage added after production takes the next one.
     ``base`` ``None`` -- a description with no folder -- numbers by place."""
     from ..identity import stage_key, stage_token
-    from ..identity import rung_label
+    from ..kind_table import rung_label
     from ..paths import Shape, stages_in
     shape = Shape.named(task.shape)
     folder = Path(base) if base is not None else None
@@ -238,10 +238,10 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     resolving to the other one would hand back a name this JobSet does not have.
     """
     # NO kind branch: the parse is anchored on the rung's label (a lead's
-    # own stem, `identity.rung_label`), so a TRIAL's script (whose
+    # own stem, `kind_table.rung_label`), so a TRIAL's script (whose
     # label is the coordinate-qualified one) never matches and gets
     # seq=None.
-    from ..identity import rung_label
+    from ..kind_table import rung_label
     out: Dict[str, StageRef] = {}
     for j in jobset.jobs:
         got = _rf_parse(os.path.basename(j.script),
@@ -256,14 +256,14 @@ def run_names(jobset: JobSet, job, shape: "Shape") -> "RunNames":
     shape (`runfiles.RunNames`, `job-contracts.md` § 2.2a): a benchmark
     trial's on its own label (`paths.trial_label`) and in its own folder, a
     ladder stage's on the calculation's -- a transport lead's on the lead's
-    own stem (`identity.rung_label`; a transport calculation has no
+    own stem (`kind_table.rung_label`; a transport calculation has no
     sweep) -- sharing the calculation's folder in the flat shape.  The
     stage is the one its deck's name carries, read back through the
     grammar.  ONE answer, asked by prep, launch and status alike: a run's
     record lies in its folder, and its name is the names'."""
     from ..paths import trial_label
     from ..runfiles import RunNames, parse
-    from ..identity import rung_label
+    from ..kind_table import rung_label
     trial = jobset.kind == KIND_SWEEP
     label = (trial_label(jobset.name, job.name) if trial
              else rung_label(jobset.name, job.name))

@@ -105,7 +105,8 @@ labels (§ 4). This is the design decision the rest of the feature rests on.
 Each lead's files are on its own stem, `<label>_L-electrode` /
 `<label>_R-electrode` — its `SystemLabel`, which the device deck names and
 SIESTA writes the `.TSHS` under — deck, output and the engine's files alike
-(`job-contracts.md` § 2.1 rule 2; `identity.rung_label`).
+(`job-contracts.md` § 2.1 rule 2; `kind_table.rung_label`, from the region
+the kind table names each lead by).
 
 ### 0.2 The k-point grids — what each stage samples, and why *(rewritten 2026-10-13)*
 

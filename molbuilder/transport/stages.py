@@ -42,8 +42,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..structure import frame_words
-from ..identity import rung_label
-from ..kind_table import kind as _kind
+from ..kind_table import kind as _kind, rung_label
 from ..paths import frame_token
 from ..parse.engines import siesta_grammar as _G
 
@@ -260,7 +259,7 @@ def stage_inputs(stage: str, task_label: str):
 
     The filenames are derived from the SystemLabel rules the renderers
     already fixed — the seed and device share the task's label, each
-    electrode's label IS its ``.TSHS`` stem (`identity.rung_label`, one
+    electrode's label IS its ``.TSHS`` stem (`kind_table.rung_label`, one
     spelling) —
     so producer and consumer cannot disagree about a name.
 
@@ -270,7 +269,7 @@ def stage_inputs(stage: str, task_label: str):
     """
     from ..runfiles import compose
     elec = [(s, compose(rung_label(task_label, s), _G.TSHS))
-            for s in ("electrode_L", "electrode_R")]
+            for s in _kind("transport").leads]
     if stage == "device":
         return [("seed", compose(task_label, _G.DM))] + elec
     if stage == "transmission":
@@ -378,8 +377,7 @@ def engine_tabs() -> List[Dict[str, object]]:
     whether it runs one, and, for one that does not, why -- the disabled
     tab's title (§ 3.8.8)."""
     from ..engine_table import engines
-    from ..kind_table import kind
-    runs = kind("transport").engines
+    runs = _kind("transport").engines
     return [{"name": e, "label": _label(e), "runs": e in runs,
              "why": why_no_transport(e)}
             for e in sorted(engines(), key=lambda e: e not in runs)]
@@ -390,8 +388,7 @@ def why_no_transport(engine: str) -> Optional[str]:
     when it can -- one sentence for the disabled tab and every door that
     refuses the engine (§ 3.8.8)."""
     from ..engine_table import engines
-    from ..kind_table import kind
-    runs = kind("transport").engines
+    runs = _kind("transport").engines
     if engine in runs:
         return None
     ships = " and ".join(_label(e) for e in runs)

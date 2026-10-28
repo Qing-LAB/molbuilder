@@ -777,7 +777,7 @@ def transport_spec(struct: Structure, cfg, *,
     # `engines/siesta.md` § 6.1): read by the block that writes each, the
     # parallel split and the settings gate.  The transmission carries two --
     # the ladder's SCF mesh and its own `TBT.k`.
-    k_mesh, tbt_mesh = rung_meshes(cfg, struct.axis_kind, shape)
+    k_mesh, tbt_mesh = rung_meshes(cfg, struct.axis_kind, rung)
     derived = _derived_for(state, cfg, k_mesh, tbt_mesh)
     from .transiesta import engine_frame_for
     frame = engine_frame_for(struct)
@@ -812,17 +812,18 @@ def transport_spec(struct: Structure, cfg, *,
     )
 
 
-def rung_meshes(cfg, axis_kind, shape: str):
-    """``(SCF mesh, transmission mesh)`` one rung writes -- the ladder's SCF
-    mesh on every rung and, on the transmission, its own ``TBT.k`` (``None``
-    elsewhere) -- through the one derivation, ``kmesh.mesh_for``.  The deck
-    and the Transport tab's describe ask it, so what the tab judges is what
-    prep writes (`engines/transport.md` § 0.3b)."""
+def rung_meshes(cfg, axis_kind, rung: str):
+    """``(SCF mesh, transmission mesh)`` the rung ``rung`` writes -- the
+    ladder's SCF mesh on every rung and, on the transmission, its own
+    ``TBT.k`` (``None`` elsewhere) -- through the one derivation,
+    ``kmesh.mesh_for``.  The deck and the Transport tab's describe ask it, so
+    what the tab judges is what prep writes (`engines/transport.md`
+    § 0.3b)."""
     from .. import kmesh as _kmesh
-    k_mesh = _kmesh.mesh_for(cfg, axis_kind, kind="transport", rung=shape)
+    k_mesh = _kmesh.mesh_for(cfg, axis_kind, kind="transport", rung=rung)
     tbt_mesh = (_kmesh.mesh_for(cfg, axis_kind, kind="transport",
-                                rung=shape, program="tbtrans")
-                if shape == "transmission" else None)
+                                rung=rung, program="tbtrans")
+                if SHAPE_OF_RUNG[rung] == "transmission" else None)
     return k_mesh, tbt_mesh
 
 
@@ -850,7 +851,7 @@ def ladder_mesh_findings(template_text: str, task, axis_kind) -> list:
         shape = SHAPE_OF_RUNG.get(name)
         if shape is None:
             continue
-        meshes = [m for m in rung_meshes(cfg, axis_kind, shape)
+        meshes = [m for m in rung_meshes(cfg, axis_kind, name)
                   if m is not None]
         for issue in check(meshes, None):
             if (issue.where, issue.message) in seen:

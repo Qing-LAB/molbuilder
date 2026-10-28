@@ -15,8 +15,9 @@ and a memory are NOT proposed (`execution/project-layout.md` § 2.3.2).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from ..bench.result import (
     BenchPoint, BenchResult, build_bench_result, compare_asked_to_ran,
@@ -740,22 +741,58 @@ def swept_coordinates(points: List[BenchPoint]) -> List[str]:
     return varied
 
 
-def task_summary(task) -> Optional[str]:
-    """What `summarize task` writes for this description -- ``"transport"``,
-    a transport calculation's record and data file (`engines/transport.md`
-    § 2a.12); ``"displacement sweep"``, a SIESTA vibration's force-constant
-    stages compared (`engines/vibration.md` § 5.9, by
-    `spectra.displacement_sweep.why_no_sweep`) -- or ``None``: a calculation
-    whose stages each write their own result.  THE ONE RULE, asked by the
-    verb (`_cli.summarize_cmd`) and by the task's next step
+class SumError(Exception):
+    """A summary that cannot be made from what has landed -- said in its
+    reader's words."""
+
+
+@dataclass(frozen=True)
+class Summed:
+    """What a summary wrote: the table it prints, its files in the order
+    they are said, and what the ledger records beside its event."""
+    text: str
+    written: Tuple[Path, ...]
+    ledger: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class TaskSum:
+    """WHAT ``summarize task`` ADDS UP for a kind on an engine -- the part
+    its record names (``sum``, `execution/architecture.md` § 3.3), declared
+    in a module of its own on this floor.
+
+    ``event`` is the ledger's word for it; ``run(calc, base, *, say,
+    **options)`` reads what has landed in ``calc`` and writes its files in
+    ``base``, the folder as typed, saying each reading as it goes through
+    ``say``; ``options``, the verb's options it reads; ``why_none``, why a
+    description of the pair has nothing to add up -- ``None`` when it has
+    something, which every description has unless the pair says."""
+    event: str
+    run: Callable[..., Summed]
+    options: Tuple[str, ...] = ()
+    why_none: Callable[[Any], Optional[str]] = lambda task: None
+
+
+def sum_of(task) -> Optional[TaskSum]:
+    """THE SUMMARY THIS DESCRIPTION'S PAIR NAMES -- its kind's record on its
+    engine (``sum``, `execution/architecture.md` § 3.3): a transport
+    calculation's record and data file (`engines/transport.md` § 2a.12), a
+    SIESTA vibration's force-constant stages compared
+    (`engines/vibration.md` § 5.9) -- or ``None``, a pair whose stages each
+    write their own result.  The one door, asked by the verb
+    (`_cli.summarize_cmd`), which says why when the description has nothing
+    to add up, and by :func:`task_summary`."""
+    from ..kind_table import part_of
+    return part_of(task.calculation, task.engine, "sum")
+
+
+def task_summary(task) -> Optional[TaskSum]:
+    """What `summarize task` adds up for this description -- its pair's
+    summary (:func:`sum_of`), or ``None`` when there is none or it has
+    nothing to add up (``why_none``): the task's next step
     (`runstatus.jobset_status`, `job-system.md`, *The task*)."""
-    if task.calculation == "transport":
-        return "transport"
-    if task.calculation == "vibration":
-        from ..spectra.displacement_sweep import why_no_sweep
-        if why_no_sweep(task) is None:
-            return "displacement sweep"
-    return None
+    got = sum_of(task)
+    return got if got is not None and got.why_none(task) is None else None
 
 
 __all__ = [
@@ -763,5 +800,6 @@ __all__ = [
     "sweep_view", "swept_coordinates",
     "bench_record",
     "summary_text",
-    "recommendation_text", "task_summary",
+    "recommendation_text", "sum_of", "task_summary", "TaskSum", "Summed",
+    "SumError",
 ]

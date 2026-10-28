@@ -488,9 +488,12 @@ read top to bottom:
 under it; the groups after it each say where they stand — a waiting one, the
 ready door's own reason. With every group finished, the last group says so —
 and, for a calculation whose result gathers its stages, is the next step,
-naming `summarize task`: one rule, asked by the step and by the verb alike
-(`summarize.task_summary`: a transport calculation; a SIESTA vibration with
-two or more stages, a displacement sweep). A benchmark's sweep keeps its own next
+naming `summarize task`: one door, asked by the step and by the verb alike
+(`summarize.sum_of`, the summary the kind table names for the
+calculation's kind on its engine: a transport calculation's; a SIESTA
+vibration's displacement sweep, where it has two or more stages) — the
+step names it only for a description it can add up (`task_summary`), and
+the verb, asked of one it cannot, says why. A benchmark's sweep keeps its own next
 step, its own verbs (§ 7).
 
 **Shown where the next step is asked, and nowhere else:**

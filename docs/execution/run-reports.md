@@ -93,7 +93,7 @@ its end.
 | **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes — a run in phases: by the record step that completes its index (`notify finish`), with the run's state |
 
 Every message carries the same report (§ 4.1a): the state and where the run is
-— SCF phase and iteration, energy, each residual against its criterion, the
+— in its structure where one is declared (§ 2.8) — SCF phase and iteration, energy, each residual against its criterion, the
 largest force against its tolerance, the step, the rate, TBtrans's account
 of its loop (a transmission's, [`model/parse.md`](?doc=model/parse.md) § 5d.5)
 — and at the end how each SCF phase converged and how the process exited.
@@ -548,6 +548,73 @@ the status line says it after the tolerance, *max force 0.0028 eV/Ang (tol
 output (`model/parse.md` § 5d.5), and its status line says *TranSIESTA does not
 compute forces in this run (it says they are wrong), and so not the stress
 either* where the force would be, with no number.
+
+### 2.8 Where the run is — read from its declared structure *(the user, 2026-10-28; not built)*
+
+*(The user, 2026-10-28, of a Raman call's `periodic` card that said
+`periodic SCF iteration 6 | 6 SCF rows | … | 5.43 s/iter | wall 12h: 7h left |
+elapsed 2h` while SIESTA had been in its optical calculation for two hours:
+"the monitor should be more context aware"; "more structure/parser framework
+driven, instead of explicit patch of code to handle individual cases".)*
+
+That card was wrong in three ways, each a structure the monitor did not
+read: the SCF had converged two hours before, and its last row was said as
+the row in flight, because the reading pass knows no part of a SIESTA run
+after the SCF; `elapsed 2h` was the call's clock and `7h left` the job's,
+neither named; and nothing said that the run was in its optical phase, on
+the first of 121 calls.
+
+**The line says where the run is in its structure, and each structure is
+declared where its other readers read it** — never a case the monitor knows
+by name. A new part of an engine's output is a row of its grammar; a new run
+of points is its index's reader; a new clock or count is a report field.
+
+| the structure | declared in | what the line says from it |
+|---|---|---|
+| **the parts of an engine's output** — the SCF, a TranSIESTA device's set-up, SIESTA's optical calculation; each begins with a line the engine prints, and some print nothing more until they end | the engine's grammar, one table — `siesta_grammar.PARTS`: each row the part, the line that begins it, the line that ends it where the engine prints one, its words, and whether it reports as it goes (an SCF prints a row each iteration; the optical calculation nothing until it ends, `Src/optical.F`). The reading pass reads it by one rule (`_section_rules`, as its other rules) | the part underway, in its words, and since when — *SIESTA's optical calculation since 20:02 -- it prints nothing until it ends* (`doing`, [`model/parse.md`](?doc=model/parse.md) § 2b). *Since* is when the monitor first read the part's first line, within one wake |
+| **which part a fact belongs to** | each report field's declaration (`report_fields.FIELDS`, § 4.1a): its part — the SCF's iterations, rate and residuals; a step's number; the run's energy and largest force | a part's facts said together: the part underway's as they stand, a part that has ended as ended — *its SCF converged in 6 iterations (33 s), dDmax 5e-06 (tol 1e-05)* — never a finished SCF's last row as the row in flight |
+| **a run of points' position** — a vibration run's calls ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a) | the run's index (`<label>_01_freq-run<N>.phases.json`), read through its one reader and its one rule — `vibration_phases.read_index`, `summary`, `Call.words`: the words `status` and the finish say — which travel beside the job | a member monitor (§ 2.4) says its run's position and its own call — *optical: f000, 1 of 121, none done yet* |
+| **the clocks** — the run's and, for a member, its call's | the run's start — a member's, its run's first call's start in the index (the calls this run computed, not those taken over), else this monitor's own start — and a member's call, from its own monitor's start; each a report field (§ 4.1a); the job's wall as § 2.1b counts it | each named — *the run 5h30 · this call 1h46 · wall 12h: 6h30 left*; a run that is no member says *the run* alone |
+
+**The pace and what is left** — read from the same structures, over the
+run's **units of work**: the engine's steps (§ 2.2: a geometry move, a
+displacement, a PySCF step), or a run of points' calls, each with its start
+and end in the index. Once a unit of the phase underway has finished, the
+line says how long the finished ones took, and — where the structure states
+how many there are (a run's index does; an engine's steps are counted as
+they come) — how many are left and the time they need at that pace, beside
+the wall's time left: *an optical call takes 2h05 (1 done) -- the 120 left
+need about 10d at that pace; the wall leaves 6h30*. It is arithmetic on what
+the run measured: it judges nothing, warns once (`wall_near`, below), and
+stops nothing (§ 5). The events a run of points sends — a milestone at a
+phase's end, a part that failed — are the same agreed design's
+([`plans/plan.md`](?doc=plans/plan.md) § 1af), written into § 2 with it. A pace is one phase's: a
+force-constant call and an optical call cost differently, as two SCF phases
+do (§ 2.7).
+
+**A part the grammar does not declare is not guessed.** Its lines leave the
+line where it was; a part that has ended is said as ended once its end is
+read, and an engine part met in the field becomes a row of its grammar's
+table.
+
+**The summary line, in order** (`JobStatus.as_text`, § 4.1a): the state;
+where the run is in its run of points; the part underway and since when;
+each part's facts, by part; the run's energy and largest force; the pace and
+what is left, once a unit has finished; the clocks; the wall —
+
+```text
+running | optical: f000, 1 of 121, none done yet | SIESTA's optical calculation since 20:02 -- it prints nothing until it ends | its SCF converged in 6 iterations (33 s), dDmax 5e-06 (tol 1e-05), dHmax 0.000449 eV (tol 0.001) | E -1211078.894214 eV | max force 0.3789 eV/Ang; 0.4714 eV/Ang on the held atoms | the run 5h30 · this call 1h46 | wall 12h: 6h30 left
+```
+
+**What it adds to the declarations**, each folded into its own section once
+built:
+
+| declaration | adds |
+|---|---|
+| `siesta_grammar.PARTS` (new) | the SCF — begun by its first row, ended by the line `_run_ending` reads its convergence from (`SCF Convergence by …`, `SCF_NOT_CONV`, [`model/parse.md`](?doc=model/parse.md) § 2b); a TranSIESTA device's set-up, in the words it has today (`transiesta.setup_words`); SIESTA's optical calculation — begun by `Optical: Performing optical calculation`, reporting nothing until it ends |
+| `report_fields.FIELDS` (§ 4.1a) | each field's part; `elapsed_s` the run's clock for a member as for any run (a member's says its call's today); `call_elapsed_s`, a member's call; `units_done`, `units_left` (where the structure states a count), `unit_s` (the mean time a finished unit took) and `left_at_pace_s` |
+| `report-cards.json` (§ 4.1c) | the new fields in each event's order: a *periodic* or *scf_converged* card the clocks, then the pace, then the result; a *wall_near* card the pace before the result |
+| § 2.1b's `wall_near` | for a run of points, once, when the units left need more than the wall leaves at the measured pace — the rule agreed with the user on 2026-10-26 ([`plans/plan.md`](?doc=plans/plan.md) § 1af); for a run that counts its steps, as today, the longest step finished |
 
 ---
 
@@ -1043,7 +1110,7 @@ asks, and what the wrapper then does is the wrapper's
 | which run it watches | `--label` / `--stage` / `--run`; every file named through `runfiles` (§ 2.3) |
 | what it reads, and with what | the framework's own readers in `mb_monitor.pyz` — `runwrap.MONITOR_COMPANIONS` (§ 2.3) |
 | when to fire | `monitor.run_monitor` (§ 2) |
-| what the summary line says | `monitor.JobStatus.as_text` (§ 4.1a) |
+| what the summary line says | `monitor.JobStatus.as_text` (§ 4.1a), from the run's declared structure (§ 2.8) |
 | which fields a report may carry | `molbuilder/report_fields.py` (§ 4.1a) |
 | what a channel name resolves to | `monitor.load_channels` → `<config dir>/secrets/notify` (§ 3) |
 | whether an address may be a channel's | `monitor.address_refusal` — the This machine tab's save and the monitor's reading alike (§ 3) |

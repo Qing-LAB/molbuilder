@@ -404,13 +404,14 @@ def test_a_count_a_metal_decided_warns_until_it_is_stated(
 
 def test_an_odd_count_under_restricted_runs_half_filled_on_siesta(
         isolated_projects_root):
-    """SIESTA runs a restricted radical with its top level half filled -- a
-    warning there; PySCF refuses the pair outright (ES3)."""
+    """SIESTA runs a restricted radical, putting 0.5 electron in each spin on
+    its highest level -- a warning there, saying so in those words; PySCF
+    refuses the pair outright (ES3)."""
     dest, stage, _f = _siesta(isolated_projects_root, METHYL(),
                               SiestaConfig(system_label="JOB",
                                            spin_treatment="restricted"))
     report = _report(dest, stage)
-    assert "half" in report
+    assert "0.5 electron in each spin" in report, report
     # ONE finding per fact (ES9): the parity finding holds first, so the
     # stated-restricted-on-a-radical finding does not say it again.
     assert "implies unrestricted" not in report, report

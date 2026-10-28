@@ -137,14 +137,14 @@ def _of_run(p: Path, folder: Path) -> AtomIndexMap:
     run of points keeps once, in its attempt, refused naming its points.  A
     file whose catalogue row lists it by user index -- a result written
     before it said so -- is that map listed by user index."""
-    from .identity import lead_stages, rung_label
+    from .kind_table import kind, rung_label
     from .runfiles import listed_by_of
     from .runs import atom_index_map_of, place_of, run_of
     point = _point_folder(folder)
     run = (run_of(p) if point == folder else None) or run_of(point)
     task = (run.place if run is not None else place_of(point)).task
     if task is not None:
-        for stage in lead_stages():
+        for stage in kind(task.calculation).leads:
             if (p.name.startswith(rung_label(task.label, stage) + ".")
                     and (run is None or _stage_name(run.stage) != stage)):
                 raise AtomIndexUnknown(

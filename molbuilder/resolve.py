@@ -953,7 +953,7 @@ def _label_for(base: str, point: Mapping[str, Any],
     """The ``SystemLabel`` in force for this element.
 
     A production run keeps the calculation's own label -- **a transport
-    lead's is its own stem** (`identity.rung_label`, the one door;
+    lead's is its own stem** (`kind_table.rung_label`, the one door;
     `job-contracts.md` § 2.1 rule 2).  **A trial is relabelled**, and that is
     structural rather than tidy: SIESTA finds its warm files by
     ``SystemLabel``, so a trial carrying the real run's label could read —
@@ -961,7 +961,7 @@ def _label_for(base: str, point: Mapping[str, Any],
     § 2.3.2).
     """
     from .paths import trial_label
-    from .identity import rung_label
+    from .kind_table import rung_label
     base = rung_label(base, stage)
     label = base if not point else trial_label(base, point_token(point))
     if len(label) > _SIESTA_LABEL_MAX:

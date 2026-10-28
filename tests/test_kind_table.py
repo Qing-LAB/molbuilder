@@ -79,6 +79,22 @@ _KIND_ROWS = [
     ("inputs on a kind without roles",
      '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\n'
      'inputs = "m:f"\ngather = "m:g"\n', "inputs on a kind without roles"),
+    # A lead is found by its stage's name alone (`kind_table.lead_of`), so
+    # a name two kinds' roles share would put one kind's files on the other
+    # kind's lead stem.
+    ("a lead's name another kind's role has",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'roles = [{name = "a", computes = "scf", lead = "A-region"}]\n'
+     '[k.on.siesta]\nstage_roles = "own"\n'
+     '[j]\nnoun = "j"\ntopic = "j"\n'
+     'roles = [{name = "a", computes = "scf"}]\n'
+     '[j.on.siesta]\nstage_roles = "own"\n', "lead 'a' is a role of j"),
+    ("a retired stage naming a role the kind has not",
+     '[k]\nnoun = "k"\ntopic = "k"\n'
+     'roles = [{name = "a", computes = "scf"}]\n[k.on.siesta]\n'
+     'stage_roles = "own"\n'
+     'retired = { stage = "s", role = "b", since = "1", why = "w" }\n',
+     "retired names role 'b'"),
 ]
 
 

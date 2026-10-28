@@ -124,7 +124,7 @@ def test_a_transport_meshs_start_and_its_one_point_warning():
         return [(i.severity, i.where) for i in kmesh.check(meshes, None)]
 
     one_each = [("warn", "config.kgrid")] * 2              # x, then y
-    for shape in ("seed", "electrode", "device"):
+    for shape in ("seed", "electrode_L", "device"):
         assert said((1, 1, 1), (12, 12, 1), slab, shape) == one_each, shape
         assert said((4, 4, 1), (12, 12, 1), slab, shape) == [], shape
         assert said((1, 1, 1), (1, 1, 1), chain, shape) == [], shape

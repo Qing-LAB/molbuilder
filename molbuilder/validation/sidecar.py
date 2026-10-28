@@ -249,9 +249,10 @@ def _same_setting(theirs, mine) -> bool:
 
 def _first_relaxation(engine: str) -> str:
     """What relaxes the structure before the Hessian when the box is
-    unticked: SIESTA's ladder, its `relax` stage (`engines/vibration.md`
-    § 5.2a); the PySCF deck itself, its Phase 0 (§ 4.2)."""
-    return ("The ladder's `relax` stage" if str(engine).lower() == "siesta"
+    unticked: SIESTA's one run, its `relax` phase (`engines/vibration.md`
+    § 5.11 § 1); the PySCF deck itself, its Phase 0 (§ 4.2)."""
+    return ("The run's own relaxation (its `relax` phase)"
+            if str(engine).lower() == "siesta"
             else "The deck's own relaxation (Phase 0)")
 
 
@@ -436,10 +437,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                      + ("" if (already_relaxed or disagreed) else
                         "  The record already meets this calculation's "
                         "criterion: the box may be ticked and the relaxation "
-                        "skipped" + (" (a ladder already holding a `relax` "
-                                     "stage runs it regardless)."
-                                     if str(engine).lower() == "siesta"
-                                     else ".")))))
+                        "skipped."))))
     else:
         issues.append(Issue(
             severity=disagree, where=where,

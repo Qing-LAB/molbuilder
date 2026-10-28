@@ -513,8 +513,8 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
         # one spacing can still be a twin or an eclipse -- measured and
         # reported, never refused, by the rule the Transport card asks
         # (`wizard.seam_finding`); TranSIESTA checks no registry.
-        from ..transport.deck import SHAPE_OF_RUNG
-        if SHAPE_OF_RUNG.get(rung) == "electrode":
+        from ..kind_table import lead_of
+        if lead_of(rung) is not None:
             from ..transport.wizard import seam_finding
             out.append(seam_finding(struct.positions, _cell))
         # THE LEAD: the electrode-labelled atoms of a junction, one list per

@@ -436,6 +436,7 @@ that")*:
 | `net_charge` | both | `NetCharge` / `gto.M(charge=)` | auto | shared with every kind; resolved once by the electronic state (a stated value wins, 0 included; else the charge of the run the structure came out of; else the phosphate rule — one negative charge per nucleic-acid backbone phosphate, [`model/chemistry.md`](?doc=model/chemistry.md); [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a) |
 | `fc_displacement` | siesta | `FC.Displacement` — the nudge of the force-constant run (§ 5.3) | 0.04 Bohr | range 0.005–0.2 Bohr; smaller pushes the force difference toward the SCF noise floor, larger picks up anharmonic terms; greater than 0 by rule — SIESTA divides each force difference by it (`ofc.f90`, `template.md` § 5.3) |
 | `relax_type` · `relax_steps` · `relax_force_tol` · `relax_max_displ` | siesta | the relaxation phase's driver, step cap, force tolerance and largest step (§ 5.11 § 9) — the same items the optimization kind shows; the driver offers the three relaxers only, CG · Broyden · FIRE (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a): `none` relaxes nothing | the kind's **recommended** values are the tight tier: Broyden, 100 steps, **0.01 eV/Å**, 0.02 Å (`recommended = { vibration = … }` in the catalogue, [`engines/template.md`](?doc=engines/template.md) § 6.3a) | editable like every other item; the tolerance is also the yardstick the finish judges the reference geometry by (§ 5.5) |
+| `write_hs` | siesta | `SaveHS` — every phase's `<label>.HSX`, the Hamiltonian and overlap at the end of each SCF | the kind's **recommended** value is **off** (`recommended = { vibration = false }`); SIESTA's own and every other kind's is on | nothing of a vibration reads an `.HSX`: the force-constant call's holds the last geometry it nudged (SIESTA writes it after every step, `final_H_f_stress.F`), an optical call's a structure pushed along a mode — 53 MB a call on a 312-atom gold junction, 6.4 GB over 121 optical calls, which a warm relaunch copies again (§ 5.11 § 6) *(the user, 2026-10-28)*. On, the relax call's is the relaxed structure's, for bands or DOS without another SCF |
 | `geom_gmax` · `geom_grms` · `geom_dmax` · `geom_drms` · `geom_etol` · `geom_max_steps` | pyscf | Phase 0's geomeTRIC criteria (§ 4.2) — the optimization kind's own items | the kind's **recommended** values are the tight tier: `geom_gmax` **2·10⁻⁴ Eh/Bohr** (0.010 eV/Å), `geom_grms` 1·10⁻⁴, `geom_dmax` 1·10⁻³ Å, `geom_drms` 5·10⁻⁴ Å, `geom_etol` 1·10⁻⁶ Eh, 100 steps | the general default stays the medium tier for an optimization; the vibration kind recommends tight because a frequency deserves a real stationary point |
 
 **Where each item sits on the form — by the result it is for** *(2026-10-27;
@@ -1948,7 +1949,7 @@ person every time: a value stated nowhere is refused, never defaulted.
 | the mode — `index_1based`, its frequency, $Q_{\mathrm{zp}}$, the canonical eigenvector $L$ over the free atoms (§ 6.3's pairing rule) | the vibration result, through its reader (§ 6.8); one that states its masses (schema 7 or later) |
 | frame 0 — the Hessian's geometry in the user order, its labels, held atoms and box | the result's `structure` (§ 6.10.1) |
 | each atom's mass | the result's `equilibrium.masses_amu` |
-| frame 0's `info.calculation` — the settings a transport citation takes its own from (`engines/transport.md` § 3.1, § 2a.7) | **the record of the relaxation frame 0's geometry came from** *(the user, 2026-10-24, on the recommendation)*: where the vibration's own `relax` stage relaxed it, that stage's settings — the vibration's own deck's record, through the run door's view (`runs.view_of`, `parse.contract.contract_of`), the one template every stage of the ladder reads; where the structure was stated already relaxed (§ 2.2), the record that structure states — its `info.calculation`, written when it was saved from its optimization — read from the calculation's own structure beside it. A stated-relaxed structure that states none gives a set with none, and the generator says so: such a set is no transport citation until its relaxation is recorded. A PySCF deck records none either, and the same is said. *(Measured on AuBDTAu, 2026-10-24: its vibration ran at a 1×1×1 k-grid and 300 Ry, its relaxation at 5×5×1 and 400 Ry; a transport citing a set stamped with the vibration's settings defaulted to the cheaper ones.)* |
+| frame 0's `info.calculation` — the settings a transport citation takes its own from (`engines/transport.md` § 3.1, § 2a.7) | **the record of the relaxation frame 0's geometry came from** *(the user, 2026-10-24, on the recommendation)*: where the vibration's own run relaxed it — its `relax` call (§ 5.11 § 1) — that run's settings, the vibration's own deck's record, through the run door's view (`runs.view_of`, `parse.contract.contract_of`), the one template every phase of the run reads; where the structure was stated already relaxed (§ 2.2), the record that structure states — its `info.calculation`, written when it was saved from its optimization — read from the calculation's own structure beside it. A stated-relaxed structure that states none gives a set with none, and the generator says so: such a set is no transport citation until its relaxation is recorded. A PySCF deck records none either, and the same is said. *(Measured on AuBDTAu, 2026-10-24: its vibration ran at a 1×1×1 k-grid and 300 Ry, its relaxation at 5×5×1 and 400 Ry; a transport citing a set stamped with the vibration's settings defaulted to the cheaper ones.)* |
 
 **What it writes** — through the structure's own doors
 ([`model/structure.md`](?doc=model/structure.md) § 2.2d–2.2f: `with_frames`,
@@ -2469,6 +2470,12 @@ which a point has none of, and keeps its own N-hour clock and
   § 3.6) — so every call's `MaxWalltime` counts what is left of the run's
   wall, and a run here is told its card's wall for the whole run, not per
   call;
+- **where the run is** *(decided 2026-10-28, not built)*: the run's
+  position and the call's own, from the run's index through its one
+  reader (`vibration_phases.summary`, `Call.words`); the run's clock and
+  the call's, each named; the pace of the phase underway's finished calls
+  and the calls left ([`run-reports.md`](?doc=execution/run-reports.md)
+  § 2.8);
 - **the events** — the run speaks as **one run**, never as 121 calls:
 
 | occasion | sent by | how |
@@ -2647,7 +2654,10 @@ description — `prep`, a Save from Task setup — `jobset migrate` turns the tw
 stages into the one (the `relax` stage's overrides onto the relaxation
 items, `freq`'s onto the rest, a conflict refused by name) and prep refuses
 an unmigrated one naming migrate, as it refuses a retired item
-(`template.RETIRED_ITEMS`). `status` and the Results ladder read an old
+(`template.RETIRED_ITEMS`). The retired stage — its name, the role it
+played, 2.42.0 and why — is the kind table's, on SIESTA's part of the
+vibration (`execution/architecture.md` § 3.3); both the refusal and the fold
+read it. `status` and the Results ladder read an old
 calculation's two stages by their folders.
 
 #### 10. Raman, presented — at the laser and the width a person asks *(the user, 2026-10-26: "agree with your M4 recommendations … need export, and api to support netcdf file reading")*

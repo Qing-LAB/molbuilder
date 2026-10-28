@@ -2438,7 +2438,7 @@ def test_the_files_say_which_index_their_atoms_are_listed_by(junction):
     assert "-> user index 0" in out, out
     # A LEAD'S FILE GATHERED INTO THE DEVICE RUN is its electrode cell's own
     # (§ 2.2a, I6) -- refused, never answered with the junction's map.
-    from molbuilder.identity import rung_label
+    from molbuilder.kind_table import rung_label
     from molbuilder.atom_index import AtomIndexUnknown
     lead = (_point(run, "04_device", 0, _BIAS[0])
             / f"{rung_label(label, 'electrode_L')}.TSHS")

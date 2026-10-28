@@ -1840,95 +1840,60 @@ def summarize_cmd(kind: str, words, bundle: str,
             "stage.")
     stage, _trial, _ = _stage_words(kind, words, (), "summarize")
     if kind != "bench":
-        # THE TRANSPORT COMPOSITE'S DELIVERABLE (`engines/transport.md`
-        # § 2a.12): `summarize task` on a transport calculation reads the
-        # transmission attempts back into <label>.transport.json and
-        # prints the I-V table.  Asynchronous like the bench reader: a
-        # point that has not run yet reads as pending, never a failure.
+        # WHAT THE CALCULATION ADDS UP: the summary its kind's record names
+        # on its engine (`summarize.TaskSum`, `execution/architecture.md`
+        # § 3.3) -- a transport calculation's transmission points into
+        # <label>.transport.json and its data file, a SIESTA vibration's
+        # force-constant stages into <label>.fc-sweep.json.  Asynchronous
+        # like the bench reader: a point or a stage that has not run yet
+        # reads as pending, never a failure.
         from pathlib import Path as _P
 
+        from .summarize import SumError, sum_of
         # THE CALCULATION, opened once (A16); one that does not read is
         # said in its reader's words, never read as no description.
         _calc = _calc_of(_P(bundle))
         _tt = _calc.task
-        # WHICH SUMMARY, by the one rule the task's next step asks too
-        # (`summarize.task_summary`).
-        from .summarize import task_summary
-        _summary = task_summary(_tt) if _tt is not None else None
-        _is_vibration = _tt is not None and _tt.calculation == "vibration"
-        if tolerance_cm1 is not None and not _is_vibration:
+        _sum = sum_of(_tt) if _tt is not None else None
+        _options = {"tolerance_cm1": tolerance_cm1}
+        if tolerance_cm1 is not None and (
+                _sum is None or "tolerance_cm1" not in _sum.options):
             raise click.ClickException(
                 "--tolerance-cm1 is a displacement sweep's -- a SIESTA "
                 "vibration's force-constant stages compared "
                 "(engines/vibration.md 5.9)")
-        if _summary == "transport":
-            from ..transport.record import (RecordError, collect_record,
-                                            iv_table_text, write_record)
-            from ..transport.tbtnc import read_points
-            # EVERY POINT'S DOS PER ORBITAL, read where it is not kept: the
-            # record and the data file hold each region's (`model/parse.md`
-            # § 5e) -- said as it goes; a file another reading holds is not
-            # read again.
-            readings = read_points(_calc, say=click.echo)
-            try:
-                rec = collect_record(_calc)
-            except RecordError as e:
-                raise click.ClickException(str(e))
-            # THE SAME RESULTS AS DATA, on their grid, beside the report
-            # (`engines/transport.md` § 2a.12, *the data file*) -- written
-            # first, as the one of the two that can refuse, so a refusal
-            # leaves the pair the last summarize wrote.
-            from ..transport.datafile import DataFileError, write_data_file
-            try:
-                data = write_data_file(_P(bundle), _tt, rec,
-                                       readings=readings)
-            except DataFileError as e:
-                raise click.ClickException(str(e))
-            out = write_record(_P(bundle), rec)
-            click.echo(iv_table_text(rec))
-            click.echo(f"-> {out}")
-            click.echo(f"-> {data}")
-            _ledger(_P(bundle), "summarize", "transport-record",
-                    out=str(out), data=str(data), points=len(rec["points"]),
-                    pending=len(rec["pending"]), failed=len(rec["failed"]),
-                    readings=readings)
-            return
-        if _is_vibration and _summary is None:
-            # A VIBRATION WITH NO SWEEP TO COMPARE, said in the rule's words.
-            from ..spectra.displacement_sweep import why_no_sweep
-            raise click.ClickException(why_no_sweep(_tt))
-        if _summary == "displacement sweep":
-            # A DISPLACEMENT SWEEP'S SUMMARY (engines/vibration.md § 5.9): the
-            # force-constant stages' results, which their jobs wrote, read
-            # where they are and compared -- nothing derived that a run did
-            # not already write, nothing moved.  Every stage is compared, so
-            # a stage name is not asked for (`summarize task` takes none).
-            from ..spectra.displacement_sweep import (SweepError,
-                                                      collect_sweep,
-                                                      sweep_table_text,
-                                                      write_sweep)
-            try:
-                rec = collect_sweep(_calc, tolerance_cm1=tolerance_cm1)
-            except SweepError as e:
-                raise click.ClickException(str(e))
-            out = write_sweep(_P(bundle), rec)
-            click.echo(sweep_table_text(rec))
-            click.echo(f"-> {out}")
-            _ledger(_P(bundle), "summarize", "displacement-sweep",
-                    out=str(out), stages=[x["name"] for x in rec["stages"]],
-                    pending=len(rec["pending"]), failed=len(rec["failed"]),
-                    tolerance_cm1=tolerance_cm1)
-            return
-        raise click.ClickException(
-            "summarize summarizes results that exist: a BENCH sweep's "
-            "measurements, a transport calculation's bias points (`summarize "
-            "task`, into <label>.transport.json), and a SIESTA vibration's "
-            "force-constant stages (`summarize task`, into "
-            "<label>.fc-sweep.json).  A run's own outputs are the "
-            "calculation's results -- `jobset status` and the Results tab "
-            "are their readers (job-system.md § 5.3) -- and a vibration's "
-            "run writes its <label>.spectra.json itself, on both engines "
-            "(engines/vibration.md § 5.5).")
+        if _sum is None:
+            # WHAT ADDS UP, from the kind table's `sum` -- never a list here.
+            from ..engine_table import engine as _engine
+            from ..kind_table import kind as _kind, kinds as _kinds
+            _has = [f"{_kind(k).with_article} on {_engine(e).words}"
+                    for k in _kinds() for e in _kind(k).engines
+                    if _kind(k).on(e).sum is not None]
+            _what = (f"{_kind(_tt.calculation).with_article} on "
+                     f"{_engine(_tt.engine).words}" if _tt is not None
+                     else "this folder")
+            raise click.ClickException(
+                f"`summarize task` adds up what a calculation's kind names "
+                f"on its engine -- {', '.join(_has)} -- and {_what} names "
+                f"nothing to add up: its stages each write their own "
+                f"result, which `jobset status` and the Results tab read "
+                f"(job-system.md § 5.3).  A benchmark's sweep is "
+                f"`summarize bench`.")
+        # A DESCRIPTION WITH NOTHING TO ADD UP, said in its summary's words.
+        _why = _sum.why_none(_tt)
+        if _why is not None:
+            raise click.ClickException(_why)
+        try:
+            summed = _sum.run(_calc, _P(bundle), say=click.echo,
+                              **{k: v for k, v in _options.items()
+                                 if k in _sum.options})
+        except SumError as e:
+            raise click.ClickException(str(e))
+        click.echo(summed.text)
+        for path in summed.written:
+            click.echo(f"-> {path}")
+        _ledger(_P(bundle), "summarize", _sum.event, **summed.ledger)
+        return
     if tolerance_cm1 is not None:
         raise click.ClickException(
             "--tolerance-cm1 is a displacement sweep's -- a SIESTA "

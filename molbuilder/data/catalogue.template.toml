@@ -822,13 +822,16 @@ manual = "SIESTA 5.4.2 §6.11 'Matrix elements of the Hamiltonian and overlap'"
 type = "bool"
 value = true
 default = true
+recommended = { vibration = false }
 engine_default = { value = true, source = "SIESTA 5.4.2 read_options.F90:1874: savehs = fdf_get('SaveHS', .true.)" }
 group = "output"
 label = "Write H+S matrices"
 help = """
-Write the Hamiltonian and overlap matrices to <label>.HSX.  The manual: it "contains all relevant information to construct the Brillouin zone Hamiltonian and can thus be used for subsequent density of states calculations" -- and it is what TranSIESTA / TBtrans read for transport.
+Write the Hamiltonian and overlap matrices to <label>.HSX at the end of each SCF.  The manual: it "contains all relevant information to construct the Brillouin zone Hamiltonian and can thus be used for subsequent density of states calculations" -- bands, DOS or PDOS afterwards without another SCF, in sisl for one.  molbuilder reads no .HSX: a transport calculation's rungs attach through the .TSHS and .TS.HSX that TS.HS.Save writes, another keyword.
 
-On by default, matching SIESTA's own.  Without it a finished relaxation has no .HSX, so bands, DOS or transport afterwards mean re-running the SCF.  The cost of having it is disk; the cost of not having it is a repeat run.
+On by default, matching SIESTA's own.  Without it a finished relaxation has no .HSX, so bands or DOS afterwards mean re-running the SCF.  The cost of having it is disk; the cost of not having it is a repeat run.
+
+DEVIATION, a vibration only: off.  Nothing reads a vibration's .HSX, and each call writes one: the force-constant run's holds the last geometry it nudged (SIESTA writes it again after every step, final_H_f_stress.F), each Raman call's a structure pushed along one mode -- 53 MB a call on a 312-atom gold junction, 6.4 GB over its 121 Raman calls, copied again by a warm relaunch.  Turn it on for the relaxed structure's bands or DOS from the relax call's.
 """
 
 [item.write_molwatch_log]
@@ -2760,7 +2763,7 @@ This is the rung's essential output, and it is the stage's ROLE rather than a pr
 Three similar names, and only this one is the rung's job:
 
   TS.HS.Save   this row -- writes `.TSHS` (a lead) or `.TS.HSX` (the device), the Hamiltonian the next rung attaches to.
-  SaveHS       writes `.HSX`, a post-processing file the ladder does not consume.  On by default for every SIESTA run; it costs disk, not correctness.
+  SaveHS       writes `.HSX`, a post-processing file the ladder does not consume.  On by default for every SIESTA run but a vibration; it costs disk, not correctness.
   TS.DE.Save   writes the lead's DENSITY MATRIX.  The device reads it only when `TS.Elecs.DM.Init` asks for the bulk density -- `bulk` at zero bias, `force-bulk` at any bias (the manual's electrode options); the default is `diagon`, and no deck here writes another, so this ladder never reads it.
 """
 

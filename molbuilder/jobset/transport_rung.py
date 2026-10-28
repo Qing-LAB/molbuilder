@@ -142,14 +142,13 @@ def transport_parts(task, stage: str, composed, config):
     (`prep.transport_rung_of`) and by the gather when it renders an
     upstream rung NOW (:func:`transport_rung`, plan § 5w K11, T-F30).
     """
-    from ..transport.deck import SHAPE_OF_RUNG
-    from ..identity import rung_label
+    from ..kind_table import lead_of, rung_label
     # (i) THE STRUCTURE.  Two of them, out of the one cited file: the
     # junction, and the lead taken out of it by its region label -- same
     # atoms, same relaxation, a subset rather than a geometry derived from
     # anywhere else.  That is what lets the seam stay `spec_for(struct,
     # cfg, ...)`: a deck describes a structure, and these are two.
-    if SHAPE_OF_RUNG.get(stage) == "electrode":
+    if lead_of(stage) is not None:
         model = (composed.electrode_left if stage == "electrode_L"
                  else composed.electrode_right)
         struct = model.as_structure()

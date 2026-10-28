@@ -266,7 +266,7 @@ class SiestaConfig:
     # type is fixed by the kind; only the nudge size is a person's choice.
     fc_displacement: float = 0.04
     # THE PERSON'S EXPLICIT CHOICE (`engines/vibration.md` § 2.2): unticked,
-    # the ladder relaxes first (a `relax` stage before `freq`); ticked, the
+    # the run relaxes first (its `relax` phase, before `fc`); ticked, the
     # force constants are taken at the geometry as given and the job's finish
     # answers the statement with the reference-step forces.  Never a
     # refusal.
@@ -500,6 +500,52 @@ class SiestaConfig:
     electrodes_bulk: bool = True
 
     electrode_kz: int = 100
+
+    # ----- What SIESTA does with two state settings together -----------
+    # The electronic state asks these through the engine's config class
+    # (`electronic_state.count_must_float`, `validation/chemistry`), so no
+    # shared code names SIESTA (`execution/architecture.md` § 3.3).
+
+    @staticmethod
+    def count_must_float(kind: str, treatment: str) -> Optional[str]:
+        """Why SIESTA cannot hold a fixed number of unpaired electrons here,
+        or ``None``.  SIESTA holds one only with ordinary (collinear)
+        unrestricted spin -- it stops at start on ``Spin.Fix`` otherwise
+        (``read_options.F90``) -- and TranSIESTA holds none at all
+        (``m_ts_options.F90``).  There a count nobody stated floats, and a
+        stated one is refused naming this reason."""
+        if treatment in _ALWAYS_FREE:
+            return (f"SIESTA can hold a fixed number of unpaired electrons "
+                    f"only with ordinary (collinear) unrestricted spin; "
+                    f"with the {treatment} treatment it stops at start "
+                    f"(read_options.F90)")
+        if kind == "transport" and treatment == "unrestricted":
+            return ("TranSIESTA cannot hold a fixed number of unpaired "
+                    "electrons in a transport calculation -- it stops at "
+                    "start ('Fixing spin is not possible in TranSiesta', "
+                    "m_ts_options.F90)")
+        return None
+
+    @staticmethod
+    def odd_count_restricted(n_electrons: int) -> Optional[str]:
+        """What SIESTA does with an odd electron count under restricted
+        spin: it RUNS it, its levels holding electrons in pairs, so the odd
+        one goes in as 0.5 electron in each spin on the highest level, under
+        the electronic temperature (`science/chemistry-correctness.md`
+        § 2a.4) -- a restricted description of a radical, not its
+        spin-polarized ground state, so it is said, not refused."""
+        return (f"{n_electrons} electrons is an odd number, so one electron "
+                f"is unpaired -- but the spin treatment is restricted (every "
+                f"electron paired).  SIESTA will still run it, putting 0.5 "
+                f"electron in each spin on the highest level: the energy and "
+                f"forces are that half-filled state's, not the radical's "
+                f"ground state.  Use unrestricted with 1 unpaired electron, "
+                f"or check the charge.")
+
+
+#: Spin treatments under which SIESTA stops on a fixed total spin
+#: (``read_options.F90``: ``if (nspin .ne. 2) call die(...)``).
+_ALWAYS_FREE = frozenset({"non-collinear", "spin-orbit"})
 
 
 #: § 4 rule 1 — SIESTA's identity group, declared in one place.

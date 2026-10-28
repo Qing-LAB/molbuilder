@@ -412,17 +412,16 @@ def _spin_findings(struct: Structure, st, engine: str,
     if st.finite and c.value != FREE:
         msg = check_spin_charge_parity(struct, q.value, int(c.value))
         if msg:
-            half_filled = engine == "siesta" and t.value == "restricted"
+            # WHAT THE ENGINE DOES with an odd count under restricted spin --
+            # runs it anyway, said (SIESTA), or refuses it, the parity error
+            # (PySCF): its config class's rule.
+            from ..electronic_state import odd_count_restricted
+            runs_anyway = (odd_count_restricted(engine, st.n_electrons)
+                           if t.value == "restricted" else None)
             detail = (f"  The charge is {q.value:+d} ({q.said}).")
-            if half_filled:
-                return [Issue(
-                    "warn",
-                    f"An odd electron count ({st.n_electrons}) under "
-                    f"restricted: SIESTA runs it with the top level half "
-                    f"filled -- a restricted description of a radical, not "
-                    f"its ground state.  State unrestricted (2S = 1) for a "
-                    f"radical, or check the charge.{detail}",
-                    "config.unpaired_electrons")]
+            if runs_anyway:
+                return [Issue("warn", runs_anyway + detail,
+                              "config.unpaired_electrons")]
             return [Issue("error", msg[0].upper() + msg[1:] + detail,
                           "config.unpaired_electrons")]
 

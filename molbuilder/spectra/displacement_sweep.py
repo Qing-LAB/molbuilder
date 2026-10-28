@@ -7,8 +7,9 @@ ROLE    `jobset summarize task` on a vibration calculation with two or more
         constants -- compare them as a function of what the stages varied
         (the displacement, the mesh), and write ``<label>.fc-sweep.json`` at the
         calculation root with the table printed
-USED-BY jobset/_cli.py (``summarize task``); the Results tab's sweep presenter
-        reads the record (`lib/inspectors/fc-sweep.js`)
+USED-BY jobset/vibration_sum.py (the vibration's summary, ``summarize task``);
+        the Results tab's sweep presenter reads the record
+        (`lib/inspectors/fc-sweep.js`)
 
 WHY (`science/normal-modes.md` § 4b.6 C).  A force constant is a finite
 difference of forces: too small a nudge drowns in the SCF's noise, too large
@@ -115,10 +116,10 @@ def why_no_sweep(task) -> Optional[str]:
     """Why ``task`` -- a vibration's description -- has no displacement
     sweep to compare, in the sentence `summarize task` refuses with, or
     ``None`` when it has one (`engines/vibration.md` § 5.9): a PySCF
-    vibration (its Hessian is analytic), fewer than two force-constant
-    stages, or stages sharing one directory.  THE ONE RULE, asked by the
-    sweep (:func:`collect_sweep`) and by what names the task's summary
-    (`jobset.summarize.task_summary`)."""
+    vibration (its Hessian is analytic) or fewer than two force-constant
+    stages.  THE ONE RULE, asked by the sweep (:func:`collect_sweep`) and,
+    as the vibration's summary's ``why_none`` (`jobset/vibration_sum.py`),
+    by the verb and the task's next step."""
     if str(task.engine) != "siesta":
         return (f"a {task.engine} vibration's second derivatives are "
                 f"analytic: there is no displacement to sweep "

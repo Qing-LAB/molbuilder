@@ -249,7 +249,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | the ScaLAPACK/ELPA orbital-distribution block. **Tunable, and omitted entirely by default**, which is how SIESTA's own automatic is requested — the two states and the guidance are [`tuning.md § 2.11`](?doc=engines/tuning.md) |
 | 13 | Diagonalizer | `Diag.Algorithm` / `Diag.ELPA.GPU` | § 7 |
 | 14 | Geometry optimisation | `MD.TypeOfRun` (CG / Broyden / FIRE) + `MD.Steps` + `MD.MaxForceTol` + `MD.MaxDispl`. molbuilder runs no molecular dynamics *(the user, 2026-10-25)*: `MD.FinalTimeStep`, which bounds SIESTA's dynamics and which SIESTA reads at its own default on every run, is not written, and the section's note says so | skipped if `relax_type == "none"` |
-| 15 | Output flags | `WriteForces`, `WriteCoorStep`, `WriteCoorXmol`, `SaveHS`, … | `WriteForces` and `WriteCoorStep` always `true`, on every kind: molbuilder reads each step's forces and coordinates back, so the rung fixes them (`role`, [`template.md` § 6.4](?doc=engines/template.md)) |
+| 15 | Output flags | `WriteForces`, `WriteCoorStep`, `WriteCoorXmol`, `SaveHS`, … | `WriteForces` and `WriteCoorStep` always `true`, on every kind: molbuilder reads each step's forces and coordinates back, so the rung fixes them (`role`, [`template.md` § 6.4](?doc=engines/template.md)). `SaveHS` on by default, as SIESTA's own — off on a vibration, whose `.HSX` nothing reads ([`vibration.md`](?doc=engines/vibration.md) § 3.1) |
 | 16 | Troubleshooting block | inline tuning hints | only if `verbose_comments` |
 
 **The vibration kind's force-constant deck** (its `freq` stage; the `relax`
@@ -471,9 +471,11 @@ records its counts (`kgrid`, all three — `k_mesh_transverse` until 2026-10-02)
 and since 2026-09-30 its offset (`kgrid_displacement`); a transport citation carries
 both into the template, the transport axis laid on by the rule above.
 
-**What a kind fixes.** On a transport calculation no stage reads the third
-component of `kgrid`, `tbt_k_grid` or `kgrid_displacement` as a choice: the
-open stages write 1 and 0, a lead writes `electrode_kz` and 0.
+**What a kind fixes.** On a kind with leads — a transport calculation —
+no stage reads the third component of `kgrid`, `tbt_k_grid` or
+`kgrid_displacement` as a choice: the open stages write 1 and 0, a lead
+writes `electrode_kz` and 0. Which stages are leads is the kind table's
+(`execution/architecture.md` § 3.3), asked by the stage's name.
 `kmesh.fixed(item, kind)` names those components with the reason; the form
 shows them locked, and every door refuses another value through the one
 per-value door, `template.why_not`

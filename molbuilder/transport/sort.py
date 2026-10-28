@@ -47,10 +47,15 @@ from ..structure import REMAPPED_NOT_EDITED, Structure
 # The labels a transport junction's atoms carry in the `.molstruct.json`
 # sidecar's `regions`.  Here because this module owns the partition they
 # make; everything that reads a region label -- the emitter, compose,
-# validation -- asks here, so a rename happens once.
+# validation -- asks here.  The two electrode labels are the kind table's:
+# each is the region a lead is cut from, named on the lead's role
+# (`execution/architecture.md` § 3.3), so a rename happens there, once.
 
-REGION_LEFT_ELECTRODE  = "L-electrode"
-REGION_RIGHT_ELECTRODE = "R-electrode"
+from ..kind_table import kind as _kind, lead_of  # noqa: E402
+
+_LEADS = _kind("transport").leads
+REGION_LEFT_ELECTRODE  = _LEADS["electrode_L"]
+REGION_RIGHT_ELECTRODE = _LEADS["electrode_R"]
 REGION_BRIDGE          = "bridge"
 #: Atoms excluded from the NEGF region entirely (``TS.Atoms.Buffer``):
 #: padding at the OUTER ends of the device, beyond the electrode blocks.
@@ -322,12 +327,12 @@ def deck_own_structure(engine: str, kind: str,
                        stage: Optional[str] = None) -> Optional[str]:
     """What a deck of ``stage`` of an ``(engine, kind)`` calculation is when
     its atoms are A STRUCTURE OF ITS OWN -- not the user's, reordered or
-    not: a transport lead rung's electrode cell (`transport.deck.
-    SHAPE_OF_RUNG`; `model/overview.md` § 2.2a, *a structure derived from
-    the user's*) -- in words; ``None`` for every other deck."""
+    not: a transport lead rung's electrode cell (a lead role,
+    `kind_table.lead_of`; `model/overview.md` § 2.2a, *a structure derived
+    from the user's*) -- in words; ``None`` for every other deck."""
     if stage is not None and str(kind) == "transport":
-        from .deck import SHAPE_OF_RUNG, rung_of
-        if SHAPE_OF_RUNG.get(rung_of(stage)) == "electrode":
+        from .deck import rung_of
+        if lead_of(rung_of(stage)) is not None:
             return OWN_STRUCTURE_WORDS
     return None
 

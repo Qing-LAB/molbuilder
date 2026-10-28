@@ -387,7 +387,8 @@ answers it:
    * `restricted` ⇒ `unpaired_electrons = 0` (ES5);
    * where SIESTA cannot hold a fixed total spin — `non-collinear` or
      `spin-orbit`, and `unrestricted` on a transport rung — ⇒
-     `unpaired_electrons = free` (ES6, `electronic_state.count_must_float`);
+     `unpaired_electrons = free` (ES6, the engine's rule, `count_must_float` on
+     its config class — `config/siesta.py`);
    * a stated count above 0, or `free` ⇒ `spin_treatment = unrestricted`
      (`restricted-open` is chosen by stating it);
    * a stated count of 0 ⇒ `spin_treatment = restricted` (a broken-symmetry
@@ -498,7 +499,8 @@ under `non-collinear` and `spin-orbit` (`read_options.F90`), and under
 `unrestricted` on a transport rung, which TranSIESTA cannot hold
 (`m_ts_options.F90`, *"Fixing spin is not possible in TranSiesta"*). There a
 count nobody stated floats, and a stated one is refused by name — one rule,
-`electronic_state.count_must_float`. PySCF pins N↑ and N↓ from `mol.spin`
+SIESTA's own (`SiestaConfig.count_must_float`), asked through
+`electronic_state.count_must_float`, which names no engine. PySCF pins N↑ and N↓ from `mol.spin`
 (`pyscf/scf/uhf.py`, `get_occ`), so a PySCF calculation refuses `free` by
 name; UKS at `unpaired_electrons = 0` is a *constrained* singlet, not a free
 moment. SIESTA's `OMM` solver floats nothing: it runs a polarized density only

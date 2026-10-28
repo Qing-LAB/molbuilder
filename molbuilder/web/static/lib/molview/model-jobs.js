@@ -83,8 +83,9 @@ export const FROZEN_LABEL = "frozen_atoms";
  * when to use it, because a transport calculation reads them as physics
  * (engines/transport.md § 4): the electrode blocks are extracted
  * as the semi-infinite leads, so mislabeling silently changes the device.
- * Names are the Python constants in transport/sort.py -- one rename,
- * one place. */
+ * The two lead names are the kind table's (`data/kind_table.toml`, a
+ * lead role's `lead`); this list keeps its own copy until the page reads
+ * them from there (plan § 1ak, S2.4). */
 export const PREDEFINED_LABELS = [
     { name: "L-electrode", tone: 1,
       description: "the left lead: bulk metal layers, FROZEN during "

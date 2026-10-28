@@ -463,13 +463,11 @@ class Task:
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
 
     def _label_tail(self) -> int:
-        """What a rung adds to the label before its stage token -- a
-        transport lead's own stem (`identity.lead_tail_bytes`);
-        nothing for every other calculation."""
-        if str(self.calculation) != "transport":
-            return 0
-        from .identity import lead_tail_bytes
-        return lead_tail_bytes()
+        """What a rung adds to the label before its stage token -- its
+        kind's longest lead stem (`kind_table.CalculationKind.label_tail`);
+        nothing for a kind without leads."""
+        from .kind_table import kind
+        return kind(self.calculation).label_tail
 
     def _stage_names(self) -> Tuple[str, ...]:
         """The ladder, for the cap -- see :func:`~molbuilder.identity._cap_for`.

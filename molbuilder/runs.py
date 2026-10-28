@@ -95,7 +95,7 @@ def _position(place: Place) -> Tuple[str, Optional[str], bool]:
     whether it is a benchmark trial's -- read off where it is
     (`calcdirs.where`): a stage's files on the rung's label, a trial's
     relabelled with its point (`paths.trial_label`)."""
-    from molbuilder.identity import rung_label
+    from molbuilder.kind_table import rung_label
     at, label = place.where, place.task.label
     if at.stage is not None:
         # A LEAD'S FILES ARE ON ITS OWN STEM (`rung_label`, the one door
@@ -739,7 +739,7 @@ def about(path) -> Dict[str, Any]:
         # AT THE ROOT -- and in a flat calculation's one folder -- each
         # rung's files lie on the label its deck is named on (`rung_label`,
         # the one rule prep names them by): a lead's on its own stem.
-        from molbuilder.identity import rung_label
+        from molbuilder.kind_table import rung_label
         for named in dict.fromkeys(rung_label(label, st.name)
                                    for st in place.task.stages):
             got = _row_about(p, named)

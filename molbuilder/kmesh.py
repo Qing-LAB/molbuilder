@@ -19,7 +19,9 @@ the template's ``kx ky 1`` while its deck writes ``kx ky 100``.
 It imports nothing from the catalogue -- :mod:`molbuilder.template` asks
 :func:`fixed` for its one per-value door (``template.why_not``), so this module
 must not import it back; :func:`check` reaches :mod:`molbuilder.issues`, and
-numpy for the cell's lengths, when it runs.
+numpy for the cell's lengths, when it runs.  Which rungs are leads is the kind
+table's (`execution/architecture.md` § 3.3): a kind with leads is open along
+the transport axis on every other rung.
 """
 from __future__ import annotations
 
@@ -38,12 +40,6 @@ TRANSPORT_AXIS = 2
 #: The components' names -- the form's triple labels, and how a refusal names
 #: a component.
 AXES = ("x", "y", "z")
-
-#: The transport rungs whose transport axis is the LEAD's own periodic
-#: direction, sampled by ``electrode_kz``.  Every other transport rung -- the
-#: seed, the device, the transmission -- is open along it.  Keyed by the
-#: rung's shape (`transport/deck.py`'s ``SHAPE_OF_RUNG``).
-LEAD_RUNGS = frozenset({"electrode"})
 
 #: Why the transport axis takes one k-point with no offset on a transport
 #: calculation -- the reason every door gives for a fixed component.  The
@@ -66,8 +62,9 @@ WHY_NO_OFFSET = ("along z, the transport direction, both engines sample "
 #: one of them, or ``open`` when the axis itself answers.
 ITEMS = ("kgrid", "tbt_k_grid", "electrode_kz")
 
-#: What a transport calculation fixes in each item a k-point grid reads.
-_FIXED_ON_TRANSPORT: Dict[str, Tuple[Any, str]] = {
+#: What a kind with leads fixes in each item a k-point grid reads -- the
+#: transport axis's component, on every rung.
+_FIXED_WITH_LEADS: Dict[str, Tuple[Any, str]] = {
     "kgrid": (1, WHY_OPEN),
     "tbt_k_grid": (1, WHY_OPEN),
     "kgrid_displacement": (0.0, WHY_NO_OFFSET),
@@ -164,9 +161,9 @@ def mesh_for(cfg, axis_kind: Optional[Sequence[str]], *,
     """The k-point grid this rung writes -- the ONE derivation.
 
     ``axis_kind`` is the structure's (``Structure.axis_kind``); ``kind`` the
-    described calculation; ``rung`` a transport rung's shape (``seed`` ·
-    ``electrode`` · ``device`` · ``transmission``), and ``None`` on any other
-    kind; ``program`` whose keywords write it -- ``tbtrans`` reads
+    described calculation; ``rung`` the rung's role -- a lead samples the
+    transport axis with ``electrode_kz`` -- and ``None`` on a kind without
+    roles; ``program`` whose keywords write it -- ``tbtrans`` reads
     ``tbt_k_grid`` in the electrode plane (x, y), every SIESTA run
     ``kgrid``.
 
@@ -190,10 +187,12 @@ def mesh_for(cfg, axis_kind: Optional[Sequence[str]], *,
                      float)
     if counts is None or shifts is None or len(kinds) != 3:
         return None
+    from .kind_table import kind as _kind
+    leads = _kind(kind).leads
     axes = []
     for i in range(3):
-        if kind == "transport" and i == TRANSPORT_AXIS:
-            if rung in LEAD_RUNGS:
+        if leads and i == TRANSPORT_AXIS:
+            if rung in leads:
                 try:
                     kz = int(getattr(cfg, "electrode_kz"))
                 except (AttributeError, TypeError, ValueError):
@@ -216,14 +215,14 @@ def fixed(item: str, kind: str) -> Dict[int, Tuple[Any, str]]:
 
     Structure-free, so the doors that meet a value before any structure is
     at hand ask it: the description's own check, ``resolve`` and the form
-    (through ``template.why_not`` and the schema).  On a transport
-    calculation the transport axis's count is 1 and its offset 0 on every
-    open rung, and a lead's count is ``electrode_kz`` -- so the third
-    component of ``kgrid``, ``tbt_k_grid`` and ``kgrid_displacement`` is
-    nobody's."""
-    if kind != "transport" or item not in _FIXED_ON_TRANSPORT:
+    (through ``template.why_not`` and the schema).  On a kind with leads the
+    transport axis's count is 1 and its offset 0 on every open rung, and a
+    lead's count is ``electrode_kz`` -- so the third component of ``kgrid``,
+    ``tbt_k_grid`` and ``kgrid_displacement`` is nobody's."""
+    from .kind_table import kind as _kind
+    if not _kind(kind).leads or item not in _FIXED_WITH_LEADS:
         return {}
-    return {TRANSPORT_AXIS: _FIXED_ON_TRANSPORT[item]}
+    return {TRANSPORT_AXIS: _FIXED_WITH_LEADS[item]}
 
 
 def with_fixed(item: str, value, kind: str):
@@ -439,6 +438,6 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
     return out
 
 
-__all__ = ["AXES", "ITEMS", "KAxis", "KMesh", "LEAD_RUNGS", "TRANSPORT_AXIS",
+__all__ = ["AXES", "ITEMS", "KAxis", "KMesh", "TRANSPORT_AXIS",
            "TRANSMISSION_PER_SCF", "VACUUM_HINT_A", "check", "fixed",
            "mesh_for", "transmission_start", "with_fixed", "write"]

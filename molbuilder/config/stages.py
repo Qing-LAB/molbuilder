@@ -23,10 +23,6 @@ STAGE_NAMES = {1: "coarse", 2: "medium", 3: "tight"}
 #: its relaxation the run's first call.  Read by the kind's fresh ladder
 #: (`pyscf.stages.vibration_stages`) and the Task setup page's proposal.
 VIBRATION_FREQ_STAGE = "freq"
-#: THE NAME SIESTA'S RELAXATION STAGE HAD before the run in phases (2.42.0):
-#: what `jobset migrate` folds into the one stage, and what prep refuses an
-#: unmigrated description by (`engines/vibration.md` § 5.11 § 9).
-VIBRATION_RELAX_STAGE = "relax"
 
 STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
     "publishable": (True,  True,  False),   # stage1 loose + stage2 publishable
@@ -34,6 +30,5 @@ STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
     "vib-quality": (True,  True,  True),    # all three (TIGHT for vib/IR/NEB)
 }
 
-__all__ = ["STAGE_NAMES", "STAGE_STRATEGY_PRESETS", "VIBRATION_FREQ_STAGE",
-           "VIBRATION_RELAX_STAGE"]
+__all__ = ["STAGE_NAMES", "STAGE_STRATEGY_PRESETS", "VIBRATION_FREQ_STAGE"]
 

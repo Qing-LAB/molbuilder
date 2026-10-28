@@ -658,23 +658,11 @@ def _cap_for(stage_names: Sequence[str]) -> int:
     """The cap, derived against a real ladder where one is known.  A rung
     that lengthens the label before its stage token -- a transport lead's
     ``_L-electrode`` -- is budgeted by the caller's ``label_tail``
-    (`normalise_id`; a lead's is :func:`lead_tail_bytes`)."""
+    (`normalise_id`; a kind's is `kind_table.CalculationKind.label_tail`)."""
     if not stage_names:
         return MAX_LABEL_BYTES
     longest = max(len(n) for n in stage_names)
     return _NAME_LIMIT - (len("_") + longest) - len(_LONGEST_EXTENSION)
-
-
-#: The regions a transport lead rung is cut on -- its stage name to its
-#: region label (`engines/transport.md` § 6.1).
-_LEAD_REGION_OF = {"electrode_L": "L-electrode", "electrode_R": "R-electrode"}
-
-
-def lead_stages() -> "tuple[str, ...]":
-    """The transport lead rungs' stage names -- each a structure of its own
-    (`model/overview.md` § 2.2a), its files on its own stem
-    (:func:`rung_label`)."""
-    return tuple(_LEAD_REGION_OF)
 
 
 def electrode_hs_stem(job_name: str, label: str) -> str:
@@ -683,32 +671,12 @@ def electrode_hs_stem(job_name: str, label: str) -> str:
 
     Two writers need it to agree byte-for-byte: the device deck's
     ``TS.Elec.<name> HS`` line (`transport.transiesta`) and the electrode
-    rung's ``SystemLabel`` (:func:`rung_label`), so SIESTA writes exactly
-    the file the device will ask for (and `transport.stages.stage_inputs`
-    names the ``.TSHS`` a rung consumes).
+    rung's ``SystemLabel`` (`kind_table.rung_label`, from the region the
+    kind table names the lead by), so SIESTA writes exactly the file the
+    device will ask for (and `transport.stages.stage_inputs` names the
+    ``.TSHS`` a rung consumes).
     """
     return f"{job_name}_{label}"
-
-
-def rung_label(task_label: str, stage: Optional[str]) -> str:
-    """THE LABEL A RUNG'S FILES ARE NAMED ON (`job-contracts.md` § 2.1, rule
-    2): the calculation's own for every rung but a lead's, whose files --
-    the engine's ``.TSHS``, ``.DM``, ``.XV`` and ours alike -- are on the
-    lead's own stem, its ``SystemLabel`` (:func:`electrode_hs_stem`), which
-    the device deck's ``TS.Elec.<name> HS`` line names.  Asked by the
-    element's label (`resolve._label_for`), the job's names
-    (`jobset.naming.run_names`) and the run door's reading of a folder
-    (`runs._position`), so no reader composes a lead's name a second way.
-    ``stage`` is the rung's name; ``None`` -- no ladder -- is the label."""
-    region = _LEAD_REGION_OF.get(stage or "")
-    return electrode_hs_stem(task_label, region) if region else task_label
-
-
-def lead_tail_bytes() -> int:
-    """How much longer a lead's stem is than the calculation's label -- what
-    the label cap budgets for a transport calculation (:func:`_cap_for`)."""
-    return max(len(electrode_hs_stem("", r).encode("utf-8"))
-               for r in _LEAD_REGION_OF.values())
 
 
 def run_id(label: str, formula: str = "", *,
@@ -762,7 +730,7 @@ __all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",
            "deck_launch", "electrode_hs_stem", "is_ours", "launch_as_typed",
-           "lead_tail_bytes", "normalise_id", "rung_label",
+           "normalise_id",
            "render_stage_choices",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",
            "stage_token", "way_back_words"]

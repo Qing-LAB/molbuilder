@@ -170,7 +170,7 @@ def reference_frame_of(reading, *, name: str = "the output"):
     SIESTA evaluates the reference geometry before the first nudge, so it is
     the first step carrying forces.  The finish takes both halves from it:
     the coordinates are the geometry the force constants belong to -- the
-    relaxed one after a `relax` stage, the input one when the structure was
+    relaxed one after the run's `relax` phase, the input one when the structure was
     stated relaxed -- and the forces are what stationarity is judged by (R5
     on this route; `engines/vibration.md` § 5.2a, § 5.5).  Returns the step
     record.

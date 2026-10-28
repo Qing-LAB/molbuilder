@@ -284,5 +284,22 @@ class PySCFConfig:
     def molwatch_log(self, value: bool) -> None:     # pragma: no cover
         self.write_molwatch_log = value
 
+    # ----- What PySCF does with two state settings together -------------
+    # Asked through the engine's config class, as SIESTA's are
+    # (`config/siesta.py`).
+
+    @staticmethod
+    def count_must_float(kind: str, treatment: str) -> Optional[str]:
+        """``None``: PySCF holds the count it is given -- it pins N-up and
+        N-down from ``mol.spin`` (``pyscf/scf/uhf.py``, ``get_occ``)."""
+        return None
+
+    @staticmethod
+    def odd_count_restricted(n_electrons: int) -> Optional[str]:
+        """``None``: PySCF refuses an odd electron count under restricted
+        spin when it builds the molecule (``gto/mole.py``), so the parity
+        error stands."""
+        return None
+
 
 __all__ = ["PySCFConfig"]

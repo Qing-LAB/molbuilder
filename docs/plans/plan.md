@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.47.11.** Since the last handover (2026-10-20, kept
+**Where we are: 2.47.12.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -93,9 +93,11 @@ not offered beside it (2.47.8); what a stage builds on and what a description
 carries read from the kind table, the table made smaller (2.47.9); a kind's
 fixed charge, benchmark and hand-over, an engine's method and benchmark lane
 (2.47.10); a structure lying along z opened side on, and a project's topics
-the kinds' (2.47.11).
+the kinds' (2.47.11); a lead, a summary and a retired stage read from the
+kind table, a vibration writing no `.HSX`, and the monitor's line from the
+run's structure decided (2.47.12).
 
-**Last checked**: the fast batch on 2.47.11 (6,919 passed), the MolView, project, sidebar and kind-table files (385 passed), the new camera and topic rows broken one by one and seen to fail, its chapters rendered; the fast batch on 2.47.10 (6,917 passed), its moved rules broken and seen to fail, its chapters rendered; the fast batch on 2.47.9 (6,917 passed), its moved rules broken one by one, its chapters rendered; the fast batch on 2.47.8's code before its second review's revision (6,917 passed), the 16 files that revision touched after it (310 passed), the render of every chapter it changed; the fast batch on 2.47.6's code before its review's revision (6,893 passed), the Task setup and describe tests after it (62), the Task setup browser files (26); the fast batch on 2.47.5 (6,891 passed); the ladder's e2e
+**Last checked**: the fast batch on 2.47.12 (6,921 passed), the files its last revision touched after it (151 passed), its chapters rendered; the fast batch on 2.47.11 (6,919 passed), the MolView, project, sidebar and kind-table files (385 passed), the new camera and topic rows broken one by one and seen to fail, its chapters rendered; the fast batch on 2.47.10 (6,917 passed), its moved rules broken and seen to fail, its chapters rendered; the fast batch on 2.47.9 (6,917 passed), its moved rules broken one by one, its chapters rendered; the fast batch on 2.47.8's code before its second review's revision (6,917 passed), the 16 files that revision touched after it (310 passed), the render of every chapter it changed; the fast batch on 2.47.6's code before its review's revision (6,893 passed), the Task setup and describe tests after it (62), the Task setup browser files (26); the fast batch on 2.47.5 (6,891 passed); the ladder's e2e
 on the real CO₂ run on 2.47.5; the run-script, launch, warm-file and deck
 tests on 2.47.3 (101 passed; comments changed); the catalogue, bundle and launch tests on
 2.47.2 (922 and 114 passed); the

@@ -5,15 +5,17 @@ runs on (`execution/architecture.md` § 3.3).
 **What differs between kinds is a field here, never a branch** (A18): a
 kind's name as a person reads it, its rungs' roles and what each computes --
 a kind with roles has a linked ladder, one without an independent one
-(`job-system.md` § 5.4) -- the results it gives, what its description
+(`job-system.md` § 5.4), and a role that is a lead names the region it
+is cut from -- the results it gives, what its description
 carries beyond every kind's fields, the charge it fixes, why it takes no
 benchmark, the tab that hands it over or where it describes itself, and
 its topic -- the folder a new project lays down for it;
 and on each engine it runs on, the
 engine's own name for it, the shape it fixes and why, how its stages play
 its roles (its rungs, every one in order, where a stage's role is its
-name), and the code parts the pair names -- its run of points, its rung's
-builder, the inputs its rungs take and their gather.  The engines a kind
+name), a stage older versions wrote that it no longer holds, and the code
+parts the pair names -- its run of points, its rung's builder, the inputs
+its rungs take and their gather, and what `summarize task` adds up.  The engines a kind
 runs on are its parts -- no second list says which engine runs which kind
 -- and each is the engine table's (`engine_table`).
 
@@ -30,6 +32,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
+from .identity import electrode_hs_stem
 from .paths import SHAPES
 
 #: The file, beside the parameter catalogue.
@@ -50,10 +53,10 @@ DESCRIPTION_FIELDS = ("swap_electrodes", "bias", "reuses")
 _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
               "charge", "no_benchmark", "handover", "on")
 _PART_KEYS = ("words", "shape", "why", "stage_roles", "points", "rung",
-              "inputs", "gather")
+              "inputs", "gather", "sum", "retired")
 
 #: The parts a pair may name, each ``module:NAME`` (:func:`part_of`).
-PART_REFS = ("points", "rung", "inputs", "gather")
+PART_REFS = ("points", "rung", "inputs", "gather", "sum")
 
 
 class KindTableError(ValueError):
@@ -68,6 +71,23 @@ class Role:
     computes (:data:`COMPUTES`)."""
     name: str
     computes: str
+    #: The region of the junction a LEAD is cut from -- its files are on
+    #: that region's name (:func:`rung_label`) and it samples the transport
+    #: axis with its own count -- or ``None``: the rung is no lead
+    #: (`execution/architecture.md` § 3.3).
+    lead: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class Retired:
+    """A stage older versions wrote that a pair no longer holds beside its
+    others: its name, the role it played, the version that retired it, and
+    why -- the reader refuses a description still holding it, naming
+    ``jobset migrate``, which folds it into the others."""
+    stage: str
+    role: str
+    since: str
+    why: str
 
 
 @dataclass(frozen=True)
@@ -130,6 +150,12 @@ class KindOnEngine:
     #: With ``inputs``: ``module:NAME`` of the gather that takes them at a
     #: rung's first launch (the ready door's, `jobset.ready`).
     gather: Optional[str] = None
+    #: ``module:NAME`` of what ``summarize task`` adds up for it -- a
+    #: `jobset.summarize.TaskSum` (floor 6) -- or ``None``: its stages each
+    #: write their own result.
+    sum: Optional[str] = None
+    #: A stage older versions wrote that it no longer holds, or ``None``.
+    retired: Optional[Retired] = None
 
     @property
     def fixed_shape(self) -> Optional[Dict[str, str]]:
@@ -180,6 +206,21 @@ class CalculationKind:
     def engines(self) -> Tuple[str, ...]:
         """The engines it runs on -- its parts."""
         return tuple(self.parts)
+
+    @property
+    def leads(self) -> Dict[str, str]:
+        """Its leads, each role's name to the region it is cut from, in
+        order; ``{}`` for a kind without leads -- one that is open along
+        the transport axis on no rung (`engines/siesta.md` § 6.1)."""
+        return {r.name: r.lead for r in self.roles if r.lead}
+
+    @property
+    def label_tail(self) -> int:
+        """How much longer than the calculation's label its longest
+        lead's stem is (:func:`rung_label`) -- what the label's cap budgets
+        (`identity.normalise_id`); 0 for a kind without leads."""
+        return max((len(electrode_hs_stem("", region).encode("utf-8"))
+                    for region in self.leads.values()), default=0)
 
     @property
     def with_article(self) -> str:
@@ -237,11 +278,25 @@ def _part(kind: str, engine: str, body: object,
     if "inputs" in body and not roles:
         _refuse(where, "inputs on a kind without roles -- its stages "
                        "continue from the one before")
+    retired = body.get("retired")
+    if retired is not None:
+        if (not isinstance(retired, dict)
+                or set(retired) != {"stage", "role", "since", "why"}
+                or not all(isinstance(v, str) and v
+                           for v in retired.values())):
+            _refuse(where, "retired is {stage, role, since, why} -- the "
+                           "stage, the role it played, the version that "
+                           "retired it and why")
+        if retired["role"] not in roles:
+            _refuse(where, f"retired names role {retired['role']!r} -- the "
+                           f"kind's roles are {', '.join(roles) or 'none'}")
+        retired = Retired(**retired)
     return KindOnEngine(kind=kind, engine=engine, words=body.get("words"),
                         shape=shape, why=why, stage_roles=sr,
                         stages=tuple(roles) if sr == "own" else None,
                         points=body.get("points"), rung=body.get("rung"),
-                        inputs=body.get("inputs"), gather=body.get("gather"))
+                        inputs=body.get("inputs"), gather=body.get("gather"),
+                        sum=body.get("sum"), retired=retired)
 
 
 def _kind(name: str, body: object, engines: Tuple[str, ...]
@@ -266,10 +321,15 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
         _refuse(where, "on is a table, one part per engine")
     roles = []
     for r in body.get("roles", ()):
-        if set(r) != {"name", "computes"} or r["computes"] not in COMPUTES:
-            _refuse(where, f"a role is {{name, computes}}, computes one of "
-                           f"{', '.join(COMPUTES)} -- got {r!r}")
-        roles.append(Role(name=str(r["name"]), computes=str(r["computes"])))
+        if (not {"name", "computes"} <= set(r) <= {"name", "computes", "lead"}
+                or r["computes"] not in COMPUTES
+                or ("lead" in r and not (isinstance(r["lead"], str)
+                                         and r["lead"]))):
+            _refuse(where, f"a role is {{name, computes}} and a lead's "
+                           f"region, computes one of {', '.join(COMPUTES)} "
+                           f"-- got {r!r}")
+        roles.append(Role(name=str(r["name"]), computes=str(r["computes"]),
+                          lead=r.get("lead")))
     results = []
     for r in body.get("results", ()):
         if set(r) != {"key", "title", "line"}:
@@ -331,7 +391,18 @@ def _table() -> Dict[str, CalculationKind]:
     from .engine_table import engines
     raw = tomllib.loads(TABLE_FILE.read_text(encoding="utf-8"))
     known = engines()
-    return {name: _kind(name, body, known) for name, body in raw.items()}
+    table = {name: _kind(name, body, known) for name, body in raw.items()}
+    # A LEAD IS FOUND BY ITS STAGE'S NAME (:func:`lead_of`), so its name is
+    # one no other kind's role has.
+    for name, rec in table.items():
+        for lead in rec.leads:
+            also = [k for k, other in table.items() if k != name
+                    and lead in other.role_names]
+            if also:
+                _refuse(f"[{name}]", f"lead {lead!r} is a role of "
+                                     f"{', '.join(also)} too -- a lead's "
+                                     f"name is its kind's alone")
+    return table
 
 
 def kinds() -> Tuple[str, ...]:
@@ -357,6 +428,30 @@ def pair(calculation: str, engine: str) -> Optional[KindOnEngine]:
     reader (`task`), which asks :meth:`CalculationKind.on`."""
     got = _table().get(str(calculation))
     return got.parts.get(str(engine)) if got is not None else None
+
+
+def lead_of(stage: Optional[str]) -> Optional[str]:
+    """The region the lead named ``stage`` is cut from, or ``None``: the
+    stage is no kind's lead."""
+    for rec in _table().values():
+        if stage in rec.leads:
+            return rec.leads[stage]
+    return None
+
+
+def rung_label(task_label: str, stage: Optional[str]) -> str:
+    """THE LABEL A RUNG'S FILES ARE NAMED ON (`job-contracts.md` § 2.1,
+    rule 2): the calculation's own for every rung but a lead's, whose files
+    -- the engine's ``.TSHS``, ``.DM``, ``.XV`` and ours alike -- are on the
+    region it is cut from (``<label>_L-electrode``,
+    `identity.electrode_hs_stem`), which the device deck's
+    ``TS.Elec.<name> HS`` line names.  Asked by the element's label
+    (`resolve._label_for`), the job's names (`jobset.naming.run_names`) and
+    the run door's reading of a folder (`runs._position`), so no reader
+    composes a lead's name a second way.  ``stage`` is the rung's name;
+    ``None`` -- no ladder -- is the label."""
+    region = lead_of(stage)
+    return electrode_hs_stem(task_label, region) if region else task_label
 
 
 def carrying(field: str) -> Tuple[str, ...]:
@@ -407,5 +502,5 @@ def part(ref: str, *, record: str, key: str) -> Any:
 
 __all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "PART_REFS",
            "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
-           "KindOnEngine", "CalculationKind", "kinds", "kind", "pair",
-           "role_set", "part_of", "part"]
+           "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
+           "pair", "lead_of", "rung_label", "role_set", "part_of", "part"]

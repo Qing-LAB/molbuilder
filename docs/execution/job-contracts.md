@@ -267,9 +267,10 @@ and a reader later opens carries the same **basename**:
 - **SIESTA** — the basename **is** the `.fdf`'s `SystemLabel`. A transport
   lead's is its own: `<label>_L-electrode` / `<label>_R-electrode`, the stem
   the device deck's `TS.Elec.<name> HS` line names, so a lead run's `.TSHS`,
-  `.DM`, `.XV`, deck and output all share it (`identity.rung_label`,
-  the one door prep, the gather and the run door ask; `engines/transport.md`
-  § 1).
+  `.DM`, `.XV`, deck and output all share it — the region a lead is cut
+  from, named by the kind table (`kind_table.rung_label`, the one door prep,
+  the gather and the run door ask; `execution/architecture.md` § 3.3,
+  `engines/transport.md` § 1).
 - **PySCF** — the basename **is** the script's `JOB = "…"` literal.
 
 **Same kind, one validator, two mechanisms — and the difference decides how

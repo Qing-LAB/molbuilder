@@ -62,30 +62,24 @@ FREE = "free"
 #: the form offers a list and a template reads ``unpaired_electrons = 2``.
 COUNTS = tuple(range(0, 11)) + (FREE,)
 
-#: Treatments under which SIESTA stops on ``Spin.Fix``, so the count can only
-#: float (``read_options.F90``: ``if (nspin .ne. 2) call die(...)``).
-ALWAYS_FREE = frozenset({"non-collinear", "spin-orbit"})
-
 def count_must_float(engine: str, kind: str, treatment: str) -> Optional[str]:
-    """Why the unpaired-electron count can only float here, or ``None``.
-
-    SIESTA stops on a fixed total spin (``Spin.Fix``) under a non-collinear
-    or spin-orbit treatment (``read_options.F90``), and TranSIESTA under any
-    (``m_ts_options.F90``: *"Fixing spin is not possible in TranSiesta"*) --
-    so there a count nobody stated floats (the resolution below) and a
-    stated one is refused by name (the settings gate).
+    """Why the unpaired-electron count can only float here, or ``None`` --
+    the engine's own rule, asked of its config class
+    (`config/siesta.py`, `config/pyscf.py`): there a count nobody stated
+    floats (the resolution below) and a stated one is refused by name (the
+    settings gate).
     """
-    if engine != "siesta":
-        return None
-    if treatment in ALWAYS_FREE:
-        return (f"{treatment}: SIESTA stops on a fixed total spin (Spin.Fix) "
-                f"unless the spin is collinear and polarized "
-                f"(read_options.F90)")
-    if kind == "transport" and treatment == "unrestricted":
-        return ("a transport rung: TranSIESTA cannot hold a fixed total spin "
-                "('Fixing spin is not possible in TranSiesta', "
-                "m_ts_options.F90)")
-    return None
+    from .engine_table import config_class
+    return config_class(engine).count_must_float(kind, treatment)
+
+
+def odd_count_restricted(engine: str, n_electrons: int) -> Optional[str]:
+    """What the engine does with an odd electron count under restricted
+    spin, in the sentence the settings gate warns with -- or ``None``, an
+    engine that refuses it, so the parity error stands: the engine's own
+    rule, asked of its config class, as :func:`count_must_float` is."""
+    from .engine_table import config_class
+    return config_class(engine).odd_count_restricted(n_electrons)
 
 
 @dataclass(frozen=True)
