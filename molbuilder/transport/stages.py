@@ -248,10 +248,14 @@ def point_folders(base, task, stage: str, *, frames: Optional[int] = None
 
 def points_in(run, task, stage: str, *, base) -> List[Tuple[Path, Point]]:
     """A run's points -- ``[(run-<n>/<point>, Point)]`` -- or ``[]`` for a
-    run of a rung that runs once (`engines/transport.md` § 2a.11); the
-    frames are the record's of the calculation at ``base``."""
+    run of a rung that runs once (`engines/transport.md` § 2a.11): the
+    points it HOLDS, each opened at its launch -- a point the description
+    gained after the run was opened is not the run's (`job-system.md`,
+    *Changed since prepared*).  The frames are the record's of the
+    calculation at ``base``."""
     return [(Path(run) / pt.rel, pt)
-            for pt in rung_points(task, stage, frames=frames_of(base))]
+            for pt in rung_points(task, stage, frames=frames_of(base))
+            if (Path(run) / pt.rel).is_dir()]
 
 
 def stage_inputs(stage: str, task_label: str):
@@ -350,8 +354,8 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
 
     The electrode single-points and the transmission post-processing
     declare NOTHING — re-running them is cheaper than reasoning about a
-    half-finished copy, and an empty declaration is what makes a re-launch
-    of one refuse by name instead of copying dead weight.
+    half-finished copy: launched again, one runs from its deck alone
+    (`continuation.relaunch`).
     """
     if stage not in ("seed", "device"):
         return []

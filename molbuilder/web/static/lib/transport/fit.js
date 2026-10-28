@@ -9,7 +9,7 @@
  *
  * One builder for both pages, so the two cannot offer two fits.  The row
  * is made of the shared components both pages load (`form-components.css`
- * `.fdf-actions`, `.hint`; the shell's `button`).
+ * `.fdf-actions`; the shell's `.status` and `button`).
  */
 
 /** A row offering the fit for the calculation `reuses` names -- `name`,
@@ -31,7 +31,10 @@ export function fitRow({ reuses, name, use, doc = document }) {
     const [hiLabel, hi] = num("3", "to", "any");
     const [finerLabel, finer] = num("1", "times finer", "2");
     const ask = el("button", { type: "button", class: "btn" }, "Fit");
-    const said = el("span", { class: "hint" });
+    const said = el("span", { class: "status", role: "status" });
+    // THE ONE STATUS WRITER (`lib/status.js`): a refusal in the error colour.
+    const say = (msg, kind) => window.molbuilder.status.set(said, msg,
+                                                            kind || null);
     const take = el("button", { type: "button", class: "btn", hidden: "" },
                     "Use these");
     let fitted = null;
@@ -40,24 +43,24 @@ export function fitRow({ reuses, name, use, doc = document }) {
         i.addEventListener("input", () => {
             fitted = null;
             take.hidden = true;
-            said.textContent = "";
+            say("");
         });
     }
     ask.addEventListener("click", async () => {
         fitted = null;
         take.hidden = true;
-        said.textContent = "Fitting…";
+        say("Fitting…");
         const q = new URLSearchParams({ reuses: reuses, lo: lo.value,
                                         hi: hi.value, finer: finer.value });
         try {
             const r = await fetch("/api/transport/fit?" + q);
             const b = await r.json();
-            if (!b.ok) { said.textContent = b.error || "not fitted"; return; }
+            if (!b.ok) { say(b.error || "not fitted", "error"); return; }
             fitted = b;
-            said.textContent = b.words;
+            say(b.words);
             take.hidden = false;
         } catch (e) {
-            said.textContent = String((e && e.message) || e);
+            say(String((e && e.message) || e), "error");
         }
     });
     take.addEventListener("click", () => {

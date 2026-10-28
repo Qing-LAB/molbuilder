@@ -507,4 +507,4 @@ before = [["prep", "task", "--group", "1"]]
 launched = ["coarse", "medium"]
 removed = ["medium"]
 stage = ""
-refused = ["holds no group it may prepare now", "group 1 is not offered: `coarse` was launched in one job with `medium`"]
+refused = ["it offers no group", "group 1 is not offered: `coarse` was launched in one job with `medium`"]

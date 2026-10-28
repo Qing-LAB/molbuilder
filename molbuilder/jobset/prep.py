@@ -69,7 +69,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 machine_record, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
                 log=None, render=None, points=None,
-                this_prep=None, notes: Optional[list] = None) -> List[Path]:
+                notes: Optional[list] = None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir`` --
     steps 4 and 5 of :func:`prep_calculation`, its one caller, which hands
     over what the prep entry read and decided.  ``notes`` is the answer's
@@ -80,9 +80,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
     for the decks it already holds (`job-system.md` § 5.0).
 
     ``shape`` is the layout as the entry read it from the description -- a
-    layer below takes it (`Shape.named(task.shape)`, A16).  ``this_prep`` is what
-    this prep's hand-over takes, which `STAGE-PLAN.md` says under its table
-    (`plan.render_plan`).  ``provenance`` is which config files answered,
+    layer below takes it (`Shape.named(task.shape)`, A16).  ``provenance`` is which config files answered,
     as the prep entry read them with the machine's record at its
     checkpoint 4 (:func:`checked`); ``machine_record`` is that record.
 
@@ -111,7 +109,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
       2. ``materialize`` — the shared package, as real copies into each job
          directory (what a stage continues from is copied when its attempt
          is opened: ``materialize.prepare_attempt``).
-      3. emit ``STAGE-PLAN.md`` beside the job-set it describes.
+      3. a benchmark's ``STAGE-PLAN.md``, beside its job-set in its
+         stage's ``bench/`` container -- a task's is written once, by the
+         group prep (:func:`prep_task`), for every member it prepares.
 
     Returns the per-job directories.  Raises :class:`PrepError` on an
     invalid JobSet or a script that is not in its job's directory.
@@ -257,16 +257,18 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                          "the bundle root — flat runs here, nothing is linked"
                          if _d.resolve() == base.resolve() else str(_d))
 
-    # ---- 3. emit STAGE-PLAN.md (§ 5 D3; mirrors bench's BENCH-PLAN.md) --- #
-    # The plan lands BESIDE the job-set it describes: the run's at the
-    # root, a bench's inside its stage's bench/ container -- so a bench
-    # prep can never overwrite the run's reviewable plan (U1, 2026-08-12).
-    plan_dir = Path(record_dir) if record_dir is not None else base
-    plan.text(plan_dir / _PLAN_FILE,
-              stage_plan_text(jobset, this_prep, base=base,
-                              provenance=provenance, plan=plan))
-    if log is not None:
-        log.produced(_PLAN_FILE, str(plan_dir / _PLAN_FILE))
+    # ---- 3. a BENCHMARK'S STAGE-PLAN.md (§ 5 D3) ------------------------ #
+    # BESIDE the job-set it describes, inside its stage's bench/ container,
+    # so a bench prep can never overwrite the run's reviewable plan (U1,
+    # 2026-08-12).  A task's plan is written ONCE, by the group prep, for
+    # every member it prepares (`job-system.md`: "STAGE-PLAN.md once").
+    if jobset.kind == KIND_SWEEP:
+        plan_dir = Path(record_dir) if record_dir is not None else base
+        plan.text(plan_dir / _PLAN_FILE,
+                  stage_plan_text(jobset, None, base=base,
+                                  provenance=provenance, plan=plan))
+        if log is not None:
+            log.produced(_PLAN_FILE, str(plan_dir / _PLAN_FILE))
     return dirs
 
 
@@ -1355,13 +1357,6 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             # The CURRENT ladder bounds what the merge keeps -- and the
             # launched stages it no longer holds.
             ladder=frozenset(_keep))
-    # WHAT ITS FIRST LAUNCH WILL TAKE, said under `STAGE-PLAN.md`'s table
-    # (`job-system.md` § 5.4) -- the line both prep doors print.
-    this_prep = None
-    if kind == KIND_LADDER and stage:
-        from .ready import at_launch
-        this_prep = this_prep_lines(stage, at_launch(
-            calc.with_plan(js), stage, job=js.job(stage)))
     log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
     log.received("kind", kind)
     for _j in js.jobs:
@@ -1394,7 +1389,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                        render=(None if kind == KIND_SWEEP
                                else {j.name for j in jobs}),
                        points={j.name: _points for j in jobs}, plan=plan,
-                       shape=resolved.shape, this_prep=this_prep,
+                       shape=resolved.shape,
                        provenance=resolved.provenance, notes=notes)
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
@@ -3119,21 +3114,25 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             return [_record_the_order(description.calc, refuse=_refuse,
                                       asked=_asked, preview=preview,
                                       plan_id=plan_id)]
-        # THE GROUPS IT MAY PREPARE NOW, the one answer's
-        # (`ready.task_state`), and why each other may not.
-        from .commands import block, prep_group_lines
+        # THE GROUPS IT OFFERS, the one offer (`ready.prep_offer`: every one
+        # not prepared as described that may be prepared now), and why each
+        # other may not; none offered, each group's next step says how it is
+        # prepared again (`status`).
+        from .commands import block, command, prep_group_lines
         from .ready import task_state
-        gs = task_state(description.calc).groups
-        offer = [g.number for g in gs if g.preparable]
+        state = task_state(description.calc)
+        offer = state.prep_offer
         held = "".join(f"\n  group {g.number} is not offered: {g.why}"
-                       for g in gs if not g.preparable and g.why)
+                       for g in state.groups if not g.preparable and g.why)
         raise _refuse(
             "`prep task` names the groups it prepares -- a group prepared "
-            "and never launched is prepared again by naming it -- and the "
-            + (f"groups it may prepare now are "
-               f"{', '.join(map(str, offer))}:\n"
+            "and never launched is prepared again by naming it -- and "
+            + (f"the groups it offers are {', '.join(map(str, offer))}:\n"
                + block(prep_group_lines(offer, base=base))
-               if offer else "job request holds no group it may prepare now")
+               if offer else
+               "it offers no group -- each is prepared as described; a "
+               "group is prepared again by naming it, as its next step "
+               "says:\n" + block([command("status", base=base)]))
             + held)
     unknown = [n for n in numbers if n not in described]
     if unknown:
@@ -3242,37 +3241,15 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             if job_st is not None and _ever_launched(description.calc,
                                                      job_st):
                 launched_members.add(st)
-    # 1b · A CALCULATION THAT REUSES A FINISHED ONE (`engines/transport.md`
-    #      § 2a.16): each group none of whose members is launched here,
-    #      COPIED IN or prepared here -- decided before anything is planned,
-    #      in the ladder's order -- the manifest.  A group copied in is in no
-    #      sequence of groups: no job launches it.
-    from .reuse import decide
-    try:
-        reuse = decide(description.calc, [
-            n for n in numbers
-            if not any(st in launched_members for st in members[n])])
-    except PrepError as exc:
-        raise _refuse(str(exc)) from None
-    if reuse is not None and sequence:
-        sequence = [n for n in sequence if not reuse.copied(n)]
-        if len(sequence) < 2:
-            copied_ = [d.number for d in reuse.groups if d.copied]
-            raise _refuse(
-                f"--one-job sends several groups as one job, and group"
-                f"{'s' if len(copied_) > 1 else ''} "
-                f"{', '.join(map(str, copied_))} "
-                f"{'are' if len(copied_) > 1 else 'is'} copied in from "
-                f"{reuse.name} -- launched by no job -- leaving "
-                f"{', '.join(map(str, sequence)) or 'none'} to send: prepare "
-                f"without --one-job (engines/transport.md § 2a.16; "
-                f"job-system.md R-P22).")
     # 2 · THE DESCRIPTION CHECKED AND THE MACHINE READ, once (3, 4); then
-    #     EVERY MEMBER, PLANNED INTO ONE PLAN by the one member planner,
-    #     nothing written -- each member seeing what those before it planned
-    #     (their rows in `job-set.json`).  A refusal is the prep's, written
-    #     down as every refusal is -- the description's notes first.
+    #     A REUSE DECIDED (4a); then EVERY MEMBER, PLANNED INTO ONE PLAN by
+    #     the one member planner, nothing written -- each member seeing what
+    #     those before it planned (their rows in `job-set.json`).  A refusal
+    #     is the prep's, written down as every refusal is -- the
+    #     description's notes first (`job-system.md` § 5.0, *The
+    #     checkpoints, in order*).
     from .planned import Plan
+    from .reuse import decide
     the_plan = Plan()
     previews: Dict[int, List[PrepAnswer]] = {}
     try:
@@ -3280,6 +3257,29 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             checked(base, description, target=target)
             if on_found is not None:
                 on_found(description.findings, [])
+            # 4a · A CALCULATION THAT REUSES A FINISHED ONE
+            #      (`engines/transport.md` § 2a.16): each group none of
+            #      whose members is launched here, COPIED IN or prepared
+            #      here -- decided before anything is planned, in the
+            #      ladder's order -- the manifest.  A group copied in is in
+            #      no sequence of groups: no job launches it.
+            reuse = decide(description.calc, [
+                n for n in numbers
+                if not any(st in launched_members for st in members[n])])
+            if reuse is not None and sequence:
+                sequence = [n for n in sequence if not reuse.copied(n)]
+                if len(sequence) < 2:
+                    copied_ = [d.number for d in reuse.groups if d.copied]
+                    raise PrepError(
+                        f"--one-job sends several groups as one job, and "
+                        f"group{'s' if len(copied_) > 1 else ''} "
+                        f"{', '.join(map(str, copied_))} "
+                        f"{'are' if len(copied_) > 1 else 'is'} copied in "
+                        f"from {reuse.name} -- launched by no job -- "
+                        f"leaving {', '.join(map(str, sequence)) or 'none'} "
+                        f"to send: prepare without --one-job "
+                        f"(engines/transport.md § 2a.16; job-system.md "
+                        f"R-P22).")
             for n in numbers:
                 previews[n] = [plan_stage(
                     base, description, "task", at, target=target,

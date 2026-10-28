@@ -94,16 +94,11 @@ from ..spectra.results import SCHEMA_VERSION
 #
 # Central-difference truncation error scales as (δ²·α'''(R) / 6) where
 # α'''(R) is the third derivative of the polarizability with respect
-# to nuclear position.  For typical molecular polarizabilities α(R)
-# is smooth on the Bohr scale (α''' ~ 10⁻³ a.u.); at δ = 0.005 Å this
-# gives a relative error in dα/dR of roughly 1e-6, which is well below
-# the SCF noise floor at conv_tol=1e-9.  The 0.005 Å choice matches
-# the FD step Gaussian and ORCA use for their static polarizability-
-# derivative paths.  Not exposed as a config knob because (a) the
-# defensible range is narrow (~0.001 Å to ~0.01 Å), (b) tuning it
-# without changing the SCF convergence tolerance accomplishes
-# nothing, and (c) it has no scientific interpretation -- it's a
-# numerical-stability knob, not a physical one.
+# to nuclear position; a smaller step meets the SCF's noise instead.
+# Not exposed as a config knob because tuning it without changing the
+# SCF convergence tolerance accomplishes nothing, and it has no
+# scientific interpretation -- it's a numerical-stability knob, not a
+# physical one.
 _RAMAN_FD_STEP_ANG = 0.005
 
 
@@ -214,9 +209,12 @@ def _emit_header_docstring(struct: Structure,
         out.append("    validation).  A mode-by-mode cross-check against an")
         out.append("    external code has not been run;")
         out.append("    quote absolute values only with the caveat.")
-        out.append("    For CHARGED molecules (charge != 0) IR intensities")
-        out.append("    are origin-dependent and physically ill-defined; the")
-        out.append("    values here may be contaminated by origin-shift terms.")
+        out.append("    For CHARGED molecules the dipole is taken about the")
+        out.append("    fixed point (0, 0, 0), PySCF's default.  With no atom")
+        out.append("    held every vibration keeps the centre of mass still and")
+        out.append("    the intensities are well defined.  With atoms held a")
+        out.append("    mode can move it, and the intensity then includes the")
+        out.append("    net charge's own motion, q·dR_cm/dQ.")
         out.append("")
     out.append("Dependencies:")
     out.append("    Use the generated molbuilder run wrapper after bootstrap:")
@@ -1076,15 +1074,12 @@ def _emit_ir_projection() -> List[str]:
     out.append("# NOTE: not yet cross-validated against Gaussian/ORCA numerically;")
     out.append("# see docs/web/spectra.md for validation status.")
     out.append("#")
-    out.append("# Charged-molecule caveat: PySCF's mf.dip_moment() picks an origin")
-    out.append("# (geometric center of atoms by default).  The dipole is origin-")
-    out.append("# invariant only for NEUTRAL systems.  For a charged molecule,")
-    out.append("# dμ/dR_k captured by central difference picks up a non-physical")
-    out.append("# Q_total·(∂R_origin/∂R_k) term that contaminates the projection.")
-    out.append("# IR intensity is physically ill-defined for charged molecules")
-    out.append("# anyway (any IR code has this caveat), so we don't try to fix it")
-    out.append("# here -- but a user computing IR on a cation/anion should treat")
-    out.append("# absolute values with extra suspicion.")
+    out.append("# Charged molecules: mf.dip_moment() takes the dipole about the")
+    out.append("# fixed point (0, 0, 0) (pyscf/scf/hf.py: 'By default, the point")
+    out.append("# (0, 0, 0) is used'), so dμ/dR_k is the same from any fixed")
+    out.append("# origin.  With no atom held every vibration keeps the centre of")
+    out.append("# mass still; with atoms held an ion's dμ/dQ includes q·dR_cm/dQ,")
+    out.append("# the net charge's own motion.")
     out.append("# THE FORMULA'S ONE HOME, from the bundle: the orientation average")
     out.append("# (spectra.activity.ir_strength_km_mol, the prefactor its constant).")
     out.append("for _n in range(len(modes_payload)):")

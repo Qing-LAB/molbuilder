@@ -2684,16 +2684,20 @@ def _folder_ladder(calc) -> dict:
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.group import why_not_join
     from molbuilder.jobset.ready import task_state, why_group_fixed
-    from molbuilder.jobset.runstatus import jobset_status
+    from molbuilder.jobset.runstatus import every_run, jobset_status
     try:
         state = task_state(calc)
         task, text = state.task, state.template_text
         answers, gs = state.stages, state.groups
         # THE STATUS DOOR, once: each group's next step, and each stage's
-        # run copied in from a finished calculation (`.copied-from`).
+        # runs copied in from a finished calculation (`.copied-from`) --
+        # every one, each by its folder, as the root's every run reads them
+        # (`runstatus.every_run`).
         status = jobset_status(calc)
-        copied = {s.name: s.copied_from for s in status.stages
-                  if s.copied_from}
+        copied = {s.name: [{"dir": r["dir"], "copied_from": r["copied_from"]}
+                           for r in every_run(calc.base, status.calc.task, s)
+                           if r["copied_from"]]
+                  for s in status.stages}
         # EACH STAGE'S ROW; the reader's check (`group.check_groups`)
         # refuses at Save what the rule forbids after edits.
         rows = []
@@ -2717,7 +2721,7 @@ def _folder_ladder(calc) -> dict:
             "ladder": {"stages": [{"stage": a.stage, "group": a.group,
                                    "state": a.state, "detail": a.detail,
                                    "why": a.why,
-                                   "copied_from": copied.get(a.stage)}
+                                   "copied": copied.get(a.stage, [])}
                                   for a in answers],
                        "offer": state.prep_offer},
             "groups": {"stages": rows, "groups": [

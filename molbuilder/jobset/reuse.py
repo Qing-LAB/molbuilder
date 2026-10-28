@@ -239,21 +239,21 @@ class Reuse:
 
 def finished_of(calc):
     """``(the finished calculation, why)`` -- the calculation ``calc``'s
-    description reuses, opened through the calculation door; ``(None,
-    why)`` when its folder is not there or holds no calculation that reads,
-    every group then prepared here, saying so."""
-    from .. import calculation
+    description reuses, opened through the one door that opens it
+    (`transport.reuse.reused`: inside the tree, a transport calculation
+    whose description reads); ``(None, why)`` when its folder is not there
+    or that door refuses it, every group then prepared here, saying so."""
     from ..projects import find_projects_root
+    from ..transport.reuse import ReuseError, reused
     root = find_projects_root(Path(calc.base))
     if root is None:
         return None, (f"{calc.base} is not inside a projects tree, so "
                       f"{calc.task.reuses} cannot be found")
-    folder = Path(root) / calc.task.reuses
-    if not folder.is_dir():
+    if not (Path(root) / calc.task.reuses).is_dir():
         return None, f"{calc.task.reuses} is not there"
     try:
-        return calculation.open(folder), None
-    except ValueError as exc:
+        return reused(calc.task.reuses, tree_root=root)[0], None
+    except ReuseError as exc:
         return None, str(exc)
 
 

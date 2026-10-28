@@ -908,7 +908,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..parse.engines._run_ending import keep_reading, version_of
     from ..parse.engines.siesta_reader import read_output
     from ..runfiles import JUNCTION_FILE
-    from ..frame_average import AverageError, average_block, citation_block
+    from ..frame_average import (AverageError, average_block, average_said,
+                                 citation_block)
     from ..frameset import read as read_frame_set
     from .compose import read_provenance, recorded_junction
     from .stages import frames_of, rung_points, same_volts
@@ -1116,7 +1117,10 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                                         ("failed", failed)) if got))
 
     try:
-        average = average_block(
+        # A PAGE STILL OPENS (`engines/transport.md` § 3.8.1): the Results
+        # tab's read draws a refused frame set where the average would be;
+        # the record `summarize` writes is refused by name.
+        average = (average_said if partial else average_block)(
             frames_of(base) if junction is not None else None, frame_set,
             points_out, pending + failed, same_volts)
     except AverageError as exc:

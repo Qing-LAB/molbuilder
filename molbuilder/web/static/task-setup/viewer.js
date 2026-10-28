@@ -3054,13 +3054,13 @@ function renderNext(task) {
          * designed for the run").  One value each, written into the
          * members' cards in the job request -- never its `bench`. */
         /* A GROUP COPIED IN from the finished calculation this one reuses
-         * says where each member's run came from (`.copied-from`, the
-         * ladder's answer; § 3) -- launched, its card is what it is
-         * launched again with. */
-        const copies = g.members.filter((m) => copiedFrom(m));
+         * says where each of its members' runs came from, each by its
+         * folder (`.copied-from`, the ladder's answer; § 3) -- launched,
+         * its card is what it is launched again with. */
+        const copies = g.members.flatMap(copiesOf);
         if (copies.length) {
             block.appendChild(el("p", { class: "hint" },
-                copies.map((m) => m + " copied in from " + copiedFrom(m))
+                copies.map((c) => c.dir + " copied in from " + c.copied_from)
                     .join("; ") + "."));
         }
         block.appendChild(runCard(task, g.members));
@@ -3266,12 +3266,12 @@ function extensionNote(stage) {
         : el("small", { class: "ts-row-note" }, extensionSays(stage));
 }
 
-/** The run ``stage``'s newest run is a copy of, from the finished
- *  calculation this one reuses (`.copied-from`, the ladder's answer), or
- *  null. */
-function copiedFrom(stage) {
+/** Each run of ``stage`` copied in from the finished calculation this one
+ *  reuses, ``{dir, copied_from}`` (`.copied-from`, the ladder's answer) --
+ *  none for a stage whose runs are all made here. */
+function copiesOf(stage) {
     const r = ((_fs.ladder || {}).stages || []).find((x) => x.stage === stage);
-    return (r && r.copied_from) || null;
+    return (r && r.copied) || [];
 }
 
 /** EACH GROUP'S NEXT STEP (§ 11), as `jobset status` prints it under

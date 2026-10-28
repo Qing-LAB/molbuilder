@@ -413,9 +413,9 @@ help = """
 How sharply the electronic states fill at the Fermi level -- the width of the Fermi-Dirac smearing.
 This is not the temperature of your simulation. It is a property of the electrons and it applies to every run type, including a 0 K geometry relaxation with no atomic motion at all: a metal needs smearing whether or not its atoms are moving.
 Why it exists: in a metal, states sit right at the Fermi level and swap occupancy between SCF cycles, so the density oscillates and never settles. Smearing lets states be partially occupied, which damps that. A molecule with a clear HOMO-LUMO gap does not need it, and for such a system the value barely matters.
-Raise it to 1000-2000 K for a metal or a metal-molecule junction whose SCF will not converge -- after lowering the mixing weight, which is the first thing to try. Lower it toward 0 only for an insulator where you want strictly integer occupations.
+If the SCF of a metal or a metal-molecule junction will not converge after lowering the mixing weight (the first thing to try), raising this damps it: states within a few k_B*T of the Fermi level share their occupation (k_B*T is 25.9 meV at 300 K, 86.2 meV at 1000 K). The value is yours, and every level is smeared by it. Lower it toward 0 only for an insulator where you want strictly integer occupations.
 A raised smearing temperature adds an entropy term to the free energy (F = E - TS), which is what makes the free-energy convergence criterion worth turning on for exactly these systems -- see 'Also require the free energy to settle'. 300 K is SIESTA's own default.
-In a transport calculation TranSIESTA stops below 10 K before it starts (`m_ts_options.F90`), and the device's contour takes fewer poles the hotter it is, so the pole energy may need raising too.
+In a transport calculation TranSIESTA stops below 10 K before it starts (`m_ts_options.F90`), and the device's contour takes fewer poles the hotter it is: N = int(E_pole / (pi k_B T)), and TranSIESTA stops a run with fewer than 20 (`m_ts_chem_pot.F90`:319, :324). The 10 eV default gives at least 20 up to 1846 K (36 at 1000 K, 18 at 2000 K). Above that, raise the pole energy to at least 20*pi*k_B*T (27.1 eV at 5000 K). The settings check refuses less.
 """
 
 [item.kgrid]

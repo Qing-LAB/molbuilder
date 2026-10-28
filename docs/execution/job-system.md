@@ -152,8 +152,12 @@ input*) — and waits, naming the way, when it did not.
 **A transport calculation that reuses a finished one** ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) takes
 more, and earlier: its prep **copies in** each group the finished calculation
 computed as this one would now — every member's newest run there the same
-calculation, every stage it takes inputs from copied in too — every run of
-its members, under their own names, as launched runs of this calculation; and
+calculation, every stage it takes inputs from copied in too — as launched
+runs of this calculation: where this calculation keeps the results in the
+same folders, every run of each member under its own name; where it keeps
+them elsewhere (one geometry where the finished one ran a frame set, or a
+rung run once here where it ran points), the newest run's asked results laid
+out again as `run-0`; and
 a rung of points it prepares here **takes over**, at its first launch, the
 finished calculation's points it would compute the same, as a warm launch
 takes over its own.
@@ -732,7 +736,7 @@ they are typed, and written down too.
 |---|---|---|---|
 | **R-P1** | the folder is not a described calculation, or is one of its stage or run folders; or its description has no job request beside it | `molbuilder describe`; or the calculation's folder, named; for a missing job request, Task setup's Save, which writes both — a description written before (`task@1`) is refused first, naming `jobset migrate` | `calculation.open`, at each verb's entry (`calculation.refusal`, the one sentence) |
 | **R-P2** | `task.json`, its template or `job-request.json` does not read — written by an older molbuilder, or a stage with no group | its reader's words; an older one names `jobset migrate` | `task.of`, `job_request.of` |
-| **R-P3** | no group named, and nobody to ask (not a terminal) — or none to offer, and no junction order to record (a transport calculation whose junction's sidecar states none records it instead, nothing else written: [`engines/transport.md`](?doc=engines/transport.md) § 1.1, *No group left to prepare*) | the line that picks them; each group says where it stands | `_cli._ask_which_groups`, `prep._prep_groups` |
+| **R-P3** | no group named, and nobody to ask (not a terminal) — or none to offer, and no junction order to record (a transport calculation whose junction's sidecar states none records it instead, nothing else written: [`engines/transport.md`](?doc=engines/transport.md) § 1.1, *No group left to prepare*) | the line that picks the groups `prep task` offers (`ready.prep_offer`) — none offered, `status`, each group's next step; each group says where it stands | `_cli._ask_which_groups`, `prep._prep_groups` |
 | **R-P4** | a group the job request does not hold | the groups it holds | `prep._prep_groups` |
 | **R-P5** | a member of a group picked — or of a group a changed job's members are in — was launched, and the layout is flat, or its deck rendered now is not the same calculation as the deck its runs ran, or its points (a rung that runs per point) are not the ones its runs ran ([`job-request.md`](?doc=execution/job-request.md) § 6), each difference named; or the group holds a stage put beside one launched without it, or no longer holds one it was launched with | the state saved before its group's first launch; for a stage put in, a group of its own; for one taken out, put back — the group answer's way on | `prep._prep_groups` (`ready.launched_without`, `deck_record.same_calculation`) |
 | **R-P6** | a job whose members changed has members in groups not picked | every group to pick, in one line | `group.formed_again` |
@@ -765,7 +769,7 @@ they are typed, and written down too.
 | **R-L13** | `--from` on a transport rung, or `--cold` at its first launch — its inputs are its kind's; but a rung of points of a calculation that reuses a finished one, whose first launch takes that calculation's points over: there `--cold` takes none ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `--gather`, launched again; `--cold` launched again | `continuation.cannot_be_named`, `ready.first_launch_takes` |
 | **R-L14** | `--gather` at a first launch, on a stage that is not a transport rung, on a transport rung that gathers nothing (the seed, a lead), or with `--from`; `--from` with `--cold`; on the flat layout, `--from` or `--gather`, and `--cold` at a first launch | the flag that does it, or none — a flat stage starts clean by its `restart` override; a rung that gathers nothing, launched again without `--gather` | `submit._plan_member`, `continuation.cannot_be_named` |
 | **R-L17** | launched again warm, and its newest launched run left none of the files it takes | `--cold` | `submit._launch_again` |
-| **R-L18** | a run of points launched again warm, every point done; or, at its first launch in a calculation that reuses a finished one, every point one that calculation computed the same — nothing left to walk ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `--cold` | `submit._points_walk` |
+| **R-L18** | a run of points launched again warm, every point done; or, at its first launch in a calculation that reuses a finished one, every point one that calculation computed the same — nothing left to walk ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | warm, every point done: `--cold`; at a first launch over a finished calculation: its group prepared again, which copies it in (§ 2a.16, *A narrower question*), or `--cold` | `submit._points_walk` |
 | **R-L21** | a record the plan reads does not read — a run's launch record, `.continued-from`, `.gathered-from` — or a job of the plan no file can be named for: a deck named on no stage, or not on its label; or the calculation's own `warm-files.toml` does not read — not TOML, or not stamped `molbuilder/warm-files@1` (*`<path>` does not read: …*), or another engine's, or a section or row the vocabulary does not take | the record's own words | each reader (`runrecord.LaunchRecordError`; the naming authority, `naming.NamingError`; the warm-file vocabulary, `warmfiles.WarmFilesError`), refused once by `submit.plan_launch` (`_refusal_kinds`) |
 | **R-L22** | at the send, the folder is not what it was when planned — the plan made again from it now (the calculation opened again, a benchmark's set read again) differs, or is refused | launch again, to see the new plan | `submit.send_launch` (`_same_folder`) |
 | **R-L23** | at the send, nobody to ask and no `--yes` | `--yes` | `submit.send_launch` |
@@ -3183,7 +3187,9 @@ flowchart LR
   (`submission.md` S1/S2). The recorded choice is a **report, applied by
   nobody**: its `execution` block is yours to copy into `job-request.json`, and the
   next `prep task` reads what you wrote, and nothing else (§ 7.1 — there is
-  no second rung).
+  no second rung); `summarize bench` ends with that step and `jobset
+  status`, whose next step for the stage's group names how it is prepared
+  again (*The next step*).
 
 `molbuilder jobset probe` is the companion that asks a live cluster
 (`sinfo`/`sacctmgr`) what it is — the GPU type, the partitions and QoS you can

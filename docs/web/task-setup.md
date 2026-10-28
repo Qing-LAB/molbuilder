@@ -204,8 +204,8 @@ calculation, each saying what it re-runs, and the window's fit what a wider
 window re-runs; what the extension will reuse is the Preview's manifest
 (§ 11.1).
 **A group copied in** — its members' runs copies of the finished
-calculation's (`.copied-from`, the ladder's `copied_from`) — says in its tab
-where each run came from, above its run card, which is what it is launched
+calculation's (`.copied-from`, the ladder's `copied`) — says in its tab
+where each run came from, each by its folder, above its run card, which is what it is launched
 again with; its box is the group answer's, as every group's (§ 11). Before
 its prep the Preview's manifest says which groups will be copied in. The
 rows it keeps, the sentence they say, and what a change on the device's or

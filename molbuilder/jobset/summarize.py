@@ -533,13 +533,11 @@ def _point_table(points: List[BenchPoint]):
 
 def summary_text(res: BenchResult, out_path: Path, *,
                  report: Optional[str] = None,
-                 stage: Optional[str] = None, base=None,
-                 request=None) -> str:
+                 stage: Optional[str] = None, base=None) -> str:
     """The verb's stdout: the measurement table, the verdict, THE REPORT,
     and what to do next.  ``report`` is ``run_summarize_jobset``'s third
-    return; ``stage`` names the stage in the next-commands, ``base`` the
-    calculation they act on (`commands`) and ``request`` its job request,
-    whose groups they name.
+    return; ``stage`` names the stage the block is written for, ``base``
+    the calculation the next step acts on (`commands`).
     """
     lines = ["bench-summarize: measured points (fastest first)"]
     ranked = sorted(
@@ -601,26 +599,14 @@ def summary_text(res: BenchResult, out_path: Path, *,
         lines.append(f"    1. put the `execution` block above in "
                      f"job-request.json, as stages.{stage_word}.execution or "
                      f"calculation-wide")
-        if stage:
-            # ONE COMMAND A LINE, the step's sentence above it (`commands`):
-            # the calculation named when it is known, the mode stated where
-            # its config sets none.
-            from .commands import (command, launch_lines, prep_group_lines,
-                                   stage_group)
-            g = stage_group(request, stage)
-            lines.append("    2. prep the stage's group -- it uses what you "
-                         "wrote, and nothing else:")
-            lines.append("         " + (prep_group_lines([g], base=base)[0]
-                                        if g is not None else
-                                        command("prep", "task", base=base)))
-            lines.append("    3. then launch it:")
-            lines += ["         " + ln
-                      for ln in (launch_lines("task", base=base, groups=[g])
-                                 if g is not None else
-                                 launch_lines("task", stage, base=base))]
-        else:
-            lines.append("    2. prep the stage's run, then launch it -- "
-                         "`prep task` reads what you wrote, and nothing else")
+        # THE NEXT STEP IS THE ONE ANSWER'S (`job-system.md`, *The next
+        # step*): the stage is then changed since prepared, and its group's
+        # own next step -- a prep, a restore, waiting on the group before --
+        # is the ladder door's, which `status` says.
+        from .commands import command
+        lines.append("    2. the stage is then changed since prepared; its "
+                     "group's next step says how it is prepared again:")
+        lines.append("         " + command("status", base=base))
     return "\n".join(lines)
 
 

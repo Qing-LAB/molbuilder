@@ -245,8 +245,10 @@ crystal — and the table of § 3 gains these rows:
 | the system | held atoms | $n_{\mathrm{rigid}}$ |
 |---|---|---|
 | periodic along one axis (a wire) | none | **4** |
+| periodic along one axis (a wire) | all on one line along the wire's axis | **1**: the turn about that line, when a free atom is off it (0 when none is) |
+| periodic along one axis (a wire) | any other | **0** |
 | periodic along two or three axes | none | **3** |
-| periodic, any number of axes | **any at all** | **0** — translation would move a held atom |
+| periodic along two or three axes | any at all | **0**: translation would move a held atom |
 
 Which axes are `periodic` is the per-axis kind the calculation is computed on —
 the structure's own `axis_kind` on an engine that computes in its box, and none
@@ -567,11 +569,17 @@ ran.
 
 ### 4a.5 Where infrared is not well defined
 
-**Charged molecules.** A dipole moment is origin-independent only for a neutral
-system. For an ion, the dipole depends on where the origin is put, so its
-derivative picks up a term that is bookkeeping rather than physics. This is true
-of any code, not just ours; the honest position is to compute it, say so, and
-treat absolute values with suspicion.
+**Charged molecules.** An ion's dipole depends on the origin: moving it by
+$\mathbf O$ changes the dipole by $-q\,\mathbf O$. molbuilder's dipole is PySCF's,
+about the fixed point (0, 0, 0), and a fixed origin drops out of the
+derivative, so $d\mu/dQ$ is the same from any fixed point. It differs from an
+origin that moves with the molecule only by $q\,d\mathbf R_{\mathrm{cm}}/dQ$.
+With no atom held every vibration leaves the centre of mass in place (the
+modes are orthogonal to the three translations), so that term is zero and an
+ion's infrared is as well defined as a neutral molecule's. With atoms held a
+mode can move the centre of mass, and an ion's intensity then carries
+$q\,d\mathbf R_{\mathrm{cm}}/dQ$: the net charge's own motion, counted because the
+origin is fixed in space. It is computed, and said so.
 
 **Systems with held atoms.** The intensity formula is unchanged: it consumes
 the free-atom mode vectors and the derivatives $\partial\mu/\partial R_k$ over the free atoms,
@@ -1228,7 +1236,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as the `relax` phase of one run** when the box is unticked (§ 4b.6 A), and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one $\pm\delta$ pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
 | converge $\delta$: $\Delta F \gg \sigma_F$, $H(\delta) \approx H(\delta/2)$, $H_{ij} \approx H_{ji}$, $\omega(\delta) \approx \omega(\delta/2)$ | **built, but for $\Delta F \gg \sigma_F$**: the range and the noise-floor note are on the item; the ladder is describable, each stage relaxes in its own run — two stages at different geometries refused — and `summarize task` compares the stages — $\omega$ per mode matched by shape and $H(\delta)$ from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
-| mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **not built**; the displacement arithmetic and the pair writer exist, and the amplitude rule is stated (`vibration.md` § 5.6, level one) |
+| mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **built for transport, on both engines**: one mode as one multi-frame pair — frame 0 the Hessian's geometry, then the Gauss–Hermite nodes of a Gaussian along the mode at the person's maximum displacement, the held atoms unmoved (`vibration.md` § 5.10 ③; `mode_frames.frameset_from_mode`, `molbuilder frameset from-mode`, the Spectrum tab's *Write frame set…*); a transport calculation citing it computes $T(E, Q)$ and the device's PDOS at each frame; $\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not built (V1.26) |
 | the molecular dipole is undefined for the periodic metal; the metal electrons are signal; $\Delta\rho_\nu(r)$ as the intermediate quantity | **the same reasoning** (§ 4b.7); the Born-charge route recorded, the density-difference maps owed |
 | match PySCF and SIESTA modes by their displacement patterns, then read how adsorption moved them | **not built**; it is the same overlap calculation as the Model A/B/C comparison (§ 4b.9) |
 
@@ -1256,7 +1264,7 @@ designed as one each and need a decision.
 | ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived by one function, written by both engines from schema 7 and checked on read (`vibration.md` § 6.3, § 6.6) | the transport step displaces along this, not along the display form | § 4b.5 F |
 | V1.23 | **a δ-convergence report**: two stages at $\delta$ and $\delta/2$, and a comparison of $\omega_\nu$ and $e_\nu$ between them printed by a verb | **built 2026-09-28**: `jobset summarize task` → `<label>.fc-sweep.json` and the printed table (`engines/vibration.md` § 5.9); the mesh pairing is a stage the person describes | § 4b.6 C |
 | V1.24 | **mode matching across runs**: the overlap of eigenvectors in the shared free subspace, mass-weighted, between Model A/B/C runs or between a PySCF and a SIESTA run of the same molecule | the active-region convergence test and the cross-engine comparison are both this one calculation | § 4b.6 F, § 4b.3 |
-| V1.25 | **mode-displaced structure pairs on SIESTA** at the zero-point and thermal amplitudes, paired with the canonical eigenvector, the held atoms unmoved — the input to PDOS, density-difference and transport runs | level one of `vibration.md` § 5.6; the third link of the chain on the engine that shares the transport's model | § 4b.6 G |
+| ~~V1.25~~ | **built 2.35.0** — a mode's frame set, both engines: the Gauss–Hermite nodes along one mode, its spread set by the person's maximum displacement, the reference displacement at a temperature beside it, the held atoms unmoved (`vibration.md` § 5.10 ③) — the structure a transport calculation cites | level one of `vibration.md` § 5.6 | § 4b.6 G |
 | V1.26 | **$\Delta\rho_\nu(r)$ maps**: SIESTA's density grid at $\pm Q_\nu$, differenced | the discussion's intermediate quantity; two SCFs per mode on the displaced pair | § 4b.7 |
 | V1.27 | **the PySCF probe**: five points per mode; the coupling per zero-point amplitude $g_\nu$ in meV beside $\Delta E/(2A)$; a molecule-projected frontier quantity for a cluster | § 4b.5 F–G | § 4b.5 |
 
@@ -1442,10 +1450,12 @@ polynomial of degree up to $2n - 1$:
 
 With three frames $\langle T\rangle \approx \tfrac23\,T_0 + \tfrac16\,(T_+ + T_-)$, which is exactly
 $T_0 + \tfrac12\,T''\sigma^2$ with $T''$ the three-point difference at the step $h = \sqrt{3}\,\sigma$.
-**The same three frames give the curvature and the thermal average**, and there
-is no step to choose: the step is the thermal amplitude, where the molecule
-actually is. Five frames check the three. When the two averages agree the
-expansion holds across the thermal range; when they do not, $T(Q)$ is not a
+**The same three frames give the curvature and the average over the spread σ**:
+the step is $h=\sqrt3\,\sigma$, and σ is set by the person's maximum
+displacement (`vibrational-averaging.md` § 5). At the reference displacement
+$d_T$ that is the thermal spread, where the molecule actually is. Five frames
+check the three. When the two averages agree the expansion holds across the
+spread; when they do not, $T(Q)$ is not a
 polynomial there — a resonance crossing $E_F$ — and the five-frame average is
 the better answer, with that said.
 
@@ -1453,7 +1463,8 @@ This replaces a fixed probe step for the purpose. The PySCF probe's
 $A = 0.02\ \text{Å}$ and the force constants' $\delta$ measure a derivative at a point and
 are chosen small, and a curvature from so small a step drowns in the SCF's
 noise — the large-minus-large problem of § 4b.7 point 2, in $T$ and $\varepsilon$ instead
-of the density. The thermal nodes are as large as the physics makes them.
+of the density. At the reference displacement the nodes are as large as the
+thermal motion makes them.
 
 Two cautions, each **stated per frame rather than enforced**. *Soft modes:*
 $\sigma$ grows as $1/\sqrt{\omega}$ and the thermal factor $\sqrt{\coth}$ adds more (× 2.9 at 50 cm⁻¹ and 298 K,

@@ -422,6 +422,9 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     # single click on a root file is not looked up among the run's files, and
     # the card keeps naming the run's; a click on another file of the run's
     # own folder is followed (R2-15, `archive/2026-10-13-plan-rows.md`).
+    menu = page.locator("#results-file-picker-select")
+    chosen = "(s) => s.options[s.selectedIndex].textContent"
+    at_root = menu.evaluate(chosen)
     page.locator(".results-ladder-open[aria-pressed]").first.click()
     page.locator(".results-ladder-open[aria-pressed='true']").wait_for(
         timeout=20000)
@@ -443,3 +446,17 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     page.wait_for_function(
         "(n) => document.querySelector('#results-file-card .fc-name')"
         "         .textContent === n", arg=other.name, timeout=10000)
+
+    # ...AND THE MENU NAMES THE RUN SHOWN (`web/results.md` § 2.2, § 2.4):
+    # the root's menu row names no file of the picked run, so the menu's
+    # first row says which run is shown; *back to the calculation* names the
+    # root's choice again.
+    assert menu.evaluate(chosen) == (
+        f"(showing {Path(opened).name}, a run off the ladder)")
+    page.locator(".results-ladder-back").click()
+    page.wait_for_function(
+        "(t) => { const s = document.querySelector("
+        "'#results-file-picker-select');"
+        " return s.options[s.selectedIndex].textContent === t; }",
+        arg=at_root, timeout=10000)
+    assert menu.locator("option[data-picked-run]").count() == 0

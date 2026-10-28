@@ -399,14 +399,14 @@ $$
 $= 1.197$ for $a\sigma = 0.6$: a 20 % rise. The shortened side wins because it
 wins exponentially — the log-normal average of `normal-modes.md` § 4c.4.
 
-**A level near $E_F$.** A single level of half-width $\Gamma$ at
+**A level near $E_F$.** A single level of full width $\Gamma$ at
 $\varepsilon(Q) = \varepsilon_0 + gQ$ transmits
 
 $$
-T(E_F;Q) = \frac{\Gamma^2}{\big(\varepsilon(Q)-E_F\big)^2+\Gamma^2}.
+T(E_F;Q) = \frac{(\Gamma/2)^2}{\big(\varepsilon(Q)-E_F\big)^2+(\Gamma/2)^2}.
 $$
 
-With $\Gamma = 0.1$ eV and a thermal level shift $g\sigma = 0.1$ eV:
+With $\Gamma = 0.2$ eV and a thermal level shift $g\sigma = 0.1$ eV:
 
 | where the level sits | $T_0$ | exact $\langle T\rangle$ | change | the response |
 |---|---|---|---|---|
@@ -481,9 +481,11 @@ $$
 \big\langle T\big\rangle \approx T_0 + \tfrac12\,T''_{\mathrm{fd}}\,\sigma^2 .
 $$
 
-The same three frames are the curvature of § 4.2 and the thermal average, and
-there is no step size to choose: the step is the thermal amplitude, where the
-molecule actually is. The bracket is the "same both ways" part of § 4.1 —
+The same three frames are the curvature of § 4.2 and the average over the
+spread σ, and the step is that spread's: $h=\sqrt3\,\sigma$, with σ set by the
+person's maximum displacement (§ 5). At the reference displacement $d_T$ the
+spread is the thermal one, and the step is where the molecule actually is at
+$T$. The bracket is the "same both ways" part of § 4.1 —
 twice the lopsidedness at $\pm\sqrt3\sigma$.
 
 On the examples of § 4.3: the contact gives $1.1968$ against the exact
@@ -610,10 +612,10 @@ beside its $Q_j$ and its weight (`transport.md` § 2a.12, *the data file*).
 
 ## References
 
-- R. P. Feynman, *Statistical Mechanics: A Set of Lectures* (Benjamin, 1972),
+- [Feynman1972] R. P. Feynman, *Statistical Mechanics: A Set of Lectures* (Benjamin, 1972),
   ch. 2 — the harmonic oscillator's thermal density matrix, whose diagonal is
   the Gaussian of § 2.
-- M. Abramowitz and I. A. Stegun, *Handbook of Mathematical Functions* (NBS,
+- [AbramowitzStegun1964] M. Abramowitz and I. A. Stegun, *Handbook of Mathematical Functions* (NBS,
   1964), § 25.4.46 and Table 25.10 — Gauss–Hermite nodes and weights.
 - [Frederiksen2007], [Galperin2007] — inelastic transport and the
   electron–vibration coupling (`references.bib`).

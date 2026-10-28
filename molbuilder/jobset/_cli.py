@@ -1940,7 +1940,7 @@ def summarize_cmd(kind: str, words, bundle: str,
         calc, js, out=container / BENCH_RESULT_FILE,
         now_iso=stamp(), stage=stage)
     click.echo(summary_text(res, out_path, report=report, stage=stage,
-                            base=base, request=calc.request))
+                            base=base))
     _ledger(base, "summarize", "verdict-written", stage=stage,
             out=str(out_path), points=len(res.points),
             choice=res.choice,

@@ -494,10 +494,12 @@ so a launched run that has not ended is never hidden behind a newer one.
 folder would open, with its Run panel: the page asks the run door for that
 folder (`/api/results/dir`) and announces its file with the root's ladder kept
 — while the sidebar stays on the calculation, the record read in the run's
-own folder (`record_dir`, whose file names the Run panel's **View** joins to);
+own folder (`record_dir`, whose file names the Run panel's **View** joins to),
+and the Result file menu's first row saying which, `(showing <file>, a run off
+the ladder)`, so the menu never names a file that is not shown (§ 2.2);
 a folder that does not answer is said under the ladder, and a pick overtaken
 by a later one or by a new selection is dropped; *back to the calculation*
-re-announces the root. A transmission row's *open* re-announces the
+re-announces the root, and the menu names the root's file again. A transmission row's *open* re-announces the
 calculation at its point instead, with no Run panel — that run's record,
 TBtrans's loop among it, is shown in the run's own folder (§ 2). A calculation's
 own product — a transport I–V, a displacement sweep — is shown **with** the

@@ -440,6 +440,23 @@ def answer_said(structure) -> Dict[str, object]:
                 "definition": None, "why": str(exc)}
 
 
+def average_said(n_frames: Optional[int], frame_set,
+                 points: List[Dict], missing: List[Dict],
+                 same_volts: Callable[[float, float], bool]) -> Dict:
+    """:func:`average_block` as a page draws it (`engines/transport.md`
+    § 3.8.1): the block, or -- the frames' rows refused
+    (:func:`check_units`) -- the block of no average, its ``why`` the
+    refusal's words, so the Results tab's report still opens with every
+    point and draws the refusal where the average would be."""
+    try:
+        return average_block(n_frames, frame_set, points, missing,
+                             same_volts)
+    except AverageError as exc:
+        block = average_block(n_frames, None, [], [], same_volts)
+        block.update(why=str(exc), at=[])
+        return block
+
+
 def check_units(rows) -> None:
     """THE NAME CARRIES ITS UNIT (`model/structure.md` § 2.2f): a row of the
     vocabulary -- the structure's or a frame's -- written with another unit
@@ -723,6 +740,6 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
 
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
            "MASS_CHANNEL", "ROWS", "Row", "STRUCTURE_ROWS", "answer",
-           "average_block", "citation_block", "data_file_variables",
+           "average_block", "average_said", "citation_block", "data_file_variables",
            "fill_data_file", "summary_lines", "warnings_of",
            "with_meanings"]

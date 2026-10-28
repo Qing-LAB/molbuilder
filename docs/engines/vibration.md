@@ -603,7 +603,7 @@ phase.
 
 mol = gto.M(atoms = EVERY atom, held ones included; basis, charge, spin, ...)
 _mb_configure_scf / _mb_configure_theory   # the generated dressers (§ 4.3)
-state = {schema_version: 10, engine: 'pyscf', phases: empty, ...}; write the artifact
+state = {schema_version: SCHEMA_VERSION, engine: 'pyscf', phases: empty, ...}; write the artifact
 
 # Phase 0 — relaxation (§ 4.2)
 if not ALREADY_RELAXED:
@@ -906,8 +906,7 @@ $d\mu/dR$ differs by 8.4·10⁻⁵, its transpose by 5.2·10⁻¹.
 (`pyscf.prop.polarizability`, coupled-perturbed; the polarizability points run
 **without density fitting** because the module has no DF implementation) at
 each displaced geometry, and its **derivative** is a central difference over
-the free Cartesian coordinates at ±`RAMAN_FD_STEP_ANG` = 0.005 Å (the step
-Gaussian and ORCA use for static polarizability derivatives). PySCF reports the
+the free Cartesian coordinates at ±`RAMAN_FD_STEP_ANG` = 0.005 Å. PySCF reports the
 polarizability in atomic units (Bohr³), so one global factor $(\mathrm{Bohr}/\text{Å})^6 \approx 0.021959$ is applied on the final scalar, and the stored value is genuine Å⁴/amu,
 comparable to Gaussian's and ORCA's activity columns — without it the
 spectrum's shape is right and every absolute activity is about 45.5× too large. The run records the
@@ -915,9 +914,12 @@ route as `raman_route = 'finite-difference'` with `raman_fd_step_ang` (§ 10 for
 status), and the Methods text states the method one way: analytic
 polarizability, finite-difference derivative.
 
-**Where the numbers are not well defined.** A charged molecule's dipole depends
-on the origin, so its infrared intensities carry a bookkeeping term; they are
-computed, said so, and treated with suspicion. With atoms held the formulas
+**Where the numbers are not well defined.** The dipole is taken about the
+fixed point (0, 0, 0), PySCF's default, so its derivative is the same from any
+fixed origin. A charged molecule with no atom held has intensities as well
+defined as a neutral one's. With atoms held, a charged molecule's intensity
+carries $q\,d\mathbf R_{\mathrm{cm}}/dQ$, the net charge's own motion
+([`science/normal-modes.md`](?doc=science/normal-modes.md) § 4a.5). With atoms held the formulas
 consume the free-atom vectors and derivatives, both of which exist, but a held
 atom contributes no dipole derivative: for a molecule anchored at one or two
 atoms a small correction, for a molecule on a metal that screens and carries
@@ -3696,7 +3698,7 @@ nothing is in that state as of 2026-09-28.
 | the PySCF probe: five points, the coupling per zero-point amplitude $g_\nu$, a molecule-projected window for a cluster | **decided, not built** — V1.27 (D8: the same nodes as the frame set) | § 4.8, § 5.10 |
 | the force-constant stage leaves the input's relaxation record behind; its calculation record stays | **built 2026-09-29** — V1.35 | § 5.2a |
 | what a force-constant stage says about its geometry after the ladder's relax: the relax stage's outcome and its remedy, not the describe-time box and record advice | **built 2026-09-29** — V1.36, the user's word the same day | § 5.2a, § 5.8 |
-| the response screen — which mode to take to transport: each mode's character, the charge it moves, the frame set at thermal nodes, an `electronic` kind, the per-mode response record and its ranking table | the frame set **built 2.35.0** (③), the charges' infrared and the charge a mode moves **built 2.36.0** (②); the rest **decided 2026-09-28, not built** (D1–D5, D7, D8; D6 as recommended; E3 owed) — V1.34, W42 | § 5.10; `science/normal-modes.md` § 4c |
+| the response screen — which mode to take to transport: each mode's character, the charge it moves, the frame set at the person's spread, an `electronic` kind, the per-mode response record and its ranking table | the frame set **built 2.35.0** (③), the charges' infrared and the charge a mode moves **built 2.36.0** (②); the rest **decided 2026-09-28, not built** (D1–D5, D7, D8; D6 as recommended; E3 owed) — V1.34, W42 | § 5.10; `science/normal-modes.md` § 4c |
 | one SIESTA vibration run in phases — relaxation, force constants, Raman's optical single points, each SIESTA call a point of the run — the `relax` stage retired | **built** — the run 2.42.0, its records 2.43.0, the Raman at a laser and the export 2.44.0; owed: a sweep's take-over of the first stage's `relax` call and a transport sweep's one start and finish (§ 5.11 heading) | § 5.11; `science/vibrational-optical-response.md` § 3 |
 
 ---

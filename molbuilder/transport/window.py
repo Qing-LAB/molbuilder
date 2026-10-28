@@ -55,14 +55,15 @@ def fitted(window: Tuple[float, float, int], lo: float, hi: float,
     :class:`ValueError` names what cannot be fitted: a range that is not
     one, a factor that is not an odd whole number."""
     if not (math.isfinite(lo) and math.isfinite(hi) and lo < hi):
-        raise ValueError(f"the window asked, {lo:g}…{hi:g} eV, is no range "
-                         f"-- two finite energies, its first below its "
+        raise ValueError(f"the window asked, {lo:g}…{hi:g} eV, is not a "
+                         f"range -- give two energies, the first below the "
                          f"second")
     if (isinstance(finer, bool) or not isinstance(finer, int) or finer < 1
             or finer % 2 == 0):
-        raise ValueError(f"how many times finer, {finer!r}, is an odd "
-                         f"whole number, so every finished energy stays a "
-                         f"point of the finer grid")
+        raise ValueError(f"how many times finer must be an odd whole "
+                         f"number (1, 3, 5 …) so every finished energy "
+                         f"stays a point of the finer grid -- {finer!r} is "
+                         f"not")
     a, b, n = float(window[0]), float(window[1]), int(window[2])
     h = (b - a) / n / finer
     # WHOLE SPACINGS OUTWARD until the end energies -- half a spacing inside

@@ -475,10 +475,14 @@ def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     run, fresh = resolve_attempt(stage_dir, rn)
     # THE RUNG'S PREPARED POINTS, by its kind's declaration (`jobset.points`),
     # its records as this plan holds them -- a prep composing the junction
-    # in the same plan has not written its record yet.
+    # in the same plan has not written its record yet -- each one whose deck
+    # prep wrote: a point the description gained since is not opened
+    # (`job-system.md`: what prep wrote is sent as it is).
     declared = points_of(task)
+    deck = Path(job.script).name
     sources = dict((pt, stage_dir / pt.rel) for pt in declared
-                   .rung_points(calc, stage_name, read=plan.read_text))
+                   .rung_points(calc, stage_name, read=plan.read_text)
+                   if plan.is_file(stage_dir / pt.rel / deck))
     points = [(run / pt.rel, pt) for pt in sources]
     if not fresh:
         empty_run(run, plan)

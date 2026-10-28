@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.46.2.** Since the last handover (2026-10-20, kept
+**Where we are: 2.46.3.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -74,10 +74,10 @@ molecular dynamics out of the optimization kind (2.40.2); what each stage was
 prepared with, and the fifteen decisions (2.41.0); SIESTA's vibration as one
 run in phases and its Raman at a laser (2.42.0–2.44.1); the vibration form by
 result (2.45.0); a frame set saying what its numbers mean, and the charge and
-spin in the Spectrum tab's chemistry card (2.46.0–2.46.2).
+spin in the Spectrum tab's chemistry card (2.46.0–2.46.2); the review's shipped
+errors (2.46.3).
 
-**Last checked**: the fast batch on 2.46.1 (6,876 passed, none failed); the
-real-junction e2e on 2.46.0 (186 passed); the SIESTA CO₂ vibration e2e on
+**Last checked**: the fast batch on 2.46.3 (6,877 passed); the real-junction e2e on 2.46.3 (189 passed); the stopped-run e2e on 2.46.3 (8 passed); the SIESTA CO₂ vibration e2e on
 2.45.0 (8 passed); every road of 2.45.0–2.46.0 through the pages and the
 printed commands (vibration → frame set → transport on the H chain).
 
@@ -186,16 +186,17 @@ the 2.40.1 tests' own findings TS1–TS4, TS6, TS7.
 
 ### 1ad.2 Verified findings — fixed after the decisions, last-number moves
 
-*Checked 2026-10-27* (each finding opened at its cited line): **fixed
-since** — SCI1 (2.41.0), SCI3, SCI6, SCI8 (2.44.0), WF1 (2.41.0), DOC7
-(2.43.0), DOC8 but its one line `engines/vibration.md`'s `schema_version: 10`
-(the code is 13), the current integrated two ways and `gf_files`' second fdf
-reader (2.43.2); **still present** — SCI4, SCI7, SCI9–SCI12, BE2, BE3, BE5,
-BE7, BE9–BE11, WF3, WF5, WF6, WF9, WF12, UI1, UI4, UI5, UI11, UI12, DOC1–DOC4,
-DOC6, DOC9–DOC13, DOC15–DOC16, STAGE-PLAN written twice, two
-finished-calculation openers; **not located** (no file named; re-derived when
-taken) — SCI13, SCI14, BE8, BE12, WF8, WF10, UI6–UI10, UI13–UI16, DOC5,
-DOC14. No 2.41.x release took them; they are the queue's first item.
+**Fixed 2.46.3** (the changelog row says each): SCI4, SCI7, SCI9–SCI14,
+BE2, BE3, BE5, BE7, BE10, BE11, WF3 (a voltage added after launch), WF5, WF6,
+WF9, WF12, UI1, UI4–UI6, UI11, UI12, DOC1–DOC4, DOC6, DOC8–DOC12, DOC15,
+STAGE-PLAN written twice, the two finished-calculation openers; WF8 was
+already fixed. **Earlier**: SCI1 (2.41.0), SCI3, SCI6, SCI8 (2.44.0), WF1
+(2.41.0), DOC7 (2.43.0), the current integrated two ways and `gf_files`'
+second fdf reader (2.43.2). **Dropped as polish**: BE9, WF11, DOC16's asides.
+**Left** — re-derived at their lines when taken: BE8, BE12, WF10 (not
+located), UI7–UI10, UI13–UI16, DOC5, DOC13, DOC14; and **one design call for
+the user**, WF3's other half — a voltage *removed* from the description after
+its rung was launched is still read the description's way.
 
 **Science.** SCI1 — the device's Fermi level is moved to the seed's frame
 with the last NEGF step's `ts-Vha`; the periodic step's is the right one
@@ -739,7 +740,7 @@ is [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-con
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **§ 1ad.2's findings still present** — each a last-number move, re-derived at its line when taken: BE7 first (a frame set's average that errors loses the whole transport record), then BE2–BE11, WF, SCI, UI, DOC | § 1ad.2 | errors in what has shipped, on the transport and vibration roads the user runs; no 2.41.x took them |
+| **1** | **§ 1ad.2's findings left** — BE8, BE12, WF10, UI7–UI10, UI13–UI16, DOC5, DOC13, DOC14, each re-derived at its line when taken; WF3's removed voltage, the user's call | § 1ad.2 | the rest of the review's errors; 2.46.3 fixed the others |
 | **2** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | the user's ask; half built |
 | **3** | **§ 1ae M5 — the vibration contract closed**, with § 1ac's proofs: R1 measured, 3a water on both engines, 3b the Raman proof | § 1ae, § 1ac | what was built in 2.42–2.44 is checked against the science before more is built on it |
 | **4** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |

@@ -36,16 +36,25 @@ def test_a_vocabulary_row_in_another_unit_is_refused_by_name(reader):
             fill_data_file({}, {}, s, {}, [], lambda v, vs: 0)
 
 
-def test_a_page_says_the_refusal_where_the_frames_would_be():
+@pytest.mark.parametrize("page", ["the citation", "the Results report"])
+def test_a_page_says_the_refusal_where_the_frames_would_be(page):
     """...and for a page, which names it and still opens
-    (`web/task-setup.md` § 3): its frames' answer in the form a citation
-    that does not read takes (`frame_average.answer_said`) -- the 2026-10-23
-    review found the Transport tab's picker and Task setup's folder
-    answering 500 here instead."""
+    (`engines/transport.md` § 3.8.1, `web/task-setup.md` § 3): the
+    citation's frames in the form a citation that does not read takes
+    (`frame_average.answer_said`) -- the 2026-10-23 review found the
+    Transport tab's picker and Task setup's folder answering 500 here --
+    and the Results tab's report with no average, the refusal its why
+    (`frame_average.average_said`), where the whole report was lost."""
     import re
-    from molbuilder.frame_average import answer_said
-    said = answer_said(_frames_with_a_row_in_nm())
-    assert said["definition"] is None, said
+    from molbuilder.frame_average import answer_said, average_said
+    from molbuilder.frameset import read
+    s = _frames_with_a_row_in_nm()
+    if page == "the citation":
+        said = answer_said(s)
+        assert said["definition"] is None, said
+    else:
+        said = average_said(2, read(s), [], [], lambda a, b: a == b)
+        assert said["frames"] == 2 and said["at"] == [], said
     assert re.search("displacement_ang.*'nm'", said["why"]), said
 
 

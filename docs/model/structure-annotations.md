@@ -271,7 +271,7 @@ The canonical labels the Modify tab ships and the emitter interprets:
 finds the two leads, sorts them by z-centroid, assigns chempot `Left`/`Right` +
 `semi-inf-direction`, emits `%block TS.Elec.<stem>`, the atom-ordering
 contiguity requirement, the bias-direction convention, and the NEGF literature
-references (Brandbyge PRB 65 165401, Stokbro, Reed, Solomon) — belongs with
+references (Brandbyge PRB 65 165401, Stokbro) — belongs with
 the transport engine and lives in
 [`engines/transport.md`](?doc=engines/transport.md) (the engines wave closed
 this split; the legacy source is archived at

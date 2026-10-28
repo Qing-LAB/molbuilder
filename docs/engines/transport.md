@@ -1554,7 +1554,7 @@ Three consequences drive **every** parameter choice:
 > **systematically overestimates** single-molecule conductance by ~1–2 orders of
 > magnitude — the DFT **HOMO–LUMO gap** (the spacing between the molecule's highest
 > filled and lowest empty orbital) comes out too small, so level alignment to $E_F$
-> is off. For Au–BDT, experiment is ≈ **0.011 G₀** [Xiao 2004] while GGA-NEGF
+> is off. For Au–BDT, experiment is ≈ **0.011 G₀** [Xiao2004] while GGA-NEGF
 > commonly gives ~0.1–0.4 G₀. The contract here gives a *numerically correct*
 > GGA-NEGF result; closing the gap to experiment needs beyond-DFT corrections
 > (**scissors / DFT+Σ** — rigidly shifting the DFT levels, or adding a self-energy
@@ -1971,9 +1971,14 @@ physics; the walk runs a voltage at every frame, then the next voltage —
 - **Under the low-bias approximation** each frame runs once, at 0 V, and its
   I–V is computed from its own T(E, 0) at the listed voltages.
 
-The physics makes the last the cheap choice for a frame set: thermal averaging
-and IETS are evaluated at or near zero bias, and from a single converged device
-at one bias **tbtrans sweeps energy**, so each frame yields a full T(E) curve.
+The physics makes the last the cheap choice for a frame set: a thermal average
+of frozen frames is an elastic transmission, read at or near zero bias, and
+from a single converged device at one bias **tbtrans sweeps energy**, so each
+frame yields a full T(E) curve. Inelastic tunnelling (IETS) is not among what a
+frame set gives: its signal is a step in dI/dV at eV = ħω, where the electron
+gives the vibration one quantum, and it needs the electron–vibration coupling
+itself ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.6, level two;
+[Frederiksen2007]).
 
 **The one confusion this must not create.** Sweeping **energy** in the T(E)
 window and sweeping **bias** are different calculations, and the contract should
@@ -2056,7 +2061,9 @@ wherever the rows are read for a record, a data file or a page
 (`frame_average.check_units`, [`model/structure.md`](?doc=model/structure.md)
 § 2.2f) — a page draws the refusal where the frames would be and still
 opens, the Transport tab's citation saying it beside the junction as every
-refusal there is (`frame_average.answer_said`). Transport never asks what made the frames,
+refusal there is (`frame_average.answer_said`) and the Results tab's report
+in the average's place, every point still shown (`frame_average.average_said`);
+the record `summarize` writes is refused by name. Transport never asks what made the frames,
 nor how many there are — that is the maker's. Another mode is
 another frame set and another transport calculation; how the modes' results
 are weighed against each other is the person's *(user, 2026-10-09: "it is
@@ -2197,8 +2204,10 @@ interface should recommend rather than quoting a threshold as though it were
 settled.
 
 *This is also why the low-bias approximation is the cheap choice for a frame
-set (§ 2a.9, Both axes): molecular vibrations are ~10–400 meV, so IETS lives
-below ~0.4 V — inside the regime where one slice is a sound elastic baseline.*
+set (§ 2a.9, Both axes): a frame set's average is an elastic transmission at or
+near zero bias. The same vibrations' inelastic steps sit at eV = ħω (0.124 meV
+per cm⁻¹, so 80–4000 cm⁻¹ is 10–500 meV), and no frame set computes them
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.6, level two).*
 
 #### The labelling rule
 
@@ -2460,9 +2469,12 @@ last run's `.TSDE`, or `--cold` from the seed's `.DM` — the per-point rule
 below (taken over whole, never run again) is a run of points'.
 
 **One door for each place.** A rung's runs are `paths.attempts_in`'s, as every
-stage's; a swept run's point folders are `transport.stages.points_in(run, task,
-stage)`'s; the prepared point decks `transport.stages.point_folders(base, task,
-stage)`'s. Every reader asks them: prep, the gather, the walk, `status`, Task
+stage's; a swept run's points are the ones it holds —
+`transport.stages.points_in(run, task, stage)`'s: a point the description
+gained after the run was opened is not the run's
+([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*),
+and a launch opens the points prep wrote; the prepared point decks
+`transport.stages.point_folders(base, task, stage)`'s. Every reader asks them: prep, the gather, the walk, `status`, Task
 setup's count, the record and the Results ladder. **A swept rung has one row in `status`**: the
 run's state, by one rule the gather asks too (`continuation.points_state`) —
 *running* while a point runs, or between two points while a job launched
@@ -3603,7 +3615,7 @@ means nothing at all.
 | rung | does it iterate? | the state a restart would pick up | is "continue vs clean" worth asking? |
 |---|---|---|---|
 | `seed` | an ordinary SCF | its own last `<label>.DM` | barely — its whole output *is* a `.DM`; one not converged continues from its own (§ 2a.11) |
-| `electrode_L` / `electrode_R` | an ordinary SCF on a bulk lead | its own `.DM` | barely — the same rule |
+| `electrode_L` / `electrode_R` | an ordinary SCF on a bulk lead | none — a lead declares no restart file | **no** — launched again, a lead runs from its deck alone; a bulk lead is cheap to run again |
 | `device` | **the NEGF SCF — the expensive one** | its own previous `<label>.TSDE`, **and** the seed's `.DM` as a starting density | **answered by the sweep** (§ 2a.11): a point starts from the seed's `.DM` (0 V) or the closest converged point's `.TSDE`, and one not done continues from its own last density |
 | `transmission` | **no SCF at all** — `tbtrans` reads a converged Hamiltonian and integrates | nothing | **no. There is no state to continue** |
 
@@ -3616,12 +3628,9 @@ point folder, from its hand-over start — never continued across runs. Once
 done it is taken over whole into every later run and never run again, because
 a converged point is a fixed point and running it again only repeats it. (A
 device with no point level has no points to take over: launched again, it is
-a stage like any, § 2a.11 above — the row above says so.) The
-seed and the leads follow the same rule, and the transmission has no
-iteration to resume. *(Until 2026-10-05 this read
-"the device has one": its own previous `.TSDE`, continued by a launch after a
-stop into a next attempt; until 2026-10-08 it said a point continued in place
-across launches.)*
+a stage like any, § 2a.11 above — the row above says so.) Launched again,
+the seed continues from its own last `.DM`, a lead runs from its deck alone,
+and the transmission has no iteration to resume.
 
 **The two hand-overs, and how SIESTA reads each.**
 
@@ -3792,8 +3801,11 @@ and how it ended: a voltage that does not converge can mean a problem in the
 physics or in the parameter choices, which the results that did finish were
 computed with too *(the user, 2026-10-25: "A, keep it as built, but with
 warning of unfinished points because this could indicate problems in
-physics or parameter choices")*. A run still going is
-never copied from: wait for it to end. An older run never stands in for a
+physics or parameter choices")*. A stage is copied only from a run that
+has ended. While O's newest run of a rung of points is still going, the
+points it has finished are taken over at this rung's first launch and the
+rest run here; when it already holds every point asked, the launch refuses
+— prepare again once it has ended, and the stage is copied in. An older run never stands in for a
 newer one that failed, is still running, or was never started: launch that
 stage of O again first. The plan names, for every result, the run it comes from, or
 why it is computed again: the run failed, is still running or was never
@@ -6206,7 +6218,7 @@ and the copy records its provenance in `.gathered-from`.  One gather reads
 the junction record once (`transport_rung.junction_record`, the one read
 prep asks too) and renders each upstream rung's deck once for each point it
 is compared at — once for a rung that runs once, whichever point asks
-(`gather.rung_deck_now`, `gather._ReadOnce`); a record or a composition that
+(`gather.rung_deck_now`, `gather.ReadOnce`); a record or a composition that
 does not read is the gather's refusal, said in its reader's words
 (`transport_rung.compose_refusals`).  The engine-input
 gate is the load-bearing one: it is what makes "the device's H and the
@@ -6821,7 +6833,7 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 | Quantity | Baseline | Note |
 |---|---|---|
 | XC | GGA-PBE | identical across every rung (I1) |
-| Pseudos | PseudoDojo PBE (Au/C/S/H), validated | `molbuilder pseudo check` gate ([van Setten 2018]) |
+| Pseudos | PseudoDojo PBE (Au/C/S/H), validated | `molbuilder pseudo check` gate ([vanSetten2018]) |
 | Basis | **DZP everywhere** | DZP = double-ζ + polarization (SIESTA PAO tier); drop to the smaller SZP for bulk-Au only after a $T(E)$ check |
 | `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The config default is **300** (`SiestaConfig.mesh_cutoff`), and a transport rung takes the cited relaxation's own value (`transport/citation_defaults.py`); 400 is set in the calculation's template, where it applies to every rung (§ 2a.7) |
 | `PAO.EnergyShift` | 0.01 Ry | sets orbital range → electrode thickness |
@@ -7054,3 +7066,4 @@ single-point, or a relaxation if those layers are not frozen.
   doi:[10.1021/nl035000m](https://doi.org/10.1021/nl035000m)
 - **Au-BDT-Au geometry + the Au-electrode mesh requirement (≥ 250–300 Ry)** — Stokbro et al., *Comp. Mat. Sci.*
   **27**, 151 (2003).
+  doi:[10.1016/S0927-0256(02)00439-1](https://doi.org/10.1016/S0927-0256%2802%2900439-1)

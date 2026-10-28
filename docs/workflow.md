@@ -301,8 +301,9 @@ job's GPU request, never the deck's text
 once, in the stage's own folder; the attempt — the run directory, `run-0/` —
 receives copies of them. What it takes from another stage's run — the warm
 files it continues from — is its first launch's to take (`launch --from`),
-copied in then; a force-constant stage's `relax` geometry alone is written into
-its deck at prep. A copy because the engine writes to those very filenames, and
+copied in then; a SIESTA vibration's later calls are given their geometry by
+the job itself, each call's `coordinates.fdf` beside its deck
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11). A copy because the engine writes to those very filenames, and
 a run directory hands the engine everything it needs and holds everything it
 produces ([`project-layout.md`](?doc=execution/project-layout.md) § 1.0,
 § 1.6.5): a link would let a run reach back into what it started from.

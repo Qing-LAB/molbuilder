@@ -734,7 +734,17 @@ def about(path) -> Dict[str, Any]:
     place = place_of(folder)
     if not place.ours:
         return _row_about(p, None, unread=place.problem)
-    label, _stage, _trial = _position(place)
+    label, stage, _trial = _position(place)
+    if stage is None:
+        # AT THE ROOT -- and in a flat calculation's one folder -- each
+        # rung's files lie on the label its deck is named on (`rung_label`,
+        # the one rule prep names them by): a lead's on its own stem.
+        from molbuilder.identity import rung_label
+        for named in dict.fromkeys(rung_label(label, st.name)
+                                   for st in place.task.stages):
+            got = _row_about(p, named)
+            if got["ours"]:
+                return got
     return _row_about(p, label)
 
 
@@ -826,7 +836,8 @@ def record_of(run: "Run", *, status=None, fields=None):
     return run_record(run.folder, names=run.names, run=run.run,
                       status=status if status is not None else state_of(run),
                       engine=task.engine, calculation=task.calculation,
-                      stage_deck=run.stage_deck, fields=fields)
+                      stage_deck=run.stage_deck, fields=fields,
+                      launched_in=run.launched_in)
 
 
 def standing_of(launch, base) -> Optional[Dict[str, Any]]:

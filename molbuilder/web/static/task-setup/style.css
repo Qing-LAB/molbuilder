@@ -231,6 +231,15 @@
 }
 .ts-table tbody tr:last-child td { border-bottom: 0; }
 .ts-table td[data-template="yes"] { color: var(--text-muted); }
+/* A ROW'S SENTENCE -- why a choice is closed, what an extension keeps --
+ * wraps under its control; the values beside it keep one line. */
+.ts-table .ts-row-note {
+    display: block;
+    white-space: normal;
+    font-family: var(--font-sans);
+    min-width: var(--ts-note-min);
+    max-width: var(--measure-prose);
+}
 
 /* ---- The editor ---- */
 

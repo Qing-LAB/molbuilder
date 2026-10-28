@@ -1010,6 +1010,9 @@ $R_\nu$, not the junction's formulation.
    independent states — pre-resonance included, the laser's own; the static
    value beside it, the textbook activity, away from every resonance.
 5. **Harmonic modes**, and derivatives taken in their linear range.
+6. **Light in vacuum**: the field at the molecule is the incident light's,
+   along ê; a metal's enhancement or screening of it is not in the number
+   (§ 0).
 
 ---
 

@@ -140,11 +140,8 @@ the read costs ~1.2 s and `doctor` was paying it once per recipe.
 **"The directory" means the prefix the registry named**, not
 `<envs_dirs>/<name>`. An env created with `--prefix` outside any of conda's
 `envs_dirs` is listed by the registry *with* a perfectly good directory; probing
-only the search path calls it GHOST and then prints a removal command for a
-healthy env — M2 and M5 of [`installation.md`](?doc=ops/installation.md)
-§ *"One door for RUNNING"* in one defect. ✅ Closed 2026-09-12 (the probe measures the
-registry's own prefix); recorded as **H1** in
-[`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
+only the search path would call it GHOST and then print a removal command for
+a healthy env, so the probe measures the registry's own prefix.
 
 The five are **exhaustive over all eight combinations** of three booleans,
 which is why the installer needs no default branch — and that exhaustivity is
@@ -615,23 +612,10 @@ the two answers differ, and that difference is the whole point of `optional`.
 
 ### 5.4 What is deliberately outside the door
 
-> ✅ **CLOSED 2026-09-13.** The wipe is `remove_step_for` dispatched through
-> `run_step`, so it carries an `Outcome` and a line in the result; `envs/_cli.py`
-> no longer imports `subprocess` at all. The paragraph below is kept as the
-> record of what was wrong.
->
-> **⚠ A THIRD THING WAS OUTSIDE THE DOOR, AND IT WAS A DEFECT, NOT AN
-> EXCEPTION** *(recorded 2026-09-12)*. `install --clean`'s env removal is a bare
-> `subprocess.run([conda, "env", "remove", ...])` in `envs/_cli.py`, so the wipe
-> carries no `InstallStep`, no `Outcome`, and no line in the result the verdict is
-> derived from (§ 5.3). It was an edge path for one GPU recipe until 2026-09-12,
-> when `--clean` was opened to every recipe — which promoted a private dispatch to
-> the door `installation.md` calls *"the one door"* for wiping any of the five
-> envs. The fix is `remove_step_for(env_name, conda)` beside `create_step_for`,
-> dispatched through `run_step`. Tracked as **D3** in
-> [`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
-> Until it lands, read *"every step goes through `run_step`"* in § 5 as the target,
-> not as a statement about today's tree.
+`install --clean`'s env removal is an install step like any other:
+`remove_step_for(env_name, conda)`, beside `create_step_for`, dispatched
+through `run_step`, so the wipe carries an `Outcome` and a line in the result
+the verdict is derived from (§ 5.3).
 
 `validate.py`'s post-install probes (SIESTA's `ctest`, ELPA's `make check`)
 dispatch on their own. They are not install steps and do not become them: they

@@ -362,11 +362,21 @@ const WORKSPACE_TAG = "transport";
             // offers, and not its own value: said (`_paintRestored`).  A
             // field left blank is no value typed: blank against a value it
             // never set is the same (`_sameValue`).
+            var put = saved;
             if (_extend && surface !== "shared") {
                 var own = held || {};
                 var names = typed ? Object.keys(saved).filter(function (k) {
-                    return !_sameValue(saved[k], own[k]);
+                    return !_blank(saved[k]) && !_sameValue(saved[k], own[k]);
                 }) : [];
+                // A BLANK IS NO VALUE TYPED (engines/transport.md § 2a.16,
+                // *On the page*): the stage's own values, the values typed
+                // over them -- never a blank put over its own.
+                if (typed) {
+                    put = Object.assign({}, own);
+                    Object.keys(saved).forEach(function (k) {
+                        if (!_blank(saved[k])) put[k] = saved[k];
+                    });
+                }
                 if (names.length) {
                     _restored[surface] = {
                         container: container, schema: schema, held: own,
@@ -390,7 +400,7 @@ const WORKSPACE_TAG = "transport";
             // events would each save the note it came from (`_saveSurface`).
             _restoring = true;
             try {
-                formSchema.setValues(container, schema, saved);
+                formSchema.setValues(container, schema, put);
             } catch (_) {
                 // A note from an older schema can name a field this form
                 // no longer has; the rest is put back.
@@ -403,10 +413,18 @@ const WORKSPACE_TAG = "transport";
     /* Two values of one field the same -- a blank (`null`, `undefined`,
      * "") the same as a blank, whatever spells it (`form-schema.md`
      * § 1.1: a blank is not chosen). */
+    function _blank(v) { return v === null || v === undefined || v === ""; }
+
     function _sameValue(a, b) {
-        function blank(v) { return v === null || v === undefined || v === ""; }
-        if (blank(a) || blank(b)) return blank(a) && blank(b);
+        if (_blank(a) || _blank(b)) return _blank(a) && _blank(b);
         return String(a) === String(b);
+    }
+
+    /* A value as the page says it: a list's entries space-separated, a
+     * blank a dash. */
+    function _said(value) {
+        if (_blank(value)) return "—";
+        return Array.isArray(value) ? value.join(" ") : String(value);
     }
 
     /* What one surface holds, into the note -- field by field
@@ -869,12 +887,6 @@ const WORKSPACE_TAG = "transport";
         var list = _$("transport-extend-fixed-list");
         if (!list || !_extend) return;
         list.textContent = "";
-        function said(value) {
-            if (value === null || value === undefined || value === "") {
-                return "—";
-            }
-            return Array.isArray(value) ? value.join(" ") : String(value);
-        }
         var parts = [["Shared by every stage", _sharedSchema]].concat(
             _extend.fixed.map(function (r) {
                 return [RUNG_WORDS[r] || r, _rungSchemas[r]];
@@ -884,7 +896,7 @@ const WORKSPACE_TAG = "transport";
             ((part[1] || {}).sections || []).forEach(function (sec) {
                 (sec.fields || []).forEach(function (f) {
                     if (f.locked) {
-                        var v = said(f.locked.value);
+                        var v = _said(f.locked.value);
                         items.push((f.label || f.name) + ": " + v
                                    + (f.unit && v !== "\u2014"
                                       ? " " + f.unit : ""));
@@ -921,7 +933,7 @@ const WORKSPACE_TAG = "transport";
             var r = _restored[surface];
             r.names.forEach(function (n) {
                 said.push((RUNG_WORDS[surface] || surface) + " " + r.label(n)
-                          + " " + String(r.values[n]));
+                          + " " + _said(r.values[n]));
             });
         });
         host.appendChild(document.createTextNode(

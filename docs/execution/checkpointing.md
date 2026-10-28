@@ -53,7 +53,11 @@ folder that is cheap to store and wrong is worth nothing.
 - **It is not a backup system.** The snapshot lives inside the folder it is
   snapshotting. A deleted folder takes its history with it; copy the folder
   somewhere else for that.
-- **It is not automatic.** Nothing is ever saved without you saying so (§ 9).
+- **It does not save on its own.** A state is saved when you save one
+  (`molbuilder checkpoint save`), and before each act that changes a
+  calculation's folder — every `prep`, a group's first `launch`, Task
+  setup's Save that writes — which saves first and says so, its note naming
+  the act (§ 9).
 - **It does not decide what is worth keeping.** Point it at a folder and it
   saves the folder — all of it but an engine's scratch, which the engines' own
   file vocabularies name, not this system (S1). Whether a benchmark's throwaway

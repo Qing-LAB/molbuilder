@@ -82,6 +82,10 @@ class RunFiles:
     #: The stage's own deck, as the run door places it -- the copy in the
     #: stage's folder in the hierarchy, the run's own in the flat shape.
     stage_deck: Optional[Path] = None
+    #: The folder the run's launch record lies in, the run door's
+    #: (`runs.Run.launched_in`) -- for a point of a run of points, the
+    #: ``run-<n>`` folder above it; ``None`` where it lies in the run's own.
+    launched_in: Optional[Path] = None
 
 
 def _read(path: Optional[Path], *, head: Optional[int] = None,
@@ -104,7 +108,8 @@ def _read(path: Optional[Path], *, head: Optional[int] = None,
 def run_files(directory, *, names, run: Optional[int] = None, status=None,
               engine: Optional[str] = None,
               calculation: Optional[str] = None,
-              stage_deck: Optional[Path] = None) -> Optional[RunFiles]:
+              stage_deck: Optional[Path] = None,
+              launched_in: Optional[Path] = None) -> Optional[RunFiles]:
     """What the run of the stage ``names`` names (`runfiles.RunNames`) left
     in ``directory``, found through the doors that own each name -- or
     ``None`` when no deck of it is here.
@@ -118,6 +123,8 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
 
     ``status`` and ``engine`` are the run's `run_status` and engine, passed
     by a caller that already has them; asked here otherwise.
+    ``launched_in`` is where the run's launch record lies, the run door's
+    (`runs.Run.launched_in`).
     """
     from ..contract import engine_of
     from ...runfiles import deck_roles, find
@@ -132,7 +139,7 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
     if status is None:
         # THE ONE DOOR, with the run's launch record, as every reader asks it
         # (`rundir.run_state_of`).
-        status = run_state_of(d, names, n)
+        status = run_state_of(d, names, n, launched_in=launched_in)
     engine = engine or engine_of(str(d))
     # ONE LISTING of this run's files, filtered below -- `find` lists and
     # reads every name in the directory on each call, and a flat directory
@@ -188,7 +195,8 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
         progress_log=this_run(".molwatch.log"),
         monitor_log=this_run(".monitor.log"),
         util_csv=this_run(".util.csv"),
-        earlier=earlier, calculation=calculation, stage_deck=stage_deck)
+        earlier=earlier, calculation=calculation, stage_deck=stage_deck,
+        launched_in=Path(launched_in) if launched_in is not None else None)
 
 
 def _fdf_log_of(d: Path, out_head: str) -> Optional[Path]:
@@ -502,9 +510,13 @@ def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:
 
 def _launch_record(f: RunFiles) -> Dict[str, Any]:
     """``run.json`` -- how the run was launched: its own record, named by
-    its stage's names (`runrecord.launch_record`)."""
+    its stage's names (`runrecord.launch_record`), read where it lies -- a
+    point's in its run's folder above it (``launched_in``), as the run's
+    state reads it (`runs.concluded`)."""
     from ...runrecord import launch_record
-    rec = launch_record(f.directory, f.names, f.run) or {}
+    point = f.launched_in is not None and f.launched_in != f.directory
+    rec = (launch_record(f.launched_in, f.names) if point
+           else launch_record(f.directory, f.names, f.run)) or {}
     # `continued_from`: the run this one continued from, as its launch took it
     # (`job-system.md` § 5.4, plan W37) -- the launch's own hand-over,
     # written with the record.  EVERY KEY AS THE RECORD STATES IT: its
@@ -519,8 +531,9 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
             "sequence"]
     # A folder of the run's own has one record, its launch's: where to
     # continue from and which run is retried are run 0's, so a later run
-    # in it -- a warm retry -- is not given them.
-    if f.names.numbered(".run.json") or not f.run:
+    # in it -- a warm retry -- is not given them; nor is a point, which
+    # starts from the point before it (its own `.continued-from`).
+    if not point and (f.names.numbered(".run.json") or not f.run):
         keys += ["continued_from", "retry_of"]
     return {"computation": {"launch": {k: rec.get(k) for k in keys}}}
 
@@ -698,7 +711,8 @@ def run_record(directory, *, names, run: Optional[int] = None, status=None,
                engine: Optional[str] = None,
                calculation: Optional[str] = None,
                stage_deck: Optional[Path] = None,
-               fields: Optional[Tuple[str, ...]] = None
+               fields: Optional[Tuple[str, ...]] = None,
+               launched_in: Optional[Path] = None
                ) -> Optional[Dict[str, Any]]:
     """The record of the run of the stage ``names`` names in ``directory``
     -- the one its caller names, through the run door -- or ``None`` when
@@ -712,7 +726,7 @@ def run_record(directory, *, names, run: Optional[int] = None, status=None,
     (`execution/job-request.md` § 3.1a)."""
     f = run_files(directory, names=names, run=run, status=status,
                   engine=engine, calculation=calculation,
-                  stage_deck=stage_deck)
+                  stage_deck=stage_deck, launched_in=launched_in)
     if f is None:
         return None
 

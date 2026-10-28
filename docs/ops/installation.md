@@ -149,15 +149,6 @@ fails in a job on a cluster, not here. The
 manager a cluster module puts on PATH is a shell wrapper whose own location says
 nothing about the installation, which is exactly what a derivation cannot see.
 
-> ✅ **Closed 2026-09-13 (H10): both derivations are gone.** *(What stood here on
-> 2026-09-12:)* Two derivations remain, both as a LAST resort behind a
-> correct first tier that asks the manager: `install-env.sh`'s
-> `_resolve_env_python` (strategy 3) and `install._env_prefix` (tier 4). They
-> are reached only when the registry and `info --json` have both failed to
-> answer, so they mislead rather than decide — and that is still a guess with
-> the manager standing right there. Tracked as **H10** in
-> [`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
-
 **Cluster note (ASU Sol):** the module's `mamba` is a shell wrapper,
 and login nodes kill memory-heavy solves — `rc=137` from `repair` means
 the login node's cap killed the dependency resolution, and the repair

@@ -869,6 +869,27 @@
         document.addEventListener(C.EVENT_INSPECTOR_READY,
                                   _onInspectorReady);
 
+        /* THE MENU NAMES WHAT IS SHOWN, whoever announced it (§ 2.2): a run
+         * picked off the ladder is shown from its own folder
+         * (`results/viewer.js` `_pickRun`, § 2.4), so the menu's first row
+         * says which run; any other announcement -- back to the
+         * calculation, a transmission row's *open*, this picker's own --
+         * names its file in the menu again. */
+        function _onFileSelected(evt) {
+            const d = (evt && evt.detail) || {};
+            const was = selEl.querySelector("option[data-picked-run]");
+            if (was) selEl.removeChild(was);
+            if (d.picked_run) {
+                _prependUnchosen(selEl, "(showing "
+                    + String(d.file || "").split("/").pop()
+                    + ", a run off the ladder)");
+                selEl.options[0].setAttribute("data-picked-run", "");
+                return;
+            }
+            _revertSelectTo(d.file || "");
+        }
+        document.addEventListener(C.EVENT_FILE_SELECTED, _onFileSelected);
+
         // -- dropdown change handler ----------------------------- //
         //
         // Two side-effects per pick:
@@ -1179,6 +1200,8 @@
                 try {
                     document.removeEventListener(
                         C.EVENT_INSPECTOR_READY, _onInspectorReady);
+                    document.removeEventListener(
+                        C.EVENT_FILE_SELECTED, _onFileSelected);
                 } catch (_) { /* ignore */ }
                 try { selEl.removeEventListener("change", _onSelectChange); }
                 catch (_) { /* ignore */ }

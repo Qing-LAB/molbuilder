@@ -141,7 +141,7 @@ below. The controller code is deliberately thin glue:
   rather than a copy in the page.
 - **`modify/periodicity.js`** is the Cell op-tab — vacuum, per-axis periodicity,
   the unit cell, the cell origin — and commits through
-  `molview.data.commitPeriodicity` (the server re-resolves the effective cell).
+  `molview.data.commitPeriodicityOp`, the cell's one door (`POST /api/structure/periodicity`; the server re-resolves the effective cell).
 
 ### Creating a structure — the in-gate
 

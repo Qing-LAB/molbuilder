@@ -414,8 +414,7 @@ def _describe_reused(folder: str, root) -> Any:
         "window": window,
         # WHAT AN EXTENSION OF IT MAY CHANGE, AND WHAT IS FIXED
         # (`engines/transport.md` § 2a.16, *Extending it*): the rungs it
-        # keeps, what it offers, and what each control says -- drawn as
-        # they are.
+        # keeps, and what each control says -- drawn as they are.
         "extend": Extension(rel, task).to_wire(),
     })
 
@@ -438,10 +437,14 @@ def api_transport_fit() -> Any:
     try:
         finished, _rel = reused(str(request.args.get("reuses") or ""),
                                 tree_root=Path(projects_root()).resolve())
-        lo = float(request.args.get("lo", ""))
-        hi = float(request.args.get("hi", ""))
-        fit = fitted(finished_window(finished), lo, hi,
-                     int(request.args.get("finer") or 1))
+        try:
+            lo = float(request.args.get("lo", ""))
+            hi = float(request.args.get("hi", ""))
+            finer = int(request.args.get("finer") or 1)
+        except ValueError:
+            raise ValueError("the window asked needs two energies in eV and "
+                             "a whole number for times finer")
+        fit = fitted(finished_window(finished), lo, hi, finer)
     except (ReuseError, ValueError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "words": fit.words(), "emin": fit.emin,

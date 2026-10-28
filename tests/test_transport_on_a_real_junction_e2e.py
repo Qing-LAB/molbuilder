@@ -617,6 +617,11 @@ def junction(tmp_path_factory):
             _typed(c, "prep device with a point added", "prep", "task",
                    *group_words(c.bundle, "device"), "--target", "this")
             c.files_after = every_file(c.bundle)
+            # ...and what status and a launch read of the device then.
+            _typed(c, "status after a point added", "status")
+            _typed(c, "launch device dry after a point added", "launch",
+                   "task", "--stage", "device", "--mode", "direct",
+                   "--dry-run", "--yes")
         run.point_added = copy_of(run, "point-added", point_added)
 
         # A TRANSMISSION STOPPED IN ITS LOOP (`model/parse.md` § 5d.5;
@@ -1485,6 +1490,34 @@ def test_a_point_added_to_a_launched_rung_is_refused(junction):
         sorted(set(c.files_after) ^ set(c.files_before)))
 
 
+def test_a_point_added_after_launch_is_not_a_point_of_its_run(junction):
+    """`job-system.md`, *Changed since prepared*; `engines/transport.md`
+    § 2a.11, *One door for each place*: a voltage added on Task setup after
+    the device ran is not a point of its run -- `status` reads the finished
+    run finished, and a launch plans only the points prep wrote.  THE
+    SILENT FAILURE (the 2.40 review's WF3): `status` called the finished
+    device failed (*0.4 V: not opened*), and a dry-run launch planned a
+    point no prep ever wrote."""
+    from support.real_runs import stage_status
+    c = junction.point_added
+    status = c.said["status after a point added"].output
+    dry = c.said["launch device dry after a point added"].output
+    # EACH RUN OF POINTS AS THE STATUS DOOR READS IT: finished, its points
+    # the two its prep wrote.
+    for stage in ("device", "transmission"):
+        st = stage_status(c.bundle, stage)
+        assert st.state == "finished", (stage, st.state, st.detail)
+        assert sorted(pt["folder"].rsplit("/", 1)[-1] for pt in st.points) \
+            == ["v0", "v0.2"], (stage, st.points)
+    assert not any("device" in ln and "failed" in ln
+                   for ln in status.splitlines()), status
+    # ...THE CHANGE SAID, each value that differs (*Changed since prepared*).
+    assert any("changed since prepared" in ln and "0.4 V" in ln
+               for ln in status.splitlines()), status
+    # A LAUNCH PLANS ONLY THE POINTS PREP WROTE.
+    assert "0.4 V" not in dry and "v0.4" not in dry, dry
+
+
 @pytest.mark.parametrize("row", _ANOTHER_INPUT, ids=lambda r: r["name"])
 def test_a_run_of_another_engine_input_is_not_taken(junction, row):
     """`engines/transport.md` § 6.1, *the same engine input*: a transport
@@ -1757,6 +1790,28 @@ def test_a_device_launched_warm_then_cold_keeps_the_seeds_density(junction):
         "04_device/run-0")
     assert warm and not any(fn.endswith(".DM") for fn in warm), warm
     assert all(warm[fn] == first[fn] for fn in warm), (first, warm)
+    # ...AND SAYS SO: the warm launch copied its own run's files alone, and
+    # took the leads' Hamiltonians each from the run that made it -- the
+    # line it printed and the ledger's `gathers` (`job-system.md` § 5.4;
+    # the 2.40 review's BE3: they were said as copied from run 0, and the
+    # ledger kept no source for them).
+    import json
+    import re
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    said = junction.single.said["launch device again"].output
+    copied = re.search(r"copied ([^;\n]*)", said)
+    assert copied and not any(fn in copied.group(1) for fn in warm), said
+    assert "took the inputs its kind gathered" in said, said
+    entries = [json.loads(x) for x in (junction.single.bundle / LEDGER_FILE)
+               .read_text().splitlines() if x.strip()]
+    again = max(i for i, e in enumerate(entries)
+                if e.get("decision") == "continues"
+                and e.get("stage") == "device")
+    gathers = next(e for e in entries[again:]
+                   if e.get("decision") == "gathers"
+                   and e.get("stage") == "device")
+    assert {c["file"]: c["from"] for c in gathers["carried"]} == warm, (
+        gathers, warm)
     cold = given(2)
     assert cold == first, (first, cold)
     assert any(fn.endswith(".DM") and src == "01_seed/run-0"
@@ -2015,6 +2070,36 @@ def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
             hsx = [str(src) for src, fn in got if fn.endswith(".TS.HSX")]
             assert hsx == [str(_frame_point(run, "04_device", f, v)
                                .relative_to(run.bundle))], (f, v, got)
+
+
+def test_a_points_run_panel_says_how_its_run_was_launched(junction):
+    """`web/results.md` (the Run panel's *Computation*), `model/parse.md`
+    § 5d.1b: a point of a run of points reads its run's launch record -- the
+    ``run.json`` of the ``run-<n>`` folder above it -- as the run's state
+    does; it is given no ``continued_from``, a walked point starting from
+    the point before it.  THE SILENT FAILURE (the 2.40 review's BE2): every
+    point's Computation section empty -- no mode, no launch time."""
+    from molbuilder import runs
+    from molbuilder.calculation import register_readers
+    register_readers()
+    run = junction.from_pair
+    for v in _BIAS:
+        launch = runs.record_of(runs.run_of(
+            _frame_point(run, "04_device", 1, v)))["computation"]["launch"]
+        assert launch["mode"] == "direct" and launch["launched_at"], launch
+        assert "continued_from" not in launch, launch
+
+
+def test_every_prep_log_at_the_root_is_said_as_molbuilders(junction):
+    """`web/results.md` § 3b, `job-contracts.md` § 2.2: a file molbuilder
+    writes is read back with its run's label -- at the calculation's root a
+    lead's prep log on the lead's own stem.  THE SILENT FAILURE (the 2.40
+    review's BE5): the file card said each lead's log was not molbuilder's."""
+    from molbuilder.runs import about
+    logs = sorted(junction.single.bundle.glob("*.pipeline.log"))
+    assert any("electrode" in p.name for p in logs), logs
+    assert all(about(p)["ours"] for p in logs), {
+        p.name: about(p) for p in logs}
 
 
 def test_a_frame_sets_record_has_a_point_per_frame_and_voltage(junction):
@@ -3841,7 +3926,7 @@ _ANSWERED = [
 @pytest.mark.parametrize("name, finished, bias, at, unasked", _ANSWERED,
                          ids=[row[0] for row in _ANSWERED])
 def test_a_question_the_finished_results_answer_is_copied_in(
-        reused, name, finished, bias, at, unasked):
+        reused, name, finished, bias, at, unasked, monkeypatch):
     """§ 2a.16, *A group copied in* and *A narrower question* (the user,
     2026-10-25: "One rule: reuse completes"; "when citing a multi frame
     calculation, first frame result is used ... same checking for validate
@@ -3910,6 +3995,21 @@ def test_a_question_the_finished_results_answer_is_copied_in(
         lines = here.gathered + [t for p in here.points for t in p["took"]]
         assert all(_resolves(made.bundle, ln) for ln in lines), (stage, lines)
     assert mine["device"].gathered, mine["device"].gathered
+    # ...AND TASK SETUP NAMES EACH COPY, each by its folder (`web/task-setup.md`
+    # § 3, *A group copied in*): every run the Results ladder lists of each
+    # stage -- every one of them a copy here -- not the newest alone.
+    from molbuilder.jobset.runstatus import every_run
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.web.app import create_app
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(made.tree))
+    ladder = create_app(config={}).test_client().get(
+        f"/api/task-setup/folder?dir={made.bundle}").get_json()["ladder"]
+    tab = {r["stage"]: r["copied"] for r in ladder["stages"]}
+    for stage, here in mine.items():
+        runs = every_run(made.bundle, task_of(made.bundle), here)
+        assert runs and all(r["copied_from"] for r in runs), (stage, runs)
+        assert sorted((c["dir"], c["copied_from"]) for c in tab[stage]) == \
+            sorted((r["dir"], r["copied_from"]) for r in runs), (stage, tab)
     # THE TRANSMISSION GIVEN THE DEVICE'S RESULT AT ITS OWN POINT.
     device, transmission = mine["device"], mine["transmission"]
     if transmission.points:

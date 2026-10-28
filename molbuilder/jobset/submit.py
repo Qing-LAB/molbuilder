@@ -588,6 +588,14 @@ class _Member:
                 for n in h.names_taken]
 
     @property
+    def carried_gather(self) -> List[dict]:
+        """Launched again, the inputs its run was given, each with the run
+        it came from (its `.gathered-from`) -- ``[{file, from}]``, as a
+        first launch's gather (:attr:`took`) is said."""
+        return [{"file": n, "from": src} for h in self.hands
+                if h.record == GATHERED for src, n in h.files]
+
+    @property
     def follows(self) -> bool:
         """It takes from a run, or says it takes nothing -- a stage launched
         again, or a stage's first launch."""
@@ -599,12 +607,6 @@ class _Member:
         return (f"into {self.run_dir.name}" if self.has_attempt
                 else f"in the same folder, as its run {self.run}, where its "
                      f"files are")
-
-    def _copied(self) -> List[str]:
-        # EVERY FILE IT TAKES: what it carries from the run it continues,
-        # then what was gathered for it -- never one name twice: warm, a
-        # name it carries itself is not gathered (a device's `.DM`).
-        return list(dict.fromkeys([*self.carries, *self.gathered]))
 
     def said(self) -> str:
         """The member as the plan holds it, in one line: where it runs, what
@@ -619,8 +621,15 @@ class _Member:
     def _takes(self, *, would: bool) -> str:
         """What it takes, warm or cold."""
         if self.continuation is not None:
-            return self.continuation.line(self._copied(), would=would,
-                                          warned=self.warned)
+            # WHAT IT CARRIES FROM ITS OWN RUN, then the inputs its kind
+            # gathered, each from the run it came from (`job-system.md`
+            # § 5.4) -- never said as copied from the run it continues.
+            carried = self.carried_gather
+            return (self.continuation.line(list(self.carries), would=would,
+                                           warned=self.warned)
+                    + (f"; {'would take' if would else 'took'} the inputs "
+                       f"its kind gathered: " + _gathered_from(carried)
+                       if carried else ""))
         # A SWEEP'S WALK SAYS WHICH POINTS RUN AND FROM WHAT -- what its
         # first launch gathers, or warm or cold what it takes over
         # (`engines/transport.md` § 2a.11: "Launch shows which points it
@@ -1790,19 +1799,16 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
                 plan.record("continues", stage=m.name,
                             **m.continuation.ledger_facts(),
                             copied=list(m.carries),
-                            written_as_ended=dict(m.warned),
-                            **({"gathered": list(m.gathered)}
-                               if m.gathered else {}))
+                            written_as_ended=dict(m.warned))
             if m.took:
                 plan.record("gathers", stage=m.name,
                             inputs=[{**t, "from": str(t["from"])}
                                     for t in m.took])
-            elif m.gathered and m.continuation is None:
-                # LAUNCHED AGAIN COLD, a transport rung still carries the
-                # inputs its run was given, each from its run.
+            elif m.gathered:
+                # LAUNCHED AGAIN, warm or cold, a transport rung still
+                # carries the inputs its run was given, each from its run.
                 plan.record("gathers", stage=m.name, carried=[
-                    {"file": n, "from": str(src)} for h in m.hands
-                    if h.record == GATHERED for src, n in h.files])
+                    {**t, "from": str(t["from"])} for t in m.carried_gather])
             elif m.first and m.continuation is None:
                 plan.record("starts-cold", stage=m.name, asked=m.cold)
             for take in m.copied:
@@ -2676,12 +2682,17 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
             continue
         walked.append((pdir, pt))
     if not walked and across is not None:
+        # BOTH WAYS ON, each its line (`job-system.md` R-L18): its group
+        # prepared again, which copies the stage in, or a cold launch.
+        from .commands import prep_group_lines
         raise SubmitError(
             f"{stage}: every point is one {across.run} computed the same, "
-            f"so its first launch has nothing to run -- prepare it again, "
-            f"and it is copied in (engines/transport.md § 2a.16, *A "
-            f"narrower question*).  To run them all here instead, launch "
-            f"it cold:\n"
+            f"so its first launch has nothing to run -- prepare its group "
+            f"again, and it is copied in (engines/transport.md § 2a.16, *A "
+            f"narrower question*):\n"
+            + block(prep_group_lines([calc.request.group_of(stage)],
+                                     base=base))
+            + "or, to run them all here instead, launch it cold:\n"
             + block(launch_lines("task", stage, base=base, flags=("--cold",))))
     if not walked:
         raise SubmitError(

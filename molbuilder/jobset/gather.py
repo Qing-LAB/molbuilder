@@ -81,9 +81,8 @@ def transport_inputs(calc, stage: str, *, point=None,
     result can always say which electrode run fed it.  ``once`` is what the
     gather this belongs to reads for all its points (:class:`ReadOnce`).
     """
-    from ..transport.stages import (frames_of, inputs_of, points_in,
-                                     products_of, rung_points)
-    from .continuation import done, usable
+    from ..transport.stages import frames_of, inputs_of, rung_points
+    from .continuation import usable
 
     base, task, jobset = Path(calc.base), calc.task, calc.jobset
     once = once if once is not None else ReadOnce(calc)
@@ -131,19 +130,18 @@ def transport_inputs(calc, stage: str, *, point=None,
                 # A RECORD THAT DOES NOT READ is said in its reader's
                 # words, as the refusal it is (`job-system.md` R-L21).
                 raise PrepError(str(exc)) from None
-            _prod = products_of(upstream, task.label, base_dir=base)
             if _launch is None:
-                _pts = points_in(newest, task, upstream, base=base)
-                if not all(done(p_, _names, launch=None, products=_prod,
-                                launched_in=newest)[0] for p_, _pt in _pts):
-                    raise PrepError(
-                        f"the {stage} stage takes {upstream}'s newest run, "
-                        f"{newest.relative_to(base)}, whole -- and it has "
-                        f"not been launched.  Launch it --\n"
-                        + block(launch_pending(upstream,
-                                               calc.request.group_of(upstream),
-                                               newest.name, base=base))
-                        + q2)
+                # NEVER LAUNCHED, whatever its points' files: a run is
+                # launched or it is not (`engines/transport.md` § 2a.11) --
+                # a copy cut short reads so, its launch record written last.
+                raise PrepError(
+                    f"the {stage} stage takes {upstream}'s newest run, "
+                    f"{newest.relative_to(base)}, whole -- and it has "
+                    f"not been launched.  Launch it --\n"
+                    + block(launch_pending(upstream,
+                                           calc.request.group_of(upstream),
+                                           newest.name, base=base))
+                    + q2)
             else:
                 # THE ONE RULE the status door asks (`continuation.
                 # points_state`): a chain that stopped is a run that ended
