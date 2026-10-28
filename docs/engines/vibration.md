@@ -1642,9 +1642,10 @@ the method's § 3
 asked by *Compute Raman* — the setting both engines share (§ 3.1) — for
 the modes *Raman for* picks, every mode unless a frequency range is given:
 SIESTA's optical calculation at $\pm\delta Q$ along each, and the strength
-derived at a laser the person names after the run (§ 5.11 § 10). How its
-polarizability behaves in a cell holding metal is measured with it (the
-plan's § 1ac, R1). **The infrared comes from the force-constant run's own
+derived at a laser the person names after the run (§ 5.11 § 10). What its
+numbers mean in a cell holding metal — the value at the laser defined, the
+static one not — is the method's § 3.1
+([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)). **The infrared comes from the force-constant run's own
 charges** (§ 5.10 ②), asked by *Compute IR*: every atom's Hirshfeld and Voronoi charge at every
 nudge, from which the spectrum viewer gives the infrared of the atoms the
 person names — the dipole of a molecule in the junction by its atoms' charges
@@ -2785,7 +2786,9 @@ an export):
 A view exported before 2.47.0 (`raman-view@1`, its numbers attributes) is
 refused by its reader with the way back: the view exported again.
 
-**Not designed**: the named set's share (D-e), after R1.
+**Not designed**: the named set's share (D-e) — its nearest published
+counterpart, junction theory's polarizability projected on the molecule
+(the method's § 3.4).
 
 #### 11. What changes — the code and the contract
 
@@ -2826,7 +2829,8 @@ in all on 2 ranks:
 | the broadening composed after the run (§ 10, step 2) | **exact**: the 0.001 Ry run's $\varepsilon_2$ convolved with a Gaussian of $\sqrt{\sigma^2 - \sigma_{\mathrm{run}}^2}$ gives, at 0.01 Ry, $\alpha(0)$ 1.3208 and $\alpha(633\ \mathrm{nm})$ 1.3552 Å³ against the direct 0.01 Ry run's 1.3208 and 1.3552; at 0.1 Ry, 1.3290 and 1.3648 against 1.3290 and 1.3648; the integral of $\varepsilon_2$ 0.3290 either way; the f-sum 1.0027. (The width itself moves $\alpha$ — 0.6 % between 0.0136 and 1.36 eV — which is why every number states it) |
 
 Not measured here: a junction's optical cost and its `.contrib.EPSIMG` size
-(every transition at every energy bin above 10⁻⁵) — R1.
+(every transition at every energy bin above 10⁻⁵) — measured on one junction
+frame, on the machine that runs it (the method's § 5.1).
 
 #### 13. Decisions — the user's
 
@@ -2834,7 +2838,7 @@ Not measured here: a junction's optical cost and its `.contrib.EPSIMG` size
 |---|---|---|
 | R-a | how SIESTA's form asks for Raman | **decided 2026-10-25, as recommended**: the selector alone — `skip` no optical phase; `compute_raman` stays PySCF's (its Cartesian route). **Revised 2026-10-27** (the user: "raman and ir option is engine neutral, so why don't you make it explicit and clearly have it user accessible"; "there is a 'all mode' option? i think that should be by default"): `compute_ir`, `compute_raman` and *Raman for* (`raman_modes`, all modes by default, or a frequency range) are one setting each for both engines, drawn once before the engine is chosen, infrared on and Raman off by default on both; PySCF's mode selector stays the probe's ([`engines/template.md`](?doc=engines/template.md) § 6.2a; § 3.1) |
 | R-c | the run's resolution, `optical_broaden` | **decided 2026-10-25, as recommended**: 0.002 Ry (0.027 eV): 50,001 energies up to 10 Ry — 2.7 MB of `.EPSIMG` text a frame, 0.4 MB in the data file per spin; a junction's 121 frames, 320 MB and 48 MB; any presentation width from 0.03 eV up |
-| R1 | the measurement (plan § 1ac) | **decided 2026-10-25, as recommended**: through the built run, on the toy junction: two `optical_mesh` values — two runs; the broadening needs none |
+| R1 | the measurement (plan § 1ac) | decided 2026-10-25: through the built run, on the toy junction, two `optical_mesh` values. **Withdrawn 2026-10-27**: the toy junction's free atoms are links of its metal, and the published work settles what the static value beside a metal is (the method's § 3.1, § 7); the Raman's science checks are the person's, on their machine |
 | R-e | a run of points' monitors report as one run (§ 7a) — transport's points lose their per-point `start`/`finish` | taken: one run, one start, one finish — built for the vibration; a transport sweep's points keep their pair until its walk has a step that sends the run's (§ 7a) |
 | D1 | `.contrib.EPSIMG`, SIESTA's scratch beside an optical call, where the vocabulary named scratch only with a folder of the run's own | **decided 2026-10-26, as recommended**: declared where it lies — `[optical]`'s `scratch` names it, and `scratch_dir` is stated only where a kind's scratch has a folder of the run's own (`job-contracts.md` § 4.2a) |
 | D2 | every call done and the finish not: the last call runs again, its record step finishing the run — or a verb that runs the finish alone | **decided 2026-10-26, as recommended**: the last call again (§ 6) |

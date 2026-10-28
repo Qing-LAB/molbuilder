@@ -72,7 +72,7 @@ kept, and the molecule's share is stated beside it (§ 3.1).
 |---|---|---|
 | **1. The vibration** | SIESTA's force-constant run on the relaxed junction, as today: each free atom nudged ±0.0212 Å along x, y and z, a self-consistent solution at each — $1 + 6\,n_{\mathrm{free}}$ of them; SIESTA prints every atom's Hirshfeld and Voronoi charge after each | **exists** — the charges since 2.35.2 |
 | **2. Infrared, every mode** | nothing more: the vibration's finish stores the charges of step 1; asked for a set of atoms, a direction and a partition, one function derives each mode's dipole change → its infrared strength $A_\nu(\hat e)$ and rank (§ 2; a worked example, § 2.4) | **built 2.36.0** — the spectrum viewer and `molbuilder.postprocess.infrared_view` |
-| **3. Raman, the chosen modes** | the vibration run's optical phase, after its force-constant phase in the same run: the geometries at $0$ and $\pm\delta Q$ along each chosen mode (§ 3.2); one SIESTA single point at each with its optical calculation (the `OpticalCalculation` option: the light-absorption spectrum from its own states, § 3.1) → the polarizability at each, at the laser's frequency the person enters after the run (static beside it) → its change → the Raman strength $R_\nu(\hat e)$ and rank (§ 3), from the whole cell's change, the named set's share beside it (§ 3.4) | **built** — the optical phase 2.42.0–2.43.0, the strength at a laser 2.44.0: the spectrum viewer and `molbuilder.postprocess.raman_view` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10); the named set's share not yet designed (§ 3.4); how the polarizability behaves in a cell holding metal is measured with it (§ 3.1, R1) |
+| **3. Raman, the chosen modes** | the vibration run's optical phase, after its force-constant phase in the same run: the geometries at $0$ and $\pm\delta Q$ along each chosen mode (§ 3.2); one SIESTA single point at each with its optical calculation (the `OpticalCalculation` option: the light-absorption spectrum from its own states, § 3.1) → the polarizability at each, at the laser's frequency the person enters after the run (static beside it) → its change → the Raman strength $R_\nu(\hat e)$ and rank (§ 3), from the whole cell's change, the named set's share beside it (§ 3.4) | **built** — the optical phase 2.42.0–2.43.0, the strength at a laser 2.44.0: the spectrum viewer and `molbuilder.postprocess.raman_view` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10); the named set's share not yet designed (§ 3.4); in a cell holding metal, the value at the laser is the one to read and the static one is not defined (§ 3.1) |
 | **4. The displacement** | nothing: the reference maximum displacement at the person's temperature, from the vibration result, beside the person's own (§ 4; an example, § 4.1) | **built 2.36.0** — the *Write frame set…* dialog and `molbuilder.postprocess.reference_max_displacement` |
 
 ```mermaid
@@ -500,9 +500,9 @@ near-Fermi gold pairs shrink to almost nothing, the molecule's pairs near the
 laser are enhanced, and the result moves with the laser as a measured
 spectrum does. **The static value** — the far-from-resonance limit in which
 the textbook Raman activity is defined [Porezag1996], independent of the
-laser — is shown beside it, always; where it is stable — a free molecule,
-or wherever the toy junction's measurement shows it settling — is the
-reader's to judge. (molbuilder's PySCF Raman
+laser — is shown beside it, always; for a molecule with a gap it is
+defined, and beside a metal it is not (below), which the reader judges with
+the cell in view. (molbuilder's PySCF Raman
 takes its static polarizability from coupled-perturbed theory,
 `engines/vibration.md` § 4.6, this one from independent states, § 3.3, so the
 two differ by construction.)
@@ -533,24 +533,59 @@ $\mathbf P V_{\mathrm{cell}}$, divided by $4\pi\varepsilon_0$).
 **This is the whole cell's polarizability**, the held gold's electrons in it,
 and it is kept: what is reported from it, and why, is § 3.4.
 
-**Open — the whole cell's number, measured first** *(the 2026-10-24 review)*. SIESTA's
-$\varepsilon_2$ keeps every pair of states more than $10^{-3}$ Ry apart, each
-weighted by $f_i(1-f_j)$ — the lower state's occupation times the upper's
-emptiness (`Src/optical.F:574`), no emission term — and its momentum element
-divided by the gap (`Src/transition_rate.F`, `Src/optical.F`). In a cell
-holding metal, the pairs near the Fermi level — partly filled at the
-electronic temperature — carry $\varepsilon_2$ down to $\omega\to0$, and the
-integral of $\varepsilon_2/\omega$ is dominated by them: its value is set by
-the k-point mesh, the smearing and that cutoff, not by the molecule. The
-contact's change between $\pm\delta Q$ is the physics kept above; whether
-the far gold's part cancels in the difference to well below it, at the
-settings a person can afford, is measured on the toy junction — the change
-compared at two k-point meshes and two broadenings, through the built run.
-`Optical.Broaden` 0,
-SIESTA's default, makes its frequency step zero (`dw = smooth/10`,
-`Src/optical.F`). At the laser's frequency those near-Fermi pairs weigh
-almost nothing (the table above), so the measurement asks chiefly of the
-static value whether it may be shown beside it (`plans/plan.md` § 1ac, R1).
+**Beside a metal — what the published work says, and what one test showed**
+*(2026-10-27)*. SIESTA's $\varepsilon_2$ keeps every pair of states more than
+$10^{-3}$ Ry apart, each weighted by $f_i(1-f_j)$ — the lower state's
+occupation times the upper's emptiness (`Src/optical.F:574`), no emission
+term — and its momentum element divided by the gap (`Src/transition_rate.F`,
+`Src/optical.F`). A metal's response within one band, the free-electron
+(Drude) part, is not in it: SIESTA reports its plasma frequency apart, in
+the `.EPSIMG` header, counted over the states within the broadening of the
+Fermi level and printed to four decimals in Ha² — so a coarse k-mesh counts
+none, and reads 0. `Optical.Broaden` 0, SIESTA's default, makes its
+frequency step zero (`dw = smooth/10`, `Src/optical.F`).
+
+- **The static polarizability of a cell holding a periodic metal does not
+  exist**: the free-electron part diverges as $\omega\to0$ [Prandini2019].
+  What SIESTA's spectrum gives at $\omega = 0$ is the remainder, set by the
+  near-Fermi pairs the k-mesh and the broadening happen to keep; no published
+  method uses it.
+- **The derivative at the laser's frequency, with a finite broadening, is
+  the published object** — for molecules with a lifetime broadening
+  [Jensen2005a, Jensen2005b], for solids [Gillet2013, Taghizadeh2020]: about
+  0.1–0.2 eV, at least the spacing between the discrete transitions
+  [Gillet2013]; near a resonance the value scales strongly with it
+  [Saikin2009]. A metal's near-Fermi pairs weigh almost nothing at a laser
+  (the table above).
+- **A molecule on or between metal, as others compute it**: a metal cluster
+  and time-dependent theory, static or at the laser [Zhao2006, Aikens2006,
+  Saikin2009]; a periodic slab with a static field along the surface normal,
+  the modes those of the molecule and its S-bonded gold, the other gold
+  infinitely heavy — the held-set choice molbuilder's vibration makes — and
+  the component along the normal alone [Zayak2011]; junction theory that
+  projects the polarizability on the molecule [Galperin2008]. **None
+  differentiates the independent-state dielectric function of a periodic
+  metal–molecule–metal cell**, molbuilder's route: it is untested in the
+  literature.
+- **What is compared with experiment** is the ratio between the molecule's
+  modes: a junction's or a surface's measured Raman is dominated by the
+  field enhancement of the metal's gap, which no small cell holds
+  [Zhao2006, Ward2007], and the absolute values of the cell's derivative
+  depend on the binding site [Zayak2011].
+- **k-points**: a Raman derivative converges far more slowly with the k-mesh
+  than $\varepsilon$ itself [Gillet2013], and a metal's optics needs dense
+  meshes [Prandini2019]; no published test of a molecule-on-metal
+  derivative's convergence was found.
+- **A free atom that is part of the metal** — measured 2026-10-27 on a
+  hydrogen chain whose two free atoms are links of the chain (§ 7): at the
+  equilibrium the chain's one band gives no interband pair, $\alpha\approx0$;
+  either displacement opens a gap at the Fermi level, so $\alpha$ jumps to a
+  finite value at $+\delta Q$ and $-\delta Q$ alike — not a smooth function
+  of the displacement, its central difference a remainder — as a half-filled
+  chain's dimerization does [Heeger1988]. Widening the broadening from 0.027
+  to 0.1 eV moved the static $\alpha$ by 48 % on a 1×1×8 optical mesh and the
+  value at 633 nm by 3 %. In a junction the free gold beside the anchors is
+  where this can enter, the static value first.
 
 ### 3.2 Its change along a mode, and the Raman strength
 
@@ -574,8 +609,8 @@ static value whether it may be shown beside it (`plans/plan.md` § 1ac, R1).
 - **The light's direction: z by default, another chosen before the run.** One
   optical run gives one direction's entry of the polarizability's change; any
   direction after the run would need the whole table — six optical runs a
-  geometry — decided once the toy junction's measurement says what an optical
-  run costs (`plans/plan.md` § 1ac, R1). The infrared, by contrast, takes any
+  geometry — decided once an optical run's cost on a junction frame is
+  measured (§ 5.1). The infrared, by contrast, takes any
   direction after the run at no cost (§ 2.3).
 - **The settings the runs read are declared** — the optical keywords and
   *Compute IR*'s charges alike shown on Task setup and in each deck's
@@ -623,7 +658,8 @@ equilibrium polarizability, the same for every mode, reported once.
 **On the toy junction of § 2.4**, the step would be
 $\delta Q$ = 0.0301 amu$^{1/2}$ Å for both real modes (each free atom
 carries $\lvert\mathbf L\rvert$ = 0.7043 amu$^{-1/2}$); no Raman number is given
-here — the junction's optical run is the measurement R1 (§ 7), not yet made.
+here: the hydrogen chain's free atoms are links of its metal, which the
+derivative cannot follow (§ 3.1, § 7).
 
 ### 3.2a From a laser wavelength to a Raman strength — the steps *(M4, 2026-10-26)*
 
@@ -703,12 +739,17 @@ M4-d).
 
 - **Independent states.** SIESTA's "simplest approach": transitions between
   the self-consistent states, with no correction for the field the response
-  itself creates (no local-field effects).
+  itself creates (no local-field effects). For aromatic molecules such
+  uncoupled polarizabilities run about twice the coupled ones, an error
+  largely the same for every mode [Apra2020]; coupled density-functional
+  Raman activities of small molecules match experiment well [Halls1999].
+  Ratios between modes therefore carry more than the absolute values.
 - **A difference of large numbers.** The metal's transitions are large; the
-  contact's change is kept, the far gold's must cancel (§ 3.1, measured
-  first), so the derivative is a small difference of large numbers; how far
-  it stands above the k-point mesh, the broadening and the band count is the
-  person's judgement, with the settings stated beside the value.
+  contact's change is kept, the far gold's cancels only where it is computed
+  alike at both displacements (§ 3.1), so the derivative is a small difference
+  of large numbers; how far it stands above the k-point mesh, the broadening
+  and the band count is the person's judgement, with the settings stated
+  beside the value.
 - **The integral needs the whole spectrum**: $\varepsilon_2$ up to
   `Optical.Energy.Maximum` over enough bands (`Optical.NumberOfBands`).
 
@@ -773,10 +814,17 @@ holds it, and the charge each mode moves between the set and everything else
 is reported beside the strength (§ 2.1).
 
 **What it does not settle** (§ 3.1): whether the far gold's part cancels in
-the whole cell's difference at the settings a person can afford — measured on
-the toy junction (R1). Whether $\alpha$ is taken static or at the laser's
-frequency is decided: both, the laser's the one the strength is ranked by
-(§ 3.1, D-f).
+the whole cell's difference at the settings a person can afford — the
+person's check, refining the optical k-mesh and seeing the mode ratios hold.
+Published work holds the far metal fixed as this does [Zayak2011,
+Frederiksen2007]; it finds the substrate's own response changing with the
+mode part of the signal, not noise [Zayak2011, Oren2012], and splits no
+periodic cell's derivative into a molecule's share — junction theory
+projects the polarizability on the molecule instead [Galperin2008], the
+nearest published counterpart of the named set's share. Whether $\alpha$ is
+taken static or at the laser's frequency is decided: both, the laser's the
+one the strength is ranked by (§ 3.1, D-f) — beside a metal, the laser's the
+only one defined.
 
 ---
 
@@ -879,7 +927,6 @@ time its iterations times the run's average iteration:
 | keeping the held gold in Raman (§ 3.4) | none | it is in every run already: all 312 atoms' electrons are solved at every step |
 | the named set's share beside the whole (§ 3.4) | none | worked out afterwards from each frame's saved states — a post-processing step, not yet designed, so not measured |
 | Raman for $N$ chosen modes | $1 + 2N$ — frame 0 once, $\pm\delta Q$ for each mode | each run one junction SCF and SIESTA's optical calculation |
-| the test before building (§ 3.1) | about a dozen, on the toy junction | minutes in all |
 
 **The calculation for five modes**: $1 + 2\times5 = 11$ runs. Frame 0 from
 scratch, about 3.5 min; each $\pm\delta Q$ run started from frame 0's
@@ -892,7 +939,8 @@ at the vibration's settings; a denser k-point grid for the SCF multiplies it.
 diagonalizes the 5,824-orbital Hamiltonian at every k-point of its own mesh
 (`Optical.Mesh`) and couples every occupied state with every empty one; a
 metal wants more k-points there than the vibration's single one. Its cost is
-measured on the toy junction, then on one junction frame, before any batch.
+measured on one junction frame, on the machine that runs it, before any
+batch.
 
 
 ---
@@ -908,7 +956,7 @@ nothing beyond reading what the runs wrote.
 | the charges' grain | Hirshfeld or Voronoi charges are integrated on SIESTA's real-space mesh, so an atom moved by $\delta$ against the mesh changes its charge a little even with no physics behind it | the same sweep, where it is run |
 | `MeshCutoff` | the vibration's own: its force constants and its charges are both taken on the mesh | a coarse mesh tells two equivalent atoms apart in the force constants, so their modes mix and a symmetry-forbidden mode borrows strength — measured on CO₂, the forbidden stretch at 0.5 % of the other at 150 Ry and $6.5\times10^{-8}$ at 500 Ry (§ 7) |
 | $\delta Q$ for Raman | $\delta/\max_k\lvert\mathbf L_k^{(\nu)}\rvert$ — the largest atom moved by $\delta$, the force constants' own linear range | — |
-| `Optical.Mesh`, `Optical.Broaden`, `Optical.NumberOfBands`, `Optical.Energy.Maximum` | the person's, stated with every value; a broadening above zero | the toy junction's measurement (§ 3.1) |
+| `Optical.Mesh`, `Optical.Broaden`, `Optical.NumberOfBands`, `Optical.Energy.Maximum` | the person's, stated with every value; a broadening above zero | the mesh: the ratios between the modes hold when it is refined [Gillet2013]; the broadening: stated beside every value, 0.1–0.2 eV in published work and at least the spacing between discrete transitions [Gillet2013]; the bands and range: the f-sum in the `.EPSIMG` header near 1 for a molecule (§ 3.1) |
 | the laser's wavelength | the person's, entered after the run | none needed: a parameter of the integral, not of the runs |
 | the charge sum | — | at every step the charge column over all atoms sums to zero (measured, § 7) |
 | symmetry | — | a mode the structure's symmetry forbids reads zero, the dipole taken about a centre on the symmetry element (as § 2.4's mode 6 does) |
@@ -975,8 +1023,31 @@ the run (§ 3.2a, step 2; H₂'s gap is far above zero): the 0.001 Ry spectrum c
 direct runs' $\alpha$ to four decimals, and the width moves $\alpha$ by
 0.6 % between 0.0136 and 1.36 eV.
 
+**Measured 2026-10-27 — a metal's own atoms moving** (the hydrogen chain of
+§ 2.4, its two free atoms links of the chain, SIESTA SZ, 150 Ry, the SCF at
+Γ, through jobset: `describe` from the Spectrum page, Task setup, `prep`,
+`launch`, read through `molbuilder.postprocess.raman_view`):
+
+| | optical mesh Γ | 1×1×8 |
+|---|---|---|
+| frame 0: largest $\varepsilon_2$ · f-sum · $\alpha$ static | $4.5\times10^{-9}$ · 0.0 · $2\times10^{-9}$ Å³ | $9.5\times10^{-10}$ · 0.0 · $4\times10^{-9}$ Å³ |
+| the 2548 cm⁻¹ stretch: $\alpha(+\delta Q)$ / $\alpha(-\delta Q)$, static | 0.366 / 0.363 Å³ | 75,600 / 75,900 Å³ |
+| the same at 633 nm | 0.535 / 0.531 Å³ | −214 / −214 Å³ |
+| static $\alpha$, the width 0.027 → 0.1 eV | +0.04 % | +48 % |
+| $\alpha$ at 633 nm, the same | +0.2 % | +3 % |
+
+One orbital per atom makes one band: the straight chain has no interband
+pair, and its plasma frequency counted no state within the broadening of the
+Fermi level (0.0). A displacement either way opens a gap at the Fermi level
+(§ 3.1) — the denser mesh samples it, from 0.003 eV — so $\alpha$ jumps from
+nothing to the same value at both sides, and the four bends are imaginary
+(−666, −481 cm⁻¹): the straight chain is unstable sideways. What it shows is
+the route's limit, not a junction's number: a free atom that is part of the
+metal, and the static value beside a metal (§ 3.1).
+
 **Not yet shown — the comparison owed** (the infrared built in 2.36.0 and
-Raman in 2.44.0 without it): on a molecule whose
+Raman in 2.44.0 without it), the person's to run on their machine: on a
+molecule whose
 answer is known independently, SIESTA's infrared (§ 2) and Raman (§ 3)
 against PySCF's, which molbuilder computes already (`engines/vibration.md`
 § 4): water in a box, the same modes, compared mode by mode and in rank. The
@@ -1002,10 +1073,12 @@ $R_\nu$, not the junction's formulation.
    partitions give two answers.
 2. **Independent states** (Raman): SIESTA's optical calculation, without
    local-field effects (§ 3.3).
-3. **The metal** (Raman): no free-electron (Drude) term is added; the
-   contact gold's response is kept in the whole cell's number, the molecule's
-   share stated beside it; the far gold's near-Fermi transitions must cancel
-   between the frames, measured first (§ 3.1).
+3. **The metal** (Raman): no free-electron (Drude) term is added, so the
+   static value beside a metal is not defined and the laser's is the one to
+   read; the contact gold's response is kept in the whole cell's number, the
+   molecule's share stated beside it; the far gold cancels between the frames
+   only where it is computed alike at both; a free atom that is part of the
+   metal can make $\alpha$ jump with the displacement (§ 3.1).
 4. **The polarizability at the laser's frequency** (Raman), from
    independent states — pre-resonance included, the laser's own; the static
    value beside it, the textbook activity, away from every resonance.
@@ -1060,7 +1133,56 @@ Each checked against Crossref, 2026-10-24, and in `references.bib`.
   activities in density-functional theory.
 - [Gillet2013] Y. Gillet, M. Giantomassi, X. Gonze, *Phys. Rev. B* **88**,
   094305 (2013), doi:10.1103/PhysRevB.88.094305 — the Raman tensor at a
-  laser: the complex susceptibility's change, its squared modulus.
+  laser: the complex susceptibility's change, its squared modulus; the
+  broadening at least the spacing between transitions; a Raman derivative's
+  slow k-point convergence.
+
+Added 2026-10-27, each checked against Crossref and in `references.bib`:
+
+- [Zayak2011] A. T. Zayak, Y. S. Hu, H. Choo, J. Bokor, S. Cabrini,
+  P. J. Schuck, J. B. Neaton, *Phys. Rev. Lett.* **106**, 083003 (2011),
+  doi:10.1103/PhysRevLett.106.083003 — chemical Raman enhancement on a
+  periodic Au(111) slab; the far gold infinitely heavy.
+- [Prandini2019] G. Prandini, G.-M. Rignanese, N. Marzari, *npj Comput.
+  Mater.* **5**, 129 (2019), doi:10.1038/s41524-019-0266-0 — a metal's
+  dielectric function, its intraband term and k-meshes.
+- [Jensen2005a] L. Jensen, J. Autschbach, G. C. Schatz, *J. Chem. Phys.*
+  **122**, 224115 (2005), doi:10.1063/1.1929740 — the polarizability with a
+  finite lifetime.
+- [Jensen2005b] L. Jensen, L. L. Zhao, J. Autschbach, G. C. Schatz, *J. Chem.
+  Phys.* **123**, 174110 (2005), doi:10.1063/1.2046670 — Raman from
+  derivatives of the frequency-dependent polarizability.
+- [Saikin2009] S. K. Saikin, R. Olivares-Amaya, D. Rappoport, M. Stopa,
+  A. Aspuru-Guzik, *Phys. Chem. Chem. Phys.* **11**, 9401 (2009),
+  doi:10.1039/b906885f — benzenethiol on silver clusters; the damping's role.
+- [Zhao2006] L. L. Zhao, L. Jensen, G. C. Schatz, *J. Am. Chem. Soc.* **128**,
+  2911–2919 (2006), doi:10.1021/ja0556326 — pyridine–Ag₂₀; chemical,
+  charge-transfer and field enhancement.
+- [Aikens2006] C. M. Aikens, G. C. Schatz, *J. Phys. Chem. A* **110**,
+  13317–13324 (2006), doi:10.1021/jp065206m — pyridine with Au₂₀.
+- [Galperin2008] M. Galperin, S. Tretiak, *J. Chem. Phys.* **128**, 124705
+  (2008), doi:10.1063/1.2876011 — a junction's optical response projected
+  on the molecule.
+- [Oren2012] M. Oren, M. Galperin, A. Nitzan, *Phys. Rev. B* **85**, 115435
+  (2012), doi:10.1103/PhysRevB.85.115435 — Raman of a junction by charge
+  transfer.
+- [Ward2007] D. R. Ward, N. K. Grady, C. S. Levin, N. J. Halas, Y. Wu,
+  P. Nordlander, D. Natelson, *Nano Lett.* **7**, 1396–1400 (2007),
+  doi:10.1021/nl070625w — measured Raman in electromigrated gaps.
+- [Taghizadeh2020] A. Taghizadeh, U. Leffers, T. G. Pedersen, K. S. Thygesen,
+  *Nat. Commun.* **11**, 3011 (2020), doi:10.1038/s41467-020-16529-6 — Raman
+  from the frequency-dependent dielectric function's finite differences.
+- [Apra2020] E. Aprà, A. Bhattarai, E. Baxter, S. Wang, G. E. Johnson,
+  N. Govind, P. Z. El-Khoury, *Appl. Spectrosc.* **74**, 1350–1357 (2020),
+  doi:10.1177/0003702820923392 — uncoupled against coupled polarizabilities.
+- [Halls1999] M. D. Halls, H. B. Schlegel, *J. Chem. Phys.* **111**,
+  8819–8824 (1999), doi:10.1063/1.480228 — Raman intensities by method.
+- [Heeger1988] A. J. Heeger, S. Kivelson, J. R. Schrieffer, W.-P. Su, *Rev.
+  Mod. Phys.* **60**, 781–850 (1988), doi:10.1103/RevModPhys.60.781 — a
+  half-filled chain's dimerization.
+- [Frederiksen2007] T. Frederiksen, M. Paulsson, M. Brandbyge, A.-P. Jauho,
+  *Phys. Rev. B* **75**, 205413 (2007), doi:10.1103/PhysRevB.75.205413 — a
+  junction's vibrations in a dynamic region, the rest fixed.
 - SIESTA 5.4.2 manual, `OpticalCalculation`, `Optical.*`, `Charge.Hirshfeld`,
   `BornCharge` and `PolarizationGrids`; its source `Src/optical.F`,
   `Src/partial_charges.F90`, `Src/grdsam.F`, `Src/siesta_analysis.F90`,

@@ -283,8 +283,9 @@ e2e files; support helpers duplicated.
 *Checked 2026-10-27*: **M1–M4 built** (2.42.0–2.44.1). **Left — M5, the
 contract closed**: `engines/vibration.md` § 5.11 folded into the chapter
 (it still stands as its own section and says *not yet built* of what is),
-R1 measured (`science/vibrational-optical-response.md`; it gates D-e's named
-set's share and D-h's six-run table, § 1ac), its two review rounds; and the
+its two review rounds; R1 withdrawn 2026-10-27 — the toy chain's run and
+the published work in the method's § 3.1, § 7, the science checks the
+user's, on Sol (the user, 2026-10-27: *"you can focus on workflow, let me submit scientific result and you can help me detect issues later"*); and the
 handover items still open — (a) and (g) the words § 5.11 keeps, (c)
 `continuation.py`, (f) `jobset/ready.py` asking `calculation == "transport"`,
 (k) the comment in `envs/recipes.py` (reworded 2.46.4, the user's word). After it:
@@ -318,7 +319,7 @@ review of what it touched, its tests green, then the next.
 | M2 | **prep and launch** | `spec_for(part=)` for the relax, force-constant and optical decks; the stage's phase folders with their run scripts; `relax`'s coordinates file; the count beside the wall; `vibration_stages` one stage on both engines and the `relax` stage's rules retired (`ladder`, `ready`'s *waits before it can be prepared*, `_vibration_stage_geometry`, `first_launch_takes`' branch, § 5.2a); the phased walk at launch; the calls a warm launch takes over through `materialize.HandOver`; `warm-files.toml` per phase; the monitor's `--member` flag and `notify` verb, the run script's monitor block rendered for a member, the N-hour clock from the run's start | **built 2.42.0** — the scratch H₂ (held and free) through `describe → prep → launch --mode direct`: `01_freq/{relax,fc}/` each with its deck, `coordinates.fdf` and run script; `run-0/relax`, `run-0/fc` seeded from its `.DM`; the index with both calls, its phases and the finish; `notified.json` start + finish; the result pair at the run's root; the CO₂ e2e (`tests/test_siesta_vibration_e2e.py`) through `describe → prep → launch`: the `relax` and `fc` calls, one mode's three optical calls, the index, the result, one `start` and one `finish`, the sweep — and the relaxation's, the monitor's and the inspector's e2e on the same run |
 | M3 | **the job's Python** | `plan`, `record`, `finish` in `spectra/siesta_vibration.py`, the optical calls' record composed there; `parse/engines/siesta_epsimg_reader.py` and its registered parser `siesta_epsimg.py`; `spectra/optical_data.py` (its `Var` table, `photon_energy_ev` in `ncdata.AXES`); the result's `phase_*` on SIESTA, `raman_route` `optical`, `raman_fd_step_ang`, `optical` (schema 13; the `.nc` @7); prep's count and sizes (§ 5.11 § 9) | **built 2.43.0** — the CO₂ e2e's index, result and data file agree, each frame's geometry the displacement rule's and its spectrum its call's `.EPSIMG` through the registry; the result's phases and route right; the data file reads through its reader and `xarray.load_dataset`; the warm-relaunch e2e (a copy stopped once an optical call started) takes `relax` and `fc` over and runs only the optical calls — it caught the optical record reading a result only a run computing its own force constants writes |
 | M4 | **the view, the export and the readers** *(designed 2026-10-26, § 5.11 § 10; M4-a–e decided)* | `spectra/raman.py` — `raman_view` (KK, the width composed, the laser), its ask's reader, the `raman.nc` variable table; `phase_ir` and `ir_route` `charges` written by the finish; the viewer's gates by route, `_ramanOf`, the *Laser wavelength* and *Electronic broadening* boxes, the Raman column and lane named by their quantity, the Export buttons; the load door's `raman` ask; `spectra/export.py`, `GET /api/spectra/export`, `jobset export` for a vibration (`--laser-nm`, `--broaden-ev`), the export's shape shared with transport's; `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`' sentence; the charge switch as items (L4); Task setup's card per phase | **built 2.44.0** — the KK and composition API tests; the CO₂ e2e's symmetry check (633 nm: 45.1 against 0.23 Å⁴/amu) and its export read back through the readers and `xarray`; the page's own e2e asking the laser and exporting in a browser; the viewer on the user's running server (Claude in Chrome) still to walk |
-| M5 | **the contract, closed** | § 5.11 becomes the rules of § 2.2, § 5.2a–§ 5.5, § 5.8, § 5.9 as built; `job-system.md` § 5.4's vibration rows; `project-layout.md` § 5 (the manifest regenerated); `job-contracts.md`'s rows; `web/results.md`; `web/spectra.md` § 3.2; `web-api.md`; the method doc's § 5 and § 7; the changelog; two review rounds | R1 measured on the toy junction through the built run (two `optical_mesh` values), its numbers in the method doc's § 3.1 |
+| M5 | **the contract, closed** | § 5.11 becomes the rules of § 2.2, § 5.2a–§ 5.5, § 5.8, § 5.9 as built; `job-system.md` § 5.4's vibration rows; `project-layout.md` § 5 (the manifest regenerated); `job-contracts.md`'s rows; `web/results.md`; `web/spectra.md` § 3.2; `web-api.md`; the method doc's § 5 and § 7; the changelog; two review rounds | the chapter states the run in phases as rules, nothing *designed* or *not yet built* of what is built; the method doc's § 3.1 and § 7 carry the published work and the toy chain's run (2026-10-27) |
 
 **Handover, M2 built (2026-10-26)** — what M3–M5 pick up: (a) a sweep's
 later stage taking the first stage's `relax` call over (§ 5.11 § 1, § 6) is
@@ -352,7 +353,9 @@ spin-polarized optical frame's Fermi level reads none (SIESTA prints
 `ef_up`/`ef_dn` with a fixed spin); (n) § 5.5 still describes the finish
 as a step after the force-constant run alone — M5 folds § 5.11 in.
 
-**Open after it**: the named set's share (D-e), designed after R1; the
+**Open after it**: the named set's share (D-e), designed from the method's
+§ 3.4 (the published counterpart: the polarizability projected on the
+molecule); the
 `electronic` kind (§ 5.10 ④) for the response along a mode, unchanged;
 **the measured intensity as an option** (the user, 2026-10-26: "add the
 Stokes shift factor as an option later") — the factors of the method's
@@ -558,7 +561,8 @@ rule, 2026-10-27 (`web/form-schema.md` § 1.3).
 review's choices built (2.37.0–2.45.0). **Left**: 3a — the water proof on
 both engines (CO₂ done); 3b — the Raman proof, unblocked now piece 5 is
 built; B — energies along a mode, waiting on the `electronic` kind; D-e's
-named set's share and D-h's six-run table, after R1 (§ 1ae M5); R-e's
+named set's share (the method's § 3.4) and D-h's six-run table, once an
+optical run's cost on a junction frame is measured (the user's, on Sol); R-e's
 transport half.
 
 *(The user, 2026-10-24: "(1) optical activity — is the vibration mode
@@ -590,7 +594,8 @@ chooses; no field applied, no other calculation:
   numbers reported, the whole cell's change and the named set's share
   (D-e below; the method's § 3.4, its cost § 5.1); the polarizability at
   the laser's frequency the person enters after the run, the static one
-  beside it (D-f). The measurement before it is built is R1 below.
+  beside it (D-f); beside a metal only the laser's is defined (the
+  method's § 3.1, 2026-10-27).
 - **The displacement**: § 1ac.2.
 
 ### 1ac.2 The maximum displacement — the reference at a temperature, and a driven mode *(the science: [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a, § 5)*
@@ -670,7 +675,7 @@ arguments")*:
 | # | what | the choice | state |
 |---|---|---|---|
 | D-g (R2a) | Raman's step | taken from the vibration result — the force-constant run's own nudge, the largest atom moved by it; nothing typed; stated beside the result | designed (the method's § 3.2) |
-| D-h (R2b) | Raman's light direction | z by default, another direction chosen before the run; the whole polarizability table (six optical runs a geometry, any direction after) decided once R1 measures the optical calculation's cost | designed (the method's § 3.2) |
+| D-h (R2b) | Raman's light direction | z by default, another direction chosen before the run; the whole polarizability table (six optical runs a geometry, any direction after) decided once an optical run's cost on a junction frame is measured — the user's, on Sol | designed (the method's § 3.2) |
 | D-i (R2c) | Raman's frame 0 | once for every mode: one Raman calculation takes the modes chosen and shares the undisplaced geometry, $1 + 2N$ runs | designed (the method's § 3.2, § 5.1) |
 | D-j (R3) | the reference displacement's temperature | its own box in the *Write frame set…* dialog, starting at the run's thermochemistry temperature | 2.37.0 |
 | D-k (R4) | the infrared's sets | a built-in *the free atoms* — everything the vibration moved — beside the structure's labels | 2.37.0 |
@@ -687,7 +692,7 @@ arguments")*:
 
 | # | decision | the choice |
 |---|---|---|
-| R1 | Raman's numbers, measured | through the built runs, on the toy junction: whether the whole cell's change, at a laser frequency and static, is stable against the optical calculation's k-point mesh and broadening; and what the optical calculation costs per geometry (the method's § 3.1, § 5.1) |
+| R1 | Raman's numbers, measured | **withdrawn 2026-10-27**: the toy chain's free atoms are links of its metal, so it measures the route's limit, not a junction's number (run and recorded, the method's § 7); the published work settles the static value beside a metal (§ 3.1); a junction's Raman and its optical cost are the user's to run on Sol |
 | R-a | how SIESTA's form asks for Raman — which modes is PySCF's selector, reused (`es_mode_selection`, its window and list) | **decided 2026-10-25, revised at 2.45.0**: *Compute Raman* and *Raman for* on both engines, PySCF's selector the orbital probe's alone ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1, R-a) |
 | R-e | a run of points' monitors report as one run — one `start`, one `finish`, the walk's; transport's points lose their per-point pair ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a) | taken with the build unless the user objects |
 | R-c | the run's resolution, `Optical.Broaden` — the presentation's width is the viewer's, applied after the run: Gaussians compose, **verified exact on H₂** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 12) | 0.002 Ry (recommended: 2.7 MB of `.EPSIMG` text a frame, 0.4 MB in the data file), revisited with R1 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 13) |
@@ -719,8 +724,8 @@ R5 and R6 above are the two decisions it raised, both built (D-l, D-n).
 
 **Verified 2026-10-25, a proof of concept on H₂ outside jobset** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 12): SIESTA reads a deck's coordinates from a file beside it; the phases chain by the density (the optical frame 0 converges in one SCF iteration from the force-constant run's `.DM`); the broadening composes exactly after the run.
 
-Then: R-a and R-c, then Raman built (piece 5, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11), R1
-measured through it, and the water comparison of 3a and 3b.
+Then: R-a and R-c, then Raman built (piece 5, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) —
+all built — and the water comparison of 3a and 3b, the user's to run on Sol.
 
 **References**: the method's own list
 ([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)),
@@ -752,7 +757,7 @@ is [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-con
 | # | what | where | why here |
 |---|---|---|---|
 | **1** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | **done 2.47.0** |
-| **2** | **§ 1ae M5 — the vibration contract closed**, with § 1ac's proofs: R1 measured, 3a water on both engines, 3b the Raman proof | § 1ae, § 1ac | what was built in 2.42–2.44 is checked against the science before more is built on it |
+| **2** | **§ 1ae M5 — the vibration contract closed**; § 1ac's proofs — 3a water on both engines, 3b the Raman proof — the user's to run on Sol, molbuilder checking the results with them (the user, 2026-10-27: *"you can focus on workflow, let me submit scientific result and you can help me detect issues later"*) | § 1ae, § 1ac | what was built in 2.42–2.44 is written as rules before more is built on it |
 | **3** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |
 | **4** | **N6 (b) — the engine's own memory analysis** for a stage's first run | § 1u | the user's feature, (a) built |
 | **5** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |
