@@ -455,12 +455,11 @@ said = ["prepared coarse again: launched -- its runs are kept", "mpi_np 4",
         "at its next launch: launched again, it continues from its own latest run"]
 
 [[case]]
-name = "...and refused when the decks it renders now compute something else -- naming what differs and the way back, writing nothing"
+name = "...and a change to what it computes is refused at Save -- naming the stage, what differs and the way back, nothing saved or written (task-setup.md 8; the user, 2026-10-27)"
 before = [["prep", "task", "--group", "1"]]
 launched = ["coarse"]
 changed = { overrides = { coarse = { mesh_cutoff = 400.0 } } }
-kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh"]
-refused = ["stage 'coarse' was launched, and its deck rendered now is not the calculation its runs ran", "MeshCutoff"]
+change_refused = ["`coarse` has run", "mesh_cutoff", "start group 1 (coarse) from the beginning"]
 
 [[case]]
 name = "...and its way back starts the group from the beginning: the folder saved as it stands, the state saved before its first launch restored by its id, its prep (the user, 2026-10-25)"
@@ -468,7 +467,7 @@ before = [["prep", "task", "--group", "1"]]
 first_launch_refused = true
 launched = ["coarse"]
 changed = { overrides = { coarse = { mesh_cutoff = 400.0 } } }
-refused = ["start group 1 (coarse) from the beginning", "molbuilder checkpoint save -p", "molbuilder jobset prep task --group 1"]
+change_refused = ["start group 1 (coarse) from the beginning", "molbuilder checkpoint save -p", "molbuilder jobset prep task --group 1"]
 restores_state = "before launch task group 1 (coarse)"
 
 [[case]]
@@ -489,22 +488,19 @@ regrouped = [1, 2]
 regroup_refused = ["`coarse` was launched in one job with `medium`, and group 1 now holds `coarse` without it", "put `medium` back beside `coarse` in one group"]
 
 [[case]]
-name = "...and a launched group whose member was taken out of the description is offered by no verb: status says its members changed, and its prep is refused in the rule's words (job-system.md, The task)"
+name = "...and a stage that has run is not taken out of the description: Save refuses it, naming the stage and the way back (task-setup.md 8, 9)"
 groups = [1, 1]
 stage_run = { medium = { restart = "clean" } }
 before = [["prep", "task", "--group", "1"]]
 launched = ["coarse", "medium"]
 removed = ["medium"]
-stage = "coarse"
-refused = ["`coarse` was launched in one job with `medium`, and group 1 now holds `coarse` without it"]
-status_says = ["launched, its members changed"]
+change_refused = ["`medium` has run", "taken out of the description", "start group 1 (coarse, medium) from the beginning"]
 
 [[case]]
-name = "...and `prep task` naming no group names none its prep would refuse: it says why that group is not offered"
+name = "...and `prep task` naming no group, on a calculation whose every group has run and is unchanged, offers none and says how to see where each stands"
 groups = [1, 1]
 stage_run = { medium = { restart = "clean" } }
 before = [["prep", "task", "--group", "1"]]
 launched = ["coarse", "medium"]
-removed = ["medium"]
 stage = ""
-refused = ["it offers no group", "group 1 is not offered: `coarse` was launched in one job with `medium`"]
+refused = ["it offers no group", "molbuilder jobset status"]

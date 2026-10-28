@@ -125,7 +125,7 @@ class Difference:
     said: str
 
 
-def _differences(was: Dict[str, Any], now: Dict[str, Any]
+def differences(was: Dict[str, Any], now: Dict[str, Any]
                  ) -> List[Difference]:
     """Each value that differs, ``name: was → now`` -- the settings by
     their item's name, the run card's by its block and field, the points
@@ -186,4 +186,4 @@ def changes(calc, stage: str) -> Tuple[bool, List[Difference]]:
     except ValueError as exc:
         return True, [Difference(SETTINGS,
                                  f"its template does not resolve now: {exc}")]
-    return True, _differences(was, now)
+    return True, differences(was, now)

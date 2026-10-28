@@ -381,7 +381,10 @@ def calls_made(calls: Path):
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `regrouped` -- each stage's group set
 # anew, one number a stage, through the same Save, and `regroup_refused` --
-# what Save's refusal of it says, the row ending there; `source_edited` --
+# what Save's refusal of it says, the row ending there; `change_refused` --
+# what Save's refusal of the row's `changed` or `removed` says, nothing
+# saved or written, the row ending there (`_saved_or_refused`);
+# `source_edited` --
 # `{atom, line}`: the calculation's structure file edited by hand after it was
 # described, its `atom`-th atom line replaced by `line`, its sidecar
 # untouched; `held_edited` -- its held atoms set anew after it was
@@ -544,12 +547,12 @@ def _road_probe_layer(case, said, target, began) -> None:
             f"record.detected_at is {stamp!r}, older than its probe ({began})"
 
 
-def ladder_edited(case, bundle) -> None:
+def ladder_edited(case, bundle) -> bool:
     """The stages a person removes (``removed``) or adds (``added`` --
     ``{name, at, overrides}``, ``at`` the place, the end when absent;
     ``overrides`` what the stage sets of its own, which the description then
     varies, `engines/stages.md` § 6.2), written through Task setup's Save as
-    the page writes them."""
+    the page writes them -- taken, or refused (:func:`_saved_or_refused`)."""
     import json
     task = json.loads((bundle / "task.json").read_text())
     request = read_request(bundle)
@@ -580,8 +583,46 @@ def ladder_edited(case, bundle) -> None:
                         if k != "group"},
                      "group": seen.index(groups[st["name"]]) + 1}
         for st in task["stages"]}
+    return _saved_or_refused(case, bundle, task, request)
+
+
+def _saved_or_refused(case, bundle, task, request) -> bool:
+    """Task setup's Save of ``task`` and ``request``: taken -- ``True`` --
+    or, the row's ``change_refused``, refused (`web/task-setup.md` § 8):
+    `409`, saying each of its words, the way back restoring the state the
+    row's ``restores_state`` names, and no state saved and no record
+    written -- ``False``, the row ending there."""
+    from molbuilder.checkpoint import Repo
+    records = ("task.json", "job-request.json")
+    was = {f: _as_written(bundle / f) for f in records}
+    states = len(Repo(str(bundle)).states())
     r = save_both(bundle, task, request)
-    assert r.status_code == 200, (r.get_json() or {}).get("error")
+    said = (r.get_json() or {}).get("error") or ""
+    if "change_refused" not in case:
+        assert r.status_code == 200, said
+        return True
+    assert r.status_code == 409, said
+    for words in case["change_refused"]:
+        assert words in said, said
+    if "restores_state" in case:
+        _restores_by_id(case, bundle, said)
+    assert {f: _as_written(bundle / f) for f in records} == was, \
+        "a refused Save wrote a record"
+    assert len(Repo(str(bundle)).states()) == states, \
+        "a refused Save saved a state"
+    return False
+
+
+def _restores_by_id(case, bundle, text) -> None:
+    """THE WAY BACK RESTORES THE STATE ITS NOTE NAMES, by its id: a
+    `checkpoint restore` line of ``text`` ends with the id of the state
+    whose note ends with the row's ``restores_state``."""
+    from molbuilder.checkpoint import Repo
+    sid = next(st.short for st in Repo(str(bundle)).states()
+               if st.note.endswith(case["restores_state"]))
+    assert any("molbuilder checkpoint restore" in ln
+               and ln.rstrip().endswith(sid)
+               for ln in text.splitlines()), text
 
 
 def _road_source_edited(edit, bundle) -> None:
@@ -648,13 +689,13 @@ def _road_launched(case, bundle) -> None:
                      command=["bash", names.stem + ".run.sh", "--run", "0"])
 
 
-def _road_changed(case, bundle) -> None:
+def _road_changed(case, bundle) -> bool:
     """The records changed through Task setup's Save before the row's prep
     -- ``changed``'s blocks of how it runs into the job request, and its
     ``overrides``, ``{stage: {name: value}}``, into the description, each
-    name joining `varies`."""
+    name joining `varies` -- taken, or refused (:func:`_saved_or_refused`)."""
     if "changed" not in case:
-        return
+        return True
     import json
     task = json.loads((bundle / "task.json").read_text())
     request = read_request(bundle)
@@ -666,8 +707,7 @@ def _road_changed(case, bundle) -> None:
                 task["varies"] = sorted(set(task["varies"]) | set(values))
         else:
             request[key] = value
-    r = save_both(bundle, task, request)
-    assert r.status_code == 200, (r.get_json() or {}).get("error")
+    return _saved_or_refused(case, bundle, task, request)
 
 
 def _road_saved(case, bundle) -> None:
@@ -1204,9 +1244,11 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                 and "the folder's state was saved first" in got.output), \
             _one_line(got)
     _road_launched(case, bundle)
-    _road_changed(case, bundle)
-    if "removed" in case or "added" in case:
-        ladder_edited(case, bundle)
+    if not _road_changed(case, bundle):
+        return
+    if ("removed" in case or "added" in case) and not ladder_edited(
+            case, bundle):
+        return
     if "source_edited" in case:
         _road_source_edited(case["source_edited"], bundle)
     if "held_edited" in case:
@@ -1234,13 +1276,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         for words in ([said] if isinstance(said, str) else said):
             assert words in r.output, _one_line(r)
         if "restores_state" in case:
-            # THE WAY BACK RESTORES THE STATE ITS NOTE NAMES, by its id.
-            from molbuilder.checkpoint import Repo
-            sid = next(st.short for st in Repo(str(bundle)).states()
-                       if st.note.endswith(case["restores_state"]))
-            assert any("molbuilder checkpoint restore" in ln
-                       and ln.rstrip().endswith(sid)
-                       for ln in r.output.splitlines()), _one_line(r)
+            _restores_by_id(case, bundle, r.output)
         _road_after_prep(case, bundle)
         _road_saved(case, bundle)
         return

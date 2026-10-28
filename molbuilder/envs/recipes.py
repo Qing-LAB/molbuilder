@@ -1470,8 +1470,10 @@ _SIESTA = Recipe(
     # presence at script-generation time so a missing GPU env is caught
     # before run time.
     # python: uniform across every env -- see `_PYTHON_SPEC` for the
-    # measurement, and for the wrapper's monitor, which is what needs one
-    # here.  It costs 9 packages and leaves the siesta build untouched.
+    # measurement.  A SIESTA job's own python runs the wrapper's monitor and
+    # a vibration's finish, which plans and records each call of its run in
+    # phases (`engines/vibration.md` § 5.11).  It costs 9 packages and
+    # leaves the siesta build untouched.
     conda_packages=(_PYTHON_SPEC, "siesta=5.4.2=mpi_openmpi_*", "numactl",
                     # git: uniform across every env -- see _HOST.
                     "git",

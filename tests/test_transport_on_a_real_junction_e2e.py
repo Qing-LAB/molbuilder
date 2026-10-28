@@ -605,23 +605,15 @@ def junction(tmp_path_factory):
                                       request_changed)
 
         def point_added(c):
-            # A VOLTAGE ADDED ON TASK SETUP -- its Save, the page's door --
-            # and the calculation's files around the prep that follows.
+            # A VOLTAGE ADDED ON TASK SETUP after the device ran -- its Save,
+            # the page's door -- and the calculation's files around it.
             from support.real_runs import _files as every_file
             from support.road import save_both
             t = json.loads((c.bundle / "task.json").read_text())
             t["bias"]["voltages_v"] = [*t["bias"]["voltages_v"], 0.4]
-            saved = save_both(c.bundle, t, read_request(c.bundle), client)
-            assert saved.status_code == 200, saved.get_json()
             c.files_before = every_file(c.bundle)
-            _typed(c, "prep device with a point added", "prep", "task",
-                   *group_words(c.bundle, "device"), "--target", "this")
+            c.saved = save_both(c.bundle, t, read_request(c.bundle), client)
             c.files_after = every_file(c.bundle)
-            # ...and what status and a launch read of the device then.
-            _typed(c, "status after a point added", "status")
-            _typed(c, "launch device dry after a point added", "launch",
-                   "task", "--stage", "device", "--mode", "direct",
-                   "--dry-run", "--yes")
         run.point_added = copy_of(run, "point-added", point_added)
 
         # A TRANSMISSION STOPPED IN ITS LOOP (`model/parse.md` § 5d.5;
@@ -1458,64 +1450,29 @@ def test_a_launched_rung_of_points_is_prepared_again_for_its_job_request(
         c.said["status device"].output)
 
 
-def test_a_point_added_to_a_launched_rung_is_refused(junction):
-    """`execution/job-request.md` § 5: a launched stage's decks are the
-    calculation its runs ran, and a voltage added to a launched device is
-    another -- refused, naming what was added and the way back, nothing
-    written.  The silent failure: the new point's deck, with no copy to be
-    compared with, prepared as though nothing had changed.
-
-    MUTATION THIS MUST FAIL AGAINST: the points of a launched rung not
-    asked against the ones its runs ran."""
-    said = junction.point_added.said["prep device with a point added"]
-    assert said.exit_code != 0, said.output
-    assert "its points now are not the ones its runs ran" in said.output, \
-        said.output
-    assert "added: v0.4" in said.output, said.output
-    # THE WAY BACK, whole: the group started from the beginning -- the
-    # folder saved, the state before its first launch restored, its prep.
+def test_a_voltage_added_after_the_device_ran_is_not_saved(junction):
+    """`web/task-setup.md` § 8 (the user, 2026-10-27: "if something is run,
+    then save will simply refuse to save ... you have to return to a
+    checkpoint to reprep"): a voltage added on Task setup after the device
+    ran is refused by Save -- `409`, naming the stage and its points, and
+    the way back, the state before its group's first launch -- and nothing
+    is saved or written.  More voltages are a new calculation that reuses
+    this one (`engines/transport.md` § 2a.16).  The silent failure: a
+    finished run's description changed under it, read by every verb as a
+    calculation the run never computed."""
+    c = junction.point_added
+    said = c.saved.get_json()
+    assert c.saved.status_code == 409, said
+    error = said["error"]
+    assert "device" in error and "0.4 V" in error, error
     for line in ("molbuilder checkpoint save -p",
                  "molbuilder checkpoint restore -p",
                  "molbuilder jobset prep task --group"):
-        assert line in said.output, said.output
-    # NOTHING WRITTEN below the stage: no point's folder, no deck, as the
-    # calculation's files read before and after the prep.
-    from support.real_runs import stage_status
-    c = junction.point_added
-    under = stage_status(c.bundle, "device").dir
-
-    def of_the_stage(files):
-        return {k: v for k, v in files.items() if Path(k).parts[0] == under}
-    assert of_the_stage(c.files_after) == of_the_stage(c.files_before), (
+        assert line in error, error
+    # NOTHING SAVED, NOTHING WRITTEN: every file of the calculation, its
+    # history among them, as before the Save.
+    assert c.files_after == c.files_before, (
         sorted(set(c.files_after) ^ set(c.files_before)))
-
-
-def test_a_point_added_after_launch_is_not_a_point_of_its_run(junction):
-    """`job-system.md`, *Changed since prepared*; `engines/transport.md`
-    § 2a.11, *One door for each place*: a voltage added on Task setup after
-    the device ran is not a point of its run -- `status` reads the finished
-    run finished, and a launch plans only the points prep wrote.  THE
-    SILENT FAILURE (the 2.40 review's WF3): `status` called the finished
-    device failed (*0.4 V: not opened*), and a dry-run launch planned a
-    point no prep ever wrote."""
-    from support.real_runs import stage_status
-    c = junction.point_added
-    status = c.said["status after a point added"].output
-    dry = c.said["launch device dry after a point added"].output
-    # EACH RUN OF POINTS AS THE STATUS DOOR READS IT: finished, its points
-    # the two its prep wrote.
-    for stage in ("device", "transmission"):
-        st = stage_status(c.bundle, stage)
-        assert st.state == "finished", (stage, st.state, st.detail)
-        assert sorted(pt["folder"].rsplit("/", 1)[-1] for pt in st.points) \
-            == ["v0", "v0.2"], (stage, st.points)
-    assert not any("device" in ln and "failed" in ln
-                   for ln in status.splitlines()), status
-    # ...THE CHANGE SAID, each value that differs (*Changed since prepared*).
-    assert any("changed since prepared" in ln and "0.4 V" in ln
-               for ln in status.splitlines()), status
-    # A LAUNCH PLANS ONLY THE POINTS PREP WROTE.
-    assert "0.4 V" not in dry and "v0.4" not in dry, dry
 
 
 @pytest.mark.parametrize("row", _ANOTHER_INPUT, ids=lambda r: r["name"])

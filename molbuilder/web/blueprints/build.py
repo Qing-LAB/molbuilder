@@ -1623,9 +1623,8 @@ def api_task_setup_save():
     # A LAUNCHED GROUP'S MEMBERS ARE FIXED (`web/task-setup.md` § 5): a
     # stage put into one, or a member launched with it given another group,
     # is refused in the one rule's words (`ready.launched_without`,
-    # `ready.joined_launched`).  A member taken out of the description is
-    # not Save's to refuse -- the group is then *launched, its members
-    # changed*, which every verb declines (`job-system.md`, *The task*).
+    # `ready.joined_launched`).  A stage that has run taken out of the
+    # description is refused below, with every change to what it computes.
     if prior_calc is not None and prior_calc.jobset is not None:
         import dataclasses as _dc
         from molbuilder.jobset.ready import joined_launched, launched_without
@@ -1666,6 +1665,24 @@ def api_task_setup_save():
                                 "error", no.message,
                                 where=f"task.{no.where}" if no.where
                                 else "")])}), 400
+
+    # WHAT A STAGE THAT HAS RUN COMPUTES IS NOT CHANGED (`web/task-setup.md`
+    # § 8; the user, 2026-10-27): its settings, its points, or the stage
+    # taken out, each read from the folder's records before and after --
+    # refused with the way back, the state before its group's first launch;
+    # its run card alone may change (`execution/job-request.md` § 5).
+    if prior_calc is not None:
+        import dataclasses as _dc
+        from molbuilder.jobset.ready import changed_once_run
+        from molbuilder.runrecord import LaunchRecordError
+        try:
+            no_run = changed_once_run(
+                prior_calc, _dc.replace(prior_calc, task=task,
+                                        request=job_req))
+        except (LaunchRecordError, ValueError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        if no_run is not None:
+            return jsonify({"ok": False, "error": no_run}), 409
 
     # NOTHING TO SAVE (`task-setup.md` § 8; the user, 2026-10-23): the
     # records sent, each read by its reader, are the files' own read the

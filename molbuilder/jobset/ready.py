@@ -407,6 +407,44 @@ def joined_launched(calc, number: int, launched: str,
             + redo_launched(launched, calc=calc))
 
 
+def changed_once_run(before, after) -> Optional[str]:
+    """Why Task setup's Save does not write ``after``'s records over
+    ``before``'s -- a stage that has run (launched, or copied in from a
+    finished calculation, `materialize.ever_launched`) computes something
+    else in them, or is taken out -- or ``None`` (`web/task-setup.md` § 8;
+    the user, 2026-10-27: "if something is run, then save will simply
+    refuse to save").  What it computes is its settings and its points
+    (`prepared_with.values_of`), read from each side's records; its run
+    card alone may change (`execution/job-request.md` § 5).  The way is the
+    state saved before its group's first launch (`commands.redo_launched`).
+    A launch record that does not read raises, as the one door does."""
+    from ..identity import stage_key
+    from .commands import redo_launched
+    from .materialize import ever_launched
+    from .prepared_with import RUN_CARD, differences, values_of
+    if before.jobset is None:
+        return None
+    kept = {stage_key(st.name) for st in after.task.stages}
+    for st in before.task.stages:
+        job = before.job(st.name)
+        if job is None or not ever_launched(before, job):
+            continue
+        if stage_key(st.name) not in kept:
+            what = "it is taken out of the description"
+        else:
+            what = "; ".join(
+                d.said for d in differences(values_of(before, st.name),
+                                            values_of(after, st.name))
+                if d.kind != RUN_CARD)
+            if not what:
+                continue
+        return (f"`{st.name}` has run, and what a stage that has run "
+                f"computes is not changed -- {what}.  Nothing was saved.  "
+                f"Make the change after going back to before it ran: "
+                + redo_launched(st.name, calc=before))
+    return None
+
+
 def why_group_fixed(calc, stage: str) -> str:
     """Why a launched stage's group is not changed where the groups are
     edited (`web/task-setup.md` § 5), and the restore that changes it."""

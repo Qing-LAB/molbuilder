@@ -1185,6 +1185,23 @@ the door takes no write that cannot say what it is writing over. The page's
 own edits are what it sends; another writer's stay in the file until the page
 has read them.
 
+**What a stage that has run computes is not changed by Save** *(the user,
+2026-10-27: "if something is run, then save will simply refuse to save … you
+have to return to a checkpoint to reprep if that's what is needed")*. Save
+refuses a description in which a stage that has run — launched, or copied in
+from a finished calculation this one reuses — computes something else: a
+setting, its points (a transport calculation's voltages), or the stage taken
+out, each read from the folder's records before and after the edit
+(`prepared_with.values_of`, `ready.changed_once_run`). It answers `409`,
+**no state saved and nothing written**, naming the stage and each value,
+`was → now`, and the way: go back to the state saved before its group's first
+launch, make the change there, and prepare it again (`commands.redo_launched`).
+Its run card alone may change — a stage that has run is prepared again for its
+job request, its runs kept ([`job-request.md`](?doc=execution/job-request.md)
+§ 5). More voltages for a finished transport calculation are a new
+calculation that reuses it ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.16).
+
 ---
 
 ## 9. The operations, and what each must not lose
@@ -1200,7 +1217,7 @@ do on every kind.
 | **add a parameter column** | adds it to `varies` | **seeds every stage with the template's current value**, so adding a column changes nothing on screen. It is a statement about *structure*, never about values |
 | **remove a column** | drops it from `varies` | **every stage's value for it goes** — the page edits `task.json`, not the template — and the page says so *before* the click, a second click removing it: it names each stage's value that goes, to set in the template if one is to stay, and says *nothing is lost* only where no stage states one |
 | **add a stage** | appends a row | **copies the previous stage's overrides.** A refinement starts from what came before; a stage that inherits nothing is a different calculation, not a next step |
-| **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files** — prepared, as a run or a benchmark — is removed by the Save that writes the description: its files stay untouched and its number stays taken ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) *(W38 F5)* |
+| **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files and has not run** — prepared, as a run or a benchmark — is removed by the Save that writes the description: its files stay untouched and its number stays taken; one that has run is not removed (§ 8) ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) *(W38 F5)* |
 | **no reorder** | — | a stage's number is assigned once and stages append ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2): its folder, its files and its runs carry it, so moving a stage would rename what it already wrote |
 | **edit a cell** | sets one stage's value | nothing else moves |
 | **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused. **And it is offered only where it CAN apply**: the menu holds a tier only when every field it carries may be a column of this folder's kind (`/api/task-setup/presets?calculation=`, the columns route's own membership rule), so an optimization's rows and a vibration ladder's rows carry `coarse / medium / tight` and a transport ladder's rows carry no menu at all — its rungs own none of those fields ([`engines/transport.md § 2a.7`](?doc=engines/transport.md): a rung carries its role's profile). *Until 2026-09-24 every transport rung offered the relaxation tiers (plan W31).* **And a preset fills only what the row's rung reads**: on a vibration ladder the `freq` row takes none of the relaxation tier's values, which the `relax` row alone reads (plan § 5w K4). |

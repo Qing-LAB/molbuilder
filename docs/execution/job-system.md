@@ -307,7 +307,10 @@ wrote (§ 6.0). The way on:
   description as it was; to compute it as described now, **start the group
   from the beginning**: save the folder as it stands, so its runs are kept
   in a saved state; go back to the state saved before the group's first
-  launch; prepare the group again. The three lines, printed whole, the
+  launch; prepare the group again. Task setup's Save does not write such a
+  change over a stage that has run — it refuses it with these lines
+  ([`web/task-setup.md`](?doc=web/task-setup.md) § 8), and the change is
+  made after the restore, before the prep. The three lines, printed whole, the
   state named by its id and the folder by its full path
   (`commands.redo_launched`):
 
