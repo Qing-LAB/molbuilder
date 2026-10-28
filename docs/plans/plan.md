@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.47.3.** Since the last handover (2026-10-20, kept
+**Where we are: 2.47.4.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -84,7 +84,8 @@ its unit — and a SIESTA vibration result citing the deck it was computed
 from (2.47.0); the data files' fresh-eyes review — two errors, every value's
 meaning said right, the deck cited whole with its pseudopotentials (2.47.1);
 a SIESTA vibration's contract written as rules, every page telling the one
-stage (2.47.2), and read against its code by two fresh reviewers (2.47.3).
+stage (2.47.2), and read against its code by two rounds of fresh reviewers
+(2.47.3, 2.47.4).
 
 **Last checked**: the run-script, launch, warm-file and deck tests on 2.47.3
 (101 passed; comments changed); the catalogue, bundle and launch tests on
@@ -290,9 +291,23 @@ closed**: `engines/vibration.md` § 5.11 written as rules (2.47.2) — it stays
 the run's own section, § 2.2, § 5.2a–§ 5.5, § 5.8 and § 5.9 pointing into it;
 nothing built is in the design's tense, and the sweep's take-over and a
 transport sweep's one start and finish are said not built where they are
-described; every page tells the one stage; review round 1 (2.47.3) — the
-chapter against the code, every other page against the chapter — each
-finding read again in the code and put right. **Left**: review round 2; R1 withdrawn 2026-10-27 — the toy chain's run and
+described; every page tells the one stage; two review rounds — the chapter
+against the code and every other page against the chapter (2.47.3), then the
+records, result and data files against the code and the pages against the
+page code (2.47.4) — each finding read again in the code and put right. **M5
+closed 2026-10-28.** **Left — four page errors round 2 measured, each against
+a rule already written** (next in the queue): (p1) Task setup's Shape card
+offers *flat* for a SIESTA vibration and Save takes it, which prep then
+refuses — `task.fixed_by_kind` and `prep.shape_fixed` fix only transport
+(`task-setup.md` § 4: a kind that fixes the shape shows it fixed); (p2) the
+Results ladder names every call's row of a run in phases by its run's name
+alone — `results/viewer.js` words a row from its voltage only, though
+`every_run` sends each call's phase and name (`vibration.md` § 5.11 § 7);
+(p3) the Run panel stays hidden on a run in phases' `run-<n>/`, which is served
+its state and no record, so no page names the call that is running (§ 7a);
+(p4) two doors find a stage's result file — the picker's `runs.openable`
+(`runfiles.find` and a parser) and `runs.on_label_at` (the export, the frame
+set). And § 5.10's banner still holds ② and ③, built. R1 withdrawn 2026-10-27 — the toy chain's run and
 the published work in the method's § 3.1, § 7, the science checks the
 user's, on Sol (the user, 2026-10-27: *"you can focus on workflow, let me submit scientific result and you can help me detect issues later"*); and the
 handover items still open — (a) and (g) the words § 5.11 keeps, (c)
@@ -766,7 +781,7 @@ is [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-con
 | # | what | where | why here |
 |---|---|---|---|
 | **1** | **The data files describe themselves** (#231) — the definitions in `model/datafiles.md` first, then the writers; § 1aj (2.46.0) was its first slice | `model/datafiles.md`, the writers | **done 2.47.0** |
-| **2** | **§ 1ae M5 — the vibration contract closed**; § 1ac's proofs — 3a water on both engines, 3b the Raman proof — the user's to run on Sol, molbuilder checking the results with them (the user, 2026-10-27: *"you can focus on workflow, let me submit scientific result and you can help me detect issues later"*) | § 1ae, § 1ac | what was built in 2.42–2.44 is written as rules before more is built on it |
+| **2** | **§ 1ae — the four page errors M5's review measured** (p1–p4; M5 itself closed 2026-10-28, 2.47.2–2.47.4); § 1ac's proofs — 3a water on both engines, 3b the Raman proof — the user's to run on Sol, molbuilder checking the results with them (the user, 2026-10-27: *"you can focus on workflow, let me submit scientific result and you can help me detect issues later"*) | § 1ae, § 1ac | what was built in 2.42–2.44 is written as rules before more is built on it |
 | **3** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** (`active_when` with *any value given*) | § 1ai | the last page keeping a lock of its own after 2.45.0 |
 | **4** | **N6 (b) — the engine's own memory analysis** for a stage's first run | § 1u | the user's feature, (a) built |
 | **5** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |

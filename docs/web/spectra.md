@@ -229,10 +229,12 @@ and it printed `P = 1 atm` over results no pressure entered.)* The phase
 indicator gained a **Relaxation** dot the same way (data-driven off
 `phase_relaxation`), and an **Infrared** dot off `phase_ir` (2026-09-28 — the
 flag existed and was waited on, and no dot showed it); it shows no dot for a
-phase the run did not ask for, by its own record on either engine —
-`not requested`: *Compute IR* or *Compute Raman* off, the probe at `skip`
-or on SIESTA — nor for one with no record (`""`, a file written before its
-flag); a v4 file simply shows it empty and hides the thermo tab.
+strength or the probe the run did not ask for, by its own record on either
+engine — `not requested`: *Compute IR* or *Compute Raman* off, the probe at
+`skip` or on SIESTA — nor for one with no record (`""`, a file written
+before its flag); the **Relaxation** dot shows always, *not requested* where
+the structure was stated relaxed; a v4 file simply shows it empty and hides
+the thermo tab.
 
 ### 3.2 The infrared of a set of atoms, on a SIESTA result *(built 2.36.0)*
 
@@ -922,11 +924,11 @@ reusable ES module**. Spectra is **partway there**:
 |---|---|---|
 | `static/spectra/viewer.js` | the standalone-tab controller | **yes** — a real ES module (it imports MolView) |
 | `lib/spectra/core.js` | the shared engine (chart, table, animation, API) | **no** — still a classic global-registered script (`window.molbuilder.spectraInspector`) |
-| `lib/inspectors/spectra.js` | the Results-tab presenter | **no** — classic; registers via `molbuilder.inspectors.register` |
+| `lib/inspectors/spectra.js` | the Results-tab presenter | **yes** — a native ES module (it imports VibrationView's `mount`) that registers through the global `molbuilder.inspectors.register` |
 
-So the engine and its Results-tab presenter still load as plain scripts and
-publish themselves on `window.molbuilder`, relying on the runtime registry to
-sequence them. Converting both to ES modules is a tracked follow-up: they convert
+So the engine still loads as a plain script and the presenter registers
+through `window.molbuilder`, relying on the runtime registry to sequence
+them. Converting both to ES modules alone is a tracked follow-up: they convert
 together with the **`inspectors` → `presenters` rename** — one pass (task #102)
 that does the file-viewer registry *and* the heavy engine cores it mounts (this
 `lib/spectra/core.js` among them), since converting them rewrites those files

@@ -40,7 +40,7 @@ flowchart LR
 | the folder is | the picker opens | shown by | its data |
 |---|---|---|---|
 | **one run** — an attempt directory, or one rung's files in a flat calculation | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`; a PySCF run's stdout no parser claims, so its progress log opens — `parse.md` § 5.5), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
-| **a run in phases' root** — a SIESTA vibration's `run-<n>/`, holding its calls' folders ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2) | the run's result, the spectrum its record step wrote at the root (`runs.on_label_at`, the one door a reader of a stage's result takes); its index and its notification record listed beside it as aspects, never opened first; each call's folder opens as one run | the spectra viewer | as one run's |
+| **a run in phases' root** — a SIESTA vibration's `run-<n>/`, holding its calls' folders ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2) | the run's result, the spectrum its record step wrote at the root, opened as a container's product (`runs.openable`); its index and its notification record listed beside it as aspects, never opened first; each call's folder opens as one run | the spectra viewer | as one run's |
 | **a calculation root** | a result file at the root if it holds one, **beside** the **ladder** — each rung's state and **every run of the calculation**, any of which is opened here when picked (§ 2.4) | the ladder card, and the picked run's presenter | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
 | **a transport calculation** | its **`task.json`** — the description is the report's handle, as a benchmark's `job-set.json` is (the registry's `transport-task` parser claims only a transport calculation's); `<label>.transport.json` is `summarize task`'s copy for the command line, opened as a file. A **transmission run's** result is this report at its point: its ladder row opens the report with that bias selected (§ 2.4), and so does the run's own folder — the run door answers it with the calculation's `task.json` and the point (§ 2) | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize task` wrote |
@@ -364,7 +364,9 @@ Two rules keep this from hiding anything:
 > [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) and its
 > `record` (§ 3a); per file, its `role`, `label`, `stage`, `parser` and `about` (§ 3b). What a
 > directory is decides what is asked of it, and that rule is the run door's,
-> not the route's: a container has no state and no record; a folder that does
+> not the route's: a container has no state and no record — but a run of
+points' folder, a SIESTA vibration's `run-<n>/`, which is served its run's
+state (`runs.points_root_state`); a folder that does
 > not say what it is holds no run of ours: listed, with nothing claimed and no
 > state asked. The picker is the route's browser consumer and decides nothing from a
 > filename; `presenters.md` § 2 is where that answer becomes each viewer's
@@ -1054,9 +1056,10 @@ asked-for phase complete* stood in for; both are gone, and a run that stops —
 a crash, a kill its monitor saw — stops the polling in the same step as a
 finish.
 
-**What a poll costs.** The run's state is asked whenever the file has
-nothing new — a load, and a poll that finds it unchanged; a poll that brings
-new content leaves it as it was, since the run was writing. Each output's
+**What a poll costs.** On the trajectory routes (`/api/watch/*`) the run's
+state is asked whenever the file has nothing new — a load, and a poll that
+finds it unchanged; a poll that brings new content leaves it as it was, since
+the run was writing. The spectra load asks it at every load and every poll. Each output's
 ending is read once per version of the file (`_run_ending.ending_of` keeps it
 by the file's size and modification time), so a quiet poll costs a look at
 the run's folder; and an output that states how it ended takes the ending

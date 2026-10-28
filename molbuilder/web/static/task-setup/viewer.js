@@ -2545,9 +2545,9 @@ async function loadPresets(engine) {
 function setRowValues(i, values, what) {
     if (!_task || !_task.stages || !_task.stages[i]) return;
     const v = variesOf(); if (!v) return;
-    // ONLY WHAT THIS RUNG READS (plan § 5w K4): a vibration's `freq` row
-    // takes no relaxation tolerance -- the description's check would refuse
-    // the value, and the finish would have judged with it.
+    // ONLY WHAT THIS RUNG READS (plan § 5w K4, `template.stage_role_rule`):
+    // a transport rung takes its role's values alone -- the description's
+    // check would refuse another's.
     const read = {};
     for (const key of Object.keys(values)) {
         if (readsHere(key, _task.stages[i].name)) read[key] = values[key];

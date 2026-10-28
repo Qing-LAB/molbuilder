@@ -41,7 +41,7 @@ from .structure import Structure
 #: to what a file says among it -- each version with its line in
 #: `docs/process/changelog.md`; the first with a release the user declares
 #: (`process/conventions.md` § 2, *Versioning*).
-__version__ = "2.47.3"
+__version__ = "2.47.4"
 
 #: THE BUILDERS ARE NOT RE-EXPORTED HERE.  Python loads this module before
 #: any module inside the package, so whatever it imports loads under every
