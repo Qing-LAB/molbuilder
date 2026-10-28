@@ -803,6 +803,75 @@ def test_an_edit_lays_down_a_point_so_retract_steps_back_one_edit():
     )
 
 
+def test_a_load_fits_the_camera_and_an_operation_keeps_it():
+    """§ 9.6: the camera is fitted on load and on Reset, and at no other
+    moment -- and the model is the one that knows which write is a load.
+
+    THE SILENT FAILURE: every write to the structure reaching the drawing as
+    "here is the data", so an operation on the Build tab threw away the
+    angle the user had turned to; nothing above the drawing keeps the angle
+    (§ 9.6), so it cannot be put back.  The other way round, a state put
+    back opens with the drawing at its defaults (§ 11.2), and kept under
+    the old camera it is drawn at a distance chosen for other settings.
+
+    A drawing that records what it is told is attached, and each road's
+    word is read: an install, a reopened page, an undo and a Retract are
+    loads; an operation is an edit.
+    """
+    out = _run(
+        """
+        const files = new Map();
+        const store = {
+            workspaceId: (tag) => "id-" + tag,
+            persist: (tag, bytes, identity) => {
+                files.set(identity.workspace_id + ":" + identity.state_index,
+                          JSON.parse(JSON.stringify(bytes)));
+                return true;
+            },
+            readState: async (identity) => {
+                const key = identity.workspace_id + ":" + identity.state_index;
+                return files.has(key) ? files.get(key) : null;
+            },
+            pruneStatesAbove: () => {},
+        };
+        const told = [];
+        const drawing = () => ({
+            setDataSource() {}, switchesChanged() {}, showFrame() {},
+            appendFrames() {}, forcesChanged() {}, cellChanged() {},
+            dataChanged(how) { told.push(how && how.edit ? "edit" : "load"); },
+        });
+        const tick = () => new Promise((r) => setTimeout(r, 0));
+
+        const one = createModel({ owner: "s", workspace: store });
+        one._attachRenderer(drawing());
+        await one.installMolecule({ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",
+                                    filename: "x.xyz" });
+        await tick();
+        const install = told.splice(0);
+        await one.applyOp("translate", { dx: 1 });
+        await tick();
+        const edit = told.splice(0);
+        await one.applyOp("translate", { dx: 1 });
+        await tick();
+        told.splice(0);
+        await one.undo();
+        const undo = told.splice(0);
+        await one.load(0);
+        const retract = told.splice(0);
+        await tick();
+
+        const two = createModel({ owner: "s", workspace: store });
+        two._attachRenderer(drawing());
+        await two.load(0);
+        const reopen = told.splice(0);
+        console.log(JSON.stringify({ install, edit, undo, retract, reopen }));
+        """
+    )
+    assert out == {"install": ["load"], "edit": ["edit"], "undo": ["load"],
+                   "retract": ["load"], "reopen": ["load"]}, (
+        f"the drawing was told the wrong kind of write: {out}")
+
+
 def test_an_atom_carries_a_label_once_however_often_it_is_applied():
     """§ 6.2: an atom's facts are "the labels it carries" — a set of names.
     Carrying the same name twice is not a state the model may hold.

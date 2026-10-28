@@ -205,6 +205,31 @@ class TestFilesList:
         assert entries["spectrum"]["kind"] == "directory"
         assert entries["spectrum"]["size"] is None
 
+    def test_list_marks_a_project_s_topic_folders(self, web, picker_root):
+        """The sidebar offering rename on a topic folder -- which orphans
+        every calculation under it -- or withholding it from an ordinary
+        folder that only shares a topic's name.
+
+        `job-contracts.md` § 2.5, `web-api.md` (`GET /api/files/list`): an
+        entry's `topic` is true for a project's topic folder alone -- not for
+        a folder at that level that is no topic (an older project's
+        `frequency/`), a file named like a topic, a folder deeper down named
+        like one, or a project.
+        """
+        proj = picker_root / "proj"
+        for d in ("spectrum", "frequency", "spectrum/transport"):
+            (proj / d).mkdir(parents=True)
+        (proj / "transport").write_text("a file\n")
+
+        def marks(path):
+            r = web.get(f"/api/files/list?path={path}")
+            return {e["name"]: e["topic"] for e in r.get_json()["entries"]}
+
+        assert marks(proj) == {"spectrum": True, "frequency": False,
+                               "transport": False}
+        assert marks(proj / "spectrum") == {"transport": False}
+        assert marks(picker_root)["proj"] is False
+
     def test_list_missing_path_400(self, web):
         """A `path`-less request answered with a 500, or with a listing of some
         default directory, instead of a named 400.
@@ -1030,24 +1055,27 @@ class TestProjectsCreate:
         # Response carries the subdir list verbatim for the UI.
         assert j["subdirs"] == list(CANONICAL_TOPICS)
 
-    def test_create_includes_structure_and_pseudopotential(
+    def test_a_project_s_topics_are_the_storage_the_kinds_and_user(
         self, web, picker_root,
     ):
-        """The two STORAGE topics dropping out of the canonical set -- which
-        the test above cannot catch, because it reads the same tuple it checks.
-        Without `structure/` there is nowhere for an uploaded geometry to land,
-        and without `pseudopotential/` the project-local `.psml` cache has no
-        home.
+        """A topic dropping out of a new project -- which the test above
+        cannot catch, because it reads the same tuple it checks: without
+        `structure/` an uploaded geometry has nowhere to land, without a
+        kind's topic its calculations have no folder -- or a folder for work
+        molbuilder has no kind for (`frequency/`, `scan/`).
 
-        `job-contracts.md` § 2.5 (nine topics: two storage, six run, one free-
-        form).
+        `job-contracts.md` § 2.5: the storage topics, each kind's topic in
+        the kind table's order, then `user`.
         """
-        # Both new storage-dir entries land alongside the run-topic
-        # dirs as part of the canonical skeleton.
-        r = web.post("/api/projects/create", json={"name": "with_storage"})
+        from molbuilder.kind_table import kind, kinds
+        r = web.post("/api/projects/create", json={"name": "by_kind"})
         assert r.status_code == 200
-        assert (picker_root / "with_storage" / "structure").is_dir()
-        assert (picker_root / "with_storage" / "pseudopotential").is_dir()
+        topics = ["structure", "pseudopotential",
+                  *dict.fromkeys(kind(k).topic for k in kinds()), "user"]
+        assert r.get_json()["subdirs"] == topics
+        made = picker_root / "by_kind"
+        assert sorted(p.name for p in made.iterdir() if p.is_dir()) \
+            == sorted(topics)
 
     def test_create_includes_user_freeform_topic(self, web, picker_root):
         """`user/` disappearing, or the depth rule tightening so nothing may be
@@ -2067,11 +2095,8 @@ class TestFilesDelete:
         form one. It is a canonical topic, and losing it takes the whole
         workspace with it.
 
-        `job-contracts.md` § 2.5 (nine topics, `user` among them; added
-        2026-05-16).
+        `job-contracts.md` § 2.5 (`user` is a topic).
         """
-        # ``user`` IS a canonical topic too (added 2026-05-16 for the
-        # free-form workspace).  Same protection applies.
         target = picker_root / "proj" / "user"
         target.mkdir(parents=True)
         r = self._delete(web, target)

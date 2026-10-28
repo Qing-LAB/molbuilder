@@ -1915,7 +1915,7 @@ def cmd_frameset_from_mode(run, mode, max_displacement, nodes, out):
 
     Example::
 
-        molbuilder frameset from-mode P/frequency/V/01_freq/run-0 \\
+        molbuilder frameset from-mode P/spectrum/V/01_freq/run-0 \\
             --mode 7 --max-displacement 0.05 --out P/structure/mode7.xyz
     """
     from .mode_frames import FrameSetError, frameset_from_mode

@@ -15,11 +15,12 @@
  *           atom count. Holds the rebuild window (§ 10.9), where nothing that
  *           arrives is dropped. Checks its own work (§ 10.10).
  * Called by: the model, and only the model.
- * Surface:  COMMANDS ONLY. "Here is the data", "here is the cell", "add these
+ * Surface:  COMMANDS. "Here is the data", "here is the cell", "add these
  *           frames", "the forces changed", "show this frame", "draw", "throw it
- *           away". Every one an instruction; none a question, "because the
- *           renderEngine is told what to draw and is never consulted about what
- *           the data is."
+ *           away". Every one an instruction; none a question about the data,
+ *           "because the renderEngine is told what to draw and is never
+ *           consulted about what the data is" -- the two askings of the window
+ *           (§ 9.7), the camera's pose and the picture, carried up verbatim.
  * NEVER (§ 7 level 5):
  *   - keep its own copy of the displayed frame;
  *   - answer a question about what the data is;
@@ -34,11 +35,12 @@
  *           group of changes so the screen updates once — and produce a picture
  *           of what is currently drawn, since only the bottom can do that
  *           (§ 11.4). Plus the two self-check questions of § 9.8, asked only by
- *           the maths half, only about the drawing itself.
+ *           the maths half, only about the drawing itself, and the window's
+ *           pose, carried up verbatim (§ 9.6).
  * NEVER (§ 7 level 6):
  *   - decide how much work a change needs — that is the maths half's call;
  *   - hold state;
- *   - answer anything upward.
+ *   - answer anything upward about the data.
  *
  * Data goes down. Nothing comes back up (§ 7.1). The per-frame result carries
  * CONTENT and never styling (§ 6.5) — a `color` or a `radius` on per-frame data
@@ -807,12 +809,13 @@ export function createRenderEngine(embed) {
         // because it refers to atoms or frames that no longer exist, and the
         // load supersedes the rebuild under way. It is the more authoritative
         // statement about what the structure is (§ 10.9).
-        dataChanged() {
+        dataChanged(how) {
             held = [];
-            // A new structure: the scene is worked out again (§ 10.3), and this
-            // is one of § 9.6's two moments, so the camera is fitted.
+            // A new structure: the scene is worked out again (§ 10.3).  A load
+            // is one of § 9.6's two moments, so the camera is fitted; an edit
+            // (`{edit: true}`) keeps it where the user put it.
             forgetScene();
-            return rebuildGuarded(true);
+            return rebuildGuarded(!(how && how.edit));
         },
 
         // A switch changed. The set of drawn atoms changed only if isolate is
@@ -879,11 +882,11 @@ export function createRenderEngine(embed) {
         // "Draw."
         render() { doOverlay(); },
 
-        /* "Point the camera at it again." An instruction like the rest, and the
-         * only one about the window rather than the data: § 9.6 says the camera
-         * is fitted to the structure on load AND ON RESET, and § 9.9 keeps it
-         * down in the seal where nothing above can read it. Nothing is derived
-         * and no frame moves. */
+        /* "Point the camera at it again." An instruction like the rest, and
+         * about the window rather than the data: § 9.6 says the camera is
+         * fitted to what is drawn on load AND ON RESET, and § 9.9 keeps it
+         * down in the seal, read up only as the pose the lane stores.
+         * Nothing is derived and no frame moves. */
         resetView() { camera(fitNow); },
 
         /* "Look along this axis."  The viewer's home view from now on: this

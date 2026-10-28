@@ -135,6 +135,9 @@ def _root_containing(candidate) -> "Optional[Tuple[Path, Path]]":
 def _is_canonical_topic_dir(resolved, rel_parts) -> bool:
     """Is this `projects/<project>/<topic>/` -- a canonical topic directory?
 
+    The listing marks its entries by it (``topic``), and rename and delete
+    refuse on it.
+
     THE CONDITION HAS ONE HOME; THE POLICY DOES NOT, AND THAT IS DELIBERATE.
     `rename` refuses outright ("use your shell if you really need to") while
     `delete` takes `force=true`, so the sidebar's topic-dir kebab can proceed
@@ -395,6 +398,15 @@ def api_files_list():
             "ok": False,
             "error": f"permission denied reading directory: {exc}",
         }), 403
+
+    # WHICH ENTRIES ARE TOPIC FOLDERS is said here, by the test rename and
+    # delete refuse on (`job-contracts.md` § 2.5): the sidebar offers a
+    # topic folder only its type-the-name delete, and keeps no list of its
+    # own.
+    rel = _rel_parts_inside_root(resolved)
+    for e in entries:
+        e["topic"] = rel is not None and _is_canonical_topic_dir(
+            resolved / e["name"], rel + (e["name"],))
 
     return jsonify({
         "ok":      True,

@@ -7,7 +7,8 @@ kind's name as a person reads it, its rungs' roles and what each computes --
 a kind with roles has a linked ladder, one without an independent one
 (`job-system.md` § 5.4) -- the results it gives, what its description
 carries beyond every kind's fields, the charge it fixes, why it takes no
-benchmark, and the tab that hands it over or where it describes itself;
+benchmark, the tab that hands it over or where it describes itself, and
+its topic -- the folder a new project lays down for it;
 and on each engine it runs on, the
 engine's own name for it, the shape it fixes and why, how its stages play
 its roles (its rungs, every one in order, where a stage's role is its
@@ -46,8 +47,8 @@ COMPUTES = ("scf", "product")
 #: extends.
 DESCRIPTION_FIELDS = ("swap_electrodes", "bias", "reuses")
 
-_KIND_KEYS = ("noun", "roles", "results", "description", "charge",
-              "no_benchmark", "handover", "on")
+_KIND_KEYS = ("noun", "topic", "roles", "results", "description",
+              "charge", "no_benchmark", "handover", "on")
 _PART_KEYS = ("words", "shape", "why", "stage_roles", "points", "rung",
               "inputs", "gather")
 
@@ -145,6 +146,9 @@ class CalculationKind:
     name: str
     #: Its name as a person reads it -- *transport calculation*.
     noun: str
+    #: The folder every new project lays down for its calculations --
+    #: a project's run topics are the kinds' (`job-contracts.md` § 2.5).
+    topic: str
     #: Its rungs' roles -- a kind with roles has a LINKED ladder, each
     #: stage building on what its kind says; one without, an INDEPENDENT
     #: one, each stage continuing from the one before (`job-system.md`
@@ -251,6 +255,9 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
                        f"states {', '.join(_KIND_KEYS)}")
     if not body.get("noun"):
         _refuse(where, "no noun -- its name as a person reads it")
+    if not (isinstance(body.get("topic"), str) and body["topic"]):
+        _refuse(where, "no topic -- the folder a new project lays down "
+                       "for it")
     for key in ("roles", "results"):
         if not isinstance(body.get(key, []), list) or not all(
                 isinstance(r, dict) for r in body.get(key, [])):
@@ -306,6 +313,7 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     names = tuple(r.name for r in roles)
     parts = {e: _part(name, e, b, names) for e, b in on.items()}
     return CalculationKind(name=name, noun=str(body["noun"]),
+                           topic=body["topic"],
                            roles=tuple(roles), results=tuple(results),
                            description=Description(
                                cites=desc.get("cites"),

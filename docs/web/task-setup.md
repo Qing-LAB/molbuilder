@@ -85,7 +85,7 @@ make or pick the one you want there first.
 **One rule about which folder: somewhere under a topic.** How deep, and how you
 group jobs below that, is yours — nest as many folders as suits the work. The
 projects root, a project, and a bare topic are not destinations
-([`job-contracts.md § 2.5`](?doc=execution/job-contracts.md) fixes the nine
+([`job-contracts.md § 2.5`](?doc=execution/job-contracts.md) names the
 topics).
 
 **Only `task.json` is read to decide what the folder is.** It names the

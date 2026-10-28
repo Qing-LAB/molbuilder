@@ -83,7 +83,7 @@ only in an editable view, because a control that would do nothing should not be
 offered (§ 9.4).
 
 **Moving around.** Drag to rotate, scroll to zoom, right-drag (or shift-drag) to
-pan. `⟲` re-centres and re-fits the camera. The View menu offers **Perspective**
+pan. `⟲` re-fits the camera on what is drawn (§ 9.6). The View menu offers **Perspective**
 (natural depth, the default) or **Orthographic** — pick orthographic when you are
 eyeballing bond lengths, because it removes the foreshortening that makes distant
 atoms look closer together.
@@ -115,7 +115,7 @@ outside the canvas, never on top of the molecule:
 
 | Button | What it does |
 |---|---|
-| `⟲` Reset view | re-fit the camera |
+| `⟲` Reset view | re-fit the camera on what is drawn |
 | `✚` Show axes | draw the x/y/z axis widget |
 | `#` Show atom labels | label every atom with its number |
 | `➤` Show force vectors | draw the per-atom force arrows |
@@ -2621,10 +2621,24 @@ no handle read. The window itself has one — a view of a 3D scene must have a
 point of view, and § 9.9 lists it among the things the sealed layer holds.
 What no layer above it does is *track* it: it is the one thing a user changes
 without telling MolView (a drag rotates it directly in the window), and no
-saved **state** ever carries it. On load, and on Reset, the camera is
-**fitted to the structure**, which is the only orientation guaranteed to show
-the molecule. A viewer can be told to **look along an axis** (the handle's
-`lookAlong`): from then on every fit — the load's, Reset's — looks along it.
+saved **state** ever carries it. On load — a structure installed, a page
+reopened, a saved state put back (a Retract, which opens fitted with the
+drawing at its defaults, § 11.2) — and on Reset, the camera is **fitted to
+what is drawn**:
+turned to look along whichever of the structure's own x, y and z its drawn
+atoms span least, then zoomed to show every atom. Looked at down its longest
+extent a molecule hides behind itself — H2 or CO2 lying along z, looked at
+along z, is one dot — and down its thinnest it shows the most of itself; a
+flat molecule is seen face on. A tie keeps z, the window's own view, then x.
+The turn is only ever to one of the structure's own axes, so *along z* on
+screen is z in the file. A fit sets the turn as well as the zoom, so Reset
+undoes a drag too. An empty window is framed the same way on the axis triad,
+looking along z (§ 6.7a). **An operation on the structure keeps the camera
+where it is** — an atom added, deleted or moved: the structure open is still
+the one the user turned to look at, and the angle they chose is theirs. A
+viewer can be
+told to **look along an axis** (the handle's `lookAlong`): from then on every
+fit — the load's, Reset's — looks along it.
 A transport report says `x`, because looked at down its own axis a junction
 is a square with the molecule hidden inside it (`engines/transport.md`
 § 2a.12). The pose the lane puts back on a matching reopen (below) still
@@ -2708,7 +2722,8 @@ Plus **two questions, asked only by the renderEngine, only about the drawing
 itself**: *is there a movie loaded at all?* and *how many frames does it have?*
 Both exist for one purpose — so the renderEngine can check whether its own last
 instruction actually landed (§ 10.10). Neither is reachable from outside, and
-neither answer ever reaches a user.
+neither answer ever reaches a user. Beside them, the two things of the window
+§ 9.7 names are carried up verbatim: the camera's pose and the picture.
 
 ### 9.9 The sealed layer — the only code that knows about 3Dmol
 
@@ -2722,9 +2737,13 @@ one.)
 movie loaded at all?* and *how many frames does it have?* Both are asked only by
 the layer immediately above, both exist so that layer can find out whether its
 own last instruction landed (§ 10.10), and neither answer ever reaches a user.
+Beside them it carries two things of the window out verbatim, each asked for by
+name (§ 9.7): the camera's pose, which § 9.6's lane stores, and the picture
+(§ 11.3).
 
 **Everything else, it refuses.** There is no way to read coordinates out, no way
-to ask which frame is showing, and no way to ask where the camera is pointing.
+to ask which frame is showing, and nothing but the pose report says where the
+camera is pointing.
 
 The line between the two is worth being exact about, because it is easy to read
 as a loophole and it is not one. *"Did what I told you to do land?"* is a check.
@@ -2735,10 +2754,10 @@ derived thing for the truth is asking the wrong copy, and it will be the wrong
 one the moment the two have drifted (§ 6.4). Asking for something it was given is
 pointless, because whoever gave it still knows.
 
-Which is why the camera used to be the awkward case: it was neither derived nor
-given — the user put it there by dragging — so it was the one fact only this
-layer knew. § 9.6 resolves that by not keeping it at all, rather than by opening
-a third kind of question.
+Which is why the camera is the awkward case: it is neither derived nor given —
+the user put it there by dragging — so it is the one fact only this layer knows.
+§ 9.6 keeps it nowhere above, and reads it out only as the pose its lane stores,
+put back only on the structure it belongs to.
 
 ### 9.9a The drawing surfaces — kept by the sealed layer, lent to a mount *(2026-10-15)*
 
@@ -2754,11 +2773,10 @@ Nothing else measures it — measured on 2026-10-15, a size given by hand at the
 take was read while the card was still being laid out, and the window kept it.
 
 **A surface taken is a new one.** Its ground and its projection are the
-mount's own drawing settings, given to every window at mount (§ 9.6). The
-camera is the one setting of a window nothing above gives again — a fit keeps
-whatever turn it finds — so the layer gives a taken surface the camera a new
-window opens with, and the first draw fits it or puts the lane's pose back, as
-on any new window (§ 9.6). Nothing of the last owner survives: its drawing
+mount's own drawing settings, given to every window at mount (§ 9.6). Its
+camera is set by its first draw, as every fit sets it — turned from the view
+a new window opens with, and framed — or put back from the lane's pose
+(§ 9.6). Nothing of the last owner survives: its drawing
 copy was cleared when the surface came back, and § 5.6 holds — two viewers
 open at once hold two surfaces, never one.
 
@@ -4877,11 +4895,12 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.5 — by atom number crosses the numbering boundary once | a typed range like `1-4, 6` selects the atoms a user would count off on screen, at any structure size, without drifting by one — and the shift happens at one point, not at each row |
 | § 9.5 — a label is a change to the truth | applying a label replaces that label's previous set of atoms, and in a read-only viewer it does nothing at all |
 | § 9.5 — one selection per owner | a read-only viewer's selection changes leave an editable viewer's selection untouched |
-| § 9.6 — the camera is not kept, saved or read back | nothing above the drawing reports where the camera is pointing, and a reload fits it to the structure rather than restoring an angle |
-| § 9.6 — the camera is fitted on load and on Reset, and at no other moment | isolating rebuilds the drawing and leaves the camera exactly where the user put it; since nothing above the drawing keeps the angle, a fit that should not have happened cannot be undone |
+| § 9.6 — the camera is not kept or saved | nothing above the drawing holds where the camera is pointing — the pose report reads it at a gesture's end, for the lane — and a reload without a matching pose fits it to the structure rather than restoring an angle |
+| § 9.6 — the fit looks along the axis the structure spans least | a chain lying along z draws as large as the same chain lying along x, and a flat square in the x–z plane as large as the same square in the x–y plane — each seen side on or face on, never end on as one dot or edge on as a line |
+| § 9.6 — the camera is fitted on load and on Reset, and at no other moment | isolating rebuilds the drawing and leaves the camera exactly where the user put it, and so does an operation on the structure, while an install, a reopened page and a Retract fit it; since nothing above the drawing keeps the angle, a fit that should not have happened cannot be undone |
 | § 9.7 — the renderEngine answers nothing | it offers no read of the data and no read of the displayed frame |
-| § 9.8 — the drawing commands answer nothing upward | they offer the renderEngine its two self-check questions and nothing else — no coordinates, no frame read-back |
-| § 9.9 — the sealed layer faces downward only | the only questions it answers are the two self-checks of § 10.10; coordinates, the shown frame and the camera cannot be read out of it |
+| § 9.8 — the drawing commands answer nothing upward | they offer the renderEngine its two self-check questions and the window's two reports, the pose and the picture, and nothing else — no coordinates, no frame read-back |
+| § 9.9 — the sealed layer faces downward only | the only questions it answers are the two self-checks of § 10.10, and the only things of the window it carries out are the pose report and the picture; coordinates and the shown frame cannot be read out of it, and moving the camera changes no answer but those two |
 | § 10.1 — one render place | no control produces a picture on the side; every interaction is a data or switch write followed by one render |
 | § 10.1 — a drawing setting derives nothing | changing style, radius, background or projection re-derives no frame and reloads no movie; the picture changes and the frames do not |
 | § 10.3 — the two steps, in that order | the isolate cut runs before the overlays, and the overlays are keyed to the atoms that survived it |

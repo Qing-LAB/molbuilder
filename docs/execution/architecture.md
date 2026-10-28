@@ -585,7 +585,10 @@ file and the key.
   calculation's one axis is its bias list;
 - which tab hands it over to Task setup (`web/tabs.py`'s key), or, with
   none, that it describes on its own tab, nothing awaiting (a transport
-  calculation).
+  calculation);
+- its topic — the folder every new project lays down for its calculations
+  (a vibration's, `spectrum/`): a project's run topics are the kinds'
+  ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5).
 
 **Its part on each engine it runs on** says what the pair decides:
 

@@ -590,7 +590,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 
 | Method · Path | Purpose |
 |---|---|
-| GET `/api/files/{roots,list,stat,read,read_range}` | Browse + read |
+| GET `/api/files/{roots,list,stat,read,read_range}` | Browse + read — a `list` entry is `{name, kind, size, mtime, topic}`, `topic` true for a project's topic folder ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5), which the sidebar offers only its type-the-name delete |
 | GET `/api/files/download` | Raw byte download (non-JSON) |
 | POST `/api/files/zip_prepare` · GET `/api/files/download_zip` | Take a folder to another machine without ssh ([`projects.md`](?doc=web/projects.md) § 4). The POST reads names and sizes, builds nothing, and answers `{token, name, files, bytes, size_words, skipped, excluded, left_out, rsync}`: `bytes` the archive's exact size and `size_words` it as a person reads it (`units.size_words`); `left_out` each thing left out with its files, bytes and `size_words` — the three storage subtrees (`.molbuilder_workspace`, `.git`, `.binsnapshots`) and an engine's scratch (`warmfiles.is_scratch`); `rsync` the line that copies the folder with the same exclusions. The GET streams that archive by **token** (single-use, non-JSON; a token unused for an hour is forgotten) as it reads the files — each stored, ZIP64, `Content-Length` exact — and writes no file; a file shorter than when it was measured ends the response. Engine restart files ride along |
 | POST `/api/files/{mkdir,upload,write,rename,move,copy}` · DELETE `/api/files/delete` | Mutations |

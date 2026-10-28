@@ -155,7 +155,6 @@ throughout this document; the full statements and their reasons are
 | thermochemistry | full RRHO (rigid-rotor harmonic-oscillator) for a free molecule; vibrational sums with atoms held | vibrational sums |
 | per-mode electronic structure | yes (§ 4.8) | no |
 | a gold electrode | must be faked as a finite cluster | its natural home — and the same pseudopotentials, orbitals and k-points as the transport step (§ 5.6) |
-| where a typical run lands | `spectrum/` | `frequency/` — a storage vocabulary, not an engine rule (§ 2.4) |
 
 Only *how the block is obtained* differs. Everything after it is one function,
 `spectra/normal_modes.py::vibrational_modes`, which both engines hand the same
@@ -205,15 +204,15 @@ flowchart LR
 The CLI walks the same road without the browser:
 
 ```bash
-molbuilder describe --structure P/structure/x.xyz --bundle P/frequency/F \
+molbuilder describe --structure P/structure/x.xyz --bundle P/spectrum/F \
     --engine pyscf|siesta --calculation vibration --name X --shape hierarchical
 # SIESTA: its ranks and the cores per rank
-molbuilder jobset prep task --bundle P/frequency/F --target this \
+molbuilder jobset prep task --bundle P/spectrum/F --target this \
     --np 2 --cpus-per-task 1
 # PySCF: its threads alone -- a rank count (--np) is refused
-molbuilder jobset prep task --bundle P/frequency/F --target this \
+molbuilder jobset prep task --bundle P/spectrum/F --target this \
     --cpus-per-task 2
-molbuilder jobset launch task --bundle P/frequency/F --mode direct --yes
+molbuilder jobset launch task --bundle P/spectrum/F --mode direct --yes
 ```
 
 `prep` states the launch shape — SIESTA's ranks and cores per rank, PySCF's
@@ -378,16 +377,16 @@ structure edited after it was described is refused at prep, so `relax` and
 `freq` hold the same atoms, their decks list them in one order, and `relax`'s
 density is always in `freq`'s order (*user, 2026-10-14*).
 
-### 2.4 Where results land — `frequency/` and `spectrum/`
+### 2.4 Where results land — `spectrum/`
 
-`frequency/` and `spectrum/` are two of the nine folder topics a person picks
-from ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5),
-split by *what is computed* — frequencies and thermochemistry against
-intensities — and nothing derives a topic from an engine: a PySCF run with both
-intensity flags off belongs in `frequency/` by that description. The table in
-§ 1.3 says where a typical run of each engine lands, not where a mechanism
-puts it. There is no `frequency` calculation kind; the kinds are
-`optimization`, `vibration` and `transport`.
+A vibration's topic is `spectrum/` — the kind table's `topic` for it, so
+every new project lays the folder down
+([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5) —
+whichever engine runs it and whichever results it asks: frequencies and
+thermochemistry alone land there as infrared and Raman do. A person may
+still put one under another topic; nothing moves or refuses a calculation by
+its folder. There is no `frequency` calculation kind and no `frequency/`
+topic.
 
 ---
 
@@ -3500,7 +3499,7 @@ Each names where it holds and what pins it.
 | I16 | **The derived per-mode values are written by one function, beside what they come from, on both engines, and checked on read**; the element shares at load, never in the file (§ 6.6) | `spectra/derived.py`, `SpectraResults` (the check), `_loaded` | `tests/spectra/test_activity.py`, `test_motion_share.py`; the end-to-end runs read them from each engine's file |
 | I17 | **Every catalogue citation resolves** in `science/references.bib`, and every key the prose cites is an entry | the catalogue-refs test | `tests/spectra/test_methods.py` |
 | I18 | **No second producer**: a deck is written by `prep` from a description, through `spec_for`; there is no engine verb and the tab renders nothing | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 1 | review |
-| I19 | **The topics `frequency/` and `spectrum/` are a storage vocabulary** the person picks; nothing derives a folder from an engine or a kind | `projects.py` | review |
+| I19 | **A vibration's topic is the kind table's** (`spectrum/`), as every run topic is its kind's; nothing places or refuses a calculation by its folder | `kind_table.toml`, `projects.py` | review |
 | I20 | **Nothing of molbuilder's is spliced into a deck**: what the PySCF script runs it imports from `mb_pyscf.pyz`, whose members load with molbuilder absent (since 2026-10-05; until then the rules were spliced as source, and a name the source read from its module -- the constant left behind on 2026-09-21 -- was undefined in the deck) | `runwrap.PYSCF_COMPANIONS` | `tests/test_pyscf_bundle_runs_alone.py` and the end-to-end runs |
 | I21 | **The SIESTA keyword set is re-verified on any SIESTA upgrade** against the manual-derived table, never `strings` | § 5.1 | review, on every upgrade |
 | I22 | **The job writes the result, on both engines**: a vibration's `launch` ends with `<label>.spectra.json` in the attempt — the PySCF deck writes it, and on SIESTA the finish the wrapper runs after the force-constant run (§ 5.5), whose failure is the job's. Nothing after `launch` derives a run's result: `summarize` only compares the results of a displacement sweep's stages (§ 5.9) | `runwrap` (the finish step), `DeckSpec.finish` → `Job.finish` | `tests/test_siesta_vibration_e2e.py` (the launch alone leaves the spectrum) |

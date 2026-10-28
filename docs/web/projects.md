@@ -116,11 +116,14 @@ button) listens to `onChange`.
 **Making and organizing files.** The sidebar drives the create/rename/move/copy/
 upload/delete operations against the server (`/api/files/*` and
 `/api/projects/create`). Folder names are checked by depth: a **new project**
-lays down `projects/<name>/` with a README and the nine standard topic folders
-(`structure`, `pseudopotential`, `optimization`, `frequency`, `spectrum`,
-`transport`, `single-point`, `scan`, and `user` — `user/` is the free-form
-escape hatch), and at that top topic level only those nine names are allowed.
-Deleting a project or a topic folder needs a type-the-name confirmation.
+lays down `projects/<name>/` with a README and its topic folders — the
+storage topics `structure` and `pseudopotential`, one for each calculation
+kind (`optimization`, `spectrum`, `transport`, from the kind table), and
+`user`, the free-form escape hatch ([`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 2.5) — and a new folder at that top topic level must take one of those
+names. The server marks which folders of a project are topics (a listing
+entry's `topic`); deleting a project or a topic folder needs a type-the-name
+confirmation, and a topic folder is not renamed from here.
 
 ## 3. Opening and saving a molecule — the one door
 

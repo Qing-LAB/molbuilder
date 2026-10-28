@@ -2019,7 +2019,7 @@ vocabulary names (`warmfiles.is_scratch`, S1).
 | Level | Named by | Written by | May contain |
 |---|---|---|---|
 | ① **project** | the user | nobody — it is a folder | topics, nothing else |
-| ② **topic** | a **fixed set of nine** (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
+| ② **topic** | the storage topics, each calculation kind's topic and `user` (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
 | ③ **calculation** | **the user** — whatever they type, `[A-Za-z0-9_-]+`. *(This row said "the run id" until 2026-08-16, contradicting § 1.1's own tree and `job-contracts.md` § 6.3, which is the cross-layer authority: the folder is not derived, and what makes it a calculation is the `task.json` inside it — `run-identity.md § 3.0`.)* | **the browser** (step 3), in one transaction | the template, `task.json`, the shared package, the history |
 | ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
 | ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable**; where its stage runs per point, the container of its points' runs (§ 1.4a) |
@@ -3149,7 +3149,7 @@ than no invariant, because it fails a directory that is working correctly.
 **Naming and identity**
 
 1. **Every path segment matches `[A-Za-z0-9_-]+`**, and a topic is one of the
-   nine (`job-contracts.md § 2.5`).
+   topics (`job-contracts.md § 2.5`).
 2. **A calculation directory is named by the user; `task.json` says which
    calculation it is** (`run-identity.md § 3.0`), and the **label** — not the
    id — is the `SystemLabel` in every stage deck inside it. *(Reversed: this

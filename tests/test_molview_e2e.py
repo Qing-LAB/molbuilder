@@ -665,9 +665,9 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
     installed.  Each step is waited out by the window's own cover, which a
     redraw raises and lowers (§ 10.9).
 
-    MUTATIONS THIS MUST FAIL AGAINST: a taken surface keeping the last
-    camera; a returned surface keeping its models, its shapes or its
-    labels; a surface kept at the last window's size."""
+    MUTATIONS THIS MUST FAIL AGAINST: a returned surface keeping its
+    models, its shapes or its labels; a surface kept at the last window's
+    size."""
     out = demo.evaluate(
         """async () => {
             const { mount } = await import("/static/lib/molview/index.js");
@@ -740,3 +740,87 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
     assert out["full"][0] == out["full"][1], (
         "the viewer on a kept surface drew its structure differently from a "
         "viewer on a new one -- the last viewer's camera or setting survived")
+
+
+def test_a_molecule_along_z_is_seen_side_on(demo):
+    """§ 9.6: the fit looks along the axis the drawn atoms span least.
+
+    THE SILENT FAILURE: the window's own camera looks down z, so a fit that
+    only zooms shows a molecule lying along z end on -- every atom behind
+    the first, one dot -- and nothing says anything is hidden.
+
+    Each row is a pair drawn one after the other, each fitted on its load,
+    that must cover the same share of the window, counted in painted
+    pixels: a chain of four hydrogens lying along z and along x -- both
+    seen side on -- and a square of four lying flat in the x-z plane and in
+    the x-y plane -- both seen face on.  A chain seen end on paints nothing
+    at all (measured), so a fit along the axis spanned MOST shows as the
+    chain along x painting nothing.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a fit that keeps the window's view
+    down z; a fit that looks along the axis spanned MOST; a wrong turn for
+    the view along y."""
+    out = demo.evaluate(
+        """async () => {
+            const { mount } = await import("/static/lib/molview/index.js");
+            const ws = """ + _MEMORY_WORKSPACE + """;
+            const chain = (k) => ({
+                elements: ["H", "H", "H", "H"],
+                positions: [0, 0.74, 2.0, 2.74].map((d) => {
+                    const p = [0, 0, 0]; p[k] = d; return p; }),
+                metadata: {} });
+            // A square in the plane of axes a and b.
+            const square = (a, b) => ({
+                elements: ["H", "H", "H", "H"],
+                positions: [[0, 0], [1.5, 0], [1.5, 1.5], [0, 1.5]].map((c) => {
+                    const p = [0, 0, 0]; p[a] = c[0]; p[b] = c[1]; return p; }),
+                metadata: {} });
+            const painted = (h) => {
+                const c = h.querySelector(".molviewer-window-canvas canvas");
+                const flat = document.createElement("canvas");
+                flat.width = c.width; flat.height = c.height;
+                const g = flat.getContext("2d");
+                g.drawImage(c, 0, 0);
+                const px = g.getImageData(0, 0, flat.width, flat.height).data;
+                let n = 0;
+                for (let i = 0; i < px.length; i += 4) {
+                    if (Math.abs(px[i] - px[0]) + Math.abs(px[i + 1] - px[1])
+                        + Math.abs(px[i + 2] - px[2]) > 24) n++;
+                }
+                return n;
+            };
+            const drawn = async (h) => {
+                await new Promise((r) => setTimeout(r, 0));
+                for (let i = 0; i < 250; i++) {
+                    const c = h.querySelector(".molviewer-window-busy");
+                    if (c && c.hidden) return;
+                    await new Promise((r) => setTimeout(r, 20));
+                }
+                throw new Error("the window's cover never came down");
+            };
+            const seen = async (structure) => {
+                const h = document.createElement("div");
+                h.style.width = "400px";
+                document.body.appendChild(h);
+                const v = await mount(h, ws, { owner: "seen", mode: "readonly" });
+                await v.data.installMolecule({ structure });
+                await drawn(h);
+                const n = painted(h);
+                v.dispose();
+                h.remove();
+                return n;
+            };
+            return {
+                "chain along z": await seen(chain(2)),
+                "chain along x": await seen(chain(0)),
+                "square in x-z": await seen(square(0, 2)),
+                "square in x-y": await seen(square(0, 1)),
+            };
+        }"""
+    )
+    for turned, plain in (("chain along z", "chain along x"),
+                          ("square in x-z", "square in x-y")):
+        assert out[plain] > 0, f"the {plain} drew nothing: {out}"
+        assert abs(out[turned] - out[plain]) <= 0.1 * out[plain], (
+            f"the {turned} covers {out[turned]} pixels, the {plain} "
+            f"{out[plain]} -- the fit did not turn to see it whole: {out}")

@@ -300,7 +300,7 @@ guess.*
 | # | Level | Example | Who names it | The rule, and where it lives |
 |--:|---|---|---|---|
 | ① | **project** | `BDT-Au` | **the user types it** | `[A-Za-z0-9_-]+` per segment — `job-contracts.md § 2.5` |
-| ② | **topic** | `optimization` | **the user picks** one of a fixed nine | `job-contracts.md § 2.5` |
+| ② | **topic** | `optimization` | **the user picks** one of the topics | `job-contracts.md § 2.5` |
 | ③ | **calculation** — `job-contracts.md § 2.5`'s innermost segment, renamed from `<structure>/` on 2026-08-11 | `bdt-relax` | **the user types it** *(decided 2026-08-07 — this row is what changed)* | `[A-Za-z0-9_-]+`. This is the level that holds `task.json`, and `task.json` is what makes it a calculation rather than a directory — `checkpointing.md` **L1**. Its *inside* is `project-layout.md § 1`: flat **or** hierarchical |
 | ④ | **stage** *(hierarchical only)* | `01_coarse` | **derived** — `<seq>_<name>`, `seq` assigned once by the produce that creates it | `project-layout.md § 4.1`. A flat calculation has no level ④ at all |
 | ⑤ | **attempt** *(hierarchical only)* | `run-0` | **derived** — a counter | `project-layout.md § 4.3`. Flat separates attempts by an output index instead, `-run0.out` |
@@ -314,7 +314,7 @@ about positions never reaching a **filename** is still in force.
 
 ```mermaid
 flowchart LR
-    P["① <b>project</b><br/>typed"] --> T["② <b>topic</b><br/>picked, one of nine"] --> F["③ <b>calculation</b><br/>typed<br/><i>bdt-relax</i>"] --> I["<b>id</b><br/>derived, stored in task.json"] --> L["<b>label</b> — its first half<br/>the stem of every file inside"]
+    P["① <b>project</b><br/>typed"] --> T["② <b>topic</b><br/>picked, one of the topics"] --> F["③ <b>calculation</b><br/>typed<br/><i>bdt-relax</i>"] --> I["<b>id</b><br/>derived, stored in task.json"] --> L["<b>label</b> — its first half<br/>the stem of every file inside"]
 ```
 
 > **Decided 2026-08-07 (user), reversing this section for level ③.** It used to
@@ -486,7 +486,7 @@ shapes:**
 **A "collision" is narrower than it sounds, and since 2026-08-08 molbuilder does
 not go looking for one.** Two calculations only interfere when they occupy the
 **same directory** — not when they merely derive the same id. The same id under
-`optimization/` and under `frequency/` is fine, and so is the same id in
+`optimization/` and under `spectrum/` is fine, and so is the same id in
 `bdt-relax-pbe/` and `bdt-relax-blyp/`: in both cases the warm files never meet.
 
 > **molbuilder does not compare one calculation's folder against another's.**

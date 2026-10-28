@@ -717,14 +717,22 @@ def test_the_camera_is_fitted_on_load_and_on_reset_and_at_no_other_moment():
         const onOverlayAndSwap = fits();
 
         globalThis.__embedCalls = [];
+        await engine.dataChanged({ edit: true });   // an edit -- a rebuild
+        const onEdit = fits();
+
+        globalThis.__embedCalls = [];
         engine.resetView();                         // the other sanctioned moment
         const onReset = fits();
 
         console.log(JSON.stringify({
-            onLoad, onIsolate, offIsolate, onOverlayAndSwap, onReset }));
+            onLoad, onIsolate, offIsolate, onOverlayAndSwap, onEdit, onReset }));
         """
     )
     assert out["onLoad"] == 1, "a load must fit the camera on the structure"
+    assert out["onEdit"] == 0, (
+        "an edit re-fitted the camera, so the angle the user turned to was "
+        "thrown away by a change to the structure they were looking at"
+    )
     assert out["onReset"] == 1, "Reset must re-fit the camera"
     assert out["onIsolate"] == 0 and out["offIsolate"] == 0, (
         "isolating re-fitted the camera, so the angle the user set was thrown "

@@ -1,24 +1,22 @@
-"""Project directory layout: ``projects/<project>/<topic>/<structure>/``.
+"""Project directory layout: ``projects/<project>/<topic>/<calculation>/``.
 
-The hierarchy organises work scientifically; the innermost
-``structure`` directory is a **job-layout-v1** directory (one job per
-directory, all files at the same level — see
-``docs/execution/job-contracts.md``).  No subdirectories inside it; tools
-like SIESTA write their output files at the cwd level and reference
-them by basename.
+The hierarchy organises work scientifically; what is inside a calculation
+is ``execution/project-layout.md`` § 1's, flat or hierarchical
+(``docs/execution/job-contracts.md`` § 2.5).
 
 Categories of work in this module:
 
   * **Name validation** — enforce ``[A-Za-z0-9_-]+`` so SIESTA's
     basename-discipline isn't broken by stray dots or spaces.
-  * **Topic vocabulary** — the six canonical topics
-    (:data:`CANONICAL_TOPICS`).  Hard-coded; ad-hoc topic names
-    aren't accepted.  If a workflow needs a label outside this set,
-    pick the closest one or open an issue.
+  * **Topic vocabulary** — the canonical topics
+    (:data:`CANONICAL_TOPICS`): the storage topics and ``user``, and each
+    calculation kind's topic from the kind table.  Ad-hoc topic names
+    aren't accepted.
   * **Path resolution** — :func:`project_dir` / :func:`topic_dir` /
     :func:`structure_dir`.  Pure functions; no I/O.
-  * **Directory creation** — :func:`ensure_structure_dir` is the
-    only function here that touches the filesystem to *write*.
+  * **Directory creation** — :func:`ensure_structure_dir` and the
+    project skeleton (:func:`create_project_skeleton`) are the functions
+    here that write.
   * **Discovery** — :func:`list_projects` / :func:`list_topics` /
     :func:`list_structures`; read-only.
 
@@ -36,45 +34,24 @@ import re
 from pathlib import Path
 from typing import List, Mapping, NamedTuple, Optional, Tuple
 
+from . import kind_table
+
 _log = logging.getLogger(__name__)
 
 
 PROJECTS_ROOT_NAME = "projects"
 
-# Canonical direct children of ``projects/<project>/``.  Three flavours
-# of subdir live at this level:
-#
-#   * **Run-topic dirs** (run-job parents).  Each ``<topic>/<structure>/``
-#     is one flat job-layout-v1 run directory.  Six canonical run-topics
-#     -- the "kind of analysis" axis.
-#
-#   * **Storage dirs** (flat file dirs).  ``structure/`` holds raw
-#     structure files (``.xyz`` / ``.pdb`` / ``.cif``) the user
-#     curates per project.  ``pseudopotential/`` holds the SIESTA
-#     pseudos the project uses (project-local cache; the SIESTA
-#     generator can populate this on demand from pseudo-dojo).
-#
-#   * **Free-form workspace** (``user/``).  No molbuilder rules apply
-#     inside it; the user is the decider.  Use it for notes, scratch
-#     files, organising experiments that don't fit the other topics.
-#     ``validate_topic`` still gates *its name* at depth 1 (must be
-#     in this tuple), but everything below ``user/`` is free-form.
-#
-# The flavour split is in docs + comments only; ``validate_topic``
-# treats every entry in this tuple identically.  Ad-hoc names at depth
-# 1 are rejected to keep the workflow vocabulary consistent across
-# projects; if a real new analysis category emerges, extend this tuple.
+# Canonical direct children of ``projects/<project>/``
+# (`job-contracts.md` § 2.5): the storage topics -- the structures a
+# project curates and its SIESTA pseudopotentials -- a run topic for each
+# calculation kind, its ``topic`` in the kind table in the table's order,
+# then ``user``, the free-form workspace with no molbuilder rule inside it.
+# Ad-hoc names at depth 1 are rejected to keep the vocabulary one across
+# projects; a kind added to the table brings its topic.
 CANONICAL_TOPICS: Tuple[str, ...] = (
-    "structure",        # flat storage:  .xyz / .pdb / .cif
-    "pseudopotential",  # flat storage:  SIESTA pseudos (project-local cache)
-    "optimization",     # run topic
-    "frequency",        # run topic
-    "spectrum",         # run topic
-    "transport",        # run topic
-    "single-point",     # run topic
-    "scan",             # run topic
-    "user",             # free-form workspace; no rules inside it
-)
+    ("structure", "pseudopotential")
+    + tuple(kind_table.kind(k).topic for k in kind_table.kinds())
+    + ("user",))
 
 
 # Name-validation regex.  Same character set the job-layout v1 spec
@@ -112,8 +89,7 @@ def validate_topic(topic: str) -> str:
             # NO COUNT IN THE MESSAGE: the list is right there, and a number
             # beside it is a second thing to keep in step and buys nothing.
             f"topic {topic!r} is not one of the canonical topics: "
-            f"{', '.join(CANONICAL_TOPICS)}.  Pick the closest match "
-            f"or extend molbuilder.projects.CANONICAL_TOPICS."
+            f"{', '.join(CANONICAL_TOPICS)}.  Pick the closest match."
         )
     return topic
 
@@ -354,18 +330,17 @@ class ProjectExists(InvalidName):
     """A project with this name already exists.  Strict-create only."""
 
 
-# Per-canonical-topic README content.  Written into the bootstrap'd
-# project as `<project>/<topic>/README.md` so a user navigating the
-# tree (or a colleague handed a project tarball) sees what each subdir
-# is for without reading docs.  Kept short -- ~5 lines max; deep dives
-# live in docs/execution/job-contracts.md.
+# The README of each storage topic and of ``user``, written into a new
+# project as `<project>/<topic>/README.md` so a person navigating the tree
+# (or a colleague handed a project tarball) sees what each folder is for
+# without reading docs.  A run topic's is its kinds' (:func:`_topic_readme`).
 _TOPIC_READMES: Mapping[str, str] = {
     "structure": (
         "# structure/\n\n"
         "Curated input structure files for this project.\n\n"
         "Drop `.xyz`, `.pdb`, `.cif` files here.  Flat directory --\n"
         "no subdirs by convention.  Use these as starting points for\n"
-        "runs in `optimization/`, `single-point/`, etc.\n"
+        "the calculations in the other topics.\n"
     ),
     "pseudopotential": (
         "# pseudopotential/\n\n"
@@ -375,57 +350,29 @@ _TOPIC_READMES: Mapping[str, str] = {
         "it can populate this directory from a local pseudo-dojo install\n"
         "or download as needed (see `molbuilder.pseudos` -- planned).\n"
     ),
-    "optimization": (
-        "# optimization/\n\n"
-        "Geometry optimization runs.\n\n"
-        "Each subdirectory is one job-layout-v1 flat run dir, e.g.\n"
-        "`water_relax/water_relax.fdf` + `water_relax.molwatch.log` +\n"
-        "`water_relax_optimized.xyz`.\n"
-    ),
-    "frequency": (
-        "# frequency/\n\n"
-        "Vibrational frequency calculations (Hessian + harmonic\n"
-        "thermochemistry).  Used to confirm minima (no imaginary\n"
-        "modes) or characterise transition states, and to compute\n"
-        "ZPE / U / H / G / S at temperature.  Each subdirectory is\n"
-        "one job-layout-v1 flat run dir.\n"
-    ),
-    "spectrum": (
-        "# spectrum/\n\n"
-        "Vibrational spectroscopy runs (Raman, IR).  Each subdirectory\n"
-        "is one job-layout-v1 flat run dir, with `<job>.spectra.json`\n"
-        "carrying the typed SpectraResults (see `docs/web/spectra.md`).\n"
-    ),
-    "transport": (
-        "# transport/\n\n"
-        "Electron transport calculations (TBTrans + NEGF, when wired).\n"
-        "Each subdirectory is one job-layout-v1 flat run dir.\n"
-    ),
-    "single-point": (
-        "# single-point/\n\n"
-        "Single-point energy / property calculations at a fixed geometry\n"
-        "(no optimization).  Common uses: higher-level energy after a\n"
-        "cheaper relax (e.g. PBE -> B3LYP); HOMO/LUMO, dipole, NMR\n"
-        "shieldings, partial charges on a relaxed structure.  Each\n"
-        "subdirectory is one job-layout-v1 flat run dir.\n"
-    ),
-    "scan": (
-        "# scan/\n\n"
-        "Potential-energy-surface scans -- a series of single-points\n"
-        "along a coordinate (bond length, angle, dihedral).  Used for\n"
-        "conformational analysis (torsional barriers), reaction\n"
-        "coordinates, binding curves, PES sampling.\n"
-    ),
     "user": (
         "# user/\n\n"
         "Free-form workspace -- no molbuilder rules apply inside this\n"
         "directory.  Use it for notes, scratch files, organising\n"
         "experiments that don't fit the other canonical topics, or\n"
         "any non-canonical directory structure you need.  The sidebar's\n"
-        "`+ New subdir` button lets you create arbitrary names here at\n"
+        "*New folder* button lets you create arbitrary names here at\n"
         "any depth.\n"
     ),
 }
+
+
+def _topic_readme(topic: str) -> str:
+    """The README of ``topic``: a storage topic's or ``user``'s own, a run
+    topic's said from the kind whose topic it is."""
+    if topic in _TOPIC_READMES:
+        return _TOPIC_READMES[topic]
+    of = next(kind_table.kind(k) for k in kind_table.kinds()
+              if kind_table.kind(k).topic == topic)
+    return (f"# {topic}/\n\n"
+            f"Where this project keeps {of.with_article} -- a folder\n"
+            f"holding its description (`task.json`) and its runs, grouped\n"
+            f"in folders of your own as the work suits.\n")
 
 
 def _project_root_readme(project: str) -> str:
@@ -472,9 +419,7 @@ def populate_project_skeleton(proj: Path, *, project_name: str) -> None:
     for topic in CANONICAL_TOPICS:
         sub = proj / topic
         sub.mkdir(parents=False, exist_ok=False)
-        readme = _TOPIC_READMES.get(topic)
-        if readme:
-            (sub / "README.md").write_text(readme)
+        (sub / "README.md").write_text(_topic_readme(topic))
 
 
 def create_project_skeleton(project: str, *,
@@ -500,7 +445,7 @@ def create_project_skeleton(project: str, *,
     if proj.exists():
         raise ProjectExists(
             f"project {project!r} already exists at {proj!s}.  "
-            f"Pick a different name; use ``+ New subdir`` inside the "
+            f"Pick a different name; use *New folder* inside the "
             f"existing project to add to it."
         )
     proj.mkdir(parents=True, exist_ok=False)
@@ -548,8 +493,8 @@ def list_topics(project: str, *,
                  base: Optional[Path] = None) -> List[str]:
     """Topics present under ``project``, in canonical order.
 
-    Returns the canonical topics intersected with what's on disk -- so
-    the result is always a prefix of :data:`CANONICAL_TOPICS` ordering.
+    Returns the canonical topics intersected with what's on disk, in
+    :data:`CANONICAL_TOPICS` order.
     Non-canonical directories under the project root are ignored.
     """
     pd = project_dir(project, base=base)

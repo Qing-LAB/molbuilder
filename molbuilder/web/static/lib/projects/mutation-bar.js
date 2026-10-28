@@ -165,8 +165,9 @@ async function _doNewProject() {
   const name = await chooseName({
     title:        "New project",
     label:        "Project name",
-    hint:         "Creates projects/<name>/ with the canonical "
-                  + "subdirs (structure, optimization, spectrum, …).",
+    hint:         "Creates projects/<name>/ with its topic folders: "
+                  + "the structures, the pseudopotentials, one for each "
+                  + "kind of calculation, and user.",
     placeholder:  "letters / digits / _ / -",
     confirmLabel: "Create",
   });

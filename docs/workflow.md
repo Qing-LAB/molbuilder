@@ -426,7 +426,7 @@ one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 >
 > ```
 > molbuilder describe --structure P/structure/water.xyz \
->                        --bundle   P/frequency/water-vib \
+>                        --bundle   P/spectrum/water-vib \
 >                        --shape hierarchical --engine pyscf \
 >                        --calculation vibration
 > ```

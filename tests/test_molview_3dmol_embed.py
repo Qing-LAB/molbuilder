@@ -141,15 +141,20 @@ def test_no_door_hands_back_a_coordinate():
     )
 
 
-def test_the_camera_cannot_be_read_back():
-    """§ 9.6 / § 9.9: nothing reports where the camera is pointing.
+def test_moving_the_camera_changes_no_answer_but_the_window_reports():
+    """§ 9.6 / § 9.9: nothing but the pose report says where the camera is
+    pointing.
 
-    Moving the camera must change no answer the layer gives.
+    Moving the camera must change no answer the layer gives, but the two it
+    carries out of the window verbatim (§ 9.7): the pose report, which § 9.6's
+    lane stores, and the picture.
     """
     out = _run(
         """
+        const WINDOW_REPORTS = ["getCamera", "capture"];
         async function sweep(moveCamera) {
-            const names = Object.keys(fresh());
+            const names = Object.keys(fresh())
+                .filter(k => !WINDOW_REPORTS.includes(k));
             const answers = {};
             for (const k of names) {
                 const e = fresh();

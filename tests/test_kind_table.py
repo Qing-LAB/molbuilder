@@ -46,38 +46,38 @@ def test_every_part_an_engine_names_resolves(engine):
 # A record, broken one way each -- the refusal names the record and the key.
 _KIND_ROWS = [
     ("an unknown key",
-     '[k]\nnoun = "k"\ncolour = "red"\n[k.on.siesta]\n', "unknown key(s) colour"),
+     '[k]\nnoun = "k"\ntopic = "k"\ncolour = "red"\n[k.on.siesta]\n', "unknown key(s) colour"),
     ("no part on any engine",
-     '[k]\nnoun = "k"\n', "no part on any engine"),
+     '[k]\nnoun = "k"\ntopic = "k"\n', "no part on any engine"),
     ("a part on an engine the engine table does not hold",
-     '[k]\nnoun = "k"\n[k.on.orca]\n', "a part on orca"),
+     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.orca]\n', "a part on orca"),
     ("a fixed shape with no sentence",
-     '[k]\nnoun = "k"\n[k.on.siesta]\nshape = "hierarchical"\n',
+     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\nshape = "hierarchical"\n',
      "a fixed shape and its sentence"),
     ("a shape no layout has",
-     '[k]\nnoun = "k"\n[k.on.siesta]\nshape = "deep"\nwhy = "w"\n',
+     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\nshape = "deep"\nwhy = "w"\n',
      "shape 'deep' is not one of"),
     ("roles with no stage_roles on a part",
-     '[k]\nnoun = "k"\nroles = [{name = "a", computes = "scf"}]\n'
+     '[k]\nnoun = "k"\ntopic = "k"\nroles = [{name = "a", computes = "scf"}]\n'
      '[k.on.siesta]\n', "no stage_roles"),
     ("stage_roles naming a role the kind has not",
-     '[k]\nnoun = "k"\nroles = [{name = "a", computes = "scf"}]\n'
+     '[k]\nnoun = "k"\ntopic = "k"\nroles = [{name = "a", computes = "scf"}]\n'
      '[k.on.siesta]\nstage_roles = ["b"]\n', "stage_roles names ['b']"),
     ("a role computing what no role computes",
-     '[k]\nnoun = "k"\nroles = [{name = "a", computes = "dft"}]\n'
+     '[k]\nnoun = "k"\ntopic = "k"\nroles = [{name = "a", computes = "dft"}]\n'
      '[k.on.siesta]\nstage_roles = "own"\n', "computes one of"),
     ("a role named twice",
-     '[k]\nnoun = "k"\nroles = [{name = "a", computes = "scf"}, '
+     '[k]\nnoun = "k"\ntopic = "k"\nroles = [{name = "a", computes = "scf"}, '
      '{name = "a", computes = "scf"}]\n[k.on.siesta]\nstage_roles = "own"\n',
      "roles names a twice"),
     ("roles that are not tables",
-     '[k]\nnoun = "k"\nroles = [1]\n[k.on.siesta]\n',
+     '[k]\nnoun = "k"\ntopic = "k"\nroles = [1]\n[k.on.siesta]\n',
      "roles is a list of tables"),
     ("a rung's inputs without the gather that takes them",
-     '[k]\nnoun = "k"\n[k.on.siesta]\ninputs = "m:f"\n',
+     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\ninputs = "m:f"\n',
      "come together"),
     ("inputs on a kind without roles",
-     '[k]\nnoun = "k"\n[k.on.siesta]\n'
+     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\n'
      'inputs = "m:f"\ngather = "m:g"\n', "inputs on a kind without roles"),
 ]
 

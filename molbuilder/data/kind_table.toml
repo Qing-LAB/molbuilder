@@ -25,6 +25,10 @@
 # citation); `carries`, the fields only it may state -- `bias` stated
 # whenever carried, its voltages a list from 0.0.
 #
+# A kind's `topic`: the folder every new project lays down for its
+# calculations -- a project's run topics are the kinds'
+# (`execution/job-contracts.md` § 2.5).
+#
 # A kind's `handover`: the tab that hands it over to Task setup, by its key
 # in `web/tabs.py` -- with none, it describes on its own tab, nothing
 # awaiting.  Its `charge` {value, why}: the charge it fixes, where it fixes
@@ -44,6 +48,7 @@
 
 [optimization]
 noun = "optimization"
+topic = "optimization"
 handover = "structure-optimization"
 
 [optimization.on.siesta]
@@ -53,6 +58,7 @@ handover = "structure-optimization"
 
 [vibration]
 noun = "vibration"
+topic = "spectrum"
 handover = "spectrum-calculation"
 roles = [
     { name = "relaxation",      computes = "scf" },
@@ -87,6 +93,7 @@ stage_roles = ["force_constants"]
 
 [transport]
 noun = "transport calculation"
+topic = "transport"
 # No `handover`: its stages, shape and identity are fixed, so it describes
 # on its own tab (POST /api/transport/describe), nothing awaiting.
 no_benchmark = "its parameters come from its own template and each rung's run card, and its one axis is the bias list in task.json (engines/transport.md 2a.10)"

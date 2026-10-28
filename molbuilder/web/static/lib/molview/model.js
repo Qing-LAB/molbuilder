@@ -40,9 +40,14 @@ import { createHistory } from "./history.js";
  * `none` is not an omission. A label is a fact about an atom, not a thing on
  * screen (§ 6.6): the panel redraws because the structure changed, and the
  * drawing has nothing to do.
+ *
+ * `edit` is new data with the camera kept (§ 9.6): an operation changes the
+ * structure the user turned to look at, and only a load -- an install, a
+ * reopened page, a state put back (§ 11.2) -- fits the camera.
  */
 const REDRAW = {
     data:   (engine)       => engine.dataChanged(),
+    edit:   (engine)       => engine.dataChanged({ edit: true }),
     append: (engine, from) => engine.appendFrames(from),
     forces: (engine)       => engine.forcesChanged(),
     cell:   (engine)       => engine.cellChanged(),
@@ -670,6 +675,7 @@ export function createModel(opts) {
         apply: (s, c, countChanged, said, checkpoint) => {
             settle(() => put(s, c), {
                 resetFrame: true,
+                redraw: "edit",
                 // The structure and what is true of it land in ONE settle, the
                 // same way the cell door below does it. Set afterwards, the
                 // panel would draw against the new structure while the notice

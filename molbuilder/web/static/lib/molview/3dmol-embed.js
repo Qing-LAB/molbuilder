@@ -11,12 +11,14 @@
  *   hasMovie()         — is there a movie loaded at all?
  *   drawnFrameCount()  — how many frames does it have?
  * Both exist so the layer above can find out whether its own last instruction
- * landed (§ 10.10). Neither answer ever reaches a user.
+ * landed (§ 10.10). Neither answer ever reaches a user.  Beside them it carries
+ * two things of the window up verbatim (§ 9.7): the camera's pose
+ * (`getCamera`, which § 9.6's lane stores) and the picture (`capture`).
  *
  * NEVER (§ 7 level 7):
  *   - keep its own frame number, or be a source of truth about coordinates;
- *   - offer any way to read coordinates out, to ask which frame is showing, or
- *     to ask where the camera is pointing. "Everything else, it refuses."
+ *   - offer any way to read coordinates out, or to ask which frame is showing.
+ *     "Everything else, it refuses."
  *
  * The line is not a loophole: "did what I told you to do land?" is a check;
  * "what is the structure?" is a question about the truth, and the truth is not
@@ -179,10 +181,16 @@ function styleSpec(view) {
 const EMPTY_VIEW_ZOOM = 1.6;
 
 
-/* The camera a library window opens with: no turn, no shift -- what
- * `lookAlong` starts from, and what a surface taken off the shelf is given
+/* The camera a library window opens with: no turn, no shift -- what every
+ * fit turns from, so a fit inherits nothing of the window's last camera
  * (§ 9.9a). */
 const NEW_WINDOW_VIEW = [0, 0, 0, 0, 0, 0, 0, 1];
+
+/* The turn that looks along each axis.  The library's camera looks down the
+ * model's z; a quarter turn about the screen's vertical brings z across the
+ * screen (the view along x), about its horizontal brings z along the
+ * screen's vertical (along y). */
+const TURN = { x: [90, "y"], y: [90, "x"], z: null };
 
 
 /* ── The drawing surfaces (§ 9.9a) ───────────────────────────────────────────
@@ -195,8 +203,8 @@ const NEW_WINDOW_VIEW = [0, 0, 0, 0, 0, 0, 0, 1];
  * open on it at once.
  *
  * The shelf holds the surfaces not in use, every model, shape and label
- * removed; the camera, ground and projection a viewer left are given again
- * at the take.
+ * removed; the ground and projection a viewer left are given again at the
+ * take, and the camera by the first draw's fit (§ 9.9a).
  */
 const SHELF = [];
 
@@ -205,11 +213,6 @@ function takeSurface(hostEl, ground) {
     const kept = SHELF.pop();
     if (kept) {
         hostEl.appendChild(kept.el);
-        /* A SURFACE TAKEN IS A NEW ONE.  Its ground and projection are the
-         * mount's, given to every window at mount (§ 9.6); the camera is the
-         * one setting nothing above gives again -- a fit keeps the turn it
-         * finds -- so it is the new window's here. */
-        kept.viewer.setView(NEW_WINDOW_VIEW);
         /* Its size is the library's to follow, as for any window: it watches
          * the element it lives in. */
         return kept;
@@ -310,6 +313,21 @@ export function create(hostEl, opts) {
             const m = mainModel();
             return m ? (m.selectedAtoms({}) || []) : [];
         } catch (_) { return []; }
+    }
+
+    // Turn from the new window's camera to look along an axis, then zoom to
+    // the atoms: the one fit, whether the axis was asked or found (§ 9.6).
+    // With no atoms the triad is framed, at the empty view's distance
+    // (§ 6.7a), so empty looks the same every time.
+    function look(axis) {
+        try {
+            state.viewer.setView(NEW_WINDOW_VIEW);
+            const turn = TURN[axis];
+            if (turn) state.viewer.rotate(turn[0], turn[1]);
+            state.viewer.zoomTo();
+            if (!drawnAtoms().length) state.viewer.zoom(EMPTY_VIEW_ZOOM);
+        } catch (_) {}
+        paint();
     }
 
     function clear(list, kind) {
@@ -661,13 +679,11 @@ export function create(hostEl, opts) {
                  * throw the arrows away with the atoms. */
                 replaceOverlays();
                 redrawArrows();
-                /* Frame the triad rather than inheriting the last zoom, so
-                 * empty looks the same every time. `zoomTo` with nothing
-                 * loaded has no bounding box to find, so the distance is
-                 * set outright. */
-                try { state.viewer.zoomTo(); } catch (_) {}
-                try { state.viewer.zoom(EMPTY_VIEW_ZOOM); } catch (_) {}
-                paint();
+                /* Frame the triad rather than inheriting the last camera, so
+                 * empty looks the same every time: the fit, looking along z.
+                 * `zoomTo` with nothing loaded has no bounding box to find,
+                 * so the fit sets the distance outright. */
+                look("z");
                 return true;
             }
             const xyz = multiFrameXyz(elements, frames);
@@ -841,27 +857,33 @@ export function create(hostEl, opts) {
         // stores what was read at one instant, and no layer above keeps a
         // copy.  A reload without a matching context still fits it to the
         // structure rather than restoring an angle.
+        //
+        // THE FIT looks along the axis the drawn atoms span least (§ 9.6):
+        // down its longest a molecule hides behind itself -- H2 along z,
+        // looked at along z, is one dot.  A tie keeps z, the window's own
+        // view, then x.
         fitCamera() {
             if (state.disposed) return;
-            try { state.viewer.zoomTo(); } catch (_) {}
-            paint();
+            const lo = [Infinity, Infinity, Infinity];
+            const hi = [-Infinity, -Infinity, -Infinity];
+            for (const a of drawnAtoms()) {
+                const c = [a.x, a.y, a.z];
+                for (let k = 0; k < 3; k++) {
+                    if (c[k] < lo[k]) lo[k] = c[k];
+                    if (c[k] > hi[k]) hi[k] = c[k];
+                }
+            }
+            const span = { x: hi[0] - lo[0], y: hi[1] - lo[1], z: hi[2] - lo[2] };
+            let axis = "z";
+            for (const k of ["x", "y"]) if (span[k] < span[axis]) axis = k;
+            look(axis);
         },
 
-        // "Look along this axis, then fit."  The library's camera looks
-        // down the model's z by default; turning the model a quarter turn
-        // about the screen's vertical brings z across the screen (the view
-        // along x), about its horizontal brings z up it (along y); along z
-        // is the default.  Fitted afterwards like reset.
+        // "Look along this axis, then fit" -- the fit's turn, named.
         lookAlong(axis) {
             if (state.disposed) return;
-            const turn = { x: [90, "y"], y: [90, "x"], z: null }[axis];
-            if (turn === undefined) return;
-            try {
-                state.viewer.setView(NEW_WINDOW_VIEW);
-                if (turn) state.viewer.rotate(turn[0], turn[1]);
-                state.viewer.zoomTo();
-            } catch (_) {}
-            paint();
+            if (!Object.prototype.hasOwnProperty.call(TURN, axis)) return;
+            look(axis);
         },
 
         // "Report the pose" -- § 9.7's bounded asking of the WINDOW.  The

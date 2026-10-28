@@ -67,7 +67,7 @@ warm-file vocabulary (what carries a run into the next) is § 4.
 | If you need to know… | Read § |
 |---|---|
 | Where a job's files go and what they are named | **§ 2 — The run directory** |
-| The `project / topic / structure` folder tree and its fixed topic names | **§ 2.5** |
+| The `project / topic / calculation` folder tree and its topic names | **§ 2.5** |
 | The comment blocks molbuilder reserves inside a `.fdf` / `.py` / `.run.sh` | **§ 3 — The generated-script contract** |
 | What "warm restart", `--continue`, and `--cold` actually do | **§ 4 — Warm & cold restart** |
 | How a finished run flows into the next calculation | **it is CITED** ([`engines/transport.md`](?doc=engines/transport.md) § 3.1) — the handoff-bundle contract retired 2026-08-29 |
@@ -706,7 +706,7 @@ A calculation sits at the bottom of a three-level tree under the (git-ignored)
 ```
 projects/
 └── <project>/              e.g. "Au-thiol-junctions"
-    └── <topic>/            one of the fixed names below
+    └── <topic>/            one of the topic names below
         └── <calculation>/  ← what the user typed. Its INSIDE is
                               project-layout.md § 1 — flat or hierarchical
 ```
@@ -757,27 +757,32 @@ a directory inside it.
 > `projects.py` still spells the API `structure_dir` / `list_structures`; that is
 > a code follow-up, not a second meaning.
 
-Each path segment must match `[A-Za-z0-9_-]+`, and `<topic>` must be one of a
-**fixed set of nine** canonical topics (`molbuilder/projects.py::
-CANONICAL_TOPICS`). An open topic vocabulary is rejected on purpose: it would
-fragment the tree across users and break the "compare the same analysis
-across structures" intuition that motivated topic-first ordering.
+Each path segment must match `[A-Za-z0-9_-]+`, and `<topic>` must be one of
+the **canonical topics** (`molbuilder/projects.py::CANONICAL_TOPICS`): the two
+storage topics and the free-form `user`, which are this section's, and **one
+run topic for each calculation kind** — the kind's `topic` in the kind table
+([`architecture.md`](?doc=execution/architecture.md) § 3.3). So every kind
+molbuilder runs has its folder in every new project, a kind added to the table
+brings its own, and no topic names work molbuilder has no kind for. An open
+topic vocabulary is rejected on purpose: it would fragment the tree across
+users and break the "compare the same analysis across structures" intuition
+that motivated topic-first ordering.
 
-| Topic | Kind | Used for |
+| Topic | From | Used for |
 |---|---|---|
 | `structure` | storage | flat store of `.xyz` / `.pdb` / `.cif` inputs |
 | `pseudopotential` | storage | project-local cache of SIESTA `.psml` pseudos |
-| `optimization` | run | geometry relaxation |
-| `frequency` | run | Hessian / vibrational frequencies + rigid-rotor–harmonic-oscillator (RRHO) thermochemistry |
-| `spectrum` | run | Raman / IR / UV-Vis at an optimised geometry |
-| `transport` | run | non-equilibrium Green's function (NEGF) / TranSIESTA device calculations |
-| `single-point` | run | energy at a fixed geometry |
-| `scan` | run | potential-energy-surface scans |
+| `optimization` | the optimization kind | geometry relaxation |
+| `spectrum` | the vibration kind | vibrational modes and frequencies, thermochemistry, infrared and Raman |
+| `transport` | the transport kind | TranSIESTA junction calculations: the leads, the device and the transmission |
 | `user` | free-form | a workspace with no rules inside it |
 
-> **Drift corrected (2026-07-27):** the source doc said "six" (the run topics
-> only). The set is now **nine** — two storage topics (`structure`,
-> `pseudopotential`) and a free-form `user` workspace were added.
+The order is the storage topics, the kinds' in the kind table's order, then
+`user`. A run topic holds its kind's calculations by the person's choice:
+nothing puts a calculation there, and nothing refuses one under another topic.
+A folder at the topic level that is no topic — an older project's
+`frequency/` — is an ordinary folder: listed, renamed and deleted like any
+other; only a new one is refused a name outside the topics.
 
 #### 2.5a `psml_lib` is a path inside the projects tree
 
@@ -2652,7 +2657,7 @@ not spelled — value axes are what made refusal unactionable.)*
 | **label** — the stem of every emitted file | `[A-Za-z0-9_-]+`, single token | `run-identity.md § 3` — normalised **once**, refused rather than truncated |
 | **run id** — a record, never a filename | `<label>_<formula>`, same set | `run-identity.md §§ 2–3` |
 | **stage name** | `[A-Za-z0-9_]+` — **no hyphen** | `engines/stages.md § 2` |
-| **project-tree path segment** | `[A-Za-z0-9_-]+`, topic from the fixed nine | § 2.5 |
+| **project-tree path segment** | `[A-Za-z0-9_-]+`, a topic one of the topics | § 2.5 |
 | **basename the wrapper accepts** | `[A-Za-z0-9._-]+` — wider, because a `SystemLabel` may carry a dot; sanitising here also blocks shell injection | § 4.3 |
 
 #### `<label>` is what is in a filename; the id is not

@@ -168,7 +168,7 @@ def test_list_topics_returns_canonical_order(tmp_path):
     ensure_structure_dir("p", "transport", "s", base=tmp_path)
     ensure_structure_dir("p", "optimization", "s", base=tmp_path)
     ensure_structure_dir("p", "spectrum", "s", base=tmp_path)
-    # Canonical order is optimization, frequency, spectrum, transport, ...
+    # The kind table's order: optimization, spectrum, transport.
     assert list_topics("p", base=tmp_path) == [
         "optimization", "spectrum", "transport",
     ]
