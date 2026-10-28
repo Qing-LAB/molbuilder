@@ -320,8 +320,7 @@ refuses by name. *(Measured 2026-09-24: a transport folder's picker offered
 thirteen shared values, `mesh_cutoff` and `basis_size` among them.)* **A column
 a rung does not read (`stages`, by the rung's ROLE) shows on that rung's row as
 a disabled cell naming the rungs that read it**, never as an editor — a
-transmission window on the seed's row, a relaxation tolerance on a vibration's
-`freq` — and the picker names those rungs beside the item (*read by
+transmission window on the seed's row — and the picker names those rungs beside the item (*read by
 transmission*, 2026-10-11). The payload carries each item's roles and, beside the columns, how the
 kind names its rungs' roles (`roles`, `template.stage_role_rule`), so the table
 maps each row to its role — the name matched in any case, as `stage_role`

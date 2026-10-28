@@ -1226,8 +1226,9 @@ Walk through it with the *why* for each piece:
   are **copied** into each job's folder as real files (user, 2026-08-24): a run
   directory holds everything it needs, and a link holds nothing
   ([`project-layout.md § 1.0`](?doc=execution/project-layout.md)).
-- **`Job.finish`** names the bundle the wrapper runs after the engine when the
-  engine alone leaves no result — a SIESTA vibration's `mb_vibration.pyz`
+- **`Job.finish`** names the bundle the wrapper runs around the engine —
+  its plan step before it, its record step after it — when the engine alone
+  leaves no result — a SIESTA vibration's `mb_vibration.pyz`
   (`engines/vibration.md` § 5.11 § 3), beside each phase's deck — copied
   from the deck's spec; absent for every other job and for a
   benchmark trial.
@@ -2316,8 +2317,8 @@ starts from**:
 **What crosses between stages, when a deck is a reordered copy**
 *([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R3)*. A call that takes another's **geometry** — a SIESTA
 vibration's force-constant call taking its `relax` call's — is written by
-the run's plan step from that call's output through the run door
-(`runs.steps_of`), in the one deck order both calls share ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3) — never row by
+the run's plan step from that call's output through SIESTA's one reading
+pass (`siesta_reader`), in the one deck order both calls share ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3) — never row by
 row from one deck's order into another's. A **restart file** — the stage
 before's density, geometry or history, continued or gathered — crosses as it
 always has: every deck of one calculation is written from its one structure,
@@ -2352,7 +2353,7 @@ Nothing picks the source again later unless you ask at a launch (`--from`,
 `--gather`): a SIESTA vibration's result carries the relaxation its run
 made (`relaxation.record`,
 [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 8), which its finish and
-`summarize` read, and its first launch copies the files of that same run.
+`summarize` read.
 `STAGE-PLAN.md` says, under its table, what each stage's first launch will take
 — the line both prep doors print — while the table lists what each stage
 declares it may take; after it, a transport calculation that reuses a

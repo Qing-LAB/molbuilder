@@ -235,8 +235,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         # The frequencies are this analysis's whole answer; the strengths
         # and the probe were never asked of it, and the flags say so
         # (`engines/vibration.md` § 4.9) rather than reporting them done.
-        # The relaxation was asked of the ladder when the box was unticked --
-        # the relaxing stage's record is what says so here.
+        # The relaxation was asked when the box was unticked -- the run's
+        # `relax` call's record is what says so here.
         phase_frequencies=PHASE_COMPLETE,
         phase_raman=PHASE_NOT_REQUESTED,
         phase_ir=PHASE_NOT_REQUESTED,

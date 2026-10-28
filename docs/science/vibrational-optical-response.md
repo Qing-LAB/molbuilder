@@ -928,11 +928,15 @@ time its iterations times the run's average iteration:
 | the named set's share beside the whole (§ 3.4) | none | worked out afterwards from each frame's saved states — a post-processing step, not yet designed, so not measured |
 | Raman for $N$ chosen modes | $1 + 2N$ — frame 0 once, $\pm\delta Q$ for each mode | each run one junction SCF and SIESTA's optical calculation |
 
-**The calculation for five modes**: $1 + 2\times5 = 11$ runs. Frame 0 from
-scratch, about 3.5 min; each $\pm\delta Q$ run started from frame 0's
-density, about 1.6 min — $3.5 + 10\times1.6 \approx 20$ min — or about
-$11\times3.5 \approx 40$ min if every run starts from scratch. So **about
-20–40 min of SCF on 64 ranks, a tenth to a fifth of the vibration's 3.3 h**,
+**The calculation for five modes**: $1 + 2\times5 = 11$ runs, each started
+from the force-constant run's reference density
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3): frame 0,
+at that same geometry, converges almost at once (one SCF iteration on H₂,
+§ 5.11 § 12 there); each $\pm\delta Q$ run, a small displacement from it,
+about 1.6 min, as a force-constant step is — $10\times1.6 \approx 16$ min —
+or about $11\times3.5 \approx 40$ min if every run started from scratch. So
+**about 16–40 min of SCF on 64 ranks, a twelfth to a fifth of the
+vibration's 3.3 h**,
 at the vibration's settings; a denser k-point grid for the SCF multiplies it.
 
 **Not measured: the optical calculation itself.** After each SCF it

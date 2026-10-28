@@ -920,8 +920,8 @@ complete one. The three that remain are directory-local questions and were
 always answerable without help.
 
 **There is no preference order to tune.** A vibration run is *for* its
-`.spectra.json` (on SIESTA written by the job's finish, `engines/vibration.md`
-§ 5.5); an optimization for its trajectory; a transport calculation for its
+`.spectra.json` (on SIESTA written at the run's root by the force-constant
+call's record step and again by the finish, `engines/vibration.md` § 5.11 § 3); an optimization for its trajectory; a transport calculation for its
 report, opened through its description, `task.json` (the record is composed on
 read; `<label>.transport.json` is `summarize task`'s copy). The same file is the
 live view during the run and the
@@ -980,8 +980,10 @@ and says so — a line on stderr, of a file a run of ours holds in its engine's
 order — and a bare `xv2xyz`, which writes a pair, refuses an `.XV` a
 reordered run of ours holds, naming `--from-run`. **No door builds a run's
 structure from a parser class it imports** — it asks the run door: a door that
-builds from a run's geometry, `runs.steps_of`, the force-constant prep's and
-the transport citation's.
+builds from a run's geometry, `runs.steps_of`, the transport citation's and
+the Modify tab's. The job's own Python, where molbuilder is not installed,
+reads its calls' output through SIESTA's one reading pass and keeps it in the
+deck order every call of the run shares (`engines/vibration.md` § 5.11 § 3).
 
 **The atoms a run holds are stated by its own output, the same for both
 engines** *(user, 2026-10-04: "there is no reason why siesta can manage to

@@ -219,8 +219,8 @@ built by the kind's entry in `RUNGS`, keyed by engine and kind): the structure
 step's answer, which every step after it reads. It says what the decks
 describe and which program each deck is; the config each element renders from
 (a lead's own label, the junction's electronic state folded in); what else the
-engine's `spec_for` is told (a vibration's block and the relaxation it builds
-on, the cell; the junction's state); the folders that hold a deck beside the
+engine's `spec_for` is told (a vibration's block and its phase's part, the
+cell; the junction's state); the folders that hold a deck beside the
 stage's own — a scan's points — each of which gets its wrapper and its own
 attempt ladder; where the data files come from when the engine's library is
 not their source (the citation); and what its job carries forward and runs (a
@@ -355,7 +355,7 @@ a gap visible:
 | **3.6** parameters | which items, in what order, and how each is spelled | `spec.layout` + `spec.line` | no |
 | **3.7** engine body | what no parameter models | `spec.layout` — a `Block` | **yes** |
 | **3.9** record | the values only this engine can supply for two blocks — the second a SIESTA force-constant deck's VIBRATION block, whose values `prep` builds and the engine places (`engines/vibration.md` § 5.3) | `spec.bench_marks` · `spec.vibration` | **yes** |
-| **3.9** record | the bundle that finishes this deck's run, when the engine alone leaves no result — `prep` copies it onto the job (`Job.finish`) and the wrapper runs it after the engine (`engines/vibration.md` § 5.5) | `spec.finish` | **yes** |
+| **3.9** record | the bundle that finishes this deck's run, when the engine alone leaves no result — `prep` copies it onto the job (`Job.finish`) and each call's run script runs its steps, the plan before the engine and the record after it (`engines/vibration.md` § 5.11 § 3) | `spec.finish` | **yes** |
 | **3.11** check | what a finished deck of this engine must satisfy | `spec.check_rules` | **yes** |
 | **3.12** promises | files its own text instructs | `sibling_artifacts` | **yes** |
 | **3.13** declare | what may be reused from an earlier run | `warm_for` | no |

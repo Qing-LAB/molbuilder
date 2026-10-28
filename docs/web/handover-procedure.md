@@ -221,10 +221,10 @@ The three prerequisites named here landed with the spectra migration
    shared renderer as Build, and `dataclass_to_form_schema`'s spectra route
    retires at P3.
 3. **The decision was made** — a vibration calculation IS a description with
-   a ladder, read from the template's own `already_relaxed` box
-   ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2, § 5.11): one
-   `freq` stage on both engines, the relaxation inside it unless the
-   structure is stated relaxed — SIESTA's `relax` phase, PySCF's Phase 0.
+   a ladder of one stage, `freq` on both engines
+   ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2, § 5.11), the
+   relaxation inside it unless the template's own `already_relaxed` box states
+   the structure relaxed — SIESTA's `relax` phase, PySCF's Phase 0.
    **The hand-over carries that ladder, numbered** (`proposed_stages`, each
    entry as `task.json` states a stage), made by the server's one rule —
    `jobset.ladder.fresh_stages`, which `molbuilder describe` asks too, each

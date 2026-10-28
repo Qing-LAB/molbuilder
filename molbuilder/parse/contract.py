@@ -231,10 +231,10 @@ def relaxation_of_output(path, traj, *,
     """The relaxation record of ONE output already parsed -- ``traj``, the
     parse of ``path`` -- in :func:`relaxation_of`'s shape, or ``None`` for a
     run that relaxed nothing.  :func:`relaxation_of` asks it of the file a
-    viewer has open; `prep` asks it of the `relax` stage's own
-    output, the one it reads the relaxed geometry from
-    (`engines/vibration.md` § 5.2a), so the record is of that run and no
-    other, whatever else the directory holds."""
+    viewer has open; a SIESTA vibration's record step asks it of its
+    `relax` call's own output (`engines/vibration.md` § 5.11 § 3), so the
+    record is of that call and no other, whatever else the directory
+    holds."""
     import numpy as np
     frames = [fr for fr in getattr(traj, "frames", []) if fr.structure is not None]
     if not frames:

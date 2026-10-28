@@ -991,7 +991,7 @@ wrapper contains these and nothing else:
 | **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, what the scheduler granted (`MB_JOB_ID`, `MB_NTASKS`, `MB_CPUS_PER_TASK`, `MB_JOB_GPUS`, as the job's header says them) — then exit 0, nothing launched |
 | **Launch SIESTA + capture exit** | the engine, run as a child, and its exit code; its output named for the run — stdout through the tee, and SIESTA's history (§ 2.2): just before the engine starts, SIESTA's name for each history file the deck writes is pointed at the run's own file, and the pointer is removed when the engine exits (and by the EXIT trap). A name that already holds a file — SIESTA's history kept as before 2.9.6, or a SIESTA run started by hand — stops the run before the engine, naming it: the pointer never replaces a file. On a failure, how the run ended — asked of `_mb_ending` (below) and printed — and the `propor` hint and the warm retries its answers gate; then — after the job's finish, when it has one (the next two rows) — the conclusion marker, on the main line |
 | **Can the job finish itself?** | *(a job with a finish — every call of a SIESTA vibration's run in phases, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.5, § 5.11)* before the engine starts, once the run index is known: the finish bundle's `loads` verb on the job's own python (`$_mb_py`, set right after the activation and checked once the run index is known, `running-a-job.md` § 2.2a). A job env that cannot run it stops here, before the run it would throw away, and says so in the conclusion marker (`rc=1 at …; finish cannot load (<bundle>)`), which reads `failed` (`running-a-job.md` § 4.2). A dry run has already exited |
-| **The calculation's own result** | *(a job with a finish)* after the engine exits: logs `finish started:` and runs the bundle on the job's python — a run in phases' `record <phase>`, told the engine's exit code — which records how the call ended and, where it falls to it, derives the result beside the run. After a clean exit its failure is the job's — the marker records its exit status and names the failed finish (`…; finish failed (<bundle> <verb>)`), and the wrapper exits with it; after the engine's failure it runs too, its own failure logged and the conclusion the engine's; an output that ended, beside that log line and no marker yet, reads `running` (`running-a-job.md` § 4.2) |
+| **The calculation's own result** | *(a job with a finish)* after the engine exits: logs `finish started:` and runs the bundle on the job's python — a run in phases' `record <phase>`, told the engine's exit code — which records how the call ended and, where it falls to it, writes the result at the run's root (`run-<n>/`). After a clean exit its failure is the job's — the marker records its exit status and names the failed finish (`…; finish failed (<bundle> <verb>)`), and the wrapper exits with it; after the engine's failure it runs too, its own failure logged and the conclusion the engine's; an output that ended, beside that log line and no marker yet, reads `running` (`running-a-job.md` § 4.2) |
 | **The call planned** | *(a call of a run in phases — a SIESTA vibration's phase, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3)* after the finish's load check, before the engine starts: logs `finish started:` and runs the finish bundle's `plan <phase>` on the job's python, which writes this call's entry in the run's index and, where they are another call's result, its coordinates. Its failure is the job's: the engine is not started, the step after the engine (`record <phase>`) is told how the call ended, and the conclusion marker records its exit status (`…; finish failed (<bundle> plan <phase>)`) |
 
 *(Amended 2026-08-12, R9: the table claimed exhaustiveness while listing
@@ -1867,7 +1867,8 @@ displacement* to `.XV` (measured), not a geometry to continue from, and
 the vocabulary cannot withhold a base row per section — so the
 force-constant deck writes `MD.UseSaveXV .false.` whatever the description
 says and reads only the density (`siesta/vibration_deck.py::start_state_lines`;
-the catalogue offers `restart` to optimizations only).  SIESTA reads these itself when the matching `MD.UseSave*` /
+the catalogue offers `restart` to an optimization and to a vibration's
+`relax` phase, never to the force-constant deck).  SIESTA reads these itself when the matching `MD.UseSave*` /
 `DM.UseSaveDM` flags are set — the file's `honoured_by` column, checked
 by the § 4.2a agreement test.
 
@@ -2026,14 +2027,14 @@ density it saved at that step before every displacement (`m_new_dm.F90`) — so 
 retry continues an SCF that stopped the reference step, and meets the same SCF
 again after one that stopped at a displacement — and `[vibration]` states
 `resumes = false`.
-`prep` asks it (`warm_list(engine, kind, base).resumes`) of the section the rung's OWN kind
-reads — a vibration's `relax` rung is an optimisation and reads
-`[optimization]`, `.CG` among it; its force-constant rungs read `[vibration]` —
-and bakes the answer into the rung's job (`Job.resumes`), so the wrapper says
-what a retry of that rung will do — re-run it from its reference step, not
-resume it — while the budget stays the person's ([`running-a-job.md`](?doc=execution/running-a-job.md)
-§ 3.5). *(The carry was read from the calculation's kind until 2026-09-29, so a
-vibration's `relax` rung lost its `.CG` — the M11 review, SS-C14.)*
+`prep` asks it (`warm_list(engine, kind, base).resumes`) of the section each
+run script's own work reads — a SIESTA vibration's `relax` phase reads
+`[optimization]`, `.CG` among it; its `fc` phase `[vibration]`; its optical
+calls `[optical]` — and bakes the answer into that run script (`Job.resumes`;
+each phase's own, `Rung.wrapper_at`, [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.11 § 6), so the wrapper says what a retry will do — the force constants
+re-run from their reference step, not resumed — while the budget stays the
+person's ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5).
 
 **And two facts about the engine's scratch, `scratch` and `scratch_dir`.**
 A section's `scratch` names, by suffix, the files a run of that kind writes

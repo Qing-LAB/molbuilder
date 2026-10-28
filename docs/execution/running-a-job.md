@@ -204,10 +204,11 @@ stating because it is easy to break by accretion.
   and scheduler accounting expect them.
 - **The shell must outlive the engine.** The engine is run, not `exec`'d
   (§ 2.0a), so the wrapper can read its exit code, decide a warm retry (§ 3.5),
-  **finish the calculation when the engine alone leaves no result** — a SIESTA
-  force-constant run's job derives its modes with `mb_vibration.pyz` on the
-  job's own python, beside the run ([`engines/vibration.md`](?doc=engines/vibration.md)
-  § 5.5); its failure is the job's — and write the conclusion marker as its
+  **finish the calculation when the engine alone leaves no result** — each
+  call of a SIESTA vibration runs its record step with `mb_vibration.pyz` on
+  the job's own python, the force-constant call's deriving the modes and the
+  last call's the finish, the result at the run's root ([`engines/vibration.md`](?doc=engines/vibration.md)
+  § 5.11 § 3); its failure is the job's — and write the conclusion marker as its
   last act ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3).
 
 Everything else — resolving which directory to run in, creating it, arranging
@@ -554,7 +555,8 @@ person's call (`job-contracts.md` § 6.2), as it is for a stage described
 `clean` — and what changes is what the wrapper SAYS: the kind declares the fact
 (`warm-files.toml`, `resumes = false`,
 [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a), `prep` bakes it
-into the rung's job (`Job.resumes`), and every wrapper text that speaks of a
+into the run script it renders (`Job.resumes`; a SIESTA vibration's, each
+phase's own), and every wrapper text that speaks of a
 retry — the banner's retry line, the retry's message, a retried run's Mode
 line, the `--continue` help, the line after the budget — says it from one
 description (`runwrap._retry_texts`). *(They called it a resume until
@@ -564,15 +566,17 @@ until it lands every `SCF_NOT_CONV … (required)` stop is retried.*
 
 ```mermaid
 flowchart LR
-    X["SIESTA exits"] --> Q{"how did it end?"}
+    P["a call of a run in phases:<br/>its plan step first"] --> X["SIESTA exits"]
+    X --> Q{"how did it end?"}
     Q -->|"stopped on SCF_NOT_CONV, not diverged"| B{"budget left?"}
     Q -->|"a relaxation out of moves"| B
-    Q -->|"a failure"| C["conclude: write -runN.concluded"]
+    Q -->|"a failure"| S["a call of a run in phases:<br/>its record step, told the exit"]
+    S --> C["conclude: write -runN.concluded"]
     Q -->|"a clean exit"| F{"a finish to run?<br/>(Job.finish)"}
     F -->|"no"| C
     F -->|"yes: its exit status is the job's"| C
     B -->|"yes"| R["re-exec with --continue --run N+1<br/>(flat: its launch record first)"]
-    B -->|"no: say so"| C
+    B -->|"no: say so"| S
 ```
 
 **A retry stays in its attempt**: the wrapper re-execs itself in the same

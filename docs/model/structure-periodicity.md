@@ -425,7 +425,7 @@ recipe gives (`AtomicCoordinatesOrigin 0 0 1.1773`: half its 2.3545 Å
 | **design coordinates** | the `.xyz`: the author's intent. No engine step rewrites them |
 | **engine coordinates** | design + `engine_offset`, the cell at `(0,0,0)` — what SIESTA, TranSIESTA and PySCF are all handed |
 | **where a viewer draws the box** | at `−engine_offset` **of the coordinates on screen**: for design coordinates, the structure's offset negated — the computed one, or the origin the person assigned; for engine coordinates, `(0,0,0)`. The viewer draws the coordinates it is given and moves no atom *(user, 2026-09-25: "the 3d viewer should just follow what coordinate is in the structure, and draw the cell box with the offset in mind (start from -offset). i don't believe the 3d viewer should do the job of translation")* |
-| **coordinates that came from an engine** | `engine_offset = 0`, **stated by the engine** and recorded as the engine's (`offset_by`): they are the engine's own frame, drawn verbatim (§ 6.1 clause 5), and kept from stage to stage within one calculation — a ladder's next stage continues the geometry on the grid it was found on (`engines/vibration.md` § 5.2a). **Entering a new calculation they are placed by the rule** (*Entering a new calculation*, below): the engine's origin is a fact about the run that produced them, not a choice anyone made for the next one |
+| **coordinates that came from an engine** | `engine_offset = 0`, **stated by the engine** and recorded as the engine's (`offset_by`): they are the engine's own frame, drawn verbatim (§ 6.1 clause 5), and kept from stage to stage within one calculation — a ladder's next stage, or a vibration's force-constant call after its `relax` call, continues the geometry on the grid it was found on (`engines/vibration.md` § 5.11 § 3). **Entering a new calculation they are placed by the rule** (*Entering a new calculation*, below): the engine's origin is a fact about the run that produced them, not a choice anyone made for the next one |
 | **a structure saved from an engine's output** | carries the engine's coordinates **with the engine's origin**, `(0,0,0)`, set together and recorded as the engine's — so the saved pair draws its box where the engine had it, and a new calculation made from it is centred (below). *Automatic* on the Cell page centres the pair itself |
 
 **Why fractional, and why never re-wrapped** — both measured on the junction
@@ -477,8 +477,9 @@ as the person's, kept as stated, and *Automatic* on the Cell page centres it.
   until it is fixed (check 3).
 * **Coordinates that came from an engine** state `0`: their origin is the
   engine's, `(0,0,0)`, set together with them — the table above. Every door
-  that makes a structure from an engine's output states it: the next rung of
-  a ladder (the vibration `freq` stage from `relax`'s output), every save of
+  that makes a structure from an engine's output states it: the next stage of
+  an optimization ladder, a vibration's force-constant call from its `relax`
+  call's output (the run's plan step), every save of
   a run's output, and
   every read of an engine's own structure file — SIESTA's `<label>.xyz` and
   `<label>.XV`, written with no sidecar, take their run's frame from what that

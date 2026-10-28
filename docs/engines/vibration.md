@@ -277,7 +277,7 @@ relaxation carries `info.relaxation` — the run's engine, its force tolerance,
 the largest force left on the atoms it moved, the atoms it held, and a
 fingerprint of the geometry it describes
 ([`model/parse.md` § 5b.1](?doc=model/parse.md)) — beside `info.calculation`,
-the level of theory the deck stated (SIESTA today). Both kinds' gates read
+the level of theory the deck stated (on SIESTA). Both kinds' gates read
 them (`validation/sidecar.py::check_relaxation_record`), and every finding
 lands on the box's own card, so the record is displayed where the choice is
 made; the Metadata pane shows the raw store.
@@ -1307,8 +1307,8 @@ PySCF the one `freq` rung relaxes inside its deck (§ 4.2).
 
 ### 5.3 The deck
 
-`siesta/input.py::spec_for(struct, cfg, calculation="vibration")` renders the
-optimisation deck's sections ([`engines/siesta.md`](?doc=engines/siesta.md)
+`siesta/input.py::spec_for(struct, cfg, calculation="vibration", part="fc")`
+— the `fc` phase's deck (§ 5.11 § 4) — renders the optimisation deck's sections ([`engines/siesta.md`](?doc=engines/siesta.md)
 § 3) **without the geometry-optimisation section** (row 14 there: nothing
 relaxes) and with two additions from `siesta/vibration_deck.py`, the kind's
 own module: the catalogue section *Force constants* (the one item,
@@ -1359,11 +1359,12 @@ states:
 #   "stage":"freq",                   # the stage's name -> the result's config.stage
 #   "force_criterion_ev_ang":0.01,    # the tolerance the relaxation runs to (§ 5.5)
 #   "force_criterion_from":"...",     # where that tolerance came from: the stage's
-#                                     #   relax_force_tol, or the template's for a structure
-#                                     #   stated relaxed -- said, not read
+#                                     #   relax_force_tol -- said, not read
 #   "already_relaxed":false,          # the person's statement, as made
 #   "relaxation":null,                # never written here: the relax call's record is the
 #                                     #   run's own, read from its index at the finish (§ 5.11 § 3)
+#   "relaxation_stage":null,          # null here too: the finish names this stage, whose
+#                                     #   relax call it was, beside the record it carries
 #   "raman":{"modes":"all",           # Raman for, as the optical phase applies it (§ 5.11 § 4):
 #            "freq_min_cm1":null,     #   all or range, and the range's two ends (null for an
 #            "freq_max_cm1":null},    #   open end, and under all) -- the whole key null when
@@ -1378,7 +1379,7 @@ states:
 ```
 
 `relaxation` is `null` in the deck: the relaxation record
-(`parse/contract.relaxation_of`) of the `relax` call is written into the
+(`parse.contract.relaxation_of_output`) of the `relax` call is written into the
 run's index by that call's record step and carried into the result by the
 finish (§ 5.11 § 3), so the finish never re-picks an attempt. `raman` is
 *Raman for* as asked, the one fact of the optical phase no SIESTA keyword
@@ -1400,10 +1401,7 @@ relaxation** (`[item.restart]`, `stages = ["relaxation"]`): the `relax`
 phase's deck is the ordinary relaxation deck (§ 5.2a), which writes the
 restart group from the field, so the field stands on the stage's cell and in
 that deck's provenance like any other — its default `continue` (a relaxation launched
-again picks up where its latest attempt stopped), `clean` if chosen. Until
-then the kind fixed it silently: the deck wrote the group from a value no
-card and no provenance block showed *(plan § 5w K10, the M11 review's
-SS-C14; the review of 2026-10-18, O6)*. **A force-constant run**
+again picks up where its latest attempt stopped), `clean` if chosen. **A force-constant run**
 has no optimiser history to
 resume. The density is read when present — the reference step's
 SCF starts from it — and SIESTA saves the reference step's converged density and
@@ -1423,8 +1421,8 @@ the growth rule of [`execution/job-contracts.md`](?doc=execution/job-contracts.m
 at `FC.First`, which the section states as its one section-level fact,
 `resumes = false`, so the stage's wrapper says a retry repeats the run rather
 than calling it a resume — and says why the base `.XV` row means something else
-under this kind. A vibration's `relax` rung reads `[optimization]`, its own
-kind's section, and carries its `.CG` (§ 4.2a).
+under this kind. A vibration's `relax` phase reads `[optimization]` and
+carries its `.CG`; its optical calls read `[optical]` (§ 5.11 § 6).
 
 ### 5.4 The run, and what it leaves
 
@@ -1446,15 +1444,17 @@ $1 + 6\,n_{\mathrm{free}}$ force evaluations (§ 5.7 counts what they cost). Wha
 | `<label>.FCC` | the same with the held atoms' force rows zeroed (SIESTA's "constrained" variant) | the free block is identical, so the reader takes `.FC` and slices |
 | `<label>.XV` | the **last displaced** geometry, not the input | the last free atom `FC.Displacement` off along z |
 | `<label>.DM`, the usual outputs | the reference (undisplaced) step's density (`save_density_matrix.F90` writes it at the first step only), the `.out` with the version line and, with *Compute IR* on, after every step's SCF, every atom's Hirshfeld and Voronoi charges (§ 5.3) | |
-| `<label>.spectra.json` | **the result**, written by the finish (§ 5.5) after SIESTA exits cleanly | |
+| `<label>.spectra.json` | **the result**, at the run's root (`run-<n>/`), not in this call's folder: written by this call's record step and again by the finish (§ 5.5, § 5.11 § 3) | |
 
 The run script `prep` writes (the wrapper, `runwrap.py`) treats the run like
 any SIESTA run: it activates the env, runs SIESTA on the ranks and cores per
 rank `prep` stated — the launch starts it with them, `-np` / `-omp` from the
-job (`submit._run_sh_args`), and computes none — and logs. **Then it finishes the calculation** — the job's
-own python runs `mb_vibration.pyz` beside the deck (§ 5.5) — and marks the
-attempt concluded with the finish's exit status: 0 only when the spectrum is
-written.
+job (`submit._run_sh_args`), and computes none — and logs. **Around the engine it runs the run's own Python** — the job's
+python runs `mb_vibration.pyz` beside the deck, its plan step before SIESTA
+and its record step after it (§ 5.5, § 5.11 § 3) — and marks the call
+concluded with the record step's exit status: a failure of the step itself,
+never whether a result was written. Whether the run computed its modes is
+the run's state, read over its index (§ 5.11 § 7).
 
 ### 5.5 The finish — the job derives its own modes
 
@@ -1557,7 +1557,7 @@ H_AA     = mean over ± of fc[a, α, ·, b, β], a, b ∈ FREE           # the c
 H_AA     = ½ (H_AA + H_AAᵀ);  × Bohr²/Hartree_eV                   # symmetrise; → Hartree/Bohr²
 λ, L, patterns = vibrational_modes(H, masses_amu, R_ref, held, axis_kind, cell)
 rows → user order through Permutation.map_rows_to_user_order          # the deck's order record, inverted once
-write <label>.spectra.json beside the run:  engine 'siesta', the SIESTA version from the output,
+write <label>.spectra.json at the run's root:  engine 'siesta', the SIESTA version from the output,
     intensities null, the MO block null, thermo = the vibrational sums (§ 4.7's second regime),
     hessian_scope 'free'|'all', removed_motions, relaxation (the verdict below and the `relax` call's record),
     engine_metadata {fc_file, fc_displacement_ang, fc_range_engine_1based, fc_asymmetry_max_ev_ang2,
@@ -1611,16 +1611,14 @@ PySCF deck (§ 4.3) write too**, each leading with the step that can always
 be taken first — if this stage has been launched, go back to the state saved
 before its group's first launch (what a launched stage computes is not prepared again,
 [`job-system.md`](?doc=execution/job-system.md) § 5.0; one never launched is
-prepared again): when the run relaxed it (the block's `relaxation_stage`,
-the stage whose `relax` call it was), give that stage more relaxation steps
+prepared again): when the run relaxed it (the result's `relaxation_stage`,
+this stage, whose `relax` call it was), give that stage more relaxation steps
 (`relax_steps`) and prepare its group again — its run relaxes first — or
 launch it again cold (`--cold`): every call again, the relaxation from the
 structure at the steps it has (§ 5.11 § 5, § 6);
 when the person stated it relaxed, relax first — or keep the run knowing that.
 The finish says it in the session log, and the viewer's relaxation row shows
-the force.
-*(Until 2026-09-29 the finish told a laddered run to untick `already_relaxed`,
-which the ladder had already done — the M11 review, plan § 5w K6.)* And the block's honesty about its own numerics:
+the force. And the block's honesty about its own numerics:
 `engine_metadata.fc_asymmetry_max_ev_ang2` is $\max\lvert H_{ij} - H_{ji}\rvert$ over the
 free block **before** it is symmetrised — the first number to look at when
 `FC.Displacement` is suspected of being too small (noise) or too large
@@ -1733,9 +1731,10 @@ at this level of theory, and that the finish measures the reference-step
 forces against that tolerance (§ 5.5); the relaxation-record findings of
 § 2.2 when the structure carries one; and the
 unconsumed-region-label notice every kind carries. With the box unticked
-the relaxation's outcome is the run's own: the finish judges the `relax`
-call's largest remaining force on the moved atoms against this calculation's
-tolerance (§ 5.5), as information when within it and as a **warning** when
+the relaxation's outcome is the run's own: the finish judges the largest
+force on the moved atoms at the force constants' reference step — the
+geometry the `relax` call reached — against this calculation's tolerance
+(§ 5.5), as information when within it and as a **warning** when
 above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`).
 The SIESTA engine validator defers its own *held during relaxation* line on
 this kind — one fact, one finding ([`science/validation.md`](?doc=science/validation.md) § 7).
@@ -2256,9 +2255,9 @@ launch/<label>_01_freq-sweep.run.sh       the run's WALK (bash), launch's -- the
                                           (the `along` mechanism a bias sweep uses), from the
                                           PHASES row: fc from relax, every optical call from fc --
                                           never by a Python step
-  for d in run-0/optical/*/; do           THE LOOP STEP -- the one step kind new to the walk: the
+  for d in run-0/optical/*/; do           THE LOOP STEP -- the walk's step for the calls planned in the job: the
       [taken over]  && continue             folders launch could not know, walked as they stand;
-      cp run-0/fc/<label>.DM "$d"/ && run_member "freq@optical/$(basename "$d")" "$d" …
+      cp run-0/fc/<label>.DM "$d"/ && run_member "freq@optical@$(basename "$d")" "$d" …
   done                                    needs fc; one call failing stops no other
 ```
 
@@ -2288,17 +2287,18 @@ point, the point before it in its frame).
 
 | phase | its coordinates | its seed | `record` adds to the index |
 |---|---|---|---|
-| `relax` | the structure, the held-first copy — prep's file, copied with the folder | none; launched again not done, its own warm files (§ 6) | the relaxation record and the relaxed geometry, from its output through SIESTA's one reading pass |
-| `fc` | the relaxed geometry, from the `relax` call's output; the structure itself when stated relaxed | `relax`'s `.DM`, copied by the walk | the modes and the charges (the finish's analysis, § 5.5); the modes *Raman for* picks (`select_modes`, § 3.1, § 5.11 § 4) and each picked mode's $\delta Q = \delta / \max_k \lvert L_k\rvert$, $\delta$ the `.FC` header's displacement (one source, the one the finish reads) |
+| `relax` | the structure, the held-first copy — prep's file, copied with the folder | none; launched again not done, its own warm files (§ 6) | its relaxation record — steps, largest force, the fingerprint of the geometry reached — from its output (`parse.contract.relaxation_of_output`); the geometry itself the `fc` call's plan step reads from that output |
+| `fc` | the relaxed geometry, from the `relax` call's output; the structure itself when stated relaxed | `relax`'s `.DM`, copied by the walk | the number of modes (the analysis, § 5.5, writes the modes and the charges into the result at the run's root); one entry per optical call it plans, for the modes *Raman for* picks (`select_modes`, § 3.1, § 5.11 § 4), each with its mode, side and $\delta Q = \delta / \max_k \lvert L_k\rvert$, $\delta$ the `.FC` header's displacement (one source, the one the finish reads) |
 | `optical` | frame 0 the force-constant run's reference geometry; then $R_0 \pm \delta Q\cdot L$, the displacement rule `mode_frames` uses (one function for both) | the force-constant run's `.DM` — its reference density, from which every displacement of that run started (§ 5.3; verified: one SCF iteration at frame 0, § 12) — copied by the walk's loop step | $\varepsilon_2(\omega)$ and the output's facts into the data file |
 
 **Data, not code**: the phases table `siesta/vibration_phases.PHASES` —
 each row its name, its deck part, the item that turns it on, its
 coordinates' source and its seed (which call's file), what makes a call done
-(§ 6), its warm-files section, its record function and the phases it needs.
+(§ 6), its warm-files section and the phases it needs.
 Prep renders the decks and run scripts from it, launch writes the walk and
-opens the known calls from it, the Python verbs follow it, and the state is
-read by it.
+opens the known calls from it, the record step and this machine's done door
+judge a call by it, and the state is read by it; what each phase's record
+step writes is its own branch of the verb (`record_call`).
 
 **What the plan and record steps call** *(the user, 2026-10-25: "is that a
 unified api or this task specific code?")* — every door the finish and prep
@@ -2317,8 +2317,8 @@ use, in the bundle; nothing of their own but the verb that walks the table:
 | the phases table, the index, the state rule | `siesta/vibration_phases.py` — data | `status`, launch, prep, the Results tab (§ 7) |
 
 The verb itself — `plan` in `spectra/siesta_vibration.py`, the SIESTA
-route's job-side module, where the finish lives — walks the `PHASES` rows
-and calls these doors: the counterpart of the PySCF script's phase code
+route's job-side module, where the finish lives — reads the call's `PHASES`
+row and calls these doors: the counterpart of the PySCF script's phase code
 (§ 4.1), one module reading a table rather than text generated per deck.
 
 #### 4. The one deck writer, every frame — nothing is a template
@@ -2337,17 +2337,18 @@ one `DeckSpec`, the three decks sharing the stage's one name,
 
 | part | sections | the record blocks |
 |---|---|---|
-| `relax` | the optimization layout — the relaxation items (`relax_*`, `restart`), the vibration's catalogue narrowing | ATOM-METADATA, ENGINE-OFFSET; no `vibration` block, no finish |
+| `relax` | the optimization layout — the relaxation items (`relax_*`, `restart`), the vibration's catalogue narrowing | ATOM-METADATA, ENGINE-OFFSET; no `vibration` block; the bundle named, for its plan and record steps |
 | `fc` | § 5.3's: the force-constant section and block — its charges when *Compute IR* is on — the start state | all three; the `vibration` block, format **v5**: v3's keys and **`raman`** — *Raman for* and its range, `null` with *Compute Raman* off — the one fact no keyword states ($\delta$ is `FC.Displacement`; $\hat e$ the optical deck's `Optical.Vector`: nothing is stated twice, § 6.10.1); the finish named |
-| `optical` | the vibration's settings; a single point (`MD.TypeOfRun CG`, `MD.Steps 0`); the start state (`DM.UseSaveDM .true.`, `MD.UseSaveXV .false.`); the optical section from the catalogue items (§ 9), each checked against SIESTA's manual before it is written (I21) | ATOM-METADATA, ENGINE-OFFSET; no `vibration` block, no finish |
+| `optical` | the vibration's settings; a single point (`MD.TypeOfRun CG`, `MD.Steps 0`); the start state (`DM.UseSaveDM .true.`, `MD.UseSaveXV .false.`); the optical section from the catalogue items (§ 9), each checked against SIESTA's manual before it is written (I21) | ATOM-METADATA, ENGINE-OFFSET; no `vibration` block; the bundle named, for its plan and record steps |
 
 The block's reader (`deck_record.extract_vibration_record`) refuses no key;
 the version is the format comment, and **the record step after the force
 constants refuses a block without `raman`** (formats v3 and v4, prepared before *Raman for*) naming *prepare
-the stage again*, as the finish refuses one without `masses_amu` (§ 5.5). **Every reader of a deck follows the
-include**: `parse/fdf.py`'s `read_fdf` resolves `%block Label < Filename`
-beside the deck as libfdf's `fdf_read` does, and every caller reads through
-it — `deck_atoms`, the engine atom index, `same_calculation`, the deck's
+the stage again*, as the finish refuses one without `masses_amu` (§ 5.5). **Every reader of a deck's file follows the
+include**: `parse/fdf.py`'s `read_deck` inlines `%block Label < Filename`
+from beside the deck as libfdf's `fdf_read` does, and every reader of a
+deck's file reads through it (`read_fdf`, given text that still holds an
+include, refuses it naming `read_deck`) — `deck_atoms`, the engine atom index, `same_calculation`, the deck's
 geometry difference, prep's own read-back check, the run script's "what the
 engine will read" echo. Prep writes **the structure's** `coordinates.fdf`
 beside every phase's deck, so each is a whole deck prep's two gates check;
@@ -2380,8 +2381,9 @@ engine's scratch (`warmfiles.is_scratch`; an optical call's
 `.contrib.EPSIMG`, `[optical]`'s `scratch`, § 8),
 its `.continued-from` naming the run that computed it (one hop). **Done is
 the phase's rule** (`PHASES`): `relax` — finished, converged or not (§ 5);
-`fc` — finished, its SCF converged, its `.FC` whole ($6\,N\,n_{\mathrm{free}}$ rows); an
-optical call — finished, its SCF converged, its `.EPSIMG` whole; and no call
+`fc` — finished, its SCF converged, its `.FC` beside it (the analysis refuses one whose
+row count is not $6\,N\,n_{\mathrm{free}}$, § 5.5); an
+optical call — finished, its SCF converged, its `.EPSIMG` beside it; and no call
 whose record step failed. **One rule on both sides**: this machine's done
 door (`continuation.done`, for `status` and launch's take-over) and the
 job's own record step (`siesta_vibration._rows`, for what the finish
@@ -2393,9 +2395,9 @@ writes it into the index), and the sentence for a finished call not done
 without `<label>.FC`*) — so a call the job counts done is one `status`
 counts done, and with `scf_must_converge` off an SCF that did not converge
 is no call done on either. A call **not done** runs in the new run from
-its phase's start, by its row's warm-files section — the `Job` carries the
-phases' sections, one each, and each phase's run script is rendered with its
-own `resumes`:
+its phase's start, by its row's warm-files section — each phase's run script
+is rendered with its own section's `resumes` (`Rung.wrapper_at`), and launch
+carries a `relax` call's files by its row's section (`warm_kind`):
 
 | phase | a call not done, launched again | its section |
 |---|---|---|
@@ -2433,11 +2435,11 @@ points is read:
 |---|---|---|
 | a call's folder | `calcdirs.where` → a point below the run; `runs.run_of`; `run_status` with the run's launch record (`launched_in` = `run-<n>/`) | a transport point is read: its own output, session log, monitor log, conclusion |
 | a call's output | the SIESTA output parser — the trajectory viewer for `relax`, the force-constant reader for `fc`'s `.FC`, the `.EPSIMG` reader (`parse/engines/siesta_epsimg.py`, registered — [`model/parse.md`](?doc=model/parse.md) § 5f) | as any run's output |
-| the run's state | **the run of points' rule** (`continuation.points_state`, `engines/transport.md` § 2a.11), its rows the index's calls and its words **one rule over the index, `vibration_phases.summary`** — it travels (stdlib), so the finish's `notify finish` and this machine's `status` count in the same words. *pending* for a call the index lists whose folder is not opened; *queued* while no call the run walks itself has run and its job is not over; *running* while a call runs, or the walk is between two (the job going, `joblist`), or every call has ended and the job still goes — its last call's record step, or the finish, at work; *finished* when every call is done **and** the finish's entry says exit 0 **and** the result is on disk; *failed* naming the first call not done, by its words and why where its record step said, or the finish — a finish that started and never ended, the job gone (the monitor's closing record, the scheduler's line), is *failed — stopped inside the finish*. The index lists `relax` and `fc` from launch, so the window before the first call reads *queued*, never *finished, 0 of 0*; the optical calls appear as `plan` adds them, so the count says *optical 3 of 10* once they exist — *(4 taken over)* beside it where a warm launch took calls over — and *optical: after fc* before — only where the run walks the optical phase (the index's `phases`) | `status`, Task setup, the Results ladder, the walk's monitor line |
+| the run's state | **the run of points' rule** (`continuation.points_state`, `engines/transport.md` § 2a.11), its rows the index's calls and its words **one rule over the index, `vibration_phases.summary`** — it travels (stdlib), so the finish's `notify finish` and this machine's `status` count in the same words. *pending* for a call the index lists whose folder is not opened; *queued* while no call the run walks itself has run and its job is not over; *running* while a call runs, or the walk is between two (the job going, `joblist`), or every call has ended and the job still goes — its last call's record step, or the finish, at work; *finished* when every call is done **and** the finish's entry says exit 0 **and** the result is on disk; *failed* naming the first call not done, by its words and why where its record step said, or the finish — a finish that started and never ended, the job gone (the monitor's closing record, the scheduler's line), is *failed — stopped inside the finish*. The index lists `relax` and `fc` from launch, so the window before the first call reads *queued*, never *finished, 0 of 0*; the optical calls appear as the `fc` call's record step plans them, so the count says *optical 3 of 10* once they exist — *(4 taken over)* beside it where a warm launch took calls over — and *optical: after fc* before — only where the run walks the optical phase (the index's `phases`) | `status`, Task setup, the Results ladder, the walk's monitor line |
 | a call, in words and on the wire | the vibration's own point type, `vibration_phases.Call` — phase, name, mode, side; `rel`, `words`, `to_wire` — the shape `transport.stages.Point` has; the readers typed on it (`points_summary`, the ladder's run rows, `run_folders`, `_sweep_status`, `stage_run_state`, `every_run`'s wire form) ask the rung's row | *relax done · fc done · optical 7 of 11 (4 taken over)* |
-| the index `<label>_01_freq-run<N>.phases.json` | a row of `runfiles.WRITTEN` with its one reader (`vibration_phases.read_index`) and a registry parser, so the Results tab lists it as an aspect of the run | the phases the run walks (its job's row at launch); per call: its phase and folder; what it is (the relaxation; the force constants; frame 0, or mode $\nu$'s side at its frequency and $\delta Q$); its deck's sha256; its coordinates' sha256 and where they came from; its seed and where from; its start, end and exit; its verdict, as its output states it (`{"of": "SCF", "converged": …}`, § 6); its record step's failure, where it failed (the call then not done); computed here or taken over from run-N; the selection as asked and as applied; **the finish's entry** (started, ended, exit). Written by launch (the calls it opens) and by the run's own Python (the plan adds, the record completes, the finish adds its own) — rewritten whole, atomically |
+| the index `<label>_01_freq-run<N>.phases.json` | a row of `runfiles.WRITTEN` with its one reader (`vibration_phases.read_index`) and a registry parser, so the Results tab lists it as an aspect of the run | the phases the run walks (its job's row at launch); per call: its phase and folder; what it is (the relaxation; the force constants; frame 0, or mode $\nu$'s side at its frequency and $\delta Q$); its deck's sha256; its coordinates' sha256 and where they came from; its seed and where from; its start, end and exit; its verdict, as its output states it (`{"of": "SCF", "converged": …}`, § 6); its record step's failure, where it failed (the call then not done); computed here or taken over from run-N; the selection as asked and as applied; **the finish's entry** (started, ended, exit). Written by launch (the calls it opens) and by the run's own Python (the plan step fills its call's entry, the `fc` call's record step adds the optical calls, each record step completes its call's, the finish adds its own) — rewritten whole, atomically |
 | the run's notification record `notified.json`, at the run's root beside its launch record (`runrecord.notified_path`) | a row of `runfiles.WRITTEN`, the monitor's own (`run-reports.md` § 2.6), its parser registered (`parse/sidecars/notified.py`): every event sent for the run, when — written by `mb_monitor.pyz notify` and by a member monitor that sends `periodic` or `wall_near`; read by every member monitor for its N-hour clock and by the plan step (has `start` been sent) | kind-blind; a transport run of points writes none — its points send their own events (§ 7a) |
-| the run folder `run-<n>/` | `runs.folder_answer`: a plain container answers no state and no record. **A run of points' container** is served the run's state — the rung's row's rule — and its record, and `run_answer` for a file at its root answers the run's, so a viewer of the result polls while the run goes; `openable` opens `.spectra.json` at the root, as a container's product | the Results tab follows the run; the Run panel shows the phases from the index |
+| the run folder `run-<n>/` | `runs.folder_answer`: a plain container answers no state and no record. **A run of points' container** is served the run's state — its points', `runs.points_root_state` — and `run_answer` for a file at its root answers the run's, so a viewer of the result polls while the run goes; `openable` opens `.spectra.json` at the root, as a container's product | the Results tab follows the run; the Run panel shows the phases from the index |
 
 #### 7a. The monitor — one per call, the run reporting as one run
 
@@ -2483,8 +2485,9 @@ So each call's monitor is started as a **member** (`--member`, with
 vibration's calls, whose Python steps send the run's events. **Not built for
 a transport sweep**: its points send their own `start` and `finish`, one
 pair per point — its walk runs no Python, and the step that would send the
-run's one pair is not designed (plan § 1ae). A run script run by hand,
-outside a walk, carries no `--member` and reports as a run of its own.
+run's one pair is not designed (plan § 1ae). A call's run script carries
+`--member` however it is started, so run by hand it still reports as a
+member of its run.
 
 **The walk's own log** (`launch/<label>_01_freq-sweep.log`) holds one line
 per call — start, end, exit — and the Python steps' lines; a monitor's log
@@ -2517,7 +2520,7 @@ it picked are the optical citation's and the index's; its `phase_es` stays
 
 | field | PySCF | SIESTA, this run |
 |---|---|---|
-| `phase_relaxation` | `running` → `complete`; `complete` under `already_relaxed` | the `relax` call: `running` while it runs, `complete` when it ended; `not requested` when the structure was stated relaxed |
+| `phase_relaxation` | `running` → `complete`; `complete` under `already_relaxed` | the `relax` call: `complete` in every result the run writes — the first is written after the force constants; `not requested` when the structure was stated relaxed |
 | `phase_frequencies` | `running` → `complete` | the `fc` call and its analysis |
 | `phase_ir` · `ir_route` | the dipole sweep; `analytic` / `finite-difference` | `complete` once the charges are stored (`partial_charges`), `ir_route` `charges` — the infrared derived on request from them (§ 5.10 ②); `not requested` with *Compute IR* off, `ir_route` `none` |
 | `phase_raman` · `raman_route` · `raman_fd_step_ang` | the polarizability sweep; `finite-difference`, `RAMAN_FD_STEP_ANG` | `running` while the optical calls run, `complete` when all ended — `complete` with no call and `raman_route` `none` where *Raman for*'s range kept no mode — `not requested` with *Compute Raman* off; `raman_route` **`optical`** — SIESTA's optical calculation at $\pm\delta Q$ along each mode; `raman_fd_step_ang` = $\delta$ |
@@ -2799,15 +2802,15 @@ counterpart, junction theory's polarizability projected on the molecule
 | piece | where |
 |---|---|
 | **one stage on both engines** | `pyscf/stages.vibration_stages`; `paths.KIND_ROLES["vibration"]`, the phases' roles (§ 9); `ladder.independent` false for the kind (§ 6) |
-| **a rung of points, declared** | each `RUNGS` row states where its points come from (transport: the bias item × the cited set, at prep; the vibration: the phases' calls, `relax` and `fc` known at launch, the optical ones planned in the job), its point type (`transport.stages.Point`, `vibration_phases.Call`), what makes a point done, its start, its finish and its state rule; prep, the walk, `continuation` (`point_rows`, `points_state`, `done`), `runstatus` (`run_folders`, `_sweep_status`, `stage_run_state`, `every_run`), `ready`, `group`, `prepared_with`, `gather`, `summarize`, `_cli` and `runs.transmission_point` ask the row |
+| **a rung of points, declared** | `jobset/points.py`: one `PointsOf` per kind — its points as prepared (transport: the bias item × the cited set; the vibration: `relax` and `fc`), the points a run holds (the vibration's optical ones, planned in the job, those its index lists), its point type (`transport.stages.Point`, `vibration_phases.Call`), what makes a point done, what a run needs beyond its points (the vibration's finish), its containers, one wall or one per point; prep, launch's walk, `materialize`, `continuation` (`point_rows`, `points_state`, `done`), `runstatus` (`run_folders`, `_sweep_status`, `stage_run_state`, `every_run`), `ready`, `prepared_with` and the run door ask it |
 | **the phases** | `siesta/vibration_phases.py`: `PHASES`, `Call`, the index's writer and reader (a `runfiles.WRITTEN` row, a registry parser), `summary` (the state's words); `runfiles.fixed`'s `coordinates.fdf` row |
-| **the run door** | `runs.folder_answer` / `run_answer` / `state_of` serving a run of points' container its state and record (§ 7); `materialize.open_sweep_run`; the opener's travelling core (`calcdirs` + `paths` in the bundle, `bring_files`' copier); the progress-log seed copied with the deck |
-| **prep** | each phase's deck and run script in the stage's phase folder (`spec_for(part=)`, § 4); the structure's `coordinates.fdf` beside each; the flat shape refused; the count and sizes beside the wall; `Job` carrying the phases' warm sections and `resumes` |
+| **the run door** | `runs.folder_answer` / `run_answer` serving a run of points' container, and a file at its root, the run's state (`points_root_state`, § 7); `materialize.open_sweep_run`; the opener's travelling core (`calcdirs` + `paths` in the bundle, `bring_files`' copier); the progress-log seed copied with the deck |
+| **prep** | each phase's deck and run script in the stage's phase folder (`spec_for(part=)`, § 4); the structure's `coordinates.fdf` beside each; the flat shape refused; the count and sizes beside the wall; `Job.phases` the phases the run walks; each phase's run script with its own section's `resumes` |
 | **launch** | the phased walk (`submit._walk_script`: the loop step, `needs`, `MB_JOB_STARTED` exported once for a run here — `running-a-job.md` § 3.6); `run-<n>/`, its `optical/` container and the known calls opened (`materialize.open_sweep_run`); the calls a warm launch takes over, and a `relax` not done's warm files, through `materialize.HandOver`; the seeds as walk copies; the refusal reading the index's finish entry; `warm-files.toml`'s `[optical]` section |
 | **the monitor** | `--member` and `--launched-in`; the `notify` verb; the run's notification record (`notified.json`); the N-hour clock and `wall_near` from that record and the run's launch record (`run-reports.md` § 2, § 2.1b, § 2.6) |
 | **the job's Python** | `spectra/siesta_vibration.py` (`plan`, `record`, `finish` — the two steps run inside each call's run script, `runwrap`'s `steps`), the `.EPSIMG`'s one reader (`parse/engines/siesta_epsimg_reader.py`, travelling) and its registered parser (`parse/engines/siesta_epsimg.py`), the coordinates writer (`siesta/deck_lines.py`), the displacement rule's one function; `selection`, `calcdirs`, `paths`, `vibration_phases` in the bundle |
 | **the result** | `spectra/results.py`: `optical`, `raman_route` `optical`, `raman_fd_step_ang`, `phase_raman` on SIESTA (schema 13) — `phase_ir` and `ir_route` `charges`; `spectra/datafile.py`; `spectra/optical_data.py` (its `Var` table); `ncdata.AXES`; the record step's refusal of a v3 or v4 `vibration` block |
-| **the reader of decks** | `parse/fdf.py`: `%block Label < Filename`, as libfdf reads it, for every caller of `read_fdf` |
+| **the reader of decks** | `parse/fdf.py`: `read_deck` inlines `%block Label < Filename`, as libfdf reads it, for every reader of a deck's file |
 | **the view** | `spectra/raman.py` (the derivation, its ask's reader, the `raman.nc` variable table); the load door (`raman` view, its asks); `spectra/export.py` and `GET /api/spectra/export`, `jobset export` for a vibration; `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`; the viewer — `_ramanOf`, the two boxes, the Export buttons, and every gate read by route (§ 8) |
 | **the catalogue** | the optical items; *Compute IR*, *Compute Raman* and *Raman for* on both engines, under their results' cards (§ 3.1) |
 | **the sweep** | `displacement_sweep.collect_sweep` reads each stage's `fc` call below its run; `jobset migrate` turns a description of the earlier `relax → freq` ladder into the one stage (§ 9) |
@@ -2846,11 +2849,11 @@ frame, on the machine that runs it (the method's § 5.1).
 | D1 | `.contrib.EPSIMG`, SIESTA's scratch beside an optical call, where the vocabulary named scratch only with a folder of the run's own | **decided 2026-10-26, as recommended**: declared where it lies — `[optical]`'s `scratch` names it, and `scratch_dir` is stated only where a kind's scratch has a folder of the run's own (`job-contracts.md` § 4.2a) |
 | D2 | every call done and the finish not: the last call runs again, its record step finishing the run — or a verb that runs the finish alone | **decided 2026-10-26, as recommended**: the last call again (§ 6) |
 | D4 | `[optical] resumes`: a retry in place continues the SCF from the density the try left (`DM.UseSaveDM`) — or runs the call again from its seed | **decided 2026-10-26, as recommended**: `true` |
-| C4 | prep stating the count and the sizes beside the wall (§ 9) | **decided 2026-10-26, as recommended**: built with M3, beside the `.EPSIMG` size |
+| C4 | prep stating the count and the sizes beside the wall (§ 9) | **decided 2026-10-26, as recommended**: built 2.43.0, beside the `.EPSIMG` size |
 | M4-a | the width the page starts at | **decided 2026-10-26, as recommended**: the run's own (`Optical.Broaden`, 0.027 eV by default) — a value the run states; wider is a keystroke, narrower impossible |
 | M4-b | the laser before the person names one | **decided 2026-10-26, as recommended**: none — no Raman numbers until one is typed, 532, 633 and 785 nm offered |
 | M4-c | what SIESTA's Raman column shows | **decided 2026-10-26, as recommended**: $R(\hat e)$ at the laser, named *Raman strength, light along …, the laser, the width*, the static value beside it — never under PySCF's *activity* |
-| M4-d | the measured intensity's laser and temperature factors | **decided 2026-10-26, as recommended**: not applied in M4 — strengths on both engines; **an option later** (the user, 2026-10-26: "add the Stokes shift factor as an option later"): the measured intensity's factors, the method's § 3.2a, applied to the strength on request, on both engines, the plain strength kept beside it |
+| M4-d | the measured intensity's laser and temperature factors | **decided 2026-10-26, as recommended**: not applied — strengths on both engines; **an option later** (the user, 2026-10-26: "add the Stokes shift factor as an option later"): the measured intensity's factors, the method's § 3.2a, applied to the strength on request, on both engines, the plain strength kept beside it |
 | M4-e | an export and a script's reading of the Raman data | **asked by the user, 2026-10-26** ("need export, and api to support netcdf file reading"): the vibration calculation's export (§ 10) and `postprocess`'s three readers |
 
 #### 14. Tests — each with the silent failure it catches

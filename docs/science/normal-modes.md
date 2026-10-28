@@ -1000,7 +1000,7 @@ does ([`engines/vibration.md`](?doc=engines/vibration.md) § 5).
 
 ```mermaid
 flowchart LR
-  A["A · relax with ΔR_F = 0<br/>(an optimization calculation)"] --> B["B · force constants<br/>±δ on each free coordinate<br/>MD.TypeOfRun FC"]
+  A["A · relax with ΔR_F = 0<br/>(the vibration run's relax phase)"] --> B["B · force constants<br/>±δ on each free coordinate<br/>MD.TypeOfRun FC"]
   B --> C["C · converge δ:<br/>ΔF ≫ σ_F · H(δ) ≈ H(δ/2)<br/>H_ij ≈ H_ji · ω(δ) ≈ ω(δ/2)"]
   C --> D["D/E · H_AA · mass-weight ·<br/>remove surviving motions · diagonalise"]
   D --> F["F · enlarge the active region<br/>A: molecule · B: +1 layer · C: +2"]

@@ -461,8 +461,9 @@ def _finish_block(finish: Optional[str], script_name: str, *,
         f"\n"
         f"{pad}# --- The calculation's own result (engines/vibration.md 5.5) ---\n"
         f"{pad}# The engine left what the result is derived from, not the result:\n"
-        f"{pad}# {finish}, beside this deck, derives it here with the job's own\n"
-        f"{pad}# python and writes it beside the run.  ITS FAILURE IS THE JOB'S --\n"
+        f"{pad}# {finish}, beside this deck, runs here with the job's own python,\n"
+        f"{pad}# records how this call ended and, where it falls to it, writes the\n"
+        f"{pad}# result at the run's root.  ITS FAILURE IS THE JOB'S --\n"
         f"{pad}# the conclusion records its exit status and this wrapper exits\n"
         f"{pad}# with it; its lines and any traceback are in this session log.\n"
         f'{pad}_log INFO "{FINISH_STARTED} {finish} {words} {script_name} $_out_file"\n'

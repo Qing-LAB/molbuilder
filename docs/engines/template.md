@@ -1643,11 +1643,7 @@ but the electronic state's, whose values are resolved from the structure at
 render: the settings gate holds those RESOLVED values to the sets, saying
 where each came from (`science/chemistry-correctness.md` § 2a.3, ES4). The
 gate also holds a rendered deck's other values to the set of the kind the
-deck renders as — its backstop for a render that skipped `resolve`. *(Wrong
-when a SIESTA vibration's `relax` rung is rendered without `resolve`: it
-renders as an optimization, whose set is every relaxer, so there `resolve`
-alone holds `relax_type` to the vibration's — a rung's own role is K4's,
-`plan.md` § 5w.)* **Why** a choice is not offered is prose in one function,
+deck renders as — its backstop for a render that skipped `resolve`. **Why** a choice is not offered is prose in one function,
 `template.why_not_offered`, beside `why_role` and `why_shared` — each reason
 read from the engine's source (`science/chemistry-correctness.md` § 2a.3).
 
@@ -1848,8 +1844,9 @@ writing it into a deck that ignores it. The stage table draws such a cell
 disabled, naming the rungs that read it, and fills a preset only into the rungs
 that read each value (`task-setup.md` § 5). A kind without roles reads every
 item on every rung, so one declaration serves an item two kinds share: the
-relaxation settings declare `stages = ["relaxation"]`, which a vibration reads
-as its relaxation rung's and an optimization as every rung's. A name in `stages`
+relaxation settings declare `stages = ["relaxation"]`, which a SIESTA
+vibration's one stage renders into its `relax` phase's deck and an
+optimization reads on every rung. A name in `stages`
 must be a role of a kind that carries the item, and a kind with roles that
 carries it must find one of its own there — both refused when the catalogue is
 read. *(Until 2026-09-30 `stages` named transport's rungs alone, checked by
@@ -2301,7 +2298,7 @@ flowchart LR
 | **ATOM-METADATA** | the structure's regions, frozen atoms and annotations | **the structure and its `.molstruct.json` sidecar** — data files in the folder (§ 9.1) | the deck writer |
 | **USER-CUSTOM** | text a person wrote | **an item in the template** (§ 9.2) — ⚠ **not built.** No `user_custom` item exists, so a first prep emits the block empty; text a person wrote into a prepared deck survives a prep again of that deck (`write_script`, § 9.2) and travels in no other file (§ 12) | the deck writer, verbatim |
 | **ENGINE-OFFSET** | where the atoms were placed — the cell, the offset applied, the axis kinds, whether the offset was the structure's own | **the structure and its sidecar** (cell, axis kinds, a stated offset), placed by the rule (`cell.to_engine`) | the deck writer, on every deck |
-| **VIBRATION** | what a SIESTA force-constant run's finish reads that no keyword states — the force criterion, the temperature, the relaxation statement and record, every atom's mass | **the template and `task.json`** ([`vibration.md`](?doc=engines/vibration.md) § 5.3) — the relaxation's record is the run's own `relax` call's, read by its finish (§ 5.11 § 3 there) | the deck writer, SIESTA force-constant decks only |
+| **VIBRATION** | what a SIESTA vibration's record step and finish read that no keyword states — the force criterion, the temperature, the relaxation statement, every atom's mass, *Raman for* | **the template and `task.json`** ([`vibration.md`](?doc=engines/vibration.md) § 5.3) — the relaxation's record is the run's own `relax` call's, read by its finish (§ 5.11 § 3 there) | the deck writer, SIESTA force-constant decks only |
 | **HEADER** | reserved, emitted by nobody today | — | — |
 
 **Nothing here is new machinery.** The deck writer emits every block but
