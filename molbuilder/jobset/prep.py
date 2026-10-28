@@ -2321,11 +2321,11 @@ def shape_fixed(calc) -> Optional[Dict[str, str]]:
     first prep (`job-system.md` § 5.0).  Asked by the page that draws the
     shape card and by the save that refuses another shape, so the two say
     the same thing."""
-    from ..task import fixed_by_kind
+    from ..task import fixed_shape
     task = calc.task
-    kind = fixed_by_kind(task.calculation, task.engine)
+    kind = fixed_shape(task.calculation, task.engine)
     if kind is not None:
-        return {"shape": kind["shape"], "why": kind["said"]}
+        return kind
     done = prepared_stages(calc) if task.shape else []
     if not done:
         return None

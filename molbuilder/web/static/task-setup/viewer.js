@@ -602,7 +602,7 @@ function freshFolderState() {
         extension:    null,       // an extension's limits, or null (§ 3)
         groups:       { stages: [], groups: [] },  // each stage's group, each group's state
         prepPick:     null,       // the groups picked for the task's Prep; null = the offer
-        fixed:        null,       // what the kind fixes -- shape, stages (§ 5.3)
+        fixed:        null,       // the stages the kind fixes (§ 5.3); its shape is shapeFixed
         writtenOpen:  new Set(),  // the file groups opened in *What this calculation writes*
         readAs:       null,       // each record as the folder answer read it -- Save's compare (§ 8)
         plan:         null,       // the last prep-plan answer painted -- repainted when the need comes
@@ -1720,6 +1720,9 @@ async function readFolder(projects, dir, opts) {
         // WHETHER IT TAKES A MEASURE STEP is the folder answer's for a
         // hand-over too: its engine and kind decide (§ 11.1).
         _fs.benchRefusal = said.bench_refusal || null;
+        // ...AND THE SHAPE ITS KIND FIXES (§ 4), the answer Save and the
+        // description's reader refuse another with.
+        _fs.shapeFixed = said.shape_fixed || null;
         // THE MACHINE CARD AND THE QUEUE CARD, drawn for this folder (§ 2.1).
         applySetMachine();
         renderCameOver(over);
@@ -1751,6 +1754,10 @@ async function readFolder(projects, dir, opts) {
         // again, and so not read back.
         _task = over;
         await setBuffers({ task: overText, request: "" }, { fromDisk: true });
+        // A SHAPE THE KIND FIXES IS NOT A CHOICE (§ 4): the card starts at
+        // it, the proposal drawn as choosing it draws one.
+        const fixedShape = _fs.shapeFixed && _fs.shapeFixed.shape;
+        if (fixedShape && !_shape) setShape(fixedShape);
         refreshSave();
         return;
     }

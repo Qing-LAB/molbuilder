@@ -148,18 +148,25 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
 # a phase of its run, not a stage (`engines/vibration.md` § 5.11 § 1) --
 # the ordinary one-stage start otherwise (`engines/stages.md` § 6.5).  Until
 # 2.15.3 the page derived it in JavaScript, a second copy of the rule.
-@pytest.mark.parametrize("engine,calculation,params,ladder", [
-    ("siesta", "vibration", {"system_label": "probe"}, [("freq", 1)]),
+# ...AND THE SHAPE ITS KIND FIXES, answered for the hand-over by the folder
+# door as for a description (`web/task-setup.md` § 4, `engines/stages.md`
+# § 6.7): until 2.47.6 the shape card of a SIESTA vibration's hand-over
+# offered flat, and Save refused it.
+@pytest.mark.parametrize("engine,calculation,params,ladder,shape", [
+    ("siesta", "vibration", {"system_label": "probe"}, [("freq", 1)],
+     "hierarchical"),
     ("siesta", "vibration", {"system_label": "probe", "already_relaxed": True},
-     [("freq", 1)]),
-    ("pyscf", "vibration", {"job_name": "probe"}, [("freq", 1)]),
-    ("siesta", "optimization", {"system_label": "probe"}, [("coarse", 1)]),
+     [("freq", 1)], "hierarchical"),
+    ("pyscf", "vibration", {"job_name": "probe"}, [("freq", 1)], None),
+    ("siesta", "optimization", {"system_label": "probe"}, [("coarse", 1)],
+     None),
 ], ids=["siesta vibration, the box unticked", "siesta vibration, ticked",
         "pyscf vibration", "an optimization"])
 def test_the_handover_carries_the_proposed_ladder(web_client,
                                                   isolated_projects_root,
                                                   engine, calculation,
-                                                  params, ladder):
+                                                  params, ladder, shape):
+    from molbuilder.task import fixed_shape
     rendered = web_client.post("/api/task-setup/handover", json=dict(
         _envelope(), engine=engine, name="probe", calculation=calculation,
         params=params)).get_json()
@@ -168,6 +175,19 @@ def test_the_handover_carries_the_proposed_ladder(web_client,
     assert [(s["name"], over["proposed_groups"][s["name"]])
             for s in over["proposed_stages"]] == ladder
     assert all(s["overrides"] == {} for s in over["proposed_stages"])
+    # THE SHAPE: not waited on where the kind fixes it; the card told it,
+    # in the kind's one sentence, before anything is described.
+    assert over["awaiting"] == (["stages"] if shape else ["shape", "stages"])
+    # ...and the file's own words say what it waits on, as `awaiting` does
+    # (`engines/stages.md` § 6.5a): a person reads it in the editor.
+    missing = over["_what"].split("on purpose")[0]
+    assert ("`shape`" in missing) == (shape is None), over["_what"]
+    d = _fresh_calc_dir(isolated_projects_root)
+    (d / rendered["template_name"]).write_text(rendered["template_text"])
+    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
+    said = _folder(web_client, d)["shape_fixed"]
+    assert (said or {}).get("shape") == shape, said
+    assert said == fixed_shape(calculation, engine), said
 
 
 # --------------------------------------------------------------------- #
@@ -503,10 +523,11 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     # one, so no column of the stage table shows it.  The calculation's
     # identity is one; a value a stage may set is none of them.  Saved as
     # the page saves the hand-over: its proposed ladder and groups, and the
-    # shape the kind fixes, the one the card offers (§ 4).
+    # shape the kind fixes, the one the card starts at (§ 4).
     over = _json.loads(rendered["handover_text"])
+    fixed = _folder(web_client, d)["shape_fixed"]
     described = {"schema": over["task_schema"], "engine": over["engine"],
-                 "calculation": over["calculation"], "shape": "hierarchical",
+                 "calculation": over["calculation"], "shape": fixed["shape"],
                  "run": over["run"], "structure": over["structure"],
                  "varies": over["proposed_varies"],
                  "stages": over["proposed_stages"]}

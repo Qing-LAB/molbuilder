@@ -199,6 +199,59 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
 
 
 
+def test_a_hand_over_of_a_kind_that_fixes_its_shape_starts_at_it(
+        page, flask_server, isolated_projects_root):
+    """`web/task-setup.md` § 4, `engines/stages.md` § 6.7: a SIESTA
+    vibration's hand-over -- the road from the Spectrum page -- opens with
+    its kind's shape on the card, pressed, the other not offered, the kind's
+    one sentence beside it; the proposal is drawn at that shape, and Save
+    writes it.
+
+    THE SILENT FAILURE, shipped in 2.47.5: the card offered both shapes,
+    flat among them, and Save refused it in a sentence the card never said.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the folder answer asking the shape
+    only of a calculation that opens; the page's hand-over branch not
+    reading the answer."""
+    from molbuilder.task import fixed_shape, of as task_of
+    from molbuilder.web.app import create_app
+    from support.envelope import envelope
+    from conftest import write_pseudos
+    d = isolated_projects_root / "handover" / "frequency" / "kind_shape"
+    d.mkdir(parents=True)
+    # SIESTA's pseudopotentials beside the calculation, as a person's lie
+    # there (`engines/siesta.md`).
+    write_pseudos(d, ["H"])
+    out = create_app(config={}).test_client().post(
+        "/api/task-setup/handover", json=dict(
+            {"structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])},
+            engine="siesta", calculation="vibration", name="handed",
+            params={"system_label": "handed"}, dest=str(d))).get_json()
+    assert out["ok"], out
+    for f in out["structure_files"]:
+        (d / f["name"]).write_text(f["text"])
+    (d / out["template_name"]).write_text(out["template_text"])
+    (d / out["handover_name"]).write_text(out["handover_text"])
+    fixed = fixed_shape("vibration", "siesta")
+
+    _open(page, flask_server, d)
+    page.wait_for_selector("#ts-shape-fixed:not([hidden])", timeout=20000)
+    assert page.inner_text("#ts-shape-fixed") == fixed["why"]
+    page.wait_for_function(
+        "() => document.getElementById('ts-shape-hier')"
+        "  .getAttribute('aria-pressed') === 'true'", timeout=20000)
+    assert page.locator("#ts-shape-flat").is_disabled(), (
+        "a SIESTA vibration's hand-over was offered the flat shape")
+    wait_for_file(page, "task", '"shape": "hierarchical"')
+
+    page.click("#ts-save")
+    page.wait_for_function(
+        "() => { const n = document.getElementById('ts-save-said');"
+        " return n && !n.hidden && /Saved/.test(n.textContent); }",
+        timeout=20000)
+    assert task_of(d).shape == fixed["shape"]
+
+
 def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
         page, flask_server, isolated_projects_root):
     """`task-setup.md` § 4, § 7a, § 8: a hand-over becomes a calculation on

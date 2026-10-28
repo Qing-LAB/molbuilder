@@ -144,26 +144,13 @@ def co2_in_engine_order():
                    deck_sort_key("siesta", "vibration")).structure
 
 
-def describe_calculation(tmp_path, monkeypatch, *,
-                         shape: str = "hierarchical", name: str = "H2",
-                         calculation: str = "optimization",
-                         engine: str = "siesta",
-                         structure: "dict | None" = None,
-                         stage_strategy: "str | None" = None) -> Path:
-    """`molbuilder describe` on ``structure`` -- :data:`H2` unless given: its
-    ``elements``, ``positions`` (Å), ``regions`` (``frozen_atoms`` among
-    them), its box's three edges, ``cell`` (Å), and each axis's
-    ``axis_kind`` (isolated unless given) -- the bundle, at
-    ``<projects>/P/<calculation>/<name>``: a SIESTA optimization's shipped
-    `publishable` ladder, unless ``stage_strategy`` names another (``""``
-    for the one stage the template alone describes), or a vibration's own
-    (`relax`, `freq`).
-
-    ITS RUN CARD STATES THE LAUNCH SHAPE -- two ranks and one thread for
-    SIESTA, one thread for PySCF -- in its job request, as a described
-    calculation does: a run whose shape is stated nowhere is refused at prep
-    (`architecture.md` § 5.2).  A test about that refusal takes the card
-    away."""
+def describe(tmp_path, monkeypatch, *, shape: "str | None" = "hierarchical",
+             name: str = "H2", calculation: str = "optimization",
+             engine: str = "siesta", structure: "dict | None" = None,
+             stage_strategy: "str | None" = None):
+    """`molbuilder describe` as :func:`describe_calculation` types it --
+    ``shape`` ``None`` leaving ``--shape`` out -- and what it said: ``(the
+    verb's result, the bundle it names)``, the bundle written or not."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.workingcopy_structure import StructureCodec
@@ -181,12 +168,38 @@ def describe_calculation(tmp_path, monkeypatch, *,
                 else "")
     r = molbuilder("describe", "--structure", STRUCTURE,
                "--bundle", f"P/{calculation}/{name}", "--engine", engine,
-               "--shape", shape, "--name", name,
-               "--calculation", calculation,
+               *(("--shape", shape) if shape is not None else ()),
+               "--name", name, "--calculation", calculation,
                *(("--stage-strategy", strategy) if strategy else ()),
                *(("--psml-lib", "pseudopotential") if siesta else ()))
+    return r, tree / "P" / calculation / name
+
+
+def describe_calculation(tmp_path, monkeypatch, *,
+                         shape: str = "hierarchical", name: str = "H2",
+                         calculation: str = "optimization",
+                         engine: str = "siesta",
+                         structure: "dict | None" = None,
+                         stage_strategy: "str | None" = None) -> Path:
+    """`molbuilder describe` on ``structure`` -- :data:`H2` unless given: its
+    ``elements``, ``positions`` (Å), ``regions`` (``frozen_atoms`` among
+    them), its box's three edges, ``cell`` (Å), and each axis's
+    ``axis_kind`` (isolated unless given) -- the bundle, at
+    ``<projects>/P/<calculation>/<name>``: a SIESTA optimization's shipped
+    `publishable` ladder, unless ``stage_strategy`` names another (``""``
+    for the one stage the template alone describes), or a vibration's own
+    (`freq`).
+
+    ITS RUN CARD STATES THE LAUNCH SHAPE -- two ranks and one thread for
+    SIESTA, one thread for PySCF -- in its job request, as a described
+    calculation does: a run whose shape is stated nowhere is refused at prep
+    (`architecture.md` § 5.2).  A test about that refusal takes the card
+    away."""
+    r, bundle = describe(tmp_path, monkeypatch, shape=shape, name=name,
+                         calculation=calculation, engine=engine,
+                         structure=structure, stage_strategy=stage_strategy)
     assert r.exit_code == 0, r.output
-    bundle = tree / "P" / calculation / name
+    siesta = engine == "siesta"
     request = read_request(bundle)
     request.setdefault("execution", {"mpi_np": 2, "omp_threads": 1} if siesta
                        else {"threads": 1})

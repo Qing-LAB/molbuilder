@@ -107,34 +107,46 @@ def fixed_by_kind(calculation: str, engine: str
                   ) -> Optional[Dict[str, Any]]:
     """WHAT A CALCULATION KIND FIXES on ``engine``, so its description states
     it and no surface offers another (`engines/transport.md` § 3.8.2a,
-    `web/task-setup.md` § 4, § 5.3; user, 2026-10-11): ``{"shape", "said",
+    `web/task-setup.md` § 4, § 5.3; user, 2026-10-11): ``{"shape", "why",
     "stages"}`` -- for transport, hierarchical and its five rungs, every
     one, in order (the seed among them: the device starts from its
     density, user 2026-10-12); for a SIESTA vibration, hierarchical, its
     stages its own (``None``): its one run's SIESTA calls each in a folder
     of its own (`engines/vibration.md` § 5.11 § 1); ``None`` for a kind
-    that fixes neither.  ``said`` is the shape and why, the one sentence
-    the reader's check refuses another shape with and the shape card
-    shows (`prep.shape_fixed`).  The reader's check
+    that fixes neither.  ``why`` is the shape and its reason, the one
+    sentence the reader's check refuses another shape with, the shape card
+    shows and `molbuilder describe` says (:func:`fixed_shape`).  The reader's check
     asks it, and Task setup's folder answer serves it, so the two cannot
     disagree."""
     if calculation == "transport":
         from .paths import KIND_ROLES
         return {"shape": "hierarchical", "stages": KIND_ROLES["transport"],
-                "said": "A transport calculation is hierarchical, and no "
+                "why": "A transport calculation is hierarchical, and no "
                         "other shape is taken -- its five stages exchange "
                         "files through their own attempts, which the flat "
                         "shape has no directories to hold "
                         "(engines/transport.md § 2a.11)."}
     if calculation == "vibration" and engine == "siesta":
         return {"shape": "hierarchical", "stages": None,
-                "said": "A SIESTA vibration is hierarchical, and no other "
+                "why": "A SIESTA vibration is hierarchical, and no other "
                         "shape is taken -- its one run's SIESTA calls, the "
                         "relaxation, the force constants and the optical "
                         "calls, each run in a folder of its own: in one "
                         "directory they would write over each other's .DM "
                         "and .XV (engines/vibration.md § 5.11 § 1)."}
     return None
+
+
+def fixed_shape(calculation: str, engine: str) -> Optional[Dict[str, str]]:
+    """THE SHAPE A KIND FIXES, and why -- ``{"shape", "why"}`` from
+    :func:`fixed_by_kind`, or ``None`` for a kind that fixes none: what the
+    shape card shows for a description or a hand-over alike
+    (`web/task-setup.md` § 4), and `molbuilder describe` says when no shape
+    is given."""
+    fixed = fixed_by_kind(calculation, engine)
+    if fixed is None:
+        return None
+    return {"shape": fixed["shape"], "why": fixed["why"]}
 
 
 #: A slot citation names its junction explicitly, by its tree-relative
@@ -341,7 +353,7 @@ class Task:
         # holds another (`web/task-setup.md` § 4).
         fixed = fixed_by_kind(self.calculation, self.engine)
         if fixed is not None and self.shape != fixed["shape"]:
-            raise ValueError(fixed["said"])
+            raise ValueError(fixed["why"])
         # The composite's own pairing (engines/transport.md § 3.1): slots
         # belong to transport alone; transport requires the junction slot,
         # carries no structure block, and each citation names its attempt.
@@ -1033,7 +1045,7 @@ def write_task(base, task: Task):
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Run", "StructureRef", "Stage", "Task",
            "derive_run", "of", "from_text", "path_of",
-           "varies_for", "write_task"]
+           "varies_for", "write_task", "fixed_by_kind", "fixed_shape"]
 
 
 #: See the note beside § 2 above.  Derived here, where `Stage` is in scope.

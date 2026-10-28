@@ -41,6 +41,7 @@ from .model import FILENAME as _JOBSET_FILE
 # EVERY ENGINE MOLBUILDER KNOWS, the catalogue's (`runfiles.engines`) -- the
 # one list `--engine` offers, never restated here.
 from ..runfiles import engines as _rf_engines
+from ..paths import SHAPES as _SHAPES
 
 
 def _sweeps_in(base: Path) -> list:
@@ -688,7 +689,7 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
                    "calculation EXCEPT transport, whose structure IS its "
                    "junction citation (--slot).")
 @click.option("--shape", default=None,
-              type=click.Choice(("flat", "hierarchical")),
+              type=click.Choice(_SHAPES),
               help="how the stages sit on disk. REQUIRED and never inferred -- "
                    "inferring it would hand you a directory tree you did not "
                    "ask for (engines/stages.md 6.7) -- but beside --reuses, "
@@ -827,10 +828,19 @@ def describe_cmd(structure, bundle: str, shape: str,
             "--window and --finer fit a transmission window to a finished "
             "calculation's grid -- they go with --reuses "
             "(engines/transport.md § 2a.16).")
-    for flag, given in (("--engine", engine), ("--shape", shape)):
-        if given is None:
-            raise click.ClickException(
-                f"{flag} is required -- never assumed or inferred.")
+    if engine is None:
+        raise click.ClickException(
+            "--engine is required -- never assumed or inferred.")
+    if shape is None:
+        # EXPLICIT ON THE COMMAND LINE, where no card shows the outcome
+        # (user, 2026-10-28) -- and a kind that fixes the shape says which,
+        # in its own sentence (`task.fixed_shape`, `web/task-setup.md` § 4).
+        from ..task import fixed_shape
+        fixed = fixed_shape(calculation, engine)
+        raise click.ClickException(
+            "--shape is required -- never assumed or inferred."
+            + (f"  {fixed['why']}  Describe it with --shape "
+               f"{fixed['shape']}." if fixed else ""))
     if calculation == "transport":
         _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,
                         engine=engine, slots_opt=slots_opt,

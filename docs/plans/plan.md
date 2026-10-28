@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.47.5.** Since the last handover (2026-10-20, kept
+**Where we are: 2.47.6.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -86,9 +86,9 @@ meaning said right, the deck cited whole with its pseudopotentials (2.47.1);
 a SIESTA vibration's contract written as rules, every page telling the one
 stage (2.47.2), and read against its code by two rounds of fresh reviewers
 (2.47.3, 2.47.4); its shape fixed where every road reads it, and the ladder
-naming each call of its run (2.47.5).
+naming each call of its run (2.47.5); the hand-over's shape card (2.47.6).
 
-**Last checked**: the fast batch on 2.47.5 (6,891 passed); the ladder's e2e
+**Last checked**: the fast batch on 2.47.6's code before its review's revision (6,893 passed), the Task setup and describe tests after it (62), the Task setup browser files (26); the fast batch on 2.47.5 (6,891 passed); the ladder's e2e
 on the real CO₂ run on 2.47.5; the run-script, launch, warm-file and deck
 tests on 2.47.3 (101 passed; comments changed); the catalogue, bundle and launch tests on
 2.47.2 (922 and 114 passed); the
@@ -642,14 +642,17 @@ first (one hand-over → description helper, taking the shape from the folder
 answer); the 54 branches — the kind table. p3 is rebuilt on floors 4 and 6;
 p4 falls out of floor 2's one *what it opens*.
 
-**The order** — each a milestone: contract first, code bottom-up, two
-review rounds:
+**The order** — each stage: contract first, code bottom-up, and **a
+fresh-agent review at its end** — its findings verified in the code, triaged
+and revised before the stage ships; the two automated rounds over the whole at
+S5 *(the user, 2026-10-28: "make sure review is conducted at milestone and/or
+stages")*:
 
 | # | milestone | done when |
 |---|---|---|
-| S0 | **E1** (an error on the road, a last-number move): the hand-over's shape card and Save from `fixed_by_kind`; a road-table row through the hand-over | a SIESTA vibration's hand-over shows *hierarchical* fixed, with why |
+| S0 | **E1** (an error on the road, a last-number move): the hand-over's shape card and Save from `fixed_by_kind`; a road-table row through the hand-over | **built 2.47.6** — a SIESTA vibration's hand-over starts at *hierarchical*, fixed, with why; `describe` without `--shape` names the kind's shape (the CLI stays explicit, the user's decision of 2026-10-28). Its review: card, Save, reader and CLI agree on every road; the hand-over's own words and two contract rows fixed with it; to S2 — `fixed_by_kind`'s branches and `points.DECLARED` keyed differently (transport on any engine, SIESTA only), `fixed_shape` a second door; to S4 — the road helper's record paths by name, a protocol row running a prep it does not need |
 | S1 | **the contract**: `architecture.md` § 2.1 and § 3.2 (the kind table as a door; the run door's limits; the run of points' view on floor 6), `model/parse.md` § 5 (the folder kinds and what each opens, as data), `project-layout.md` § 1.4a, `web/results.md` and `web-api.md` (the page shows; the wire carries paths, words and why) | the user's yes |
-| S2 | **the kind table** — the seven tables into one record per (engine, kind), then the 54 branches judged one by one | no branch on a kind's name but an engine's own code |
+| S2 | **the kind table** — the seven tables into one record per (engine, kind), then the branches judged one by one (a 55th found in S0's review: the hand-over's sender tab named by kind) | no branch on a kind's name but an engine's own code |
 | S3 | **the floors**: floor 2 limited, floor 4's one walk, floor 6's views, floor 7 serving whole, the page showing — p3 rebuilt, p4 with it, the ladder listing a run in phases' result | the review's structure, files and page rows closed |
 | S4 | **the tests through the doors** — the support helpers first | no test composes a run's path or a file's name |
 | S5 | two review rounds over S0–S4 | — |

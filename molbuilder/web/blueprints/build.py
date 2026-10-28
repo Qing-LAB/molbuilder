@@ -1021,8 +1021,9 @@ def api_task_setup_handover():
     "send to tab" hand-off, and this obeys it -- the transfer goes through disk,
     so the receiving tab reads files like every other reader and nothing depends
     on state you cannot see in the folder.  Task setup finishes the job: it asks
-    for the shape, takes the stages, and on a successful save writes the real
-    ``task.json`` and removes this file.
+    for the shape -- or starts at the one the kind fixes (`task.fixed_shape`,
+    `web/task-setup.md` § 4) -- takes the stages, and on a successful save
+    writes the real ``task.json`` and removes this file.
     """
     body = request.get_json(silent=True) or {}
     engine = str(body.get("engine") or "").lower()
@@ -1207,8 +1208,13 @@ def api_task_setup_handover():
 
     from molbuilder.jobset.group import fresh_groups
     from molbuilder.jobset.ladder import fresh_stages
-    from molbuilder.task import derive_run, fresh_varies
+    from molbuilder.task import derive_run, fixed_shape, fresh_varies
     proposed = fresh_stages(calculation, engine)
+    # WHAT THE HAND-OVER WAITS ON -- the keys Task setup still asks; a shape
+    # the kind fixes is not asked (`task.fixed_shape`, `web/task-setup.md`
+    # § 4), and the file's own words say the same.
+    fixed = fixed_shape(calculation, engine)
+    awaiting = ["stages"] if fixed else ["shape", "stages"]
     groups = fresh_groups(proposed, engine=engine, calculation=calculation,
                           template_text=template_text)
     from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA
@@ -1231,9 +1237,13 @@ def api_task_setup_handover():
                      f"tab, not a "
                      "description. It carries the parameters (in the .template.toml "
                      "beside it) plus what this calculation is OF. It is missing "
-                     "`shape` and `stages` on purpose -- Task setup asks for those, "
-                     "and on a successful save writes the real task.json and deletes "
-                     "this file. Nothing runs from it. The structure it is OF is the "
+                     + " and ".join(f"`{k}`" for k in awaiting)
+                     + " on purpose -- Task setup asks for "
+                     + ("it" if len(awaiting) == 1 else "those")
+                     + (f"; its shape is its kind's, {fixed['shape']}, which "
+                        f"Task setup writes" if fixed else "")
+                     + ", and on a successful save writes the real task.json "
+                     "and deletes this file. Nothing runs from it. The structure it is OF is the "
                      "file `structure.source` names in this same folder, written "
                      "by the server's one codec: the .xyz, "
                      "which carries the coordinates and the cell, and the "
@@ -1255,9 +1265,9 @@ def api_task_setup_handover():
                       # THE PAIR'S FINGERPRINT, which the description keeps
                       # and every prep compares (`engines/stages.md` § 6.3).
                       "fingerprint": StructureCodec.fingerprint(made)},
-        # No `shape`, no `stages` -- Task setup asks.  Stated rather than
-        # omitted so a reader of the file knows it is waiting on them.
-        "awaiting":  ["shape", "stages"],
+        # Stated rather than omitted so a reader of the file knows what it
+        # is waiting on (above).
+        "awaiting":  awaiting,
     }
     # THE KIND RIDES THE HAND-OVER, every kind -- the receiving tab writes
     # it into task.json.
@@ -1603,9 +1613,10 @@ def api_task_setup_save():
                      f"here would orphan its results. One calculation per folder — "
                      f"pick or make another.",
         }), 409
-    # THE SHAPE, WHEN IT IS FIXED (`web/task-setup.md` § 4): by the
-    # kind, or once the calculation has produced -- a prepared stage lies
-    # where the shape put it.  The one answer the shape card draws
+    # THE SHAPE, WHEN IT IS FIXED (`web/task-setup.md` § 4): the one its
+    # kind fixes is the reader's, refused above (`task.from_text`); here,
+    # once the calculation has produced -- a prepared stage lies where the
+    # shape put it.  The one answer the shape card draws
     # (`prep.shape_fixed`), so the refusal says what the page said.
     if prior is not None and prior.shape and task.shape != prior.shape:
         from molbuilder.jobset.errors import PrepError
@@ -2625,7 +2636,7 @@ def api_task_setup_folder():
         # (`prep.shape_fixed`, the answer the save refuses with); null while
         # it may change, `{error}` when its readers refuse the folder's plan
         # (`web/task-setup.md` § 4).
-        "shape_fixed": _folder_shape_fixed(_calc),
+        "shape_fixed": _folder_shape_fixed(_calc, _task, handover),
         # WHICH STAGES ARE PREPARED AS A BENCHMARK -- each with the prep
         # entry's own sentence (`prep.prepared_already`), which the page
         # shows in place of a Prep it would refuse; a task's stages are the
@@ -2662,8 +2673,9 @@ def _default_groups_of(folder, task) -> dict:
 def _folder_fixed(task) -> Optional[dict]:
     """The stages ``task.fixed_by_kind`` fixes, ``{"stages"}``, as the stage
     table reads them; ``None`` for a kind that fixes none -- a SIESTA
-    vibration fixes its shape alone -- or no description.  The shape it fixes reaches the page as ``shape_fixed``,
-    with why (`prep.shape_fixed`)."""
+    vibration fixes its shape alone -- or no description.  The shape it
+    fixes reaches the page as ``shape_fixed``, with why
+    (`prep.shape_fixed`)."""
     from molbuilder.task import fixed_by_kind
     fixed = fixed_by_kind(getattr(task, "calculation", ""),
                           getattr(task, "engine", ""))
@@ -2792,13 +2804,19 @@ def _folder_frame_set(task, folder):
         cited.structure if isinstance(cited, CitedPair) else None)
 
 
-def _folder_shape_fixed(calc) -> Optional[dict]:
-    """``prep.shape_fixed`` of a calculation that opens -- ``None`` with
-    none, or while its shape may change.  Fail-soft, like the folder's
-    other parts: what its readers refuse -- a plan written before the
-    reader's format -- is ``{"error"}``, said on the shape card."""
+def _folder_shape_fixed(calc, task, handover) -> Optional[dict]:
+    """The shape card's answer (`web/task-setup.md` § 4): ``prep.shape_fixed``
+    of a calculation that opens -- by its kind, or once it has produced --
+    and before one opens, the shape its kind fixes (`task.fixed_shape`): a
+    description's, or a hand-over's from the engine and kind it carries, as
+    `_folder_bench_refusal` asks them; ``None`` while it may change.
+    Fail-soft, like the folder's other parts: what its readers refuse -- a
+    plan written before the reader's format -- is ``{"error"}``, said on
+    the shape card."""
     if calc is None:
-        return None
+        from molbuilder.task import fixed_shape
+        kind = _folder_kind(task, handover)
+        return fixed_shape(*kind) if kind is not None else None
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.prep import shape_fixed
     try:
@@ -2935,11 +2953,20 @@ def _folder_bench_refusal(task, handover):
     the engine and kind it carries (`web/task-setup.md` § 11.1) -- or
     ``None`` when there is neither to ask."""
     from molbuilder.jobset.prep_inputs import bench_refusal
+    kind = _folder_kind(task, handover)
+    return bench_refusal(kind[1], kind[0]) if kind is not None else None
+
+
+def _folder_kind(task, handover):
+    """``(calculation, engine)`` of the folder's description, or of the
+    hand-over it holds before one -- the kind and engine the folder answer's
+    kind-decided parts ask with (`web/task-setup.md` § 4, § 11.1); ``None``
+    when there is neither to read."""
     if hasattr(task, "stages"):
-        return bench_refusal(str(task.engine), str(task.calculation))
+        return str(task.calculation), str(task.engine)
     if isinstance(handover, dict) and "error" not in handover:
-        return bench_refusal((handover.get("engine") or {}).get("name", ""),
-                             handover.get("calculation", ""))
+        return (str(handover.get("calculation", "")),
+                str((handover.get("engine") or {}).get("name", "")))
     return None
 
 

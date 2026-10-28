@@ -1188,7 +1188,9 @@ tenth.
 
 *Added 2026-08-16 (user).* A parameter surface can collect the physics but
 cannot answer `shape`, which is **required with no default** (§ 6.7) — so what
-it produces is not yet a description. It writes **`task.1st.json`**
+it produces is not yet a description. (A kind that fixes the shape answers it
+itself: Task setup writes it at the save, and the hand-over does not wait on
+it.) It writes **`task.1st.json`**
 (`molbuilder/task-handover@1`) beside the template **and beside the structure
 the calculation is of** — the `.xyz` + `.molstruct.json` pair its
 `structure.source` names, folder-relative — and the surface that asks for the
@@ -1216,7 +1218,7 @@ answers with the same device: a private carrier between two steps of one act.
 |---|---|
 | **its own schema** | `molbuilder/task-handover@1`, never `molbuilder/task@2`. It has no `shape`, so it would fail that schema's reader — and a file claiming a schema it does not satisfy is worse than one that says what it is. `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident (`job-contracts.md § 6.1`) |
 | **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is chosen by suffix, so the second spelling renders as plain text in the editor a person is meant to read it in; and nothing that looks for `task.json` matches it |
-| **it says what it is** | JSON carries no comments, so the file opens with a `_what` line and an `awaiting` list naming the keys it lacks. It is read by a **person**, in an editor, and should not need a document open beside it |
+| **it says what it is** | JSON carries no comments, so the file opens with a `_what` line and an `awaiting` list naming the keys Task setup still asks — a shape the kind fixes is not among them, though the file holds no `shape` until the save writes it; the `_what` line says the same, from the same list. It is read by a **person**, in an editor, and should not need a document open beside it |
 
 **It resolves in one direction only.** On a successful save the real `task.json`
 is written and the hand-over is **deleted**, so the next visit to that folder
@@ -1357,7 +1359,19 @@ they never asked for, which `project-layout.md § 8` had already rejected. A
 the file itself carries what was chosen. That is the same rule as `varies`
 (§ 6.2): intent is recorded, never reconstructed.
 
-**Every engine offers both shapes** *(decided 2026-08-18, user)*. How a
+**A kind may fix it** (`task.fixed_by_kind`): a transport calculation and a
+SIESTA vibration are hierarchical — their rungs, or their run's calls, each
+need a folder of their own — and the description's reader refuses another,
+in the kind's one sentence (`task.fixed_shape`), on every road. **The web
+surface starts at that shape**, its card saying why ([`web/task-setup.md`](?doc=web/task-setup.md)
+§ 4); **`molbuilder describe` still asks for `--shape`** — on the command line
+no card shows the outcome, so the choice is written in the command, and its
+refusal names the kind's shape and why *(user, 2026-10-28: "cli shall be more
+explicit because on web user typically has visual guidance and know the final
+outcome")*.
+
+**Every engine offers both shapes** *(decided 2026-08-18, user)*, save where a
+kind fixes it (above). How a
 calculation's files are kept apart on disk is a question about the calculation,
 not about the engine, and the layer that answers it — the one that names stage
 directories, attempt directories and benchmark containers — contains no mention

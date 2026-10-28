@@ -275,9 +275,12 @@ hierarchical — its five rungs exchange files through their own attempts
 SIESTA vibration — its one run's SIESTA calls each run in a folder of their
 own ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 1) — so on
 their folders the card shows that shape, says why, and offers no other. The
-sentence is the kind's (`task.fixed_by_kind`): the description's own reader
+sentence is the kind's (`task.fixed_shape`): the description's own reader
 refuses another shape with it, so a Save that sends one is refused, 400, in
-the words the card shows.
+the words the card shows. **A hand-over of such a kind** is answered the
+same, from the engine and kind it carries: the card starts at that shape —
+the proposal drawn as choosing it draws one — and the hand-over does not
+wait on a shape (`awaiting`).
 
 **It is fixed once the calculation has produced.** Before the first produce it is
 free to change; after, it would orphan every deck, output and warm file. So once

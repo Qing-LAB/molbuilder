@@ -373,42 +373,56 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     assert written[ident].source == "person", written[ident].source
 
 
-@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-def test_a_vibration_described_flat_is_refused_on_siesta_alone(
-        tmp_path, monkeypatch, engine):
-    """`engines/vibration.md` § 5.11 § 1, `web/task-setup.md` § 4: a SIESTA
-    vibration is hierarchical, the kind's (`task.fixed_by_kind`) -- its
-    description's reader refuses the flat shape, saying why, and writes
-    nothing; a PySCF vibration, one deck in one folder, takes it.
+#: `engines/stages.md` § 6.7, the shape a kind fixes, on the command line:
+#: each row the vibration's engine, the ``--shape`` typed (``None`` left
+#: out), the shape the contract says the kind fixes (``None``: none), and
+#: what `molbuilder describe` does.
+_SHAPE_ROWS = [
+    ("siesta", "flat", "hierarchical", "refused in the kind's sentence"),
+    ("siesta", None, "hierarchical", "refused, naming the kind's shape"),
+    ("pyscf", "flat", None, "taken"),
+    ("pyscf", None, None, "refused, asking for --shape"),
+]
+
+
+@pytest.mark.parametrize("engine, shape, kind_shape, outcome", _SHAPE_ROWS,
+                         ids=[f"{e}-{s}" for e, s, _k, _o in _SHAPE_ROWS])
+def test_the_shape_a_kind_fixes_on_the_command_line(
+        tmp_path, monkeypatch, engine, shape, kind_shape, outcome):
+    """`engines/stages.md` § 6.7: a SIESTA vibration is hierarchical, the
+    kind's (`task.fixed_by_kind`) -- its description's reader refuses
+    another shape in the kind's one sentence, and nothing is written;
+    `describe` still asks for ``--shape``, its refusal naming the kind's
+    shape and why; a PySCF vibration takes either shape.
 
     THE SILENT FAILURE: a SIESTA vibration described flat, its relaxation,
     force constants and optical calls run in one directory, each writing
     over the last one's .DM and .XV -- the description's reader the one
-    door that stops it.
+    door that stops it; and a person on the command line left guessing
+    which shape a kind takes.
 
     MUTATION THIS MUST FAIL AGAINST: the reader's shape check removed;
-    `fixed_by_kind` answering transport alone."""
-    from click.testing import CliRunner
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "P" / "structure" / "h2.xyz").write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    res = CliRunner().invoke(describe_cmd, [
-        "--structure", "P/structure/h2.xyz", "--bundle", "P/frequency/V",
-        "--engine", engine, "--shape", "flat",
-        "--calculation", "vibration", "--name", "V"])
-    task_json = tree / "P" / "frequency" / "V" / "task.json"
-    if engine == "pyscf":
-        assert res.exit_code == 0, res.output
-        assert task_of(task_json.parent).shape == "flat"
+    `fixed_by_kind` answering transport alone; the refusal not naming the
+    kind's shape."""
+    from support.road import describe
+    r, bundle = describe(tmp_path, monkeypatch, shape=shape, name="V",
+                         calculation="vibration", engine=engine)
+    said = " ".join(r.output.split())
+    if outcome == "taken":
+        assert r.exit_code == 0, r.output
+        assert task_of(bundle).shape == shape
         return
-    assert res.exit_code != 0, res.output
-    assert ("A SIESTA vibration is hierarchical, and no other shape is "
-            "taken") in res.output, res.output
-    assert "each run in a folder of its own" in res.output, res.output
-    assert not task_json.exists()
+    assert r.exit_code != 0, r.output
+    assert task_of(bundle) is None, "a refused describe wrote a description"
+    if kind_shape:
+        # THE KIND'S SENTENCE: the shape, and why -- its calls each in a
+        # folder of their own (`engines/stages.md` § 6.7).
+        assert f"is {kind_shape}" in said and "folder of its own" in said, (
+            r.output)
+    if shape is None:
+        assert "--shape is required" in said, r.output
+        assert ((f"--shape {kind_shape}" in said) if kind_shape
+                else "Describe it with --shape" not in said), r.output
 
 
 def test_init_refuses_a_folder_that_already_holds_a_calculation(
