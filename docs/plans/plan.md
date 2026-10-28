@@ -21,7 +21,8 @@ whole, §§ 1ae, 1ac, 1ak, 5q, 5r, 5s, 5t, 5w and the queue as they stood, and
 § 2's RL42, GATHER-WARM, E14, V1.9, V1.14 and GKN, to [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md); what stays was
 rewritten from their findings — each row re-checked carries its note, and the
 decisions of the day (MV-RETRACT, VV-CAMERA) and the rows the readers found
-missing have theirs.
+missing have theirs. A second pass the same evening brought § 1af, § 1ah,
+the queue and the handover to the day's end.
 
 ---
 
@@ -32,7 +33,13 @@ handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-2
 day's last two: a structure lying along z opens side on, and a project's
 topics are its kinds' (2.47.11); a lead, a summary and a retired stage read
 from the kind table, a vibration writing no `.HSX`, and the monitor's line
-from the run's structure decided, not built (2.47.12).
+from the run's structure decided, not built (2.47.12). Since: the monitor's
+line built in the checkout, its release 2.48.0 under way (§ 1af); and
+`engines/vibration.md` § 2.2a, what the force a relaxed structure shows under
+the vibration's own settings does and does not change — measured on the
+user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
+it is, the user's ruling: "the user knows the information … don't do
+extra")*.
 
 **Last checked**: the fast batch on 2.47.12 (6,921 passed), the files its last revision touched after it (151 passed), its chapters rendered; the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
 
@@ -153,7 +160,7 @@ After it, each a design brought to the user: the named set's share (D-e), the
 `electronic` kind (§ 5.10 ④), the measured intensity's factors as an option
 (M4-d) — § 1ac.
 
-## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user; its status line written into `execution/run-reports.md` § 2.8 on 2026-10-28, its events next — then the build, 2.48.0)*
+## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user; its status line, `execution/run-reports.md` § 2.8, built for 2.48.0; its events next, contract first, a release of their own)*
 
 *(The user, 2026-10-26: "the report should report the progress and/or the
 periodic update, as the monitor is designed for. i am asking you to do a
@@ -196,19 +203,33 @@ reports as one run — which needs its run to keep the index a vibration's
 keeps, so the monitor can tell its first and last point (R-e's transport
 half, `engines/vibration.md` § 5.11 § 7a, handover (g) above).
 
-**Written 2026-10-28** — the status line, [`execution/run-reports.md`](?doc=execution/run-reports.md)
-§ 2.8, not built *(the user, 2026-10-28, of a Raman call's periodic card that
-said `periodic SCF iteration 6 … elapsed 2h` two hours into SIESTA's optical
-calculation: "the monitor should be more context aware"; "more
-structure/parser framework driven, instead of explicit patch of code to handle
-individual cases")*: the line read from the run's declared structure — the
-parts of an engine's output (`siesta_grammar.PARTS`), the part each fact
-belongs to (`report_fields`), a run of points' position (its index), the
-clocks, the pace and what is left; a run of points' wall warning by the
-projection above. **Still to write into § 2 before the build** (2.48.0): the
-events — a milestone at a phase's end, a part that failed, `scf_converged` on
-geometry moves only (§ 2.2 still says one per displacement); R-e's transport
-half, a transport run of points keeping an index.
+**The status line — built for 2.48.0, in the checkout, not yet released**
+*(the user, 2026-10-28, of a Raman call's periodic card that said `periodic
+SCF iteration 6 … elapsed 2h` two hours into SIESTA's optical calculation:
+"the monitor should be more context aware"; "more structure/parser framework
+driven, instead of explicit patch of code to handle individual cases")*:
+[`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.8, the line
+read from the run's declared structure — the parts of an engine's output
+(`siesta_grammar.PARTS`, read by the one reading pass), the part each fact
+belongs to (`report_fields`' `part`), a run of points' position
+(`vibration_phases.read_index`, `rows_of` — the one done rule, moved there
+from the record step — and `summary`, in the monitor's bundle), the run's and
+the call's clocks, the pace and what is left, and a run of points' wall
+warning by the projection above. Built and checked: the real CO₂ e2e
+(`test_an_optical_calls_monitor_says_where_its_run_is`, 174 s), broken three
+ways and seen to fail each time (the grammar's line, the reader's part rule,
+the monitor's pace); a member monitor's line read on a real Raman run of ours.
+**Left for the release**: § 2.8 folded into § 2's rules as built (§ 2.1b,
+§ 2.3, § 2.5, § 4.1a, § 4.1c), `model/parse.md` § 2b, `engines/vibration.md`
+§ 5.11 and § 6; the changelog row; the fast batch, the render check, two
+review rounds.
+
+**Changed shape (R3a, 2026-10-28)**: the events are a release of their own,
+after 2.48.0, contract first — a milestone at a phase's end, a part that
+failed, `scf_converged` on geometry moves only (§ 2.2 still says one per
+displacement), and R-e's transport half, a transport run of points keeping an
+index. The status line needed none of them, and the user's live run needed
+the line.
 
 **The environment the monitor runs in** — aligned 2.43.0–2.44.1 (the
 paragraph as it stood: [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2). **Still open**: `job-contracts.md` § 2.6's
@@ -294,7 +315,12 @@ decided then — all modes, or a frequency range a chemist knows
    ticks on the Spectra page — only those run, on the run's own modes; the
    extension road of a finished calculation (`engines/transport.md`
    § 2a.16) for the vibration kind, the run's index already planning optical
-   calls after `fc` (§ 5.11 § 3).
+   calls after `fc` (§ 5.11 § 3). **Asked on a live run** (the user,
+   2026-10-28, of the AuBDTAu Raman run — 121 optical calls at about two
+   hours each): can a continuation shrink the modes to save time? Not today —
+   *Raman for* is fixed once its stage has run, and a warm relaunch refuses a
+   change to what the run computes; this design is the answer, offered and
+   waiting for the user's go.
 2. **Skip the modes symmetry forbids.** A mode's Raman is exactly zero when
    its symmetry forbids it — CO₂'s antisymmetric stretch and two bends, 3 of
    its 4 modes (our run: 0.23 against 45.1 Å⁴/amu, zero to numerical noise),
@@ -409,7 +435,7 @@ then the agreed designs, then § 0a's steps 2–6. The queue it replaces
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **The monitor's line from the run's declared structure, and what a run reports by kind** — § 1af's events written into `execution/run-reports.md` § 2 beside § 2.8, then the build (2.48.0) | § 1af | the user's live Raman run reported a finished SCF as running, and the user's go (2026-10-28) |
+| **1** | **The monitor's line from the run's declared structure** — built in the checkout; its documents folded, reviewed and released as 2.48.0; then **§ 1af's events**, written into `execution/run-reports.md` § 2 first, a release of their own | § 1af | the user's live Raman run reported a finished SCF as running, and the user's go (2026-10-28) |
 | **2** | **The day's two viewer decisions** — MV-RETRACT, VV-CAMERA — contract first | § 2 | the user's decisions, small; the second is the defect 2.47.11 fixed in MolView |
 | **3** | **§ 1ak S2.4** — the rest of the branches, the label palette (the user's call on the page change), then S2's done-when: its review and the browser walk of S2.3's and S2.4's pages | § 1ak | the stage under way |
 | **4** | **§ 1ak S3, S4, S5** | § 1ak | the rest of the agreed programme |
