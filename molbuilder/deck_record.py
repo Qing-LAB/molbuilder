@@ -12,7 +12,7 @@ USED-BY script_emit (writes every block and reads the rest through these),
         the SIESTA vibration's finish (`spectra.siesta_vibration`, beside
         the job), runs.declared, runwrap and
         pyscf/input (the effective-parameters fence)
-TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
+TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
         (`runwrap.VIBRATION_COMPANIONS`)
 
 `execution/job-contracts.md` § 3.1 owns the grammar.  Its own module because

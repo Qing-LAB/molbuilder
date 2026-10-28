@@ -44,8 +44,8 @@ asked for; a mode that is genuinely inactive is a different statement
 about the world, and the rug in the Results view colours them
 differently.  Every function here keeps the two apart.
 
-TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
-(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.5), so it
+TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
+(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.11 § 3), so it
 imports nothing of molbuilder at module level.
 """
 from __future__ import annotations

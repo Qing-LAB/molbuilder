@@ -521,8 +521,8 @@ def _relaxation_facts(cfg) -> Optional[dict]:
 
 
 def _vibration_bundle() -> str:
-    """The name of the bundle that finishes a force-constant job -- the
-    launcher's (`runwrap.VIBRATION_BUNDLE`), which builds and ships it."""
+    """The name of a SIESTA vibration's bundle -- the launcher's
+    (`runwrap.VIBRATION_BUNDLE`), which builds and ships it."""
     from ..runwrap import VIBRATION_BUNDLE
     return VIBRATION_BUNDLE
 

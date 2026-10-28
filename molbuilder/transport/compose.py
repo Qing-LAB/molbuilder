@@ -272,8 +272,8 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     from ..parse.dirs.rundir import run_state_of
     st = run_state_of(cite_dir, run.names, run.run)
     # A RUN THAT RELAXED NO GEOMETRY is not what transport cites (§ 3.1): a
-    # vibration's force-constant stage, whose last geometry is a
-    # displacement, or a transport rung -- its output reports an SCF alone.
+    # vibration run, whose last geometry is a displacement, or a transport
+    # rung -- its output reports an SCF alone.
     if st.verdict is not None and st.verdict[0] != "geometry":
         raise ComposeError(
             f"{cite_dir} holds the run {run.basename}, which relaxed no "

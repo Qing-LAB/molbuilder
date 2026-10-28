@@ -4637,7 +4637,7 @@ built 2026-10-09, plan § 5z Q17-c)*.
 *(built 2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
 plan § 5ab R3)*. **A run whose verdict is not a geometry relaxation is
 refused**, as the condition above says — by name, as a run that *relaxed no
-geometry* — through the verdict `_classify_run` reads (`run_state_of`): a vibration's force-constant stage, whose last
+geometry* — through the verdict `_classify_run` reads (`run_state_of`): a vibration run, whose last
 geometry is a displacement, and a transport rung, whose output reports a
 self-consistent field alone. **A cited run's geometry crosses back first** —
 its relaxed structure and its starting geometry (the leads' *unmoved* gate

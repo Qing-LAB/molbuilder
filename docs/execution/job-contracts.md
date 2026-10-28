@@ -1147,7 +1147,7 @@ flowchart TD
     B["BENCH-MARKS  — which fields a tool may override"]
     A["ATOM-METADATA  — regions / frozen / annotations JSON"]
     O["ENGINE-OFFSET  — where the atoms were placed: cell, offset, axis kinds"]
-    V["VIBRATION  — what a SIESTA force-constant job's finish reads"]
+    V["VIBRATION  — what a SIESTA vibration's steps read"]
     E --> U --> M --> P --> B --> A --> O --> V
 ```
 *(HEADER remains reserved-but-unemitted. RUN-SETTINGS is a PySCF script's
@@ -1194,10 +1194,13 @@ block is emitted by every engine):
 | RUN-SETTINGS | — | ✅ | — | — |
 
 ¹ Every deck since 2.32.0 — its atom count and its order record, `null` in the user order (§ 3.4; `model/overview.md` § 2.2b; the user, 2026-10-23: "every deck writes its block"). A deck from before wrote it only when the structure had something the block carries: a label, a channel, a named value or an order record — so a deck written from a remapped structure always carried it (I5; 2026-10-14).
-² A force-constant deck only (`engines/vibration.md` § 5.3): the stationarity
-criterion, the person's statement and the relax stage's relaxation record,
-which the job's finish reads — written by `script_emit.emit_vibration_record`,
-read by `deck_record.extract_vibration_record`.
+² A force-constant deck only (`engines/vibration.md` § 5.3, § 5.11 § 4),
+format v5: the stationarity criterion, the person's statement, the
+thermochemistry's temperature, every atom's mass and *Raman for*, which the
+job's record step and finish read — written by
+`script_emit.emit_vibration_record`, read by
+`deck_record.extract_vibration_record`; the relaxation record is the run's
+own `relax` call's.
 
 **RUN-SETTINGS — a PySCF script's run settings, in one block** *(2.27.0)*.
 Live lines, not comments, between the block markers, at the script's head:

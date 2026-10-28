@@ -1474,7 +1474,7 @@ everything else you do with that job and its stages:
 | | |
 |---|---|
 | **measure it** | per member: `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring — a benchmark measures one stage, never a group |
-| **run it** | the group's one run card (§ 6.2b), the Continue-from choice for a group of one stage, and the lines `prep task --group <N>` → `launch task --group <N>` — prepared with the task's Prep below; then, per member, its launch again alone once the group has run; the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
+| **run it** | the group's one run card (§ 6.2b), the Continue-from choice for a group of one stage, and the lines `prep task --group <N>` → `launch task --group <N>` — prepared with the task's Prep below; then, per member, its launch again alone once the group has run; the last line for every kind: a run writes its own result, and a SIESTA vibration's own Python derives its modes after the force-constant call ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3) |
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
 rail's *What gets written* (§ 9a.1). A tab is one job and that list is the

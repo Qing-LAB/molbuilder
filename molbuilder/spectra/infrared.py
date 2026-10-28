@@ -219,7 +219,7 @@ def no_charges_reason(result: SpectraResults) -> str:
                 f"{CHARGES_KEPT_SINCE}, which first keeps the force-constant "
                 f"run's charges (a deck prepared before 2.35.2 printed none; "
                 f"one prepared with 2.35.2 printed them, and its finish kept "
-                f"none).  Prepare the force-constant stage with "
+                f"none).  Prepare the vibration with "
                 f"{CHARGES_KEPT_SINCE} or later and run it again -- once "
                 f"launched, from the state saved before its group's first "
                 f"launch (execution/job-system.md, How the checkpoint "

@@ -2836,7 +2836,7 @@ def _folder_prepared(calc) -> dict:
 @bp.route("/api/task-setup/commands", methods=["POST"])
 def api_task_setup_commands():
     """**What a person types for a group, or a stage** -- a group's prep, as
-    chosen (the machine; a force-constant stage's `relax` run), and its
+    chosen (the machine), and its
     launch (what a group of one continues from); a benchmark's lines; a
     member's launch again alone (D4) -- composed by the terminal's own
     composer (`jobset/commands.stage_lines`), so a line on the page is one

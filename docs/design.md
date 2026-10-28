@@ -225,8 +225,8 @@ These are load-bearing. Don't violate one without updating this document.
 7. **A job's folder runs without molbuilder installed.** What a job runs is
    in its folder: the deck, its run script, and molbuilder's own code the job
    calls, shipped beside them as those modules' own files — the monitor
-   (`mb_monitor.pyz`), a SIESTA force-constant job's finish
-   (`mb_vibration.pyz`), and the code a PySCF script imports (`mb_pyscf.pyz`,
+   (`mb_monitor.pyz`), a SIESTA vibration's steps around each call and its
+   finish (`mb_vibration.pyz`), and the code a PySCF script imports (`mb_pyscf.pyz`,
    [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3). `scp -r` the folder to a
    cluster with the PySCF env — `pyscf`, `geometric`, `ase` and `netCDF4`
    (`envs/recipes.py`) — and it runs. See

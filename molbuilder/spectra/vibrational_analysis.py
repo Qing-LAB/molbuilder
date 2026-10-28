@@ -7,7 +7,7 @@ ROLE    the harmonic analysis's RESULT: a second-derivative block over the free
         :class:`~molbuilder.spectra.results.SpectraResults`
 USED-BY spectra/siesta_vibration.py (the SIESTA job's finish); any route that
         holds a block
-TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
+TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
         (`runwrap.VIBRATION_COMPANIONS`)
 
 The science is `engines/vibration.md` § 4.5 and `science/normal-modes.md`:

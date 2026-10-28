@@ -1169,7 +1169,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                               "thermochemistry -- written by the run itself",
              staged=False, calculation="vibration", kind="result",
              writer="the run itself: the PySCF deck, or a SIESTA "
-                    "force-constant job's finish (`mb_vibration.pyz`)",
+                    "vibration's `fc` record step and its finish "
+                    "(`mb_vibration.pyz`)",
              door="parse.sidecars.spectra.SpectraSidecarFileParser",
              listed_by="user_index"),
     # THE SAME RESULT AS STRUCTURED DATA, written beside the JSON at every
@@ -1658,12 +1659,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="prep, beside each run script "
                     "(`runwrap.write_run_wrapper`); a copy in each attempt"),
     Artifact(name=VIBRATION_BUNDLE,
-             what="a force-constant job's finish: the modes, from `.FC`",
+             what="the run in phases' Python -- each call's `plan` and "
+                  "`record` steps and the finish: the coordinates, the "
+                  "index, the modes from `.FC`, the result and the optical "
+                  "calls' data file (`engines/vibration.md` § 5.11 § 3)",
              engine="siesta", calculation="vibration",
              when="prep", level="stage", kind="derived",
-             writer="prep, beside the run script "
-                    "(`runwrap.write_run_wrapper`); a copy in each attempt",
-             only="a force-constant stage"),
+             writer="prep, in each phase's folder beside its run script "
+                    "(`runwrap.write_run_wrapper`); a copy in each call"),
     Artifact(name=PYSCF_BUNDLE,
              what="molbuilder's own code the PySCF script runs, which it "
                   "imports from here -- the core count, the progress-log "

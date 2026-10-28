@@ -59,7 +59,7 @@ rewritten for 2.46.2.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-27)*
 
-**Where we are: 2.47.1.** Since the last handover (2026-10-20, kept
+**Where we are: 2.47.2.** Since the last handover (2026-10-20, kept
 verbatim in [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md)
 § 3), each a changelog row: the folder download (2.25.0); several groups as
 one job (2.26.0); the layers (2.26.2–2.26.4); two records, `task.json` and
@@ -82,9 +82,13 @@ file saying what it is, in the file — its title, schema, molbuilder version
 and source, every group's title, every number a variable in one spelling of
 its unit — and a SIESTA vibration result citing the deck it was computed
 from (2.47.0); the data files' fresh-eyes review — two errors, every value's
-meaning said right, the deck cited whole with its pseudopotentials (2.47.1).
+meaning said right, the deck cited whole with its pseudopotentials (2.47.1);
+a SIESTA vibration's contract written as rules, every page telling the one
+stage (2.47.2).
 
-**Last checked**: the fast batch on 2.47.1 (6,889 passed); the SIESTA CO₂
+**Last checked**: the catalogue, bundle and launch tests on 2.47.2 (922 and
+114 passed; comments, one message and the catalogue's text changed); the
+fast batch on 2.47.1 (6,889 passed); the SIESTA CO₂
 vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF
 vibration e2e on 2.47.0; the real-runs road e2e on 2.46.6 (19 passed); the stopped-run e2e on 2.46.3 (8 passed); every road of 2.45.0–2.46.0 through the pages and the
 printed commands (vibration → frame set → transport on the H chain).
@@ -280,10 +284,12 @@ e2e files; support helpers duplicated.
 
 ## 1ae. SIESTA's vibration as one run in phases — Raman its optical phase: the build *(2026-10-25; the design [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11, the user's B; R-a, R-c, R1 decided; the SIESTA side verified by the proof of concept, § 5.11 § 12)*
 
-*Checked 2026-10-27*: **M1–M4 built** (2.42.0–2.44.1). **Left — M5, the
-contract closed**: `engines/vibration.md` § 5.11 folded into the chapter
-(it still stands as its own section and says *not yet built* of what is),
-its two review rounds; R1 withdrawn 2026-10-27 — the toy chain's run and
+*Checked 2026-10-27*: **M1–M4 built** (2.42.0–2.44.1). **M5, the contract
+closed**: `engines/vibration.md` § 5.11 written as rules (2.47.2) — it stays
+the run's own section, § 2.2, § 5.2a–§ 5.5, § 5.8 and § 5.9 pointing into it;
+nothing built is in the design's tense, and the sweep's take-over and a
+transport sweep's one start and finish are said not built where they are
+described; every page tells the one stage. **Left**: its two review rounds; R1 withdrawn 2026-10-27 — the toy chain's run and
 the published work in the method's § 3.1, § 7, the science checks the
 user's, on Sol (the user, 2026-10-27: *"you can focus on workflow, let me submit scientific result and you can help me detect issues later"*); and the
 handover items still open — (a) and (g) the words § 5.11 keeps, (c)
@@ -839,7 +845,7 @@ user's. This machine's was repaired on 2026-10-18.
 5. this section records the commits, the review and its outcome — and only
    then does the next step start.
 
-A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-27 on 2.47.1 (6,889 passed, none failed); the real-junction e2e and the SIESTA CO₂ vibration e2e ran 2026-10-27 on 2.47.1 (196 passed), the PySCF vibration e2e on 2.47.0; the e2e batch last ran whole 2026-10-16 (396, all passing).
+A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-27 on 2.47.1 (6,889 passed, none failed), and on 2.47.2 the catalogue, bundle and launch tests (922 and 114 passed); the real-junction e2e and the SIESTA CO₂ vibration e2e ran 2026-10-27 on 2.47.1 (196 passed), the PySCF vibration e2e on 2.47.0; the e2e batch last ran whole 2026-10-16 (396, all passing).
 
 **The Q19 row** — the three passes, its phase 1 done and its later phases
 listed — stays here as step 3's detail:

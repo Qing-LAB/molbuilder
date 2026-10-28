@@ -414,8 +414,7 @@ in `molbuilder.json`, or `MOLBUILDER_PROJECTS=/scratch/u/projects` for
 one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 
 > **One address, one anchor — with one exception you will meet at `launch`.**
-> `--from 01_coarse/run-0` (and a force-constant stage's `prep --from
-> 01_relax/run-0`) names an attempt *inside* the calculation, and is
+> `--from 01_coarse/run-0` names an attempt *inside* the calculation, and is
 > measured from the bundle, not from the projects root. That is deliberate:
 > a calculation is self-contained and travels, so the name of one of its own
 > attempts has to keep working after the folder is copied to a cluster

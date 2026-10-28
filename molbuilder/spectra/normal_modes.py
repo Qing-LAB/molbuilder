@@ -20,8 +20,8 @@ told.
 TRAVELS AS ITSELF, in both bundles: the PySCF vibration script imports it
 from ``mb_pyscf.pyz`` and runs the projection inside its run
 (`runwrap.PYSCF_COMPANIONS`, `engines/pyscf.md` § 3), and a SIESTA
-force-constant job's finish runs it from ``mb_vibration.pyz``
-(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.5) -- both where
+vibration's `fc` record step runs it from ``mb_vibration.pyz``
+(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.11 § 3) -- both where
 this package is not installed, so it imports only the ``constants`` that
 travel beside it.
 """

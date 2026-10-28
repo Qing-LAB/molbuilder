@@ -316,7 +316,7 @@ would refuse never reaches it. A SIESTA result that states no charges
 shows no controls, and one line says why, in the door's words from the
 result's own facts (`infrared_absent`, `spectra.infrared.no_charges_reason`):
 written before 2.36.0, which first keeps the charges, and how to run the
-force-constant stage again.
+stage again.
 
 **A PySCF result's infrared is its own** — the whole system's dipole change,
 computed by PySCF (`engines/vibration.md` § 4.6) — and the same held-or-free
@@ -750,11 +750,11 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    ([`execution/script-preparation.md`](?doc=execution/script-preparation.md)).
 
 When the job runs it writes a `.spectra.json`; picking that on the Results
-tab is what fills the chart, and a run still going is followed there (§ 7). On SIESTA the force-constant run leaves
-`<label>.FC` and the same job then derives the modes from it — its finish,
-`mb_vibration.pyz`, run by the wrapper — and writes the same file beside the
-run, so the launch is the last step on both engines
-([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5).
+tab is what fills the chart, and a run still going is followed there (§ 7). On SIESTA the run's force-constant call leaves
+`<label>.FC`, and the run's own Python — `mb_vibration.pyz`, run by each
+call's run script — derives the modes from it and writes the same file at
+the run's root, so the launch is the last step on both engines
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3).
 
 ## 6. The API door
 

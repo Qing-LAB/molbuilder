@@ -4109,8 +4109,8 @@ def companion_source(name: str,
             f"could not read {name!r} to ship beside the job: {exc}") from None
 
 
-#: Every file that travels beside a SIESTA force-constant job for its FINISH
-#: (`engines/vibration.md` § 5.5), as ``{name beside the job: the module
+#: Every file that travels beside each call of a SIESTA vibration for its
+#: steps and its FINISH (`engines/vibration.md` § 5.11 § 3), as ``{name beside the job: the module
 #: whose source it is}``: the SIESTA route (`spectra.siesta_vibration`, whose
 #: ``main`` the bundle runs), the engine-neutral analysis and its math, the
 #: result's class, its activity classes and its one writer, the Methods
@@ -4193,15 +4193,15 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "end_lines.py":            "molbuilder.pyscf.end_lines",
 }
 
-#: THE ONE FILE that finishes a SIESTA force-constant job: a Python zip
+#: THE ONE FILE that is a SIESTA vibration's Python: a Python zip
 #: application of :data:`VIBRATION_COMPANIONS` whose ``__main__`` runs
-#: `spectra.siesta_vibration.main` -- ``"$_mb_py" mb_vibration.pyz finish
-#: <deck> <output>`` writes ``<label>.spectra.json`` beside the run.  Its
-#: other verbs, ``plan`` and ``record``, are a run in phases' steps around
-#: each call (`engines/vibration.md` § 5.11 § 3).  A deck names it
-#: (`DeckSpec.finish`), `prep` copies that onto the job (`Job.finish`), the
-#: wrapper runs it after SIESTA exits cleanly, and `materialize` brings it
-#: into every attempt.
+#: `spectra.siesta_vibration.main` -- its verbs ``plan`` and ``record`` are
+#: the run in phases' steps around each call, and the ``record`` step that
+#: leaves no call to run runs the finish, which writes the result at the
+#: run's root (`engines/vibration.md` § 5.11 § 3).  Every phase's deck
+#: names it (`DeckSpec.finish`), `prep` copies that onto the job
+#: (`Job.finish`) and writes it beside each phase's run script, and every
+#: call is brought a copy.
 from .runfiles import VIBRATION_BUNDLE  # noqa: E402 -- the catalogue's name
 
 #: The finish bundle's entry.  A set that cannot load on the job's python --

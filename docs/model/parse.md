@@ -1153,9 +1153,11 @@ delegation, not by a ladder.
 **There is no preference order to tune.** A vibration run is *for* its
 `.spectra.json` — a PySCF deck rewrites it atomically at each phase boundary
 and it carries its own `phase_*` flags, so it is the live view during the run
-and the result after it; a SIESTA force-constant job writes it once, when its
-finish has derived the modes (`engines/vibration.md` § 5.5), so until then
-the run's own output is what opens, and after it the spectrum. An
+and the result after it; a SIESTA vibration's run writes it at its root
+once its force-constant call has ended and the modes are derived, and
+again at the finish (`engines/vibration.md` § 5.11 § 3), so until then
+each call's own output is what opens, in the call's folder, and after it
+the spectrum. An
 optimization is for its trajectory. Neither switches
 at conclusion: *"an unconcluded progress log first"* was an
 **optimization-shaped rule generalised to every kind**, and it sent every

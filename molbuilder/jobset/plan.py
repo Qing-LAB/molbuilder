@@ -109,8 +109,7 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
         # not an omission -- so say what to do rather than leaving a reader to
         # infer that unrelated jobs may all be started at once.
         # WHAT EACH BUILDS ON is its kind's -- the stage before it in an
-        # optimization's ladder, `relax` for a force-constant stage, the
-        # rungs upstream for transport -- and this prep's is said above.
+        # optimization's ladder, the rungs upstream for transport -- and this prep's is said above.
         lines.append(f"Order: {len(js.jobs)} stage(s) -- each group one job, "
                      "its members one after another; a group's first launch "
                      "takes what each member builds on from the newest run "

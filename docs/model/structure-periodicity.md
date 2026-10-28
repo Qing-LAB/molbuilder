@@ -504,9 +504,9 @@ origin ([`engines/transport.md`](?doc=engines/transport.md) § 4). The
 hand-over judges the box as prep will place it. What is kept:
 
 * **an origin the person assigned** — theirs, by choice;
-* **the engine's frame from stage to stage within one calculation** — the
-  vibration's `freq` stage from its `relax` stage, a relaxation continuing
-  from the stage before it: the geometry continues on the grid it was found
+* **the engine's frame from step to step within one calculation** — a
+  vibration's force-constant call from its `relax` call (`engines/vibration.md`
+  § 5.11), a relaxation continuing from the stage before it: the geometry continues on the grid it was found
   on, and a rigid shift moves a relaxed geometry against SIESTA's real-space
   mesh, where it is no longer stationary (`engines/vibration.md` § 5.2a);
 * **a vibration's input stated relaxed** — *already relaxed* ticked

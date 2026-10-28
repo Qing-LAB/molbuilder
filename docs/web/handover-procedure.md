@@ -222,9 +222,9 @@ The three prerequisites named here landed with the spectra migration
    retires at P3.
 3. **The decision was made** — a vibration calculation IS a description with
    a ladder, read from the template's own `already_relaxed` box
-   ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2, § 5.2a): a
-   `freq` stage, and before it on SIESTA a `relax` stage unless the structure
-   is stated relaxed; on PySCF the relaxation is the deck's own Phase 0.
+   ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2, § 5.11): one
+   `freq` stage on both engines, the relaxation inside it unless the
+   structure is stated relaxed — SIESTA's `relax` phase, PySCF's Phase 0.
    **The hand-over carries that ladder, numbered** (`proposed_stages`, each
    entry as `task.json` states a stage), made by the server's one rule —
    `jobset.ladder.fresh_stages`, which `molbuilder describe` asks too, each

@@ -8,7 +8,7 @@ USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
         record, read by ``order_record_of``), jobset/transport_rung.py (its
         refusal), spectra/vibrational_analysis.py and
         spectra/siesta_vibration.py (read it back, beside the job)
-TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
+TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
         (`runwrap.VIBRATION_COMPANIONS`), and in ``mb_pyscf.pyz``
         (`runwrap.PYSCF_COMPANIONS`) as the type ``structure.py`` holds
 

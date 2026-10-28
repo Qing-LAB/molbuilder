@@ -206,7 +206,7 @@ conductor:
 | **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**: the junction and its leads, every rung's structure, composed and round-tripped through the record's codec in a scratch folder outside the calculation, removed at once — so this prep renders from the record every later one reads — and the record's text kept in the plan; transport — **electronic state**: decided once on the junction, carried into every rung; a SIESTA vibration's frequency stage — **relaxed geometry**: the relax run it builds on (a `Continuation`), its coordinates and the atom order |
 | **3 · decks** (*data files* … *declare*) | the data files listed and screened; each deck rendered, validated, merged with the reader's own section as it stands on disk, and checked — the very text that will be written | transport — **points**: one deck per bias point |
 | **4 · wrappers** | `.run.sh` and `.sbatch` rendered from the deck's text and the job's placement | — |
-| **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the attempt to open and what it receives — the stage's own files; what its first launch will take, said (the `Continuation`'s files and a transport rung's gather are copied by that launch, [`job-system.md`](?doc=execution/job-system.md) § 6.0) | a force-constant stage — the `relax` run its deck is written at |
+| **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the attempt to open and what it receives — the stage's own files; what its first launch will take, said (the `Continuation`'s files and a transport rung's gather are copied by that launch, [`job-system.md`](?doc=execution/job-system.md) § 6.0) | a SIESTA vibration — one folder per phase with its deck, and the stage's first run opened with the calls it always holds ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2) |
 | ***the writing*** | every file of the plan written, the attempt opened, `job-set.json` last | — |
 
 **Transport is not a second conductor.** Its five rungs are prepared by these
@@ -651,7 +651,7 @@ spec is a small form the engine fills in, and it has twelve slots:
 | `bench_marks` | the values only this engine can supply for the benchmark anchors |
 | `derived` | facts computed once at spec time that later slots read (never re-derived downstream) |
 | `check_rules` | what a finished deck of this engine must satisfy |
-| `validate_subject` | what the settings gate judges, when it is not the structure as it arrived — the placed copy, its `design` (the file's own coordinates), and `prior`, what an earlier stage left that this stage's checks judge (the `relax` stage's record at a SIESTA force-constant stage, `engines/vibration.md` § 5.2a) |
+| `validate_subject` | what the settings gate judges, when it is not the structure as it arrived — the placed copy, its `design` (the file's own coordinates), its `cell`, and the k-point meshes the deck writes |
 | `engine` · `created_by` | whose catalogue rows to read, and what to record as the producer |
 
 > **Why a form and not a function.** A function can only be *called*; a form can

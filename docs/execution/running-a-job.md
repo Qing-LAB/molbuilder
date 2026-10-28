@@ -870,9 +870,9 @@ of a point's state asks) — so a sweep the scheduler stopped reads `failed`
 at every point not done, the ones the walk never reached too.
 
 **A job with a finish is not done when its engine is**
-([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5): a SIESTA
-force-constant stage's wrapper runs the finish after SIESTA ends, and only
-then concludes. So an output that states its end speaks for the ENGINE, and
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5, § 5.11 § 3): a
+SIESTA vibration's last call's record step runs the finish after SIESTA ends,
+and only then concludes. So an output that states its end speaks for the ENGINE, and
 the job's own evidence decides: a marker naming a failed finish reads
 `failed`; with no marker yet, the run's session log saying the finish began
 (`finish started:`, `wrapper_log.FINISH_STARTED`) reads `running` — *the
