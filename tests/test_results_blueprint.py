@@ -118,12 +118,12 @@ class TestPartialTrajectoryInspectorEndpoint:
       * status 200 + text/html content-type: the inspector's fetch
         path assumes successful HTML; anything else stops the mount
         cold without a meaningful client-side error.
-      * Cache-Control: private, max-age=300 -- the partial is static
-        across requests but only stable until a deploy; capping at
-        5 minutes prevents stale-after-deploy clients indefinitely.
-        Set as ``private`` so intermediaries don't cache (no user
-        data in the body, but consistency with the per-session
-        responses elsewhere).
+      * Cache-Control: private, no-cache -- the browser asks before
+        reusing its copy, as it does for every script: the partial and
+        the scripts that query it change together, and a copy kept
+        without asking put a release's scripts under the last release's
+        controls (2.49.0 on Sol: the removed atoms select still on
+        screen).  ``private`` so intermediaries don't cache.
 
     Every element the trajectory viewer looks up on the panel answers
     when the panel is mounted on a real run
@@ -150,16 +150,16 @@ class TestPartialTrajectoryInspectorEndpoint:
             "(none today, but defensive) could be mis-decoded"
         )
 
-    def test_cache_control_is_private_short_max_age(self, web):
+    def test_cache_control_is_private_and_revalidated(self, web):
         r = web.get("/partials/trajectory-inspector")
         cc = r.headers.get("Cache-Control", "")
         assert "private" in cc, (
             f"missing 'private' directive (got {cc!r}); the body "
             f"shouldn't be cached by intermediaries"
         )
-        assert "max-age=300" in cc, (
-            f"expected max-age=300 (got {cc!r}); short cap prevents "
-            f"stale clients after a partial-template deploy"
+        assert "no-cache" in cc and "max-age" not in cc, (
+            f"expected no-cache (got {cc!r}); a copy reused without "
+            f"asking outlives a release of the scripts that query it"
         )
 
     def test_partial_does_not_carry_page_chrome(self, web):
@@ -218,9 +218,8 @@ class TestPartialSpectraInspectorEndpoint:
       * status 200 + text/html content-type: the spectra inspector's
         fetch path assumes successful HTML; anything else stops the
         mount cold without a meaningful client-side error.
-      * Cache-Control: private, max-age=300 -- same rationale as the
-        trajectory partial; keeps stale clients bounded after a
-        partial-template deploy.
+      * Cache-Control: private, no-cache -- same rationale as the
+        trajectory partial.
       * Partial-id parity: the body MUST contain every id the
         spectra inspector JS queries via $().  A drift between this
         partial and the inspector's selectors silently breaks the
@@ -335,11 +334,12 @@ class TestPartialSpectraInspectorEndpoint:
             f"missing charset; got {ctype!r}"
         )
 
-    def test_cache_control_is_private_short_max_age(self, web):
+    def test_cache_control_is_private_and_revalidated(self, web):
         r = web.get("/partials/spectra-inspector")
         cc = r.headers.get("Cache-Control", "")
         assert "private" in cc, f"missing 'private' (got {cc!r})"
-        assert "max-age=300" in cc, f"expected max-age=300 (got {cc!r})"
+        assert "no-cache" in cc and "max-age" not in cc, (
+            f"expected no-cache (got {cc!r})")
 
     @pytest.mark.parametrize("element_id", REQUIRED_IDS)
     def test_body_carries_required_inspector_ids(self, web, element_id):

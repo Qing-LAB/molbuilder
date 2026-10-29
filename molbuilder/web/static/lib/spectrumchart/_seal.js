@@ -141,17 +141,30 @@ export async function openSurface(host) {
     const palette = paletteOf(win, frame);
 
     /* Everything the user reads is drawn IN the plot (§ 6.2): the pending note on
-     * the left, the pointer's readout on the right. Neither is a text node beside
-     * the chart, which is what keeps a chart one drawing surface. */
-    const annotationsFor = (note, readout) => {
+     * the left, the pointer's readout on the right, and a lane's reason across
+     * the middle of its own panel. None is a text node beside the chart, which
+     * is what keeps a chart one drawing surface.
+     *
+     * The ORDER is fixed -- the note when there is one, then the readout, then
+     * the lanes' words -- because `recolour` reaches the readout by index. */
+    const annotationsFor = (picture) => {
         const at = (text, x, anchor, colour) => ({
             text, showarrow: false,
             xref: "paper", yref: "paper", x, y: 1.04,
             xanchor: anchor, font: { color: colour, size: 11 },
         });
         const out = [];
-        if (note) out.push(at(note, 0, "left", palette.pending));
-        out.push(at(readout || "", 1, "right", palette.ink));   // always present, may be empty
+        if (picture.note) out.push(at(picture.note, 0, "left", palette.pending));
+        out.push(at(picture.readout || "", 1, "right", palette.ink));   // always present, may be empty
+        (picture.lanes || []).forEach((lane, i) => {
+            if (!lane.words) return;
+            out.push({
+                text: lane.words, showarrow: false,
+                xref: "paper", x: 0.5, xanchor: "center",
+                yref: `${axisRefFor(i)} domain`, y: 0.5, yanchor: "middle",
+                font: { color: palette.pending, size: 11 },
+            });
+        });
         return out;
     };
 
@@ -176,7 +189,7 @@ export async function openSurface(host) {
          * own because the anchor depends on how many panels there are. */
         ...axesFor(picture),
         shapes: darkModeLines(picture),
-        annotations: annotationsFor(picture.note, picture.readout),
+        annotations: annotationsFor(picture),
     });
 
     /* A MODE WITH NO INTENSITY STILL EXISTS.

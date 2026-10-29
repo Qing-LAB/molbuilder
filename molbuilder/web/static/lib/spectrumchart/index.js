@@ -219,6 +219,7 @@ export async function mount(host, options = {}) {
                     key: "positions",
                     direction: "up",
                     title: "mode positions — no intensities",
+                    words: "",
                     known: false,
                     positions: true,
                     sticks: {
@@ -272,10 +273,12 @@ export async function mount(host, options = {}) {
                  * with no numbers yet still names itself: an anonymous
                  * axis beside a named one reads as a second unit nobody
                  * declared. */
-                title: !known ? `${c.label} — ${absentWords[c.key]
-                                                  || "not computed"}`
-                    : !hasBand ? `${c.label} — no band`
-                    : `${c.label} (${c.unit})`.replace(" ()", ""),
+                title: `${c.label} (${c.unit})`.replace(" ()", ""),
+                /* WHY THE LANE HAS NOTHING TO DRAW, across its own panel
+                 * (§ 6.2): a reason is as long as its writer made it, and
+                 * an axis title only as long as its panel is tall. */
+                words: !known ? (absentWords[c.key] || "not computed")
+                    : !hasBand ? "no band" : "",
                 known,
                 sticks: {
                     x: modes.map((m) => m.freq),

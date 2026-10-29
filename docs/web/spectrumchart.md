@@ -418,6 +418,16 @@ axis. It is not a label beside the chart or a banner above it — a chart made o
 one drawing surface stays a chart made of one drawing surface, and § 5.3's "no
 controls" holds without an exception carved for it.
 
+**A lane with nothing to draw says why across its own panel, and its axis
+names its quantity alone.** The reason — *not computed*, the caller's words
+(`setAbsentWords`, § 8.3), *no band* (`presentFloor`, § 8.2) — is as long as
+whoever wrote it made it, while a title along an axis is only as long as its
+panel is tall: the Spectrum page's Raman lane, *type the laser's wavelength —
+the strength depends on it* on its axis, ran past its panel into the
+infrared lane's title (the 2.49.0 walk). Written across the empty panel, the
+reason has the panel's width, and the axis title is the label and the unit
+the caller declared.
+
 **Which picture you get is derived, never configured.** A flag would be a second
 place to believe something the data already says, and the failure mode is a flat
 axis with nothing on it and no explanation.
@@ -614,7 +624,7 @@ mount(host, options) -> Promise<handle>
 | What is passed | What it is | Required | Default |
 |---|---|---|---|
 | `host` | the element the chart lives in. The **host gives its width** (§ 5.4); the module never writes a width or a height onto it — its own frame, inside, states the height (§ 11) | yes | — |
-| `options.channels` | the channels this chart draws, in order: `[{ key, label, unit, direction, relative?, valueUnit?, presentFloor? }]`. `direction` is `"up"` or `"down"` and decides which stacked panel a channel occupies — nothing else about layout. `relative: true` normalises that lane's drawn heights to its own strongest band, for a channel whose conventional axis is not the unit it was computed in; what the axis is CALLED still comes from `unit`, because this module names no quantity. `valueUnit` is the unit the measured value is read in — what the readout prints beside the number — `unit` when unsaid; a relative lane names its value's own (the infrared: axis *arb. units*, readout *km/mol*). `presentFloor` is the channel's band floor in that value unit: a lane whose strongest real value is at or below it has no band — every value residue — draws no stick and no curve, and is titled *— no band*, rather than scaling its residue to full height; the caller's number (the spectrum page's: `spectra/activity.py`'s floors, `engines/vibration.md` § 6.6), 0 when unsaid | no | one generic lane keyed `activity` — what a caller with a single quantity still means |
+| `options.channels` | the channels this chart draws, in order: `[{ key, label, unit, direction, relative?, valueUnit?, presentFloor? }]`. `direction` is `"up"` or `"down"` and decides which stacked panel a channel occupies — nothing else about layout. `relative: true` normalises that lane's drawn heights to its own strongest band, for a channel whose conventional axis is not the unit it was computed in; what the axis is CALLED still comes from `unit`, because this module names no quantity. `valueUnit` is the unit the measured value is read in — what the readout prints beside the number — `unit` when unsaid; a relative lane names its value's own (the infrared: axis *arb. units*, readout *km/mol*). `presentFloor` is the channel's band floor in that value unit: a lane whose strongest real value is at or below it has no band — every value residue — draws no stick and no curve, and says *no band* across its panel (§ 6.2), rather than scaling its residue to full height; the caller's number (the spectrum page's: `spectra/activity.py`'s floors, `engines/vibration.md` § 6.6), 0 when unsaid | no | one generic lane keyed `activity` — what a caller with a single quantity still means |
 | `options.onSelect` | `(index) => void`, called when a **user** clicks a mode. Never called by anything the tab does (§ 8.3) | no | nothing is reported |
 | `options.modes` | the first mode list, exactly as `setModes` takes it | no | empty — an empty chart, not an error |
 | `options.selected` | the first selection, exactly as `setSelected` takes it | no | none chosen |
@@ -645,8 +655,8 @@ setDisplayFloor(pct)         hide bands below this percentage of the
                              because one control serves two incommensurate
                              units.  Changes what is DRAWN and nothing
                              else; the rug is never filtered
-setAbsentWords(key, words)   what a lane with no value says in its title in
-                             place of "not computed" -- the caller's reason,
+setAbsentWords(key, words)   what a lane with no value says across its panel
+                             in place of "not computed" -- the caller's reason,
                              such as what the person must name first
 refit()                      re-measure the box and redraw at its size
 dispose()                    release, disconnect, empty
@@ -665,7 +675,7 @@ Data goes in one way; nothing comes back out but a click.
 | `setSelected` | one `index`, or `null` for *nothing chosen*. It is **remembered whether or not the current list holds it**, and drawn as soon as a list does | nothing — an index no list holds is not an error (below) | nothing |
 | `setBroadening` | a width in cm⁻¹, $\ge 0$. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.3) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
 | `setDisplayFloor` | a percentage, `0`–`100`, of each channel's strongest peak; `0` hides nothing | a value outside `0`–`100` or not a number — the floor already set stands, for the same reason | nothing |
-| `setAbsentWords` | a channel's key and the words its lane's title says while no mode has a value in it — *Raman — type the laser's wavelength …* where the strength waits on what the person names (`web/spectra.md` § 3.3); `null` restores *not computed*; the words already set, given again, draw nothing. The module names no quantity and knows no reason: the caller's words, drawn as given | words that are not a non-empty string or `null` — the words already set stand | nothing |
+| `setAbsentWords` | a channel's key and the words its lane says across its panel while no mode has a value in it (§ 6.2) — *type the laser's wavelength …* where the strength waits on what the person names (`web/spectra.md` § 3.3); `null` restores *not computed*; the words already set, given again, draw nothing. The module names no quantity and knows no reason: the caller's words, drawn as given | words that are not a non-empty string or `null` — the words already set stand | nothing |
 | `refit` | — | — | nothing |
 | `dispose` | — | — | nothing; safe to call twice |
 
@@ -746,7 +756,11 @@ picture = {
                                                   // or ONE, the positions, when no
                                                   // channel has a number (§ 6.2)
         key, direction: "up" | "down",            // which half-plane it occupies
-        title,                                    // the words on ITS axis, unit included
+        title,                                    // the words on ITS axis: the label,
+                                                  // the unit included -- nothing else
+        words,                                    // what the lane says across its own
+                                                  // panel when it has nothing to draw
+                                                  // (§ 6.2), or nothing
         known,                                    // whether this channel has numbers yet
         positions,                                // true on the positions lane only:
                                                   // its heights carry no number
@@ -807,7 +821,7 @@ instead.
 and the seal decides what chosen looks like (§ 5.1's cheap door hands down the
 same words and nothing else). **And every word the user reads comes down in the
 picture too**: each lane's axis title with its unit, the units beside a hovered
-value, the "not computed" line. The seal writes none of them, because "cm⁻¹" is a fact about
+value, the "not computed" line, a lane's reason across its panel. The seal writes none of them, because "cm⁻¹" is a fact about
 spectroscopy and this layer knows none.
 
 It answers **no** question about what is drawn, and it does not know what a mode
@@ -1051,6 +1065,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.1 — the indices must differ | a list containing the same index twice is refused whole, rather than resolved by a rule the caller cannot see |
 | § 6.2 — the picture is derived | a result with no activities anywhere draws one lane of equal lines at the modes' frequencies, an imaginary one among them marked apart, no curve and no height scale — and the same chart draws its lanes with heights and a curve once activities land; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
 | § 6.2 — the markings are in the plot | the pending marks and the "not computed" wording are drawn on the surface: the module's markup carries no label, banner or text node beside the chart |
+| § 6.2 — a lane's reason is across its panel | a lane with no value, given the caller's words, says them inside its own panel, its axis titled with its label and unit alone; given `null`, it says *not computed* there |
 | § 6.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
 | § 6.3 — every mode keeps a full-size target | the width does not take the frequencies as an argument at all, so no arrangement of neighbours can shrink one |
 | § 6.3 — the floor applies below it | at any broadening under 8 cm⁻¹, zero included, a band is 8 cm⁻¹ half-wide |

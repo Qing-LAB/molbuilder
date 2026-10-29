@@ -334,14 +334,12 @@ along z and Hirshfeld charges. The two are the person's, made in the bar:
   Voronoi, and **under the table, always visible, the explanation** — the
   last of the table's notes (§ 3), not a tooltip:
 
-  > **Charges** — both divide the same thing — how the electrons moved when
-  > the atoms bonded — between neighbouring atoms. Voronoi draws a wall
-  > halfway between two nuclei; Hirshfeld shares the charge at each point in
-  > proportion to how much each lone atom would have there. Where one group
-  > of atoms ends and the next begins is a convention, so the numbers differ
-  > between the two. Hirshfeld is shown first because its shares change
-  > smoothly as the atoms move. *Why — the
-  > method, § 1a.*
+  > **Charges** — the infrared comes from the electric charge on each atom.
+  > The calculation gives the electrons spread over the whole structure, not
+  > atom by atom, so they have to be split among the atoms by a rule;
+  > Hirshfeld and Voronoi are two such rules, and they give different
+  > numbers. Hirshfeld is the default because its split changes smoothly as
+  > the atoms move, which the calculation needs. *More — the method, § 1a.*
 
   its last words a link to
   [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
@@ -1141,7 +1139,7 @@ compute a channel and for a run that did not ask for one:
 
 | where | what a reader sees |
 |---|---|
-| the chart | **mode positions, not a spectrum**, when no mode carries a strength — a SIESTA result with neither an infrared nor a Raman view (§ 3.2, § 3.3): one line of one height at each mode, no curve, no height scale, no width or display-floor control, and one sentence above them saying which case it is (§ 2) *(user, 2026-09-28)*. With some strengths computed — a SIESTA result's infrared of the free atoms among them — a lane whose channel is missing is titled *not computed* — SIESTA's Raman, before a laser is applied, with the words of § 3.3 |
+| the chart | **mode positions, not a spectrum**, when no mode carries a strength — a SIESTA result with neither an infrared nor a Raman view (§ 3.2, § 3.3): one line of one height at each mode, no curve, no height scale, no width or display-floor control, and one sentence above them saying which case it is (§ 2) *(user, 2026-09-28)*. With some strengths computed — a SIESTA result's infrared of the free atoms among them — a lane whose channel is missing says *not computed* across its panel, its axis naming the quantity alone — SIESTA's Raman, before a laser is applied, the words of § 3.3 (`spectrumchart.md` § 6.2) |
 | the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked |
 | the modes table | **a column the file's route cannot compute is not shown** — the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them; the IR column and the charge-moved column on SIESTA only where the result states its charges (§ 3.2); the Raman column where the run asked for Raman — not where it was asked and none computed, a SIESTA range that kept no mode (§ 3.3). Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
 | the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names the probe's *Mode selection*, which a SIESTA vibration does not have. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |

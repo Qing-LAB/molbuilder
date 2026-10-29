@@ -174,26 +174,32 @@ def test_the_handle_is_the_doors_and_nothing_else():
 
 
 def test_an_empty_lane_says_the_callers_words_until_restored():
-    """§ 8.3 setAbsentWords -- a lane with no value says the caller's reason
-    in its title in place of *not computed*, and ``null`` restores it: the
+    """§ 6.2, § 8.3 setAbsentWords -- a lane with no value says the caller's
+    reason across its own panel in place of *not computed*, ``null``
+    restores it, and its axis names its quantity alone throughout: the
     spectrum page's Raman lane waiting on a laser beside a drawn infrared
-    lane (`web/spectra.md` § 3.3)."""
+    lane (`web/spectra.md` § 3.3), whose reason, on the axis, ran into the
+    infrared lane's title."""
     got = drive(
         "const two = await mount(globalThis.__host(), { channels: [\n"
         "  { key: 'raman', label: 'Raman', unit: 'A4/amu', direction: 'up' },\n"
         "  { key: 'ir', label: 'IR', unit: 'km/mol', direction: 'down' }] });\n"
         "two.setModes([{ index: 1, freq: 100, values: { ir: 4 } },\n"
         "              { index: 2, freq: 500, values: { ir: 9 } }]);\n"
-        "const titles = () => { const r = __calls.filter(c => c.call === 'react');\n"
+        "const drawn = () => { const r = __calls.filter(c => c.call === 'react');\n"
         "  const l = r[r.length - 1].layout;\n"
-        "  return Object.keys(l).filter(k => k.startsWith('yaxis'))\n"
-        "    .map(k => (l[k].title || {}).text).filter(Boolean); };\n"
+        "  return { titles: Object.keys(l).filter(k => k.startsWith('yaxis'))\n"
+        "             .sort().map(k => (l[k].title || {}).text),\n"
+        "           panel: (l.annotations || []).filter(a => a.yref === 'y domain')\n"
+        "             .map(a => a.text) }; };\n"
         "two.setAbsentWords('raman', 'type the laser');\n"
-        "const said = titles();\n"
+        "const said = drawn();\n"
         "two.setAbsentWords('raman', null);\n"
-        "console.log(JSON.stringify({ said, restored: titles() }));")
-    assert "Raman — type the laser" in got["said"], got
-    assert "Raman — not computed" in got["restored"], got
+        "console.log(JSON.stringify({ said, restored: drawn() }));")
+    assert got["said"] == {"titles": ["Raman (A4/amu)", "IR (km/mol)"],
+                           "panel": ["type the laser"]}, got
+    assert got["restored"] == {"titles": ["Raman (A4/amu)", "IR (km/mol)"],
+                               "panel": ["not computed"]}, got
 
 
 def test_selecting_recolours_and_does_not_redraw():

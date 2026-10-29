@@ -58,17 +58,17 @@ def partial_trajectory_inspector():
     Source: ``templates/_trajectory_inspector.html``.  This endpoint
     is how ``/results`` swaps the inspector in client-side.
 
-    Cache: ``private, max-age=300`` -- the partial is static
-    content that only changes on template edits, but capping the
-    cache at 5 minutes keeps an after-the-fact deploy from leaving
-    stale clients running indefinitely.  No user data in the
-    response so ``private`` is correct (the response can be cached
-    only by the browser, not by intermediates).
+    Cache: ``private, no-cache`` -- the browser asks before reusing its
+    copy, as it does for every script and stylesheet (``app.py``,
+    ``SEND_FILE_MAX_AGE_DEFAULT``): the partial and the scripts that
+    query it change together, so a copy kept without asking would put an
+    update's scripts under the last release's controls.  ``private``: only
+    the browser keeps it, never an intermediary.
     """
     html = render_template("_trajectory_inspector.html")
     resp = make_response(html)
     resp.headers["Content-Type"]  = "text/html; charset=utf-8"
-    resp.headers["Cache-Control"] = "private, max-age=300"
+    resp.headers["Cache-Control"] = "private, no-cache"
     return resp
 
 
@@ -86,7 +86,7 @@ def partial_spectra_inspector():
     html = render_template("_spectra_inspector.html")
     resp = make_response(html)
     resp.headers["Content-Type"]  = "text/html; charset=utf-8"
-    resp.headers["Cache-Control"] = "private, max-age=300"
+    resp.headers["Cache-Control"] = "private, no-cache"
     return resp
 
 

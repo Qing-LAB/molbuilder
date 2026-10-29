@@ -28,13 +28,15 @@ the queue and the handover to the day's end.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-28)*
 
-**Where we are: 2.49.0.** The releases are the changelog's rows; the
+**Where we are: 2.49.1.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
 day's last: a SIESTA vibration's infrared is the free atoms' — the system the
 person declared by what they freed — shown when the result opens, with no
 choice of atoms anywhere, and the Spectrum page's one bar above the chart
 (light, charges, laser, width) applied by *Update* under the page busy fence
-(2.49.0, `web/spectra.md` § 2.1, § 3.2); the monitor says where the run is,
+(2.49.0, `web/spectra.md` § 2.1, § 3.2), with the page's controls never
+reused from an old copy and a chart lane's reason written across its panel
+(2.49.1); the monitor says where the run is,
 read from its declared structure (2.48.0, § 1af); and
 `engines/vibration.md` § 2.2a, what the force a relaxed structure shows under
 the vibration's own settings does and does not change — measured on the
@@ -46,11 +48,7 @@ extra")*.
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-28) — the user's to change.
 
-**Decisions that wait on the user**: the chart's lane titles — a lane's
-words longer than the lane (SIESTA's Raman before a laser is applied, *type
-the laser's wavelength — …*) run over the next lane's title, seen on the
-2.49.0 walk, now that the infrared shows beside it on open
-(`spectrumchart.md` § 8.3); a result written before 2.49.0 keeps its stored
+**Decisions that wait on the user**: a result written before 2.49.0 keeps its stored
 Methods sentence (*the infrared of a chosen set of atoms*), shown beside the
 free atoms' sentence the load adds — the user's AuBDTAu run on Sol among
 them; § 1t's wording (`PLACE_NOTE_UNKNOWN`,
