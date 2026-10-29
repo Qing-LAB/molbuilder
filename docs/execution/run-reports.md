@@ -80,17 +80,20 @@ never what a machine found — and adds one: never a secret.
 
 **No `notify` block is no notification** (user, 2026-09-26: *"when no set up
 for notification that means no notification"*) — nothing is sent, the start
-and the end included. A calculation with a `notify` block speaks on five
-occasions: the two it ticks, which combine, its wall near, and its start and
-its end.
+and the end included. A calculation with a `notify` block speaks on seven
+occasions: the two it ticks, which combine; its wall near; its start and its
+end; and, for a run of points that reports as one run, a phase that ended
+with the run going on, and a part that failed with the run going on (§ 2.9).
 
 | occasion | `event` | set by | sent |
 |---|---|---|---|
 | **it started** | `start` | a `notify` block | once, when the monitor starts watching a run — a run in phases ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a): once per run, sent by the plan step of its first call (`mb_monitor.pyz notify start`); its calls' member monitors send none |
-| **a step finished** — its SCF converged | `scf_converged` | `notify.on_scf_converged` | on the first wake after a step finishes (§ 2.2) — one message per wake, however many finished since the last |
+| **a step finished** — its SCF converged | `scf_converged` | `notify.on_scf_converged` | on the first wake after a step that moves the geometry finishes (§ 2.2) — never a force-constant displacement; one message per wake, however many finished since the last |
 | **every N hours** | `periodic` | `notify.every_hours` — a number of hours; `null` is never | N hours after the last message; the first, N hours after the start |
 | **its wall is near** | `wall_near` | a `notify` block, on a job sent with a wall | once: for a run of points, when the calls left need more than the wall leaves at the pace its finished calls measured (§ 2.8); else when the time the job has left falls below the longest step it has taken (§ 2.2) — the step it is in may not finish (§ 2.1b) |
-| **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes — a run in phases: by the record step that completes its index (`notify finish`), with the run's state |
+| **a phase ended, and the run goes on** | `milestone` | a `notify` block, on a run of points that reports as one run | at once, by the record step of the call that ends the phase, when the run still has calls to run: the phase's outcome in words (§ 2.9) — a phase whose end is the run's is said by the `finish` |
+| **a part failed, and the run goes on** | `part_failed` | a `notify` block, on a run of points that reports as one run | at once, by the record step of a call that ended without being done, when the run still has calls to run: which call, and why (§ 2.9) — a failure that ends the run is said by the `finish` |
+| **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes — a run in phases: by the record step that completes its index (`notify finish`), with the run's state, and the outcome of the phase its last call ended (§ 2.9) |
 
 Every message carries the same report (§ 4.1a): the state and where the run is
 — in its structure where one is declared (§ 2.8) — SCF phase and iteration, energy, each residual against its criterion, the
@@ -99,11 +102,14 @@ of its loop (a transmission's, [`model/parse.md`](?doc=model/parse.md) § 5d.5)
 — and at the end how each SCF phase converged and how the process exited.
 
 - **Nothing else is sent.** Between the start and the end a message goes out
-  only on the two occasions the calculation ticked, and once when its wall is
-  near (§ 2.1b). Every wake's reading is in
+  only on the two occasions the calculation ticked, once when its wall is
+  near (§ 2.1b), and — for a run of points — when a phase ends or a part
+  fails with the run going on (§ 2.9). Every wake's reading is in
   the monitor log (§ 2.5); the channels hear what the policy asks for.
-- **A step's message restarts the N-hour clock**, and a step and a period due
-  on the same wake are one message — the step's.
+- **Every message restarts the N-hour clock** — a step's, the wall's
+  warning, a milestone, a part's failure — and a step and a period due on the
+  same wake are one message, the step's. A run of points' calls count it
+  from the last event the run's record holds (§ 2.4).
 - **The start and the end are not ticks**: a calculation that reports at all
   reports them — they bracket every report, and a run that finishes at 3 am
   saying so is the reason the hook exists.
@@ -127,7 +133,7 @@ are **change-gated**, so a fast wake costs no volume:
 | the monitor log's `[STATUS]` | the run advanced — a new SCF row, the row's iteration, the phase or the step moved, TBtrans's account of its loop moved (its set-up stated, a progress line, a pass begun or completed, its currents), or the words of where a device's set-up is moved (`model/parse.md` § 2b, `doing`: a lead's cell checked, its surface Green's function begun, sized, written or found, the charge distribution at the switch), or a part of the output began (§ 2.8: its opening line read, the SCF's last row unchanged) — or its energy or state changed |
 | a `util.csv` row | CPU %, memory, or a GPU's use or memory moved by ≥ 10 % of its last written value, or 300 s passed since the last row (`--util-keepalive`), so the plotted series keeps anchor points |
 
-**Notifying is separate and rare**: § 2's five occasions, never one per wake.
+**Notifying is separate and rare**: § 2's occasions, never one per wake.
 A notifier fired on every changed sample would message a running job's
 channels every few seconds.
 
@@ -218,18 +224,41 @@ warning is the cue for a run whose step is longer than its slack.
 
 A step is over when the engine begins the next one, and the engine says so in
 its own words. The output's parser reads that line (§ 2.3); the monitor counts
-the finished steps and sends `scf_converged` when the count grows.
+the finished steps and sends `scf_converged` when the count grows **and the
+step moves the geometry**.
 
 | run | what a step is | the line that marks it | `scf_converged` messages |
 |---|---|---|---|
 | SIESTA relaxation | a geometry move | `Begin CG opt. move = N` (or `Broyden`, `FIRE`; `Src/state_init.F`, `siesta_grammar.STEP_BEGIN`) — N moves are done | one per finished move |
-| SIESTA force constants | a displacement | `Begin FC step = N` | one per finished displacement |
+| SIESTA force constants | a displacement | `Begin FC step = N` | none: a displacement moves no geometry. How many are done and their pace are the periodic report's (§ 2.8); the force constants' outcome is a milestone where the run goes on, else the `finish` (§ 2.9) |
 | SIESTA single point — every SIESTA rung of a transport calculation is one | none: it prints `Single-point calculation` | — | none; the `finish` message is the whole report |
 | TBtrans | none: it runs no SCF — what it states instead is its k-point × energy loop, run once per spin channel: each pass begun, its progress every `TBT.Progress` per cent, the time it completed in — which every message says in words (`model/parse.md` § 5d.5: *unpolarized (1 of 1): 10.01 % done, about 6d left (TBtrans's estimate)*), its pass underway's `done_pct` and `eta_s` among the fields (§ 4.1a) | — | none |
 | PySCF optimization | a geometry step | a step block in the progress log (`.molwatch.log`), written when the step ends | one per finished step, the first included |
 | PySCF vibration | a geometry step of the relaxation it runs first — none when the geometry is stated relaxed; the Hessian after it states no step | a step block in the progress log | one per finished relaxation step |
 
 The last step's end is always in the `finish` message.
+
+**Only a step that moves the geometry is a message** *(the design agreed with
+the user, 2026-10-26, [`plans/plan.md`](?doc=plans/plan.md) § 1af)*. A
+geometry move's outcome — its energy, and the largest force against its
+tolerance — is something the person judges as the run goes. A
+displacement's is not: it moves one atom away from one geometry and back,
+and the person judges the displacements together, once the force constants
+are built. Which steps move the geometry is declared where the steps are
+read:
+
+- **SIESTA**: the grammar's `siesta_grammar.MOVES_GEOMETRY`, over the
+  step's own words — an optimizer's `opt. move` (Broyden, FIRE, CG). Not an
+  `FC step`; not a `Server step`, whose geometry a driver outside SIESTA
+  sets; and not an `MD step`, which no kind of molbuilder's runs and which
+  SIESTA numbers from `MD.InitialTimeStep`, 1 by default, so "N are done"
+  would run one ahead (`Src/state_init.F`, `Src/siesta_init.F`).
+- **PySCF**: every step block of the progress log is a geometry step,
+  `molwatch_grammar.STEPS_MOVE_GEOMETRY`.
+
+The reading pass states it as `step_moves` (`model/parse.md` § 5d.5).
+Every step still counts toward the pace and the wall (§ 2.1b, § 2.8): a
+displacement takes time like a move.
 
 **Why a finished step means a converged SCF.** Each geometry step solves the
 Kohn–Sham equations self-consistently, and its forces mean something only once
@@ -375,12 +404,16 @@ runs.
 **member** (`--member --launched-in <run>`), which watches that call, sends
 `scf_converged`, `periodic` and `wall_near` by the policy, counts its clock
 from the run's own record, and sends neither `start` nor `finish`; the run's
-`start` is sent once by the plan step of its first call and its `finish` by
-the record step that completes the index, each through the bundle's `notify`
-verb (`mb_monitor.pyz notify <event> --dir <run>`), which reads the policy
-from the environment the run script exports (`MB_NOTIFY_CHANNELS`,
-`MB_NOTIFY_REPORT`), skips a `start` already sent, and writes the run's
-notification record (§ 2.5).
+`start` is sent once by the plan step of its first call, a `milestone` or a
+`part_failed` by a call's record step (§ 2.9), and its `finish` by the record
+step that completes the index, each through the bundle's `notify` verb
+(`mb_monitor.pyz notify <event> --dir <run>`), which reads the policy from
+the environment the run script exports (`MB_NOTIFY_CHANNELS`,
+`MB_NOTIFY_REPORT`), skips a `start` already sent and a `part_failed` of a
+reason already reported (§ 2.9), and writes the run's notification record
+(§ 2.5). Every event but the `start` — sent before any call has ended —
+carries the run's count and clock, read from the run's index after the step
+that sends it wrote it (§ 2.8).
 
 ### 2.5 What it writes
 
@@ -388,7 +421,7 @@ notification record (§ 2.5).
 |---|---|---|---|---|
 | `<stem>-runN.monitor.log` | the monitor | appended from its start to its closing lines | a person; `parse/instruments/monitor.py` ([`model/parse.md`](?doc=model/parse.md) § 5c.1); `run_status`, its closing record ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) | the monitor never started — the wrapper's log says why (*monitor: not started …*) — or it died loading: its `starting` line and the error, no `started` (§ 2.6) |
 | `<stem>-runN.util.csv` | the monitor | a header and a first row at start, then change-gated rows (§ 2.1) | the bench summary; `utilisation` (§ 5c.1 there) | nothing was sampled |
-| `notified.json` beside the run's launch record (`<stem>-runN.notified.json` on the flat layout) | the `notify` verb, and a member monitor sending `periodic` or `wall_near` — a run in phases' | each event sent for the run, with its time (`runrecord.read_notified`) | the member monitors (a `start` or a `wall_near` already sent is not sent again; the N-hour clock from the last event); the `notify` verb; `run_status` | no event sent for the run |
+| `notified.json` beside the run's launch record (`<stem>-runN.notified.json` on the flat layout) | every monitor, for each event it sends; and, for a run of points, the `notify` verb. A call's member monitor and its record step can write at one moment, both in the call's job on one node, so each read-and-append is one step under a lock on the folder (`runrecord.note_notified`); a filesystem that refuses locks gets the event written unlocked | each event said for the run, with its time, and a failed part's reason (`runrecord.read_notified`) — said, whether or not a channel took it: with no channel set up the event is still recorded | the member monitors (a `wall_near` already sent is not sent again; the N-hour clock from the last event); the `notify` verb (a `start`, or a `part_failed` of a reason already reported, is not sent again, § 2.9) | no event said for the run |
 | `<state dir>/reports/<user>.jsonl` | the listener, on the server | one line per accepted report | `jq`, pandas (§ 4.1a) | no report reached the listener |
 
 `<stem>` is `<label>[_<stage>]` and N the run index
@@ -504,7 +537,7 @@ point it at.
 | `MB_MONITOR` | the wrapper | `0` starts no monitor |
 | `MB_MONITOR_INTERVAL` | the wrapper | seconds between wakes |
 | `MB_NOTIFY_URL` · `MB_NOTIFY_KEY` | the monitor | report to this one URL instead of the channel file (§ 3) |
-| `MB_NOTIFY_CHANNELS` · `MB_NOTIFY_REPORT` | the `notify` verb | the policy a run in phases' run script exports for the `start` and `finish` its Python steps send (§ 2.4) |
+| `MB_NOTIFY_CHANNELS` · `MB_NOTIFY_REPORT` | the `notify` verb | the policy a run in phases' run script exports for the events its Python steps send — `start`, `milestone`, `part_failed`, `finish` (§ 2.4) |
 | `MOLBUILDER_CONFIG_DIR` · `XDG_CONFIG_HOME` | the monitor | where `secrets/notify` is (§ 1) |
 | `MB_JOB_ID` | the monitor | inside a scheduler's job (§ 2.1a); the report's `job` — the scheduler's id, said in molbuilder's name by the job's header ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) |
 | `MB_CPUS_ON_NODE` · `MB_CPUS_PER_TASK` | the monitor | the cores held when no affinity mask answers, as the job's header says them |
@@ -594,9 +627,8 @@ again ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3) —
 and the time they need at that pace, beside the wall's time left: *each optical call takes 2h (1 done) -- the 120 left
 need about 10d at that pace*. It is arithmetic on what
 the run measured: it judges nothing, warns once (`wall_near`, below), and
-stops nothing (§ 5). The events a run of points sends — a milestone at a
-phase's end, a part that failed — belong to the same agreed design
-([`plans/plan.md`](?doc=plans/plan.md) § 1af) and are not yet rules here. A pace is one phase's: a
+stops nothing (§ 5). The events a run of points sends at a phase's end and
+at a part's failure are § 2.9's. A pace is one phase's: a
 force-constant call and an optical call cost differently, as two SCF phases
 do (§ 2.7).
 
@@ -614,6 +646,90 @@ converged and the exit; the clocks; the wall —
 ```text
 running | the run: fc done · optical 0 of 121 | this call: frame 0, the equilibrium | SIESTA's optical calculation -- it prints nothing until it ends (since 20:02) | its SCF converged in 6 iterations (33s), dDmax 5e-06 (tol 1e-05), dHmax 0.000449 eV (tol 0.001) | E -1211078.894214 eV | max force 0.3789 eV/Ang; 0.4714 eV/Ang on the held atoms | the run 5h · this call 2h | wall 12h: 7h left
 ```
+
+### 2.9 A run of points' milestones and failed parts *(the design agreed with the user, 2026-10-26; built 2.50.0)*
+
+*(The user, 2026-10-26: "the report should report the progress and/or the
+periodic update, as the monitor is designed for. i am asking you to do a
+logical design rather than aligning with what happens to be the case".)*
+
+**A unit of work is reported when its outcome is something the person can
+judge or act on** — a geometry move's largest force against its tolerance
+(§ 2.2), a phase's outcome, a part that failed. Any other unit is said only
+by its count and pace, in the periodic report (§ 2.8).
+
+**Which runs.** A run of points that reports as one run (§ 2.4): a SIESTA
+vibration's calls ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.11 § 7a). Its record step runs after each call's engine and reads the
+run's index. A transport sweep's points do not report as one run yet — each
+sends its own `start` and `finish` — until its run keeps an index
+([`plans/plan.md`](?doc=plans/plan.md) § 1af, R-e).
+
+**When.** A call's record step first writes how the call ended into the
+index. It then asks the walk's own question: does the run still have calls
+to run? A call still to run is listed, not ended, and every phase it needs
+holds a call that is done (`_still_to_run`).
+
+| the call | calls left to run | sent |
+|---|---|---|
+| not done, by the one done rule (`vibration_phases.rows_of`) | yes | `part_failed`: the call, and why it is not done — once per reason (below) |
+| done, and the last of its phase to end | yes | `milestone`: the phase's outcome |
+| done, with others of its phase still to end | yes | nothing — the count is the periodic report's |
+| either | none | the `finish` (§ 2): the run's state by the one rule over the index, and the outcome of the phase this call ended |
+
+**What a milestone says** — the phase's outcome, from the record the step
+has just written and nothing else:
+
+| the phase | its outcome | read from |
+|---|---|---|
+| the relaxation (`relax`) | whether it converged, in how many moves, and the largest force on the free atoms against its tolerance — *the relaxation converged in 41 moves: the largest force on the free atoms 0.0381 eV/Ang (tol 0.04)*. The record is of the call's newest output, so a relaxation the wrapper retried in place (`running-a-job.md` § 3.5) counts its last attempt's moves, and says *in 12 moves of its last attempt*; one continued from an earlier run's geometry ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6) counts the moves since, and says *in 9 moves continuing freq/run-1/relax* | the relaxation record the step writes into the index (`parse.contract.relaxation_of_output`, [`model/parse.md`](?doc=model/parse.md) § 5b.1) |
+| the force constants (`fc`) | how many modes, and how many of them imaginary; the largest force on the free atoms at the reference geometry against the tolerance, and whether that makes it a stationary point at this level of theory, as the result states it; how many optical calls were planned — *the force constants: 60 modes, none imaginary; at the reference geometry the largest force on the free atoms 0.38 eV/Ang (tol 0.04) -- not a stationary point at this level of theory; 121 optical calls planned* (frame 0 and each mode's two sides). This is the moment the person may stop a Raman phase that would be wasted | the analysis the step writes the result from (`result_of`): its modes, its `relaxation` block's verdict ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2), and the calls `_plan_optical` planned |
+| the optical calls (`optical`) | — the last phase: its end is the run's end, which the `finish` says | — |
+
+A relaxation is done whether or not it converged (done is finished,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 5), so the force
+constants run after it either way. The milestone says which it was; what to
+do about it is the person's.
+
+**What a part's failure says**: the call, by its words (`Call.words`), and
+why it is not done, by the one rule's words — the exit, what the record step
+could not do, or `_run_ending.not_done_why` — *mode 7 (4271 cm⁻¹), +δQ: not
+done -- exit 1*. A failed `finish` names the first call not done in the same
+words, and how many are not done when more than one is — *…: not done --
+exit 1; 9 of 121 calls not done*.
+
+**A failure is said once per reason.** Calls of one run often fail alike:
+once the wall is reached every call started after it stops at once, and a
+file every call needs, missing, fails each the same way. A failure's
+**reason** is the call's exit where it was not 0 (*exit 1*), else what the
+record step could not do (*the optical calls' record was not written*), else
+the rule's words (*finished without CO2.EPSIMG*) — never an error's own
+text, which can name the call's own files. A `part_failed` whose reason the
+run has already reported is not sent again; the `notify` verb asks the run's
+notification record, where each failure's reason is kept (§ 2.5). The
+`finish` counts the calls not done; until then the run's count says how many
+are done (§ 2.8). So a run speaks of its failures as one run, never as one
+message per call.
+
+**The card.** The title; the summary line — the state `running`, the outcome
+or the failure in its parentheses, then the run's count; and the run's clock
+(`elapsed_s`), as the layout gives it (§ 4.1c):
+
+```text
+running (the relaxation converged in 41 moves: the largest force on the free atoms 0.0381 eV/Ang (tol 0.04)) | the run: relax done · fc pending · optical: after fc | the run 6h
+```
+
+**Sent whatever the ticks**, as the wall's warning is: a calculation with a
+`notify` block hears them, and one without hears nothing. Each is written
+into the run's notification record (§ 2.5). A member monitor counts its
+N-hour clock from the run's last word: from the record when it starts, and
+from the record again before it sends a `periodic` — a milestone its own
+call's record step sent while it still watched restarts the clock too
+(§ 2).
+
+**It decides nothing and stops nothing** (§ 5). The outcome is stated
+against the person's own tolerance; a relaxation that did not converge, an
+imaginary mode or a failed call is said, and what to do with it is theirs.
 
 ---
 
@@ -843,7 +959,7 @@ when — because somebody parses it later with no session to ask:
 | `job` | the monitor | `MB_JOB_ID`, the scheduler's id for the job; absent outside a scheduler |
 | `host` | the monitor | the node's own name |
 | `sent_at` | the monitor | the sender's clock, epoch seconds |
-| `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near` or `finish` (§ 2); `test` from the setup page's button (§ 4.1b) |
+| `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near`, `milestone`, `part_failed` or `finish` (§ 2); `test` from the setup page's button (§ 4.1b) |
 | `state` | the monitor | `running`, then `finished` or `failed` (§ 2.3) |
 | `text` | the monitor | the summary line: the state and its detail, then every fact below that the run has stated, in words and units — what a chat card shows |
 | `part` | the monitor | the part of the run underway, as the reading pass names it (§ 2.8) — absent while the SCF speaks and once the run has ended; a card's grid leaves a field whose part has ended for the summary line |
@@ -944,7 +1060,8 @@ stops there; the reports route and the Test button in their answer.
  "receivers": {
    "slack":   {"inline": true, "limit": 10, "summary": true,
                "order": {"start": [], "scf_converged": [...], "periodic": [...],
-                         "wall_near": [...], "finish": [...], "test": []}},
+                         "wall_near": [...], "milestone": [...],
+                         "part_failed": [...], "finish": [...], "test": []}},
    "discord": {"inline": true, "limit": 25, "summary": true, "order": {...}},
    "web":     {"inline": true, "limit": 0,  "summary": true, "order": {...}}}}
 ```
@@ -956,7 +1073,7 @@ stops there; the reports route and the Test button in their answer.
 | `inline` | `true` sets the fields side by side — Slack's `short`, two to a line; Discord's `inline`, up to three; the tab's grid, three (the two webhooks' own documents) — `false` puts each on its own line |
 | `limit` | how many fields at most; `0` is no limit. A wire's own ceiling (§ 4.1b: Slack 10, Discord 25) is the most a receiver may say, and a larger one is refused at load |
 | `summary` | whether the summary line (`text`) is shown under the title |
-| `order.<event>` | **the fields, in the order the card shows them, for that event** — the five of § 2 and `test`, the setup page's button (§ 4.1a); each a report field's name (§ 4.1a); `[]` is the title and the summary line alone |
+| `order.<event>` | **the fields, in the order the card shows them, for that event** — the seven of § 2 and `test`, the setup page's button (§ 4.1a); each a report field's name (§ 4.1a); `[]` is the title and the summary line alone |
 
 **What stays the code's.** The title: the run, its job and its state, always
 (§ 4.1b). A card's fields are the receiver's order for the report's event,
@@ -993,7 +1110,9 @@ clocks and the pace first (`elapsed_s`, `call_elapsed_s`, `units_done`,
 (`energy`, `max_force`, `max_force_held`, `geom_step`), then a loop's progress
 (`done_pct`, `eta_s`). A *wall_near* card shows the time (`elapsed_s`,
 `call_elapsed_s`, `left_at_pace_s`, `units_left`, `unit_s`, `eta_s`,
-`done_pct`) before the result. A *finish* card shows the result
+`done_pct`) before the result. A *milestone* or *part_failed* card is the
+title, the summary line — the outcome or the failure, and the run's count
+(§ 2.9) — and the run's clock (`elapsed_s`). A *finish* card shows the result
 first. That is Discord's and the web's order. Slack's swaps `n_iters` and
 `per_iter_s` and puts `geom_step` before `energy`. The web receiver shows every field the run stated,
 with no limit.
@@ -1119,7 +1238,7 @@ asks, and what the wrapper then does is the wrapper's
 | how it reaches the monitor | the flags on the `mb_monitor.pyz` line (§ 2.6), rendered by `runwrap._monitor_block` |
 | which run it watches | `--label` / `--stage` / `--run`; every file named through `runfiles` (§ 2.3) |
 | what it reads, and with what | the framework's own readers in `mb_monitor.pyz` — `runwrap.MONITOR_COMPANIONS` (§ 2.3) |
-| when to fire | `monitor.run_monitor` (§ 2) |
+| when to fire | `monitor.run_monitor` (§ 2); for a run of points, its start, milestones, failed parts and finish by its Python steps (`spectra.siesta_vibration.plan_call`, `record_call`) through `mb_monitor.pyz notify` (§ 2.4, § 2.9) |
 | what the summary line says | `monitor.JobStatus.as_text` (§ 4.1a), from the run's declared structure (§ 2.8) |
 | which fields a report may carry | `molbuilder/report_fields.py` (§ 4.1a) |
 | what a channel name resolves to | `monitor.load_channels` → `<config dir>/secrets/notify` (§ 3) |

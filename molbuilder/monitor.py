@@ -173,6 +173,10 @@ class JobStatus:
     #: criterion (`run-reports.md` § 2.2).  SIESTA begins step N once N are
     #: done; a PySCF block is written when its step ends.
     steps_done: Optional[int] = None
+    #: Whether a step of this run moves the geometry, as the reading pass
+    #: states it from its grammar (`run-reports.md` § 2.2): a relaxation's
+    #: move does, a force-constant displacement does not.
+    step_moves: Optional[bool] = None
     #: ``{name: (value, tolerance or None, unit)}`` -- dDmax, dHmax, and a
     #: NEGF loop's dQ, each beside the criterion the run states for it.
     residuals: Dict[str, Tuple[float, Optional[float], str]] = field(
@@ -580,6 +584,7 @@ class WatchedRun:
             st.geom_step = state["step"]
             st.step_kind = state.get("step_kind")
         st.steps_done = state.get("steps_done")
+        st.step_moves = state.get("step_moves")
         if "scf_rows" in state:
             st.n_iters = state["scf_rows"]
         st.residuals.update(state.get("residuals") or {})
@@ -617,10 +622,13 @@ class WatchedRun:
         """Every event sent for the run so far (`runrecord.read_notified`)."""
         return _rr.read_notified(self.run_folder, self.names, self.run)
 
-    def note(self, event: str, at: float) -> None:
-        """``event`` sent for the run at ``at``, into its notification
-        record (`runrecord.note_notified`, `run-reports.md` § 2.6)."""
-        _rr.note_notified(self.run_folder, self.names, self.run, event, at)
+    def note(self, event: str, at: float,
+             reason: Optional[str] = None) -> None:
+        """``event`` sent for the run at ``at`` -- a failed part's
+        ``reason`` with it -- into its notification record
+        (`runrecord.note_notified`, `run-reports.md` § 2.5)."""
+        _rr.note_notified(self.run_folder, self.names, self.run, event, at,
+                          reason=reason)
 
     def conclude(self, st: JobStatus) -> JobStatus:
         """How the run ended, as the Results tab reads it: `run_status` over
@@ -1278,8 +1286,8 @@ def _util_csv_row(s: UtilSample, ngpu: int) -> str:
 # --------------------------------------------------------------------- #
 
 # A notifier is ``fn(status, event)`` where ``event`` is one of
-# "start" | "scf_converged" | "periodic" | "wall_near" | "finish"
-# (`run-reports.md` § 2).
+# "start" | "scf_converged" | "periodic" | "wall_near" | "milestone" |
+# "part_failed" | "finish" (`run-reports.md` § 2).
 # Register as many as you like; they are
 # called in registration order and individually guarded (one failing
 # hook never breaks the loop or the other hooks).
@@ -2193,12 +2201,12 @@ def run_monitor(watched: "WatchedRun", *,
                 member: bool = False) -> JobStatus:
     """Periodically read + log + notify until the watched job ends.
 
-    ``member``: this run is one call of a run of points, whose walk speaks
-    once for the run (`run-reports.md` § 2.1b; `engines/vibration.md`
-    § 5.11 § 7a) -- it sends no `start` and no `finish` of its own, its
-    N-hour clock counts from the last event the run's notification record
-    holds (``watched.launched_in``), and every event it sends it writes
-    there.
+    ``member``: this run is one call of a run of points, which reports as
+    one run (`run-reports.md` § 2.4; `engines/vibration.md` § 5.11 § 7a) --
+    it sends no `start` and no `finish` of its own, those are the run's
+    Python steps', and its N-hour clock counts from the last event the
+    run's notification record holds (``watched.launched_in``).  Every
+    monitor writes each event it sends into its run's record.
 
     ``watched`` names the run; its log and its utilisation CSV (with
     ``util``) are its own files, named through `runfiles`.  Every reading is
@@ -2261,8 +2269,11 @@ def run_monitor(watched: "WatchedRun", *,
 
     def _said(st: JobStatus, event: str, now: float) -> None:
         # ONE EVENT SENT, and written into the run's notification record --
-        # never breaking the monitor over the record.
+        # never breaking the monitor over the record.  EVERY MESSAGE
+        # RESTARTS THE N-HOUR CLOCK (`run-reports.md` § 2).
+        nonlocal last_notify
         _fire(st, event)
+        last_notify = now
         try:
             watched.note(event, now)
         except Exception as exc:                       # noqa: BLE001
@@ -2467,21 +2478,36 @@ def run_monitor(watched: "WatchedRun", *,
         #
         # A STEP FINISHING means its SCF reached its criterion
         # (`run-reports.md` § 2.2): SIESTA begins step N once N are done
-        # (`Begin <CG|Broyden|FIRE> opt. move = N`, `Begin FC step = N`), and
-        # a PySCF block is written when its step ends -- the parser counts
-        # them (`JobStatus.steps_done`).  Read that way rather than by
-        # scanning for a convergence phrase.  A single point states no
-        # step, so nothing fires and the finish message is the whole report.
-        if (notify.on_scf and st.steps_done is not None
+        # (`Begin <CG|Broyden|FIRE> opt. move = N`), and a PySCF block is
+        # written when its step ends -- the parser counts them
+        # (`JobStatus.steps_done`).  Read that way rather than by scanning
+        # for a convergence phrase.  ONLY A STEP THAT MOVES THE GEOMETRY is
+        # a message, as the reading pass states it (`JobStatus.step_moves`):
+        # a force-constant displacement's count and pace are the periodic
+        # report's.  A single point states no step, so nothing fires and
+        # the finish message is the whole report.
+        if (notify.on_scf and st.step_moves and st.steps_done is not None
                 and st.steps_done > (prev.steps_done or 0)):
             _said(st, "scf_converged", now)
-            last_notify = now
         elif notify_period_s > 0 and now - last_notify >= notify_period_s:
             # `elif`: a step and a period landing on the same wake is one
             # thing worth saying, not two.  The step is the more informative
-            # of them, so it wins and resets the clock.
-            _said(st, "periodic", now)
-            last_notify = now
+            # of them, so it wins and resets the clock.  A MEMBER asks its
+            # run's record first: the run's Python steps speak too -- a
+            # milestone its call's record step sent while this monitor
+            # still watched (`run-reports.md` § 2.9) -- and the N hours
+            # count from the run's last word.
+            if member:
+                try:
+                    sent = watched.notified()
+                    if sent:
+                        last_notify = max(last_notify, max(
+                            float(e.get("at") or 0.0) for e in sent))
+                except Exception as exc:               # noqa: BLE001
+                    _append(log, f"[{_iso(now)}] [NOTIFY] the run's record "
+                                 f"not read: {exc}")
+            if now - last_notify >= notify_period_s:
+                _said(st, "periodic", now)
 
         prev = st
         if max_ticks is not None and ticks >= max_ticks:
@@ -2664,9 +2690,10 @@ def main(argv=None) -> int:
         # in this file (`runrecord.retried_main`; `running-a-job.md` § 3.5).
         return _rr.retried_main(args[1:])
     if args[:1] == ["notify"]:
-        # A RUN OF POINTS SPEAKS ONCE: its start and its finish, sent by the
-        # run's own python through this verb (`engines/vibration.md` § 5.11
-        # § 7a; `run-reports.md` § 2.6).
+        # A RUN OF POINTS REPORTS AS ONE RUN: its start, milestones, failed
+        # parts and finish, sent by the run's own python through this verb
+        # (`engines/vibration.md` § 5.11 § 7a; `run-reports.md` § 2.4,
+        # § 2.9).
         return _notify_main(args[1:])
     import argparse
     p = argparse.ArgumentParser(
@@ -2742,9 +2769,9 @@ def main(argv=None) -> int:
                    help="comma-separated report fields ("
                         + ", ".join(_fields.NAMES)
                         + "); omit for all of them, pass '' for none")
-    # A MEMBER OF A RUN OF POINTS (`run-reports.md` § 2.1b): the run's
+    # A MEMBER OF A RUN OF POINTS (`run-reports.md` § 2.4): the run's
     # folder holds its launch record and its notification record; the
-    # walk speaks once for the run.
+    # run's start and finish are its Python steps'.
     p.add_argument("--member", action="store_true", dest="member",
                    help="this run is one call of a run of points: no start "
                         "or finish of its own, its clock the run's")
@@ -2782,43 +2809,67 @@ def main(argv=None) -> int:
 
 #: THE POLICY'S CHANNELS AND REPORT, in the environment of a run of
 #: points' calls (`runwrap._monitor_block` exports them from the monitor's
-#: own flags), so the run's own python can send the run's start and finish
-#: through :func:`_notify_main` with the policy the description stated.
+#: own flags), so the run's own python can send the run's events -- its
+#: start, milestones, failed parts and finish -- through
+#: :func:`_notify_main` with the policy the description stated.
 NOTIFY_CHANNELS_VAR = "MB_NOTIFY_CHANNELS"
 NOTIFY_REPORT_VAR = "MB_NOTIFY_REPORT"
 
 
 def _notify_main(argv) -> int:
-    """``mb_monitor.pyz notify start|finish --label L --stage S --run N
-    --dir RUN [--state S --detail D]`` -- ONE event for a run of points,
-    sent through the channels and card the monitor uses, with the run's
-    identity, and written into the run's notification record
-    (`engines/vibration.md` § 5.11 § 7a; `run-reports.md` § 2.6).  The
-    channels and report fields are the policy's, from the environment the
-    call's run script set (:data:`NOTIFY_CHANNELS_VAR`,
-    :data:`NOTIFY_REPORT_VAR`); none set up, nothing is sent -- the record
-    says it was said all the same."""
+    """``mb_monitor.pyz notify start|milestone|part_failed|finish --label L
+    --stage S --run N --dir RUN [--state S --detail D --reason R]`` -- ONE
+    event for a
+    run of points, sent by its Python steps through the channels and card
+    the monitor uses, with the run's identity, and written into the run's
+    notification record (`engines/vibration.md` § 5.11 § 7a;
+    `run-reports.md` § 2.4, § 2.9).  Every event but the start -- sent
+    before any call has ended -- says the run's count and clock, read from
+    its index, which the step sending it has just written.  The channels and
+    report fields are the policy's, from the environment the call's run
+    script set (:data:`NOTIFY_CHANNELS_VAR`, :data:`NOTIFY_REPORT_VAR`);
+    none set up, nothing is sent -- the record holds what was said all the
+    same, whether or not a channel took it."""
     import argparse
     p = argparse.ArgumentParser(prog="mb_monitor notify")
-    p.add_argument("event", choices=("start", "finish"))
+    p.add_argument("event",
+                   choices=("start", "milestone", "part_failed", "finish"))
     p.add_argument("--label", required=True)
     p.add_argument("--stage", required=True)
     p.add_argument("--run", type=int, required=True, dest="run_index")
     p.add_argument("--dir", default=".", dest="directory",
                    help="the run's folder")
-    p.add_argument("--state", default=None,
-                   help="the run's state, for a finish (the one rule over "
-                        "the run's index)")
+    p.add_argument("--state", default="running",
+                   help="the run's state: a finish's by the one rule over "
+                        "the run's index; running until then")
     p.add_argument("--detail", default=None)
+    p.add_argument("--reason", default=None,
+                   help="a failed part's why: a part_failed whose reason "
+                        "the run has already reported is not sent again")
     a = p.parse_args(argv)
     watched = WatchedRun(names=_rf.RunNames(a.label, a.stage, False),
                          run=a.run_index, directory=Path(a.directory))
     log = watched.path(".monitor.log")
     now = time.time()
-    # THE RUN SPEAKS ONCE: a start the record already holds is not sent
+    try:
+        sent = watched.notified()
+    except Exception as exc:                           # noqa: BLE001
+        # A RECORD THAT DOES NOT READ silences nothing: the event is sent,
+        # and the log says why it may be a second time.
+        _append(log, f"[{_iso(now)}] [NOTIFY] the run's record not read: "
+                     f"{exc}")
+        sent = []
+    # THE RUN STARTS ONCE: a start the record already holds is not sent
     # again -- whichever call's plan step asks (§ 5.11 § 7a).
-    if a.event == "start" and any(e.get("event") == "start"
-                                  for e in watched.notified()):
+    if a.event == "start" and any(e.get("event") == "start" for e in sent):
+        return 0
+    # A FAILED PART SPEAKS ONCE PER REASON (`run-reports.md` § 2.9): a run
+    # whose calls fail alike -- its wall reached, a file missing -- says it
+    # once, and the finish counts the calls not done; never as many
+    # messages as calls.
+    if a.event == "part_failed" and a.reason is not None and any(
+            e.get("event") == "part_failed" and e.get("reason") == a.reason
+            for e in sent):
         return 0
     register_notifier(make_log_notifier(log))
     try:
@@ -2831,24 +2882,29 @@ def _notify_main(argv) -> int:
         log, run_identity(watched),
         _channels_from_flag(os.environ.get(NOTIFY_CHANNELS_VAR)),
         _report_from_flag(os.environ.get(NOTIFY_REPORT_VAR)), layout)
-    st = JobStatus(state=(a.state or ("running" if a.event == "start"
-                                      else "finished")),
-                   detail=a.detail)
-    if a.event == "finish":
-        # THE RUN'S CLOCK, from its index -- the finish is the run's, sent
-        # after its last call, whose record step has just written the
-        # index (§ 2.8).
+    st = JobStatus(state=a.state, detail=a.detail)
+    if a.event != "start":
+        # THE RUN'S COUNT AND CLOCK, from its index (§ 2.8) -- the event
+        # follows a call's end, whose record step has just written it.
         try:
             index = _vp.read_index(_vp.index_path(
                 watched.directory, watched.names, _rf.FIRST_ATTEMPT))
-            clock = _run_clock(_vp.rows_of(index, watched.directory,
-                                           watched.label), now)
-        except (OSError, ValueError, KeyError, TypeError):
+            rows = _vp.rows_of(index, watched.directory, watched.label)
+            st.run_words = _vp.summary(rows, index.get("phases") or ())
+            clock = _run_clock(rows, now)
+        except Exception as exc:                       # noqa: BLE001
+            # THE MESSAGE GOES OUT WITHOUT THEM: an index that does not
+            # read is said in the log, never the reason a run is silent.
+            _append(log, f"[{_iso(now)}] [NOTIFY] the run's index not "
+                         f"read: {exc}")
             clock = None
         if clock is not None:
             st.elapsed_s = clock
     _fire(st, a.event)
-    watched.note(a.event, now)
+    try:
+        watched.note(a.event, now, reason=a.reason)
+    except Exception as exc:                           # noqa: BLE001
+        _append(log, f"[{_iso(now)}] [NOTIFY] not recorded: {exc}")
     return 0
 
 

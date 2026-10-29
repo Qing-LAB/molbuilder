@@ -64,6 +64,11 @@ SCF_HISTORY_END = "scf_history end"
 #: starts (`trajectory_log`: prep seeds it, the emitter writes it on
 #: construction) -- a preview of the input, not a step the run took.
 PREVIEW_KIND = "initial_preview"
+#: EVERY STEP OF THE LOG MOVES THE GEOMETRY: a block is written when a
+#: geometry step ends -- an optimization's, or the relaxation a vibration
+#: runs first; the Hessian after it writes none (`run-reports.md` § 2.2).
+#: The monitor sends `scf_converged` for such a step.
+STEPS_MOVE_GEOMETRY = True
 
 # ---- The footer -----------------------------------------------------------------
 #: Rendered from the log's own vocabulary (`trajectory_log.keys`).

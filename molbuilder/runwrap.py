@@ -343,11 +343,12 @@ def _monitor_block(names, notify_on_scf: bool,
     path: the monitor names its log, its utilisation CSV and every file it
     reads through `runfiles`, and reads them through the framework's readers
     that travel beside it (:data:`MONITOR_COMPANIONS`).  ``member`` makes it
-    a MEMBER of a run of points' monitor (`run-reports.md` § 2.1b;
+    a MEMBER of a run of points' monitor (`run-reports.md` § 2.4;
     `engines/vibration.md` § 5.11 § 7a): the way from this call's folder up
     to the run's (``..``), whose launch record it counts the wall from and
     whose notification record its clock reads -- it sends no `start` and no
-    `finish` of its own, the run's walk speaks once.
+    `finish` of its own: the run reports as one run, those sent by its
+    Python steps.
 
     It tells it WHAT THE JOB HOLDS too (`run-reports.md` § 2.1a): ``cores``
     is the shell arithmetic for the cores this engine is launched on -- a run
@@ -370,9 +371,10 @@ def _monitor_block(names, notify_on_scf: bool,
         "# --- Background job monitor ---------------------------\n"
         '_monitor_pid=""\n'
         # THE POLICY, in the environment too, for a run of points' own
-        # python to send the run's start and finish with (`mb_monitor.pyz
-        # notify`, `engines/vibration.md` § 5.11 § 7a) -- the same two
-        # answers the flags below carry.
+        # python to send the run's events with -- its start, milestones,
+        # failed parts and finish (`mb_monitor.pyz notify`,
+        # `engines/vibration.md` § 5.11 § 7a) -- the same two answers the
+        # flags below carry.
         + ("" if notify_channels is None
            else f'export {NOTIFY_CHANNELS_VAR}="{",".join(notify_channels)}"\n')
         + ("" if notify_report is None

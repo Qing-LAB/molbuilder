@@ -40,7 +40,9 @@ optical calls after it; ticked, the run is the `fc` call alone, at the
 geometry as given -- then a displacement sweep (§ 5.9), on the unticked
 calculation; and the unticked run stopped by the person once its force
 constants and its first optical call ended, then launched again warm
-(§ 5.11 § 6), on a copy of it.
+(§ 5.11 § 6), on a copy of it -- and, on another copy, launched again warm
+under a wall already passed, each optical call it runs failing alike
+(`run-reports.md` § 2.9).
 The optical calls' data file is read beside the index and the result
 (§ 5.11 § 8).  A flat calculation's refusal needs no engine:
 `test_siesta_vibration_deck`.  The ticked road's result is then opened on the
@@ -49,9 +51,9 @@ Results tab, in a browser.
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
 cleanly anywhere else.  Each force-constant call is thirteen single points of
 CO2 on one rank, about a minute and a half here, each optical call some 25 s,
-and the module launches four runs beside the shared one -- the ticked, the
-sweep's second stage, the stopped and the one launched after it
-(`process/testing.md` tier 3: each run made once a pass).
+and the module launches five runs beside the shared one -- the ticked, the
+sweep's second stage, the stopped, and the two launched after it, warm and
+under the wall (`process/testing.md` tier 3: each run made once a pass).
 """
 from __future__ import annotations
 
@@ -219,6 +221,27 @@ def _notified(run, stage: str = "freq", n: int = 0) -> list:
     names = stage_home(run.bundle, task, stage).names(task.shape)
     return [e["event"] for e in read_notified(run.attempt(stage, n), names,
                                               FIRST_ATTEMPT)]
+
+
+def _told(run, event: str, stage: str = "freq", n: int = 0) -> list:
+    """WHAT THE RUN SAID AT ``event``, in order: the summary lines its
+    ``notify`` verb wrote into the run's own monitor log, the record every
+    event leaves whether or not a channel is set up (`run-reports.md`
+    § 2.5) -- named as the run's files are (`monitor.WatchedRun`)."""
+    import re
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.monitor import WatchedRun
+    from molbuilder.runfiles import FIRST_ATTEMPT
+    from molbuilder.task import of as task_of
+    task = task_of(run.bundle)
+    names = stage_home(run.bundle, task, stage).names(task.shape)
+    log = WatchedRun(names=names, run=FIRST_ATTEMPT,
+                     directory=run.attempt(stage, n)).path(".monitor.log")
+    said = re.compile(r"\[NOTIFY\] \(stub\) (\w+): (.*)$")
+    return [m.group(2) for m in map(said.search,
+                                   log.read_text(encoding="utf-8")
+                                   .splitlines())
+            if m and m.group(1) == event]
 
 
 def _the_optical_record(run, computed_in, n: int = 0):
@@ -442,7 +465,9 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     in the user order with the reference forces within the stage's own
     tolerance (`engines/vibration.md` § 5.11 §§ 1–3, § 5.5); the index
     lists every call with how it ended, the selection as asked and applied,
-    and the finish; the run sent `start` once and `finish` once (§ 7a); and
+    and the finish; the run sent its start, a milestone after the
+    relaxation and after the force constants, each saying its phase's
+    outcome, and its finish (§ 7a, `run-reports.md` § 2.9); and
     `status` counts the run in its phases' words (§ 7).  Launched again warm
     with every call done and the result written, a launch has nothing to
     run and says so, naming `--cold` (§ 6)."""
@@ -498,11 +523,37 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
         optical = _deck_of(folder / c.rel)
         assert _said(optical, "OpticalCalculation") == [".true."], c
         assert optical[2].on_label(".EPSIMG") is not None, c
-    # THE RUN REPORTED AS ONE RUN: start once, finish once (§ 7a).
-    assert _notified(run) == ["start", "finish"]
+    # THE RUN REPORTED AS ONE RUN (§ 7a, `run-reports.md` § 2.9): its
+    # start; a milestone at each phase it went on after -- the relaxation,
+    # the force constants; its finish.
+    assert _notified(run) == ["start", "milestone", "milestone", "finish"]
     # THE LAUNCH ENDS WITH THE RESULT: the record step wrote it (§ 5.11 § 3).
     d = _the_result(run)
     _common_assertions(d, optical=True)
+    # EACH MILESTONE SAYS ITS PHASE'S OUTCOME, from the record its step
+    # wrote, and the run's count after it (`run-reports.md` § 2.9).
+    after_relax, after_fc = _told(run, "milestone")
+    rec = index["calls"][0]["relaxation"]
+    assert after_relax.startswith(
+        f"running (the relaxation "
+        f"{'converged' if rec['converged'] else 'did not converge'} in "
+        f"{rec['n_steps']} move"), after_relax
+    assert f"(tol {rec['force_tolerance_ev_ang']:g}))" in after_relax, \
+        after_relax
+    assert "| the run: relax done · fc pending · optical: after fc |" \
+        in after_relax, after_relax
+    imaginary = sum(bool(m["has_imag"]) for m in d["modes"])
+    assert after_fc.startswith(
+        f"running (the force constants: {len(d['modes'])} modes, "
+        + (f"{imaginary} imaginary" if imaginary else "none imaginary")), \
+        after_fc
+    stationary = {True: "a stationary point",
+                  False: "not a stationary point"}[
+                      d["relaxation"]["converged"]]
+    assert (f"-- {stationary} at this level of theory; {n} optical calls "
+            f"planned)") in after_fc, after_fc
+    assert f"| the run: relax done · fc done · optical 0 of {n} |" \
+        in after_fc, after_fc
     # HOW IT WAS COMPUTED, the force-constant deck cited (§ 6.2): by its
     # sha256, every keyword and block as the engine read them but the
     # geometry, and each species' pseudopotential SIESTA opened beside it.
@@ -838,6 +889,16 @@ def test_ticked_the_run_measures_at_the_geometry_as_given(ticked):
     assert _index_of(ticked)["phases"] == [FC]
     assert _notified(ticked) == ["start", "finish"]
     d = _the_result(ticked)
+    # THE FORCE CONSTANTS END THE RUN, so the finish says their outcome
+    # (`run-reports.md` § 2.9), with the result's own stationarity verdict.
+    finish, = _told(ticked, "finish")
+    assert finish.startswith(
+        f"finished (the force constants: {len(d['modes'])} modes, "), finish
+    stationary = {True: "a stationary point",
+                  False: "not a stationary point"}[
+                      d["relaxation"]["converged"]]
+    assert f"-- {stationary} at this level of theory)" in finish, finish
+    assert "| the run: fc done |" in finish, finish
     _common_assertions(d, optical=False)
     assert d["thermo"]["temperature_K"] == 350.0, d["thermo"]["temperature_K"]
     assert d["thermo"]["pressure_atm"] is None
@@ -1388,23 +1449,23 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
 
 
 @pytest.fixture(scope="module")
-def stopped_after_fc(real_co2_vibration, tmp_path_factory):
+def stopped(real_co2_vibration, tmp_path_factory):
     """THE PERSON STOPS THE RUN ONCE ITS FORCE CONSTANTS AND ITS FIRST
-    OPTICAL CALL ENDED, then launches it again (`engines/vibration.md`
-    § 5.11 § 6): a copy of the shared run's calculation
-    (`support.real_runs.copy_of`), `freq` launched again cold in the
-    background -- a launch's default (`job-system.md` § 6.0) -- so run-1
-    relaxes and takes its force constants anew; once `jobset status` reads
-    an optical call of run-1 done and run-1's index lists the next one
-    started (an optical call takes some 25 s here), the run stopped with
-    the line that launch printed and let end; the run as the stop left it
-    kept -- its status (``stopped``) and its index (``stopped_index``);
-    then `freq` launched again warm, in the foreground: run-2."""
+    OPTICAL CALL ENDED (`engines/vibration.md` § 5.11 § 6): a copy of the
+    shared run's calculation (`support.real_runs.copy_of`), `freq` launched
+    again cold in the background -- a launch's default (`job-system.md`
+    § 6.0) -- so run-1 relaxes and takes its force constants anew; once
+    `jobset status` reads an optical call of run-1 done and run-1's index
+    lists the next one started (an optical call takes some 25 s here), the
+    run stopped with the line that launch printed and let end; the run as
+    the stop left it kept -- its status (``stopped``) and its index
+    (``stopped_index``).  Each road launched after the stop is a copy of
+    this one."""
     from molbuilder.siesta.vibration_phases import OPTICAL
     from support.real_runs import (_road_at, _stopped_by_its_line, _taken,
-                                   _typed, _until, copy_of, stage_status)
+                                   _until, copy_of, stage_status)
 
-    def stopped(c):
+    def stop(c):
         with _road_at(c.tree.parent, tmp_path_factory):
             run1 = c.attempt("freq", 1).name
             launched = _taken(c, "launch freq cold", "launch", "task",
@@ -1429,9 +1490,22 @@ def stopped_after_fc(real_co2_vibration, tmp_path_factory):
             _stopped_by_its_line(c, "stop as its launch said", launched)
             c.stopped = stage_status(c.bundle, "freq")
             c.stopped_index = _index_of(c, "freq", 1)
+    return copy_of(real_co2_vibration, "stopped", stop)
+
+
+@pytest.fixture(scope="module")
+def stopped_after_fc(stopped, tmp_path_factory):
+    """THE STOPPED RUN LAUNCHED AGAIN (:func:`stopped`): a copy of it, `freq`
+    launched again warm, in the foreground -- run-2 -- the stop's status and
+    index kept beside it."""
+    from support.real_runs import _road_at, _typed, copy_of
+
+    def warm(c):
+        c.stopped, c.stopped_index = stopped.stopped, stopped.stopped_index
+        with _road_at(c.tree.parent, tmp_path_factory):
             _typed(c, "launch freq warm", "launch", "task", "--stage",
                    "freq", "--mode", "direct", "--foreground", "--yes")
-    return copy_of(real_co2_vibration, "stopped-after-fc", stopped)
+    return copy_of(stopped, "warm", warm)
 
 
 def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
@@ -1496,8 +1570,85 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
             assert (index[name]["started"], index[name]["ended"]) == (
                 before[name]["started"], before[name]["ended"]), \
                 (index[name], before[name])
+    # THE CALLS TAKEN OVER LEAVE NO RECORD STEP OF THIS RUN, so no
+    # milestone; its finish counts the run as the status door does.
     assert _notified(run, n=2) == ["start", "finish"]
+    finish, = _told(run, "finish", n=2)
+    assert f"| the run: {status.detail} |" in finish, finish
     d, _data, _calls = _the_optical_record(
         run, n=2, computed_in={name: (run1 if name in finished else run2)
                                for name in _OPTICAL_CALLS})
     _common_assertions(d, optical=True)
+
+
+@pytest.fixture(scope="module")
+def failed_parts(stopped, tmp_path_factory):
+    """THE STOPPED RUN LAUNCHED AGAIN UNDER A WALL ALREADY PASSED
+    (:func:`stopped`): a copy of it, its run card given a wall of 20 s
+    (`execution.time`, `job-request.md`), prepared again for that job
+    request -- what it computes kept (`job-system.md` § 4, *launched*) --
+    and `freq` launched again warm, in the foreground: run-2 takes over
+    what run-1 finished, and each optical call it runs is told what is left
+    of the run's wall, so SIESTA stops at its first check
+    (`running-a-job.md` § 3.6; `siesta.md` § 8.9) -- every call it runs
+    ending alike, not done."""
+    from support.road import read_request, write_request
+    from support.real_runs import _road_at, _taken, _typed, copy_of
+
+    def walled(c):
+        request = read_request(c.bundle)
+        request["execution"] = {**request.get("execution", {}),
+                                "time": "00:00:20"}
+        write_request(c.bundle, request)
+        with _road_at(c.tree.parent, tmp_path_factory):
+            _taken(c, "prep freq for the wall", "prep", "task", "--group",
+                   "1", "--target", "this")
+            _typed(c, "launch freq warm", "launch", "task", "--stage",
+                   "freq", "--mode", "direct", "--foreground", "--yes")
+    return copy_of(stopped, "walled", walled)
+
+
+def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
+    """`run-reports.md` § 2.9: a call that ends not done while the run has
+    calls left to run is said at once -- the call in its words, why, and
+    the run's count -- and a later call failing for the same reason is not
+    said again; the finish names the first call not done and counts them.
+    On the real engine: every optical call of a run launched under a wall
+    already passed stops at once, alike.
+
+    THE SILENT FAILURES: a run's failed call never reported until its
+    finish, hours later; a run whose calls all fail alike -- its wall
+    reached, a file missing -- sending one message per call; and a finish
+    naming one failed call of many, its count nowhere."""
+    from molbuilder.siesta.vibration_phases import OPTICAL, rows_of
+    from molbuilder.task import of as task_of
+    run = failed_parts
+    rows = rows_of(_index_of(run, n=2), run.attempt("freq", 2),
+                   task_of(run.bundle).label)
+    optical = [r for r in rows if r["phase"] == OPTICAL]
+    taken = [r for r in optical if r["started_from"]]
+    ran = sorted((r for r in optical if not r["started_from"]),
+                 key=lambda r: r["ended_at"])
+    # THE PREMISE, by the one done rule: run-2 ran two calls or more, and
+    # each ended not done for the one reason.
+    assert len(ran) >= 2, rows
+    assert not any(r["done"] for r in ran), ran
+    assert len({r["why"] for r in ran}) == 1, ran
+    sent = _notified(run, n=2)
+    assert sent[0] == "start" and sent[-1] == "finish", sent
+    assert sent.count("part_failed") == 1, sent
+    # ...the wall's warning, which a member monitor may send once before
+    # its call stops, the only other word.
+    assert set(sent) <= {"start", "wall_near", "part_failed", "finish"}, sent
+    assert sent.count("wall_near") <= 1, sent
+    first = ran[0]
+    told, = _told(run, "part_failed", n=2)
+    assert told.startswith(
+        f"running ({first['words']}: not done -- {first['why']}) | the "
+        f"run: relax done · fc done · optical {len(taken)} of "
+        f"{len(optical)} ({len(taken)} taken over)"), told
+    left = [r for r in rows if not r["done"]]
+    finish, = _told(run, "finish", n=2)
+    assert finish.startswith(
+        f"failed ({left[0]['words']}: not done -- {left[0]['why']}; "
+        f"{len(left)} of {len(rows)} calls not done) | the run: "), finish

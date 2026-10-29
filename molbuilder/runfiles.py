@@ -1445,20 +1445,21 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`runrecord.record_retry`)",
              door="runrecord.launch_record"),
     # THE RUN'S NOTIFICATION RECORD -- every event sent for the run, when
-    # (`run-reports.md` § 2.6; `engines/vibration.md` § 5.11 § 7a): a run
-    # in phases speaks as one run, its `start` and `finish` sent once by
-    # its Python steps, and each member monitor's N-hour clock counts from
-    # the last event this record holds.
+    # (`run-reports.md` § 2.5, § 2.9; `engines/vibration.md` § 5.11 § 7a):
+    # a run in phases speaks as one run, its start, milestones, failed parts
+    # and finish sent by its Python steps, and each member monitor's N-hour
+    # clock counts from the last event this record holds.
     Artifact(ROLE_NOTIFIED, "the run's notification record: every event "
                             "sent for the run -- start, a step, the "
-                            "periodic report, its wall near, finish -- "
-                            "and when",
+                            "periodic report, its wall near, a milestone, "
+                            "a failed part and its reason, finish -- and "
+                            "when",
              attempt="shared", hierarchical=NOTIFIED_RECORD_FILE,
              when="launch", kind="record",
-             writer="`mb_monitor.pyz notify` (the run's start and "
-                    "finish, sent by its plan and record steps, "
-                    "`runrecord.note_notified`); a member monitor that "
-                    "sends a periodic or wall report (`monitor`)",
+             writer="`mb_monitor.pyz notify` (the run's start, milestones, "
+                    "failed parts and finish, sent by its plan and record "
+                    "steps, `runrecord.note_notified`); a member monitor, "
+                    "for every event it sends (`monitor`)",
              door="runrecord.read_notified"),
     # AND THE RUN IT CONTINUES FROM, left by launch's one hand-over beside
     # the run -- an attempt's `.continued-from`, or where a stage's runs

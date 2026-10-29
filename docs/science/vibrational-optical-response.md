@@ -39,8 +39,8 @@ held.
 ```
 
 **Which modes are infrared- or Raman-active, and how strong is each relative
-to the others**, for light polarized along $\hat e$? And **where should the
-frames along a mode sit** — the maximum displacement?
+to the others**, for light polarized along $\hat e$? And **how far should the
+frames along a mode reach** — the motion they average over?
 
 Everything comes from SIESTA's own electronic structure at the mode's
 geometries. **No field is applied in any calculation.** In the infrared, the
@@ -63,7 +63,7 @@ the whole cell's (§ 3.1, § 3.4).
 | the charge partition | infrared | Hirshfeld (§ 1a) |
 | the modes to compute Raman for — fixed before the run, since a mode exists only after the force-constant run | Raman | every mode — *Raman for*, the setting both engines share: all modes, or the modes in a frequency range a chemist knows before the run ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1, § 5.11 § 9) |
 | the laser's wavelength | Raman, after the run — the polarizability is taken at its frequency (§ 3.1) | — |
-| a temperature | the displacement's reference | — |
+| a temperature — the junction's, or a pumped mode's effective one | the spread of the frames along a mode (`vibrational-averaging.md` § 2a, § 5) | the run's thermochemistry temperature, offered by the dialog |
 
 ### 0.2 The workflow
 
@@ -72,7 +72,7 @@ the whole cell's (§ 3.1, § 3.4).
 | **1. The vibration** | SIESTA's force-constant run on the relaxed junction, as today: each free atom nudged ±0.0212 Å along x, y and z, a self-consistent solution at each — $1 + 6\,n_{\mathrm{free}}$ of them; SIESTA prints every atom's Hirshfeld and Voronoi charge after each | **exists** — the charges since 2.35.2 |
 | **2. Infrared, every mode** | nothing more: the vibration's finish stores the charges of step 1; asked for a direction and a partition, one function derives each mode's dipole change — the free atoms' → its infrared strength $A_\nu(\hat e)$ and rank (§ 2; a worked example, § 2.4) | **built 2.36.0** — the spectrum viewer and `molbuilder.postprocess.infrared_view` |
 | **3. Raman, the chosen modes** | the vibration run's optical phase, after its force-constant phase in the same run: the geometries at $0$ and $\pm\delta Q$ along each chosen mode (§ 3.2); one SIESTA single point at each with its optical calculation (the `OpticalCalculation` option: the light-absorption spectrum from its own states, § 3.1) → the polarizability at each, at the laser's frequency the person enters after the run (static beside it) → its change → the Raman strength $R_\nu(\hat e)$ and rank (§ 3), from the whole cell's change (§ 3.4) | **built** — the optical phase 2.42.0–2.43.0, the strength at a laser 2.44.0: the spectrum viewer and `molbuilder.postprocess.raman_view` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10); in a cell holding metal, the value at the laser is the one to read and the static one is not defined (§ 3.1) |
-| **4. The displacement** | nothing: the reference maximum displacement at the person's temperature, from the vibration result, beside the person's own (§ 4; an example, § 4.1) | **built 2.36.0** — the *Write frame set…* dialog and `molbuilder.postprocess.reference_max_displacement` |
+| **4. The displacement** | nothing: the frames' spread at the temperature the person states, and the outermost move — how far the outermost frames move the atom that moves most — from the vibration result (§ 4; an example, § 4.1) | **built 2.36.0** with a displacement as its input; the temperature as its input, the user's ruling of 2026-10-28, to be built ([`plans/plan.md`](?doc=plans/plan.md) § 1al F1) — the *Write frame set…* dialog and `molbuilder.postprocess.outermost_move` |
 
 ```mermaid
 flowchart TD
@@ -81,7 +81,7 @@ flowchart TD
     FC --> QS["every atom's charge<br/>at every displaced step"]
     QS --> IR["2. infrared, every mode<br/>∂μ_F/∂Q → A_ν(ê) and its rank"]
     MODES --> IR
-    MODES --> DISP["4. the displacement<br/>reference d_T at a temperature"]
+    MODES --> DISP["4. the displacement<br/>the frames' spread at a temperature,<br/>the outermost move d_out"]
     MODES --> FR["3. Raman, each chosen mode<br/>frames 0, ±δQ: the run's optical phase"]
     FR --> EL["one SIESTA single point per frame<br/>+ OpticalCalculation along ê"]
     EL --> AL["ε₂(ω) → α_êê(ω_L) at each frame<br/>at the laser the person enters, after the run"]
@@ -683,8 +683,8 @@ frequency step zero (`dw = smooth/10`, `Src/optical.F`).
   most by $\delta$, the force-constant run's own step read from its result
   (`partial_charges.displacement_ang`, `engine_metadata.fc_displacement_ang`),
   in the same linear range — and the step is stated beside the strengths. It
-  is not the frame generator's maximum displacement, which is a spread to
-  average over (§ 4), and its averaging weights do not enter.
+  is not the frame generator's spread, which is the motion to average over
+  (§ 4), and its averaging weights do not enter.
 - **The modes are the person's; the equilibrium is shared.** The optical
   phase takes the modes *Raman for* picks — fixed before the run, since a mode
   exists only after the force-constant run: every mode, or those in a
@@ -910,31 +910,42 @@ only one defined.
 
 ## 4. The displacement (workflow step 4)
 
-The frames along a mode sit where the person's **maximum displacement** puts
-them: the move, at the outermost frames, of the atom that moves most in the
-mode. Its reference at a temperature T, from the vibration result alone, is
-the displacement whose frames sample the mode's thermal spread
-(`vibrational-averaging.md` § 5),
+The frames along a mode sample its motion at a **temperature the person
+states** *(the user, 2026-10-28)*: the junction's, or for a mode pumped out
+of equilibrium its effective temperature — the one whose thermal state holds
+the same mean number of quanta, measured from the line's anti-Stokes to
+Stokes ratio (`vibrational-averaging.md` § 2a.1). From it, and from the
+vibration result alone, come the mode's mean number of quanta $n$ and its
+spread
 
 $$
-d_T = \sqrt2\,x_{\mathrm{out}}\;Q_{\mathrm{zp}}\sqrt{\coth\!\left(\frac{\hbar\omega}{2k_BT}\right)}\;\max_k\lvert\mathbf L_k\rvert
-\qquad (\sqrt3\,\sigma_T\max_k\lvert\mathbf L_k\rvert \text{ for three frames}),
+n = \frac{1}{e^{\hbar\omega/k_BT}-1}, \qquad
+\sigma = Q_{\mathrm{zp}}\sqrt{2n+1} = Q_{\mathrm{zp}}\sqrt{\coth\!\left(\frac{\hbar\omega}{2k_BT}\right)},
 $$
 
-$\sigma_T = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT)}$ the mode's
-thermal spread, $x_{\mathrm{out}}$ the rule's outermost node ($\sqrt{3/2}$ for three frames,
-2.0202 for five) and $Q_{\mathrm{zp}}$ the mode's zero-point amplitude, which
-every result states; a mode driven by light spreads further
-(`vibrational-averaging.md` § 2a). The value stays the person's. Raman's
-$\pm\delta Q$ (§ 3.2) is a different thing: a step for a derivative, not a
-spread to average over.
+and the **outermost move** — how far the outermost frames move the atom that
+moves most —
+
+$$
+d_{\mathrm{out}} = \sqrt2\,x_{\mathrm{out}}\;\sigma\;\max_k\lvert\mathbf L_k\rvert
+\qquad (\sqrt3\,\sigma\max_k\lvert\mathbf L_k\rvert \text{ for three frames}),
+$$
+
+$x_{\mathrm{out}}$ the rule's outermost node ($\sqrt{3/2}$ for three frames,
+2.0202 for five, 2.6520 for seven) and $Q_{\mathrm{zp}}$ the mode's
+zero-point amplitude, which every result states (`vibrational-averaging.md`
+§ 5). A mode pushed in step with the light swings, and its positions are
+not a bell curve; its frames are another rule (`vibrational-averaging.md`
+§ 2a.2, § 2a.3).
+Raman's $\pm\delta Q$ (§ 3.2) is a different thing: a step for a derivative,
+not a motion to average over.
 
 ### 4.1 An example — the toy junction's two real modes
 
 From the result of § 2.4's run, computed with the vibration code's own
 functions (`spectra.derived`):
 
-| mode | frequency | $Q_{\mathrm{zp}}$ (amu$^{1/2}$ Å) | largest atom's zero-point move | $d_T$, three frames, 4 K / 300 K | $d_T$, five frames, 300 K |
+| mode | frequency | $Q_{\mathrm{zp}}$ (amu$^{1/2}$ Å) | largest atom's zero-point move | $d_{\mathrm{out}}$, three frames, 4 K / 300 K | $d_{\mathrm{out}}$, five frames, 300 K |
 |---|---|---|---|---|---|
 | 5 | 2023.77 cm⁻¹ | 0.0913 | 0.0643 Å | 0.111 / 0.111 Å | 0.184 Å |
 | 6 | 2548.37 cm⁻¹ | 0.0813 | 0.0573 Å | 0.099 / 0.099 Å | 0.164 Å |

@@ -2037,9 +2037,10 @@ each vibration mode will have a separate prep and run as different task"; plan
 § 5z D3)*. A set that samples a mode carries a
 mode's frame set ([`model/structure.md`](?doc=model/structure.md) § 2.2f, its
 maker's vocabulary): the mode as the vibration result numbers it, its
-frequency, the zero-point amplitude, the maximum displacement, the spread,
-the sampling rule and its nodes and which masses measure the mode on the
-structure's rows (a temperature where a maker states one); each frame's plain displacement, its mass-weighted position
+frequency, the zero-point amplitude, the temperature of the motion the frames
+sample, the mean number of quanta, the spread, the outermost frames' largest
+atom move, the sampling rule and its nodes and which masses measure the mode
+on the structure's rows; each frame's plain displacement, its mass-weighted position
 along the mode and that position in units of the spread, and its weight on its
 own rows; each atom's mass on the `mass_amu` channel; where the mode came from
 in `info.vibration`. **Transport reads one of them, each frame's `weight`**
@@ -3072,7 +3073,7 @@ part — their rows, masses and average — is laid out by their post-process
 | `current_by_spin_a` | frame, bias_v, spin | raw | the current TBtrans printed for each channel — a non-polarized point's one channel, half the junction's total; the fill value for a point whose energies two runs computed |
 | `iv_kt_ev` · `iv_window_lowest_ev` · `iv_window_highest_ev` | — | given · derived | under the low-bias approximation, the leads' $k_B T$ in the integral — the device run's electronic temperature — and the 0 V transmission's lowest and highest energy it integrates over; NaN where the I–V is TBtrans's own |
 | `weight_sum` · `weight_tolerance` | — | derived · given | where every frame states a weight, their sum and how far from 1 it may be; NaN otherwise |
-| `mode_index_1based` · `frequency_cm1` · `temperature_k` · `zero_point_amplitude_amu12_ang` · `max_displacement_ang` · `sigma_amu12_ang` · `sampling_nodes` | — | given · derived | a mode's frame set's structure rows whose value is a number, each as the set writes it, with its meaning — the set's `note`, the vocabulary's where it writes none ([`model/structure.md`](?doc=model/structure.md) § 2.2f); NaN where it writes none, or writes no number |
+| `mode_index_1based` · `frequency_cm1` · `temperature_k` · `mean_quanta` · `zero_point_amplitude_amu12_ang` · `max_displacement_ang` · `sigma_amu12_ang` · `sampling_nodes` | — | given · derived · measured | a mode's frame set's structure rows whose value is a number, each as the set writes it, with its meaning — the set's `note`, the vocabulary's where it writes none ([`model/structure.md`](?doc=model/structure.md) § 2.2f); NaN where it writes none, or writes no number |
 | `iv_current_by_spin_a` | frame, iv_bias_v, spin | derived | each spin's I–V current, a polarized calculation's, as the record states it (`iv.current_up_a`, `current_down_a`); the fill value for a non-polarized one, whose spins carry half the total each |
 | `tbt_k_points` · `tbt_k_method` · `loop_elapsed_s` | frame, bias_v | raw | the transverse k-points the point's TBtrans run used and how they were chosen, and its passes' loop time summed (`model/parse.md` § 5c.1, § 5d.5) |
 | `copied_from` · `shared_from` · `shared_held` · `shared_computed` | frame, bias_v | state | a calculation that reuses a finished one (§ 2a.16): the run a point is a copy of; the finished point whose energies it shares, how many it holds and how many its own run computes — a point not done too |

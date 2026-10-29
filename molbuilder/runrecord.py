@@ -286,7 +286,8 @@ def notified_path(where, names: "_rf.RunNames", run: int) -> Path:
 
 def read_notified(where, names: "_rf.RunNames", run: int) -> List[dict]:
     """Every event sent for the run, in order -- ``[{event, at}]``, ``at``
-    the epoch second -- or ``[]`` while none was (`run-reports.md` § 2.6).
+    the epoch second, a failed part's ``reason`` beside it -- or ``[]``
+    while none was (`run-reports.md` § 2.5).
     A record that does not read is :class:`LaunchRecordError`, naming it."""
     p = notified_path(where, names, run)
     if not p.is_file():
@@ -314,16 +315,37 @@ def read_notified_file(path) -> List[dict]:
 
 
 def note_notified(where, names: "_rf.RunNames", run: int, event: str,
-                  at: float) -> Path:
+                  at: float, reason: Optional[str] = None) -> Path:
     """``event`` sent for the run at ``at`` (the epoch second), appended to
-    its notification record -- written whole through `persist`, so it is
-    whole or absent (`execution/architecture.md` § 2.1)."""
-    sent = read_notified(where, names, run)
-    sent.append({"event": str(event), "at": float(at)})
+    its notification record -- with ``reason``, a failed part's why, which
+    the run does not report twice (`run-reports.md` § 2.9) -- written whole
+    through `persist`, so it is whole or absent
+    (`execution/architecture.md` § 2.1).  THE RECORD HAS TWO WRITERS -- a
+    call's member monitor and its record step's `notify` verb, which can
+    speak at the same moment -- so the read and the write are one step,
+    under a lock on the folder: an event appended by the one is never lost
+    to the other.  Both run in the call's job, on one node, which is all
+    the lock must cover; a filesystem that refuses locks gets the event
+    written unlocked, as one writer would."""
+    import fcntl
+    import os
     p = notified_path(where, names, run)
-    _persist().write_bytes(
-        p, _persist().json_text({"schema": NOTIFIED_SCHEMA, "sent": sent})
-        .encode("utf-8"))
+    fd = os.open(str(p.parent), os.O_RDONLY)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
+            pass
+        sent = read_notified(where, names, run)
+        entry = {"event": str(event), "at": float(at)}
+        if reason is not None:
+            entry["reason"] = str(reason)
+        sent.append(entry)
+        _persist().write_bytes(
+            p, _persist().json_text({"schema": NOTIFIED_SCHEMA,
+                                     "sent": sent}).encode("utf-8"))
+    finally:
+        os.close(fd)
     return p
 
 

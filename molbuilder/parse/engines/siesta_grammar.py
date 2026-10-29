@@ -77,6 +77,16 @@ PHASE_NEGF = "negf"
 #: rung is one.
 STEP_BEGIN = re.compile(r"^\s*Begin\s+(.*?\S)\s*=\s*([0-9]+)\s*$",
                         re.IGNORECASE)
+#: WHICH STEPS ARE GEOMETRY MOVES, by `STEP_BEGIN`'s words for them
+#: (``Src/state_init.F``): an optimizer's ``opt. move`` (Broyden, FIRE, CG)
+#: -- a new geometry whose energy and largest force the person judges.  The
+#: monitor sends `scf_converged` for such a step only (`run-reports.md`
+#: § 2.2).  Not an ``FC step``, which displaces one atom about one geometry,
+#: nor a ``Server step``, whose geometry a driver outside SIESTA sets.  Nor
+#: an ``MD step``: no kind of molbuilder's runs molecular dynamics, and SIESTA
+#: numbers MD steps from ``MD.InitialTimeStep`` (1 by default), so a count
+#: read as "N are done" would run one ahead.
+MOVES_GEOMETRY = re.compile(r"opt\.\s*move", re.IGNORECASE)
 
 #: The names row SIESTA prints above a step's rows (``write_subs.F``:
 #: ``iscf  Eharris(eV)  E_KS(eV) ...``), which the parser maps columns by.

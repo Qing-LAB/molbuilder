@@ -308,7 +308,8 @@ class MolwatchReader:
         """Where the run is NOW, as read so far -- the last step block the
         run wrote, which is written when its step ENDS.  ``{step, energy,
         max_force, cycle, doing, residuals, scf_cycles, last_cycle,
-        steps_done, scf_rows, targets}``, each present only when the log
+        steps_done, step_moves, scf_rows, targets}``, each present only when
+        the log
         states it: the step's index, energy and largest force; its SCF's
         last cycle, and in words where the run is (``doing``, `model/parse.md`
         § 2b: *SCF iteration 12*, by the words every reading pass says it
@@ -316,7 +317,9 @@ class MolwatchReader:
         that cycle's residuals -- ``{name: (value, tolerance, unit)}``,
         each beside the criterion the log states for it
         (`molwatch_grammar.scf_criteria`), ``None`` where it states none;
-        how many steps are done and how many SCF cycles they ran.
+        how many steps are done -- each a geometry step
+        (`molwatch_grammar.STEPS_MOVE_GEOMETRY`) -- and how many SCF cycles
+        they ran.
 
         A PREVIEW IS NOT PROGRESS: the step-0 block of kind
         ``initial_preview`` (`molwatch_grammar.PREVIEW_KIND`) shows the input
@@ -351,6 +354,7 @@ class MolwatchReader:
                 if residuals:
                     out["residuals"] = residuals
             out["steps_done"] = len(done)
+            out["step_moves"] = _MG.STEPS_MOVE_GEOMETRY
             rows = sum(len(b["scf_history"]) for b in done)
             if rows:
                 out["scf_rows"] = rows

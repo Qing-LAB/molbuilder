@@ -59,6 +59,12 @@
      "max_force",
      "geom_step"
     ],
+    "milestone": [
+     "elapsed_s"
+    ],
+    "part_failed": [
+     "elapsed_s"
+    ],
     "finish": [
      "energy",
      "max_force",
@@ -122,6 +128,12 @@
      "max_force",
      "geom_step"
     ],
+    "milestone": [
+     "elapsed_s"
+    ],
+    "part_failed": [
+     "elapsed_s"
+    ],
     "finish": [
      "energy",
      "max_force",
@@ -184,6 +196,12 @@
      "energy",
      "max_force",
      "geom_step"
+    ],
+    "milestone": [
+     "elapsed_s"
+    ],
+    "part_failed": [
+     "elapsed_s"
     ],
     "finish": [
      "energy",

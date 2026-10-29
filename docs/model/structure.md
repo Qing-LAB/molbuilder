@@ -711,12 +711,13 @@ Any other name's unit is carried as written:
 | the `mass_amu` channel | each atom's mass | given | the masses the mode's coordinate is weighted by — the vibration result's own, `equilibrium.masses_amu`, which the vibration's deck stated and its analysis weighted the Hessian by; every atom, a positive finite number | amu | — |
 | the structure's rows | `mode_index_1based` | given | which mode, counted as the vibration result counts it (`index_1based`) | — | Mode |
 | | `frequency_cm1` | given | the mode's wavenumber, as the result states it | cm⁻¹ | Frequency (cm⁻¹) |
-| | `temperature_k` | given | the temperature whose thermal distribution the frames sample, where the maker states one — the generator states none (`engines/vibration.md` § 5.10 ③) | K | Temperature (K) |
+| | `temperature_k` | given | the temperature of the motion the frames sample — the junction's, or for a mode pumped out of equilibrium its effective temperature, the one whose thermal state holds the same mean number of quanta (`science/vibrational-averaging.md` § 2a.1); the input that sets the spread, the set's maker's: the generator's, the person's (`engines/vibration.md` § 5.10 ③) | K | Temperature (K) |
+| | `mean_quanta` | derived | the mode's mean number of vibrational quanta at that temperature, `n = 1 / (exp(ħω / k_BT) − 1)` | — | Mean quanta n |
 | | `zero_point_amplitude_amu12_ang` | given | the mode's zero-point amplitude `Q_zp = √(ħ/2ω)`, as the result states it | amu^½·Å | Zero-point amplitude (amu½·Å) |
-| | `max_displacement_ang` | given | the largest atom's move at the outermost frames — the input that sets the spread, chosen by the set's maker: the generator's, the person's (`engines/vibration.md` § 5.10 ③) | Å | Maximum displacement (Å) |
-| | `sigma_amu12_ang` | derived | the spread of the Gaussian the frames sample — the generator's from the maximum displacement, `σ = q_out / (√2 x_out)` with `q_out = d_max / max_A \|L_A\|`; a maker stating a temperature, its thermal spread `Q_zp · √coth(ħω / 2k_BT)` | amu^½·Å | Spread σ (amu½·Å) |
-| | `sampling_rule` | given | the rule, by name, that placed the frames along the mode and gave their weights; `gauss-hermite`, the generator's: the frames sit at the nodes $q_f$ of an $n$-point Gauss–Hermite rule for a Gaussian of spread σ in $q$, density $\exp(-q^2/2\sigma^2)/(\sigma\sqrt{2\pi})$, and $\sum_f w_f\,X_f$ approximates that Gaussian's average of a property $X$ — exactly when $X$ is a polynomial in $q$ of degree below $2n$; a response not smooth over the spread, a level crossing $E_F$, is averaged poorly ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5.1, § 5.3) | — | Sampling rule |
-| | `sampling_nodes` | given | $n$, the rule's number of nodes, one frame at each — the generator writes 3 ($q = 0, \pm\sqrt3\,\sigma$; weights $\tfrac23, \tfrac16, \tfrac16$) or 5 | — | Nodes |
+| | `max_displacement_ang` | measured | the outermost move: `max_A \|ΔR_A\|` at the outermost frames, `= √2 x_out σ max_A \|L_A\|` — the check against a bond length | Å | Outermost move (Å) |
+| | `sigma_amu12_ang` | derived | the spread of the Gaussian the frames sample, from the temperature, `σ = Q_zp · √(2n + 1) = Q_zp · √coth(ħω / 2k_BT)` (`science/vibrational-averaging.md` § 5) | amu^½·Å | Spread σ (amu½·Å) |
+| | `sampling_rule` | given | the rule, by name, that placed the frames along the mode and gave their weights; `gauss-hermite`, the generator's: the frames sit at the nodes $q_f$ of an $m$-point Gauss–Hermite rule for a Gaussian of spread σ in $q$, density $\exp(-q^2/2\sigma^2)/(\sigma\sqrt{2\pi})$, and $\sum_f w_f\,X_f$ approximates that Gaussian's average of a property $X$ — exactly when $X$ is a polynomial in $q$ of degree below $2m$; a response not smooth over the spread, a level crossing $E_F$, is averaged poorly ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5.1, § 5.3) | — | Sampling rule |
+| | `sampling_nodes` | given | $m$, the rule's number of nodes, one frame at each — the generator writes 3 ($q = 0, \pm\sqrt3\,\sigma$; weights $\tfrac23, \tfrac16, \tfrac16$), 5 or 7 | — | Nodes |
 | | `mass_source` | given | which masses the `mass_amu` channel holds, by name, and so which $q$ is measured with; `standard atomic weights`, a molbuilder vibration's: the isotope-averaged standard atomic weights (`chemistry.atomic_mass`) the vibration's deck stated, as its result states them (`equilibrium.masses_amu`); the mode vector $L$ is normalised with them, $\sum_A m_A \lvert L_A\rvert^2 = 1$ | — | Masses |
 | each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, `√(Σ_A \|ΔR_A\|²)` over every atom — no masses | Å | Displacement (Å) |
 | | `max_atom_displacement_ang` | measured | its largest single atom's, `max_A \|ΔR_A\|` | Å | Largest atom move (Å) |
@@ -731,7 +732,7 @@ Any other name's unit is carried as written:
 
 How many frames there are, where they sit and what they state is the maker's
 — the frame generator's are the Gauss–Hermite nodes of a Gaussian whose spread
-the person's maximum displacement sets (`engines/vibration.md` § 5.10 ③;
+the temperature the person states sets (`engines/vibration.md` § 5.10 ③;
 `science/vibrational-averaging.md` § 5).
 
 ### 2.3 Geometry I/O

@@ -1998,35 +1998,45 @@ partition, is not. *(Found while drafting, fixed
 spelled the retired `WriteMullikenPop`; it names 5.4.2's `Charge.Mulliken`
 and `Charge.Mulliken.Format` now, `siesta/input.py`.)*
 
-**③ The frame set — the generator** *(built 2.35.0)* (V1.25; D6, D7; one
-mode per set, the user 2026-10-09; its extent the user's, 2026-10-24). One generator writes
+**③ The frame set — the generator** *(built 2.35.0; its extent a temperature, and seven frames offered, decided 2026-10-28 — to be built)* (V1.25; D6, D7; one
+mode per set, the user 2026-10-09; its extent the user's, 2026-10-24, stated as a temperature, 2026-10-28). One generator writes
 **one** multi-frame pair for **one** mode *(user, 2026-10-09: "i would rather
 let one multi-frame focus on one mode ... each vibration mode will have a
 separate prep and run as different task")*: frame 0 the geometry the Hessian
 was taken at, then the Gauss–Hermite nodes of a Gaussian along the mode —
-three by default, five on request ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5),
+three by default, five or seven on request ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5, § 5.3),
 each pair of nodes nearest first and its positive side first:
 
 $$
 \begin{aligned}
 R_A(q_j) &= R_A^0 + q_j\,L_A , & q_j &= \sqrt{2}\,\sigma\,x_j \quad (x_j \text{ the rule's nodes})\\
-\sigma &= q_{\mathrm{out}} \big/ \bigl(\sqrt{2}\,x_{\mathrm{out}}\bigr) , & q_{\mathrm{out}} &= d_{\max} \big/ \max_A \lvert L_A\rvert\\
+\sigma &= Q_{\mathrm{zp}}\sqrt{2n+1} , & n &= 1 \big/ \bigl(e^{\hbar\omega/k_BT} - 1\bigr)\\
 R_F &\quad \text{unmoved}
 \end{aligned}
 $$
 
-**Its extent is the person's: the maximum displacement $d_{\max}$**, in Å — the
-largest atom's move at the outermost frames *(the user, 2026-10-24: max
-displacement, over a temperature; and 2026-10-09: "max displacement is a
-parameter we feed to generate the multi-frame data and is included in the
-meta data")*. It sets the spread $\sigma$; each frame's weight is the rule's own —
-$\tfrac23,\ \tfrac16,\ \tfrac16$ for three — so the frames average over a Gaussian of the spread the
-person chose. **No temperature is stated**: $\sigma$ sits beside the mode's
-zero-point amplitude $Q_{\mathrm{zp}}$, which every result states — $\sigma = Q_{\mathrm{zp}}$ is the
-zero-point motion's spread, and the thermal one at a temperature $T$ is
-$Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT)}$ (science § 2), so a person who wants the thermal
-average at $T$ chooses the $d_{\max}$ that gives it. $d_{\max}$ is stated by the
-person every time: a value stated nowhere is refused, never defaulted.
+**Its extent is the person's: a temperature $T$**, in K — the temperature of
+the distribution the frames sample: the junction's, or for a mode pumped out
+of equilibrium its effective temperature, the one whose thermal state holds
+the same mean number of quanta ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a.1) *(the user, 2026-10-28:
+"shall we actually use the sigma as the reference to state how much we want
+the max displacement to be? this is statistically making more sense
+especially if we propose the value based on temperature"; it replaces the
+maximum displacement of 2026-10-24)*. It sets the mode's mean number of
+quanta $n$ and the spread $\sigma$; each frame's weight is the rule's own —
+$\tfrac23,\ \tfrac16,\ \tfrac16$ for three — so the frames average over the
+bell curve of that spread. Why a temperature and not a displacement — the
+frames and weights are defined against σ, and one displacement is a
+different σ for each rule — is [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5. $T$ is stated by the person every
+time — a number of kelvin, 0 or more, $T = 0$ the zero-point motion alone —
+and a temperature stated nowhere is refused, never defaulted; the spectrum
+viewer offers the result's own thermochemistry temperature in its box, the
+person's to change. **What the frames move is reported**: each frame's
+largest atom move, and the outermost frames' on the structure's rows,
+$d_{\mathrm{out}} = \sqrt2\,x_{\mathrm{out}}\,\sigma\,\max_A\lvert L_A\rvert$ — the check a person reads
+against a bond length. A mode pushed in step with infrared light swings, and
+a swing's frames are another rule, not this generator's yet
+([`plans/plan.md`](?doc=plans/plan.md) § 1al).
 
 **What it reads, each from its owner:**
 
@@ -2040,8 +2050,9 @@ person every time: a value stated nowhere is refused, never defaulted.
 **What it writes** — through the structure's own doors
 ([`model/structure.md`](?doc=model/structure.md) § 2.2d–2.2f: `with_frames`,
 `set_channel`, `set_customized`, `set_info`), in § 2.2f's vocabulary, which
-this section does not repeat: the mode, its frequency, $Q_{\mathrm{zp}}$, $d_{\max}$ and $\sigma$
-on the structure's rows, with the rule the frames sample it by —
+this section does not repeat: the mode, its frequency, $Q_{\mathrm{zp}}$, the
+temperature, the mean number of quanta $n$, $\sigma$ and the outermost frames'
+largest atom move on the structure's rows, with the rule the frames sample it by —
 `sampling_rule` `gauss-hermite`, `sampling_nodes` — and the masses' source,
 `mass_source` `standard atomic weights`; each frame's displacement, largest
 atom move, $q$, $q/\sigma$ and weight on its own; **every row with its
@@ -2063,17 +2074,19 @@ transport refuses such a set.
 **Two doors, one generator** (`frameset_from_mode`):
 
 - **the command line** — `molbuilder frameset from-mode RUN --mode N
-  --max-displacement D [--nodes 3|5] --out PAIR.xyz`: `RUN` the vibration
+  --temperature T [--nodes 3|5|7] --out PAIR.xyz`: `RUN` the vibration
   run's folder and `PAIR.xyz` the pair, each read from the projects tree as
-  `--bundle` is, the run read through the run door; it prints each frame's $q/\sigma$,
-  largest atom move and weight, and where the pair is;
+  `--bundle` is, the run read through the run door; it prints the mode's $n$
+  and $\sigma/Q_{\mathrm{zp}}$, each frame's $q/\sigma$, largest atom move and
+  weight, and where the pair is;
 - **the spectrum viewer** ([`web/spectra.md`](?doc=web/spectra.md)) — on the
-  selected mode, *Write frame set…*: the maximum displacement (with the mode's
-  largest zero-point atom move beside it, from the result's
-  `zero_point_displacement_ang`, and the reference at the temperature the
-  load door computed it at, [`web/spectra.md`](?doc=web/spectra.md) § 4.3),
-  three or five frames, and where to save it in the tree; the same generator
-  answers, and the pair opens where a structure opens.
+  selected mode, *Write frame set…*: the temperature (the result's
+  thermochemistry temperature offered), three, five or seven frames, and
+  under them the mode's $n$, $\sigma/Q_{\mathrm{zp}}$ and the outermost frames'
+  largest atom move at that temperature for the rule chosen, as the load door
+  computes them ([`web/spectra.md`](?doc=web/spectra.md) § 4.3); then where to
+  save it in the tree. The same generator answers, and the pair opens where a
+  structure opens.
 
 **Another mode is another set**, cited by its own transport calculation; how
 the modes' results are weighed against each other is the person's *(user,
@@ -2190,7 +2203,7 @@ rigid-shift estimate against the explicit curvature.
 | D4 | where the electronic frames run | **decided 2026-09-28: yes**, a calculation kind of its own, `electronic` — *"make it clear the difference between pySCF and siesta, from setup and calculation and presentation"* | what § 5.6 already says; it serves $\Delta\rho_\nu$ (V1.26) too, and needs no leads |
 | D5 | sisl in the SIESTA job envs | **decided 2026-09-28: in every SIESTA env**, through the env system's recipes — *"so it is always available when we need them"* (installed with M2b‴, the milestone that retired the unit-height spectrum — § 10's sisl row) | the levels are the junction's HOMO and LUMO, and sisl is SIESTA's own reader of the file they come from |
 | D6 | one frame set for many modes | ~~yes — V1.25's "for a named mode" becomes "for named modes"~~ — **reversed by the user, 2026-10-09: one mode per set** (*"i would rather let one multi-frame focus on one mode ... each vibration mode will have a separate prep and run as different task"*); how modes are weighed against each other is the person's post-processing | ~~the base, the leads and the seed once~~ — each mode's set its own transport calculation |
-| D7 | the amplitude rule — where the displaced structures the electronic and transport runs compute on sit (not the animation) | **decided 2026-09-28, its input the user's 2026-10-24**: the Gauss–Hermite nodes of a Gaussian along the mode, three by default, its spread set by the person's maximum displacement — the largest atom's move at the outermost frames — and no temperature stated (§ 5.10 ③) | the same frames give the curvature and the average (science § 4c.5); the zero-point and thermal spreads are what a person compares $\sigma$ with |
+| D7 | the amplitude rule — where the displaced structures the electronic and transport runs compute on sit (not the animation) | **decided 2026-09-28, its input the user's 2026-10-24, stated as a temperature 2026-10-28**: the Gauss–Hermite nodes of a Gaussian along the mode, three by default, five or seven on request, its spread set by the temperature the person states — the junction's, or a pumped mode's effective one — and the outermost frames' largest atom move reported (§ 5.10 ③) | the frames and weights are defined against σ, and one displacement is a different σ for each rule (`science/vibrational-averaging.md` § 5); the same frames give the curvature and the average (science § 4c.5) |
 | D8 | the PySCF probe — how far its per-mode orbital check pushes the molecule (not the animation) | **decided 2026-09-28**: the same nodes; `electronic_structure.amplitude_ang` gives way to the node record | one amplitude rule on both engines, and a curvature needs frames above the noise |
 
 ### 5.11 One run in phases — relaxation, force constants and Raman, each SIESTA call a point of the run
@@ -2360,7 +2373,7 @@ job's python beside the deck as a finish is (`runwrap`, a wrapper's
 | step | runs | does |
 |---|---|---|
 | `plan <phase> <deck>` | before the engine (after the bundle's load check); its failure starts no engine, and the record step is told it | the call's coordinates where they are another call's result — `fc`'s from the `relax` call's output; an optical call's were written when it was planned (below) — and the call's index entry: its deck's and coordinates' sha256, where the coordinates came from, its seed; `notify start`, which the verb sends only when the run's notification record holds no start (§ 7a) |
-| `record <phase> <deck> <out> --exit <rc>` | after the engine, **success or failure** (after the retries are spent; its failure is the job's, as a finish's is) | the call's ending, exit and verdict (what its output says it converged, § 6) into the index; `relax`: the relaxation record; `fc`: the finish's analysis, the selection (`select_modes`), each picked mode's $\delta Q$, and **the optical calls planned** — each folder opened through the opener's travelling core (`calcdirs.record`, `planned.bring` from the stage's `optical/`, the `optical/` container stamped), its `coordinates.fdf` ($R_0 \pm \delta Q\cdot L$, `normal_modes.displaced`), its index entry — then the result pair at the run's root, written once: `phase_raman` *running* where calls were planned; where none were, *not requested* with *Compute Raman* off and *complete* where Raman was asked and its range kept no mode — the Methods paragraph naming the range; an optical call: its facts into the data file (§ 8); **the finish** once no call the walk may still run is left — every call listed has ended, or needs a call that did not end done (§ 5) — the result pair final where the force constants ran, the finish's entry, `notify finish` with the run's state from the one rule (§ 7) |
+| `record <phase> <deck> <out> --exit <rc>` | after the engine, **success or failure** (after the retries are spent; its failure is the job's, as a finish's is) | the call's ending, exit and verdict (what its output says it converged, § 6) into the index; `relax`: the relaxation record; `fc`: the finish's analysis, the selection (`select_modes`), each picked mode's $\delta Q$, and **the optical calls planned** — each folder opened through the opener's travelling core (`calcdirs.record`, `planned.bring` from the stage's `optical/`, the `optical/` container stamped), its `coordinates.fdf` ($R_0 \pm \delta Q\cdot L$, `normal_modes.displaced`), its index entry — then the result pair at the run's root, written once: `phase_raman` *running* where calls were planned; where none were, *not requested* with *Compute Raman* off and *complete* where Raman was asked and its range kept no mode — the Methods paragraph naming the range; an optical call: its facts into the data file (§ 8); **the finish** once no call the walk may still run is left — every call listed has ended, or needs a call that did not end done (§ 5) — the result pair final where the force constants ran, the finish's entry, `notify finish` with the run's state from the one rule (§ 7); **where calls are left**, `notify milestone` when the call ended its phase done, or `notify part_failed` when it is not done (§ 7a) |
 
 No step knows whether it is first or last: the index and the notification
 record decide, so a warm relaunch that runs three optical calls finishes
@@ -2526,7 +2539,7 @@ points is read:
 | the run's state | **the run of points' rule** (`continuation.points_state`, `engines/transport.md` § 2a.11), its rows the index's calls and its words **one rule over the index, `vibration_phases.summary`** — it travels (stdlib), so the finish's `notify finish` and this machine's `status` count in the same words. *pending* for a call the index lists whose folder is not opened; *queued* while no call the run walks itself has run and its job is not over; *running* while a call runs, or the walk is between two (the job going, `joblist`), or every call has ended and the job still goes — its last call's record step, or the finish, at work; *finished* when every call is done **and** the finish's entry says exit 0 **and** the result is on disk; *failed* naming the first call not done, by its words and why where its record step said, or the finish — every call ended, the job gone, and no finish entry that ended with exit 0 in the index (the finish never ran, or was stopped inside it: its entry is written once it has ended) is *failed*, *the finish did not end*. The index lists `relax` and `fc` from launch, so the window before the first call reads *queued*, never *finished, 0 of 0*; the optical calls appear as the `fc` call's record step plans them, so the count says *optical 3 of 10* once they exist — *(4 taken over)* beside it where a warm launch took calls over — and *optical: after fc* before — only where the run walks the optical phase (the index's `phases`) | `status`, Task setup, the Results ladder, the walk's monitor line |
 | a call, in words and on the wire | the vibration's own point type, `vibration_phases.Call` — phase, name, mode, side; `rel`, `words`, `to_wire` — the shape `transport.stages.Point` has; the readers typed on it (`points_summary`, `run_folders`, `_sweep_status`, `stage_run_state`, `every_run`'s wire form, the ladder's run rows) ask the rung's row | *relax done · fc done · optical 7 of 11 (4 taken over)* |
 | the index `<label>_01_freq-run<N>.phases.json` | a row of `runfiles.WRITTEN` with its one reader (`vibration_phases.read_index`) and a registry parser, so the Results tab lists it as an aspect of the run | the phases the run walks (its job's row at launch); per call: its phase and folder; what it is (the relaxation; the force constants; frame 0, or mode $\nu$'s side at its frequency and $\delta Q$); its deck's sha256; its coordinates' sha256 and where they came from; its seed and where from; its start (its first attempt's: a warm retry in place runs the plan step again and keeps it), end and exit; its verdict, as its output states it (`{"of": "SCF", "converged": …}`, § 6); its record step's failure, where it failed (the call then not done); computed here or taken over from run-N; the selection as asked and as applied; **the finish's entry** (started, ended, exit — written once the finish has ended). Written by launch (the calls it opens) and by the run's own Python (the plan step fills its call's entry, the `fc` call's record step adds the optical calls, each record step completes its call's, the finish adds its own) — rewritten whole, atomically |
-| the run's notification record `notified.json`, at the run's root beside its launch record (`runrecord.notified_path`) | a row of `runfiles.WRITTEN`, the monitor's own (`run-reports.md` § 2.6), its parser registered (`parse/sidecars/notified.py`): every event sent for the run, when — written by `mb_monitor.pyz notify` and by a member monitor for every event it sends (`scf_converged`, `periodic`, `wall_near`); read by every member monitor for its N-hour clock and by the `notify` verb, which sends no second `start` | kind-blind; a transport run of points writes none — its points send their own events (§ 7a) |
+| the run's notification record `notified.json`, at the run's root beside its launch record (`runrecord.notified_path`) | a row of `runfiles.WRITTEN`, the monitor's own (`run-reports.md` § 2.5), its parser registered (`parse/sidecars/notified.py`): every event said for the run, when, and a failed part's reason — written by `mb_monitor.pyz notify` and by a member monitor for every event it sends (`scf_converged`, `periodic`, `wall_near`); read by every member monitor for its N-hour clock and by the `notify` verb, which sends no second `start` and no second `part_failed` of one reason | kind-blind: every monitor writes its run's record; a transport sweep's points are runs of their own, each with its own (§ 7a) |
 | the run folder `run-<n>/` | `runs.folder_answer`, of the one folder: a container answers no state and no record. **A run of points' root** is read as its run of points by the view floor 6 composes (`runstatus.points_view`, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.2): the run's state — its points' — its calls, the call at work and its record, and what the run opens: `.spectra.json` at the root once it is written, else the call at work's result; `run_answer` for a file at its root answers the run's, so a viewer of the result polls while the run goes | the Results tab follows the run |
 
 #### 7a. The monitor — one per call, the run reporting as one run
@@ -2570,10 +2583,15 @@ which a point has none of, and keeps its own N-hour clock and
 | occasion | sent by | how |
 |---|---|---|
 | **it started** | the plan step of whichever call runs first, once | `mb_monitor.pyz notify start --dir <the run>` — a verb of the monitor's bundle: one event through the same channels and card the monitor uses, with the run's identity; recorded in the run's notification record (§ 7), which is what says it was sent |
-| **a step finished** (`notify.on_scf_converged`) | the call's monitor, for each step its engine states: the `relax` call's geometry steps, the `fc` call's displacements (`run-reports.md` § 2.2) | an optical call is a single point and states no step, so its monitor sends none |
+| **a step finished** (`notify.on_scf_converged`) | the call's monitor, for each step its engine states that moves the geometry: the `relax` call's moves (`run-reports.md` § 2.2) | the `fc` call's displacements move no geometry — their count and pace are the periodic report's; an optical call is a single point and states no step; so their monitors send none |
+| **a phase ended, and the run goes on** | the record step of the call that ends the phase, when the run still has calls to run (`_still_to_run`) | `mb_monitor.pyz notify milestone --dir <the run> --detail …` — the phase's outcome: the relaxation's convergence, moves and largest force against its tolerance; the force constants' modes, imaginary ones, stationarity verdict and the optical calls planned (`run-reports.md` § 2.9). The optical calls' end is the run's, the `finish`'s |
+| **a part failed, and the run goes on** | the record step of a call not done by the one rule (§ 7), when the run still has calls to run | `mb_monitor.pyz notify part_failed --dir <the run> --detail … --reason …` — the call's words and why, once per reason: a failure whose reason the run has already reported is not sent again (`run-reports.md` § 2.9) |
 | **every N hours** (`notify.every_hours`) | the call's monitor | **from the run's notification record**: the clock counts from the last event sent for the run — read from the record by the member monitor, which writes its own there — so a run of many short calls speaks every N hours, and never once per call |
 | **its wall is near** | the call's monitor | from the run's launch record (`--launched-in`), once for the run, recorded |
-| **it ended** | the record step that completes the index, once | `mb_monitor.pyz notify finish --dir <the run> --state … --detail …` with the run's state from the one rule over the index (§ 7) |
+| **it ended** | the record step that completes the index, once | `mb_monitor.pyz notify finish --dir <the run> --state … --detail …` with the run's state from the one rule over the index (§ 7) — failed, the first call not done and how many are — and the outcome of the phase that call ended (`run-reports.md` § 2.9) |
+
+Every event but the start carries the run's count and clock, which the
+verb reads from the index the step has just written.
 
 So each call's monitor is started as a **member** (`--member`, with
 `--launched-in`): no `start`, no `finish`, its clock and its wall the run's.
@@ -2965,7 +2983,7 @@ frame, on the machine that runs it (the method's § 5.1).
 
 | test | category | catches |
 |---|---|---|
-| CO₂, carbon held, not stated relaxed, *Compute Raman* on for all modes, through `jobset init → prep → launch` — the SIESTA vibration e2e | e2e | a phase not joined to the one before (the index's `fc` coordinates' sha256 is `relax`'s output's); a call not made through its run script (its output, session log, monitor log and conclusion in its folder, each read by the run door as a point); the index, the result and the data file disagreeing; the data file not reading (its reader and `xarray.load_dataset`); the result's phases and route wrong for the run (`phase_relaxation` complete, `phase_raman` complete, `raman_route` `optical`); the run's state read *queued* before the first call and *finished* only with the finish's entry; one `start` and one `finish` in the index's notification record; **the symmetry**: the stretch whose oxygens move together reads $R(\hat z)$ ≈ 0 against the one whose oxygens move apart — CO₂'s mutual exclusion |
+| CO₂, carbon held, not stated relaxed, *Compute Raman* on for all modes, through `jobset init → prep → launch` — the SIESTA vibration e2e | e2e | a phase not joined to the one before (the index's `fc` coordinates' sha256 is `relax`'s output's); a call not made through its run script (its output, session log, monitor log and conclusion in its folder, each read by the run door as a point); the index, the result and the data file disagreeing; the data file not reading (its reader and `xarray.load_dataset`); the result's phases and route wrong for the run (`phase_relaxation` complete, `phase_raman` complete, `raman_route` `optical`); the run's state read *queued* before the first call and *finished* only with the finish's entry; the run's notification record holding its start, a milestone after the relaxation and after the force constants — each saying its phase's outcome and the run's count — and its finish (`run-reports.md` § 2.9); a failed part reported once per reason; **the symmetry**: the stretch whose oxygens move together reads $R(\hat z)$ ≈ 0 against the one whose oxygens move apart — CO₂'s mutual exclusion |
 | the same, launched again warm after the person stopped it once an optical call started (`molbuilder jobs stop`) — a copy of it launched again cold, stopped, then launched warm | e2e | a relaunch running a done call again (`relax` and `fc` taken over, each `.continued-from` and index entry naming the run that computed it, its start and end that run's; the launch runs only the optical calls); an optical call's record standing on what only a run computing its own force constants writes |
 | `raman_view`'s Kramers–Kronig on a Lorentz oscillator's $\varepsilon_2$ (closed-form $\varepsilon_1$); Gaussian sticks spread at $\sigma_{\mathrm{run}}$ then to $\sigma_{\mathrm{view}}$ equal the same spread at $\sigma_{\mathrm{view}}$ | API | the principal value, the units or the broadening's composition wrong |
 | the CO₂ run exported at a laser — NetCDF and CSV — its files read back through `postprocess.read_optical_data` and `read_raman_data` and through `xarray`: the view read back equals the load door's for the same laser and width, `derived_from` names the two files by their sha256, and the stretch whose oxygens move together reads $R(\hat z)$ ≈ 0 | e2e (the CO₂ run) | an export that writes another number than the page shows; a data file a notebook cannot open; a view cut from its source |
@@ -3166,14 +3184,14 @@ sweep's mode matching (§ 5.9) weight by **one rule**, `results.mass_of`: the
 file's own masses (§ 6.2), and `chemistry.atomic_mass`'s for a file before
 v7, which states none.
 
-**The free atoms' infrared, and a mode's reference displacement, are
-views too** — each asked with its inputs and derived by one function, never
-stored: `spectra.infrared.infrared_view`, from `partial_charges`, for a
-direction and a partition (§ 5.10 ②); and
-`mode_frames.reference_max_displacement`, the maximum displacement whose
-frames sample the mode's spread at a temperature, from its zero-point
-amplitude and its pattern (`science/vibrational-averaging.md` § 5). The load
-door serves each (`web/spectra.md` § 3.2, § 4.3).
+**The free atoms' infrared, and how far a mode's frames reach at a
+temperature, are views too** — each asked with its inputs and derived by one
+function, never stored: `spectra.infrared.infrared_view`, from
+`partial_charges`, for a direction and a partition (§ 5.10 ②); and
+`mode_frames.outermost_move`, the outermost frames' largest atom move for a
+rule at a temperature, from the mode's zero-point amplitude and its pattern
+(`science/vibrational-averaging.md` § 5). The load door serves each
+(`web/spectra.md` § 3.2, § 4.3).
 
 ### 6.7 What the reader refuses
 
@@ -3625,7 +3643,7 @@ Each names where it holds and what pins it.
 | `molbuilder/spectra/raman.py` | the Raman at a laser — `raman_view`, `raman_view_of`, `read_ask`; `<label>.raman.nc`'s variable table and `read_raman_data` (§ 5.11 § 10) |
 | `molbuilder/spectra/export.py` | a vibration calculation's export — `export`, `result_path`, `name_of` (§ 5.11 § 10) |
 | `molbuilder/siesta/vibration_phases.py` | the phases of a SIESTA vibration run — `PHASES`, `Call`, the index and each call's state (§ 5.11 § 2, § 7) |
-| `molbuilder/postprocess.py` | a script's doors — `infrared_view`, `raman_view`, `read_spectra_data`, `read_optical_data`, `read_raman_data`, `reference_max_displacement` |
+| `molbuilder/postprocess.py` | a script's doors — `infrared_view`, `raman_view`, `read_spectra_data`, `read_optical_data`, `read_raman_data`, `outermost_move` |
 | `molbuilder/spectra/vibrational_analysis.py` | the analysis, engine-neutral: `vibrational_analysis` — a free-atom block, masses, geometry, held set and frame → `SpectraResults` (§ 5.5) |
 | `molbuilder/spectra/siesta_vibration.py` | the SIESTA run's Python: `plan` and `record`, the steps inside each call's run script, the record step after the last call running `finish`; `read_force_constant_run`; `main`, the entry of `mb_vibration.pyz` (§ 5.5, § 5.11 § 3) |
 | `molbuilder/parse/engines/siesta_epsimg_reader.py` · `parse/engines/siesta_epsimg.py` | an optical call's `.EPSIMG`: its one reader, travelling, and its registered parser (§ 5.11 § 7) |

@@ -377,6 +377,43 @@ def test_a_relaxation_with_the_trigger_OFF_reports_no_steps(run, tmp_path):
     assert "scf_converged" not in seen, seen
 
 
+def test_a_displacement_is_no_step_message(real_co2_vibration, tmp_path):
+    """`run-reports.md` § 2.2: only a step that moves the geometry is a
+    message.  The force constants' call steps by displacements -- one atom
+    moved away from one geometry and back -- so with the step tick on, its
+    displacements finishing send no `scf_converged`; their count and pace
+    are the periodic report's, which still comes.
+
+    THE SILENT FAILURE: a force-constant call with the tick on sends a
+    message per displacement -- 1 + 6 per free atom of them, hundreds on a
+    junction -- each saying a geometry step converged when no geometry
+    moved."""
+    from molbuilder.siesta.vibration_phases import FC
+    fc = real_co2_vibration.call("freq", FC)
+    lines = output_lines(fc)
+    steps = [i for i, ln in enumerate(lines)
+             if re.match(r"\s*Begin FC step\s*=", ln)]
+    assert len(steps) >= 4, "the force constants took fewer than four steps"
+    # each wake writes on through the next displacement's opening line, so
+    # one more displacement has finished at every wake
+    chunks = [i + 1 for i in steps[2:]]
+    # WHAT EACH MESSAGE READ: the displacements did finish, wake by wake --
+    # so no message is the rule's, not a reading that saw no step end.
+    read = []
+    monitor.register_notifier(
+        lambda st, ev: read.append((ev, st.steps_done, st.step_moves)))
+    seen = _events(fc, tmp_path, upto=steps[1] + 1, chunks=chunks,
+                   watch_pid=0, max_ticks=len(chunks), notify_on_scf=True,
+                   notify_every_hours=1,
+                   clock=_fake_clock([i * 3600.0
+                                      for i in range(len(chunks) + 3)]))
+    assert "scf_converged" not in seen, seen
+    assert "periodic" in seen, seen
+    done = [n for ev, n, _moves in read if ev == "periodic"]
+    assert len(done) >= 2 and done == sorted(set(done)), read
+    assert not any(moves for _ev, _n, moves in read), read
+
+
 # --------------------------------------------------------------------- #
 #  Where it ran (`run-reports.md` § 2.5)                                  #
 # --------------------------------------------------------------------- #

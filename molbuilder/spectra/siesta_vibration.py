@@ -102,7 +102,7 @@ try:                                        # inside molbuilder
                                            Call,
                                            add_call, calls_of, entry_of,
                                            index_path, phase, read_index,
-                                           rows_of, summary, write_index)
+                                           rows_of, write_index)
     from .normal_modes import displaced, mode_over_atoms, q_for_largest_move
     from .selection import select_modes
 except ImportError:                         # beside a job, in mb_vibration.pyz
@@ -148,8 +148,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from vibration_phases import (FC, IR_CHARGES, OPTICAL,  # type: ignore[no-redef]
                                   RELAX, Call, add_call,
                                   calls_of, entry_of, index_path, phase,
-                                  read_index, rows_of, summary,
-                                  write_index)
+                                  read_index, rows_of, write_index)
     from normal_modes import displaced, mode_over_atoms, q_for_largest_move
     from selection import select_modes
 
@@ -675,10 +674,10 @@ def _call_of(here: _CallHere, phase_name: str) -> "Call":
 
 
 def _notify(here: _CallHere, event: str, **words) -> None:
-    """The run speaks once (§ 5.11 § 7a): ``mb_monitor.pyz notify``, the
-    monitor's bundle beside this deck, with the run's identity -- the verb
-    passes an event already sent for the run.  Its failure is logged, never
-    the step's."""
+    """The run reports as one run (§ 5.11 § 7a): ``mb_monitor.pyz
+    notify``, the monitor's bundle beside this deck, with the run's
+    identity -- the verb passes a start already sent, or a failed part of a
+    reason already reported.  Its failure is logged, never the step's."""
     import subprocess
     bundle = here.folder / MONITOR_BUNDLE
     if not bundle.is_file():
@@ -790,6 +789,76 @@ def _relaxation_record(output: Path) -> Optional[dict]:
                         runtime_info=reading.get("runtime_info") or {},
                         run_state=reading.get("run_state")),
         engine="siesta")
+
+
+def _relaxation_outcome(record: Optional[Mapping[str, Any]],
+                        retried: bool = False,
+                        continued: Optional[str] = None) -> Optional[str]:
+    """THE RELAXATION'S OUTCOME, as its milestone says it (`run-reports.md`
+    § 2.9): whether it converged, in how many moves, and the largest force
+    on the free atoms against its tolerance -- its record's own facts;
+    ``None`` for a run that relaxed nothing.  The record is of the call's
+    newest output, so a call the wrapper ``retried`` in place counts the
+    moves of its last attempt, and a relaxation ``continued`` from an
+    earlier run's geometry the moves since -- each said."""
+    if not record:
+        return None
+    n = int(record["n_steps"])
+    force = record.get("max_force_free_ev_ang")
+    if force is None:
+        force = record["max_force_ev_ang"]
+    said = "converged" if record["converged"] else "did not converge"
+    since = ((" of its last attempt" if retried else "")
+             + (f" continuing {continued}" if continued else ""))
+    return (f"the relaxation {said} in {n} move{'' if n == 1 else 's'}"
+            f"{since}: the largest force "
+            f"on the free atoms {float(force):.4g} eV/Ang "
+            f"(tol {float(record['force_tolerance_ev_ang']):g})")
+
+
+def _force_constants_outcome(res: SpectraResults, planned: int) -> str:
+    """THE FORCE CONSTANTS' OUTCOME, as their milestone says it
+    (`run-reports.md` § 2.9): how many modes, and how many imaginary; the
+    largest force on the free atoms at the reference geometry against the
+    tolerance, and whether that makes it a stationary point -- the result's
+    own verdict (its `relaxation` block, `engines/vibration.md` § 2.2); and
+    the optical calls planned."""
+    imag = sum(bool(m.has_imag) for m in res.modes)
+    bits = [f"the force constants: {len(res.modes)} modes, "
+            + (f"{imag} imaginary" if imag else "none imaginary")]
+    stationary = res.relaxation or {}
+    f_eh = stationary.get("max_force_eh_bohr")
+    if f_eh is not None:
+        tol = res.engine_metadata.get("reference_force_criterion_ev_ang")
+        verdict = {True: "a stationary point",
+                   False: "not a stationary point"}.get(
+                       stationary.get("converged"))
+        bits.append(
+            f"at the reference geometry the largest force on the free "
+            f"atoms {f_eh * HARTREE_BOHR_EV_ANGSTROM_ASE:.4g} eV/Ang"
+            + (f" (tol {float(tol):g})" if tol is not None else "")
+            + (f" -- {verdict} at this level of theory" if verdict else ""))
+    if planned:
+        bits.append(f"{planned} optical call{'' if planned == 1 else 's'} "
+                    f"planned")
+    return "; ".join(bits)
+
+
+def _not_done_words(row: Mapping[str, Any]) -> str:
+    """A call not done, in the words a failed part and a failed finish name
+    it by (`run-reports.md` § 2.9): its words, and why by the one rule."""
+    return f"{row['words']}: not done -- {row['why'] or row['state']}"
+
+
+def _failure_reason(row: Mapping[str, Any], exit_code: int,
+                    step_failed: Optional[str]) -> str:
+    """WHAT A FAILED PART IS SAID ONCE FOR (`run-reports.md` § 2.9): the
+    call's exit where it was not 0, else what its record step could not do,
+    else the done rule's words -- never an exception's own text, which can
+    name the call's own files, so calls failing alike share it."""
+    if int(exit_code) != 0:
+        return f"exit {int(exit_code)}"
+    return step_failed or row["why"] or row["state"]
 
 
 def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
@@ -1123,26 +1192,32 @@ def _still_to_run(here: _CallHere, index: dict) -> List[dict]:
                     if n in walked)]
 
 
-def _run_state(here: _CallHere, index: dict) -> Tuple[str, str]:
+def _run_state(here: _CallHere, index: dict) -> Tuple[str, Optional[str]]:
     """The run's state from its index, by the one done rule (`vibration_phases.rows_of`):
     finished when every call is done, else failed naming the first call not
-    done by its words, and why where its record step said."""
+    done by its words, and why where its record step said.  The run's count
+    is the `notify` verb's, read from the same index (`run-reports.md`
+    § 2.4)."""
     rows = rows_of(index, here.run_dir, here.label)
-    words = summary(rows, index.get("phases") or ())
-    first = next((r for r in rows if not r["done"]), None)
-    if first is None:
-        return "finished", words
-    return "failed", (f"{words}; {first['words']}: "
-                      f"{first['why'] or first['state']}")
+    left = [r for r in rows if not r["done"]]
+    if not left:
+        return "finished", None
+    # HOW MANY, beside the first: a failed part was said once per reason,
+    # so the finish counts them (`run-reports.md` § 2.9).
+    return "failed", (_not_done_words(left[0])
+                      + (f"; {len(left)} of {len(rows)} calls not done"
+                         if len(left) > 1 else ""))
 
 
-def _finish_run(here: _CallHere, index: dict) -> None:
+def _finish_run(here: _CallHere, index: dict,
+                outcome: Optional[str] = None) -> None:
     """THE FINISH, once no call the walk may still run is left
     (:func:`_still_to_run`, § 5.11 § 3, § 5): the result pair rewritten
     final from the force-constant call, with the `relax` call's record and
     the Raman phase's state -- nothing to write where the force constants
     never ran, the run's state saying why; the finish's own entry; the
-    run's `finish` sent with its state."""
+    run's `finish` sent with its state and ``outcome``, the outcome of the
+    phase the last call ended (`run-reports.md` § 2.9)."""
     started = stamp()
     try:
         got = _force_constants(here, index)
@@ -1172,10 +1247,12 @@ def _finish_run(here: _CallHere, index: dict) -> None:
         code = 1
     index["finish"] = {"started": started, "ended": stamp(), "exit": code}
     write_index(here.index, index)
-    state, detail = _run_state(here, index)
+    state, why = _run_state(here, index)
     if code != 0:
-        state, detail = "failed", f"{detail}; the finish exited {code}"
-    _notify(here, "finish", state=state, detail=detail)
+        state, why = "failed", "; ".join(
+            w for w in (why, f"the finish exited {code}") if w)
+    _notify(here, "finish", state=state,
+            detail="; ".join(w for w in (why, outcome) if w) or None)
 
 
 def record_call(deck, phase_name: str, output, exit_code: int) -> None:
@@ -1183,7 +1260,9 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
     (§ 5.11 § 3): how it ended into the run's index; the `relax` call's
     relaxation record; the force constants' analysis -- the result pair at
     the run's root, the optical calls planned; and, once no call the walk
-    may still run is left (:func:`_still_to_run`), the finish."""
+    may still run is left (:func:`_still_to_run`), the finish; while calls
+    are left, the run speaks when a phase ends or a call fails
+    (`run-reports.md` § 2.9)."""
     here = _here(deck)
     call = _call_of(here, phase_name)
     index = read_index(here.index)
@@ -1199,14 +1278,20 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
     # has had its turn: a record that cannot be written never keeps the
     # run from ending.
     failed = None
+    failed_what = None
 
     def _record_failed(what: str, exc: Exception) -> None:
-        nonlocal failed
+        nonlocal failed, failed_what
         _say("ERROR", f"vibration: {what} -- {type(exc).__name__}: {exc}")
         add_call(index, call, record_error=f"{what}: {exc}")
         write_index(here.index, index)
-        failed = exc
+        failed, failed_what = exc, failed_what or what
 
+    # WHAT THE PHASE THIS CALL ENDS CAME TO, kept for its words below: the
+    # relaxation's record, the force constants' result and the calls
+    # planned (`run-reports.md` § 2.9).
+    relaxation = None
+    analysed = None
     # WHAT IT SAYS IT CONVERGED, read from its output by the reader this
     # machine's status door reads it with (`_run_ending.verdict_of`) -- the
     # one done rule's verdict (`vibration_phases.rows_of`).
@@ -1220,7 +1305,8 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
             _record_failed("its verdict was not read", exc)
     if phase_name == RELAX and output.is_file():
         try:
-            add_call(index, call, relaxation=_relaxation_record(output))
+            relaxation = _relaxation_record(output)
+            add_call(index, call, relaxation=relaxation)
             write_index(here.index, index)
         except Exception as exc:                        # noqa: BLE001
             _record_failed("the relaxation record was not read", exc)
@@ -1250,6 +1336,7 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
                 dump_spectra_json(res, out)
                 add_call(index, call, modes=len(res.modes))
                 write_index(here.index, index)
+                analysed = (res, planned)
                 _say("INFO", f"vibration: {len(res.modes)} mode(s) from "
                              f"{Path(run.fc.path).name}; {planned} optical "
                              f"call(s) planned; wrote {out.name}")
@@ -1270,8 +1357,41 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
             _write_optical(here, index, got[1])
         except Exception as exc:                        # noqa: BLE001
             _record_failed("the optical calls' record was not written", exc)
+    # THE PHASE'S OUTCOME IN WORDS -- composed apart from the record: words
+    # that cannot be composed are logged, never the call's failure.
+    outcome = None
+    try:
+        if analysed is not None:
+            outcome = _force_constants_outcome(*analysed)
+        elif relaxation is not None:
+            attempt = parse(output.name, here.label)
+            continued = read_continued_from(here.folder, here.names,
+                                            FIRST_ATTEMPT)
+            outcome = _relaxation_outcome(
+                relaxation, retried=(attempt is not None
+                                     and attempt.run not in (None,
+                                                             FIRST_ATTEMPT)),
+                continued=str(continued) if continued is not None else None)
+    except Exception as exc:                            # noqa: BLE001
+        _say("WARN", f"vibration: {call.words()}'s outcome was not put in "
+                     f"words -- {type(exc).__name__}: {exc}")
+    # THE RUN SPEAKS (`run-reports.md` § 2.9): with calls left to run, a
+    # call not done is a part that failed, and the last call of its phase
+    # to end, done, is the phase's milestone; with none left, the finish
+    # says the run's end and this phase's outcome with it.
     if not _still_to_run(here, index):
-        _finish_run(here, index)
+        _finish_run(here, index, outcome)
+    else:
+        rows = rows_of(index, here.run_dir, here.label)
+        mine = next(r for r in rows if r["rel"] == call.rel)
+        if not mine["done"]:
+            # SAID ONCE PER REASON: the `notify` verb sends no second
+            # failure for a reason the run has already reported.
+            _notify(here, "part_failed", detail=_not_done_words(mine),
+                    reason=_failure_reason(mine, exit_code, failed_what))
+        elif all(r["ended"] for r in rows if r["phase"] == phase_name):
+            _notify(here, "milestone",
+                    detail=outcome or f"{mine['words']}: done")
     if failed is not None:
         raise failed
 

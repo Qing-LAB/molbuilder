@@ -1399,7 +1399,8 @@ class SiestaReader:
         output grow.  Commits nothing and judges nothing.
 
         ``{phase, cycle, energy, dDmax, dHmax, dq, residuals, step,
-        step_kind, steps_done, max_force, max_force_all, stress_voigt_kbar,
+        step_kind, steps_done, step_moves, max_force, max_force_all,
+        stress_voigt_kbar,
         forces_not_computed, criteria, targets, tbtrans, done_pct, eta_s,
         doing, part, scf_converged}``,
         each present only when the
@@ -1408,7 +1409,9 @@ class SiestaReader:
         ``residuals`` each beside the criterion its phase states --
         ``{name: (value, tolerance or None, unit)}``; the step SIESTA last
         began, its number and its words for what a step is, and so how many
-        steps are done; the latest largest force on the free atoms
+        steps are done, and whether that kind of step moves the geometry
+        (`siesta_grammar.MOVES_GEOMETRY`); the latest largest force on the
+        free atoms
         and over every atom, and the latest stress -- or, for a run that
         computes no forces, the sentence in their place -- and what each
         must reach;
@@ -1433,6 +1436,8 @@ class SiestaReader:
             out["step_kind"], out["step"] = self.step_begun
             # SIESTA begins step N once steps 0..N-1 are done.
             out["steps_done"] = self.step_begun[1]
+            out["step_moves"] = bool(
+                _G.MOVES_GEOMETRY.search(self.step_begun[0]))
         out.update(self._forces_now())
         crit = self.criteria()
         if crit:

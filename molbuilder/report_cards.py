@@ -48,7 +48,7 @@ RECEIVERS: Tuple[str, ...] = ("slack", "discord", "web")
 #: The events a card is sent for (`run-reports.md` § 2) and the setup page's
 #: Test button (§ 4.1b).
 EVENTS: Tuple[str, ...] = ("start", "scf_converged", "periodic", "wall_near",
-                           "finish", "test")
+                           "milestone", "part_failed", "finish", "test")
 #: A wire's own ceiling on fields (`run-reports.md` § 4.1b): the most a
 #: receiver's ``limit`` may say.  The web tab has none.
 WIRE_LIMIT: Dict[str, int] = {"slack": 10, "discord": 25}

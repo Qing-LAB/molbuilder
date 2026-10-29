@@ -701,7 +701,9 @@ What each occasion is and what every message carries are
 [`run-reports.md`](?doc=execution/run-reports.md) § 2 and § 4.1a; which
 channels a list selects is § 3.0 there. **No `notify` block is no
 notification**, the start and the end included; a calculation with a block also
-reports its start and its end, so they are not keys. `notify` present but empty
+reports its start and its end — and, for a run of points, a phase's end and a
+failed part ([`run-reports.md`](?doc=execution/run-reports.md) § 2.9) — so they
+are not keys. `notify` present but empty
 is refused:
 absent and empty would be two spellings of one state. **`["*"]` and `[]` are
 two states for `channels` and for `report`**: a person who unticked every box

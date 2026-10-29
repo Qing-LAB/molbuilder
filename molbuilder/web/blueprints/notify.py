@@ -125,10 +125,11 @@ LOG_KEEP = 5
 #: address, so per-IP would punish somebody running several jobs for the
 #: crime of using the machine they were given.
 #:
-#: Sixty a minute is generous by orders of magnitude.  A monitor speaks on
-#: SCF convergence, every N hours, and once at the end -- a handful an hour
-#: even when chatty (`run-reports.md` § 2, *looking often and speaking
-#: rarely are different numbers*).
+#: Sixty a minute is generous by orders of magnitude.  A run speaks at its
+#: start and its end, on SCF convergence, every N hours, once when its wall
+#: is near, and -- a run of points -- when a phase ends or a part fails,
+#: once per reason: a handful an hour even when chatty (`run-reports.md`
+#: § 2, *looking often and speaking rarely are different numbers*).
 MAX_REPORTS_PER_MIN = 60
 _RATE_WINDOW_S = 60.0
 

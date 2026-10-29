@@ -382,6 +382,8 @@
   doi     = {10.1103/PhysRevB.75.205413}
   % Methodology paper for computing electron-phonon coupling
   % constants from first-principles DFT for molecular junctions.
+  % Also: SIESTA/TranSIESTA vibrations of a junction's dynamic region, the
+  % rest fixed (science/vibrational-optical-response.md 3.4).
   % Cite when explaining the per-mode g_HOMO / g_LUMO readouts in
   % the electronic-structure panel (§ 9.2.4 of spec.md) and the
   % significance for inelastic-transport (IETS) calculations.
@@ -1223,19 +1225,6 @@
   % distortion; +u and -u are one state (3.1, 7).
 }
 
-@article{Frederiksen2007,
-  author  = {Frederiksen, Thomas and Paulsson, Magnus and Brandbyge, Mads and Jauho, Antti-Pekka},
-  title   = {Inelastic transport theory from first principles: Methodology and application to nanoscale devices},
-  journal = {Physical Review B},
-  volume  = {75},
-  number  = {20},
-  pages   = {205413},
-  year    = {2007},
-  doi     = {10.1103/PhysRevB.75.205413}
-  % SIESTA/TranSIESTA vibrations of a junction's dynamic region, the rest
-  % fixed (3.4).
-}
-
 % ----- Transport: the Au-BDT benchmark, the pseudopotentials, the junction -----
 
 @article{Xiao2004,
@@ -1312,6 +1301,60 @@
   % (science/vibrational-averaging.md 5.1).
 }
 % @verified 2026-10-27 library catalogue record (Open Library)
+
+% ---- Added 2026-10-28: a mode driven by light -- a swing's shape, and the
+% ---- frames it needs (science/vibrational-averaging.md 2a.2, 2a.3).
+
+@article{Glauber1963,
+  author  = {Glauber, Roy J.},
+  title   = {Coherent and Incoherent States of the Radiation Field},
+  journal = {Physical Review},
+  volume  = {131},
+  number  = {6},
+  pages   = {2766--2788},
+  year    = {1963},
+  doi     = {10.1103/PhysRev.131.2766}
+  % Checked against Crossref 2026-10-28.  Coherent states: what a classical
+  % drive makes of a harmonic oscillator.
+}
+
+@book{CohenTannoudji2020,
+  author    = {Cohen-Tannoudji, Claude and Diu, Bernard and Lalo{\"e}, Franck},
+  title     = {Quantum Mechanics, Volume I: Basic Concepts, Tools, and
+               Applications},
+  edition   = {2},
+  publisher = {Wiley-VCH},
+  address   = {Weinheim},
+  year      = {2020},
+  isbn      = {978-3-527-34553-3}
+  % Complement G_V, "Coherent 'quasi-classical' states of the harmonic
+  % oscillator": the ground state's bell curve carried along the classical
+  % motion.
+}
+% @verified 2026-10-28 library catalogue records (Masaryk University, DESY);
+% the complement's title from the book's own table of contents.
+
+@article{TrefethenWeideman2014,
+  author  = {Trefethen, Lloyd N. and Weideman, J. A. C.},
+  title   = {The Exponentially Convergent Trapezoidal Rule},
+  journal = {SIAM Review},
+  volume  = {56},
+  number  = {3},
+  pages   = {385--458},
+  year    = {2014},
+  doi     = {10.1137/130932132}
+  % Checked against Crossref 2026-10-28.  Equally spaced points: exact for a
+  % trigonometric polynomial of lower degree, exponentially convergent for a
+  % smooth periodic function -- the frames a swing needs.
+}
+
+@misc{DLMF,
+  title        = {{NIST Digital Library of Mathematical Functions}},
+  howpublished = {https://dlmf.nist.gov/},
+  note         = {Eq. 10.32.1, the integral form of the modified Bessel
+                  function I_0}
+}
+% @verified 2026-10-28 dlmf.nist.gov/10.32, eq. 10.32.1 read.
 
 % ---- Added 2026-10-28: the infrared's set of atoms, measured and read
 % ---- against the literature (science/vibrational-optical-response.md 2.5).
