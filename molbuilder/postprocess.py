@@ -14,8 +14,8 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         SIESTA vibration result's charges (`spectra.infrared`);
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
         optical calls (`spectra.raman`); and
-        ``reference_max_displacement`` -- a mode's reference displacement
-        at a temperature (`mode_frames`)
+        ``outermost_move`` -- how far a mode's frame set at a temperature
+        moves its atom that moves most (`mode_frames`)
 USED-BY a notebook's kernel, which imports the molbuilder its server runs
         (`web/jupyter.md` § 7), and the post-processing documents' examples
 
@@ -151,25 +151,25 @@ def infrared_view(path, *, direction="z",
                  partition=partition or DEFAULT_PARTITION)
 
 
-def reference_max_displacement(path, *, mode: int, temperature_k: float,
-                               nodes: int = 3):
-    """THE REFERENCE MAXIMUM DISPLACEMENT of mode ``mode`` (its number, as
-    the result numbers its modes) of the vibration result
-    ``<label>.spectra.json`` at ``temperature_k`` for ``nodes`` frames, in
-    Angstrom -- the frames sampling its thermal spread, read through the
-    result's own reader (`mode_frames.reference_max_displacement`);
+def outermost_move(path, *, mode: int, temperature_k: float,
+                   nodes: int = 3):
+    """THE OUTERMOST MOVE of mode ``mode`` (its number, as the result
+    numbers its modes) of the vibration result ``<label>.spectra.json`` at
+    ``temperature_k`` for ``nodes`` frames, in Angstrom -- the largest atom's
+    move at the outermost frames of the set the frame generator writes
+    there, read through the result's own reader (`mode_frames.outermost_move`);
     ``None`` for an imaginary mode, which has no spread."""
-    from .mode_frames import FrameSetError, reference_max_displacement as _ref
+    from .mode_frames import FrameSetError, outermost_move as _move
     from .sidecars.spectra import parse_spectra_json
     rows = parse_spectra_json(path).to_dict()["modes"]
     row = next((m for m in rows if m["index_1based"] == mode), None)
     if row is None:
         raise FrameSetError(f"{path} holds modes 1..{len(rows)}, not mode "
                             f"{mode!r}")
-    return _ref(row, temperature_k, nodes)
+    return _move(row, temperature_k, nodes)
 
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "atom_index_map",
            "infrared_view", "parse", "raman_view", "read_optical_data",
            "read_raman_data", "read_spectra_data", "read_structure",
-           "read_transport_data", "reference_max_displacement"]
+           "read_transport_data", "outermost_move"]

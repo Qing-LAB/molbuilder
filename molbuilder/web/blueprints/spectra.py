@@ -96,8 +96,8 @@ def _page_constants():
 
 def _temperature_k(body, form, key: str = "temperature_k"):
     """A temperature the tab asks at -- ``temperature_k``, the animation's
-    thermal spreads', or ``reference_temperature_k``, the frame-set
-    dialog's reference's -- in the JSON body or the upload's form, as a
+    thermal spreads', or ``frameset_temperature_k``, the frame-set
+    dialog's -- in the JSON body or the upload's form, as a
     float, ``None`` when the request names none; a value that is not one is
     refused with the reason (a 400, `web-api.md` § 2), by the rule every
     door shares (`spectra.derived.checked_temperature_k`)."""
@@ -131,7 +131,7 @@ def _view_asked(body, form, key: str, read_ask) -> Optional[Dict[str, Any]]:
 def _loaded(results, run: Optional[Dict[str, Any]] = None,
             temperature_k: Optional[float] = None,
             infrared: Optional[Dict[str, Any]] = None,
-            reference_temperature_k: Optional[float] = None,
+            frameset_temperature_k: Optional[float] = None,
             raman: Optional[Dict[str, Any]] = None, path=None):
     """The one success reply for /api/spectra/load — the typed results as a
     dict, plus what only the server can work out.
@@ -139,11 +139,12 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     ``temperature_k`` is the animation's temperature: each mode is served
     its ``thermal_spread_amu12_ang`` at it, from the one derivation
     (`spectra.derived.thermal_spread_of`, `web/spectra.md` § 4.1); asked for
-    none, no mode carries it.  ``reference_temperature_k`` is the frame-set
-    dialog's: each mode is served its ``reference_max_displacement_ang`` for
-    three frames and five at it (`mode_frames.reference_max_displacement`,
-    § 4.3), the run's own thermochemistry temperature when the dialog has
-    named none -- the tab holds no constant and derives nothing.
+    none, no mode carries it.  ``frameset_temperature_k`` is the frame-set
+    dialog's: each mode is served its ``frameset`` at it -- its mean number
+    of quanta, its spread and the outermost move for each rule
+    (`mode_frames.at_temperature`, § 4.3) -- the run's own thermochemistry
+    temperature when the dialog has named none; the tab holds no constant
+    and derives nothing.
 
     ``infrared`` is what the tab asks of the result's infrared -- the
     light's direction and the partition, along z by Hirshfeld charges when
@@ -236,19 +237,17 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
         for mode in payload.get("modes") or []:
             mode["thermal_spread_amu12_ang"] = thermal_spread_of(
                 mode, temperature_k)
-    # THE REFERENCE DISPLACEMENT'S TEMPERATURE (`web/spectra.md` § 4.3): the
-    # one the dialog asked, else the run's own thermochemistry temperature;
-    # neither, no reference.  Said with the numbers.
-    ref_t = reference_temperature_k
-    if ref_t is None:
-        ref_t = (payload.get("thermo") or {}).get("temperature_K")
-    if ref_t is not None:
-        from molbuilder.mode_frames import NODES, reference_max_displacement
-        payload["reference_temperature_k"] = float(ref_t)
+    # THE FRAME SET'S TEMPERATURE (`web/spectra.md` § 4.3): the one the
+    # dialog asked, else the run's own thermochemistry temperature; neither,
+    # no mode's frameset.  Said with the numbers.
+    set_t = frameset_temperature_k
+    if set_t is None:
+        set_t = (payload.get("thermo") or {}).get("temperature_K")
+    if set_t is not None:
+        from molbuilder.mode_frames import at_temperature
+        payload["frameset_temperature_k"] = float(set_t)
         for mode in payload.get("modes") or []:
-            mode["reference_max_displacement_ang"] = {
-                str(n): reference_max_displacement(mode, float(ref_t), n)
-                for n in NODES}
+            mode["frameset"] = at_temperature(mode, float(set_t))
     # THE FREE ATOMS' INFRARED, where the result states its charges
     # (`web/spectra.md` § 3.2); and, for a SIESTA result that states none,
     # why, in its own facts.
@@ -362,9 +361,9 @@ def api_spectra_load():
     try:
         temperature_k = _temperature_k(request.get_json(silent=True),
                                        request.form)
-        reference_temperature_k = _temperature_k(
+        frameset_temperature_k = _temperature_k(
             request.get_json(silent=True), request.form,
-            "reference_temperature_k")
+            "frameset_temperature_k")
         from molbuilder.spectra import infrared as _ir, raman as _raman
         infrared = _view_asked(request.get_json(silent=True), request.form,
                                "infrared", _ir.read_ask)
@@ -396,7 +395,7 @@ def api_spectra_load():
             return _err_load(exc)
         return _loaded(results, temperature_k=temperature_k,
                        infrared=infrared, raman=raman,
-                       reference_temperature_k=reference_temperature_k)
+                       frameset_temperature_k=frameset_temperature_k)
 
     # ---- JSON body (path or inline JSON) ------------------------- #
     body = request.get_json(silent=True) or {}
@@ -429,7 +428,7 @@ def api_spectra_load():
             return _err_load(exc)
         return _loaded(results, run=run, temperature_k=temperature_k,
                        infrared=infrared, raman=raman, path=path,
-                       reference_temperature_k=reference_temperature_k)
+                       frameset_temperature_k=frameset_temperature_k)
     if inline is not None:
         if not isinstance(inline, dict):
             return _err_load(SpectraJsonMalformedError(
@@ -441,7 +440,7 @@ def api_spectra_load():
             return _err_load(exc)
         return _loaded(results, temperature_k=temperature_k,
                        infrared=infrared, raman=raman,
-                       reference_temperature_k=reference_temperature_k)
+                       frameset_temperature_k=frameset_temperature_k)
 
     return jsonify({
         "ok":    False,
@@ -472,10 +471,11 @@ def _version(path) -> Optional[Tuple[int, int]]:
 def api_spectra_frameset():
     """A MODE'S FRAME SET, written through the one generator
     (`engines/vibration.md` § 5.10 ③; `web/spectra.md` § 4.3):
-    ``{run, mode, max_displacement_ang, nodes, out}`` -- the vibration
-    run's folder and the pair's ``.xyz``, each inside the tree (the fence,
-    `web-api.md` § 2.1).  Answers ``{ok, path, frames, said}``, or the
-    generator's refusal in its words (400)."""
+    ``{run, mode, temperature_k, nodes, out}`` -- the vibration run's
+    folder, the temperature the frames sample, the rule, and the pair's
+    ``.xyz``, each path inside the tree (the fence, `web-api.md` § 2.1).
+    Answers ``{ok, path, frames, said}``, or the generator's refusal in its
+    words (400)."""
     from molbuilder.mode_frames import FrameSetError, frameset_from_mode
     from molbuilder.projects import projects_root
     from .files import _PickerError, _resolve_within_roots
@@ -495,7 +495,7 @@ def api_spectra_frameset():
     try:
         got = frameset_from_mode(
             run, mode=mode,
-            max_displacement_ang=body.get("max_displacement_ang"),
+            temperature_k=body.get("temperature_k"),
             nodes=nodes, out=out, root=root)
     except FrameSetError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400

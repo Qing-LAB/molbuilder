@@ -164,10 +164,12 @@ export function dialogActions(buttons) {
 /** Ask for one or more values.
  *
  *  ``opts``: ``{title, hint?, fields: [{name, label, value?, type?,
- *  placeholder?, attrs?, options?}], validate?, onInput?, confirmLabel?,
- *  danger?, extra?}``.  ``onInput(values, {setHint})``, where given, is
- *  told the values at every change -- for a dialog whose hint says
- *  something that follows a field, ``setHint(text)`` rewriting it.
+ *  placeholder?, attrs?, options?}], note?, validate?, onInput?,
+ *  confirmLabel?, danger?, extra?}``.  ``note``, where given, is a line
+ *  under the fields -- what the values typed mean.  ``onInput(values,
+ *  {setHint, setNote})``, where given, is told the values at every change
+ *  -- for a dialog whose hint or note says something that follows a field,
+ *  ``setHint(text)`` and ``setNote(text)`` rewriting them.
  *  ``validate(values)`` returns ``null`` when the answer can stand, else
  *  the refusal -- ``""`` refuses without words (an empty name).  The confirm
  *  button is enabled only while it can stand; Enter confirms likewise.
@@ -187,6 +189,11 @@ export function askFields(opts) {
     const { wrap, input } = dialogField(f.label, f);
     inputs.push([f.name, input]);
     dialog.appendChild(wrap);
+  }
+  const noteEl = opts.note !== undefined ? dialogHint(opts.note || "") : null;
+  if (noteEl) {
+    noteEl.setAttribute("data-role", "note");
+    dialog.appendChild(noteEl);
   }
   const err = dialogError();
   dialog.appendChild(err);
@@ -226,6 +233,7 @@ export function askFields(opts) {
     if (typeof opts.onInput === "function") {
       opts.onInput(read(), {
         setHint: (text) => { if (hintEl) hintEl.textContent = String(text); },
+        setNote: (text) => { if (noteEl) noteEl.textContent = String(text); },
       });
     }
   };

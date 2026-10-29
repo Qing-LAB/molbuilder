@@ -28,17 +28,18 @@ the queue and the handover to the day's end.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-29)*
 
-**Where we are: 2.50.0.** The releases are the changelog's rows; the
+**Where we are: 2.51.0.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
-last: a SIESTA vibration run reports as one run at its milestones and its
+last: a mode's frame set is stated by a temperature — the junction's, or a
+pumped mode's effective one — with three, five or seven frames, the
+outermost move measured and said, the *Write frame set…* dialog saying what
+the temperature means for the mode (2.51.0, § 1al F1, F2;
+`engines/vibration.md` § 5.10 ③); before it, a SIESTA vibration run reports as one run at its milestones and its
 failed parts — the relaxation's and the force constants' outcomes as each
 phase ends, a call not done said at once and once per reason, the finish
 counting the calls not done — and a step message only for a step that moves
 the geometry (2.50.0, `execution/run-reports.md` § 2.2, § 2.9; § 1af, its
-transport half R-e left); with it, contract only, § 1al — a mode's frame set
-stated by a temperature, with 3, 5 or 7 frames
-(`science/vibrational-averaging.md` § 2a, § 5), to be built once the user
-has read it. Before: a SIESTA vibration's infrared is the free atoms' — the system the
+transport half R-e left). Before: a SIESTA vibration's infrared is the free atoms' — the system the
 person declared by what they freed — shown when the result opens, with no
 choice of atoms anywhere, and the Spectrum page's one bar above the chart
 (light, charges, laser, width) applied by *Update* under the page busy fence
@@ -52,7 +53,7 @@ user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
 it is, the user's ruling: "the user knows the information … don't do
 extra")*.
 
-**Last checked**: the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
+**Last checked**: the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-28) — the user's to change.
 
@@ -398,7 +399,7 @@ helpers and e2e building run folders and records by hand.
 | S4 | **the tests through the doors** — the support helpers first; TEST-AUDIT (5)–(9) (§ 2) | open — no test composes a run's path or a file's name |
 | S5 | two review rounds over S0–S4, and a browser walk of every page S2–S4 touched, M4's Raman viewer among them | open |
 
-## 1al. A mode's frame set, its spread stated as a temperature — and the frames a swing needs *(2026-10-28; the user's go: "go ahead"; contract written, to be built)*
+## 1al. A mode's frame set, its spread stated as a temperature — and the frames a swing needs *(2026-10-28; the user's go: "go ahead"; F1 and F2 built 2.51.0, F3 planned)*
 
 *(The user, 2026-10-28: "shall we actually use the sigma as the reference to
 state how much we want the max displacement to be? this is statistically
@@ -419,9 +420,9 @@ frames reach further out; three, five or seven frames). The contract is
 
 | # | what | state |
 |---|---|---|
-| F1 | **the spread stated as a temperature**: `frameset_from_mode(…, temperature_k=…)` — the junction's, or a pumped mode's effective one — in place of the maximum displacement; the rows `temperature_k` (given), `mean_quanta` and `sigma_amu12_ang` (derived), `max_displacement_ang` the outermost frames' largest atom move (measured); `mode_frames.outermost_move` in place of `reference_max_displacement` (and `postprocess.outermost_move`); the command line's `--temperature`; the load door's `frameset_temperature_k` and each mode's `frameset`; the dialog's temperature box and the line under it | contract written; to be built |
-| F2 | **seven frames**: `NODES = (3, 5, 7)` — the generator, the command line, the dialog | contract written; to be built |
-| F3 | **the frames a swing needs** — a mode pushed in step with infrared light: frames at equal phases through one period, $Q_0\cos(2\pi k/N)$, equal weights (with $N = 8$: $0, \pm Q_0/\sqrt2, \pm Q_0$ at $\tfrac14$, $\tfrac14$ each and $\tfrac18$ each), the amplitude stated, or computed from the run's own $\partial\mu/\partial Q$ with the person's local field and linewidth (science § 2a.2, § 2a.3); and the product rule where the thermal jiggle is comparable. A `sampling_rule` of its own; transport reads the weights alone, so it needs no change | planned, not designed — a design brought to the user |
+| F1 | **the spread stated as a temperature**: `frameset_from_mode(…, temperature_k=…)` — the junction's, or a pumped mode's effective one — in place of the maximum displacement; the rows `temperature_k` (given), `mean_quanta` and `sigma_amu12_ang` (derived), `max_displacement_ang` the outermost frames' largest atom move (measured); `mode_frames.outermost_move` in place of `reference_max_displacement` (and `postprocess.outermost_move`); the command line's `--temperature`; the load door's `frameset_temperature_k` and each mode's `frameset`; the dialog's temperature box and the line under it | **built 2.51.0** |
+| F2 | **seven frames**: `NODES = (3, 5, 7)` — the generator, the command line, the dialog | **built 2.51.0** |
+| F3 | **the frames a swing needs** *(the user, 2026-10-29: "or this can be a parameter in post-processing?" — proposed: the shape a post-processing parameter, the frames' transmission re-averaged over the chosen motion from the data file, exact to degree m − 1; five or seven frames needed, three cannot tell the shapes apart, and the frames must reach the swing's turning points; measured on the contact bond: seven bell frames re-averaged give the swing's average to 0.1 % at a swing twice the response's length, where the bell curve is 19 % high; swing frames below kept only beyond that)* — a mode pushed in step with infrared light: frames at equal phases through one period, $Q_0\cos(2\pi k/N)$, equal weights (with $N = 8$: $0, \pm Q_0/\sqrt2, \pm Q_0$ at $\tfrac14$, $\tfrac14$ each and $\tfrac18$ each), the amplitude stated, or computed from the run's own $\partial\mu/\partial Q$ with the person's local field and linewidth (science § 2a.2, § 2a.3); and the product rule where the thermal jiggle is comparable. A `sampling_rule` of its own; transport reads the weights alone, so it needs no change | planned, not designed — a design brought to the user |
 
 ## 1ac. A SIESTA vibration's optical activity, and the displacement — built 2.35.2–2.45.0; the proofs and the science left *(the section as it stood: [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2)*
 
@@ -466,7 +467,7 @@ then the agreed designs, then § 0a's steps 2–6. The queue it replaces
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **§ 1al's frame set by a temperature (F1, F2)** — the contract written 2026-10-28, built once the user has read it; § 1af's events built 2.50.0, its transport half (R-e) after | § 1al, § 1af | the user's question on the frames and their spread, and the user's go (2026-10-28) |
+| **1** | **§ 1al F3 — the swing's shape** — the user asked (2026-10-29) whether the bell-or-U shape could be a post-processing parameter; proposed: the frames' transmission re-averaged over a chosen motion (a bell curve at another temperature, or a swing of a stated size) from the transport data file, in place of swing frames — awaiting the user's answer; F1 and F2 built 2.51.0; § 1af's events built 2.50.0, its transport half (R-e) after | § 1al, § 1af | the user's question on the shape of a driven mode |
 | **2** | **The day's two viewer decisions** — MV-RETRACT, VV-CAMERA — contract first | § 2 | the user's decisions, small; the second is the defect 2.47.11 fixed in MolView |
 | **3** | **§ 1ak S2.4** — the rest of the branches, the label palette (the user's call on the page change), then S2's done-when: its review and the browser walk of S2.3's and S2.4's pages | § 1ak | the stage under way |
 | **4** | **§ 1ak S3, S4, S5** | § 1ak | the rest of the agreed programme |
@@ -1039,7 +1040,8 @@ its own*), § 3.8.1 (the frame-set card); `model/structure.md` § 2.2d–2.2f
 § 2 (the index convention); `web/results.md` § 2.4–2.5 (the frame family, one
 Plotly box); `web/task-setup.md` § 3. The frame generator, V1.25, was
 built in 2.35.0, its amplitude a maximum displacement (the user,
-2026-10-24); the AuBDTAu workflow is the user's, on Sol.*
+2026-10-24), stated as a temperature since 2.51.0 (§ 1al); the AuBDTAu
+workflow is the user's, on Sol.*
 
 ---
 ## 5w. The M11 review — what is left of its mechanism classes *(W50, 2026-09-29; the section as it stood: [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2)*

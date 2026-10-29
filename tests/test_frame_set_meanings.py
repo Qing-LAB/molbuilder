@@ -102,9 +102,8 @@ def test_summarize_says_a_sets_rows_as_the_page_does():
     § 3.8.1, *Mode 6 · Frequency 2548.37 cm⁻¹*).
 
     THE SILENT FAILURE: the terminal printing the stored names
-    (``mode_index_1based 6, frequency_cm1 2548.365564447995 cm-1``) for
-    every set the generator writes, its readable line reached only by a set
-    stating a temperature, which the generator never states."""
+    (``mode_index_1based 6, frequency_cm1 2548.365564447995 cm-1``) where
+    the page says them in words."""
     from molbuilder.frame_average import ROWS, average_block, summary_lines
     from molbuilder.frameset import read
     means = {r.name: r.means for r in ROWS}

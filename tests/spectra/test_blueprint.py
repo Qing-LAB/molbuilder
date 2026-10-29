@@ -324,6 +324,98 @@ class TestLoadEndpoint:
         code, body = load(temperature_k="warm")
         assert code == 400 and "temperature_k" in body["error"], body
 
+    @pytest.mark.parametrize("kelvin, quanta, spread, moves", [
+        (4, 0.0, 1.000, (0.088, 0.145, 0.190)),
+        (298, 0.007, 1.007, (0.088, 0.146, 0.191)),
+        (1000, 0.29, 1.26, (0.110, 0.182, 0.239)),
+        (2159, 1.0, 1.73, (0.152, 0.251, 0.329)),
+    ])
+    def test_what_a_frame_sets_temperature_means_is_served_per_rule(
+            self, web_client, tmp_path, kelvin, quanta, spread, moves):
+        """`web/spectra.md` § 4.3: at the frame-set dialog's temperature the
+        load door serves each mode's mean number of quanta, its spread and
+        the outermost frames' largest atom move for three, five and seven
+        frames, and says the temperature back.  A row of the contract's own
+        example (`science/vibrational-averaging.md` § 5, mode 48 of the
+        user's AuBDTAu: 1039.9 cm-1, the atom that moves most 0.3977
+        amu^-1/2 along it), to the digits the table prints.  The silent
+        failure: a dialog whose numbers are not the frames the generator
+        writes -- another rule's node, a spread without the temperature --
+        or a notebook's door (`molbuilder.postprocess.outermost_move`)
+        answering otherwise than the page's."""
+        import dataclasses
+        base = _make_minimal_results()
+        mode = dataclasses.replace(
+            base.modes[0], frequency_cm1=1039.9,
+            eigenvector_canonical=np.array([[0.3977, 0., 0.],
+                                            [0., -0.2, 0.]]),
+            eigenvector_display=np.array([[0.3977, 0., 0.],
+                                          [0., -0.2, 0.]]))
+        p = tmp_path / "m48.spectra.json"
+        dump_spectra_json(dataclasses.replace(base, modes=[mode]), p)
+        r = web_client.post("/api/spectra/load", data=json.dumps(
+            {"path": str(p), "frameset_temperature_k": kelvin}),
+            content_type="application/json")
+        body = r.get_json()
+        assert r.status_code == 200, body
+        assert body["results"]["frameset_temperature_k"] == kelvin
+        (m,) = body["results"]["modes"]
+        said = m["frameset"]
+        assert said["mean_quanta"] == pytest.approx(quanta, abs=0.005)
+        assert said["sigma_over_zero_point"] == pytest.approx(
+            spread, abs=0.0005 if spread < 1.01 else 0.005)
+        assert said["sigma_amu12_ang"] == pytest.approx(
+            said["sigma_over_zero_point"]
+            * m["zero_point_amplitude_amu12_ang"], rel=1e-12)
+        assert [said["outermost_move_ang"][n] for n in ("3", "5", "7")] \
+            == pytest.approx(list(moves), abs=0.0005)
+        from molbuilder.postprocess import outermost_move
+        assert [outermost_move(p, mode=1, temperature_k=kelvin, nodes=n)
+                for n in (3, 5, 7)] == pytest.approx(list(moves), abs=0.0005)
+
+    @pytest.mark.parametrize("ask, refused", [
+        ({}, "temperature"),
+        ({"temperature_k": -5}, "temperature"),
+        ({"temperature_k": "warm"}, "temperature"),
+        ({"temperature_k": 300, "nodes": 9}, "3, 5 or 7"),
+    ], ids=["none", "below zero", "not a number", "nine frames"])
+    def test_a_frame_set_asked_without_its_temperature_or_rule_is_refused(
+            self, web_client, tmp_path, ask, refused):
+        """`engines/vibration.md` § 5.10 ③: the write door refuses, in the
+        generator's words and before it reads any run, a temperature stated
+        nowhere -- never defaulted -- one that is not a number of kelvin, 0
+        or more, and another rule than three, five or seven frames.  The
+        silent failure: a set written at a temperature the person never
+        stated, or at a rule the page does not offer."""
+        body = {"run": str(tmp_path), "mode": 1, "nodes": 3,
+                "out": str(tmp_path / "frames.xyz"), **ask}
+        r = web_client.post("/api/spectra/frameset", data=json.dumps(body),
+                            content_type="application/json")
+        said = r.get_json()
+        assert r.status_code == 400 and refused in said["error"], said
+        assert not (tmp_path / "frames.xyz").exists()
+
+    def test_a_frame_sets_temperature_not_stated_is_none(
+            self, web_client, tmp_path):
+        """`web/spectra.md` § 4.3: a result stating no thermochemistry
+        temperature, asked none, serves no mode a frame set -- a temperature
+        stated nowhere is never assumed -- and a temperature that is not a
+        number of kelvin, 0 or more, is refused by name."""
+        p = tmp_path / "t.spectra.json"
+        dump_spectra_json(_make_minimal_results(), p)
+
+        def load(**extra):
+            r = web_client.post("/api/spectra/load",
+                                data=json.dumps({"path": str(p), **extra}),
+                                content_type="application/json")
+            return r.status_code, r.get_json()
+        code, body = load()
+        assert code == 200, body
+        assert "frameset_temperature_k" not in body["results"], body
+        assert all("frameset" not in m for m in body["results"]["modes"])
+        code, body = load(frameset_temperature_k=-1)
+        assert code == 400 and "temperature_k" in body["error"], body
+
     def test_path_input(self, web_client, tmp_path):
         original = _make_minimal_results()
         p = tmp_path / "y.spectra.json"

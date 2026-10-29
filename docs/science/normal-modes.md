@@ -1266,7 +1266,7 @@ designed as one each and need a decision.
 | ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived by one function, written by both engines from schema 7 and checked on read (`vibration.md` § 6.3, § 6.6) | the transport step displaces along this, not along the display form | § 4b.5 F |
 | V1.23 | **a δ-convergence report**: two stages at $\delta$ and $\delta/2$, and a comparison of $\omega_\nu$ and $e_\nu$ between them printed by a verb | **built 2026-09-28**: `jobset summarize task` → `<label>.fc-sweep.json` and the printed table (`engines/vibration.md` § 5.9); the mesh pairing is a stage the person describes | § 4b.6 C |
 | V1.24 | **mode matching across runs**: the overlap of eigenvectors in the shared free subspace, mass-weighted, between Model A/B/C runs or between a PySCF and a SIESTA run of the same molecule | the active-region convergence test and the cross-engine comparison are both this one calculation | § 4b.6 F, § 4b.3 |
-| ~~V1.25~~ | **built 2.35.0** — a mode's frame set, both engines: the Gauss–Hermite nodes along one mode, its spread set by the person's maximum displacement, the reference displacement at a temperature beside it, the held atoms unmoved; since the user's ruling of 2026-10-28 its spread is set by the temperature the person states (`vibration.md` § 5.10 ③) — the structure a transport calculation cites | level one of `vibration.md` § 5.6 | § 4b.6 G |
+| ~~V1.25~~ | **built 2.35.0** — a mode's frame set, both engines: the Gauss–Hermite nodes along one mode, the held atoms unmoved; its spread set by the temperature the person states, with three, five or seven frames (the user's ruling of 2026-10-28, built 2.51.0, `vibration.md` § 5.10 ③; until then by a maximum displacement) — the structure a transport calculation cites | level one of `vibration.md` § 5.6 | § 4b.6 G |
 | V1.26 | **$\Delta\rho_\nu(r)$ maps**: SIESTA's density grid at $\pm Q_\nu$, differenced | the discussion's intermediate quantity; two SCFs per mode on the displaced pair | § 4b.7 |
 | V1.27 | **the PySCF probe**: five points per mode; the coupling per zero-point amplitude $g_\nu$ in meV beside $\Delta E/(2A)$; a molecule-projected frontier quantity for a cluster | § 4b.5 F–G | § 4b.5 |
 
@@ -1466,8 +1466,8 @@ This replaces a fixed probe step for the purpose. The PySCF probe's
 $A = 0.02\ \text{Å}$ and the force constants' $\delta$ measure a derivative at a point and
 are chosen small, and a curvature from so small a step drowns in the SCF's
 noise — the large-minus-large problem of § 4b.7 point 2, in $T$ and $\varepsilon$ instead
-of the density. At the reference displacement the nodes are as large as the
-thermal motion makes them.
+of the density. At the temperature the person states the nodes are as large
+as the motion at that temperature makes them.
 
 Two cautions, each **stated per frame rather than enforced**. *Soft modes:*
 $\sigma$ grows as $1/\sqrt{\omega}$ and the thermal factor $\sqrt{\coth}$ adds more (× 2.9 at 50 cm⁻¹ and 298 K,

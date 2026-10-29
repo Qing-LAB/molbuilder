@@ -135,12 +135,27 @@ _OWN_MIXING = {"seed": 0.12, "electrode_L": 0.15, "device": 0.08}
 #: from a real SIESTA vibration of the relaxed pair (`molbuilder frameset
 #: from-mode`; `engines/vibration.md` § 5.10 ③): frame 0 the pair, then the
 #: three-point Gauss-Hermite nodes at +/-sqrt(3) sigma, each with its weight
-#: (`science/vibrational-averaging.md` § 5.1), the outermost frames' largest
-#: atom moving the maximum displacement.
+#: (`science/vibrational-averaging.md` § 5.1), sigma the mode's spread at the
+#: temperature stated.
 _NODES_SIGMA = (0.0, 3 ** 0.5, -(3 ** 0.5))
 _WEIGHTS = (2 / 3, 1 / 6, 1 / 6)
-_MAX_DISPLACEMENT_ANG = 0.1
+_TEMPERATURE_K = 300.0
 _N_FRAMES = len(_NODES_SIGMA)
+
+#: THE SEVEN-POINT RULE, from Abramowitz & Stegun Table 25.10 (n = 7): its
+#: nodes x and weights w, so each frame sits at q / sigma = sqrt(2) x with
+#: weight w / sqrt(pi) (`science/vibrational-averaging.md` § 5.1) -- the
+#: order the generator writes them in, frame 0 and then each pair, nearest
+#: first and its positive side first (`engines/vibration.md` § 5.10 ③).
+_X7 = (0.0, 0.816287882859, -0.816287882859, 1.673551628767,
+       -1.673551628767, 2.651961356835, -2.651961356835)
+_W7 = (0.810264617557, 0.425607252610, 0.425607252610, 0.054515582819,
+       0.054515582819, 0.000971781245, 0.000971781245)
+
+#: hc / k_B, cm K (CODATA 2018's second radiation constant): a mode of
+#: wavenumber nu holds n = 1 / (exp(nu c2 / T) - 1) quanta at T
+#: (`science/vibrational-averaging.md` § 2a).
+_C2_CM_K = 1.438776877
 
 #: A mode's frame set's rows as `model/structure.md` § 2.2f's table states
 #: them -- ``(name, kind, unit, words, page unit)``, the structure's and each
@@ -149,10 +164,12 @@ _N_FRAMES = len(_NODES_SIGMA)
 #: § 5.10 ③ states them.
 _SET_ROWS = (("mode_index_1based", "given", None, "Mode", None),
              ("frequency_cm1", "given", "cm-1", "Frequency", "cm⁻¹"),
+             ("temperature_k", "given", "K", "Temperature", "K"),
+             ("mean_quanta", "derived", None, "Mean quanta n", None),
              ("zero_point_amplitude_amu12_ang", "given", "amu^1/2 angstrom",
               "Zero-point amplitude", "amu½·Å"),
-             ("max_displacement_ang", "given", "angstrom",
-              "Maximum displacement", "Å"),
+             ("max_displacement_ang", "measured", "angstrom",
+              "Outermost move", "Å"),
              ("sigma_amu12_ang", "derived", "amu^1/2 angstrom",
               "Spread σ", "amu½·Å"),
              ("sampling_rule", "given", None, "Sampling rule", None),
@@ -493,9 +510,10 @@ def junction(tmp_path_factory):
         frame_set = "P/structure/frames.xyz"
         mode = _highest_mode(tree, vibration)
         r = molbuilder("frameset", "from-mode", vibration, "--mode",
-                       str(mode), "--max-displacement",
-                       str(_MAX_DISPLACEMENT_ANG), "--out", frame_set)
+                       str(mode), "--temperature", f"{_TEMPERATURE_K:g}",
+                       "--out", frame_set)
         assert r.exit_code == 0, r.output
+        run.frameset_cli = r.output
 
         # THE SET CITED -- a second transport calculation, its
         # pseudopotentials from the library, its spin restricted as the
@@ -685,15 +703,22 @@ def junction(tmp_path_factory):
         # THE SPECTRUM VIEWER'S DOOR to the same generator
         # (`web/spectra.md` § 4.3), asked with the paths the page sends --
         # the result's folder and the tree picker's choice, each absolute:
-        # five frames of the same mode, then the same path again, which is
-        # refused, never written over.
+        # seven frames of the same mode, then the same path again, which is
+        # refused, never written over -- and, first, what the dialog shows
+        # at that temperature, the load door's answer for the same result.
+        from molbuilder.runfiles import ROLE_SPECTRA
+        from molbuilder.runs import on_label_at
+        run.frameset_shown = client.post("/api/spectra/load", json={
+            "path": str(on_label_at(tree / vibration, ROLE_SPECTRA)),
+            "frameset_temperature_k": _TEMPERATURE_K}).get_json()
         ask = {"run": str(tree / vibration), "mode": mode,
-               "max_displacement_ang": _MAX_DISPLACEMENT_ANG, "nodes": 5,
-               "out": str(tree / "P" / "structure" / "frames5.xyz")}
+               "temperature_k": _TEMPERATURE_K, "nodes": 7,
+               "out": str(tree / "P" / "structure" / "frames7.xyz")}
         run.frameset_said = [
             (a.status_code, a.get_json()) for a in (
                 client.post("/api/spectra/frameset", json=ask),
                 client.post("/api/spectra/frameset", json=ask))]
+        run.frameset_mode = mode
 
         # THE TRANSPORT TAB'S CARD, for each kind it cites (§ 3.8.1): what
         # the describe door says each citation's frames are, and whether the
@@ -2566,26 +2591,50 @@ def test_a_ladder_without_a_transmission_exports_what_exists(
         V["bias_v"]), V["average_why"]
 
 
+def test_the_command_line_says_what_the_temperature_means(junction):
+    """`engines/vibration.md` § 5.10 ③: `molbuilder frameset from-mode`
+    prints the mode's mean number of quanta and its spread against its
+    zero-point amplitude at the temperature stated -- the numbers the pair
+    it wrote states -- then each frame and where the pair is.  The silent
+    failure: a set written at a temperature the person never sees the
+    meaning of, or a printout of other numbers than the file's."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    pair = StructureCodec().load(junction.tree / junction.frame_set,
+                                 frames=True)
+    rows = {r["name"]: r["value"] for r in pair.customized_rows(None)}
+    said = junction.frameset_cli
+    assert (f"at {_TEMPERATURE_K:g} K the mode holds "
+            f"{rows['mean_quanta']:.4g} quanta on average; its spread is "
+            f"{rows['sigma_amu12_ang'] / rows['zero_point_amplitude_amu12_ang']:.4f}"
+            f" x its zero-point amplitude") in said, said
+    assert f"wrote {junction.tree / junction.frame_set}" in said, said
+
+
 def test_the_spectrum_viewers_door_writes_the_same_generators_set(junction):
     """`web/spectra.md` § 4.3: the viewer's door asks the one generator --
-    five frames of the same mode at the same maximum displacement, each
-    frame's position along the mode, largest atom move and weight as the
-    five-point rule gives them, the outermost the maximum displacement; the
+    seven frames of the same mode at the same temperature, each frame's
+    position along the mode and weight as the seven-point rule gives them,
+    and its outermost frames moving the atom that moves most as far as the
+    dialog said they would, the load door's answer at that temperature; the
     same path asked again is refused, never written over.  The silent
-    failure: a door that drops the rule it was asked (three frames written
-    when five were) or writes over a pair a calculation cites."""
+    failures: a door that drops the rule it was asked (three frames written
+    when seven were), a dialog promising another move than the frames make,
+    a pair written over that a calculation cites."""
     (status, said), (again, refused) = junction.frameset_said
     assert status == 200 and said["ok"], said
-    assert said["path"] == "P/structure/frames5.xyz", said
+    assert said["path"] == "P/structure/frames7.xyz", said
     frames = said["frames"]
     assert [f["q_sigma"] for f in frames] == pytest.approx(
-        [0.0, 1.3556261799742657, -1.3556261799742657,
-         2.8569700138728056, -2.8569700138728056], rel=1e-9)
+        [2 ** 0.5 * x for x in _X7], rel=1e-9, abs=1e-12)
     assert [f["weight"] for f in frames] == pytest.approx(
-        [0.5333333333333333, 0.2220759220056126, 0.2220759220056126,
-         0.011257411327720693, 0.011257411327720693], rel=1e-9)
+        [w / np.pi ** 0.5 for w in _W7], rel=1e-9)
+    shown = junction.frameset_shown
+    assert shown["ok"], shown
+    assert shown["results"]["frameset_temperature_k"] == _TEMPERATURE_K
+    (m,) = [m for m in shown["results"]["modes"]
+            if m["index_1based"] == junction.frameset_mode]
     assert max(f["max_atom_displacement_ang"] for f in frames) == \
-        pytest.approx(_MAX_DISPLACEMENT_ANG, rel=1e-12)
+        pytest.approx(m["frameset"]["outermost_move_ang"]["7"], rel=1e-9)
     assert again == 400 and "already exist" in refused["error"], refused
 
 
@@ -2628,13 +2677,19 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         # list of the rows that decide it (`transport.md` § 3.8.1).
         "mode": True,
     }
-    # ...and those rows the generator's: its weights, its nodes, and the
-    # outermost frames' largest atom moving the maximum displacement.
+    # ...and those rows the generator's: its weights, its nodes, the
+    # temperature stated, the mode's quanta and spread at it, and the
+    # outermost move measured on the frames written.
     assert [row[-1] for row in expect["frames"]] == pytest.approx(
         list(_WEIGHTS), rel=1e-12)
     assert [row[3] for row in expect["frames"]] == pytest.approx(
         list(_NODES_SIGMA), rel=1e-12)
-    assert stated("max_displacement_ang") == _MAX_DISPLACEMENT_ANG
+    assert stated("temperature_k") == _TEMPERATURE_K
+    n = 1.0 / np.expm1(stated("frequency_cm1") * _C2_CM_K / _TEMPERATURE_K)
+    assert stated("mean_quanta") == pytest.approx(n, rel=1e-6)
+    assert stated("sigma_amu12_ang") == pytest.approx(
+        stated("zero_point_amplitude_amu12_ang") * (2 * n + 1) ** 0.5,
+        rel=1e-9)
     assert {n: stated(n) for n in _SAMPLING} == _SAMPLING
     # ...every row written with its meaning, the vocabulary's own words
     # (`model/structure.md` § 2.2f).
@@ -2643,9 +2698,23 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     for frame in (None, *range(_N_FRAMES)):
         for r in pair.customized_rows(frame):
             assert r["note"] == means[r["name"]], (frame, r)
-    assert max(stated("max_atom_displacement_ang", f)
-               for f in range(_N_FRAMES)) == pytest.approx(
-        _MAX_DISPLACEMENT_ANG, rel=1e-12)
+    # ...and every number a frame states is ITS COORDINATES' -- each atom's
+    # move from frame 0, as the .xyz holds them to its six decimals, and the
+    # position along the mode from them and the masses -- so a frame written
+    # at another step than its rows say is told apart.
+    xyz = np.asarray(pair.frames, dtype=float)
+    masses = np.asarray(expect["masses_amu"])
+    for f in range(_N_FRAMES):
+        moved = xyz[f] - xyz[0]
+        each = np.linalg.norm(moved, axis=1)
+        assert stated("max_atom_displacement_ang", f) == pytest.approx(
+            each.max(), abs=2e-6), f
+        assert stated("displacement_ang", f) == pytest.approx(
+            np.linalg.norm(moved), abs=1e-5), f
+        assert abs(stated("q_amu12_ang", f)) == pytest.approx(
+            np.sqrt((masses * each ** 2).sum()), abs=1e-4), f
+    assert stated("max_displacement_ang") == pytest.approx(
+        np.linalg.norm(xyz - xyz[0], axis=2).max(), abs=2e-6)
     fields = {}
     for kind, (described, schema) in junction.tab_said.items():
         assert described["ok"] and described["citation"], (kind, described)

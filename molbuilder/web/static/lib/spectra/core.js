@@ -396,7 +396,7 @@
         }
         // THE FILE IS ASKED AGAIN WITH THE SAVED KNOBS.  The read above is
         // async, so the file's load -- in flight or done -- asked the door
-        // with the defaults: the temperature its spreads and references are
+        // with the defaults: the temperatures its spreads and frame sets are
         // at, and the infrared it carries (web/spectra.md § 3.2, § 4.1).  A
         // load of the same file is the one door that answers both; it
         // supersedes one still in flight -- and is asked only when the
@@ -1147,15 +1147,15 @@
     let _lastAsk = null;
     function _askOf(choices) {
         const c = choices || state.uiPrefs;
-        // THE REFERENCE'S TEMPERATURE, where the frame-set dialog named one
+        // THE FRAME SET'S TEMPERATURE, where the frame-set dialog named one
         // for this file (web/spectra.md § 4.3); unnamed, the door takes the
         // run's own thermochemistry temperature.
-        const ref = (_refTemp && _refTemp.path === state.fileState.path)
-            ? { reference_temperature_k: _refTemp.t } : {};
+        const set = (_setTemp && _setTemp.path === state.fileState.path)
+            ? { frameset_temperature_k: _setTemp.t } : {};
         return Object.assign({ temperature_k: state.animTemperature },
-                             _infraredAsk(c), _ramanAsk(c), ref);
+                             _infraredAsk(c), _ramanAsk(c), set);
     }
-    let _refTemp = null;
+    let _setTemp = null;
 
     /** Load the file ``path`` names -- the dropdown's pick, a return to
      *  the tab, or the registry's hot swap -- and FOLLOW it while
@@ -3583,30 +3583,28 @@
      */
     /* ── A mode's frame set (web/spectra.md § 4.3) ─────────────────────────
      *
-     * The page writes nothing itself: it asks the person the maximum
-     * displacement, the rule and where to save, and the one generator answers
-     * (`POST /api/spectra/frameset`, engines/vibration.md § 5.10 ③).  The
-     * animation's amplitude above is a drawing choice and never this input.
+     * The page writes nothing itself: it asks the person the temperature
+     * the frames sample, the rule and where to save, and the one generator
+     * answers (`POST /api/spectra/frameset`, engines/vibration.md § 5.10 ③).
+     * The animation's amplitude above is a drawing choice and never this
+     * input.
      */
-    /* THE REFERENCE ASKED AT ANOTHER TEMPERATURE (web/spectra.md § 4.3):
-     * the door answers each mode's reference at it, and what it says
-     * replaces what the page holds of the reference -- nothing else. */
-    async function _askReference(t) {
-        const path = state.fileState.path, held = state.fileState.results;
-        if (!path || !held) return null;
-        _refTemp = { path: path, t: t };
+    /* WHAT A TEMPERATURE MEANS FOR EACH MODE (web/spectra.md § 4.3): the
+     * load door's answer at it -- ``{t, modes}``, ``t`` the temperature it
+     * computed at and each mode's ``frameset`` -- or null when it did not
+     * answer for this file.  The page's own results are left as they are. */
+    async function _askFrameSet(t) {
+        const path = state.fileState.path;
+        if (!path || !state.fileState.results) return null;
+        _setTemp = { path: path, t: t };
         let body;
         try {
             body = (await fetchResults(path, undefined)).body;
         } catch (_) { return null; }
         if (path !== state.fileState.path || !body.ok || !body.results)
             return null;
-        held.reference_temperature_k = body.results.reference_temperature_k;
-        (body.results.modes || []).forEach((m, i) => {
-            if (held.modes[i]) held.modes[i].reference_max_displacement_ang =
-                m.reference_max_displacement_ang;
-        });
-        return held;
+        return { t: body.results.frameset_temperature_k,
+                 modes: body.results.modes || [] };
     }
 
     async function onWriteFrameSet() {
@@ -3627,65 +3625,97 @@
             ? Math.max(...mode.zero_point_displacement_ang.map(
                   v => Math.hypot(v[0], v[1], v[2])))
             : null;
-        // THE REFERENCE AT THE DIALOG'S OWN TEMPERATURE, the door's
-        // (web/spectra.md § 4.3): the maximum displacement whose frames
-        // sample the mode's thermal spread, for three frames and five, at
-        // the temperature the door computed it at -- the run's own
-        // thermochemistry temperature until another is typed.
+        // WHAT THE TEMPERATURE MEANS FOR THIS MODE, the load door's
+        // (web/spectra.md § 4.3): its mean number of quanta, its spread
+        // against its zero-point one and the outermost move for the rule
+        // chosen -- said at the temperature the door computed them at, the
+        // run's own thermochemistry temperature until another is typed.
         const held = state.fileState.results || {};
-        const refSaid = (m, at) => {
-            const ref = m && m.reference_max_displacement_ang;
-            return (ref && ref["3"] != null && at != null)
-                ? "  Reference at " + at + " K — frames sampling the "
-                  + "mode's thermal spread: " + ref["3"].toFixed(4)
-                  + " Å for 3 frames, " + ref["5"].toFixed(4) + " Å for 5."
-                : "";
+        const RULES = ["3", "5", "7"];
+        // WHAT THE DOOR SAID OF THIS MODE: ``{t, f}``, the temperature it
+        // computed at and the mode's ``frameset`` there.
+        const saidOf = (answer) => {
+            const m = (answer.modes || []).find(
+                x => x.index_1based === mode.index_1based);
+            return m && m.frameset ? { t: answer.t, f: m.frameset } : null;
         };
-        const base = "The maximum displacement is the largest atom's move at "
-            + "the outermost frames; it sets the spread the frames sample."
-            + (zp !== null ? "  This mode's largest zero-point atom move: "
-               + zp.toFixed(4) + " Å." : "");
+        const meaning = (said, nodes) => {
+            const f = said && said.f;
+            const move = f && f.outermost_move_ang
+                ? f.outermost_move_ang[nodes] : null;
+            if (!f || said.t == null || move == null) return "";
+            return "At " + said.t + " K the mode holds "
+                + f.mean_quanta.toFixed(3) + " quanta on average, and its "
+                + "spread is " + f.sigma_over_zero_point.toFixed(3)
+                + " times its zero-point spread.  With " + nodes + " frames "
+                + "the outermost frames move the atom that moves most by "
+                + move.toFixed(4) + " Å"
+                + (zp !== null ? " (its largest zero-point move: "
+                   + zp.toFixed(4) + " Å)." : ".");
+        };
+        // THE BOX STARTS AT THE RUN'S THERMOCHEMISTRY TEMPERATURE, every
+        // time (web/spectra.md § 4.3) -- the door asked again there when the
+        // page holds its numbers at another; a result that states none
+        // starts it empty.
+        const startAt = held.thermo && held.thermo.temperature_K != null
+            ? Number(held.thermo.temperature_K) : null;
+        let said = null;
+        if (startAt !== null) {
+            said = held.frameset_temperature_k === startAt
+                ? saidOf({ t: startAt, modes: held.modes })
+                : (await _askFrameSet(startAt).then(
+                      a => a && saidOf(a)));
+        }
         const { askFields } = await import("/static/lib/dialog.js");
         const { chooseSavePath } = await import(
             "/static/lib/projects/dialogs.js");
         const { toDisplay } = await import("/static/lib/molview/index.js");
-        let refTimer = null, askedAt = held.reference_temperature_k;
+        let timer = null, inBox = startAt, nodesNow = "3";
         const asked = await askFields({
             title: "Mode " + mode.index_1based + " as a frame set",
-            hint: base + refSaid(mode, held.reference_temperature_k),
+            hint: "The temperature of the motion the frames sample: the "
+                + "junction's, or for a mode pumped out of equilibrium its "
+                + "effective temperature.  It sets the spread; each frame's "
+                + "weight is the rule's own.",
             fields: [
-                { name: "max", label: "Maximum displacement (Å)",
-                  type: "number", attrs: { min: "0", step: "any" } },
-                { name: "nodes", label: "Frames", value: "3",
-                  options: [["3", "3"], ["5", "5"]] },
-                { name: "temperature",
-                  label: "Temperature for the reference (K)",
+                { name: "temperature", label: "Temperature (K)",
                   type: "number", attrs: { min: "0", step: "any" },
-                  value: held.reference_temperature_k == null ? ""
-                      : held.reference_temperature_k },
+                  value: startAt == null ? "" : startAt },
+                { name: "nodes", label: "Frames", value: "3",
+                  options: RULES.map(n => [n, n]) },
             ],
-            validate: (v) => !(Number(v.max) > 0)
-                ? "the maximum displacement is a positive number of Å"
-                : (v.nodes !== "3" && v.nodes !== "5")
-                ? "three frames or five" : null,
-            // A TEMPERATURE TYPED ASKS THE DOOR AGAIN, once the typing pauses,
-            // and the hint says what it answered.
-            onInput: (v, { setHint }) => {
+            note: said && said.t === startAt ? meaning(said, nodesNow) : "",
+            validate: (v) => !(v.temperature !== ""
+                               && Number(v.temperature) >= 0)
+                ? "the temperature is a number of kelvin, 0 or more"
+                : !RULES.includes(v.nodes)
+                ? "three, five or seven frames" : null,
+            // THE NOTE SPEAKS ONLY OF THE TEMPERATURE IN THE BOX: another
+            // rule is said from what the door already answered there; a
+            // temperature typed asks the door again once the typing pauses,
+            // and an answer for a temperature no longer in the box is never
+            // said.
+            onInput: (v, { setNote }) => {
+                nodesNow = v.nodes;
+                clearTimeout(timer);
                 const t = parseFloat(v.temperature);
-                if (!Number.isFinite(t) || t < 0 || t === askedAt) return;
-                clearTimeout(refTimer);
-                refTimer = setTimeout(async () => {
-                    askedAt = t;
-                    const now = await _askReference(t);
-                    if (!now) return;
-                    const m = (now.modes || []).find(
-                        x => x.index_1based === mode.index_1based);
-                    setHint(base + refSaid(m, now.reference_temperature_k));
+                inBox = v.temperature !== "" && Number.isFinite(t) && t >= 0
+                    ? t : null;
+                setNote(said && said.t === inBox ? meaning(said, nodesNow)
+                        : "");
+                if (inBox === null || (said && said.t === inBox)) return;
+                const asking = inBox;
+                timer = setTimeout(async () => {
+                    const got = await _askFrameSet(asking);
+                    const now = got && saidOf(got);
+                    if (!now || now.t !== inBox) return;
+                    said = now;
+                    setNote(meaning(said, nodesNow));
                 }, 250);
             },
             confirmLabel: "Next",
         });
-        clearTimeout(refTimer);
+        clearTimeout(timer);
         if (!asked) return;
         let out;
         try {
@@ -3711,7 +3741,7 @@
                 body: JSON.stringify({
                     run: String(path).replace(/\/[^/]*$/, ""),
                     mode: mode.index_1based,
-                    max_displacement_ang: Number(asked.max),
+                    temperature_k: Number(asked.temperature),
                     nodes: Number(asked.nodes), out: out }),
             });
             body = await res.json();

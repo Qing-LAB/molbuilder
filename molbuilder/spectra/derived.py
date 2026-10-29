@@ -9,8 +9,9 @@ ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
         whole run), the zero-point amplitude ``Q_zp = sqrt(hbar / 2 omega)``
         and every free atom's displacement at it, ``Q_zp * L_canonical``; and
         a mode's thermal spread at a temperature,
-        ``sigma = Q_zp * sqrt(coth(hbar omega / 2 k_B T))``
-        (`science/vibrational-averaging.md` § 2)
+        ``sigma = Q_zp * sqrt(coth(hbar omega / 2 k_B T))``, and its mean
+        number of quanta there, ``n = 1 / (exp(hbar omega / k_B T) - 1)``
+        (`science/vibrational-averaging.md` § 2, § 2a)
 USED-BY the one writer of a result file, every engine's
         (`sidecars.spectra.write_spectra_payload`); `SpectraResults.to_dict`;
         the reader's check (`SpectraResults.from_dict`); the spectrum tab's
@@ -94,6 +95,20 @@ def thermal_spread_amu12_ang(zero_point_amplitude_amu12_ang: float,
     x = float(frequency_cm1) * CM1_KELVIN / (2.0 * float(temperature_k))
     return float(zero_point_amplitude_amu12_ang) * math.sqrt(
         1.0 / math.tanh(x))
+
+
+def mean_quanta(frequency_cm1: float, temperature_k: float) -> float:
+    """A harmonic mode's mean number of vibrational quanta at
+    ``temperature_k``, ``n = 1 / (exp(hbar omega / k_B T) - 1)`` -- 0 at
+    0 K -- so that its spread is ``Q_zp * sqrt(2n + 1)``
+    (`science/vibrational-averaging.md` § 2a).  Written as
+    ``e^-x / (1 - e^-x)``, which neither overflows for a stiff mode in the
+    cold nor loses digits for a soft one in the heat."""
+    temperature_k = checked_temperature_k(temperature_k)
+    if temperature_k == 0.0:
+        return 0.0
+    x = float(frequency_cm1) * CM1_KELVIN / float(temperature_k)
+    return math.exp(-x) / -math.expm1(-x)
 
 
 def thermal_spread_of(mode: Mapping[str, Any],

@@ -342,8 +342,7 @@ def mode_over_atoms(mode_free, free_idxs, n_atoms):
 def q_for_largest_move(mode_over_atoms_, move_ang):
     """The displacement along the mode, ``Q`` in amu^1/2 Å, at which the
     atom that moves most moves ``move_ang`` Å: ``move / max_k |L_k|`` --
-    the frame generator's outermost frame and Raman's ``±δQ`` alike
-    (`engines/vibration.md` § 5.10 ③, § 5.11 § 3)."""
+    a Raman phase's ``±δQ`` (`engines/vibration.md` § 5.11 § 3)."""
     import numpy as _np
     largest = float(_np.linalg.norm(_np.asarray(mode_over_atoms_,
                                                 dtype=float), axis=1).max())

@@ -43,9 +43,10 @@ from .stages import same_volts
 #: row's charges, each run's phases, the calculation's own records and its
 #: provenance (`engines/transport.md` § 2a.12, *Export*; the user,
 #: 2026-10-23); ``@7``: the file states itself, its numbers variables
-#: (`model/datafiles.md` § 2b).  An older file is refused by its version,
-#: and `summarize task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@7"
+#: (`model/datafiles.md` § 2b); ``@8``: a mode's frame set's ``mean_quanta``,
+#: and its outermost move measured (`model/structure.md` § 2.2f).  An older
+#: file is refused by its version, and `summarize task` writes it again.
+DATA_SCHEMA = "molbuilder/transport-data@8"
 
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized

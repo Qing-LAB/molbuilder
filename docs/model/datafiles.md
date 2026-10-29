@@ -46,7 +46,7 @@ by a second reader: it is that composition on its grid, for analysis.
 
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
-| `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@7` | `engines/transport.md` § 2a.12 |
+| `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@8` | `engines/transport.md` § 2a.12 |
 | `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@8` (`@1`–`@7` read as they are) | `engines/vibration.md` § 6.10.5 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@4` | `model/parse.md` § 5e |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@2` (`@1` read as it is) | `engines/vibration.md` § 5.11 § 8 |

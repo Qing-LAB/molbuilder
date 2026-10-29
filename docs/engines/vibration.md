@@ -1998,7 +1998,7 @@ partition, is not. *(Found while drafting, fixed
 spelled the retired `WriteMullikenPop`; it names 5.4.2's `Charge.Mulliken`
 and `Charge.Mulliken.Format` now, `siesta/input.py`.)*
 
-**③ The frame set — the generator** *(built 2.35.0; its extent a temperature, and seven frames offered, decided 2026-10-28 — to be built)* (V1.25; D6, D7; one
+**③ The frame set — the generator** *(built 2.35.0; its extent a temperature, and seven frames offered, decided 2026-10-28, built 2.51.0)* (V1.25; D6, D7; one
 mode per set, the user 2026-10-09; its extent the user's, 2026-10-24, stated as a temperature, 2026-10-28). One generator writes
 **one** multi-frame pair for **one** mode *(user, 2026-10-09: "i would rather
 let one multi-frame focus on one mode ... each vibration mode will have a

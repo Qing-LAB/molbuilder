@@ -89,39 +89,44 @@ ROWS: Tuple[Row, ...] = (
         "the mode's wavenumber, as the vibration result states it"),
     Row("temperature_k", "structure", "given", "K",
         "Temperature", "K",
-        "the temperature whose thermal distribution the frames sample, "
-        "where the set's maker states one -- the frame generator states "
-        "none"),
+        "the temperature of the motion the frames sample -- the junction's, "
+        "or for a mode pumped out of equilibrium its effective temperature, "
+        "the one whose thermal state holds the same mean number of quanta; "
+        "the input that sets the spread, chosen by the set's maker"),
+    Row("mean_quanta", "structure", "derived", None,
+        "Mean quanta n", None,
+        "the mode's mean number of vibrational quanta at that temperature, "
+        "n = 1 / (exp(hbar omega / k_B T) - 1)"),
     Row("zero_point_amplitude_amu12_ang", "structure", "given",
         "amu^1/2 angstrom", "Zero-point amplitude", "amu½·Å",
         "the mode's zero-point amplitude Q_zp = sqrt(hbar / 2 omega) in the "
         "mass-weighted coordinate q, as the vibration result states it"),
-    Row("max_displacement_ang", "structure", "given", "angstrom",
-        "Maximum displacement", "Å",
-        "the largest single atom's move at the outermost frames -- the "
-        "input that sets the spread, chosen by the set's maker"),
+    Row("max_displacement_ang", "structure", "measured", "angstrom",
+        "Outermost move", "Å",
+        "the outermost move: the largest single atom's move at the "
+        "outermost frames, max_A |R_A - R0_A| = sqrt(2) x_out sigma "
+        "max_A |L_A|, x_out the rule's outermost node -- the check against "
+        "a bond length"),
     Row("sigma_amu12_ang", "structure", "derived", "amu^1/2 angstrom",
         "Spread σ", "amu½·Å",
-        "the spread sigma of the Gaussian in q the frames sample -- from "
-        "the maximum displacement, sigma = q_out / (sqrt(2) x_out), q_out = "
-        "max_displacement / max_A |L_A|, x_out the rule's outermost node; "
-        "or, where the set states a temperature, the thermal spread "
+        "the spread sigma of the Gaussian in q the frames sample, from the "
+        "temperature: sigma = Q_zp sqrt(2n + 1) = "
         "Q_zp sqrt(coth(hbar omega / 2 k_B T))"),
     Row("sampling_rule", "structure", "given", None,
         "Sampling rule", None,
         "the rule, by name, that placed the frames along the mode and gave "
         "their weights.  gauss-hermite, the frame generator's: the frames "
-        "sit at the nodes q_f of an n-point Gauss-Hermite rule for a "
+        "sit at the nodes q_f of an m-point Gauss-Hermite rule for a "
         "Gaussian of spread sigma in q, density exp(-q^2 / 2 sigma^2) / "
         "(sigma sqrt(2 pi)), and sum_f weight_f X_f approximates that "
         "Gaussian's average of a property X -- exactly when X is a "
-        "polynomial in q of degree below 2n; a response not smooth over the "
+        "polynomial in q of degree below 2m; a response not smooth over the "
         "spread, a level crossing E_F, is averaged poorly", text=True),
     Row("sampling_nodes", "structure", "given", None,
         "Nodes", None,
-        "n, the rule's number of nodes, one frame at each -- three "
-        "Gauss-Hermite nodes are q = 0, +-sqrt(3) sigma, weighted 2/3, "
-        "1/6, 1/6"),
+        "m, the rule's number of nodes, one frame at each -- the frame "
+        "generator writes 3 (q = 0, +-sqrt(3) sigma, weighted 2/3, 1/6, "
+        "1/6), 5 or 7"),
     Row("mass_source", "structure", "given", None,
         "Masses", None,
         "which masses the mass_amu channel holds, by name, and so which "

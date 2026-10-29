@@ -1895,40 +1895,43 @@ def _in_the_tree(ctx, param, value):
 @click.option("--mode", "mode", type=int, required=True,
               help="the mode, counted as the vibration result counts it "
                    "(from 1, ascending frequency).")
-@click.option("--max-displacement", "max_displacement", type=float,
-              required=True, metavar="ANGSTROM",
-              help="the largest atom's move at the outermost frames, in "
-                   "Angstrom -- it sets the spread the frames sample.")
-@click.option("--nodes", type=click.Choice(["3", "5"]), default="3",
+@click.option("--temperature", "temperature", type=float, required=True,
+              metavar="KELVIN",
+              help="the temperature of the motion the frames sample -- the "
+                   "junction's, or a pumped mode's effective one -- in K, 0 "
+                   "or more; it sets the spread.")
+@click.option("--nodes", type=click.Choice(["3", "5", "7"]), default="3",
               show_default=True,
-              help="the Gauss-Hermite rule: three frames, or five.")
+              help="the Gauss-Hermite rule: three frames, five or seven.")
 @click.option("--out", "out", required=True, callback=_in_the_tree,
               help="the pair's .xyz to write, in the projects tree; its "
                    ".molstruct.json beside it.")
-def cmd_frameset_from_mode(run, mode, max_displacement, nodes, out):
+def cmd_frameset_from_mode(run, mode, temperature, nodes, out):
     """Write vibration RUN's mode as one multi-frame pair: frame 0 the
-    geometry the Hessian was taken at, then the Gauss-Hermite nodes of a
-    Gaussian whose spread the maximum displacement sets, each frame its
-    weight (engines/vibration.md § 5.10 ③).  RUN is the vibration run's
-    folder and OUT the pair's .xyz, each read from the projects tree as
-    --bundle is.  A pair already at OUT is refused, never written over.
+    geometry the Hessian was taken at, then the Gauss-Hermite nodes of the
+    Gaussian the mode spreads over at the temperature, each frame its weight
+    (engines/vibration.md § 5.10 ③).  RUN is the vibration run's folder and
+    OUT the pair's .xyz, each read from the projects tree as --bundle is.  A
+    pair already at OUT is refused, never written over.
 
     Example::
 
         molbuilder frameset from-mode P/spectrum/V/01_freq/run-0 \\
-            --mode 7 --max-displacement 0.05 --out P/structure/mode7.xyz
+            --mode 7 --temperature 300 --out P/structure/mode7.xyz
     """
     from .mode_frames import FrameSetError, frameset_from_mode
     from .projects import projects_root
     try:
-        got = frameset_from_mode(run, mode=mode,
-                                 max_displacement_ang=max_displacement,
+        got = frameset_from_mode(run, mode=mode, temperature_k=temperature,
                                  nodes=int(nodes), out=out,
                                  root=projects_root())
     except FrameSetError as exc:
         raise click.ClickException(str(exc))
     click.echo(f"wrote {got.path} -- mode {mode}, {len(got.frames)} frames "
                f"(and its .molstruct.json)")
+    click.echo(f"  at {temperature:g} K the mode holds {got.mean_quanta:.4g} "
+               f"quanta on average; its spread is "
+               f"{got.sigma_over_zero_point:.4f} x its zero-point amplitude")
     click.echo("  frame  q/sigma   largest atom move (A)  weight")
     for f, row in enumerate(got.frames):
         click.echo(f"  {f:>5}  {row['q_sigma']:+8.4f}  "

@@ -7,18 +7,21 @@ MODULE  mode_frames (L2; the run door, the vibration result's reader, the
         structure and its codec, numpy)
 ROLE    :func:`frameset_from_mode` -- the one generator, and
         :class:`ModeFrames`, what it wrote and what it says;
-        :func:`reference_max_displacement` -- the maximum displacement whose
-        frames sample a mode's spread at a temperature, beside the
-        person's own (`science/vibrational-averaging.md` § 5)
+        :func:`outermost_move` and :func:`at_temperature` -- what a
+        temperature means for a mode before its set is written: its mean
+        number of quanta, its spread and the outermost frames' largest atom
+        move for each rule (`science/vibrational-averaging.md` § 5)
 USED-BY the command line (`molbuilder frameset from-mode`) and the spectrum
-        viewer's doors (`POST /api/spectra/frameset`; the reference, at
-        `POST /api/spectra/load`)
+        viewer's doors (`POST /api/spectra/frameset`; what a temperature
+        means, at `POST /api/spectra/load`)
 
-**Its extent is the person's** (the user, 2026-10-24): the maximum
-displacement -- the largest atom's move at the outermost frames -- sets the
-spread of the Gaussian the frames sample, and each frame's weight is the
-Gauss-Hermite rule's own.  No temperature is stated: the spread sits beside
-the mode's zero-point amplitude, which a person compares it with.
+**Its extent is the person's: a temperature** (the user, 2026-10-28) --
+the junction's, or for a mode pumped out of equilibrium its effective one.
+It sets the mode's mean number of quanta ``n`` and the spread of the
+Gaussian the frames sample, ``sigma = Q_zp sqrt(2n + 1)``; each frame sits
+at a Gauss-Hermite node of it with the rule's own weight, and the
+outermost frames' largest atom move is measured and reported -- the check
+a person reads against a bond length.
 """
 from __future__ import annotations
 
@@ -31,9 +34,10 @@ import numpy as np
 
 from .persist import sha256_of
 
-#: The rules the generator writes -- three frames by default, five on
-#: request (`science/vibrational-averaging.md` § 5.1, § 5.3).
-NODES = (3, 5)
+#: The rules the generator writes -- three frames by default, five or seven
+#: on request, each the check of the one before
+#: (`science/vibrational-averaging.md` § 5.1, § 5.3).
+NODES = (3, 5, 7)
 
 #: How its frames sample the mode, as its ``sampling_rule`` row states it
 #: (`model/structure.md` § 2.2f).
@@ -48,10 +52,15 @@ class FrameSetError(ValueError):
 @dataclass(frozen=True)
 class ModeFrames:
     """What :func:`frameset_from_mode` wrote: the pair's ``.xyz`` (``path``),
-    each frame's position in units of the spread, largest atom move and
-    weight (``frames``), and what the generator says of the set (``said``):
-    the electrode atoms that move, a set with no settings to cite."""
+    the mode's mean number of quanta at the temperature and its spread
+    against its zero-point amplitude (``mean_quanta``,
+    ``sigma_over_zero_point``), each frame's position in units of the
+    spread, largest atom move and weight (``frames``), and what the
+    generator says of the set (``said``): the electrode atoms that move, a
+    set with no settings to cite."""
     path: Path
+    mean_quanta: float
+    sigma_over_zero_point: float
     frames: Tuple[Dict[str, float], ...]
     said: Tuple[str, ...]
 
@@ -108,20 +117,41 @@ def _relaxation_record(run) -> Tuple[Optional[Dict[str, Any]], str]:
     return stated, ""
 
 
-def reference_max_displacement(mode: Dict[str, Any], temperature_k: float,
-                               nodes: int) -> Optional[float]:
-    """THE REFERENCE MAXIMUM DISPLACEMENT of a mode row at ``temperature_k``
-    for the ``nodes``-point rule, in Angstrom: the ``d_max`` whose frames
-    sample the mode's thermal spread, ``√2 · x_out · σ_T · max_k |L_k|``
-    (`science/vibrational-averaging.md` § 5) -- the inverse of
-    :func:`frameset_from_mode`'s ``σ = d_max / (√2 x_out max |L|)``, by the
-    same node rule.  ``None`` for a mode with no zero-point amplitude (an
-    imaginary one).  What the person types stays the person's."""
-    from .spectra.derived import thermal_spread_of
+def _checked_nodes(nodes: int) -> int:
+    """``nodes`` when it is one of the rules the generator writes, refused
+    by name otherwise."""
     if nodes not in NODES:
         raise FrameSetError(f"the frame set is written at "
-                            f"{' or '.join(str(n) for n in NODES)} nodes, "
-                            f"not {nodes}")
+                            f"{', '.join(str(n) for n in NODES[:-1])} or "
+                            f"{NODES[-1]} nodes, not {nodes}")
+    return nodes
+
+
+def _checked_temperature(temperature_k) -> float:
+    """The temperature the frames sample, by the rule every door shares
+    (`spectra.derived.checked_temperature_k`) -- stated every time, never
+    defaulted -- refused as the generator refuses."""
+    from .spectra.derived import checked_temperature_k
+    try:
+        return checked_temperature_k(temperature_k)
+    except ValueError:
+        raise FrameSetError(
+            f"the temperature is the one the frames sample -- the "
+            f"junction's, or a pumped mode's effective one -- a number of "
+            f"kelvin, 0 or more; {temperature_k!r} is not one") from None
+
+
+def outermost_move(mode: Dict[str, Any], temperature_k: float,
+                   nodes: int) -> Optional[float]:
+    """THE OUTERMOST MOVE of a mode row at ``temperature_k`` for the
+    ``nodes``-point rule, in Angstrom: the largest atom's move at the
+    outermost frames, ``√2 · x_out · σ · max_A |L_A|`` with ``σ`` the
+    mode's spread at that temperature (`science/vibrational-averaging.md`
+    § 5) -- what :func:`frameset_from_mode` measures on the frames it
+    writes, by the same node rule.  ``None`` for a mode with no zero-point
+    amplitude (an imaginary one)."""
+    from .spectra.derived import thermal_spread_of
+    nodes = _checked_nodes(nodes)
     sigma = thermal_spread_of(mode, temperature_k)
     if sigma is None:
         return None
@@ -129,6 +159,28 @@ def reference_max_displacement(mode: Dict[str, Any], temperature_k: float,
         np.asarray(mode["eigenvector_canonical"], dtype=float), axis=1).max())
     x_out = float(np.abs(_ordered_nodes(nodes)[0]).max())
     return math.sqrt(2.0) * x_out * float(sigma) * largest
+
+
+def at_temperature(mode: Dict[str, Any],
+                   temperature_k: float) -> Optional[Dict[str, Any]]:
+    """WHAT ``temperature_k`` MEANS FOR A MODE ROW before its set is
+    written (`web/spectra.md` § 4.3): its mean number of quanta, its spread
+    and the outermost move for each rule the generator writes --
+    ``{mean_quanta, sigma_amu12_ang, sigma_over_zero_point,
+    outermost_move_ang: {"3": …, …}}`` -- from the derivations the
+    generator writes by.  ``None`` for a mode with no zero-point
+    amplitude."""
+    from .spectra.derived import mean_quanta, thermal_spread_of
+    sigma = thermal_spread_of(mode, temperature_k)
+    if sigma is None:
+        return None
+    return {"mean_quanta": mean_quanta(mode["frequency_cm1"], temperature_k),
+            "sigma_amu12_ang": float(sigma),
+            "sigma_over_zero_point": float(sigma) / float(
+                mode["zero_point_amplitude_amu12_ang"]),
+            "outermost_move_ang": {str(n): outermost_move(mode, temperature_k,
+                                                          n)
+                                   for n in NODES}}
 
 
 def _relative(path: Path, root: Optional[Path]) -> str:
@@ -143,21 +195,21 @@ def _relative(path: Path, root: Optional[Path]) -> str:
     return str(path)
 
 
-def frameset_from_mode(run_folder, *, mode: int,
-                       max_displacement_ang: float, nodes: int = 3,
-                       out, root: Optional[Path] = None) -> ModeFrames:
+def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
+                       nodes: int = 3, out,
+                       root: Optional[Path] = None) -> ModeFrames:
     """THE ONE GENERATOR (`engines/vibration.md` § 5.10 ③): vibration run
     ``run_folder``'s mode ``mode`` -- counted as its result counts it,
     ``index_1based`` -- written as one multi-frame pair at ``out`` (its
-    ``.xyz``), the largest atom moving ``max_displacement_ang`` at the
-    outermost frames, at ``nodes`` Gauss-Hermite nodes.  ``root`` is the
+    ``.xyz``), its frames at the ``nodes`` Gauss-Hermite nodes of the
+    Gaussian the mode spreads over at ``temperature_k``.  ``root`` is the
     projects tree the run's folder is stated from in ``info.vibration``.
 
     Refused, naming what to do: no run of ours -- or a calculation whose
-    description does not read, in its reader's words -- no result in it, a result
-    stating no masses, a mode it does not hold or an imaginary one, a
-    maximum displacement that is not a positive number, another rule than
-    :data:`NODES`, a pair already at ``out``."""
+    description does not read, in its reader's words -- no result in it, a
+    result stating no masses, a mode it does not hold or an imaginary one,
+    a temperature that is not a number of kelvin, 0 or more, another rule
+    than :data:`NODES`, a pair already at ``out``."""
     from .chemistry import MASS_SOURCE
     from .frame_average import INFO_KEY, MASS_CHANNEL, ROWS
     from .runfiles import ROLE_SPECTRA
@@ -165,24 +217,14 @@ def frameset_from_mode(run_folder, *, mode: int,
     from .siesta.vibration_phases import force_constants_call
     from .sidecars.molstruct import sidecar_path_for
     from .sidecars.spectra import SpectraJsonError, parse_spectra_json
-    from .spectra.derived import zero_point_amplitude_amu12_ang
+    from .spectra.derived import (mean_quanta, thermal_spread_amu12_ang,
+                                  zero_point_amplitude_amu12_ang)
     from .structure import AtomChannel, Structure
     from .transport.sort import ELECTRODE_LABELS
     from .workingcopy_structure import StructureCodec
 
-    if nodes not in NODES:
-        raise FrameSetError(f"the frame set is written at "
-                            f"{' or '.join(str(n) for n in NODES)} nodes, "
-                            f"not {nodes}")
-    try:
-        d_max = float(max_displacement_ang)
-    except (TypeError, ValueError):
-        d_max = float("nan")
-    if not (math.isfinite(d_max) and d_max > 0.0):
-        raise FrameSetError(
-            f"the maximum displacement is the largest atom's move at the "
-            f"outermost frames, a positive number of Angstrom -- "
-            f"{max_displacement_ang!r} is not one")
+    nodes = _checked_nodes(nodes)
+    temperature_k = _checked_temperature(temperature_k)
     out = Path(out)
     if out.suffix != ".xyz":
         raise FrameSetError(f"{out.name}: the pair is written as its .xyz "
@@ -247,17 +289,17 @@ def frameset_from_mode(run_folder, *, mode: int,
 
     # THE MODE OVER EVERY ATOM: the canonical eigenvector on the free atoms,
     # zero on every held one -- so no held atom moves.
-    # THE ONE DISPLACEMENT RULE (`spectra.normal_modes`): the mode over
-    # every atom, the Q at which the largest atom moves d_max, each frame
-    # R + q·L -- what a Raman phase's plan applies at ±δQ too (§ 5.11 § 3).
-    from .spectra.normal_modes import (displaced, mode_over_atoms,
-                                       q_for_largest_move)
+    # THE SPREAD AT THE TEMPERATURE -- n quanta, sigma = Q_zp sqrt(2n + 1)
+    # (`science/vibrational-averaging.md` § 5) -- and each frame at a node,
+    # q_j = sqrt(2) sigma x_j, by THE ONE DISPLACEMENT RULE
+    # (`spectra.normal_modes`): R + q·L, what a Raman phase's plan applies
+    # at ±δQ too (§ 5.11 § 3).
+    from .spectra.normal_modes import displaced, mode_over_atoms
     L = mode_over_atoms(m.eigenvector_canonical, res.free_atom_idxs,
                         base.n_atoms)
+    n_quanta = mean_quanta(m.frequency_cm1, temperature_k)
+    sigma = thermal_spread_amu12_ang(q_zp, m.frequency_cm1, temperature_k)
     x, weights = _ordered_nodes(nodes)
-    x_out = float(np.abs(x).max())
-    q_out = q_for_largest_move(L, d_max)
-    sigma = q_out / (math.sqrt(2.0) * x_out)
     qs = [math.sqrt(2.0) * sigma * float(xj) for xj in x]
     r0 = np.asarray(base.positions, dtype=float)
     built = base.with_frames(np.stack([displaced(r0, L, q) for q in qs]))
@@ -283,32 +325,39 @@ def frameset_from_mode(run_folder, *, mode: int,
         built.set_customized(name, value, unit=vocabulary[name].unit,
                              note=vocabulary[name].means, frame=frame)
 
-    for name, value in (
-            ("mode_index_1based", int(m.index_1based)),
-            ("frequency_cm1", float(m.frequency_cm1)),
-            ("zero_point_amplitude_amu12_ang", float(q_zp)),
-            ("max_displacement_ang", d_max),
-            ("sigma_amu12_ang", sigma),
-            ("sampling_rule", SAMPLING_RULE),
-            ("sampling_nodes", int(nodes)),
-            ("mass_source", MASS_SOURCE)):
-        write(name, value)
     frames = []
-    for f, (q, w) in enumerate(zip(qs, weights)):
-        moved = q * L
-        row = {"q_sigma": q / sigma,
-               "max_atom_displacement_ang":
-                   float(np.linalg.norm(moved, axis=1).max()),
-               "weight": float(w)}
-        for name, value in (
-                ("displacement_ang", float(np.linalg.norm(moved))),
-                ("max_atom_displacement_ang",
-                 row["max_atom_displacement_ang"]),
-                ("q_amu12_ang", q),
-                ("node_sigma", row["q_sigma"]),
-                ("weight", row["weight"])):
-            write(name, value, frame=f)
-        frames.append(row)
+    for q, w in zip(qs, weights):
+        frames.append({"q_sigma": q / sigma,
+                       "max_atom_displacement_ang":
+                           float(np.linalg.norm(q * L, axis=1).max()),
+                       "weight": float(w)})
+    # THE OUTERMOST MOVE, measured on the frames written -- what the person
+    # reads against a bond length.
+    outermost = max(f["max_atom_displacement_ang"] for f in frames)
+    stated = {"mode_index_1based": int(m.index_1based),
+              "frequency_cm1": float(m.frequency_cm1),
+              "temperature_k": float(temperature_k),
+              "mean_quanta": float(n_quanta),
+              "zero_point_amplitude_amu12_ang": float(q_zp),
+              "max_displacement_ang": outermost,
+              "sigma_amu12_ang": float(sigma),
+              "sampling_rule": SAMPLING_RULE,
+              "sampling_nodes": int(nodes),
+              "mass_source": MASS_SOURCE}
+    # IN THE VOCABULARY'S ORDER (`model/structure.md` § 2.2f).
+    for r in ROWS:
+        if r.where == "structure":
+            write(r.name, stated[r.name])
+    for f, (q, row) in enumerate(zip(qs, frames)):
+        measured = {"displacement_ang": float(np.linalg.norm(q * L)),
+                    "max_atom_displacement_ang":
+                        row["max_atom_displacement_ang"],
+                    "q_amu12_ang": q,
+                    "node_sigma": row["q_sigma"],
+                    "weight": row["weight"]}
+        for r in ROWS:
+            if r.where == "frame":
+                write(r.name, measured[r.name], frame=f)
     built.set_info(INFO_KEY, {
         "run": _relative(Path(run_folder), root),
         "result_sha256": sha256_of(result)})
@@ -325,8 +374,10 @@ def frameset_from_mode(run_folder, *, mode: int,
             f"every frame of a transport citation keeps the electrode atoms "
             f"where frame 0 has them, so transport refuses this set")
     StructureCodec().write(built, out)
-    return ModeFrames(path=out, frames=tuple(frames), said=tuple(said))
+    return ModeFrames(path=out, mean_quanta=float(n_quanta),
+                      sigma_over_zero_point=float(sigma / q_zp),
+                      frames=tuple(frames), said=tuple(said))
 
 
 __all__ = ["NODES", "SAMPLING_RULE", "FrameSetError", "ModeFrames",
-           "frameset_from_mode", "reference_max_displacement"]
+           "at_temperature", "frameset_from_mode", "outermost_move"]
