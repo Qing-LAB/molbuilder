@@ -13,9 +13,11 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         Raman view; ``infrared_view`` -- the free atoms' infrared from a
         SIESTA vibration result's charges (`spectra.infrared`);
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
-        optical calls (`spectra.raman`); and
-        ``outermost_move`` -- how far a mode's frame set at a temperature
-        moves its atom that moves most (`mode_frames`)
+        optical calls (`spectra.raman`); ``reaveraged`` -- a frame set's
+        transport calculation averaged over another motion
+        (`frame_average.motion_weights`); and ``outermost_move`` -- how far
+        a mode's frame set at a temperature moves its atom that moves most
+        (`mode_frames`)
 USED-BY a notebook's kernel, which imports the molbuilder its server runs
         (`web/jupyter.md` § 7), and the post-processing documents' examples
 
@@ -151,6 +153,76 @@ def infrared_view(path, *, direction="z",
                  partition=partition or DEFAULT_PARTITION)
 
 
+def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
+    """A FRAME SET'S TRANSPORT CALCULATION AVERAGED OVER ANOTHER MOTION
+    (`science/vibrational-averaging.md` § 5.4), from its data file
+    ``<label>.transport.nc``: the bell curve at ``temperature_k`` -- the
+    junction's, or a randomly pumped mode's effective one -- with a swing
+    adding ``swing_quanta`` quanta on it, each frame weighted from its
+    position along the mode alone (`frame_average.motion_weights`).  Nothing
+    is computed again and nothing is written.
+
+    Answers ``{motion, frames, weights, reach, bias_v, energy_ev,
+    transmission, conductance_g0, conductance_change_percent, said}``: at
+    each voltage the averaged T(E), G/G0 at E_F and its change in per cent
+    of frame 0's -- NaN at a voltage whose points are not all done, said --
+    and what is said beside them.  Refused by name
+    (`frame_average.ReaverageError`): what `motion_weights` refuses, and a
+    data file of another schema (`transport.datafile.DataFileError`)."""
+    import numpy as np
+    from .frame_average import motion_weights
+    from .structure import frame_words
+    from .transport.datafile import read_data_file
+    data = read_data_file(path)["variables"]
+
+    def value(name):
+        got = data.get(name)
+        return None if got is None else np.asarray(got["data"])
+
+    def scalar(name):
+        got = value(name)
+        return float(got) if got is not None and got.size == 1 else None
+    q = value("q_amu12_ang")
+    got = motion_weights(
+        q if q is not None else [], temperature_k=temperature_k,
+        swing_quanta=swing_quanta, frequency_cm1=scalar("frequency_cm1"),
+        zero_point_amplitude_amu12_ang=scalar(
+            "zero_point_amplitude_amu12_ang"))
+    w = np.asarray(got["weights"], dtype=float)
+    n = len(w)
+    bias = [float(v) for v in value("bias_v")]
+    curves = np.asarray(value("transmission"), dtype=float)
+    g = np.asarray(value("conductance_g0"), dtype=float)
+    done = np.asarray(value("done")) == 1
+    said = list(got["said"])
+    transmission = np.full((len(bias), curves.shape[-1]), np.nan)
+    conductance = np.full(len(bias), np.nan)
+    change = np.full(len(bias), np.nan)
+    for b, v in enumerate(bias):
+        # A VOLTAGE WHOSE POINTS ARE NOT ALL DONE has no average, as the
+        # record's has none (`engines/transport.md` § 2a.12).
+        waits = [f for f in range(n) if not done[f, b]]
+        if waits:
+            names = ", ".join(frame_words(f, n) for f in waits)
+            said.append(f"at {v:g} V {names} "
+                        f"{'is' if len(waits) == 1 else 'are'} not done: no "
+                        f"average there")
+            continue
+        transmission[b] = w @ curves[:, b, :]
+        if np.all(np.isfinite(g[:, b])):
+            conductance[b] = float(w @ g[:, b])
+            if g[0, b]:
+                change[b] = 100.0 * (conductance[b] - g[0, b]) / g[0, b]
+    return {"motion": got["motion"],
+            "frames": [{"frame": f, "q_amu12_ang": float(q[f]),
+                        "weight": float(w[f])} for f in range(n)],
+            "weights": list(got["weights"]), "reach": got["reach"],
+            "bias_v": bias,
+            "energy_ev": [float(e) for e in value("energy_ev")],
+            "transmission": transmission, "conductance_g0": conductance,
+            "conductance_change_percent": change, "said": said}
+
+
 def outermost_move(path, *, mode: int, temperature_k: float,
                    nodes: int = 3):
     """THE OUTERMOST MOVE of mode ``mode`` (its number, as the result
@@ -172,4 +244,4 @@ def outermost_move(path, *, mode: int, temperature_k: float,
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "atom_index_map",
            "infrared_view", "parse", "raman_view", "read_optical_data",
            "read_raman_data", "read_spectra_data", "read_structure",
-           "read_transport_data", "outermost_move"]
+           "read_transport_data", "reaveraged", "outermost_move"]

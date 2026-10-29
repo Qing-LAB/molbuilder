@@ -11,7 +11,9 @@ ROLE    the post-process over a multi-frame transport calculation, kept out of
         file's frame part (:func:`data_file_variables`, :func:`with_meanings`,
         :func:`fill_data_file`), what a page is answered of the frames
         (:func:`answer`) and what is said of their rows
-        (:func:`warnings_of`) -- with the interpretation a mode's frame set's
+        (:func:`warnings_of`); another motion's weights, the frames
+        re-averaged after the run (:func:`motion_weights`) -- with the
+        interpretation a mode's frame set's
         maker writes its rows in: the vocabulary's page words and meanings
         (:data:`ROWS`) and what a harmonic mode's average assumes
         (:data:`ASSUMPTIONS`)
@@ -246,6 +248,141 @@ def _number(value: Any) -> Optional[float]:
 class AverageError(ValueError):
     """The frames' transmissions cannot be averaged -- the message names the
     voltage and the frame, ready to surface verbatim."""
+
+
+# ----------------------------------------------------------------------- #
+#  Another motion's weights -- the frames re-averaged after the run        #
+# ----------------------------------------------------------------------- #
+
+class ReaverageError(ValueError):
+    """The frames cannot be re-averaged over the motion asked -- the message
+    names why and the way out (`science/vibrational-averaging.md` § 5.4)."""
+
+
+def _motion_moments(m: int, sigma_t: float, q0: float) -> List[float]:
+    """The motion's averages of ``q**k``, ``k = 0 … m-1``: the bell curve of
+    spread ``sigma_t`` carried along a swing of amplitude ``q0`` -- the two
+    add, so ``<q^k> = Σ_j C(k, j) q0^j <cos^j φ> <δ^(k-j)>``, ``<cos^j φ> =
+    C(j, j/2) / 2^j`` and ``<δ^i> = σ^i (i-1)!!`` for even ``j``, ``i``, zero
+    for odd (`science/vibrational-averaging.md` § 5.4)."""
+    def swing(j: int) -> float:
+        return 0.0 if j % 2 else math.comb(j, j // 2) / 2.0 ** j
+
+    def bell(i: int) -> float:
+        return 0.0 if i % 2 else sigma_t ** i * math.prod(range(i - 1, 0, -2))
+    return [math.fsum(math.comb(k, j) * q0 ** j * swing(j) * bell(k - j)
+                      for j in range(k + 1)) for k in range(m)]
+
+
+def motion_weights(q, *, temperature_k, swing_quanta,
+                   frequency_cm1: float,
+                   zero_point_amplitude_amu12_ang: float) -> Dict[str, Any]:
+    """THE FRAMES' WEIGHTS FOR ANOTHER MOTION
+    (`science/vibrational-averaging.md` § 5.4): ``q`` each frame's position
+    along the mode (amu^1/2·Å), the motion the bell curve at
+    ``temperature_k`` -- the junction's, or a randomly pumped mode's
+    effective one, its zero-point motion included -- with a swing adding
+    ``swing_quanta`` quanta on it; the mode by its frequency and zero-point
+    amplitude.  The weights are the ones with which the frames reproduce the
+    motion's averages of ``q**0 … q**(m-1)``, so ``Σ w_f X_f`` is exact for
+    a response of degree ``m - 1`` or less.
+
+    Answers ``{motion, weights, reach, said}``: the motion's quanta, spreads
+    and turning points; each frame's weight; how far the frames reach
+    against it; and what is said beside a number -- three frames blind to a
+    swing's shape, a weight below zero.  Refused (:class:`ReaverageError`):
+    frames stating no position, two at one position, no mode's frequency or
+    zero-point amplitude, a temperature not kelvin 0 or more, swing quanta
+    below 0, a swing whose turning points lie beyond the outermost frame."""
+    import numpy as np
+    from .spectra.derived import (checked_temperature_k, mean_quanta,
+                                  thermal_spread_amu12_ang)
+    from .structure import frame_words
+    q = np.asarray(q, dtype=float).ravel()
+    m = len(q)
+    if m < 2 or not np.all(np.isfinite(q)):
+        raise ReaverageError(
+            "the frames state no position along a mode (q_amu12_ang) -- a "
+            "family of structures, or one structure: there is no motion to "
+            "weight them by (model/structure.md 2.2f)")
+    for i in range(m):
+        for j in range(i + 1, m):
+            if math.isclose(q[i], q[j], rel_tol=1e-12, abs_tol=1e-12):
+                raise ReaverageError(
+                    f"{frame_words(i, m)} and {frame_words(j, m)} sit at one "
+                    f"position along the mode, q = {q[i]:g} amu^1/2 Angstrom: "
+                    f"two frames at one position give no weight to either")
+    try:
+        nu, qzp = float(frequency_cm1), float(zero_point_amplitude_amu12_ang)
+    except (TypeError, ValueError):
+        nu = qzp = float("nan")
+    if not (math.isfinite(nu) and nu > 0 and math.isfinite(qzp) and qzp > 0):
+        raise ReaverageError(
+            "the frames state no mode's frequency and zero-point amplitude "
+            "(frequency_cm1, zero_point_amplitude_amu12_ang): a temperature "
+            "gives no spread without them (model/structure.md 2.2f)")
+    try:
+        t = checked_temperature_k(temperature_k)
+    except ValueError:
+        raise ReaverageError(
+            f"the temperature is the random part's -- the junction's, or a "
+            f"randomly pumped mode's effective one -- a number of kelvin, 0 "
+            f"or more; {temperature_k!r} is not one") from None
+    try:
+        n_swing = float(swing_quanta)
+    except (TypeError, ValueError):
+        n_swing = float("nan")
+    if not (math.isfinite(n_swing) and n_swing >= 0.0):
+        raise ReaverageError(
+            f"the swing's quanta are what a push in step with the mode adds, "
+            f"0 or more; {swing_quanta!r} is not a number of them")
+    n_th = mean_quanta(nu, t)
+    sigma_t = thermal_spread_amu12_ang(qzp, nu, t)
+    q0 = 2.0 * qzp * math.sqrt(n_swing)
+    sigma = math.sqrt(sigma_t ** 2 + 0.5 * q0 ** 2)
+    q_out = float(np.abs(q).max())
+    if q0 > q_out * (1.0 + 1e-12):
+        raise ReaverageError(
+            f"the swing turns at q = ±{q0:.6g} amu^1/2 Angstrom, beyond the "
+            f"outermost frame at ±{q_out:.6g}: its average would come from "
+            f"values extrapolated past the frames -- frames written at a "
+            f"higher temperature, or more of them, reach further "
+            f"(science/vibrational-averaging.md 5.4)")
+    # THE WEIGHTS, from the motion's moments, the positions scaled by the
+    # outermost so the system stays well conditioned for seven frames.
+    scale = q_out
+    moments = _motion_moments(m, sigma_t / scale, q0 / scale)
+    vander = np.vander(q / scale, m, increasing=True).T
+    weights = [float(w) for w in np.linalg.solve(vander, moments)]
+    said: List[str] = []
+    if m == 3 and n_swing > 0.0:
+        said.append(
+            "three frames carry only the curvature, where a swing and a bell "
+            "curve of the same spread agree: this average is blind to the "
+            "swing's shape -- five or seven frames see it "
+            "(science/vibrational-averaging.md 5.4)")
+    below = [f for f, w in enumerate(weights) if w < 0.0]
+    if below:
+        said.append(
+            f"{', '.join(frame_words(f, m) for f in below)} "
+            f"{'is' if len(below) == 1 else 'are'} weighted below zero "
+            f"({', '.join(f'{weights[f]:.3g}' for f in below)}): the frames "
+            f"do not suit this motion's shape well -- frames written at its "
+            f"spread suit it (science/vibrational-averaging.md 5.4)")
+    return {
+        "motion": {"temperature_k": t, "thermal_quanta": n_th,
+                   "thermal_spread_amu12_ang": sigma_t,
+                   "swing_quanta": n_swing,
+                   "swing_amplitude_amu12_ang": q0,
+                   "quanta": n_th + n_swing,
+                   "spread_amu12_ang": sigma},
+        "weights": weights,
+        "reach": {"outermost_q_amu12_ang": q_out,
+                  "outermost_over_spread": q_out / sigma,
+                  "outermost_over_swing": (q_out / q0 if q0 > 0.0
+                                           else None)},
+        "said": said,
+    }
 
 
 def average_block(n_frames: Optional[int], frame_set,
@@ -760,7 +897,7 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
 
 
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
-           "MASS_CHANNEL", "ROWS", "Row", "STRUCTURE_ROWS", "answer",
-           "average_block", "average_said", "citation_block", "data_file_variables",
-           "fill_data_file", "summary_lines", "warnings_of",
-           "with_meanings"]
+           "MASS_CHANNEL", "ROWS", "ReaverageError", "Row", "STRUCTURE_ROWS",
+           "answer", "average_block", "average_said", "citation_block",
+           "data_file_variables", "fill_data_file", "motion_weights",
+           "summary_lines", "warnings_of", "with_meanings"]

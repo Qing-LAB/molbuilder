@@ -2259,6 +2259,50 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     assert one["transmission"]["dims"] == ("frame", "bias_v", "energy_ev")
 
 
+def test_the_frames_are_reaveraged_over_another_motion(junction):
+    """`science/vibrational-averaging.md` § 5.4: the frame-set calculation's
+    data file, re-averaged by `molbuilder.postprocess.reaveraged` -- at the
+    set's own temperature with no swing, its weights the set's own and its
+    average the record's, the data file's own; under a swing turning at the
+    junction's spread, weights reproducing the motion's spread
+    sqrt(sigma_T^2 + Q0^2 / 2), and three frames said blind to its shape;
+    a swing turning past the outermost frame refused; a calculation of one
+    structure refused, having no motion to weight.  The silent failures: a
+    re-averaging that reads another variable or axis than the record
+    averaged (its own motion then disagreeing with the record), or one that
+    answers past the frames."""
+    from molbuilder.frame_average import ReaverageError
+    from molbuilder.postprocess import reaveraged
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.datafile import data_file_path, read_data_file
+    run = junction.from_pair
+    path = data_file_path(run.bundle, task_of(run.bundle).label)
+    V = {k: v["data"] for k, v in read_data_file(path)["variables"].items()}
+    own = reaveraged(path, temperature_k=_TEMPERATURE_K)
+    assert own["weights"] == pytest.approx(list(_WEIGHTS), rel=1e-9)
+    assert own["bias_v"] == list(_BIAS)
+    assert np.allclose(own["transmission"], V["average_transmission"],
+                       rtol=1e-9, atol=0, equal_nan=True)
+    assert np.allclose(own["conductance_g0"], V["average_conductance_g0"],
+                       rtol=1e-9, atol=0, equal_nan=True)
+    assert own["said"] == []
+    sigma_t = float(V["sigma_amu12_ang"])
+    q_zp = float(V["zero_point_amplitude_amu12_ang"])
+    swing = reaveraged(path, temperature_k=_TEMPERATURE_K,
+                       swing_quanta=(sigma_t / (2.0 * q_zp)) ** 2)
+    q, w = np.asarray(V["q_amu12_ang"]), np.asarray(swing["weights"])
+    assert w.sum() == pytest.approx(1.0, abs=1e-12)
+    assert float((w * q ** 2).sum()) == pytest.approx(1.5 * sigma_t ** 2,
+                                                      rel=1e-9)
+    assert any("blind to the swing's shape" in s for s in swing["said"])
+    with pytest.raises(ReaverageError, match="beyond the outermost frame"):
+        reaveraged(path, temperature_k=_TEMPERATURE_K,
+                   swing_quanta=(sigma_t / q_zp) ** 2)
+    with pytest.raises(ReaverageError, match="no position along a mode"):
+        reaveraged(data_file_path(junction.bundle, "T"),
+                   temperature_k=_TEMPERATURE_K)
+
+
 def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
     """§ 2a.12, *the data file*: every run's convergence on the grid it
     varies over -- each device point's SCF history in its own (frame,

@@ -862,7 +862,7 @@ A frame set is one mode at one rule, its weights summing to 1. So the check
 is a second set of the same mode, at the same temperature and another rule,
 and comparing the two is the person's.
 
-### 5.4 Re-averaging the frames over another motion *(the user, 2026-10-29; contract written, to be built)*
+### 5.4 Re-averaging the frames over another motion *(the user, 2026-10-29; built 2.52.0)*
 
 *(The user, 2026-10-29: "or this can be a parameter in post-processing?";
 "so essential information is in fact the deltaQ for each frame (normal mode
@@ -946,9 +946,10 @@ re-averaged to a bell curve of $1.5\sigma$ give 2.0517 against the true
    (§ 2a.3); with three, the re-averaged number is said to be blind to the
    shape.
 3. **A weight below zero** says the frames do not suit the motion's shape
-   well — the seven-frame row at $Q_0 = 3\sigma_T$ weights its outermost
-   pair at −1.0, and is still within 2 % on the contact bond. It is said with
-   the number, never refused.
+   well — the seven-frame row at $Q_0 = 3\sigma_T$ weights its middle frame
+   at −1.0 and its second pair at −0.18 each, since a swing that wide spends
+   little time near the middle, and is still within 2 % on the contact bond.
+   It is said with the number, never refused.
 4. **A response not smooth over the motion** — a level crossing $E_F$ — is
    averaged poorly by any weights (§ 5.3); the frames' own values, the family
    of curves, tell more.

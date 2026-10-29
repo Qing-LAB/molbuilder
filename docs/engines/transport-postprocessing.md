@@ -81,8 +81,7 @@ ds.average_transmission.sel(bias_v=0.0).plot(x="energy_ev")
 ds.average_why.to_series()          # why an average is none, where it is
 ```
 
-**Averaged over another motion** *(contract written 2026-10-29, to be
-built)*. Each frame is its position along the mode; its weight is the
+**Averaged over another motion** *(built 2.52.0)*. Each frame is its position along the mode; its weight is the
 motion's. The same frames averaged over a bell curve at another temperature,
 or with a swing added by a push in step with the mode
 ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
