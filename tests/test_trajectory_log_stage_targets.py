@@ -66,10 +66,10 @@ def _staged(xyz, tmp_path, strategy):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.jobset.model import Resources
     from conftest import prep_the_group_of
-    from molbuilder.siesta.stages import default_siesta_stages
+    from molbuilder.jobset.ladder import engine_ladder
 
     struct = StructureCodec().load(xyz)
-    stages = default_siesta_stages(strategy)
+    stages = engine_ladder("siesta", strategy)
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"), stages,
                             engine="siesta",
@@ -102,7 +102,7 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
     nested under the stage's token -- the one shape every writer writes
     (`engines/pyscf.md` § 4, 2026-10-18).
 
-    Default ladder (siesta/stages.py::default_siesta_stages) per stage:
+    Default ladder (jobset/ladder.py::engine_ladder("siesta")) per stage:
       01_coarse: 0.05 (loose preopt)
       02_medium: 0.04 (publishable)
       03_tight:  0.01 (crystal-tight)

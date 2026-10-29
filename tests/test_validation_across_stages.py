@@ -58,7 +58,8 @@ def test_a_ladder_that_loosens_is_reported(field, loose, tight):
     earlier one paid for."""
     backwards = [("first", SiestaConfig(**{field: tight})),
                  ("second", SiestaConfig(**{field: loose}))]
-    found = check_ladder_does_not_loosen(backwards)
+    found = check_ladder_does_not_loosen(backwards, engine="siesta",
+                                    kind="optimization")
     assert [i.where for i in found] == [f"stages.loosens.{field}"]
 
 
@@ -72,7 +73,8 @@ def test_a_ladder_that_tightens_is_silent(field, loose, tight):
     """The half that stops this being a check that always fires."""
     forwards = [("first", SiestaConfig(**{field: loose})),
                 ("second", SiestaConfig(**{field: tight}))]
-    assert check_ladder_does_not_loosen(forwards) == []
+    assert check_ladder_does_not_loosen(forwards, engine="siesta",
+                                    kind="optimization") == []
 
 
 def test_a_ladder_that_holds_a_parameter_steady_is_silent():
@@ -80,7 +82,8 @@ def test_a_ladder_that_holds_a_parameter_steady_is_silent():
     round-tripped through a template must not read as a step backwards."""
     same = [("a", SiestaConfig(mesh_cutoff=300.0)),
             ("b", SiestaConfig(mesh_cutoff=300.0))]
-    assert check_ladder_does_not_loosen(same) == []
+    assert check_ladder_does_not_loosen(same, engine="siesta",
+                                    kind="optimization") == []
 
 
 def test_a_sequence_finding_carries_NO_stage_label():
@@ -89,7 +92,8 @@ def test_a_sequence_finding_carries_NO_stage_label():
     property of the pair."""
     found = check_ladder_does_not_loosen([
         ("first", SiestaConfig(mesh_cutoff=500.0)),
-        ("second", SiestaConfig(mesh_cutoff=150.0))])
+        ("second", SiestaConfig(mesh_cutoff=150.0))], engine="siesta",
+        kind="optimization")
     assert found and all(i.stage is None for i in found)
 
 
@@ -100,7 +104,8 @@ def test_a_loosening_ladder_warns_and_never_blocks():
     legitimate (a cheap wide scan after an expensive refinement)."""
     found = check_ladder_does_not_loosen([
         ("first", SiestaConfig(mesh_cutoff=500.0)),
-        ("second", SiestaConfig(mesh_cutoff=150.0))])
+        ("second", SiestaConfig(mesh_cutoff=150.0))], engine="siesta",
+        kind="optimization")
     assert found and all(i.severity == "warn" for i in found)
 
 
@@ -110,7 +115,8 @@ def test_one_finding_per_parameter_not_one_per_adjacent_pair():
     found = check_ladder_does_not_loosen([
         ("a", SiestaConfig(mesh_cutoff=500.0)),
         ("b", SiestaConfig(mesh_cutoff=350.0)),
-        ("c", SiestaConfig(mesh_cutoff=150.0))])
+        ("c", SiestaConfig(mesh_cutoff=150.0))], engine="siesta",
+        kind="optimization")
     assert len(found) == 1
 
 
@@ -121,7 +127,8 @@ def test_each_loosening_parameter_gets_its_own_id():
     ``cell.left_handed``."""
     found = check_ladder_does_not_loosen([
         ("a", SiestaConfig(mesh_cutoff=500.0, relax_force_tol=0.01)),
-        ("b", SiestaConfig(mesh_cutoff=150.0, relax_force_tol=0.05))])
+        ("b", SiestaConfig(mesh_cutoff=150.0, relax_force_tol=0.05))], engine="siesta",
+        kind="optimization")
     wheres = [i.where for i in found]
     assert len(wheres) == len(set(wheres)) == 2
 
@@ -131,7 +138,8 @@ def test_the_message_names_both_stages_and_both_values():
     tier ladder it is being measured against."""
     found = check_ladder_does_not_loosen([
         ("warmup", SiestaConfig(mesh_cutoff=500.0)),
-        ("final", SiestaConfig(mesh_cutoff=150.0))])
+        ("final", SiestaConfig(mesh_cutoff=150.0))], engine="siesta",
+        kind="optimization")
     msg = found[0].message
     for bit in ("warmup", "final", "500", "150", "mesh_cutoff", "tuning.md"):
         assert bit in msg, (bit, msg)
@@ -145,7 +153,8 @@ def test_a_parameter_tuning_md_gives_no_tier_ladder_for_is_NOT_checked():
     because the first teaches users to ignore the check."""
     found = check_ladder_does_not_loosen([
         ("a", SiestaConfig(basis_size="TZP", pao_energy_shift=0.001)),
-        ("b", SiestaConfig(basis_size="SZ", pao_energy_shift=0.05))])
+        ("b", SiestaConfig(basis_size="SZ", pao_energy_shift=0.05))], engine="siesta",
+        kind="optimization")
     assert found == []
 
 
@@ -155,7 +164,8 @@ def test_the_sequence_is_checked_in_ladder_order_not_sorted():
     whenever its stage names happened to sort the other way."""
     tighten = [("z_first", SiestaConfig(mesh_cutoff=150.0)),
                ("a_second", SiestaConfig(mesh_cutoff=500.0))]
-    assert check_ladder_does_not_loosen(tighten) == []
+    assert check_ladder_does_not_loosen(tighten, engine="siesta",
+                                    kind="optimization") == []
 
 
 # --------------------------------------------------------------------- #

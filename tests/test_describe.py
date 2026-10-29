@@ -20,7 +20,7 @@ import pytest
 
 from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.structure import Structure
 from molbuilder.task import Stage, of as task_of
 from molbuilder.template import read_template
@@ -64,7 +64,7 @@ def test_describing_writes_no_deck(struct, cfg, tmp_path):
     ``prep`` on the machine that will run it.  A ``describe`` that emitted a
     deck would put step 3 before step 1 (`project-layout.md` § 2.3.1)."""
     written = D.write_description(_describe(struct, cfg,
-                                            default_siesta_stages("publishable")),
+                                            engine_ladder("siesta", "publishable")),
                                   tmp_path / "calc")
     assert not [p for p in written if p.suffix == ".fdf"]
     assert not list((tmp_path / "calc").glob("*.fdf"))
@@ -191,7 +191,7 @@ def test_every_description_states_its_kind(struct, cfg, tmp_path):
 
 def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):
     D.write_description(_describe(struct, cfg,
-                                  default_siesta_stages("publishable")),
+                                  engine_ladder("siesta", "publishable")),
                         tmp_path / "calc")
     task = task_of(tmp_path / "calc")
     assert [s.name for s in task.stages] == ["coarse", "medium"]
@@ -284,8 +284,8 @@ def test_the_producer_is_pure_so_two_surfaces_cannot_disagree(struct, cfg):
     """§ 4.1's Promotion A: one producer, two writers.  A browser that built
     its own description would be a second place for the bytes to differ, and
     § 6.4 is the rule that they must not."""
-    a = _describe(struct, cfg, default_siesta_stages("publishable"))
-    b = _describe(struct, cfg, default_siesta_stages("publishable"))
+    a = _describe(struct, cfg, engine_ladder("siesta", "publishable"))
+    b = _describe(struct, cfg, engine_ladder("siesta", "publishable"))
     assert a.files() == b.files()
 
 

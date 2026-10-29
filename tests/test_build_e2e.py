@@ -849,7 +849,10 @@ class TestSendToTaskSetup:
         import json as _json
         over = _json.loads((calc / "task.1st.json").read_text())
         assert over["engine"]["name"] == "siesta"
-        assert "Structure-optimization" in over["_what"], (
+        from molbuilder.web.tabs import TABS
+        tab = next(t["label"] for t in TABS
+                   if t["key"] == "structure-optimization")
+        assert f"from the {tab} tab" in over["_what"], (
             "the hand-over's provenance does not name this tab (E-B9)")
 
     def test_send_writes_and_STAYS(self, page, flask_server, tmp_path,

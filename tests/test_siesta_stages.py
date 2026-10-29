@@ -11,7 +11,7 @@ import dataclasses
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig, SIESTA_STAGE_PRESETS
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.task import Stage
 
 
@@ -63,7 +63,7 @@ def test_the_siesta_form_schema_emits_no_stage_table():
 # --------------------------------------------------------------------- #
 
 def test_default_ladder_is_three_named_stages():
-    stages = default_siesta_stages("vib-quality")
+    stages = engine_ladder("siesta", "vib-quality")
     # The tiers' NAMES, from STAGE_NAMES: decision 27 puts the ordinal
     # in the artifact token (``01_coarse``), so a name that is itself a
     # position would say the number twice and the science none.
@@ -74,14 +74,14 @@ def test_default_ladder_is_three_named_stages():
 def test_default_ladder_is_coarse_and_medium():
     """publishable = coarse + medium; tight is added when wanted -- a
     strategy writes the stages it runs (`engines/stages.md` § 2)."""
-    assert [s.name for s in default_siesta_stages()] == ["coarse", "medium"]
+    assert [s.name for s in engine_ladder("siesta")] == ["coarse", "medium"]
 
 
 @pytest.mark.parametrize("tier", sorted(SIESTA_STAGE_PRESETS))
 def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
     """Stage N of the ladder overrides with ``SIESTA_STAGE_PRESETS[N]`` --
     one table, so a tier value can be changed in exactly one place."""
-    stage = default_siesta_stages("vib-quality")[tier - 1]
+    stage = engine_ladder("siesta", "vib-quality")[tier - 1]
     # The rung's overrides ARE that tier's row, with nothing added: `restart`
     # is a property of neither the tier nor the rung's index -- the folder
     # answers it, at run time (`run-identity.md` § 4 rule 3).
@@ -111,7 +111,7 @@ def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
     subset rule is then checked against the thing it was computed from, so
     the two cannot disagree."""
     known = {f.name for f in dataclasses.fields(SiestaConfig)}
-    varied = {k for s in default_siesta_stages("vib-quality")
+    varied = {k for s in engine_ladder("siesta", "vib-quality")
               for k in s.overrides}
     assert varied <= known
     assert varied == {"relax_type", "relax_steps",
@@ -129,27 +129,27 @@ def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
     ("vib-quality", ["coarse", "medium", "tight"]),
 ])
 def test_strategy_preset_writes_the_stages_it_runs(strategy, expected):
-    assert [s.name for s in default_siesta_stages(strategy)] == expected
+    assert [s.name for s in engine_ladder("siesta", strategy)] == expected
 
 
 def test_strategy_preset_changes_only_which_tiers_run():
     """A preset says which tiers run; it never retunes one.  If it did,
     picking 'loose-only' would silently change what stage1 computes."""
-    a = default_siesta_stages("loose-only")
-    b = default_siesta_stages("vib-quality")
+    a = engine_ladder("siesta", "loose-only")
+    b = engine_ladder("siesta", "vib-quality")
     assert [s.overrides for s in a] == [s.overrides for s in b][:len(a)]
     assert [s.name for s in a] == [s.name for s in b][:len(a)]
 
 
 def test_strategy_preset_rejects_unknown_name():
     with pytest.raises(ValueError, match="unknown SIESTA stage strategy"):
-        default_siesta_stages("no-such-preset")
+        engine_ladder("siesta", "no-such-preset")
 
 
 def test_each_call_returns_independent_stages():
     """A caller that edits a stage must not disturb the next caller's
     ladder -- the mutable-default bug, asserted rather than assumed."""
-    a, b = default_siesta_stages(), default_siesta_stages()
+    a, b = engine_ladder("siesta"), engine_ladder("siesta")
     assert a is not b
     assert a[0].overrides is not b[0].overrides
     a[0].overrides["mesh_cutoff"] = 999

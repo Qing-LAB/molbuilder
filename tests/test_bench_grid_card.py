@@ -21,7 +21,7 @@ import pytest
 from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.scheduler import Domain, Environment, Topology
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.structure import Structure
 from support.machines import SLURM
 from support.road import read_request, write_request
@@ -80,7 +80,7 @@ def bundle(tmp_path):
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB"),
-                            default_siesta_stages("publishable"),
+                            engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",

@@ -639,7 +639,8 @@ in-script loop over stages, and no stage list in the engine config.
   **etol** = energy), and `geom_max_steps`. The per-tier values are
   [`tuning.md` § 2.4](?doc=engines/tuning.md)'s table, and that table is the
   authority for them.
-- **The shipped ladder** is `pyscf/stages.py::default_pyscf_stages`, whose rungs
+- **The shipped ladder** is the one ladder rule's over `PYSCF_STAGE_PRESETS`
+  (`jobset/ladder.py::engine_ladder("pyscf", strategy)`), whose rungs
   carry the shared stage names `coarse` / `medium` / `tight` — the same three
   SIESTA uses, because a stage name says which rung of *this* ladder it is and
   nothing about which engine is running it.

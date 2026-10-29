@@ -182,11 +182,11 @@ def test_a_siesta_deck_writes_the_design_coordinates_plus_the_offset(
     invariant; frozen atoms move with the rest).
     """
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import default_siesta_stages
+    from molbuilder.jobset.ladder import engine_ladder
     struct = _slab()
     dest, stage, text = _prep(isolated_projects_root, struct,
                               SiestaConfig(system_label="JOB"),
-                              default_siesta_stages("publishable"), "siesta")
+                              engine_ladder("siesta", "publishable"), "siesta")
     block = re.search(r"%block AtomicCoordinatesAndAtomicSpecies\n(.*?)%endblock",
                       text, re.S).group(1)
     written = np.array([[float(v) for v in r[:3]] for r in _rows(block)])
@@ -215,13 +215,13 @@ def test_a_pyscf_deck_writes_the_design_coordinates_plus_the_offset(
     the design coordinates plus the offset).
     """
     from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.pyscf.stages import default_pyscf_stages, vibration_stages
+    from molbuilder.jobset.ladder import engine_ladder, fresh_stages
     struct = _water()
     if calculation == "vibration":
         cfg = PySCFConfig(job_name="JOB", already_relaxed=True)
-        stages = vibration_stages("pyscf")
+        stages = fresh_stages("vibration", "pyscf")
     else:
-        cfg, stages = PySCFConfig(job_name="JOB"), default_pyscf_stages("publishable")
+        cfg, stages = PySCFConfig(job_name="JOB"), engine_ladder("pyscf", "publishable")
     dest, _stage, text = _prep(isolated_projects_root, struct, cfg, stages,
                                "pyscf", calculation=calculation)
     written = _written("pyscf", text)
@@ -234,11 +234,11 @@ def _engine(engine):
     """A description's config and ladder, per engine."""
     if engine == "siesta":
         from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.siesta.stages import default_siesta_stages
-        return SiestaConfig(system_label="JOB"), default_siesta_stages("publishable")
+        from molbuilder.jobset.ladder import engine_ladder
+        return SiestaConfig(system_label="JOB"), engine_ladder("siesta", "publishable")
     from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.pyscf.stages import default_pyscf_stages
-    return PySCFConfig(job_name="JOB"), default_pyscf_stages("publishable")
+    from molbuilder.jobset.ladder import engine_ladder
+    return PySCFConfig(job_name="JOB"), engine_ladder("pyscf", "publishable")
 
 
 def _written(engine, text):
@@ -359,7 +359,7 @@ def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
     other.
     """
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import default_siesta_stages
+    from molbuilder.jobset.ladder import engine_ladder
     # 1.2 cells long along a, so no translation fits it -- and the atom past
     # the face sits 3 Å off the others' line, so its image meets no atom.
     wide = Structure(elements=["C", "C", "C"],
@@ -369,7 +369,7 @@ def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
                      axis_kind=("periodic", "periodic", "periodic"))
     dest, stage, _text = _prep(isolated_projects_root, wide,
                                SiestaConfig(system_label="JOB"),
-                               default_siesta_stages("publishable"), "siesta")
+                               engine_ladder("siesta", "publishable"), "siesta")
     report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
     assert "[cell.beyond_periodic_face]" in report, report
     assert "along a, which is periodic" in report, report
@@ -388,10 +388,10 @@ def test_a_crystal_that_fills_its_cell_is_not_called_tight(
     measured).
     """
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import default_siesta_stages
+    from molbuilder.jobset.ladder import engine_ladder
     dest, stage, _text = _prep(isolated_projects_root, _slab(),
                                SiestaConfig(system_label="JOB"),
-                               default_siesta_stages("publishable"), "siesta")
+                               engine_ladder("siesta", "publishable"), "siesta")
     report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
     assert "[cell.volume]" not in report, report
 
@@ -412,11 +412,11 @@ def _vibration(already_relaxed=False, freq_says=None):
     structure stated relaxed by the template, or by ``freq``'s own value
     over it (``freq_says``)."""
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.pyscf.stages import vibration_stages
+    from molbuilder.jobset.ladder import fresh_stages
     from molbuilder.task import Stage
     cfg = SiestaConfig(system_label="JOB", already_relaxed=already_relaxed)
     if freq_says is None:
-        return cfg, vibration_stages("siesta")
+        return cfg, fresh_stages("vibration", "siesta")
     return cfg, [Stage(name="freq", overrides={"already_relaxed": freq_says})]
 
 

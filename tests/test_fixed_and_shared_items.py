@@ -25,16 +25,16 @@ import json
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.pyscf.stages import vibration_stages
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import fresh_stages
+from molbuilder.jobset.ladder import engine_ladder
 
 from test_electronic_state import WATER
 from test_engine_offset_reaches_every_deck import _prep
 
 
 def _ladder(kind):
-    return (default_siesta_stages("publishable") if kind == "optimization"
-            else vibration_stages("siesta"))
+    return (engine_ladder("siesta", "publishable") if kind == "optimization"
+            else fresh_stages("vibration", "siesta"))
 
 
 def _siesta(root, *, kind="optimization", before_prep=None, refused=False):

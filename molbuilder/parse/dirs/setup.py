@@ -149,18 +149,23 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     """``{"setup": {"rows", "engine_only"}, "verdict": {"findings"}}`` for the
     run ``f`` describes -- each part present only when a file states it."""
     from ... import script_emit as _sc
+    from ...engine_table import engine as _engine, engines as _engines
     from ..fdf import fdf_key, read_deck
     from ..registry import parse as _parse
     from .record import _read
 
-    if f.engine not in ("siesta", "pyscf"):
+    if f.engine not in _engines():
         return {}
+    # A DECK OF KEYWORDS the engine reads (the engine record's
+    # ``keyword_deck`` -- SIESTA's fdf) is read back for what the run asked;
+    # an item writing no keyword there is the launch's, not the deck's.
+    keyword_deck = _engine(f.engine).keyword_deck
     block = {r["item"]: r for r in
              _sc.read_parameters_fence(f.wrapper_text)
              + _sc.read_parameters_fence(_read(f.pyscf_log))}
     # THE DECK WHOLE, its coordinates file inlined (`parse.fdf.read_deck`).
     deck_text = (read_deck(f.deck)
-                 if f.engine == "siesta" and f.deck is not None else "")
+                 if keyword_deck and f.deck is not None else "")
     params: Dict[str, Any] = {}
     blocks: Dict[str, Any] = {}
     if f.fdf_log is not None:
@@ -178,7 +183,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     for it in items:
         p = _sc.parameter(it.name, f.engine, deck_text=deck_text or None)
         keys = tuple(p.writes)
-        if f.engine == "siesta" and not keys:
+        if keyword_deck and not keys:
             continue                   # no keyword: the launch's, not the deck's
         written.update(fdf_key(k[len("%block"):].strip())
                        if k.lower().startswith("%block") else fdf_key(k)

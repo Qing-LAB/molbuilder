@@ -678,8 +678,9 @@ verb names its stage, on a one-rung ladder exactly as on three
   2026-08-16. It is not engine-specific and never was — resolving a stage
   against a backbone is floor 3's job, which is why it moved when `resolve.py`
   landed.)*
-- **The shipped ladder.** `siesta/stages.py::default_siesta_stages(strategy)`
-  builds it: one stage per tier of `SIESTA_STAGE_PRESETS`, that tier's four
+- **The shipped ladder.** The one ladder rule
+  (`jobset/ladder.py::engine_ladder("siesta", strategy)`, [`tuning.md`](?doc=engines/tuning.md)
+  § 4) builds it: one stage per tier of `SIESTA_STAGE_PRESETS`, that tier's four
   values as its `overrides`, the tiers `STAGE_STRATEGY_PRESETS` runs —
   `publishable` (1+2), `loose-only` (1), `vib-quality` (1+2+3). CG warm-up
   0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å; the
@@ -738,10 +739,7 @@ Running the ladder as a real *job-set* — per-stage directories, per-stage
 resources, and **one submission per stage, by hand** — is `execution/`
 territory: `jobset/prep.py` renders one deck and wrapper per element of the
 resolved `ParameterSet`, and the `JobSet` is **derived from the description
-rather than emitted beside it**. *(This sentence credited
-`siesta/stages.py::build_siesta_stage_bundle` until 2026-08-16; that function
-was deleted in the fold, and `siesta/stages.py` exports only
-`default_siesta_stages` today.)*
+rather than emitted beside it**.
 **There are no dependency edges between stages**: a `JobSet` carries none, and
 nothing can ask for one ([`job-system.md § 2`](?doc=execution/job-system.md),
 decision 6).

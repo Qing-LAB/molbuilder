@@ -297,11 +297,11 @@ def _shipped_ladder(coarse_restart=None):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.identity import stage_token
     from molbuilder.resolve import effective_config
-    from molbuilder.siesta.stages import (traits_for, warm_for,
-                                          default_siesta_stages)
+    from molbuilder.jobset.ladder import engine_ladder
+    from molbuilder.siesta.stages import traits_for, warm_for
     label = "bdt"
     jobs = []
-    for i, st in enumerate(default_siesta_stages("vib-quality"), start=1):
+    for i, st in enumerate(engine_ladder("siesta", "vib-quality"), start=1):
         overrides = dict(getattr(st, "overrides", None) or {})
         if coarse_restart is not None and i == 1:
             overrides["restart"] = coarse_restart

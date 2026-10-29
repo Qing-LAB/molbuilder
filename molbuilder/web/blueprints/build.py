@@ -75,8 +75,8 @@ from molbuilder.nucleic import build_dna, build_rna
 from molbuilder.peptide import build_peptide
 from molbuilder.pubchem import build_from_name
 from molbuilder.smiles import build_from_smiles
-from molbuilder.config.pyscf  import PySCFConfig
-from molbuilder.config.siesta import SiestaConfig
+from molbuilder.engine_table import (EngineTableError, config_class,
+                                     engine as _engine)
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
 from .files import _resolve_within_roots, _PickerError
@@ -205,13 +205,10 @@ def _analyze_response(struct, body):
         # params door -- the same coercion the preflight and the hand-over
         # use -- so a blank means exactly what it means there.
         try:
-            cfg = (_siesta_config_from_params(items or {}, kind)
-                   if engine == "siesta"
-                   else _pyscf_config_from_params(items or {}, kind))
+            cfg = _config_from_params(config_class(engine), items or {}, kind)
         except (TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         states[engine] = electronic_state(struct, cfg, kind=kind).as_dict()
-    from molbuilder.engine_table import engine as _engine
     return jsonify({
         "ok":          True,
         "kind":        kind,
@@ -876,7 +873,6 @@ def _not_in_tables(*, calculation: str, engine: Optional[str] = None):
     an engine the engine table does not hold or one the kind does not run
     on -- ``None`` when the tables hold them.  The route's boundary: the
     door refuses, the route says it as its own."""
-    from molbuilder.engine_table import EngineTableError, engine as _engine
     from molbuilder.kind_table import KindTableError, kind as _kind
     try:
         asked = _kind(calculation)
@@ -919,11 +915,9 @@ def api_build_preflight():
     if not calculation:
         return _unstated(calculation=calculation)
 
-    if engine not in ("siesta", "pyscf"):
-        return jsonify({
-            "ok": False,
-            "error": f"engine must be 'siesta' or 'pyscf'; got {engine!r}",
-        }), 400
+    refused = _not_in_tables(calculation=calculation, engine=engine)
+    if refused is not None:
+        return refused
 
     # THE STRUCTURE ARRIVES AS DATA, through the one reader every structure
     # door shares: the atoms as numbers and the facts beside them.
@@ -936,10 +930,7 @@ def api_build_preflight():
     struct = periodicity_checked_for_emit(struct)
 
     try:
-        if engine == "siesta":
-            cfg = _siesta_config_from_params(params, calculation)
-        else:
-            cfg = _pyscf_config_from_params(params, calculation)
+        cfg = _config_from_params(config_class(engine), params, calculation)
     except Exception as exc:
         # The "bad params" branch returns ``ok: False`` to match the
         # web-api.md envelope contract; the UI's ``!body.ok`` gate then
@@ -958,30 +949,6 @@ def api_build_preflight():
             validate(struct, cfg, calculation=calculation), cfg=cfg,
             calculation=calculation),
     })
-
-
-# --------------------------------------------------------------------- #
-#  Helpers                                                              #
-# --------------------------------------------------------------------- #
-
-
-def _siesta_config_from_params(params: Dict[str, Any],
-                               calculation: str) -> SiestaConfig:
-    """A SiestaConfig from a form's payload for a ``calculation`` of that
-    kind -- the one door in `_shared`, which the transport describe door's
-    shared panel reads through too."""
-    from ._shared import siesta_config_from_params
-    return siesta_config_from_params(params, calculation)
-
-
-def _pyscf_config_from_params(params: Dict[str, Any],
-                              calculation: str) -> PySCFConfig:
-    """A PySCFConfig from a form's payload for a ``calculation`` of that
-    kind, through the same door (`_shared.config_from_params`): a blank
-    is not chosen -- a blank solvent is the gas phase, the field's own
-    default.  Dispersion's ``"none"`` is its value for no correction,
-    kept as itself (the field's note)."""
-    return _config_from_params(PySCFConfig, params, calculation)
 
 
 # --------------------------------------------------------------------- #
@@ -1079,19 +1046,18 @@ def api_task_setup_handover():
 
     params: Dict[str, Any] = body.get("params") or {}
     try:
-        cfg = (_siesta_config_from_params(params, calculation)
-               if engine == "siesta"
-               else _pyscf_config_from_params(params, calculation))
+        cfg = _config_from_params(config_class(engine), params, calculation)
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # THE PSEUDOPOTENTIALS, SETTLED BEFORE A SIESTA CALCULATION IS WRITTEN
-    # (`handover-procedure.md` § 2.2, plan § 5w K20): the check `prep` makes,
-    # asked of the folder the files go into -- pseudopotentials already
-    # beside it count -- and a refusal until every element is covered, its
-    # findings for the tab to put beside the field.  The sender names the
-    # folder (`dest`); a caller that names none is asked about the library
-    # alone, as the live check is.
+    # THE ENGINE'S DATA FILES, SETTLED BEFORE ITS CALCULATION IS WRITTEN
+    # (`handover-procedure.md` § 2.2, plan § 5w K20): the findings its seam
+    # adds (`EngineSeam.describe_findings` -- SIESTA's pseudopotentials),
+    # asked of the folder the files go into -- files already beside it
+    # count -- and a refusal while one is an error, its findings for the tab
+    # to put beside the field.  The sender names the folder (`dest`); a
+    # caller that names none is asked about the library alone, as the live
+    # check is.
     # THE FOLDER'S RULES ARE THE SERVER'S, as the transport describe door's
     # are (`engines/transport.md` § 3.8.2a): a calculation lives under a
     # topic -- project / topic / its folder, three levels inside the picker's
@@ -1117,19 +1083,20 @@ def api_task_setup_handover():
             refuse_described(dest_dir, shown=str(body["dest"]))
         except DescribeError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-    if engine == "siesta":
-        from molbuilder.validation.siesta import pseudopotential_findings
-        psml = pseudopotential_findings(struct, cfg, calculation=calculation,
-                                        dest_dir=dest_dir)
-        if any(i.severity == "error" for i in psml):
+    from molbuilder.issues import calling
+    from molbuilder.jobset.engines import engine_seam
+    describe_findings = engine_seam(engine).describe_findings
+    if describe_findings is not None:
+        with calling("describe_findings", engine=engine,
+                     where="the hand-over"):
+            found, refusal = describe_findings(struct, cfg,
+                                               calculation=calculation,
+                                               dest_dir=dest_dir)
+        if refusal:
             return jsonify({
                 "ok": False,
-                "error": "the pseudopotentials are not settled: SIESTA needs "
-                         "a .psml file for every element, so this would "
-                         "write a calculation that cannot start -- the "
-                         "findings are beside the pseudopotential field "
-                         "(handover-procedure.md 2.2)",
-                "findings": _issues_to_json(psml, cfg=cfg,
+                "error": refusal,
+                "findings": _issues_to_json(found, cfg=cfg,
                                             calculation=calculation),
             }), 400
 
@@ -1144,17 +1111,15 @@ def api_task_setup_handover():
     # `run-identity.md` § 4: *"The label is the SystemLabel / JOB literal.
     # There is no second name."*
     #
-    # Which field carries the identity is the ENGINE's to say, and it says so
-    # (`RestartGroup.field`), the engine picking its group.  The folder name is
+    # Which field carries the identity is the ENGINE's to say, and its record
+    # says so (the engine table's ``identity_field``).  The folder name is
     # still the answer when the field is untouched, because the schema default
     # is a placeholder (`siesta`, `pyscf_relax`) and naming a calculation after
     # a placeholder is worse than naming it after the folder somebody chose.
-    from molbuilder.config.pyscf import PYSCF_RESTART_GROUP
-    from molbuilder.config.siesta import SIESTA_RESTART_GROUP
-    _group = SIESTA_RESTART_GROUP if engine == "siesta" else PYSCF_RESTART_GROUP
-    _identity = str(getattr(cfg, _group.field, "") or "")
+    _field = _engine(engine).identity_field
+    _identity = str(getattr(cfg, _field, "") or "")
     _placeholder = str(
-        type(cfg).__dataclass_fields__[_group.field].default or "")
+        type(cfg).__dataclass_fields__[_field].default or "")
     typed = (_identity if _identity and _identity != _placeholder
              else str(body.get("name") or ""))
     if not typed:
@@ -1173,7 +1138,7 @@ def api_task_setup_handover():
     # the other side.  Normalisation happens once and the result is stored
     # (§ 3 rule 1) — this is the storing.
     import dataclasses as _dc
-    cfg = _dc.replace(cfg, **{_group.field: label})
+    cfg = _dc.replace(cfg, **{_field: label})
 
     # WHAT THE PERSON'S FORM SENT is theirs (`template.md` § 6.6
     # obligation 2): the form sends the fields that hold a value
@@ -1181,7 +1146,7 @@ def api_task_setup_handover():
     # item is nobody's choice.
     sources = {k: "person" for k, v in params.items()
                if v is not None and v != ""}
-    sources[_group.field] = "person"
+    sources[_field] = "person"
     try:
         template_text = template_with_values(cfg, engine=engine,
                                              calculation=calculation,
@@ -1868,8 +1833,10 @@ def api_task_setup_sweepable():
     engine = str(request.args.get("engine") or "").lower()
     if not engine:
         return _unstated(engine=engine)
-    if engine not in ("siesta", "pyscf"):
-        return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
+    try:
+        _engine(engine)
+    except EngineTableError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     from molbuilder import template as _T
     parsed = _T.catalogue()
@@ -3036,18 +3003,21 @@ def api_task_setup_machines():
 def api_task_setup_presets():
     """The shipped tier presets, for filling a stage's row.
 
-    These are the SAME table `default_siesta_stages` builds the shipped ladder
-    from, so a stage filled here and a stage of the default ladder cannot drift
-    -- `engines/tuning.md` § 4 is the authority for what number each tier
-    carries, and this serves it rather than restating it.
+    These are the SAME tiers the engine's shipped ladder is built from
+    (`jobset.ladder.engine_tiers`, the engine record's ``presets``), so a
+    stage filled here and a stage of the default ladder cannot drift --
+    `engines/tuning.md` § 4 is the authority for what number each tier
+    carries, and this serves it rather than restating it.  Every tier is
+    offered whatever a strategy enables: the enable-mask is the ladder's
+    business, not this menu's.
 
     **Offered per KIND, by the columns' own membership rule.** A tier is a
     set of values for named fields; it is offered for this folder's kind
     only when every one of those fields may be a column of the table
     (`_column_items`) -- `task-setup.md` § 9: *"a preset that half-applied
     would be worse than one that refused"*.  The relaxation tiers are
-    columns of an optimization and of a vibration ladder's relax rung, and
-    of NO transport rung (`stages` routes each rung its own items;
+    columns of an optimization and of a vibration's stage (its relaxation's
+    settings), and of NO transport rung (`stages` routes each rung its own items;
     `engines/transport.md` § 2a.7: a rung carries its role's profile), so a
     transport description gets an empty menu and its rows draw none.
     """
@@ -3055,30 +3025,13 @@ def api_task_setup_presets():
     kind = str(request.args.get("calculation") or "")
     if not engine or not kind:
         return _unstated(engine=engine, calculation=kind)
-    out = []
-    if engine == "siesta":
-        from molbuilder.config.stages import STAGE_NAMES
-        from molbuilder.config.siesta import (
-                                              SIESTA_STAGE_PRESETS)
-        for tier in sorted(SIESTA_STAGE_PRESETS):
-            out.append({"tier": tier,
-                        "name": STAGE_NAMES[tier],
-                        "values": dict(SIESTA_STAGE_PRESETS[tier])})
-    elif engine == "pyscf":
-        # Same source as the shipped PySCF ladder, for the same reason the
-        # SIESTA arm above reads SIESTA's: a stage filled from a preset here
-        # and a stage of the default ladder must not be able to disagree.
-        # ``restart`` is dropped -- it is a rung's POSITION, not its tier
-        # (`run-identity.md` § 4 rule 3), so it is not a value to fill a row
-        # with.  Every tier is offered whatever the strategy enables; the
-        # enable-mask is the ladder's business, not this menu's.
-        from molbuilder.pyscf.stages import default_pyscf_stages
-        for i, st in enumerate(default_pyscf_stages(), start=1):
-            out.append({"tier": i, "name": st.name,
-                        "values": {k: v for k, v in st.overrides.items()
-                                   if k != "restart"}})
-    else:
-        return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
+    try:
+        _engine(engine)
+    except EngineTableError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    from molbuilder.jobset.ladder import engine_tiers
+    out = [{"tier": tier, "name": name, "values": values}
+           for tier, name, values in engine_tiers(engine)]
     columns = {it.name for it in _column_items(engine, kind)}
     out = [ps for ps in out if set(ps["values"]) <= columns]
     return jsonify({"ok": True, "engine": engine, "calculation": kind,

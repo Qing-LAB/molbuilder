@@ -92,21 +92,55 @@ def stage_before(task, stage: str,
 
 def fresh_stages(calculation: str, engine: str) -> tuple:
     """THE LADDER A NEW DESCRIPTION STARTS WITH, before it is numbered --
-    the one rule, asked by `molbuilder describe` and by the hand-over the parameter
-    tabs send (`web/handover-procedure.md`): a vibration's own one stage
-    (`pyscf/stages.py::vibration_stages`, `engines/vibration.md` § 2.2,
-    § 5.11); every other kind the ordinary
-    start -- ONE stage carrying no overrides, the calculation that is just
-    the template (`engines/stages.md` § 6.5), named by the shared ladder
-    vocabulary.  A transport calculation proposes nothing here: its rungs
-    are fixed by the kind (its part in the kind table)."""
-    if calculation == "vibration":
-        from ..pyscf.stages import vibration_stages
-        return tuple(vibration_stages(engine))
+    the one rule, asked by `molbuilder describe` and by the hand-over the
+    parameter tabs send (`web/handover-procedure.md`): the pair's ladder,
+    each stage with no overrides (its record's ``ladder`` -- a transport
+    calculation's rungs; a vibration's one stage, `engines/vibration.md`
+    § 2.2, § 5.11); else the ordinary start -- ONE stage carrying no
+    overrides, the calculation that is just the template
+    (`engines/stages.md` § 6.5), named by the shared ladder vocabulary."""
     from ..config.stages import STAGE_NAMES
+    from ..kind_table import pair
     from ..task import Stage
+    own = pair(calculation, engine)
+    if own is not None and own.ladder:
+        return tuple(Stage(name=n, overrides={}) for n in own.ladder)
     return (Stage(name=STAGE_NAMES[1], overrides={}),)
 
 
-__all__ = ["fresh_stages", "independent", "inputs_of", "resolved_stages",
+def engine_tiers(engine: str) -> tuple:
+    """EVERY TIER OF ``engine``'s LADDER, ``(tier, name, values)`` -- its
+    stage presets (the engine record's ``presets``) named by the shared
+    ladder vocabulary, in order: what a ladder's stage is filled from."""
+    from ..config.stages import STAGE_NAMES
+    from ..engine_table import stage_presets
+    presets = stage_presets(engine)
+    return tuple((tier, STAGE_NAMES[tier], dict(presets[tier]))
+                 for tier in sorted(presets))
+
+
+def engine_ladder(engine: str, strategy: str = "publishable") -> list:
+    """``engine``'s SHIPPED LADDER as ``Stage`` objects -- the one ladder rule
+    for every engine (`engines/stages.md` § 1.1a, § 2): one stage per tier of
+    its presets (:func:`engine_tiers`), each carrying that tier's values as
+    its ``overrides``, the tiers the named strategy picks
+    (`config.stages.STAGE_STRATEGY_PRESETS`).  No ``restart`` among them: a
+    rung's position does not answer *is there anything to continue from* --
+    the folder does, at run time (`run-identity.md` § 4 rule 3).
+    :class:`ValueError` names an unknown strategy and the ones there are."""
+    from ..config.stages import STAGE_STRATEGY_PRESETS
+    from ..engine_table import engine as engine_record
+    from ..task import Stage
+    if strategy not in STAGE_STRATEGY_PRESETS:
+        raise ValueError(
+            f"unknown {engine_record(engine).words} stage strategy "
+            f"{strategy!r}; choose from: "
+            f"{', '.join(sorted(STAGE_STRATEGY_PRESETS))}")
+    enables = STAGE_STRATEGY_PRESETS[strategy]
+    return [Stage(name=name, overrides=values)
+            for i, (_tier, name, values) in enumerate(engine_tiers(engine))
+            if i < len(enables) and enables[i]]
+
+
+__all__ = ["engine_ladder", "engine_tiers", "fresh_stages", "independent", "inputs_of", "resolved_stages",
            "stage_before", "stage_config", "upstream_of"]

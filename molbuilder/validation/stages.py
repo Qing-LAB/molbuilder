@@ -45,8 +45,7 @@ _REL_TOL = 1e-9
 
 
 def check_ladder_does_not_loosen(
-    resolved: Sequence[Tuple[str, Any]], *, engine: str = "siesta",
-    kind: str = "optimization",
+    resolved: Sequence[Tuple[str, Any]], *, engine: str, kind: str,
 ) -> List[Issue]:
     """§ 4 R3. One ``warn`` per parameter that goes backwards along the ladder.
 
@@ -113,8 +112,7 @@ def check_ladder_does_not_loosen(
 
 
 def check_a_relaxation_takes_a_step(
-    resolved: Sequence[Tuple[str, Any]], *, engine: str = "siesta",
-    kind: str = "optimization",
+    resolved: Sequence[Tuple[str, Any]], *, engine: str, kind: str,
 ) -> List[Issue]:
     """A rung that relaxes takes at least one step (plan § 5w K4; M11 SS-C5).
 

@@ -32,7 +32,7 @@ from molbuilder.config.siesta import SiestaConfig          # noqa: E402
 from molbuilder.jobset.model import Resources              # noqa: E402
 from molbuilder.jobset.prep import prep_bench              # noqa: E402
 from molbuilder.scheduler import Environment, Topology     # noqa: E402
-from molbuilder.siesta.stages import default_siesta_stages  # noqa: E402
+from molbuilder.jobset.ladder import engine_ladder  # noqa: E402
 from molbuilder.structure import Structure                 # noqa: E402
 from support.machines import WORKSTATION
 
@@ -62,7 +62,7 @@ def sweep(isolated_projects_root, monkeypatch):
         D.build_description(struct,
                             SiestaConfig(system_label="JOB", use_gpu=True,
                                          diag_algorithm="ELPA-1STAGE"),
-                            default_siesta_stages("publishable"),
+                            engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",

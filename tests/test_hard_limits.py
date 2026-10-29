@@ -57,12 +57,12 @@ def test_a_value_the_engine_cannot_take_is_refused_with_its_reason(
                                before_prep=put, refused=True)
     else:
         from test_engine_offset_reaches_every_deck import _prep
-        from molbuilder.pyscf.stages import vibration_stages
+        from molbuilder.jobset.ladder import fresh_stages
         from test_electronic_state import WATER
         _d, _s, said = _prep(
             isolated_projects_root, WATER(),
             PySCFConfig(job_name="JOB", already_relaxed=True),
-            vibration_stages("pyscf"), "pyscf",
+            fresh_stages("vibration", "pyscf"), "pyscf",
             calculation="vibration", before_prep=put, refused=True)
     assert f"the template sets {name} = 0.0: it must be greater than 0" \
         in said, said
@@ -183,11 +183,11 @@ def test_a_triples_range_is_warned_at_prep_too(isolated_projects_root):
     MUTATION THIS MUST FAIL AGAINST: the metadata pass standing aside for a
     field with a `validate` callable (the report says nothing)."""
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import default_siesta_stages
+    from molbuilder.jobset.ladder import engine_ladder
     from molbuilder.task import Stage
     from test_electronic_state import WATER
     from test_engine_offset_reaches_every_deck import _prep
-    ladder = default_siesta_stages("publishable")
+    ladder = engine_ladder("siesta", "publishable")
     first = ladder[0]
     ladder = (Stage(name=first.name,
                     overrides={**dict(first.overrides or {}),

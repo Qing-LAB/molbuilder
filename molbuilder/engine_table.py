@@ -32,7 +32,7 @@ COMPUTES_IN = ("cell", "free space")
 
 #: The keys an engine's table states, each required ...
 _KEYS = ("words", "identity_field", "config", "seam", "computes_in",
-         "one_process", "benchmark")
+         "one_process", "benchmark", "presets", "keyword_deck")
 #: ... and those it states where it has one.
 _OPTIONAL = ("method",)
 
@@ -62,6 +62,14 @@ class Engine:
     #: Whether it has a benchmark lane -- a benchmark's measurement pins
     #: name its settings.
     benchmark: bool
+    #: ``module:NAME`` of its stage presets -- ``{tier: {item: value}}``, the
+    #: table its ladder's tiers are read from by the one ladder rule
+    #: (`jobset.ladder.engine_ladder`; floor 1, `config/`).
+    presets: str
+    #: Whether its deck states its settings as keywords the engine reads --
+    #: SIESTA's fdf, not PySCF's script -- which a run's setup rows read back
+    #: from the deck (`parse.dirs.setup`).
+    keyword_deck: bool
     #: Its method, where its catalogue offers no choice -- SIESTA's DFT --
     #: else ``None``: the config states it.
     method: Optional[str] = None
@@ -90,7 +98,7 @@ def _engine(name: str, body: object) -> Engine:
         raise EngineTableError(
             f"{where}: computes_in {body['computes_in']!r} is not one of "
             f"{', '.join(COMPUTES_IN)}")
-    for key in ("one_process", "benchmark"):
+    for key in ("one_process", "benchmark", "keyword_deck"):
         if not isinstance(body[key], bool):
             raise EngineTableError(f"{where}: {key} is true or false")
     return Engine(name=name, words=str(body["words"]),
@@ -99,6 +107,8 @@ def _engine(name: str, body: object) -> Engine:
                   computes_in=str(body["computes_in"]),
                   one_process=bool(body["one_process"]),
                   benchmark=bool(body["benchmark"]),
+                  presets=str(body["presets"]),
+                  keyword_deck=bool(body["keyword_deck"]),
                   method=body.get("method"))
 
 
@@ -145,5 +155,13 @@ def config_class(name: str) -> type:
     return part(rec.config, record=f"engine {rec.name}", key="config")
 
 
+def stage_presets(name: str) -> dict:
+    """Engine ``name``'s stage presets, ``{tier: {item: value}}`` -- the part
+    its record names (``presets``, floor 1, `config/`), resolved here."""
+    from .kind_table import part
+    rec = engine(name)
+    return part(rec.presets, record=f"engine {rec.name}", key="presets")
+
+
 __all__ = ["TABLE_FILE", "COMPUTES_IN", "EngineTableError", "Engine",
-           "engines", "engine", "config_class"]
+           "engines", "engine", "config_class", "stage_presets"]

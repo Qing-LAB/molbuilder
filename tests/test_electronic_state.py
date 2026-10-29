@@ -28,8 +28,7 @@ import pytest
 
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.pyscf.stages import default_pyscf_stages, vibration_stages
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import engine_ladder, fresh_stages
 from molbuilder.structure import Structure
 
 from test_engine_offset_reaches_every_deck import _prep
@@ -88,12 +87,12 @@ def _bcc_iron():
 
 def _siesta(root, struct, cfg=None, **kw):
     return _prep(root, struct, cfg or SiestaConfig(system_label="JOB"),
-                 default_siesta_stages("publishable"), "siesta", **kw)
+                 engine_ladder("siesta", "publishable"), "siesta", **kw)
 
 
 def _pyscf(root, struct, cfg=None, **kw):
     return _prep(root, struct, cfg or PySCFConfig(job_name="JOB"),
-                 default_pyscf_stages("publishable"), "pyscf", **kw)
+                 engine_ladder("pyscf", "publishable"), "pyscf", **kw)
 
 
 def _report(dest, stage) -> str:
@@ -172,8 +171,8 @@ def test_the_charge_step_on_every_deck(isolated_projects_root,
         return _prep(isolated_projects_root, deprotonated_diester,
                      PySCFConfig(job_name="JOB", net_charge=net_charge,
                                  already_relaxed=vib),
-                     (vibration_stages("pyscf") if vib
-                      else default_pyscf_stages("publishable")),
+                     (fresh_stages("vibration", "pyscf") if vib
+                      else engine_ladder("pyscf", "publishable")),
                      "pyscf", calculation=kind)[2]
     blank = deck(None)
     why = "detected: 1 deprotonated phosphate group"
@@ -184,7 +183,7 @@ def test_the_charge_step_on_every_deck(isolated_projects_root,
         _d, _s, said = _prep(isolated_projects_root, deprotonated_diester,
                              PySCFConfig(job_name="JOB", net_charge=0,
                                          already_relaxed=True),
-                             vibration_stages("pyscf"),
+                             fresh_stages("vibration", "pyscf"),
                              "pyscf", calculation="vibration", refused=True)
         assert "spin_treatment = unrestricted (detected" in said, said
         assert "charge     = -1," in blank and why in blank
@@ -324,7 +323,7 @@ def test_a_restricted_open_vibration_is_refused(isolated_projects_root):
         isolated_projects_root, METHYL(),
         PySCFConfig(job_name="JOB", already_relaxed=True,
                     spin_treatment="restricted-open"),
-        vibration_stages("pyscf"), "pyscf",
+        fresh_stages("vibration", "pyscf"), "pyscf",
         calculation="vibration", refused=True)
     assert "no analytic ROHF/ROKS Hessian" in said, said
 

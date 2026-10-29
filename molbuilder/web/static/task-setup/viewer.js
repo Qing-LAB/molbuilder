@@ -2545,9 +2545,10 @@ async function loadPresets(engine) {
  * promoted before any value is written, and the whole thing lands or nothing
  * does.
  *
- * A preset's values come from the SAME table `default_siesta_stages` builds
- * the shipped ladder from, so a stage filled here and stage N of that ladder
- * cannot drift (`tuning.md` § 4 is the authority for the numbers).
+ * A preset's values come from the SAME tiers the engine's shipped ladder is
+ * built from (`jobset.ladder.engine_tiers`), so a stage filled here and stage
+ * N of that ladder cannot drift (`tuning.md` § 4 is the authority for the
+ * numbers).
  */
 function setRowValues(i, values, what) {
     if (!_task || !_task.stages || !_task.stages[i]) return;

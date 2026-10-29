@@ -26,8 +26,8 @@ import pytest
 
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.pyscf.stages import vibration_stages
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import fresh_stages
+from molbuilder.jobset.ladder import engine_ladder
 
 from test_electronic_state import WATER
 from test_engine_offset_reaches_every_deck import _prep
@@ -36,8 +36,8 @@ from test_fixed_and_shared_items import (_first_rung_overrides,
 
 
 def _siesta(root, kind, *, before_prep=None, refused=False):
-    stages = (default_siesta_stages("publishable") if kind == "optimization"
-              else vibration_stages("siesta"))
+    stages = (engine_ladder("siesta", "publishable") if kind == "optimization"
+              else fresh_stages("vibration", "siesta"))
     return _prep(root, WATER(), SiestaConfig(system_label="JOB"), stages,
                  "siesta", calculation=kind, before_prep=before_prep,
                  refused=refused)
@@ -45,7 +45,7 @@ def _siesta(root, kind, *, before_prep=None, refused=False):
 
 def _pyscf_vibration(root, cfg, *, refused=False):
     return _prep(root, WATER(), cfg,
-                 vibration_stages("pyscf"), "pyscf",
+                 fresh_stages("vibration", "pyscf"), "pyscf",
                  calculation="vibration", refused=refused)
 
 
@@ -205,7 +205,7 @@ def test_a_description_refuses_what_its_kind_does_not_offer():
     ladder = tuple(Stage(name=st.name,
                          overrides={**dict(st.overrides or {}),
                                     "relax_type": "none"})
-                   for st in vibration_stages("siesta"))
+                   for st in fresh_stages("vibration", "siesta"))
     with pytest.raises(D.DescribeError) as refused:
         D.build_description(WATER(), SiestaConfig(system_label="JOB"), ladder,
                             engine="siesta", shape="hierarchical", name="JOB",

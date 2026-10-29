@@ -428,23 +428,35 @@ def test_the_sweepable_list_says_which_the_machine_answers(web_client):
         "(engines/overview.md § 3a: the user decides the GPU)")
 
 
-def test_the_presets_come_from_the_shipped_table(web_client):
-    """The same table `default_siesta_stages` builds the ladder from, so a
-    stage filled here and stage N of that ladder cannot drift.  `tuning.md § 4`
-    is the authority for the numbers; this serves them, never restates them."""
-    j = web_client.get("/api/task-setup/presets?engine=siesta"
+@pytest.mark.parametrize("engine,table", [
+    ("siesta", "molbuilder.config.siesta:SIESTA_STAGE_PRESETS"),
+    # PySCF's menu served only the tiers the default strategy runs (two of
+    # three) until 2.53.1.
+    ("pyscf", "molbuilder.config.pyscf:PYSCF_STAGE_PRESETS"),
+])
+def test_the_presets_come_from_the_shipped_table(web_client, engine, table):
+    """The same tiers the engine's shipped ladder is built from, so a stage
+    filled here and stage N of that ladder cannot drift -- every tier,
+    whatever a strategy runs.  `tuning.md § 4` is the authority for the
+    numbers; this serves them, never restates them."""
+    import importlib
+    module, name = table.split(":")
+    presets = getattr(importlib.import_module(module), name)
+    j = web_client.get(f"/api/task-setup/presets?engine={engine}"
                        "&calculation=optimization").get_json()
-    assert j["ok"] and len(j["presets"]) == 3
-    from molbuilder.config.siesta import SIESTA_STAGE_PRESETS
     from molbuilder.config.stages import STAGE_NAMES
+    assert j["ok"] and [ps["tier"] for ps in j["presets"]] == sorted(presets)
     for ps in j["presets"]:
         assert ps["name"] == STAGE_NAMES[ps["tier"]]
-        assert ps["values"] == SIESTA_STAGE_PRESETS[ps["tier"]], (
+        assert ps["values"] == presets[ps["tier"]], (
             "the endpoint restates the tier values instead of serving them")
-    # OFFERED PER KIND, by the columns' own membership rule (`task-setup.md`
-    # § 9): a tier is offered only where every field it carries may be a
-    # column.  A transport rung owns none of the relaxation fields, so its
-    # rows get no menu; a vibration's one stage owns them all.
+
+
+def test_the_presets_are_offered_per_kind(web_client):
+    """A tier is offered only where every field it carries may be a column
+    of the kind's table (`task-setup.md` § 9)."""
+    # A transport rung owns none of the relaxation fields, so its rows get
+    # no menu; a vibration's one stage owns them all.
     # Until 2026-09-24 every transport rung offered coarse/medium/tight
     # (plan W31, archived 2026-09-29), a menu whose every entry `prep` would refuse.
     t = web_client.get("/api/task-setup/presets?engine=siesta"
@@ -1156,7 +1168,7 @@ class TestTheFolderDoor:
         from molbuilder import describe as D
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.projects import PROJECTS_ROOT_ENV
-        from molbuilder.siesta.stages import default_siesta_stages
+        from molbuilder.jobset.ladder import engine_ladder
         from molbuilder.structure import Structure
         import numpy as np
 
@@ -1170,7 +1182,7 @@ class TestTheFolderDoor:
         dest = root / "proj" / "optimization" / "run"
         D.write_description(D.build_description(
             st, SiestaConfig(system_label="JOB", mesh_cutoff=250.0),
-            default_siesta_stages("publishable"),
+            engine_ladder("siesta", "publishable"),
             engine="siesta",
             calculation="optimization", shape="hierarchical", name="JOB",
             source=str(src)), dest)

@@ -611,10 +611,11 @@ SIESTA_RESTART_GROUP = RestartGroup(
 # --------------------------------------------------------------------- #
 #  SIESTA stage presets (minimum-viable per-stage defaults)             #
 #                                                                       #
-#  The ladder's SCIENCE: ``siesta/stages.py::default_siesta_stages``    #
+#  The ladder's SCIENCE: the engine record's ``presets`` names this     #
+#  table, and the one ladder rule (``jobset.ladder.engine_ladder``)     #
 #  reads each tier as a stage's ``overrides`` in the shipped ladder     #
 #  (engines/stages.md § 1.1 -- an engine config carries no stage list), #
-#  and the build route lists them.  Tier values follow                  #
+#  and the presets route lists them.  Tier values follow                #
 #  docs/engines/tuning.md's tier framework.                             #
 # --------------------------------------------------------------------- #
 #

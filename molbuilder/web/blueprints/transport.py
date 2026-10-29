@@ -1219,7 +1219,7 @@ def _reused_template(finished, shared: Dict[str, Any]) -> str:
     (`form-schema.md` § 1.1): a field the panel drew holding a value
     somebody gave, sent blank, was emptied -- written valueless, not
     chosen; one it drew blank, a value nobody chose, is as it was."""
-    from ._shared import siesta_config_from_params
+    from ._shared import config_from_params
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.template import (config_from_template, read_template,
                                      with_values_set)
@@ -1228,7 +1228,7 @@ def _reused_template(finished, shared: Dict[str, Any]) -> str:
     drawn = {it.name for it in read_template(text).items
              if it.is_set and it.source != "default"}
     typed = {k: v for k, v in shared.items() if v not in (None, "")}
-    cfg = siesta_config_from_params(typed, "transport")
+    cfg = config_from_params(SiestaConfig, typed, "transport")
     changed = {k: getattr(cfg, k) for k in typed
                if getattr(cfg, k) != getattr(was, k, None)}
     emptied = {k: None for k, v in shared.items()
@@ -1247,8 +1247,8 @@ def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str) -> str:
     draws both surfaces from, so the tab cannot show one calculation and
     describe another (plan § 5w K7).
 
-    The panel's values go through the door every SIESTA form goes through
-    (`_shared.siesta_config_from_params`): coerced to each field's declared
+    The panel's values go through the door every form goes through
+    (`_shared.config_from_params`): coerced to each field's declared
     type, a value one cannot take refused naming it.  A BLANK IS NOT CHOSEN
     (`form-schema.md` § 1.1): the panel is drawn holding the citation's
     answers, so a field it sends blank was emptied and the citation's value
@@ -1260,10 +1260,11 @@ def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str) -> str:
     Raises ``ValueError`` -- the value, or a citation the template's door
     refuses (a cited run that carried a net charge, ES7).
     """
-    from ._shared import siesta_config_from_params
+    from ._shared import config_from_params
+    from molbuilder.config.siesta import SiestaConfig
     from molbuilder.transport.citation_defaults import transport_template_text
     typed = {k: v for k, v in shared.items() if v not in (None, "")}
-    cfg = siesta_config_from_params(typed, "transport")
+    cfg = config_from_params(SiestaConfig, typed, "transport")
     chosen = {k: getattr(cfg, k) for k in typed
               if getattr(cfg, k, None) is not None}
     blank = sorted(k for k, v in shared.items() if v in (None, ""))

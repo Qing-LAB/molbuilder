@@ -1035,7 +1035,7 @@ def catalogue() -> "Template":
     # architecture.md` § 3.3): the file serves every engine the engine
     # table holds and no other, and every kind an item names is one the
     # kind table holds -- a name with no record is a row nothing asks.
-    from .engine_table import engines as _engines
+    from .engine_table import engine as _engine, engines as _engines
     if set(parsed.engines) != set(_engines()):
         _refuse(f"engines = {list(parsed.engines)}, and the engine table "
                 f"holds {', '.join(_engines())} -- one list of engines, the "
@@ -1071,17 +1071,21 @@ def catalogue() -> "Template":
                     "not_set -- what the engine does when it writes nothing "
                     "(engines/template.md § 5)", where=it.name)
         # THE ENGINE'S OWN VALUE IS STATED, OR WHAT IT FOLLOWS (§ 5): every
-        # SIESTA item whose anchor is a keyword.  Two decks are compared as
-        # SIESTA reads them (`siesta.engine_input`), and a keyword one deck
-        # states at the engine's own value is the same input as one that
-        # leaves it out -- so an item that states neither makes every older
-        # run another calculation the day a deck starts writing it.
+        # item whose anchor is a keyword of a deck its engine reads as
+        # keywords (the engine record's ``keyword_deck`` -- SIESTA's fdf).
+        # Two decks are compared as the engine reads them
+        # (`siesta.engine_input`), and a keyword one deck states at the
+        # engine's own value is the same input as one that leaves it out --
+        # so an item that states neither makes every older run another
+        # calculation the day a deck starts writing it.
         if (it.anchor and not it.anchor.startswith("%block")
-                and (not it.engines or "siesta" in it.engines)
+                and any(_engine(e).keyword_deck
+                        for e in (it.engines or _engines()))
                 and not it.engine_default and not it.engine_unfixed):
-            _refuse("a SIESTA item with a keyword states its engine_default "
-                    "-- the engine's value and the line of its source, or "
-                    "what that value follows (engines/template.md § 5)",
+            _refuse("an item with a keyword of a deck of keywords states its "
+                    "engine_default -- the engine's value and the line of "
+                    "its source, or what that value follows "
+                    "(engines/template.md § 5)",
                     where=it.name)
         # A RUN SETTING STATES NO `value` (§ 5.4): no template starts from
         # one -- its default is `default`, asked through `default_of`.

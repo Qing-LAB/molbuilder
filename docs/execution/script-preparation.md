@@ -332,7 +332,7 @@ not exempt** — 115 hand-typed lines there carry a number too.
 
 ---
 
-## 4. THE SEAM — fifteen questions, fourteen of them in step 3
+## 4. THE SEAM — sixteen questions, fourteen of them in step 3
 
 **An engine supplies two kinds of thing, and adding one touches no shared file.**
 The first is **its rows in the catalogue** — every parameter it models, declared
@@ -346,6 +346,7 @@ a gap visible:
 
 | step | the question | today's member | may it answer "nothing"? |
 |:--:|---|---|:--:|
+| **describe** | what must be settled before a calculation is written — the findings the hand-over shows beside their fields, and the sentence it refuses in while one is an error: SIESTA's pseudopotentials, the files already in the folder counted as at step 3.2 ([`web/handover-procedure.md`](?doc=web/handover-procedure.md) § 2.2) | `describe_findings` | **yes** |
 | **2** | the class the values rebuild into | `config_cls` | no |
 | **3.2** data files | what the engine cannot start without | `provide_data` | **yes** |
 | **3.2** data files | which of those are the shared package every job links | `shared_package` | **yes** |
@@ -367,8 +368,9 @@ a gap visible:
 describing its deck. The rest are per-job facts the conductor needs before or
 after the deck exists.
 
-**Fourteen of the fifteen are inside step 3**, and the fifteenth is a single
-question at step 2. **Step 3 is the engine's step; steps 1, 4 and 5 are the
+**Fourteen of the sixteen are inside step 3**, one is a single question at
+step 2, and one is asked before `prep` at all — by the hand-over, which
+writes the calculation (the member's declared `step`). **Step 3 is the engine's step; steps 1, 4 and 5 are the
 framework's alone.** An engine author reads one section.
 
 ### 4.1 What the table makes visible

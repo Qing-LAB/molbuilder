@@ -59,7 +59,7 @@ def test_pyscf_cold_block_sweeps_by_name_not_by_inventory():
     carries the id-keyed glob forms (braced for underscore suffixes) and no
     suffix enumeration."""
     from molbuilder.runwrap import _cold_restart_block
-    block = _cold_restart_block("myjob", engine="pyscf", label="myjob")
+    block = _cold_restart_block("myjob", label="myjob")
     assert '"$_warm_label".*' in block
     assert '"${_warm_label}"_*' in block
     assert "myjob.*" in block and "myjob_*" in block

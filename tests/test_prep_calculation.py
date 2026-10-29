@@ -30,7 +30,7 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.errors import PrepError
 from molbuilder.jobset.model import Resources
 from conftest import prep_the_group_of
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.structure import Structure
 
 from conftest import write_pseudos as _pseudos_for
@@ -73,7 +73,7 @@ def calc(tmp_path):
     dest = tmp_path / "calc"
     desc = D.build_description(
         _BDT, SiestaConfig(system_label="calc", mesh_cutoff=300.0),
-        default_siesta_stages("publishable"),
+        engine_ladder("siesta", "publishable"),
         engine="siesta",
         calculation="optimization",
         shape="hierarchical", name="calc", source=str(src))
@@ -128,7 +128,7 @@ def test_the_folder_wins_over_a_library_that_lacks_a_species(
     D.write_description(D.build_description(
         _BDT, SiestaConfig(system_label="calc", mesh_cutoff=300.0,
                            psml_lib="pseudopotential"),
-        default_siesta_stages("publishable"),
+        engine_ladder("siesta", "publishable"),
         engine="siesta",
         calculation="optimization",
         shape="hierarchical", name="calc", source=str(src)),

@@ -252,7 +252,8 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
         "structure": _env(peptide_xyz),
         "engine": "siesta", "calculation": "optimization",
         # kgrid coercion does int(v[i]) -- a non-numeric string here
-        # raises ValueError in _siesta_config_from_params, which the
+        # raises ValueError in the params door (`_shared.
+        # config_from_params`), which the
         # endpoint catches as a config-parse error.
         "params": {"kgrid": ["x", "y", "z"]},
     })

@@ -48,8 +48,14 @@
 # (`execution/architecture.md` § 3.3).  The region's name has this one home
 # (`transport/sort.py` reads it), and a lead's name is no other kind's role.
 # How a pair's stages play the roles (`stage_roles`): "own", its stages are
-# its rungs -- every role, in order, a stage's role its name; "every", each
-# stage every role; or the list of roles each stage plays.
+# its rungs -- every role, in order, a stage's role its name, which fixes
+# them; "every", each stage every role; or the list of roles each stage
+# plays.  The ladder a new description starts from (`ladder`), each stage
+# with no overrides: the rungs where they are fixed, read off the roles;
+# else as the pair lists them -- a vibration's one stage, `freq`, to which a
+# person may add stages (engines/vibration.md § 5.9); a pair that lists none
+# starts from its engine's ladder (the engine table's `presets`,
+# execution/job-system.md § 5.4).
 #
 # A pair's `sum`: what `summarize task` adds up for it, a part -- with none,
 # its stages each write their own result.  Its `retired`: a stage older
@@ -91,6 +97,8 @@ results = [
 # Its one stage is one run in three phases, and carries every phase's role
 # (`engines/vibration.md` § 5.11 § 9).
 stage_roles = "every"
+# ...in one stage, `freq`, the harmonic analysis -- a new description's.
+ladder = ["freq"]
 shape = "hierarchical"
 why = "A SIESTA vibration is hierarchical, and no other shape is taken -- its one run's SIESTA calls, the relaxation, the force constants and the optical calls, each run in a folder of its own: in one directory they would write over each other's .DM and .XV (engines/vibration.md § 5.11 § 1)."
 points = "molbuilder.jobset.vibration_points:POINTS"
@@ -104,6 +112,7 @@ retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIE
 # It relaxes inside its one deck, so each of its stages is the
 # force-constant run.
 stage_roles = ["force_constants"]
+ladder = ["freq"]
 # A vibration's summary is the displacement sweep, which a PySCF vibration
 # never has -- its second derivatives are analytic -- and is refused naming
 # why (engines/vibration.md § 5.9).

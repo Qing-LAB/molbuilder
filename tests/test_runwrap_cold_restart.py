@@ -58,7 +58,7 @@ def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
     """
     from molbuilder.runwrap import _cold_restart_block
 
-    block = _cold_restart_block("myjob", engine="pyscf", label="myjob")
+    block = _cold_restart_block("myjob", label="myjob")
     # THE EXCEPTION ARM: the one holding molbuilder's own names, `*.psml`
     # among them -- the sweep's other arms keep a run's and another
     # stage's files, and are not exceptions by name shape.
@@ -92,7 +92,7 @@ def test_a_flat_cold_launch_again_keeps_every_run_and_every_other_stage(
     API-LEVEL: the generated sweep, run on files a flat folder holds."""
     import subprocess
     from molbuilder.runwrap import _cold_restart_block
-    block = _cold_restart_block("H2_01_coarse", engine="pyscf", label="H2")
+    block = _cold_restart_block("H2_01_coarse", label="H2")
     warm = ["H2_optimized.xyz", "H2.chk"]
     kept = ["H2_01_coarse-run0_geom_optim.xyz",      # an earlier run's own
             "H2_02_medium-run0_geom_optim.xyz",       # another stage's run

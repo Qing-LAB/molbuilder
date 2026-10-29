@@ -34,6 +34,7 @@ from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .atom_permutation import MAP_KEY
+from .engine_table import engines as _engines
 from .structure import Structure, atom_words
 
 
@@ -354,7 +355,7 @@ def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
              short_help="run validation checks on a structure; print Issue JSON")
 @click.argument("input_path", metavar="input")
 @click.option("--engine", default=None,
-              type=click.Choice(["siesta", "pyscf"]),
+              type=click.Choice(_engines()),
               help="run engine-specific config checks too (default: "
                    "the structure's own checks, its box's and its "
                    "geometry's)")
@@ -389,12 +390,15 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
     with _resolve_input_path(input_path) as resolved:
         struct, _cell, _said = _struct_for_validate(resolved)
 
-    if engine == "siesta":
-        from .config.siesta import SiestaConfig
-        issues = validate(struct, SiestaConfig(), cell=_cell)
-    elif engine == "pyscf":
-        from .config.pyscf import PySCFConfig
-        issues = validate(struct, PySCFConfig())
+    if engine:
+        # THE ENGINE'S CONFIG CHECKS on its config class's defaults, the
+        # file's box handed over where the engine computes in the
+        # structure's cell (the engine table's ``computes_in``); one
+        # computing in free space is judged on the structure's own.
+        from .engine_table import config_class, engine as _engine
+        issues = validate(struct, config_class(engine)(),
+                          cell=(_cell if _engine(engine).computes_in == "cell"
+                                else None))
     else:
         # NO ENGINE: the structure's own findings, its box's included -- a
         # box that is no box is an error whatever runs on it

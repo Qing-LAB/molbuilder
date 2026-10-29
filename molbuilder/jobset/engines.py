@@ -10,7 +10,7 @@ asks it.
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -91,6 +91,17 @@ class EngineSeam:
     #: that machine — and because `prep` is already what decides the shared
     #: package.
     provide_data: Optional[Callable] = None
+    #: ``(struct, config, *, calculation, dest_dir) -> (findings, refusal)``
+    #: — the findings a describe adds before it writes this engine's
+    #: calculation into ``dest_dir`` (`web/handover-procedure.md` § 2.2), and
+    #: the sentence it is refused in while one is an error, else ``None``.
+    #: SIESTA's: its pseudopotentials, the files already in the folder
+    #: counted as at `prep`.  ``None`` for an engine whose describe adds
+    #: none.  ASKED BEFORE `prep`, by the hand-over that writes the
+    #: calculation (its ``step``, `script-preparation.md` § 4) -- every other
+    #: member is a preparation step's.
+    describe_findings: Optional[Callable] = field(
+        default=None, metadata={"step": "describe"})
 
 
 def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
@@ -114,6 +125,24 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
         emit_correction_script(fdf_path=deck_path,
                                system_label=cfg.system_label, q=q,
                                names=names, plan=plan)
+
+
+def _siesta_describe_findings(struct, cfg, *, calculation: str,
+                              dest_dir=None):
+    """SIESTA's describe findings: its pseudopotentials, settled before a
+    calculation is written (`web/handover-procedure.md` § 2.2) -- the check
+    `prep` makes, asked of the folder the files go into -- and the refusal
+    while an element has none."""
+    from ..validation.siesta import pseudopotential_findings
+    found = pseudopotential_findings(struct, cfg, calculation=calculation,
+                                     dest_dir=dest_dir)
+    if not any(i.severity == "error" for i in found):
+        return found, None
+    return found, ("the pseudopotentials are not settled: SIESTA needs a "
+                   ".psml file for every element, so this would write a "
+                   "calculation that cannot start -- the findings are "
+                   "beside the pseudopotential field "
+                   "(handover-procedure.md 2.2)")
 
 
 def pseudo_dir(base: Path, plan=None) -> Path:
@@ -299,7 +328,8 @@ def siesta_seam() -> EngineSeam:
                       warm_for=warm_for, traits_for=traits_for,
                       sibling_artifacts=_siesta_sibling_artifacts,
                       provide_data=siesta_provide_pseudos,
-                      shared_package=_siesta_shared_package)
+                      shared_package=_siesta_shared_package,
+                      describe_findings=_siesta_describe_findings)
 
 
 def pyscf_seam() -> EngineSeam:
@@ -309,7 +339,9 @@ def pyscf_seam() -> EngineSeam:
     W5): PySCF's basis sets ship inside PySCF, so there is no file to put in
     the calculation; and its script's own text instructs nothing to be run
     beside it, so there is no promise to keep.  NO ``shared_package``: there
-    is nothing in the calculation for every job to link to."""
+    is nothing in the calculation for every job to link to.  NO
+    ``describe_findings``: there is no data file to settle before one is
+    written."""
     from ..engine_table import config_class as _config_class
     from ..pyscf.input import spec_for as _pyscf_spec
     from ..pyscf.stages import traits_for as _pyscf_traits

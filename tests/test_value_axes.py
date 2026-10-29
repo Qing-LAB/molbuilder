@@ -26,7 +26,7 @@ from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.materialize import latest_attempt
 from molbuilder.jobset.errors import PrepError
 from molbuilder.jobset.prep import prep_bench
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.structure import Structure
 
 from support.road import read_request, shelf_headers, write_request
@@ -68,7 +68,7 @@ def sol_calc(tree):
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB"),
-                            default_siesta_stages("publishable"),
+                            engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization", shape="hierarchical",
                             name="JOB", source=str(tree / "h2.xyz")),
@@ -506,7 +506,7 @@ def flat_sol_calc(tree):
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB"),
-                            default_siesta_stages("publishable"),
+                            engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization", shape="flat",
                             name="JOB", source=str(tree / "h2.xyz")),

@@ -532,7 +532,7 @@ through one door on floor 1:
 |---|---|---|
 | **the kind table** | the calculation kinds, each with its part on every engine it runs on | `molbuilder/data/kind_table.toml` · `kind_table.kind`, `CalculationKind.on` |
 | **the engine table** | the engines | `molbuilder/data/engine_table.toml` · `engine_table.engine` |
-| **the file catalogue** | every file molbuilder writes: its role, where it lies in each shape, who writes it and when, its reader, the calculations whose result it is | `runfiles.WRITTEN` · `runfiles` (§ 3.2) |
+| **the file catalogue** | every file molbuilder writes: its role, where it lies in each shape, who writes it and when, its reader, the calculations whose result it is, and whether it is a bundle that travels beside a deck — the monitor's beside every job, an engine's beside its decks (`bundle`) | `runfiles.WRITTEN` · `runfiles` (§ 3.2) |
 | **the folder record** | what each folder is — a calculation's root by its description, any other folder by the record its creator stamps on it | `calcdir.json` · `calcdirs.where` ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) |
 
 **A fact that has a home keeps it.** The two tables hold what nothing else
@@ -578,14 +578,18 @@ file and the key.
   page's label palette keeps its own copy of the two names
   (`lib/molview/model-jobs.js` `PREDEFINED_LABELS`) — a second source, not
   served from here yet ([`plans/plan.md`](?doc=plans/plan.md) § 1ak, S2.4);
+- whether its deck relaxes the structure — an optimization's — which the
+  progress log seeded for its run states as its targets (`relaxes`);
+- the science checks its decks run before they are written, where it has
+  its own — a vibration's (`validator`, a part);
 - the results it gives, in the order a person decides them, each a card a
   form of the kind draws ([`engines/template.md`](?doc=engines/template.md)
   § 6.2a) — which of them an engine gives is its catalogue items';
 - what its root opens where that is not one of its runs' results — a
   transport calculation's, its description, through which its report is
-  opened — and what the folder of one of its rungs opens where that is not
-  the run's own result: a transmission run's, its calculation's report at the
-  point the folder is;
+  opened (`root_opens`) — and what the folder of one of its rungs opens
+  where that is not the run's own result: a transmission run's, its
+  calculation's report at the point the folder is (the role's `opens`);
 - what its description carries beyond every kind's fields — a transport
   calculation cites a junction instead of holding a structure, states its
   voltages and may extend a finished calculation — and what its identity is
@@ -610,8 +614,14 @@ file and the key.
 - how its stages play the roles: a SIESTA vibration's one stage plays every
   role, a PySCF vibration's stages the force constants', a transport rung its
   own — which fixes its stages: its rungs, every one, in order;
-- the ladder a new description starts from, and whether a ladder's tiers
-  (`--stage-strategy`) apply;
+- the ladder a new description starts from (`ladder`): the stages it fixes
+  — its rungs — or the pair's own start — a vibration's one stage, `freq`,
+  to which a person may add stages (a displacement sweep,
+  [`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) — else its
+  engine's ladder (the engine's `presets`), whose tiers alone a
+  `--stage-strategy` picks from;
+- what relaxes the structure first, in a person's words, where the pair
+  relaxes before it measures — a vibration's (`relaxation`);
 - whether a rung runs per point, and that run's declaration (a part, below);
 - for a linked kind whose rungs take inputs, which rung hands which file to
   which (a part) and the gather that takes them at a first launch (a part);
@@ -645,7 +655,8 @@ by the one door, in one sentence naming the engines it runs on.
   SIESTA's) or refused (PySCF's), asked by the electronic state and its
   check, which name no engine — and its seam (a part, floor 3: its deck writer, the
   readers of its warm files and traits, its data files and its shared
-  package — `jobset/engines.py`'s `EngineSeam`,
+  package, and the findings its describe adds — SIESTA's pseudopotentials —
+  `jobset/engines.py`'s `EngineSeam`,
   [`script-preparation.md`](?doc=execution/script-preparation.md) § 4);
 - what it computes in — a molecule in free space, whatever the structure's
   cell (PySCF), or the structure's cell;
@@ -653,9 +664,15 @@ by the one door, in one sentence naming the engines it runs on.
   density-functional code;
 - whether a run is one process with threads (PySCF) or ranks;
 - what its run script runs and how — its launch line, its threads, the step
-  after the engine, the environment a GPU run activates;
-- its stage presets, and whether it has a benchmark lane — the measurement
-  pins of a benchmark name its settings.
+  after the engine, the environment a GPU run activates (`run_script`, a
+  part: the engine's block of the run script, in its own package, which the
+  run script's shared blocks wrap);
+- whether its deck states its settings as keywords the engine reads —
+  SIESTA's fdf, not PySCF's script — which a run's setup rows read back from
+  the deck (`keyword_deck`);
+- its stage presets — the table its ladder's tiers are read from, by the one
+  ladder rule (`presets`, `config.stages.ladder_of`) — and whether it has a
+  benchmark lane — the measurement pins of a benchmark name its settings.
 
 **A part that is code is named, and lives on the floor that resolves it.** A
 record names each as `module:NAME`, and the floor that asks resolves it — the
@@ -677,9 +694,12 @@ the record and the key.
 - **an engine's own modules choose by kind**, because what they choose is
   that engine's language — `siesta/`, `pyscf/`, `config/siesta.py`,
   `config/pyscf.py`, `validation/siesta.py`, `validation/pyscf.py`,
-  `parse/engines/`, `parse/coords/`;
+  `parse/engines/`, `parse/coords/`, and `kmesh.py`, SIESTA's k-point grids
+  (its SCF's and TBtrans's), which every floor that writes or checks one
+  reads;
 - **a kind's own modules choose by engine, and refuse another kind at their
-  doors** — `transport/`, and the vibration's `spectra/`;
+  doors** — `transport/`, and the vibration's `spectra/` and
+  `validation/spectra.py`, its science checks;
 - **`jobset migrate`'s rewrites of an older molbuilder's files** — each
   names the version and the layout it rewrites, which is history, not what a
   kind or an engine is; a retired stage it folds is the pair's record

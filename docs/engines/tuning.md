@@ -866,21 +866,17 @@ For users who know one engine and want the other's equivalent.
 Both engines ship a three-stage default ladder. Stage 3 is **disabled by
 default**.
 
-- **SIESTA:** `siesta/stages.py::default_siesta_stages(strategy)` builds it —
-  one `task.Stage` per tier, that tier's values as its `overrides`. The values
-  come from `config/siesta.py::SIESTA_STAGE_PRESETS`, and that is the **one**
-  place they enter, so nothing can drift from them. The stage names are
-  `coarse` / `medium` / `tight`. *(This bullet also credited a `--stage {1,2,3}`
-  one-shot overlay until 2026-08-16 — a flag of the `molbuilder fdf` verb,
-  deleted 2026-08-11.)*
-- **PySCF:** `pyscf/stages.py::default_pyscf_stages(strategy)` builds it — the
-  same call, the same return type and the same three names as SIESTA's, one
-  `task.Stage` per tier with that tier's values as its `overrides`. The values
-  come from `config/pyscf.py::PYSCF_STAGE_PRESETS`, and that is the **one**
-  place they enter. *(It was `config/pyscf.py::_default_stages`, a field of the
-  config, until 2026-08-17; the ladder is declared in `task.json` like SIESTA's
-  now, and since 2026-08-18 **executes** like SIESTA's too — N decks, N jobs
-  ([`stages.md § 1.1a`](?doc=engines/stages.md)).)*
+**One rule builds it for every engine** (`jobset/ladder.py::engine_ladder(
+engine, strategy)`): one `task.Stage` per tier of the engine's stage presets
+— the table its record in the engine table names (`presets`:
+`config/siesta.py::SIESTA_STAGE_PRESETS`, `config/pyscf.py::
+PYSCF_STAGE_PRESETS`) — that tier's values as its `overrides`, the tiers the
+strategy runs. The presets are the **one** place the values enter, so nothing
+can drift from them; the Task setup tab's preset menu serves the same tiers
+(`jobset/ladder.py::engine_tiers`). The stage names are `coarse` / `medium` /
+`tight` on both engines. The ladder is declared in `task.json` and executes
+the same way on both — N decks, N jobs
+([`stages.md § 1.1a`](?doc=engines/stages.md)).
 
 > **Neither engine's ladder carries a non-convergence policy, and running out
 > of steps means the same thing in both: the rung stops, and you decide.** A

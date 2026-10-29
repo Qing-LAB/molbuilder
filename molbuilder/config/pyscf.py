@@ -37,10 +37,11 @@ from .siesta import _validate_basename     # shared with SiestaConfig
 #: What each rung of a PySCF ladder is tuned to, tier by tier.
 #:
 #: Read across from ``SIESTA_STAGE_PRESETS``: one table per engine, keyed by
-#: the same three tiers, and ``<engine>/stages.py::default_<engine>_stages``
-#: turns it into the shipped ladder of :class:`~molbuilder.task.Stage`
-#: objects.  The two engines differ in which parameters a tier names and in
-#: nothing else (`stages.md` § 1.1a).
+#: the same three tiers, named by the engine record's ``presets``, and the
+#: one ladder rule (``jobset.ladder.engine_ladder``) turns it into the
+#: shipped ladder of :class:`~molbuilder.task.Stage` objects.  The two
+#: engines differ in which parameters a tier names and in nothing else
+#: (`stages.md` § 1.1a).
 #:
 #: **Every number is `tuning.md` § 2.4's and § 2.5's**, column by column --
 #: loose preopt, publishable, tight.  That table is what a reviewer is

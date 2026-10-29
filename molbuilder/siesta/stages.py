@@ -1,11 +1,10 @@
 """SIESTA's stage knowledge — the shipped ladder, and what a stage's
 warm restart means (docs/execution/job-system.md).
 
-Three things live here, read by `molbuilder describe` and the engine seam
-(`jobset/engines.py::engine_seam`):
+Two things live here, read by the engine seam
+(`jobset/engines.py::engine_seam`) -- the shipped ladder is every engine's
+one rule over its presets (`jobset.ladder.engine_ladder`):
 
-  * :func:`default_siesta_stages` — the shipped ladder as ``Stage`` objects,
-    the science stated once in the presets table;
   * :func:`warm_for` — ``restart: continue`` means ``.XV``, ``.DM``
     and ``.CG``, the last conditioned on the optimizer (`run-identity.md`
     § 4);
@@ -23,48 +22,6 @@ from __future__ import annotations
 from typing import Dict, List
 
 from ..jobset.model import WarmFile
-from ..task import Stage
-
-
-def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
-    """The shipped SIESTA ladder as ``Stage`` objects.
-
-    One stage per tier of :data:`~molbuilder.config.siesta.SIESTA_STAGE_PRESETS`,
-    each carrying that tier's four values as its ``overrides``, the tiers
-    the named strategy preset picks.  So the science is stated once, in the
-    presets table, and this only decides *which* tiers run and *how* they
-    are shaped for the description.
-
-    Raises ``ValueError`` on an unknown strategy.
-    """
-    from ..config.siesta import SIESTA_STAGE_PRESETS
-    from ..config.stages import STAGE_NAMES
-    from ..config.stages import STAGE_STRATEGY_PRESETS
-
-    if strategy not in STAGE_STRATEGY_PRESETS:
-        valid = ", ".join(sorted(STAGE_STRATEGY_PRESETS))
-        raise ValueError(
-            f"unknown SIESTA stage strategy {strategy!r}; "
-            f"choose from: {valid}")
-    enables = STAGE_STRATEGY_PRESETS[strategy]
-    out: List[Stage] = []
-    for i, tier in enumerate(sorted(SIESTA_STAGE_PRESETS)):
-        overrides = dict(SIESTA_STAGE_PRESETS[tier])
-        # NO ``restart`` HERE, and its absence is the rule rather than a gap
-        # (`run-identity.md` § 4 rule 3).  A rung's position does not answer
-        # *is there anything to continue from* -- the folder does, at run
-        # time.  Every rung takes the shared default, ``continue``, which
-        # means *read what is there*; with nothing there the engine starts
-        # from the deck's own coordinates and says so.
-        # The tier's NAME, from the one table: Decision 27 puts the ordinal in
-        # the artifact token, so a name that is itself a position says the number
-        # twice (``<label>_01_stage1.fdf``) and the science none.
-        # THE STAGES IT RUNS, and only those (`engines/stages.md` § 2): a
-        # tier the strategy leaves out is not in the ladder.
-        if i < len(enables) and enables[i]:
-            out.append(Stage(name=STAGE_NAMES[tier],
-                             overrides=overrides))
-    return out
 
 
 #: The key a `.CG` carry is conditioned on -- re-exported from the one place

@@ -917,19 +917,6 @@ def config_from_params(cls, params: Dict[str, Any],
     return dataclasses.replace(base, **kwargs)
 
 
-def siesta_config_from_params(params: Dict[str, Any],
-                              calculation: str = ""):
-    """A ``SiestaConfig`` from a form's payload, keyed by catalogue names,
-    each value coerced to its field's declared type (R5), over the kind's
-    recommendations (:func:`config_from_params`).  ONE home for the doors
-    that take a SIESTA form -- the hand-over, the preflight, the chemistry
-    card and the transport describe door's shared panel -- so a blank, a
-    comma-typed tuple and a number typed as text mean the same thing on
-    every tab."""
-    from molbuilder.config.siesta import SiestaConfig
-    return config_from_params(SiestaConfig, params, calculation)
-
-
 class PeriodicityRefused(Exception):
     """The gate REFUSED the periodicity a request carried.
 

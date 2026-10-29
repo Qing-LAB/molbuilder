@@ -1488,9 +1488,10 @@ flowchart LR
 
 ### 4.1 The SIESTA staged ladder
 
-`molbuilder/siesta/stages.py` holds SIESTA's stage knowledge — the shipped
-ladder (`default_siesta_stages`), what a stage's warm restart means, and the
-traits a warm condition is compared against — consumed at `prep` through the
+`molbuilder/siesta/stages.py` holds SIESTA's stage knowledge — what a stage's
+warm restart means, and the traits a warm condition is compared against; its
+shipped ladder is the one ladder rule's over its presets
+(`jobset/ladder.py::engine_ladder`) — consumed at `prep` through the
 engine seam (`jobset/engines.py`): one job per stage of the description's
 ladder, script `<label>_<NN>_<stage>.fdf`. An engine config carries no stage
 list, so the ladder lives in `task.json`, never in the config

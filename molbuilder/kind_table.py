@@ -53,7 +53,7 @@ DESCRIPTION_FIELDS = ("swap_electrodes", "bias", "reuses")
 _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
               "charge", "no_benchmark", "handover", "on")
 _PART_KEYS = ("words", "shape", "why", "stage_roles", "points", "rung",
-              "inputs", "gather", "sum", "retired")
+              "inputs", "gather", "sum", "retired", "ladder")
 
 #: The parts a pair may name, each ``module:NAME`` (:func:`part_of`).
 PART_REFS = ("points", "rung", "inputs", "gather", "sum")
@@ -137,6 +137,11 @@ class KindOnEngine:
     #: The stages it fixes, in order -- its rungs, where ``stage_roles`` is
     #: ``"own"`` -- or ``None``.
     stages: Optional[Tuple[str, ...]] = None
+    #: The ladder a new description starts from, each stage with no
+    #: overrides -- its fixed stages, else as it lists them (a vibration's
+    #: one stage, ``freq``, which a person may add to) -- or ``None``: its
+    #: engine's ladder (the engine table's ``presets``).
+    ladder: Optional[Tuple[str, ...]] = None
     #: ``module:NAME`` of its run of points' declaration (floor 4), or
     #: ``None`` for a pair whose every rung runs once.
     points: Optional[str] = None
@@ -272,6 +277,22 @@ def _part(kind: str, engine: str, body: object,
     elif sr is not None and sr not in ("own", "every"):
         _refuse(where, f"stage_roles {sr!r} is \"own\", \"every\" or a "
                        f"list of roles")
+    # THE STAGES IT FIXES: its rungs where its stages play their own roles,
+    # read off the roles -- and so the ladder a new description starts from;
+    # else the ladder as the pair lists it, where it lists one (a
+    # vibration's one stage), each a new description's, with no overrides.
+    stages = tuple(roles) if sr == "own" else None
+    ladder = body.get("ladder")
+    if ladder is not None:
+        if sr == "own":
+            _refuse(where, "ladder on a pair whose stages are its rungs -- "
+                           "they are read off the kind's roles")
+        if (not isinstance(ladder, list) or not ladder
+                or not all(isinstance(x, str) and x for x in ladder)):
+            _refuse(where, "ladder is a list of stage names")
+        ladder = tuple(ladder)
+    else:
+        ladder = stages
     if ("inputs" in body) != ("gather" in body):
         _refuse(where, "a rung's inputs and the gather that takes them come "
                        "together")
@@ -293,7 +314,7 @@ def _part(kind: str, engine: str, body: object,
         retired = Retired(**retired)
     return KindOnEngine(kind=kind, engine=engine, words=body.get("words"),
                         shape=shape, why=why, stage_roles=sr,
-                        stages=tuple(roles) if sr == "own" else None,
+                        stages=stages, ladder=ladder,
                         points=body.get("points"), rung=body.get("rung"),
                         inputs=body.get("inputs"), gather=body.get("gather"),
                         sum=body.get("sum"), retired=retired)

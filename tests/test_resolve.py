@@ -16,7 +16,7 @@ from molbuilder.jobset.model import Resources
 from molbuilder.resolve import (ALLOCATION_FIELDS, MachineTranslation,
                                 ParameterSet, ResolveError, point_token,
                                 resolve)
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.task import Stage, StructureRef, Task, derive_run
 from molbuilder.template import template_with_values
 
@@ -362,13 +362,13 @@ def test_two_points_rendering_one_label_refuse_the_sweep(template):
 
 def test_a_ladder_needs_a_stage_named(template):
     with pytest.raises(ResolveError, match=r"a stage has to be named"):
-        resolve(template, _task(default_siesta_stages("publishable")),
+        resolve(template, _task(engine_ladder("siesta", "publishable")),
                 SiestaConfig, allocation=ALLOC)
 
 
 def test_naming_a_stage_that_is_not_there_is_refused_with_the_options(template):
     with pytest.raises(ResolveError, match=r"coarse"):
-        resolve(template, _task(default_siesta_stages("publishable")),
+        resolve(template, _task(engine_ladder("siesta", "publishable")),
                 SiestaConfig, allocation=ALLOC, stage="nonesuch")
 
 

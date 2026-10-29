@@ -35,6 +35,12 @@ method = "DFT"
 # Whether it has a benchmark lane: a benchmark's measurement pins name its
 # settings (execution/job-request.md § 3.4).
 benchmark = true
+# Its stage presets, {tier: {item: value}}: the table its ladder's tiers are
+# read from, by the one ladder rule (`jobset.ladder.engine_ladder`).
+presets = "molbuilder.config.siesta:SIESTA_STAGE_PRESETS"
+# Whether its deck states its settings as keywords the engine reads -- the
+# fdf -- which a run's setup rows read back from the deck.
+keyword_deck = true
 
 [pyscf]
 words = "PySCF"
@@ -50,3 +56,6 @@ computes_in = "free space"
 one_process = true
 # No benchmark lane: the measurement pins name SIESTA's settings.
 benchmark = false
+presets = "molbuilder.config.pyscf:PYSCF_STAGE_PRESETS"
+# A Python script, its settings the script's own values, not keywords.
+keyword_deck = false

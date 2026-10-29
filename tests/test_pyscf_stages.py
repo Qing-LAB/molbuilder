@@ -23,7 +23,7 @@ import pytest
 from molbuilder.config.pyscf import PySCFConfig, PYSCF_STAGE_PRESETS
 from molbuilder.config.stages import STAGE_STRATEGY_PRESETS
 from molbuilder.config.stages import STAGE_NAMES
-from molbuilder.pyscf.stages import default_pyscf_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.task import Stage
 
 
@@ -72,7 +72,7 @@ def test_default_ladder_is_three_named_stages():
     """The names are the SHARED vocabulary, not PySCF's own.  A rung is a
     rung in both engines, so ``coarse`` means the same thing in a PySCF
     description and a SIESTA one (`tuning.md` § 4)."""
-    stages = default_pyscf_stages("vib-quality")
+    stages = engine_ladder("pyscf", "vib-quality")
     assert [s.name for s in stages] == [STAGE_NAMES[i]
                                         for i in (1, 2, 3)]
     assert all(isinstance(s, Stage) for s in stages)
@@ -81,9 +81,9 @@ def test_default_ladder_is_three_named_stages():
 def test_default_ladder_matches_siesta():
     """publishable = coarse + medium; tight is added when wanted.  The same
     shape as SIESTA's default, so the two engines read alike."""
-    from molbuilder.siesta.stages import default_siesta_stages
-    assert ([s.name for s in default_pyscf_stages()]
-            == [s.name for s in default_siesta_stages()]
+    from molbuilder.jobset.ladder import engine_ladder
+    assert ([s.name for s in engine_ladder("pyscf")]
+            == [s.name for s in engine_ladder("siesta")]
             == ["coarse", "medium"])
 
 
@@ -97,7 +97,7 @@ def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
     Nothing is added to that row.  ``restart`` is a property of neither the
     tier nor the rung's index -- the folder answers it, at run time
     (`run-identity.md` § 4 rule 3)."""
-    stage = default_pyscf_stages("vib-quality")[tier - 1]
+    stage = engine_ladder("pyscf", "vib-quality")[tier - 1]
     assert stage.overrides == PYSCF_STAGE_PRESETS[tier]
 
 
@@ -111,7 +111,7 @@ def test_no_shipped_ladder_says_anything_about_restart():
     for tier, row in PYSCF_STAGE_PRESETS.items():
         assert "restart" not in row, tier
     for strategy in sorted(STAGE_STRATEGY_PRESETS):
-        for st in default_pyscf_stages(strategy):
+        for st in engine_ladder("pyscf", strategy):
             assert "restart" not in st.overrides, (strategy, st.name)
 
 
@@ -120,7 +120,7 @@ def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
     ladder naming a field the schema does not have is refused, so the
     default must not be one."""
     known = {f.name for f in dataclasses.fields(PySCFConfig)}
-    varied = {k for s in default_pyscf_stages("vib-quality")
+    varied = {k for s in engine_ladder("pyscf", "vib-quality")
               for k in s.overrides}
     assert varied <= known
     assert varied == {"scf_conv_tol", "geom_gmax", "geom_grms", "geom_dmax",
@@ -171,15 +171,15 @@ def test_every_shipped_tier_value_is_inside_its_items_bound(tier):
     ("vib-quality", ["coarse", "medium", "tight"]),
 ])
 def test_strategy_preset_writes_the_stages_it_runs(strategy, expected):
-    assert [s.name for s in default_pyscf_stages(strategy)] == expected
+    assert [s.name for s in engine_ladder("pyscf", strategy)] == expected
 
 
 def test_strategy_preset_changes_only_which_tiers_run():
     """A preset says which tiers run; it never retunes one.  If it did,
     picking 'loose-only' would silently change what the coarse rung
     computes."""
-    a = default_pyscf_stages("loose-only")
-    b = default_pyscf_stages("vib-quality")
+    a = engine_ladder("pyscf", "loose-only")
+    b = engine_ladder("pyscf", "vib-quality")
     assert [s.overrides for s in a] == [s.overrides for s in b][:len(a)]
     assert [s.name for s in a] == [s.name for s in b][:len(a)]
 
@@ -190,14 +190,14 @@ def test_strategy_preset_rejects_unknown_name():
     caller did not name, and `molbuilder describe --stage-strategy` is the one
     door a ladder is authored through."""
     with pytest.raises(ValueError, match="unknown PySCF stage strategy"):
-        default_pyscf_stages("no-such-preset")
+        engine_ladder("pyscf", "no-such-preset")
 
 
 def test_each_call_returns_independent_stages():
     """A caller that disables a stage must not disturb the next caller's
     ladder -- the mutable-default bug the old factory existed to avoid,
     asserted rather than assumed."""
-    a, b = default_pyscf_stages(), default_pyscf_stages()
+    a, b = engine_ladder("pyscf"), engine_ladder("pyscf")
     assert a is not b
     assert a[0].overrides is not b[0].overrides
     a[0].overrides["basis"] = "def2-QZVP"
@@ -215,10 +215,10 @@ def test_both_engines_build_a_ladder_through_the_same_shape():
 
     This is the test that fails when one engine is 'fixed' and the other is
     not -- the drift the user named as the thing to prevent."""
-    from molbuilder.siesta.stages import default_siesta_stages
+    from molbuilder.jobset.ladder import engine_ladder
     for strategy in sorted(STAGE_STRATEGY_PRESETS):
-        p = default_pyscf_stages(strategy)
-        s = default_siesta_stages(strategy)
+        p = engine_ladder("pyscf", strategy)
+        s = engine_ladder("siesta", strategy)
         assert [x.name for x in p] == [x.name for x in s]
         # And neither says anything about restarting: that is the folder's
         # answer at run time, not the ladder's (`run-identity.md` § 4 rule 3).

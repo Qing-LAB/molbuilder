@@ -994,6 +994,12 @@ class Artifact:
     #: and writes geomeTRIC's -- said wherever its atom index map is shown;
     #: empty for a file that is not one.
     counted_by: "tuple[str, ...]" = ()
+    #: A BUNDLE THAT TRAVELS BESIDE A DECK into every folder it runs in
+    #: (`execution/architecture.md` § 3.3): with no ``engine``, beside every
+    #: job -- the monitor's; with one, beside that engine's decks -- the code
+    #: a PySCF script imports.  A job's finish is chosen by the job
+    #: (`Job.finish`), not by this flag.
+    bundle: bool = False
 
 
 #: THE FIXED NAMES -- files molbuilder writes that are not named on the label,
@@ -1031,15 +1037,16 @@ LAUNCH_DIR = "launch"
 
 
 def bundle_names(deck: str, finish: Optional[str]) -> "tuple[str, ...]":
-    """THE BUNDLES BESIDE A DECK, by name: the monitor's, beside every job;
-    the job's finish when it has one (`Job.finish`); beside a PySCF
-    script, the molbuilder code it imports (`engines/pyscf.md` § 3).
-    `runwrap.bundles_for` pairs each with its builder."""
-    out = [MONITOR_BUNDLE]
+    """THE BUNDLES BESIDE A DECK, by name: the catalogue's bundles
+    (:attr:`Artifact.bundle`) for every job and for the deck's engine -- the
+    monitor's; beside a PySCF script, the molbuilder code it imports
+    (`engines/pyscf.md` § 3) -- then the job's finish when it has one
+    (`Job.finish`).  `runwrap.bundles_for` pairs each with its builder."""
+    engine = engine_of_role(Path(deck).suffix.lower())
+    out = [a.name for a in WRITTEN
+           if a.bundle and a.engine in (None, engine)]
     if finish is not None:
         out.append(finish)
-    if engine_of_role(Path(deck).suffix.lower()) == "pyscf":
-        out.append(PYSCF_BUNDLE)
     return tuple(out)
 
 
@@ -1673,7 +1680,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              door="calcdirs.where"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",
-             when="prep", level="stage", kind="derived",
+             when="prep", level="stage", kind="derived", bundle=True,
              writer="prep, beside each run script "
                     "(`runwrap.write_run_wrapper`); a copy in each attempt"),
     Artifact(name=VIBRATION_BUNDLE,
@@ -1691,7 +1698,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "writer, the structure codec, the relaxation, a "
                   "vibration's rules",
              engine="pyscf",
-             when="prep", level="stage", kind="derived",
+             when="prep", level="stage", kind="derived", bundle=True,
              writer="prep, beside the PySCF script "
                     "(`runwrap.write_run_wrapper`); a copy in each attempt"),
     Artifact(name=MAKOV_PAYNE_SCRIPT,

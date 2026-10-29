@@ -307,3 +307,28 @@ def test_the_catalogue_starts_no_calculation_past_a_limit(start, what):
     loads = T.read_template(text.replace(start, "default = 0.04\nvalue = 0.0"))
     assert T.one(loads, "fc_displacement").value == 0.0, (
         "a VALUE past the limit is the per-value door's, not the parser's")
+
+
+def test_a_keyword_of_a_deck_of_keywords_states_the_engines_own_value(
+        monkeypatch):
+    """`engines/template.md` § 5: an item whose anchor is a keyword of a
+    deck its engine reads as keywords (the engine record's
+    ``keyword_deck`` -- SIESTA's fdf) states ``engine_default``, or the
+    catalogue refuses it by name.  The other direction loads with the
+    shipped file: PySCF's anchored items state none, its script holding no
+    keywords.  API-level: the catalogue is authored, not described.
+
+    MUTATION THIS MUST FAIL AGAINST: the engine record's ``keyword_deck``
+    left unasked (the item loads)."""
+    import re
+    from molbuilder import template as T
+    shipped = T.load_catalogue()
+    block = re.search(r"\[item\.mesh_cutoff\]\n(?:(?!\[item\.).*\n)*",
+                      shipped).group(0)
+    assert "engine_default" in block
+    planted = shipped.replace(
+        block, re.sub(r"^engine_default = .*\n", "", block, flags=re.M))
+    monkeypatch.setattr(T, "load_catalogue", lambda: planted)
+    with pytest.raises(ValueError, match="engine_default") as refused:
+        T.catalogue.__wrapped__()
+    assert "mesh_cutoff" in str(refused.value), str(refused.value)

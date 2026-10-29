@@ -235,7 +235,8 @@ force-constant stages, § 5.9) and any engine but the two named.
 
 A vibration is an ordinary described job: `task.json` carries
 `calculation: "vibration"`, the engine, and its ladder
-(`pyscf/stages.py::vibration_stages`; [`engines/stages.md`](?doc=engines/stages.md)).
+(the pair's `stages` in the kind table, `jobset/ladder.py::fresh_stages`;
+[`engines/stages.md`](?doc=engines/stages.md)).
 The parameters travel in `<label>.template.toml`, the catalogue narrowed to
 the kind (§ 3) — **including the relaxation's convergence settings on both
 engines**, shown and editable exactly as on the Structure-optimization tab,
@@ -2930,7 +2931,7 @@ refused by its reader with the way back: the view exported again.
 
 | piece | where |
 |---|---|
-| **one stage on both engines** | `pyscf/stages.vibration_stages`; the shape SIESTA's fixes, its part in the kind table; the kind table's vibration roles, the phases' (§ 9); `ladder.independent` false for the kind (§ 6) |
+| **one stage on both engines** | each pair's `stages` in the kind table (`ladder.fresh_stages`); the shape SIESTA's fixes, its part in the kind table; the kind table's vibration roles, the phases' (§ 9); `ladder.independent` false for the kind (§ 6) |
 | **a rung of points, declared** | one `PointsOf` per pair that runs per point, named by the pair's `points` in the kind table — `jobset/vibration_points.py`, `jobset/transport_points.py` — the type and its doors (`points_of`) in `jobset/points.py`: its points as prepared (transport: the bias item × the cited set; the vibration: `relax` and `fc`), the points a run holds (the vibration's optical ones, planned in the job, those its index lists), its point type (`transport.stages.Point`, `vibration_phases.Call`), what makes a point done, what a run needs beyond its points (the vibration's finish), its containers, one wall or one per point; prep, launch's walk, `materialize`, `continuation` (`point_rows`, `points_state`, `done`), `runstatus` (`run_folders`, `_sweep_status`, `stage_run_state`, `every_run`), `ready`, `prepared_with` and the run door ask it |
 | **the phases** | `siesta/vibration_phases.py`: `PHASES`, `Call`, the index's writer and reader (a `runfiles.WRITTEN` row, a registry parser), `summary` (the state's words); `runfiles.fixed`'s `coordinates.fdf` row |
 | **the run door and the view** | `runs.folder_answer` of one folder; the run of points' view (`runstatus.points_view`, floor 6) at its root and its calls' folders, and `run_answer` for a file at its root, the run's state (§ 7); `materialize.open_sweep_run`; the opener's travelling core (`calcdirs` + `paths` in the bundle, `bring_files`' copier); the progress-log seed copied with the deck |

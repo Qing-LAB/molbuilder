@@ -40,7 +40,7 @@ from .runstatus import jobset_status, render_stage_status, render_status
 from .model import FILENAME as _JOBSET_FILE
 # EVERY ENGINE MOLBUILDER KNOWS, the catalogue's (`runfiles.engines`) -- the
 # one list `--engine` offers, never restated here.
-from ..runfiles import engines as _rf_engines
+from ..engine_table import engines as _engines
 from ..paths import SHAPES as _SHAPES
 
 
@@ -703,7 +703,7 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
               help="what you call this calculation; the label and the run id "
                    "derive from it. Default: the destination folder's name.")
 @click.option("--engine", default=None,
-              type=click.Choice(_rf_engines()),
+              type=click.Choice(_engines()),
               help="whose parameters these are. REQUIRED -- never assumed "
                    "-- but beside --reuses, which describes the finished "
                    "calculation's.")
@@ -783,13 +783,10 @@ def describe_cmd(structure, bundle: str, shape: str,
     from pathlib import Path as _P
 
     from ..workingcopy_structure import StructureCodec
-    from ..config.siesta import SiestaConfig
     from ..describe import DescribeError, build_description, write_description
     from ..identity import normalise_id
     from ..chemistry import species_order
-    from ..pyscf.stages import default_pyscf_stages
-    from ..siesta.stages import default_siesta_stages
-    from .ladder import fresh_stages
+    from .ladder import engine_ladder, fresh_stages
 
     out_dir = _P(bundle)
     run_name = name or out_dir.name
@@ -893,50 +890,44 @@ def describe_cmd(structure, bundle: str, shape: str,
         # -- the calculation that is just the template.  One shape, so
         # the artifact names, the tokens and the directories are the same
         # whether a job has one rung or three.
-        # THE LADDER IS THE ENGINE'S, AND THE SHAPE OF IT IS NOT.
-        # Both engines describe a ladder the same way -- a tuple of ``Stage``
-        # with per-rung ``overrides`` -- and differ only in which values those
-        # rungs carry, which is the engine's own preset table.
-        _ladder = {"siesta": default_siesta_stages,
-                   "pyscf": default_pyscf_stages}[engine]
-        if calculation == "vibration":
-            # The vibration kind's own ladder: one stage, `freq`, on both
-            # engines (`engines/vibration.md` § 2.2, § 5.11 § 1) -- a SIESTA
-            # stage is one run in phases, its relaxation the run's first
-            # call.  A --stage-strategy names the optimization ladder's
-            # tiers, which grade nothing here: the convergence settings are
-            # the template's, recommended tight (`template.md` § 6.3a).
-            from ..kind_table import KindTableError, kind as _kind
-            try:
-                _kind("vibration").on(engine)
-            except KindTableError as exc:
-                raise click.ClickException(str(exc))
-            if stage_strategy:
-                raise click.ClickException(
-                    "--stage-strategy names the optimization ladder's "
-                    "tiers; a vibration calculation's ladder is one stage, "
-                    "`freq` -- on SIESTA one run in phases, its relaxation "
-                    "a phase of it unless the structure is stated relaxed "
-                    "(engines/vibration.md 5.11) -- and its convergence "
-                    "settings are the template's own.")
-            stages = fresh_stages(calculation, engine)
-        else:
-            # THE FRESH LADDER'S ONE OWNER (`ladder.fresh_stages`), or the
-            # tiers a --stage-strategy names.
-            stages = (tuple(_ladder(stage_strategy)) if stage_strategy
-                      else fresh_stages(calculation, engine))
+        # THE LADDER: the pair's own, else the fresh start
+        # (`ladder.fresh_stages`, the one owner) -- or, a --stage-strategy
+        # named, the engine's ladder by the one rule over its presets
+        # (`ladder.engine_ladder`).  A pair with a ladder of its own takes
+        # no strategy: its tiers would grade nothing, the convergence
+        # settings the template's own, recommended by the kind
+        # (`template.md` § 6.3a) -- a vibration's one stage, `freq`
+        # (`engines/vibration.md` § 2.2, § 5.11 § 1).
+        from ..kind_table import KindTableError, kind as _kind
+        try:
+            own = _kind(calculation).on(engine).ladder
+        except KindTableError as exc:
+            raise click.ClickException(str(exc))
+        if own and stage_strategy:
+            raise click.ClickException(
+                f"--stage-strategy names an engine ladder's tiers; a "
+                f"{_kind(calculation).noun} starts from its own -- "
+                f"{', '.join(own)} -- and its convergence settings are "
+                f"the template's own.")
+        stages = (tuple(engine_ladder(engine, stage_strategy))
+                  if stage_strategy else fresh_stages(calculation, engine))
         # The label goes through the SAME normaliser Task.label uses, so the
         # template's SystemLabel and the description's id cannot disagree
         # about what this calculation is called.
         label = normalise_id(run_name, what="name",
                              stage_names=tuple(s.name for s in stages))
-        # The config the template is written from -- the engine's own class,
-        # carrying the one identity field each spells differently.
-        if engine == "pyscf":
-            from ..config.pyscf import PySCFConfig
-            cfg = PySCFConfig(job_name=label)
-        else:
-            cfg = SiestaConfig(system_label=label, psml_lib=psml_lib)
+        # The config the template is written from -- the engine's own class
+        # (its record's ``config``), carrying its identity field (the
+        # record's ``identity_field``) and the pseudopotential folder where
+        # the engine's catalogue offers one.
+        from ..engine_table import config_class, engine as _engine
+        from ..template import catalogue as _catalogue, select as _select
+        _ident = _engine(engine).identity_field
+        _own = {_ident: label}
+        if psml_lib and any(it.name == "psml_lib" for it in
+                            _select(_catalogue(), engine=engine)):
+            _own["psml_lib"] = psml_lib
+        cfg = config_class(engine)(**_own)
         # The kind's own recommendations become the template's values
         # (`template.md` § 6.3a): a vibration's relaxation settings start
         # tight, and the person changes them there like any other value.
@@ -946,10 +937,7 @@ def describe_cmd(structure, bundle: str, shape: str,
         # WHAT THE PERSON STATED here is theirs (`template.md` § 6.6
         # obligation 2): the calculation's name, and the pseudopotential
         # folder when given; the kind's recommendations are nobody's choice.
-        _said = {("job_name" if engine == "pyscf" else "system_label"):
-                 "person"}
-        if engine != "pyscf" and psml_lib:
-            _said["psml_lib"] = "person"
+        _said = {name: "person" for name in _own}
         desc = build_description(
             struct, cfg, stages,
             engine=engine, shape=shape, name=run_name,

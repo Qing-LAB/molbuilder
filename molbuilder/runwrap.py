@@ -761,7 +761,7 @@ def _cold_usage_entry(*, warm_examples: str) -> str:
     )
 
 
-def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
+def _cold_restart_block(basename: str, *, label: str) -> str:
     """Bash snippet that NAMES the prior state a cold run removes.
 
     **It reports and stops; ``--force`` removes them** *(user, 2026-08-18)*:
@@ -802,9 +802,6 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     # just wrote, to recover a value we were holding when we wrote it, is the
     # defect G7 names, and doing it at prep rather than at launch does not
     # make it a different one.
-    #
-    if engine not in ("siesta", "pyscf"):   # pragma: no cover
-        raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
 
     # The label was checked when its names were made (`runfiles.stem`: one
     # [A-Za-z0-9_-]+ token), so it goes into the bash as it is.
@@ -2745,8 +2742,7 @@ def render_run_wrapper(script_path: Path, *,
             "\n"
             # SIESTA's stdout role, asked rather than taken from a default.
             + _run_index_block(names, _stdout_role_for(".fdf"), target_env)
-            + _cold_restart_block(basename, engine="siesta",
-                                  label=names.label)
+            + _cold_restart_block(basename, label=names.label)
             + _runtime_status_block(basename, engine="siesta",
                                     resumes=resumes,
                                     reads_prior=_restart_honoured,
@@ -3330,8 +3326,7 @@ def render_run_wrapper(script_path: Path, *,
             # so the Results-tab inspector dispatcher can tell PySCF output
             # apart from SIESTA's.
             + _run_index_block(names, _stdout_role_for(".py"), target_env)
-            + _cold_restart_block(basename, engine="pyscf",
-                                  label=names.label)
+            + _cold_restart_block(basename, label=names.label)
             + _runtime_status_block(basename, engine="pyscf",
                                     reads_prior=_py_reads_prior,
                                     warm=_warm_in_effect("pyscf", warm),
@@ -4385,10 +4380,12 @@ def bundles_for(script, finish: Optional[str] = None
     builder)`` -- THE ONE LIST: `render_wrappers` writes them beside the
     deck and `materialize` brings them into every attempt.
 
-    The monitor's, beside every job (:data:`MONITOR_BUNDLE`); the job's
-    finish when it has one (`Job.finish`, `engines/vibration.md` § 5.5); and
-    beside a PySCF script, the molbuilder code it imports
-    (:data:`PYSCF_BUNDLE`, `engines/pyscf.md` § 3)."""
+    The file catalogue's bundles for every job and for the deck's engine
+    (`runfiles.bundle_names`, the rows' ``bundle``) -- the monitor's
+    (:data:`MONITOR_BUNDLE`), and beside a PySCF script the molbuilder code
+    it imports (:data:`PYSCF_BUNDLE`, `engines/pyscf.md` § 3) -- and the
+    job's finish when it has one (`Job.finish`, `engines/vibration.md`
+    § 5.5)."""
     from .runfiles import bundle_names
     builders = {MONITOR_BUNDLE: monitor_bundle, PYSCF_BUNDLE: pyscf_bundle,
                 **_FINISH_BUNDLES}

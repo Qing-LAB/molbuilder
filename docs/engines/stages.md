@@ -93,8 +93,8 @@ sequence of them.
 > ladder. `SiestaStageSpec` was therefore **removed**, not reshaped, along
 > with the field, its default factory, its validator and its parser.
 > `Task.stages` (`molbuilder/task.py`) is the model, and it is
-> engine-agnostic by construction. The shipped SIESTA ladder is built from
-> it by `siesta/stages.py::default_siesta_stages`.
+> engine-agnostic by construction. Each engine's shipped ladder is built
+> from it by the one ladder rule, `jobset/ladder.py::engine_ladder`.
 >
 > PySCF was a deliberate exception **for now**: its ladder runs inside one
 > process, so its stage list has a second life as engine behaviour. It was left

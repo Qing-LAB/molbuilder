@@ -31,9 +31,8 @@ from molbuilder.jobset.engines import EngineSeam
 from molbuilder.jobset.prep import prep_bench
 from conftest import prep_the_group_of
 from molbuilder.pipeline_log import log_name
-from molbuilder.pyscf.stages import default_pyscf_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.script_emit import Block, DeckSpec
-from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
 
@@ -63,10 +62,10 @@ BDT = Structure(
 def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
     """A described calculation, as `molbuilder describe` leaves one."""
     cfg, stages = ((SiestaConfig(system_label=name, mesh_cutoff=300.0),
-                    default_siesta_stages("publishable"))
+                    engine_ladder("siesta", "publishable"))
                    if engine == "siesta" else
                    (PySCFConfig(job_name=name),
-                    default_pyscf_stages("publishable")))
+                    engine_ladder("pyscf", "publishable")))
     src = tmp_path / f"{name}.xyz"
     src.write_text(BDT.to_xyz())
     dest = tmp_path / f"{name}-{engine}-{shape}"
@@ -275,8 +274,14 @@ def test_both_gates_report_their_verdict(tmp_path):
 #: `Callable` member of `EngineSeam` (what `prep` asks of an engine) and of
 #: `DeckSpec` (what the framework asks of a deck), and `Block.render`.  A hook
 #: declared on either seam is in this list the day it is declared.
+#: Each seam member's step (`script-preparation.md` § 4): a preparation
+#: step's unless the member declares another -- the hand-over's ``describe``.
 _SEAM_HOOKS = tuple(f.name for f in dataclasses.fields(EngineSeam)
-                    if "Callable" in str(f.type))
+                    if "Callable" in str(f.type)
+                    and f.metadata.get("step", "prep") == "prep")
+_DESCRIBE_HOOKS = tuple(f.name for f in dataclasses.fields(EngineSeam)
+                        if "Callable" in str(f.type)
+                        and f.metadata.get("step") == "describe")
 _DECK_HOOKS = tuple(f.name for f in dataclasses.fields(DeckSpec)
                     if "Callable" in str(f.type))
 _HOOKS = _SEAM_HOOKS + _DECK_HOOKS + ("Block.render",)
@@ -341,6 +346,36 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     assert any(f"raised inside {owner}" in n for n in notes), (
         f"{owner} raised and the exception does not say whose it was: "
         f"{notes}")
+
+
+@pytest.mark.parametrize("hook", _DESCRIBE_HOOKS)
+def test_a_describe_hook_that_raises_says_whose_it_was(
+        web_client, isolated_projects_root, monkeypatch, hook):
+    """**W16** at the hand-over: a seam member asked before `prep` -- by the
+    hand-over that writes the calculation -- that raises keeps its type and
+    message, and says whose it was.
+
+    MUTATION THIS MUST FAIL AGAINST: the hook called bare in the hand-over,
+    outside its ``calling(...)`` boundary."""
+    from molbuilder.jobset import engines as E
+    from support.envelope import envelope
+
+    def _raises(*_a, **_k):
+        raise TypeError("engine bug")
+
+    engine_seam = E.engine_seam
+    monkeypatch.setattr(E, "engine_seam", lambda engine: dataclasses.replace(
+        engine_seam(engine), **{hook: _raises}))
+    # The exception reaches the test as raised, never as a 500's page.
+    web_client.application.config["PROPAGATE_EXCEPTIONS"] = True
+    with pytest.raises(TypeError) as caught:
+        web_client.post("/api/task-setup/handover", json={
+            "structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]]),
+            "engine": "siesta", "calculation": "optimization",
+            "name": "probe", "params": {"system_label": "probe"}})
+    assert str(caught.value) == "engine bug", "the message was replaced"
+    notes = getattr(caught.value, "__notes__", [])
+    assert any(f"raised inside siesta.{hook}" in n for n in notes), notes
 
 
 def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):

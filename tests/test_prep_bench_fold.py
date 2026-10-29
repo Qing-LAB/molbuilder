@@ -25,7 +25,7 @@ from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.model import Resources
 from molbuilder.jobset.errors import PrepError
 from molbuilder.jobset.prep import prep_bench
-from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.jobset.ladder import engine_ladder
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
 from support.machines import SLURM, WORKSTATION
@@ -105,7 +105,7 @@ def calc(tree):
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB"),
-                            default_siesta_stages("publishable"),
+                            engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",
@@ -1050,7 +1050,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     ladder = tree / "laddered"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            default_siesta_stages("publishable"),
+                            engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization", shape="hierarchical",
                             name="JOB", source=str(tree / "h2.xyz")),
@@ -1076,7 +1076,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tree):
     dest = tree / "calc"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            default_siesta_stages("publishable"),
+                            engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization",
                             shape="flat", name="JOB",
