@@ -245,6 +245,61 @@ failing alike — and the rule became once per reason. **Left: R-e's transport
 half**, a transport run of points keeping an index, so a sweep reports as one
 run (handover (g)).
 
+**R-e, the transport half — proposed 2026-10-29, awaiting the user's
+answers.** A transport sweep — a device or transmission run of points,
+frames × voltages — reports as one run, as a SIESTA vibration's calls do.
+The single runs (the seed, the leads) are unchanged: their start and finish
+are their whole report.
+
+*What the person gets*:
+
+| event | when | what it says |
+|---|---|---|
+| start | once, before the walk's first point to run | the run, its points (*12 points: 3 frames × 4 voltages, 2 taken over*) |
+| milestone | a voltage done at every frame — **the round** (the user, 2026-10-26: *"one voltage across every frame would be a transport milestone"*), the walk going on | the round's outcome (choice 1 below) |
+| part failed | a point ends not done, the walk going on — once per reason | the point (*frame index 1 (of 3), 0.4 V*) and why |
+| periodic | every N hours, the person's setting | the run's count — *points 7 of 12 (1 failed)* — the time per point at the measured pace and the time left, the running point's NEGF iteration and residuals |
+| wall near | once per run | the points left need more than the wall leaves at the pace |
+| finish | once, after the walk's last point — or the walk stopped | the run's state by the points' verdict (`continuation.points_state`), the first point not done and how many, and the last round's outcome |
+
+*The mechanism — the vibration's, extended, nothing parallel*:
+
+1. **The run's index** — the vibration's (`siesta.vibration_phases`'s
+   index, `engines/vibration.md` § 5.11 § 7) made the one index of a run of
+   points: launch writes it at the run's root, every point of the run in walk
+   order (its folder, its words, its frame and voltage, taken over or to
+   run, the products that make it done — the DAG's names); the walk stamps
+   each point's start, end and exit as it runs it. **What is done is still
+   read from the point's own files** (`engines/transport.md` § 2a.11: never
+   from a second record) — by the one done rule over the index's rows, its
+   ending read by `_run_ending`, which travels — the index holds what the
+   walk saw, never a verdict.
+2. **The walk sends the run's events** through the monitor bundle's
+   `notify` verb (`run-reports.md` § 2.4): the start before its first point,
+   after each point the milestone or the part failed by § 2.9's rule, the
+   finish after its last — and from its stop trap, so a walk stopped by the
+   person still says its end. A walk killed outright (its wall, `kill -9`)
+   says no finish; `status` reads it failed, as a vibration's.
+3. **Each point's monitor is a member** of its run (`--member
+   --launched-in`), as a vibration call's: no start or finish of its own,
+   its N-hour clock from the run's notification record, the wall warned of
+   once for the run, its status line the run's count and its own point.
+
+*Choices that are the user's*:
+
+1. **What a round's milestone says.** A device round: each frame's point
+   converged or not, and in how many NEGF iterations — read by the readers
+   that already travel. A transmission round: as well, each frame's
+   conductance at E_F, G/G₀, and for a frame set the frames' average at that
+   voltage — which needs a reader of TBtrans's `.TBT.AVTRANS` text to travel
+   with the monitor, and the record's own rule for G
+   (`transport.record.conductance_g0`) with it.
+   Recommended: both, the conductance being the number a transmission round
+   is judged by.
+2. **A frame set at one voltage** — every frame at 0 V, a low-bias
+   calculation: one round, whose end is the run's end — said by the finish,
+   as a vibration's last phase is. Recommended as stated.
+
 **The environment the monitor runs in** — aligned 2.43.0–2.44.1 (the
 paragraph as it stood: [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2). **Still open**: `job-contracts.md` § 2.6's
 block table has no row for the preamble preflight (`runwrap.py` checks the
