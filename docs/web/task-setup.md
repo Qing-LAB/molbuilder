@@ -1338,9 +1338,10 @@ because they are a fact about the box, not about this calculation.
 **What the card asks, and what travels** — the `notify` block,
 [`job-request.md`](?doc=execution/job-request.md) § 3.5. Nothing set up — no tick, and
 both lists at *every* — writes no block, and no block is no report at all; a
-calculation that reports anything also reports its start and its end — and,
-for a run of points, a phase's end and a failed part — so they are not offered
-([`run-reports.md`](?doc=execution/run-reports.md) § 2, § 2.9). A
+calculation that reports anything also reports its start and its end, its
+wall coming near — and, for a run of points, a phase's end and each kind of
+failure — so they are not offered, and the card's hint says so *(the user,
+2026-10-29)* ([`run-reports.md`](?doc=execution/run-reports.md) § 2, § 2.9). A
 block is written whole: the period not ticked as `null`, *every* channel or
 field as `["*"]`:
 

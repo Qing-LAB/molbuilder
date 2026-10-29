@@ -2999,7 +2999,12 @@ difference of a few frames is then no derivative, so a number shaped like one
 would mislead (science § 5.3; the user, 2026-10-10). What is derived across
 them — a slope, a curvature where the response is smooth, a ranking against
 another mode's set — is the analysis's, made on the data file below, where
-every frame's values sit beside its rows. **The weights are read as
+every frame's values sit beside its rows; so is **an average over another
+motion than the set's** — a bell curve at another temperature, or a swing
+added by a push in step with the mode — re-weighted from each frame's
+position along the mode (`molbuilder.postprocess.reaveraged`,
+[`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 5.4), never written into the record. **The weights are read as
 written** (§ 2.2f): their sum and the tolerance are stated beside the average,
 and a sum off 1 by more than `10⁻⁶` is warned of in the record (`warnings`),
 never refused. Frames that do not each state a weight are a family with no

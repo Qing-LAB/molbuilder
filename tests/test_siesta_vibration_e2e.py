@@ -1611,15 +1611,17 @@ def failed_parts(stopped, tmp_path_factory):
 def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     """`run-reports.md` § 2.9: a call that ends not done while the run has
     calls left to run is said at once -- the call in its words, why, and
-    the run's count -- and a later call failing for the same reason is not
-    said again; the finish names the first call not done and counts them.
+    the run's count, which counts it failed -- and a later call failing for
+    the same reason is not said again; the finish names the first call not
+    done and how many are, its count the failed calls.
     On the real engine: every optical call of a run launched under a wall
     already passed stops at once, alike.
 
     THE SILENT FAILURES: a run's failed call never reported until its
     finish, hours later; a run whose calls all fail alike -- its wall
     reached, a file missing -- sending one message per call; and a finish
-    naming one failed call of many, its count nowhere."""
+    naming one failed call of many, its count nowhere; a count that says
+    "1 of 5" without saying whether the other 4 failed or wait."""
     from molbuilder.siesta.vibration_phases import OPTICAL, rows_of
     from molbuilder.task import of as task_of
     run = failed_parts
@@ -1646,9 +1648,11 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     assert told.startswith(
         f"running ({first['words']}: not done -- {first['why']}) | the "
         f"run: relax done · fc done · optical {len(taken)} of "
-        f"{len(optical)} ({len(taken)} taken over)"), told
+        f"{len(optical)} ({len(taken)} taken over, 1 failed) |"), told
     left = [r for r in rows if not r["done"]]
     finish, = _told(run, "finish", n=2)
     assert finish.startswith(
         f"failed ({left[0]['words']}: not done -- {left[0]['why']}; "
-        f"{len(left)} of {len(rows)} calls not done) | the run: "), finish
+        f"{len(left)} of {len(rows)} calls not done) | the run: relax done "
+        f"· fc done · optical {len(taken)} of {len(optical)} "
+        f"({len(taken)} taken over, {len(ran)} failed) |"), finish

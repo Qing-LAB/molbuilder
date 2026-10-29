@@ -494,9 +494,10 @@ So a bell-curve set serves a swing only while the swing is short against the
 response's length, $aQ_0 \lesssim 1$ in the example. Its temperature is then
 the one holding the swing's quanta,
 $n = n_{\mathrm{th}} + Q_0^2/4Q_{\mathrm{zp}}^2$ and
-$T_{\mathrm K} = \hbar\omega/\big(k_B\ln(1 + 1/n)\big)$. Beyond that, a swing
-needs the phase frames above, which the generator does not write yet
-([`plans/plan.md`](?doc=plans/plan.md) § 1al).
+$T_{\mathrm K} = \hbar\omega/\big(k_B\ln(1 + 1/n)\big)$. Beyond that, the
+frames already computed are re-averaged over the swing after the run (§ 5.4)
+— the same frames, the swing's weights — as long as they reach its turning
+points; frames at the swing's own phases are needed only past that reach.
 
 Within the range where only the $Q^2$ term matters, a wider spread also
 rescales a result already computed,
@@ -861,6 +862,105 @@ A frame set is one mode at one rule, its weights summing to 1. So the check
 is a second set of the same mode, at the same temperature and another rule,
 and comparing the two is the person's.
 
+### 5.4 Re-averaging the frames over another motion *(the user, 2026-10-29; contract written, to be built)*
+
+*(The user, 2026-10-29: "or this can be a parameter in post-processing?";
+"so essential information is in fact the deltaQ for each frame (normal mode
+displacement), and then the weight will be determined by the shape of
+statistics".)*
+
+**What a frame is: its position along the mode.** Each frame's geometry is
+frame 0 moved by $q_f$ along the mode, and its transmission $T_f(E)$ depends
+on that geometry alone. The weight a frame carries is not the frame's: it is
+the motion's — how much time the molecule spends near $q_f$ in the motion
+being averaged over. The set's own weights are those of the bell curve it was
+written for (§ 5.1). Once the frames have run, the same $T_f(E)$ can be
+averaged over **another motion** with other weights, and no frame is
+computed again.
+
+**The motion, stated by two numbers.**
+
+| what | gives | where it comes from |
+|---|---|---|
+| the temperature $T$ of the random part — the junction's, or a randomly pumped mode's effective one (§ 2a.1) | the bell curve of spread $\sigma_T = Q_{\mathrm{zp}}\sqrt{2n_{\mathrm{th}}+1}$, its zero-point motion included, $n_{\mathrm{th}} = 1/(e^{\hbar\omega/k_BT}-1)$ | § 2, § 5 |
+| the quanta a push in step with the mode adds, $n_{\mathrm{swing}}$, 0 or more | the swing of amplitude $Q_0 = 2Q_{\mathrm{zp}}\sqrt{n_{\mathrm{swing}}}$ | § 2a.2 |
+
+$n_{\mathrm{swing}} = 0$ is the bell curve alone. The two together are the
+bell curve carried along the swing (§ 2a.2):
+$n = n_{\mathrm{th}} + n_{\mathrm{swing}}$ quanta in all, a spread
+$\sigma^2 = \sigma_T^2 + \tfrac12 Q_0^2$.
+
+**The weights.** With $m$ frames, the weights $w_f$ are the ones with which
+the frames reproduce the motion's own averages of
+$1, q, q^2, \dots, q^{m-1}$:
+
+$$
+\sum_f w_f\, q_f^{\,k} = \langle q^k\rangle \quad (k = 0, \dots, m-1), \qquad
+\langle q^k\rangle = \sum_{j=0}^{k} \binom{k}{j}\, Q_0^{\,j}\,\langle\cos^j\varphi\rangle\,\langle\delta^{k-j}\rangle ,
+$$
+
+$\langle\cos^j\varphi\rangle = \binom{j}{j/2}/2^j$ and
+$\langle\delta^i\rangle = \sigma_T^{\,i}\,(i-1)(i-3)\cdots 1$ for $j$, $i$
+even, and zero for odd — the swing's averages over its phase and the bell
+curve's, which add because the two motions do not disturb each other
+(§ 2a.2). Then
+
+$$
+\langle T(E)\rangle = \sum_f w_f\, T_f(E)
+$$
+
+is **exact whenever $T(q)$ is a polynomial of degree $m-1$ or less** over the
+motion. Frames placed for the motion itself do better — degree $2m-1$ — so at
+the set's own temperature, with no swing, the set's own weights are the
+answer, and these reproduce them.
+
+**How well — the contact bond of § 4.3**, $T = T_0\,e^{-aq}$ with
+$a\sigma_T = 1$, frames written at the junction's own spread $\sigma_T$ and a
+swing added on top (true: $I_0(aQ_0)\,e^{a^2\sigma_T^2/2}$; computed
+2026-10-29):
+
+| the swing, $Q_0/\sigma_T$ | true average | a bell curve of the same spread | re-averaged: 3 / 5 / 7 frames |
+|---|---|---|---|
+| 1 | 2.0874 | 2.1170 (+1.4 %) | 1.9573 / 2.0815 / 2.0873 |
+| 2 | 3.7584 | 4.4817 (+19 %) | refused / 3.6405 / 3.7494 |
+| 3 | 8.0471 | 15.6426 (+94 %) | refused / refused / 7.9011 |
+
+The bell curve of the same spread is the shape-blind answer of § 2a.3; the
+re-averaged frames follow the swing's shape. Re-averaging to another
+temperature alone works the same way: seven frames written at $\sigma$ and
+re-averaged to a bell curve of $1.5\sigma$ give 2.0517 against the true
+2.0544 on the contact bond at $a \cdot 1.5\sigma = 1.2$; five, 2.0264; three,
+1.8428.
+
+**What it needs, each said beside the number:**
+
+1. **Frames that reach the swing.** A swing spends most of its time near its
+   turning points $\pm Q_0$ (§ 2a.2); frames that stop short of them would
+   average values extrapolated past the frames. **A swing whose turning
+   points lie beyond the outermost frame is refused**, naming both: frames
+   written at a higher temperature, or more of them, reach further (§ 5.1a).
+   Three frames reach $1.73\,\sigma$, five $2.86\,\sigma$, seven
+   $3.75\,\sigma$ of the spread they were written at.
+2. **Enough frames to see the shape.** Three frames carry only the curvature,
+   and up to the curvature a swing and a bell curve of the same spread agree
+   (§ 2a.3); with three, the re-averaged number is said to be blind to the
+   shape.
+3. **A weight below zero** says the frames do not suit the motion's shape
+   well — the seven-frame row at $Q_0 = 3\sigma_T$ weights its outermost
+   pair at −1.0, and is still within 2 % on the contact bond. It is said with
+   the number, never refused.
+4. **A response not smooth over the motion** — a level crossing $E_F$ — is
+   averaged poorly by any weights (§ 5.3); the frames' own values, the family
+   of curves, tell more.
+
+**Where.** The re-averaging is the post-process's, on the transport
+calculation's data file, where every frame's $q_f$ and $T_f(E)$ sit
+(`molbuilder.postprocess.reaveraged`, [`model/parse.md`](?doc=model/parse.md)
+§ 3; [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+§ 3.2). It writes nothing: the record and its data file keep the set's own
+average (§ 8). A voltage whose points are not all done has no re-averaged
+value, as it has no average (`engines/transport.md` § 2a.12).
+
 ---
 
 ## 6. One mode a set — and what its frames do not answer
@@ -960,6 +1060,9 @@ derivative (§ 5.3) — so a number shaped like one would mislead (the user,
 the response is smooth, a comparison with another mode's set — is the
 analysis's, made on the data file, where every frame's transmission sits
 beside its $Q_j$ and its weight (`transport.md` § 2a.12, *the data file*).
+So is an average over another motion than the set's — a bell curve at
+another temperature, a swing — re-weighted from every frame's $Q_j$ (§ 5.4)
+and never written into the record.
 
 ---
 

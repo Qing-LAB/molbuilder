@@ -332,9 +332,11 @@ def rows_of(index: Dict[str, Any], run_dir, label: str) -> List[Dict[str, Any]]:
 
 def summary(rows, phases=()) -> str:
     """The count in the run's words: *relax done · fc done · optical 7 of
-    11 (4 taken over)*; the optical phase with no call yet, where the run
-    walks it (``phases``, the index's), *after fc* -- or, the force
-    constants done, *no mode picked*."""
+    11 (4 taken over, 2 failed)* -- the calls taken over, and those that
+    ended without being done, each said where there are any; the optical
+    phase with no call yet, where the run walks it (``phases``, the
+    index's), *after fc* -- or, the force constants done, *no mode
+    picked*."""
     parts: List[str] = []
     by: Dict[str, list] = {}
     for r in rows:
@@ -352,11 +354,14 @@ def summary(rows, phases=()) -> str:
         n_done = sum(bool(r["done"]) for r in got)
         taken = sum(bool(r.get("started_from")) and not r.get("copied_from")
                     for r in got if r["done"])
+        failed = sum(r["state"] == "failed" for r in got)
         if len(got) == 1:
             parts.append(f"{p.name} {'done' if n_done else got[0]['state']}")
         else:
+            notes = ([f"{taken} taken over"] if taken else []) + (
+                [f"{failed} failed"] if failed else [])
             parts.append(f"{p.name} {n_done} of {len(got)}"
-                         + (f" ({taken} taken over)" if taken else ""))
+                         + (f" ({', '.join(notes)})" if notes else ""))
     return " · ".join(parts) if parts else "no call yet"
 
 

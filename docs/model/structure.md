@@ -650,7 +650,12 @@ states one as a number, the record averages the frames at those weights
 (`engines/transport.md` § 2a.12); where some frames state none, or one is not
 a number, there is no average and a warning says so; weights that do not sum
 to 1 (within `frameset.WEIGHT_SUM_TOLERANCE`, 10⁻⁶) are averaged as written,
-with a warning. Nothing is refused for a row.
+with a warning. Nothing is refused for a row. **A weight is the motion's,
+not the frame's**: the frame is its position along the mode (`q_amu12_ang`),
+and its weight the set's maker's for the motion the set was written for. An
+average over another motion is re-weighted from the positions after the run
+([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 5.4) and never written into the set.
 
 **Every other row is its maker's** — the structure's rows and each frame's:
 carried exactly as written into the calculation's record and data file, and

@@ -81,6 +81,26 @@ ds.average_transmission.sel(bias_v=0.0).plot(x="energy_ev")
 ds.average_why.to_series()          # why an average is none, where it is
 ```
 
+**Averaged over another motion** *(contract written 2026-10-29, to be
+built)*. Each frame is its position along the mode; its weight is the
+motion's. The same frames averaged over a bell curve at another temperature,
+or with a swing added by a push in step with the mode
+([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 5.4) — nothing computed again, nothing written:
+
+```python
+from molbuilder.postprocess import reaveraged
+r = reaveraged("T.transport.nc", temperature_k=300, swing_quanta=1.0)
+r["motion"]                       # the quanta, the spreads, the swing's turning points
+r["weights"]                      # each frame's weight for this motion
+r["conductance_change_percent"]   # <ΔG>/G at each voltage
+r["said"]                         # the frames' reach, a weight below zero, ...
+```
+
+A swing whose turning points lie beyond the outermost frame is refused, and
+with three frames the number is said to be blind to the shape (§ 5.4
+there).
+
 ### 3.3 The convergence
 
 ```python

@@ -706,10 +706,13 @@ record step could not do (*the optical calls' record was not written*), else
 the rule's words (*finished without CO2.EPSIMG*) — never an error's own
 text, which can name the call's own files. A `part_failed` whose reason the
 run has already reported is not sent again; the `notify` verb asks the run's
-notification record, where each failure's reason is kept (§ 2.5). The
-`finish` counts the calls not done; until then the run's count says how many
-are done (§ 2.8). So a run speaks of its failures as one run, never as one
-message per call.
+notification record, where each failure's reason is kept (§ 2.5). **The
+run's count says how many calls failed** in every report and on every
+surface that shows it — *optical 60 of 121 (40 failed)*, a call that ended
+without being done counted there and never among the calls still to run
+*(the user, 2026-10-29)* — and the `finish` names the first call not done and
+how many are. So a run speaks of its failures as one run, never as one
+message per call, and its count says how many there are.
 
 **The card.** The title; the summary line — the state `running`, the outcome
 or the failure in its parentheses, then the run's count; and the run's clock
