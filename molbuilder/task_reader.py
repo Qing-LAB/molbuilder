@@ -16,9 +16,11 @@ opens at the root, as a benchmark's folder opens its ``job-set.json``
 the command line.
 
 WHY IT CLAIMS ONLY A TRANSPORT CALCULATION'S.  Every calculation has a
-``task.json``; only a transport one has a report composed at its root.
-The discriminator is the description's own ``calculation``, read through
-its one door (`task.of`) -- never the file's place or name alone.
+``task.json``; only a kind whose root opens its description has a report
+composed at its root -- the kind table's ``root_opens``, a transport
+calculation's.  The discriminator is the description's own ``calculation``,
+read through its one door (`task.of`) -- never the file's place or name
+alone.
 """
 from __future__ import annotations
 
@@ -59,10 +61,11 @@ def _load_transport_task(path: Path) -> dict:
         raise TaskReadError(
             f"{p.name} does not read as a description: "
             f"{type(exc).__name__}: {exc}") from exc
-    if task.calculation != "transport":
+    from .kind_table import kind
+    if kind(task.calculation).root_opens != "description":
         raise TaskReadError(
-            f"{p.name} describes a {task.calculation} calculation, whose "
-            f"root opens no report")
+            f"{p.name} describes {kind(task.calculation).with_article}, "
+            f"whose root opens no report")
     return obj
 
 

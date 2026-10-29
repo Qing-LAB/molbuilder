@@ -580,7 +580,7 @@ def _validate_siesta(struct: Structure, cfg,
     # ...and the room at its transport boundary -- one layer spacing of the
     # lead, I12 -- said here as a warning: a fused junction cell relaxes as
     # it stands and is refused only on a transport rung, whose kind gate
-    # owns the rule there (`_validate_transport_kind`).
+    # owns the rule there (`validation.transport.validate_transport_kind`).
     if calculation != "transport":
         from .sidecar import check_junction_boundary
         issues += check_junction_boundary(struct, vacuum=False)

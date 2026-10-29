@@ -253,10 +253,9 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     # why, in its own facts.
     from molbuilder.spectra.infrared import (SOURCE_CHARGES, SOURCE_DIPOLE,
                                              ORIENTATION_HELD, InfraredError,
-                                             dipole_view, infrared_view,
-                                             no_charges_reason,
-                                             orientation_of, read_ask,
-                                             source_of)
+                                             dipole_view, infrared_absent,
+                                             infrared_view, orientation_of,
+                                             read_ask, source_of)
     from molbuilder.spectra.methods import with_infrared_view
     # WHERE ITS INFRARED COMES FROM, and held or free -- whether the light's
     # direction is asked at all (`web/spectra.md` § 3.2).
@@ -264,13 +263,12 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     if source is not None:
         payload["infrared_source"] = source
         payload["infrared_orientation"] = orientation_of(results)
-    if source is None and str(results.engine).lower() == "siesta":
-        # ...A SIESTA RESULT STATING NO CHARGES says why, once, from its own
-        # facts (`infrared.no_charges_reason`): written before charges were
-        # kept, Compute IR off, or printed none.
-        payload["infrared_absent"] = (f"This result states no charges, so "
-                                      f"it carries no infrared: "
-                                      f"{no_charges_reason(results)}.")
+    # ...A RESULT THAT CARRIES NONE says why, once, from its own facts
+    # (`infrared.infrared_absent`): written before charges were kept,
+    # Compute IR off, or printed none.
+    absent = infrared_absent(results)
+    if absent is not None:
+        payload["infrared_absent"] = absent
     # WHAT IS ASKED -- the defaults when nothing is -- answered where it
     # applies: a charges result's free atoms, with every load; a held
     # engine-dipole result's direction.  A free engine-dipole result's

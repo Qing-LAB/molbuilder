@@ -168,12 +168,19 @@ def api_transport_describe_attempt() -> Any:
     # kind's folder is no citation, as any path that is not one.
     from molbuilder import task as _task
     from molbuilder.calcdirs import described
+    from molbuilder.kind_table import kind as _kind
     if finished is None and described(cited_path):
+        # A CALCULATION OF A KIND WHOSE DESCRIPTION MAY EXTEND A FINISHED ONE
+        # (the kind table's ``description.carries``, ``reuses``) is cited to
+        # be extended; one whose description does not read is said by that
+        # door.
         try:
-            kind = _task.of(cited_path).calculation
+            extends = ("reuses" in
+                       _kind(_task.of(cited_path).calculation)
+                       .description.carries)
         except ValueError:
-            kind = "transport"
-        if kind == "transport":
+            extends = True
+        if extends:
             return _describe_reused(citation, root)
     try:
         cited = classify_citation(cited_path)

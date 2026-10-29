@@ -135,7 +135,8 @@ def check_junction_boundary(struct: Structure, cell=None, *,
     transport kind gate says with ``whole_structure_is_the_lead``.  Asked
     at a junction's relaxation as a **warning** (the structure has not
     committed to transport) and at every transport rung as a **refusal**
-    (`validation._validate_transport_kind`).  ``vacuum=False`` leaves the
+    (`validation.transport.validate_transport_kind`).  ``vacuum=False``
+    leaves the
     vacuum half unsaid: a junction relaxed in a padded cell is told to add
     vacuum by the molecule's own advice (`cell.vacuum_thin`), and the two
     must never both fire -- only the transport rungs call a padded
@@ -247,13 +248,21 @@ def _same_setting(theirs, mine) -> bool:
                                                            abs(float(mine)))
 
 
-def _first_relaxation(engine: str) -> str:
+def _first_relaxation(calculation: str, engine: str) -> str:
     """What relaxes the structure before the Hessian when the box is
-    unticked: SIESTA's one run, its `relax` phase (`engines/vibration.md`
-    § 5.11 § 1); the PySCF deck itself, its Phase 0 (§ 4.2)."""
-    return ("The run's own relaxation (its `relax` phase)"
-            if str(engine).lower() == "siesta"
-            else "The deck's own relaxation (Phase 0)")
+    unticked, in a person's words -- the pair's record (the kind table's
+    ``relaxation``): SIESTA's one run, its `relax` phase
+    (`engines/vibration.md` § 5.11 § 1); the PySCF deck itself, its Phase 0
+    (§ 4.2).  A pair that states none is no pair that relaxes first, and
+    asking it is refused, naming the record."""
+    from ..kind_table import KindTableError, kind
+    words = kind(calculation).on(engine).relaxation
+    if not words:
+        raise KindTableError(
+            f"{kind(calculation).with_article} on {engine} states no "
+            f"relaxation -- what relaxes the structure first "
+            f"(kind_table.toml)")
+    return words
 
 
 def _held_set_finding(struct: Structure, held: Tuple[int, int, List[int]],
@@ -286,8 +295,8 @@ def _judged_force(rec: Mapping[str, Any]) -> Optional[float]:
     return f_free if f_free is not None else rec.get("max_force_ev_ang")
 
 
-def check_relaxation_record(struct: Structure, *, engine: str,
-                            already_relaxed: bool,
+def check_relaxation_record(struct: Structure, *, calculation: str,
+                            engine: str, already_relaxed: bool,
                             force_tolerance_ev_ang: Optional[float],
                             level: Optional[Mapping[str, Any]] = None
                             ) -> List[Issue]:
@@ -313,6 +322,9 @@ def check_relaxation_record(struct: Structure, *, engine: str,
     # (`vibrational_analysis.nonstationary_remedy`).
     from ..spectra.vibrational_analysis import nonstationary_remedy
     _remedy = nonstationary_remedy(None, engine)
+    # WHAT RELAXES IT FIRST, the pair's words -- asked only where said.
+    def _first() -> str:
+        return _first_relaxation(calculation, engine)
     issues: List[Issue] = []
     where = "config.already_relaxed"
     info = getattr(struct, "info", None) or {}
@@ -377,7 +389,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                 f"{engine} calculation -- a different level of theory, so "
                 f"the geometry is not a stationary point here."
                 + ("  " + _remedy if already_relaxed else
-                   f"  {_first_relaxation(engine)} relaxes it at this level "
+                   f"  {_first()} relaxes it at this level "
                    f"first.")),
             where=where))
     else:
@@ -399,7 +411,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                     "theory than this calculation runs (" + "; ".join(differing)
                     + "), so its geometry is not a stationary point here."
                     + ("  " + _remedy if already_relaxed else
-                       f"  {_first_relaxation(engine)} relaxes it at this "
+                       f"  {_first()} relaxes it at this "
                        f"level first.")),
                 where=where))
     # -- the held set: an atom the relaxation held, freed here -------------
@@ -410,7 +422,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
             struct, held, who="The relaxation", here="this calculation",
             severity=disagree,
             tail=("  " + _remedy if already_relaxed
-                  else f"  {_first_relaxation(engine)} relaxes this set "
+                  else f"  {_first()} relaxes this set "
                        f"first.")))
     # -- the largest remaining force against THIS calculation's tolerance --
     judged = _judged_force(rec)
@@ -447,5 +459,5 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                      f"{float(force_tolerance_ev_ang):g} eV/Å."
                      + ("  The frequencies will be off unless it is relaxed "
                         "further.  " + _remedy if already_relaxed else
-                        f"  {_first_relaxation(engine)} tightens it."))))
+                        f"  {_first()} tightens it."))))
     return issues

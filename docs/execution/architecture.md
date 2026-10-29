@@ -581,7 +581,7 @@ file and the key.
 - whether its deck relaxes the structure — an optimization's — which the
   progress log seeded for its run states as its targets (`relaxes`);
 - the science checks its decks run before they are written, where it has
-  its own — a vibration's (`validator`, a part);
+  its own — a vibration's, a transport calculation's (`validator`, a part);
 - the results it gives, in the order a person decides them, each a card a
   form of the kind draws ([`engines/template.md`](?doc=engines/template.md)
   § 6.2a) — which of them an engine gives is its catalogue items';
@@ -678,8 +678,9 @@ by the one door, in one sentence naming the engines it runs on.
 record names each as `module:NAME`, and the floor that asks resolves it — the
 conductor a rung's builder, the run of points (floor 4) its declaration,
 the ladder (floor 3, `jobset/ladder`) a linked kind's inputs, the ready door
-its gather, `summarize` (floor 6) its sum, `jobset/engines.engine_seam` the seam for
-floor 3 and the surfaces, any floor the config class. The part's module stands
+its gather, `summarize` (floor 6) its sum, the settings gate
+(`validation.validate`) a kind's science checks, `jobset/engines.engine_seam`
+the seam for floor 3 and the surfaces, any floor the config class. The part's module stands
 on that floor: it uses that floor and those below, never one above. A module
 holding parts of two floors is two modules — a kind's run of points'
 declaration (floor 4) is never kept beside facts a lower floor reads, and a
@@ -698,8 +699,9 @@ the record and the key.
   (its SCF's and TBtrans's), which every floor that writes or checks one
   reads;
 - **a kind's own modules choose by engine, and refuse another kind at their
-  doors** — `transport/`, and the vibration's `spectra/` and
-  `validation/spectra.py`, its science checks;
+  doors** — `transport/` and `validation/transport.py`, its science checks;
+  the vibration's `spectra/` and `validation/spectra.py`, its science
+  checks;
 - **`jobset migrate`'s rewrites of an older molbuilder's files** — each
   names the version and the layout it rewrites, which is history, not what a
   kind or an engine is; a retired stage it folds is the pair's record

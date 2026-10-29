@@ -1003,22 +1003,29 @@ def _openable(folder: Path, label: str, stage: Optional[str],
 
 
 def transmission_point(folder) -> Optional["Point"]:
-    """The point a transport calculation's TRANSMISSION run folder runs at
-    -- a frame, a voltage, or the one point of a rung that runs once -- or
-    ``None`` for any other folder.  TBtrans writes no file a viewer reads on
-    its own, so such a folder's result is its calculation's report at that
-    point (`web/results.md` § 0.1, § 2): the one rule :func:`openable` and
-    the ladder's run rows answer by.  Read off where the folder is
+    """The point a run folder of a rung whose role opens its calculation's
+    report (the kind table's role ``opens`` -- a transport calculation's
+    transmission) runs at -- a frame, a voltage, or the one point of a rung
+    that runs once -- or ``None`` for any other folder.  TBtrans writes no
+    file a viewer reads on its own, so such a folder's result is its
+    calculation's report at that point (`web/results.md` § 0.1, § 2): the
+    one rule :func:`openable` and the ladder's run rows answer by.  Read off where the folder is
     (`calcdirs.where`) -- ``<NN>_transmission/run-<n>/<point>``
     (`engines/transport.md` § 2a.11) -- against the rung's points
     (`transport.stages.points_in`)."""
+    from .kind_table import kind
     from .transport.stages import Point, points_in
     place = place_of(folder)
-    if not place.ours or place.task.calculation != "transport":
+    if not place.ours:
         return None
     at = place.where
-    if (at.stage is None or parse_token(at.stage)[1] != "transmission"
-            or at.run is None or at.trial is not None):
+    if at.stage is None or at.run is None or at.trial is not None:
+        return None
+    # A RUNG WHOSE ROLE OPENS THE REPORT (the kind table's role ``opens``):
+    # its stages are its rungs, each its role's name.
+    rung = parse_token(at.stage)[1]
+    role = kind(place.task.calculation).role(rung)
+    if role is None or role.opens != "report":
         return None
     if at.what == calcdirs.ATTEMPT:
         rel: Tuple[str, ...] = ()
@@ -1028,7 +1035,7 @@ def transmission_point(folder) -> Optional["Point"]:
         return None
     root = Path(place.root)
     points = points_in(attempt_dir(root / at.stage, at.run), place.task,
-                       "transmission", base=root)
+                       rung, base=root)
     if not points:
         return Point() if not rel else None
     return next((pt for _folder, pt in points
@@ -1072,22 +1079,25 @@ def openable(directory) -> Tuple[Optional[str], List[str]]:
 def _container_product(folder: Path, place: Place, label: str,
                        stage: Optional[str], attempts: List[str]
                        ) -> Optional[str]:
-    """What a CONTAINER opens (`web/results.md` § 0.1).  A transport
-    calculation's root opens its description, ``task.json`` -- the report is
-    composed on read from the folder (`engines/transport.md` § 2a.12), and
-    the description is the file that makes it one (`task_reader`);
+    """What a CONTAINER opens (`web/results.md` § 0.1).  The root of a kind
+    whose root opens its description (the kind table's ``root_opens`` -- a
+    transport calculation's) opens ``task.json`` -- the report is composed
+    on read from the folder (`engines/transport.md` § 2a.12), and the
+    description is the file that makes it one (`task_reader`);
     ``<label>.transport.json`` is `summarize task`'s copy for the command
     line.  A benchmark's folder opens its sweep's ``job-set.json``, the
     bench summary's handle -- the registry claims a job set only as a
     sweep's (`jobset.sweep_reader`), so a ladder's is never opened.  Any
     other container: the first result role the calculation produces that is
     present (`_openable`)."""
+    from molbuilder.kind_table import kind
     from molbuilder.parse.dirs.rundir import claimed
+    rec = kind(place.task.calculation)
     if (place.where.what == calcdirs.CALCULATION
-            and place.task.calculation == "transport"):
+            and rec.root_opens == "description"):
         handle = calcdirs.description_path(folder)
         if claimed(str(handle)):
-            attempts.append(f"*{_rf.TASK_FILE}: a transport calculation's "
+            attempts.append(f"*{_rf.TASK_FILE}: {rec.with_article}'s "
                             f"report, composed on read from this folder")
             return str(handle)
     sweep = folder / _rf.JOBSET_FILE

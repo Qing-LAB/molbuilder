@@ -293,7 +293,7 @@ tree has ever read a produced artifact.
 > `parse_output`, `preflight` and `methods_fragment`, and the whole file went
 > on 2026-09-17, followed the same day by `TransiestaEngine` itself. What
 > TranSIESTA has today is no gate of its own: its science is the KIND's,
-> `_KIND_VALIDATORS["transport"]`.)*
+> its record's `validator`, `validation/transport.py`.)*
 
 ### 3.2 The three rules inside step 3
 

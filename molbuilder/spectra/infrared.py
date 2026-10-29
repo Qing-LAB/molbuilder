@@ -199,6 +199,18 @@ def no_charges_reason(result: SpectraResults) -> str:
     return "the force-constant run printed no charges"
 
 
+def infrared_absent(result: SpectraResults) -> Optional[str]:
+    """What a result that carries no infrared is shown with (`web/spectra.md`
+    § 3.2): a SIESTA result stating no charges says why, once, from its own
+    facts (:func:`no_charges_reason`); ``None`` for a result with an
+    infrared source (:func:`source_of`), or one whose engine computes its
+    infrared itself."""
+    if source_of(result) is not None or str(result.engine).lower() != "siesta":
+        return None
+    return (f"This result states no charges, so it carries no infrared: "
+            f"{no_charges_reason(result)}.")
+
+
 def _unit(direction: Union[str, Sequence[float]]) -> Tuple[Tuple[float, ...],
                                                            str]:
     if isinstance(direction, str):
@@ -432,4 +444,5 @@ __all__ = ["ASK_KEYS", "CHARGES_KEPT_SINCE", "DEFAULT_DIRECTION",
            "SOURCE_DIPOLE", "WHOLE_SYSTEM_NAME", "InfraredError",
            "InfraredMode", "InfraredView", "dipole_absent_reason",
            "dipole_view", "direction_name", "infrared_view",
-           "no_charges_reason", "orientation_of", "read_ask", "source_of"]
+           "no_charges_reason", "infrared_absent", "orientation_of",
+           "read_ask", "source_of"]

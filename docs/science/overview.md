@@ -202,7 +202,7 @@ listed the retired `spin_total` rules and the analyzer's `check_open_shell_metal
 until 2026-09-28; the `propor: ERROR: IMAX = 0` abort once blamed on a missing spin
 is a defective pseudopotential's, which the `dead_projector` row above blocks.)*
 
-### Transport, the calculation KIND (`validation/__init__.py::_validate_transport_kind`)
+### Transport, the calculation KIND (`validation/transport.py::validate_transport_kind`)
 
 *(Added 2026-09-17. **This section was missing entirely** — seven shipped
 checks, none of them catalogued, found by a review that should have run before

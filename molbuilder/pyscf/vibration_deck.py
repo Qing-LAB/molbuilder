@@ -132,7 +132,7 @@ class VibrationConfigView:
 
 def science_view(cfg, struct: Structure) -> "VibrationConfigView":
     """The vibration deck's config view, for the KIND's validation step
-    (validation/__init__._validate_vibration_kind).  One adapter, two
+    (`validation.spectra.validate_vibration_kind`).  One adapter, two
     readers: the emitters and the science speak the same vocabulary,
     so a check and the deck it checks cannot disagree about a value."""
     return VibrationConfigView(cfg, struct)
@@ -624,7 +624,7 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         # NO validation call here -- deliberately.  The settings gate is
         # ONE step of the pipeline (render_deck STEP 3.3), and it reads
         # `calculation` off this spec to compose the kind's science
-        # (validation/__init__._KIND_VALIDATORS).
+        # (the kind table's ``validator``).
         from ..spectra.methods import (extract_citation_keys,
                                        render_methods_md)
         methods_md = render_methods_md(

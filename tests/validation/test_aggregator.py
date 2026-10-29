@@ -101,11 +101,15 @@ def test_the_two_registries_hold_what_the_contract_says():
     Asserted by EQUALITY, not containment, so a row cannot be added and
     never noticed.
     """
-    from molbuilder.validation import _ENGINE_VALIDATORS, _KIND_VALIDATORS
+    from molbuilder.kind_table import kind, kinds, part
+    from molbuilder.validation import _ENGINE_VALIDATORS
     assert {c.__name__ for c in _ENGINE_VALIDATORS} == {
         "SiestaConfig", "PySCFConfig"}, (
         "the engine registry no longer matches `science/validation.md`; a row "
         "added here must name a config class production actually validates")
-    assert set(_KIND_VALIDATORS) == {"vibration", "transport"}, (
+    named = {k for k in kinds() if kind(k).validator}
+    assert named == {"vibration", "transport"}, (
         "a calculation kind lost its science -- this is the road a transport "
         "or vibration prep actually travels")
+    for k in named:
+        assert callable(part(kind(k).validator, record=k, key="validator"))

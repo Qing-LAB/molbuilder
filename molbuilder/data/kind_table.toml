@@ -35,6 +35,18 @@
 # one, and why.  Its `no_benchmark`: why it takes no benchmark, where it
 # takes none.
 #
+# A kind's `relaxes`: whether its deck relaxes the structure, which the
+# progress log seeded for its run states as its targets.  Its `root_opens`:
+# what its root opens where that is not one of its runs' results --
+# "description", through which its report is opened, composed on read; and
+# a role's `opens`, what the rung's run folder opens where that is not the
+# run's own result -- "report", its calculation's report at the point the
+# folder is (web/results.md § 0.1).  Its `validator`: its science checks, a
+# part, where it has its own (validation.validate runs them on every deck).
+#
+# A part's `relaxation`: what relaxes the structure first, in a person's
+# words, where the pair relaxes before it measures.
+#
 # A part's `words`: the engine's own name for the kind, where it has one --
 # the program that runs it on that engine.
 #
@@ -67,6 +79,7 @@
 noun = "optimization"
 topic = "optimization"
 handover = "structure-optimization"
+relaxes = true
 
 [optimization.on.siesta]
 
@@ -77,6 +90,9 @@ handover = "structure-optimization"
 noun = "vibration"
 topic = "spectrum"
 handover = "spectrum-calculation"
+# Its science: the grid, the amplitude, the held atoms, the relaxation
+# record (engines/vibration.md § 3).
+validator = "molbuilder.validation.spectra:validate_vibration_kind"
 roles = [
     { name = "relaxation",      computes = "scf" },
     { name = "force_constants", computes = "scf" },
@@ -99,6 +115,7 @@ results = [
 stage_roles = "every"
 # ...in one stage, `freq`, the harmonic analysis -- a new description's.
 ladder = ["freq"]
+relaxation = "The run's own relaxation (its `relax` phase)"
 shape = "hierarchical"
 why = "A SIESTA vibration is hierarchical, and no other shape is taken -- its one run's SIESTA calls, the relaxation, the force constants and the optical calls, each run in a folder of its own: in one directory they would write over each other's .DM and .XV (engines/vibration.md § 5.11 § 1)."
 points = "molbuilder.jobset.vibration_points:POINTS"
@@ -113,6 +130,7 @@ retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIE
 # force-constant run.
 stage_roles = ["force_constants"]
 ladder = ["freq"]
+relaxation = "The deck's own relaxation (Phase 0)"
 # A vibration's summary is the displacement sweep, which a PySCF vibration
 # never has -- its second derivatives are analytic -- and is refused naming
 # why (engines/vibration.md § 5.9).
@@ -130,8 +148,17 @@ roles = [
     { name = "electrode_L",  computes = "scf", lead = "L-electrode" },
     { name = "electrode_R",  computes = "scf", lead = "R-electrode" },
     { name = "device",       computes = "scf" },
-    { name = "transmission", computes = "product" },
+    # TBtrans writes no file a viewer reads on its own: the run's folder
+    # opens the calculation's report at its point.
+    { name = "transmission", computes = "product", opens = "report" },
 ]
+# Its report is composed on read from its folder (engines/transport.md
+# § 2a.12), opened through its description at the root.
+root_opens = "description"
+# Its science: the pole energy against the temperature, the transmission
+# window against the bias, no vacuum where the crystal continues
+# (engines/transport.md § 6.1c).
+validator = "molbuilder.validation.transport:validate_transport_kind"
 
 [transport.charge]
 value = 0

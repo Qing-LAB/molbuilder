@@ -1,8 +1,9 @@
 """The transport KIND's science — each rule about an open boundary.
 
-`_validate_transport_kind` is registered in ``_KIND_VALIDATORS`` and keyed on
-``task.calculation``, so it fires for whatever config class the deck renders
-from, and it is the only transport science that runs on a prep.
+`validate_transport_kind` is the part the kind table names (``validator``) and
+is asked by ``task.calculation``, so it fires for whatever config class the
+deck renders from, and it is the only transport science that runs on a
+prep.
 
 Each rule below is a case where being wrong costs a queue wait and produces a
 plausible number rather than a crash, which is `engines/transport.md` § 0.4's

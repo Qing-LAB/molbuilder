@@ -13,7 +13,8 @@ box) reach into:
   pole ENERGY gives, written once for the settings gate's refusal and the
   count the device deck states beside the energy.
 This module emits NO deck of its own and holds NO gate.  Transport's science
-is the KIND's — ``_KIND_VALIDATORS["transport"]`` — and its decks are written
+is the KIND's — the kind table's ``validator``,
+``validation.transport.validate_transport_kind`` — and its decks are written
 by ``transport/deck.py`` through ``spec_for`` → ``prepare_deck``.  The record
 a transmission inspector reads is `transport/record.py`'s,
 ``<label>.transport.json``.

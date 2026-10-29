@@ -88,7 +88,7 @@ def test_the_kind_door_runs_the_same_gate_body():
     """One gate, and the door that reaches it is the CALCULATION KIND.
 
     A vibration's science is the kind's:
-    `_validate_vibration_kind` runs `spectra_render_checks` against the
+    `validate_vibration_kind` runs `spectra_render_checks` against the
     deck's config view, which is the object the emitters get.  Same body,
     reached the way production reaches it: `validate(..., calculation=
     "vibration")` with the config a person describes, the door `prep` and

@@ -561,8 +561,8 @@ this table exists to rule out)*:
 
 *(Every kind passes the same five gates: the Spectrum tab runs the same live
 check (①) Build does, and transport's decks render through prep like every
-other kind's, its own science the KIND's — `_KIND_VALIDATORS["transport"]`,
-which fires on every rung.)*
+other kind's, its own science the KIND's — its record's `validator`,
+`validation/transport.py`, which fires on every rung.)*
 
 ### Where the details live — the drill-down for each arrow
 

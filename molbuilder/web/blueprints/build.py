@@ -2772,16 +2772,19 @@ def _folder_ladder(calc) -> dict:
 
 def _folder_frame_set(task, folder):
     """The cited junction's frames, as the describe door answers them
-    (`frame_average.answer`), for a transport description; ``None`` for
-    every other kind.  A citation that does not read says why, in its
-    words -- the folder still opens."""
-    if getattr(task, "calculation", None) != "transport":
+    (`frame_average.answer`), for a description of a kind that cites its
+    structure (the kind table's ``description.cites`` -- a transport
+    calculation's junction); ``None`` for every other kind.  A citation that
+    does not read says why, in its words -- the folder still opens."""
+    from molbuilder.kind_table import kind as _kind
+    cites = _kind(task.calculation).description.cites if task else None
+    if not cites:
         return None
     from molbuilder.projects import find_projects_root
     from molbuilder.frame_average import answer_said
     from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               resolve_citation)
-    cited_at = ((getattr(task, "slots", None) or {}).get("junction"))
+    cited_at = ((getattr(task, "slots", None) or {}).get(cites))
     if not cited_at:
         return None
     # THE CALCULATION'S OWN TREE, as prep resolves the same citation

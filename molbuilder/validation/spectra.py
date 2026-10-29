@@ -1,7 +1,9 @@
 """The spectra render gate -- the science checks a vibration deck runs.
 
-Called from ``validation/__init__.py``'s vibration arm.  Lives in
-``validation/`` beside the other engines' gates.
+The vibration kind's own module (`execution/architecture.md` § 3.3): its
+checks are written per engine, and :func:`validate_vibration_kind` is the
+part the kind table names (``validator``), run by the settings gate on
+every deck of the kind (`validation.validate`).
 """
 
 from __future__ import annotations
@@ -335,7 +337,7 @@ def spectra_render_checks(struct: Structure, cfg, *,
     from .sidecar import check_relaxation_record
     _gmax = getattr(cfg, "geom_gmax", None)
     issues.extend(check_relaxation_record(
-        struct, engine="pyscf",
+        struct, calculation="vibration", engine="pyscf",
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         force_tolerance_ev_ang=(float(_gmax) * _EV_ANG_PER_EH_BOHR
                                 if _gmax is not None else None)))
@@ -613,7 +615,8 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     # Against the FILE's coordinates (`design`), not the placed subject: a
     # placement is a rigid shift the record never saw (`validate`, ``design``).
     issues.extend(check_relaxation_record(
-        design if design is not None else struct, engine="siesta",
+        design if design is not None else struct, calculation="vibration",
+        engine="siesta",
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         force_tolerance_ev_ang=(float(_tol) if _tol is not None else None),
         level=contract_fields_of(cfg, state=_state,
@@ -732,5 +735,35 @@ def modes_of(struct: Structure, engine: str):
 
 
 # The render-time checks are the module's public door.
-__all__ = ["spectra_render_checks", "siesta_vibration_checks",
-           "selector_issues", "raman_issues", "modes_of"]
+def validate_vibration_kind(struct: Structure, cfg, cell, *,
+                            design=None, inactive=frozenset(),
+                            **_) -> List[Issue]:
+    """The vibration kind's science (grid / amplitude / frozen atoms /
+    the relaxation record), over the deck's own config view -- the part its
+    record in the kind table names (``validator``), run by the settings gate
+    on every deck of the kind; the charge and spin are the electronic
+    state's one family, asked by ``validate``.  Its checks are written per
+    engine (this module is the kind's own, `execution/architecture.md`
+    § 3.3)."""
+    from ..config.pyscf import PySCFConfig
+    if isinstance(cfg, PySCFConfig):
+        from ..pyscf.vibration_deck import science_view
+        return list(spectra_render_checks(struct, science_view(cfg, struct),
+                                          inactive=inactive))
+    from ..config.siesta import SiestaConfig
+    if isinstance(cfg, SiestaConfig):
+        return list(siesta_vibration_checks(struct, cfg, design=design))
+    # The kind's science is written per engine, and an engine this dispatch
+    # does not name has NO science here -- a gap to refuse, never an empty
+    # verdict: an empty list reads as "checked, nothing found" on every
+    # surface, which is the silent skip science/validation.md F4 forbids.
+    raise TypeError(
+        f"the vibration kind has no science for {type(cfg).__name__}: "
+        f"its checks are written for PySCFConfig and SiestaConfig, and a "
+        f"config class with no checks cannot pass this gate as validated "
+        f"(science/validation.md F4)")
+
+
+__all__ = ["validate_vibration_kind", "spectra_render_checks",
+           "siesta_vibration_checks", "selector_issues", "raman_issues",
+           "modes_of"]

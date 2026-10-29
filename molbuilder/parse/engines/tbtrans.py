@@ -41,6 +41,12 @@ if set(CHANNEL_WORDS) != {ch for ch, _tag in _G.TBT_CHANNELS}:
         f"{sorted(ch for ch, _tag in _G.TBT_CHANNELS)}: a channel each")
 
 
+def is_tbtrans_output(head_lines) -> bool:
+    """Whether an output's head is TBtrans's -- the SIESTA family's program
+    line (`siesta_grammar.program_of`, `model/parse.md` § 5d.2)."""
+    return _G.program_of(head_lines) == "tbtrans"
+
+
 def _count(n: int, one: str, many: str) -> str:
     return f"{n} {one if n == 1 else many}"
 

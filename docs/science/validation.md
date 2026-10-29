@@ -465,8 +465,8 @@ directly from the relevant submodule:
 ```
 validation/
 ├── __init__.py     # public API: validate, report; the engine registry
-│                   # (_ENGINE_VALIDATORS, type-keyed) and the calculation-kind
-│                   # registry (_KIND_VALIDATORS, fact-keyed) + re-exports
+│                   # (_ENGINE_VALIDATORS, type-keyed); a kind's science is
+│                   # the part its record names (the kind table's `validator`)
 ├── geometry.py     # validate_geometry + geometry checks
 ├── metadata.py     # dataclass-field-driven config validation (range/validate/choices)
 ├── chemistry.py    # species labels; THE ELECTRONIC STATE'S ONE FAMILY
@@ -479,9 +479,11 @@ validation/
 ├── task.py         # the TASK preflight — a description that is not one refuses
 ├── siesta.py       # SIESTA preflight aggregator + pseudo/mesh/Makov-Payne/vacuum checks
 ├── pyscf.py        # PySCF preflight aggregator
-└── spectra.py      # the vibration kind's render gate (grid/amplitude/frozen
-                    # atoms/the relaxation record) — moved whole from the retired
-                    # engine class at the spectra migration's P3
+├── spectra.py      # the vibration kind's science (grid/amplitude/frozen atoms/
+│                   # the relaxation record): validate_vibration_kind, its validator
+└── transport.py    # the transport kind's science (the pole energy and the
+                    # temperature, the window against the bias, I12):
+                    # validate_transport_kind, its validator
 ```
 
 *(This tree drifted once — it listed seven files while the package held
@@ -493,8 +495,8 @@ tests count issues by position — and a helper **loses its `_` prefix when it
 gains a cross-module caller** (e.g. `check_electronic_state` is public; the
 others stay private until a PR forces the promotion, no back-compat shim). The
 engine registry (`_ENGINE_VALIDATORS`, populated at import) holds **two**
-configs (SIESTA / PySCF), and the calculation-kind
-registry (`_KIND_VALIDATORS`) composes a kind's own science from the
+configs (SIESTA / PySCF), and a kind's own science is the part its
+record in the kind table names (`validator`), composed from the
 described fact — `validate(struct, cfg, calculation=…)` is the
 one per-engine gate. Tests mirror the layout under `tests/validation/`.
 
@@ -523,7 +525,7 @@ relaxation"*, 2026-09-25).
 > 2026-09-17 (every transport rung resolves a `SiestaConfig`, so the row
 > dispatched for nothing). **A registry keyed on a class is only as live as the
 > callers that construct that class** — which is the difference between
-> `_ENGINE_VALIDATORS` and `_KIND_VALIDATORS`, and the reason transport's
+> `_ENGINE_VALIDATORS` and a kind's `validator`, and the reason transport's
 > science moved to the second.*
 
 ---

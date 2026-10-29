@@ -558,7 +558,8 @@ class Rung:
     #: § 2a.11); ``{}`` renders the job's.
     wrapper_at: Callable = lambda point: {}
     #: ``point -> bool``: whether a point's deck relaxes -- its progress
-    #: log's targets (`_seed_trajectory_log`); by default the render kind's.
+    #: log's targets (`_seed_trajectory_log`); by default the render kind's
+    #: record's (``relaxes``, the kind table).
     relaxes_at: Optional[Callable] = None
     #: ``(point, spec, folder, plan) -> None``: what the rung writes BESIDE
     #: a deck before the deck is checked -- a vibration phase's
@@ -1054,7 +1055,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # structure as described, unless the kind composes or reorders it -- a
     # transport junction and its leads; a SIESTA vibration's held-first
     # copy.
-    from ..kind_table import part_of
+    from ..kind_table import kind as _kind, part_of
     builds = (part_of(str(task.calculation), str(task.engine), "rung")
               or _described_rung)
     rung = builds(calc, pset, seam=seam, sweep=sweep, log=log, plan=plan,
@@ -1266,8 +1267,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                                      frame=spec_at[_seed_dir].engine_frame,
                                      relaxes=(rung.relaxes_at(_point)
                                               if rung.relaxes_at is not None
-                                              else rung.render_kind
-                                              == "optimization"),
+                                              else _kind(rung.render_kind)
+                                              .relaxes),
                                      plan=plan)
             log.step("what this deck's text PROMISES, kept")
             log.produced("sibling_artifacts",

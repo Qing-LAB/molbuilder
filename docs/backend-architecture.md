@@ -180,7 +180,7 @@ a pinning test:
 
 | # | Finding (was) | Fix shipped |
 |---|---|---|
-| V1 | **No single pass for Spectra/Transport** — each surface ran `validate(…) + engine.preflight(…)`; forget the second and the science silently skipped. | ~~`SpectraConfig` + `TransportConfig` are registered in `_ENGINE_VALIDATORS`~~ — **superseded.** Both classes retired with their rows (`SpectraConfig` 2026-08-22, `TransportConfig` 2026-10-02): a vibration's science is the kind's (`_validate_vibration_kind`), and every transport rung resolves a `SiestaConfig`, so it passes the SIESTA validator and the transport kind's (`_validate_transport_kind`) in the one `validate(struct, cfg, prior=prior)` call. |
+| V1 | **No single pass for Spectra/Transport** — each surface ran `validate(…) + engine.preflight(…)`; forget the second and the science silently skipped. | ~~`SpectraConfig` + `TransportConfig` are registered in `_ENGINE_VALIDATORS`~~ — **superseded.** Both classes retired with their rows (`SpectraConfig` 2026-08-22, `TransportConfig` 2026-10-02): a vibration's science is the kind's (`validate_vibration_kind`, its `validator`), and every transport rung resolves a `SiestaConfig`, so it passes the SIESTA validator and the transport kind's (`validate_transport_kind`, its `validator`) in the one `validate(struct, cfg, prior=prior)` call. |
 | V2 | **Transport science lived outside the registry** (`transport/transiesta.py::preflight`). | ~~dispatched to the engine's `preflight` via `get_engine(cfg.engine)`~~ — **superseded 2026-09-17.** There is no engine registry and no `get_engine`; `TransiestaEngine` and its `preflight` are deleted, and `test_validate_dispatches_transport_preflight` with them (`tests/validation/test_aggregator.py:222`). Every check it carried has a named holder: each transport rung resolves a `SiestaConfig` and goes through the SIESTA validator. *(Asserted in the present tense here until 2026-09-18.)* |
 | V3 | **A third type system** — the device↔electrode cross-run validator used `Check` / `PreflightReport`, not `Issue`. | Kept as a distinct **checklist** type (it reports passing "ok" gates that `Issue` can't model — a legitimately different role) but **bridged**: `PreflightReport.to_issues()` / `Check.to_issue()` map the problem-severity checks onto `Issue`, so it is no longer a *disconnected* third system. |
 | V4 | **A duplicated rule** — hybrid `grid_level < 4` in both `validation/pyscf.py` and the spectra engine (now `validation/spectra.py`) with different detectors. | One body: `validation.pyscf.is_hybrid_functional` + `check_hybrid_grid_level(cfg, context=…)`, called by both sites; the message is context-selected (opt forces vs Hessian frequencies). |
@@ -189,7 +189,8 @@ a pinning test:
 **The render gate is the science alone.** The vibration deck's gate is
 `validation/spectra.py::spectra_render_checks` (grid, amplitude, the held
 atoms; the charge and spin are the electronic state's family), run by the render path and by `validate()` through the
-kind's own step (`validation/__init__._validate_vibration_kind`). *(It once had
+kind's own step (`validation/spectra.validate_vibration_kind`, the kind
+table's `validator`). *(It once had
 a preflight-only sibling, `selector_checks`, for the `top_n` / `threshold`
 selectors' wish for prior Raman data, registered beside a `SpectraConfig`
 validator; the class went on 2026-08-22 and the two selectors on 2026-09-28 —

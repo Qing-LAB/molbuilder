@@ -195,7 +195,7 @@ def seam_finding(pos, cell) -> Issue:
     cannot be told.  THE ONE RULE AND ITS WORDS, asked by the lead's model
     (the Transport card) and by the lead rung's settings gate (prep's
     report and the deck's `.validation.txt`,
-    `validation._validate_transport_kind`).
+    `validation.transport.validate_transport_kind`).
 
     A lead tiles along z, so its top layer meets its own bottom layer one
     cell up.  Whether that seam continues the crystal is a layer-COUNT

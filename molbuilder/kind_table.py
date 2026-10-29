@@ -8,14 +8,17 @@ a kind with roles has a linked ladder, one without an independent one
 (`job-system.md` § 5.4), and a role that is a lead names the region it
 is cut from -- the results it gives, what its description
 carries beyond every kind's fields, the charge it fixes, why it takes no
-benchmark, the tab that hands it over or where it describes itself, and
-its topic -- the folder a new project lays down for it;
+benchmark, the tab that hands it over or where it describes itself, its
+topic -- the folder a new project lays down for it -- whether its deck
+relaxes the structure, what its root opens and what a rung's folder opens
+where that is not a run's own result, and its science checks (a part);
 and on each engine it runs on, the
 engine's own name for it, the shape it fixes and why, how its stages play
 its roles (its rungs, every one in order, where a stage's role is its
-name), a stage older versions wrote that it no longer holds, and the code
-parts the pair names -- its run of points, its rung's builder, the inputs
-its rungs take and their gather, and what `summarize task` adds up.  The engines a kind
+name), the ladder a new description starts from, what relaxes the
+structure first, a stage older versions wrote that it no longer holds, and
+the code parts the pair names -- its run of points, its rung's builder, the
+inputs its rungs take and their gather, and what `summarize task` adds up.  The engines a kind
 runs on are its parts -- no second list says which engine runs which kind
 -- and each is the engine table's (`engine_table`).
 
@@ -50,10 +53,22 @@ COMPUTES = ("scf", "product")
 #: extends.
 DESCRIPTION_FIELDS = ("swap_electrodes", "bias", "reuses")
 
+#: What a calculation's root opens where that is not one of its runs'
+#: results (``root_opens``): its description, through which its report is
+#: opened -- composed on read from the folder (`web/results.md` § 0.1).
+ROOT_OPENS = ("description",)
+
+#: What a rung's run folder opens where that is not the run's own result
+#: (a role's ``opens``): its calculation's report, at the point the folder
+#: is (`web/results.md` § 0.1) -- a rung whose engine writes no file a
+#: viewer reads on its own.
+ROLE_OPENS = ("report",)
+
 _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
-              "charge", "no_benchmark", "handover", "on")
+              "charge", "no_benchmark", "handover", "relaxes",
+              "root_opens", "validator", "on")
 _PART_KEYS = ("words", "shape", "why", "stage_roles", "points", "rung",
-              "inputs", "gather", "sum", "retired", "ladder")
+              "inputs", "gather", "sum", "retired", "ladder", "relaxation")
 
 #: The parts a pair may name, each ``module:NAME`` (:func:`part_of`).
 PART_REFS = ("points", "rung", "inputs", "gather", "sum")
@@ -76,6 +91,9 @@ class Role:
     #: axis with its own count -- or ``None``: the rung is no lead
     #: (`execution/architecture.md` § 3.3).
     lead: Optional[str] = None
+    #: What the rung's run folder opens where that is not the run's own
+    #: result (:data:`ROLE_OPENS`) -- or ``None``: its own result.
+    opens: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -161,6 +179,9 @@ class KindOnEngine:
     sum: Optional[str] = None
     #: A stage older versions wrote that it no longer holds, or ``None``.
     retired: Optional[Retired] = None
+    #: What relaxes the structure first, in a person's words, where the
+    #: pair relaxes before it measures -- a vibration's -- or ``None``.
+    relaxation: Optional[str] = None
 
     @property
     def fixed_shape(self) -> Optional[Dict[str, str]]:
@@ -198,8 +219,23 @@ class CalculationKind:
     #: `web/tabs.py` -- or ``None``: it describes on its own tab, nothing
     #: awaiting.
     handover: Optional[str] = None
+    #: Whether its deck relaxes the structure -- an optimization's -- which
+    #: the progress log seeded for its run states as its targets.
+    relaxes: bool = False
+    #: What its root opens where that is not one of its runs' results
+    #: (:data:`ROOT_OPENS`), or ``None``.
+    root_opens: Optional[str] = None
+    #: ``module:NAME`` of its science checks, where it has its own -- run by
+    #: the settings gate on every deck of it (`validation.validate`) -- or
+    #: ``None``: its engine's checks are its science.
+    validator: Optional[str] = None
     #: Its part on each engine it runs on, by the engine's name.
     parts: Mapping[str, KindOnEngine] = None  # type: ignore[assignment]
+
+    def role(self, name: str) -> Optional[Role]:
+        """Its role called ``name``, or ``None``: it has none of that
+        name."""
+        return next((r for r in self.roles if r.name == name), None)
 
     @property
     def role_names(self) -> Tuple[str, ...]:
@@ -312,12 +348,18 @@ def _part(kind: str, engine: str, body: object,
             _refuse(where, f"retired names role {retired['role']!r} -- the "
                            f"kind's roles are {', '.join(roles) or 'none'}")
         retired = Retired(**retired)
+    relaxation = body.get("relaxation")
+    if relaxation is not None and not (isinstance(relaxation, str)
+                                       and relaxation):
+        _refuse(where, "relaxation is a sentence -- what relaxes the "
+                       "structure first")
     return KindOnEngine(kind=kind, engine=engine, words=body.get("words"),
                         shape=shape, why=why, stage_roles=sr,
                         stages=stages, ladder=ladder,
                         points=body.get("points"), rung=body.get("rung"),
                         inputs=body.get("inputs"), gather=body.get("gather"),
-                        sum=body.get("sum"), retired=retired)
+                        sum=body.get("sum"), retired=retired,
+                        relaxation=relaxation)
 
 
 def _kind(name: str, body: object, engines: Tuple[str, ...]
@@ -342,15 +384,18 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
         _refuse(where, "on is a table, one part per engine")
     roles = []
     for r in body.get("roles", ()):
-        if (not {"name", "computes"} <= set(r) <= {"name", "computes", "lead"}
+        if (not {"name", "computes"} <= set(r)
+                <= {"name", "computes", "lead", "opens"}
                 or r["computes"] not in COMPUTES
                 or ("lead" in r and not (isinstance(r["lead"], str)
-                                         and r["lead"]))):
-            _refuse(where, f"a role is {{name, computes}} and a lead's "
-                           f"region, computes one of {', '.join(COMPUTES)} "
-                           f"-- got {r!r}")
+                                         and r["lead"]))
+                or ("opens" in r and r["opens"] not in ROLE_OPENS)):
+            _refuse(where, f"a role is {{name, computes}}, a lead's region "
+                           f"and what its folder opens -- computes one of "
+                           f"{', '.join(COMPUTES)}, opens one of "
+                           f"{', '.join(ROLE_OPENS)} -- got {r!r}")
         roles.append(Role(name=str(r["name"]), computes=str(r["computes"]),
-                          lead=r.get("lead")))
+                          lead=r.get("lead"), opens=r.get("opens")))
     results = []
     for r in body.get("results", ()):
         if set(r) != {"key", "title", "line"}:
@@ -380,9 +425,13 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
             and not isinstance(charge["value"], bool)):
         _refuse(where, "charge is {value, why} -- the charge it fixes, a "
                        "whole number, and why")
-    for key in ("no_benchmark", "handover"):
+    for key in ("no_benchmark", "handover", "validator"):
         if key in body and not (isinstance(body[key], str) and body[key]):
             _refuse(where, f"{key} is a sentence")
+    if not isinstance(body.get("relaxes", False), bool):
+        _refuse(where, "relaxes is true or false")
+    if body.get("root_opens", ROOT_OPENS[0]) not in ROOT_OPENS:
+        _refuse(where, f"root_opens is one of {', '.join(ROOT_OPENS)}")
     on = body.get("on") or {}
     if not on:
         _refuse(where, "no part on any engine -- the engines it runs on are "
@@ -404,6 +453,9 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
                                    if charge is not None else None),
                            no_benchmark=body.get("no_benchmark"),
                            handover=body.get("handover"),
+                           relaxes=body.get("relaxes", False),
+                           root_opens=body.get("root_opens"),
+                           validator=body.get("validator"),
                            parts=parts)
 
 
@@ -521,7 +573,8 @@ def part(ref: str, *, record: str, key: str) -> Any:
             f"{record}'s {key}, {ref!r}, does not resolve: {exc}") from exc
 
 
-__all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "PART_REFS",
+__all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
+           "ROLE_OPENS", "PART_REFS",
            "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
            "pair", "lead_of", "rung_label", "role_set", "part_of", "part"]

@@ -263,16 +263,15 @@ def tbtrans_loop(out: Optional[Path], *, over: bool,
     ``TBT.Progress`` per cent, and a tail could miss a pass's start or its
     end.  A caller that has read the output already hands its reading over
     as ``now`` (`SiestaReader.now`), and it is not read again."""
-    from ..engines import siesta_grammar as _G
     from ..engines.siesta_reader import read_output
-    from ..engines.tbtrans import loop_words
+    from ..engines.tbtrans import is_tbtrans_output, loop_words
     from .job import _iso_z
     if out is None:
         return {}
     if now is None:
         if head is None:
             head = _read(out, head=_BUILD_HEADER)
-        if _G.program_of(head.splitlines()) != "tbtrans":
+        if not is_tbtrans_output(head.splitlines()):
             return {}
         try:
             now = read_output(out).now()

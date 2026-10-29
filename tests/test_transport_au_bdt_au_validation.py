@@ -218,7 +218,7 @@ def test_the_canonical_junction_validates_clean():
     Asked THROUGH THE LIVE DOOR: `validate(struct, SiestaConfig(),
     calculation="transport")` is what `prepare_deck` calls for every rung,
     so this pins that the canonical system does not trip the SIESTA
-    validator, the shared checks, or `_validate_transport_kind`.
+    validator, the shared checks, or `validate_transport_kind`.
 
     And NO SPIN FINDING of any severity: gold is a noble s1 metal, not an
     open-d one, and the junction repeats, so the electronic state resolves

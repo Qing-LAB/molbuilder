@@ -799,11 +799,19 @@ def describe_cmd(structure, bundle: str, shape: str,
     except DescribeError as exc:
         raise click.ClickException(str(exc))
 
+    from ..kind_table import KindTableError, carrying, kind as _kind
+    try:
+        _rec = _kind(calculation)
+    except KindTableError as exc:
+        raise click.ClickException(str(exc))
     if reuses is not None:
-        if calculation != "transport":
+        # A FINISHED CALCULATION EXTENDED belongs to a kind whose
+        # description carries it (the kind table's ``description.carries``).
+        if "reuses" not in _rec.description.carries:
             raise click.ClickException(
-                "--reuses belongs to --calculation transport alone "
-                "(engines/transport.md § 2a.16).")
+                f"--reuses belongs to --calculation "
+                f"{' or '.join(carrying('reuses'))} alone "
+                f"(engines/transport.md § 2a.16).")
         _init_reusing(
             out_dir=out_dir, reuses=reuses, engine=engine, shape=shape,
             bias_opt=bias_opt, low_bias_approximation=low_bias_approximation,
@@ -839,7 +847,9 @@ def describe_cmd(structure, bundle: str, shape: str,
             "--shape is required -- never assumed or inferred."
             + (f"  {fixed['why']}  Describe it with --shape "
                f"{fixed['shape']}." if fixed else ""))
-    if calculation == "transport":
+    # A KIND THAT CITES its structure (the kind table's
+    # ``description.cites``) is described from the citation.
+    if _rec.description.cites:
         _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,
                         engine=engine, slots_opt=slots_opt,
                         bias_opt=bias_opt,
