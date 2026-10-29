@@ -178,6 +178,44 @@ def _taken(run: RealRun, step: str, *words) -> Said:
     return said
 
 
+def notified(run: RealRun, stage: str, n: int = 0) -> list:
+    """The events run ``n`` of ``stage`` sent, by its record
+    (`runrecord.read_notified`), named as its stage's files are
+    (`jobset.naming.stage_home`) -- a run of points is one run in its
+    folder, its records named as its first (`runfiles.FIRST_ATTEMPT`, as
+    its index is; `run-reports.md` § 2.4)."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.runfiles import FIRST_ATTEMPT
+    from molbuilder.runrecord import read_notified
+    from molbuilder.task import of as task_of
+    task = task_of(run.bundle)
+    names = stage_home(run.bundle, task, stage).names(task.shape)
+    return [e["event"] for e in read_notified(run.attempt(stage, n), names,
+                                              FIRST_ATTEMPT)]
+
+
+def told(run: RealRun, event: str, stage: str, n: int = 0) -> list:
+    """WHAT RUN ``n`` OF ``stage`` SAID AT ``event``, in order: the summary
+    lines its ``notify`` verb wrote into the run's own monitor log, the
+    record every event leaves whether or not a channel is set up
+    (`run-reports.md` § 2.5) -- named as the run's files are
+    (`monitor.WatchedRun`)."""
+    import re
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.monitor import WatchedRun
+    from molbuilder.runfiles import FIRST_ATTEMPT
+    from molbuilder.task import of as task_of
+    task = task_of(run.bundle)
+    names = stage_home(run.bundle, task, stage).names(task.shape)
+    log = WatchedRun(names=names, run=FIRST_ATTEMPT,
+                     directory=run.attempt(stage, n)).path(".monitor.log")
+    said = re.compile(r"\[NOTIFY\] \(stub\) (\w+): (.*)$")
+    return [m.group(2) for m in map(said.search,
+                                   log.read_text(encoding="utf-8")
+                                   .splitlines())
+            if m and m.group(1) == event]
+
+
 def _launched_here(run: RealRun) -> int:
     """The pid of the run here a launch left in the background -- its
     ledger's ``launched`` line (`job-system.md` § 6.0)."""

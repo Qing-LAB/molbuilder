@@ -347,6 +347,38 @@ def not_done_why(verdict: Optional[Tuple[str, bool]], *, counts: bool,
     return None
 
 
+def points_state(states) -> str:
+    """A RUN OF POINTS' STATE once nothing in it runs -- THE RUN'S STATE IS
+    ITS POINTS' RUNS': ``finished`` when every one finished, converged or
+    not -- which is the converged column's (`job-system.md`, rule 4) --
+    else ``failed``.  The one rule, asked over ``states``, each point's run
+    state, by the status door (`jobset.continuation.points_verdict`) and by
+    a transport run's report step for its finish (`transport.points_index`,
+    `run-reports.md` § 2.9)."""
+    return "finished" if all(s == "finished" for s in states) else "failed"
+
+
+def holds(folder, product) -> bool:
+    """Does ``folder`` hold ``product`` -- a file's name (a path below the
+    folder), or several sets of names of which one set, whole, must be
+    there (a polarized transmission's two channel files stand where the
+    unpolarized one does; `transport.stages.products_of`)?  The done
+    rule's own question, asked by the done door (`jobset.continuation.
+    done`) and by a transport run's report step over its index
+    (`transport.points_index.rows_of`)."""
+    folder = Path(folder)
+    if isinstance(product, str):
+        return (folder / product).is_file()
+    return any(all((folder / f).is_file() for f in group) for group in product)
+
+
+def product_words(product) -> str:
+    """``product`` as a message names it: the file, or each set joined."""
+    if isinstance(product, str):
+        return product
+    return " or ".join(" and ".join(group) for group in product)
+
+
 def ending_of(path, *, stderr=None) -> RunEnding:
     """How the run that wrote *path* ended -- dispatched on the file's ROLE.
 

@@ -2393,8 +2393,10 @@ its points' files — each point's run by the one status door — and the jobs
 launched from this machine, by one rule (`continuation.points_state`, *One
 door for each place* below; `job-system.md`, *What marks each state*). Every
 reader asks it — `status`, the gather, `jobset scratch`, the record: a point
-the ended walk never reached is listed failed in the record, *the walk ended
-before it reached this point*, never one still to come.
+the ended walk never reached is failed, *the walk ended before it reached
+this point* (`continuation.never_reached`), never one still to come — in
+`status`'s count, the record and the run's own finish alike
+(`run-reports.md` § 2.9).
 
 **The walk.** `launch task` sends one job walking the run's points not done —
 **voltage by voltage, every frame's point at a voltage before the next
@@ -2423,6 +2425,45 @@ launch writes, `…-sweep.run.sh`, and its log, `…-sweep.log`
 (`submit._points_walk`). Run here, each point is told its card's wall
 (`MB_WALL_S`, `running-a-job.md` § 3.6) — inside a sequence's queue job, the
 job's wall from the job's start (`job-system.md` § 6.0).
+
+**The run reports as one run** *(R-e's transport half, the user,
+2026-10-29; [`execution/run-reports.md`](?doc=execution/run-reports.md)
+§ 2.4, § 2.9)*: one `start`, a milestone each time a voltage is done at
+every frame — **the round** — a failed point said at once, once per reason,
+and one `finish`. Three pieces, the vibration's (`engines/vibration.md`
+§ 5.11 § 7a) extended:
+
+- **The run's index**, `<label>_<NN>_<stage>-run<N>.points.json` at the
+  run's root (`transport.points_index`, which travels with the monitor):
+  launch writes every point of the run in the walk's order — its folder,
+  words, frame and voltage, the point it needs (a device point's, the point
+  before it in its frame), whether it was taken over and from where, what
+  makes it done (the stage's products, and a sharing point's `shared/`,
+  `continuation.must_hold`) and the energy grid its deck describes — and
+  the frames' weights where the cited set states them; each point's report
+  steps stamp its start, its end, its engine's exit and its verdict as its
+  ending reads it. **The
+  index is what the job saw, never a second record of a point's state**:
+  every reader on this side — `status`, the gather, the record — reads the
+  points' own files, as above; the job's side, which has no molbuilder,
+  reads the index by the same pieces (`_run_ending.not_done_why`).
+- **Each point's two report steps**, in its run script: `mb_monitor.pyz
+  point started` before its engine and `point ended --exit <rc>` after it,
+  on the failure path too — the run's `start` sent by the first, a
+  `part_failed`, a round's `milestone` or the run's `finish` by the second
+  (`run-reports.md` § 2.9). **A report step never fails its point**: what
+  it cannot do is logged in the point's session log.
+- **Each point's monitor is a member** of its run (`--member --launched-in
+  <run>`): no `start` or `finish` of its own, its N-hour clock from the run's
+  notification record, the wall warned of once for the run, its status line
+  the run's count and its own point (`run-reports.md` § 2.8).
+
+A walk stopped by the person, or killed, sends no `finish`; the run door
+reads it failed. Nor does a walk one of whose points ended before its first
+report step — its run script stopping before its engine (the engine not
+found), or its start not copied: the run speaks through its points' report
+steps, and a point that never reached one is one the index never saw end;
+`status` reads the point from its own files, as always.
 
 **Launched again — the run/stage contract's rule 3, read at the point**
 (`job-system.md`, *What molbuilder does for you*, 3): every launch is a new run,
@@ -2497,8 +2538,11 @@ first point not done. A walk that stopped among its points — some run,
 the rest never reached — is a run that ended, failed, never one still queued;
 where no job holding the run is on file, or this machine cannot tell, the
 points' verdict is said. Beside the state, how many of its points are done,
-with its axes (*3 of 5 points done (1 frame × 5 voltages)*, and *(between
-two points)* while the walk is between them);
+and how many ended without being done, counted failed as a vibration's
+calls are (`run-reports.md` § 2.9), with its axes (*3 of 5 points done
+(1 frame × 5 voltages)*, *3 of 5 points done, 1 failed (1 frame × 5
+voltages)* — `transport.points_index.summary`, the job's own count too —
+and *(between two points)* while the walk is between them);
 `status <stage>` says what the run gathered and what it continued from, read
 at the point (*0 V, 0.2 V taken over from run-1; the rest walked*), then lists
 the points — each run's state, done or not done and why, what each started
@@ -2559,7 +2603,8 @@ another frame, and a
 voltage that does not finish ends **its frame's** chain while the walk goes on
 with the other frames. The seed is frame 0's geometry (the approximate gate,
 § 2a.9: a nearby geometry's density is a start, not a result). `status` counts
-*k of N points done (F frames × V voltages)*; warm takes the done points over
+*k of N points done (F frames × V voltages)* — *, m failed* beside it where
+points ended without being done; warm takes the done points over
 and runs the rest — a point not done starting from the closest done voltage
 before it in its frame, else the seed — and cold runs them all: rule 3 at the
 point, unchanged. Run here, any of these is left running in the background

@@ -467,20 +467,3 @@ def stages_for_transport(bags=None):
             f"ladder's rungs are {', '.join(TRANSPORT_STAGES)}.")
     return [Stage(name=n, overrides=dict(bags.get(n) or {}))
             for n in TRANSPORT_STAGES]
-
-
-# --------------------------------------------------------------------- #
-#  The count of a transport rung's points, as its declaration as a     #
-#  rung of points asks it (`jobset.transport_points`; § 2a.11)           #
-# --------------------------------------------------------------------- #
-
-def points_summary(pts) -> str:
-    """THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
-    § 2a.11): *k of N points done (F frames × V voltages)* -- a transport
-    rung's words for its rows (`continuation.point_rows`)."""
-    n_done = sum(p["done"] for p in pts)
-    n_frames = len({p["frame"] for p in pts})
-    n_volts = len({p["bias_v"] for p in pts})
-    return (f"{n_done} of {len(pts)} points done ({n_frames} "
-            f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
-            f"voltage{'' if n_volts == 1 else 's'})")

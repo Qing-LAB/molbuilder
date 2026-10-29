@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from ..runrecord import LaunchRecordError
 from .ladder import independent, inputs_of, stage_before
@@ -203,7 +203,7 @@ def done(folder, names, *, launch=None, products=(),
     words (`_run_ending.not_done_why`), which the vibration job's own
     record step asks too."""
     from ..parse.dirs import run_status
-    from ..parse.engines._run_ending import not_done_why
+    from ..parse.engines._run_ending import holds, not_done_why
     folder = Path(folder)
     if not folder.is_dir():
         return False, "not opened"
@@ -218,34 +218,35 @@ def done(folder, names, *, launch=None, products=(),
     if record_says:
         return False, record_says
     why = not_done_why(st.verdict, counts=verdict_counts,
-                       missing=[_said(p) for p in products
-                                if not _held(folder, p)])
+                       missing=[words for product, words
+                                in must_hold(folder, products)
+                                if not holds(folder, product)])
     if why:
         return False, why
-    from ..runfiles import COPIED_FROM_FILE
-    from ..transport.energies import SHARED_DIR, sharing_of
-    if (not (folder / SHARED_DIR / COPIED_FROM_FILE).is_file()
-            and sharing_of(folder) is not None):
-        return False, (f"finished without the energies it shares "
-                       f"({SHARED_DIR}/ holds no {COPIED_FROM_FILE})")
     return True, "done"
 
 
-def _held(folder: Path, product) -> bool:
-    """Does ``folder`` hold ``product`` -- a file's name, or several sets of
-    names of which one set, whole, must be there (a polarized transmission's
-    two channel files stand where the unpolarized one does;
-    `transport.stages.products_of`)?"""
-    if isinstance(product, str):
-        return (folder / product).is_file()
-    return any(all((folder / f).is_file() for f in group) for group in product)
-
-
-def _said(product) -> str:
-    """``product`` as a message names it: the file, or each set joined."""
-    if isinstance(product, str):
-        return product
-    return " or ".join(" and ".join(group) for group in product)
+def must_hold(folder, products, *, deck_text: Optional[str] = None
+              ) -> List[Tuple[Any, str]]:
+    """WHAT A FINISHED POINT IN ``folder`` MUST HOLD TO BE DONE, each with
+    the words its absence is said in (`_run_ending.not_done_why`): its
+    ``products``, and, a transmission point that shares energies with a
+    finished calculation's point (its deck records the sharing), its
+    ``shared/`` with its ``.copied-from`` (`engines/transport.md` § 2a.16).
+    The deck is the run's in ``folder`` (`energies.sharing_of`), or
+    ``deck_text``, a prepared deck's that no run holds yet -- launch writing
+    a run's index.  The one list the done door asks and a transport run's
+    index carries for its job's side (`transport.points_index`, § 2a.11)."""
+    from ..parse.engines._run_ending import product_words
+    from ..runfiles import COPIED_FROM_FILE
+    from ..transport.energies import SHARED_DIR, Contours, sharing_of
+    out = [(p, product_words(p)) for p in products]
+    if (Contours.of_deck(deck_text) if deck_text is not None
+            else sharing_of(Path(folder))) is not None:
+        out.append((f"{SHARED_DIR}/{COPIED_FROM_FILE}",
+                    f"the energies it shares ({SHARED_DIR}/ holds no "
+                    f"{COPIED_FROM_FILE})"))
+    return out
 
 
 def read_run(base: Path, task, stage: str, attempt: Path,
@@ -749,9 +750,10 @@ def points_verdict(pts, summary: str) -> "tuple[str, str]":
     failed; the first point not done says why, after ``summary``, the
     count in the kind's words (`points.PointsOf.summary`).  The one rule,
     asked by :func:`points_state` and by the transport record for the run
-    its transmission gathered (`engines/transport.md` § 2a.12)."""
-    state = ("finished" if all(p["state"] == "finished" for p in pts)
-             else "failed")
+    its transmission gathered (`engines/transport.md` § 2a.12); the state
+    is `_run_ending.points_state`'s, which a transport run's job asks too."""
+    from ..parse.engines._run_ending import points_state
+    state = points_state(p["state"] for p in pts)
     first = next((p for p in pts if not p["done"]), None)
     return state, (summary if first is None
                    else f"{summary}; {first['point']}: {first['why']}")
@@ -789,6 +791,22 @@ def gathered_lines(folder) -> List[str]:
         return [str(exc)]
 
 
+#: A POINT THE ENDED WALK NEVER REACHED, as every reader of a run of
+#: points says it (`engines/transport.md` § 2a.11): failed, never one still
+#: to come.
+NEVER_REACHED = "the walk ended before it reached this point"
+
+
+def never_reached(pts) -> list:
+    """``pts`` of a run of points that has ended, each point still pending
+    or queued -- one its walk never reached -- failed, :data:`NEVER_REACHED`
+    its why: the one rule `status`, the record and a run's own finish count
+    such a point by (`engines/transport.md` § 2a.11, `run-reports.md`
+    § 2.9)."""
+    return [dict(p, state="failed", why=NEVER_REACHED)
+            if p["state"] in ("pending", "queued") else p for p in pts]
+
+
 def points_state(run, names, task, stage: str, *, launch, base
                  ) -> "Tuple[str, str, list]":
     """A LAUNCHED RUN OF POINTS' STATE -- ``(state, detail, rows)``, the one
@@ -799,7 +817,8 @@ def points_state(run, names, task, stage: str, *, launch, base
     started (a run that walks none -- a run copied in whole -- is read by
     its points); else the points' verdict (:func:`points_verdict`) --
     ``finished``, or ``failed`` naming the first point not done, a chain
-    that stopped among them: a point never reached is no point queued.
+    that stopped among them: a point never reached is failed
+    (:func:`never_reached`), no point queued.
     A run the job the reader runs inside sent (:func:`_own_job_s`) is read
     by its points alone: its walk has returned, and the job, the reader's
     own, is still going (`job-system.md` § 6.0, *A sequence of groups*)."""
@@ -822,7 +841,9 @@ def points_state(run, names, task, stage: str, *, launch, base
             jid = (launch or {}).get("job_id")
             return "queued", (f"queued as job {jid}" if jid
                               else "launched, nothing run yet"), pts
-        state, detail = points_verdict(pts, summary)
+        pts = never_reached(pts)
+        state, detail = points_verdict(pts, declared.summary(pts, run,
+                                                             names))
         return state, (detail + (" -- its walk ended before any point "
                                  "started" if own else
                                  " -- its job ended before any point "
@@ -830,6 +851,9 @@ def points_state(run, names, task, stage: str, *, launch, base
     if (any(not p["done"] for p in pts) and not _own_job_s(launch)
             and _walk_going(base, run)):
         return "running", summary + " (between two points)", pts
+    # THE WALK HAS ENDED: a point it never reached is failed.
+    pts = never_reached(pts)
+    summary = declared.summary(pts, run, names)
     state, detail = points_verdict(pts, summary)
     # WHAT THE RUN NEEDS BEYOND ITS POINTS, by its kind (`points.PointsOf.
     # also_needs`): a vibration's finish, which writes the result after its

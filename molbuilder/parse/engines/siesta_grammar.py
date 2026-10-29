@@ -68,6 +68,15 @@ SCF_RESIDUALS = (
 PHASE_PERIODIC = "periodic"
 PHASE_NEGF = "negf"
 
+
+def rows_of_phase(history, phase: str) -> list:
+    """The SCF rows of ``history`` that ``phase`` ran -- a TranSIESTA
+    device's NEGF cycles (:data:`PHASE_NEGF`) apart from its periodic start
+    (:data:`PHASE_PERIODIC`): the one rule the record's facts of a phase and
+    a device round's milestone count by (`transport.record`,
+    `transport.points_index`)."""
+    return [c for c in history or () if c.get("phase") == phase]
+
 #: The line opening each step, in SIESTA's own words and with its own number
 #: (``Src/state_init.F``, ``write(6,'(t25,a,i6)')``): ``Begin <CG|Broyden|FIRE>
 #: opt. move = <N>`` for a relaxation, ``Begin FC step = <N>`` for a

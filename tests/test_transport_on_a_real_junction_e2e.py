@@ -757,6 +757,99 @@ def junction(tmp_path_factory):
         run.relax = relax
         run.pair = pair
         run.from_pair = from_pair
+
+        def back_to_before_its_launch(refusal: str):
+            # THE WAY BACK A REFUSAL PRINTS, typed as printed
+            # (`execution/job-request.md` § 5): the folder saved as it
+            # stands, the state before the group's first launch restored --
+            # which puts the calculation's own files back too.
+            import shlex
+            back = [shlex.split(ln.strip())[1:]
+                    for ln in refusal.splitlines()
+                    if ln.strip().startswith("molbuilder checkpoint ")]
+            assert [w[:2] for w in back] == [["checkpoint", "save"],
+                                            ["checkpoint", "restore"]], \
+                refusal
+            for words in back:
+                r = molbuilder(*words, input="y\n")
+                assert r.exit_code == 0, r.output
+
+        def changed_from_the_beginning(c, stage, template, changes):
+            # WHAT A LAUNCHED STAGE COMPUTES, CHANGED in the template, as a
+            # person changes it: its group's prep refused naming the way
+            # back, the way back taken, the template set again, the group
+            # prepared.
+            for name, value in changes:
+                _set_by_the_person(template, name, value)
+            refused = _typed(c, f"prep {stage} refused", "prep", "task",
+                             *group_words(c.bundle, stage), "--target",
+                             "this")
+            assert refused.exit_code != 0, refused.output
+            back_to_before_its_launch(refused.output)
+            for name, value in changes:
+                _set_by_the_person(template, name, value)
+            _taken(c, f"prep {stage}", "prep", "task",
+                   *group_words(c.bundle, stage), "--target", "this")
+
+        # A TRANSMISSION WHOSE EVERY POINT FAILS (`run-reports.md` § 2.9): a
+        # copy of the frame set, its transmission k-point grid set to 3 x 3
+        # -- its device ran at the Gamma point, and TBtrans stops as it
+        # starts on a grid of 3 or more along x and y (`tbt_k_grid`'s help)
+        # -- prepared again from the beginning and launched; the walk goes
+        # on past each point.
+        def transmission_refused(c):
+            changed_from_the_beginning(c, "transmission",
+                                       c.bundle / "F.template.toml",
+                                       [("tbt_k_grid", (3, 3, 1))])
+            _typed(c, "launch transmission", "launch", "task", "--stage",
+                   "transmission", "--mode", "direct", "--foreground",
+                   "--yes")
+            _typed(c, "status transmission", "status", "transmission")
+        run.refused = copy_of(from_pair, "transmission-refused",
+                              transmission_refused)
+
+        # A DEVICE WHOSE POINTS FINISH UNCONVERGED (`engines/transport.md`
+        # § 2a.9): a copy of the voltage list, the device's own SCF let
+        # finish unconverged (`SCF.MustConverge` false) within two
+        # iterations -- its own values on Task setup's stage table, the
+        # page's Save, refused for a launched stage and saved once the way
+        # back is taken -- prepared and launched: each point's run finishes,
+        # so the walk goes on along its frame.
+        def the_devices_own_scf(own):
+            # THE DEVICE'S OWN SCF VALUES on Task setup's stage table, the
+            # page's Save -- refused for a launched stage, saved once the way
+            # back is taken -- then the device prepared and launched.
+            def alter(c):
+                def save():
+                    task = json.loads((c.bundle / "task.json").read_text())
+                    for st in task["stages"]:
+                        if st["name"] == "device":
+                            st["overrides"] = {**(st.get("overrides") or {}),
+                                               **own}
+                    task["varies"] = sorted(set(task["varies"]) | set(own))
+                    return save_both(c.bundle, task, read_request(c.bundle),
+                                     client)
+                refused = save()
+                assert refused.status_code == 409, refused.get_json()
+                back_to_before_its_launch(refused.get_json()["error"])
+                saved = save()
+                assert saved.status_code == 200, saved.get_json()
+                _taken(c, "prep device", "prep", "task",
+                       *group_words(c.bundle, "device"), "--target", "this")
+                _typed(c, "launch device", "launch", "task", "--stage",
+                       "device", "--mode", "direct", "--foreground", "--yes")
+                _typed(c, "status device", "status", "device")
+            return alter
+        run.unconverged = copy_of(run, "device-unconverged",
+                                  the_devices_own_scf(
+                                      {"scf_must_converge": False,
+                                       "max_scf_iter": 2}))
+        # A DEVICE WHOSE FIRST VOLTAGE DOES NOT FINISH (§ 2a.9): its SCF
+        # given one iteration and SIESTA's own rule, stop unconverged -- the
+        # retry the run card allows too -- so its frame's chain ends there
+        # and the walk never runs the next voltage.
+        run.aborted = copy_of(run, "device-aborted",
+                              the_devices_own_scf({"max_scf_iter": 1}))
     yield run
 
 
@@ -2102,6 +2195,281 @@ def test_a_frame_sets_record_has_a_point_per_frame_and_voltage(junction):
     iv = rec["iv"]
     assert list(zip(iv["frame"], iv["voltages_v"], iv["current_a"])) == [
         (p["frame"], p["bias_v"], p["current_a"]) for p in rec["points"]]
+
+
+# --------------------------------------------------------------------- #
+#  A run of points reports as one run (`run-reports.md` § 2.4, § 2.9)   #
+# --------------------------------------------------------------------- #
+
+#: A NUMBER IN A MESSAGE: a count, an index, a voltage or a value read off a
+#: run, compared as a number; the words around them compared as they are.
+_NUMBER = r"-?\d+(?:\.\d+)?(?:e[-+]?\d+)?"
+
+
+def _same_words(said: str, want: str, rel: float = 1e-3) -> None:
+    """``said`` is ``want`` -- its words exactly, each number within ``rel``
+    of the one wanted: a conductance read off TBtrans's text files, on
+    their printed energies, beside the record's, on the data file's full
+    precision (`run-reports.md` § 2.9)."""
+    import re
+    shape = re.compile(_NUMBER)
+    assert shape.sub("#", said) == shape.sub("#", want), (said, want)
+    got = [float(x) for x in shape.findall(said)]
+    assert got == pytest.approx([float(x) for x in shape.findall(want)],
+                                rel=rel), (said, want)
+
+
+def _run_index(run, stage: str, n: int):
+    """The run's index and its rows by the one done rule, as the job read
+    them (`transport.points_index`)."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.runfiles import FIRST_ATTEMPT
+    from molbuilder.task import of as task_of
+    from molbuilder.transport import points_index as pi
+    task = task_of(run.bundle)
+    names = stage_home(run.bundle, task, stage).names(task.shape)
+    folder = run.attempt(stage, n)
+    index = pi.read_index(pi.index_path(folder, names, FIRST_ATTEMPT))
+    return index, pi.rows_of(index, folder)
+
+
+def _round_said(rec, stage: str, volts: float, frames: int) -> str:
+    """WHAT A ROUND'S MILESTONE SAYS, from the record: each frame's device
+    point converged in its NEGF cycles, or its transmission's G/G0 =
+    T(E_F) and the frames' average at the voltage (`run-reports.md`
+    § 2.9)."""
+    from molbuilder.structure import frame_words
+    head = f"{volts:g} V"
+    if stage == "device":
+        device = next(x for x in rec["stages"] if x["stage"] == "device")
+        cycles = {p["frame"]: p["negf"]["cycles"]
+                  for p in device["by_point"] if p["bias_v"] == volts}
+        said = [f"converged in {cycles[f]} NEGF iterations"
+                for f in sorted(cycles, key=lambda f: f or 0)]
+        if frames == 1:
+            return f"{head}: {said[0]}"
+        return f"{head} -- " + "; ".join(
+            f"{frame_words(f, frames)}: {w}" for f, w in enumerate(said))
+    g = {p["frame"]: p["conductance_g0"] for p in rec["points"]
+         if p["bias_v"] == volts}
+    if frames == 1:
+        return f"{head} -- G/G0 {g[None]:.4g}"
+    avg = next(e for e in rec["average"]["at"] if e["bias_v"] == volts)
+    return (f"{head} -- G/G0: " + ", ".join(
+        f"{frame_words(f, frames)} {g[f]:.4g}" for f in range(frames))
+        + f"; the frames' average {avg['conductance_g0']:.4g}")
+
+
+def _count(done: int, n: int, frames: int, failed: int = 0) -> str:
+    return (f"{done} of {n} points done"
+            + (f", {failed} failed" if failed else "")
+            + f" ({frames} frame{'' if frames == 1 else 's'} × "
+              f"{len(_BIAS)} voltages)")
+
+
+@pytest.mark.parametrize("calc, stage, n, frames", [
+    (None, "device", 1, 1),
+    (None, "transmission", 0, 1),
+    ("from_pair", "device", 0, _N_FRAMES),
+    ("from_pair", "transmission", 0, _N_FRAMES),
+], ids=["one structure's device, cold", "one structure's transmission",
+        "a frame set's device", "a frame set's transmission"])
+def test_a_run_of_points_reports_as_one_run(junction, calc, stage, n,
+                                            frames):
+    """`run-reports.md` § 2.4, § 2.9; `engines/transport.md` § 2a.11: a
+    transport sweep's run sends one `start`, a `milestone` when a voltage is
+    done at every frame -- the round -- and one `finish`: each point's
+    monitor a member, sending neither of its own.  The round says each
+    frame's point -- a device's NEGF iterations, a transmission's G/G0 and
+    the frames' average -- as the record states them; the finish says the
+    last round, and every message the run's count.  The silent failures: a
+    `start` and a `finish` per point (six of each on a frame set), a
+    round's numbers not the record's."""
+    from support.real_runs import notified, told
+    run = getattr(junction, calc) if calc else junction
+    assert notified(run, stage, n) == ["start", "milestone", "finish"]
+    rec = _record(run)
+    total = frames * len(_BIAS)
+    milestone, = told(run, "milestone", stage, n)
+    _same_words(milestone.split(" | ")[0] + " | " + milestone.split(" | ")[1],
+                f"running ({_round_said(rec, stage, _BIAS[0], frames)}) | "
+                f"the run: {_count(frames, total, frames)}")
+    finish, = told(run, "finish", stage, n)
+    _same_words(finish.split(" | ")[0] + " | " + finish.split(" | ")[1],
+                f"finished ({_round_said(rec, stage, _BIAS[1], frames)}) | "
+                f"the run: {_count(total, total, frames)}")
+
+
+def test_a_frame_sets_point_says_its_run_and_itself(junction):
+    """`run-reports.md` § 2.8: a member monitor of a frame set's device
+    point says its run's count and its own point from the run's index --
+    in a transport sweep's word, *point* -- the pace over the points this
+    run computed, none left once the walk ended, and the run's clock from
+    its first point's start.  The silent failure: a point's card saying
+    only its own SCF, nothing of the six."""
+    import time
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.monitor import WatchedRun
+    from molbuilder.runrecord import stamp_time
+    from molbuilder.task import of as task_of
+    run = junction.from_pair
+    task = task_of(run.bundle)
+    names = stage_home(run.bundle, task, "device").names(task.shape)
+    folder = run.attempt("device")
+    _index, rows = _run_index(run, "device", 0)
+    me = rows[-1]
+    watched = WatchedRun(names=names, run=0, directory=folder / me["rel"],
+                         launched_in=folder)
+    now = time.time()
+    st = watched.read(now - 1.0, now)
+    text = st.as_text()
+    total = _N_FRAMES * len(_BIAS)
+    assert st.run_words == _count(total, total, _N_FRAMES), text
+    assert f"this point: {me['words']}" in text, text
+    assert (st.units_done, st.units_left) == (total, 0), text
+    assert "each point takes " in text and "this point " in text, text
+    first = min(stamp_time(r["started"]).timestamp() for r in rows)
+    assert abs(st.elapsed_s - (now - first)) < 1.0, (st.elapsed_s,
+                                                      now - first)
+
+
+def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
+        junction):
+    """`run-reports.md` § 2.9: a transmission whose every point fails --
+    TBtrans refusing its k-point grid -- says the first failure at once and
+    no second of the same reason; a round whose points all ended is its
+    milestone, each frame's point not done and why; the finish says the run
+    failed, the first point not done and how many, and the last round.
+    `status` counts the points that failed beside those done.  The silent
+    failures: a message per failed point, a round never said because no
+    point of it was done, a run said finished."""
+    from support.real_runs import notified, told
+    from support.real_runs import stage_status
+    c = junction.refused
+    n = stage_status(c.bundle, "transmission").attempts[-1]
+    index, rows = _run_index(c, "transmission", n)
+    total = _N_FRAMES * len(_BIAS)
+    assert not any(r["done"] for r in rows), rows
+    assert len({r["why"] for r in rows}) == 1, rows
+    # THE RUN'S STATE, the status door's: failed where a point's run did
+    # not finish -- its engine's exit, as its report step stamped it.  The
+    # COUNT'S *failed*: every point that ended without being done.
+    state = ("finished" if all(x["exit"] == 0 for x in index["points"])
+             else "failed")
+    failed = total
+    assert notified(c, "transmission", n) == [
+        "start", "part_failed", "milestone", "finish"]
+
+    def round_said(volts):
+        from molbuilder.structure import frame_words
+        return (f"{volts:g} V -- G/G0: " + ", ".join(
+            f"{frame_words(r['frame'], _N_FRAMES)} not done -- {r['why']}"
+            for r in rows if r["bias_v"] == volts))
+    def failed_of(k):
+        return k
+    said, = told(c, "part_failed", "transmission", n)
+    assert said.startswith(
+        f"running ({rows[0]['words']}: not done -- {rows[0]['why']}) | "
+        f"the run: {_count(0, total, _N_FRAMES, failed=failed_of(1))} |"), \
+        said
+    milestone, = told(c, "milestone", "transmission", n)
+    assert milestone.startswith(
+        f"running ({round_said(_BIAS[0])}) | the run: "
+        f"{_count(0, total, _N_FRAMES, failed=failed_of(_N_FRAMES))} |"), \
+        milestone
+    finish, = told(c, "finish", "transmission", n)
+    assert finish.startswith(
+        f"{state} ({rows[0]['words']}: not done -- {rows[0]['why']}; "
+        f"{total} of {total} points not done; {round_said(_BIAS[1])}) | "
+        f"the run: {_count(0, total, _N_FRAMES, failed=failed)} |"), finish
+    status = c.said["status transmission"].output
+    assert _count(0, total, _N_FRAMES, failed=failed) in status, status
+
+
+def test_a_device_point_that_finishes_unconverged_is_walked_on_and_said_once(
+        junction):
+    """`engines/transport.md` § 2a.9: a voltage that does not FINISH ends
+    its frame's chain -- one that finishes unconverged (`SCF.MustConverge`
+    false) hands its state on, though it is not done, and the walk goes on.
+    `run-reports.md` § 2.9: the report asks the walk's own question, so the
+    run sends one `finish`, after its last point, stating the run as the
+    status door does -- finished, every point's run finished, converged or
+    not -- with the first point not done and why, and the last round.  The
+    silent failures: a failed `finish` while the walk still computes, then a
+    second; a run said failed that `status` says finished."""
+    from support.real_runs import notified, stage_status, told
+    c = junction.unconverged
+    device = stage_status(c.bundle, "device")
+    n = device.attempts[-1]
+    _index, rows = _run_index(c, "device", n)
+    assert rows[0]["why"] == "finished, not converged (SCF NO)", rows
+    assert all(r["ended"] and r["state"] == "finished" for r in rows), rows
+    assert notified(c, "device", n) == ["start", "milestone", "finish"]
+    left = [r for r in rows if not r["done"]]
+    finish, = told(c, "finish", "device", n)
+    assert finish.startswith(
+        f"{device.state} ({rows[0]['words']}: not done -- {rows[0]['why']}"
+        + (f"; {len(left)} of {len(rows)} points not done" if len(left) > 1
+           else "") + f"; {_BIAS[1]:g} V: "), (finish, device.state)
+    assert device.state == "finished", device.detail
+
+
+def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
+        junction):
+    """`engines/transport.md` § 2a.9, § 2a.11: a voltage that does not
+    finish -- its SCF stopped unconverged, as SIESTA stops it -- ends its
+    frame's chain, and the walk never runs the next voltage.
+    `run-reports.md` § 2.9: the run's `finish` comes after the point that
+    ended the chain, the run failed; the voltage never run is said so,
+    where its chain ended, and counted failed, as `status` counts a point
+    the ended walk never reached.  The silent failures: a finish that never
+    comes, waiting on a point the walk will not run; a count that disagrees
+    with `status`."""
+    from support.real_runs import notified, stage_status, told
+    c = junction.aborted
+    device = stage_status(c.bundle, "device")
+    n = device.attempts[-1]
+    _index, rows = _run_index(c, "device", n)
+    first, then = rows
+    assert first["ended"] and first["state"] == "failed", first
+    assert then["not_run"] == (f"its frame's chain ended at "
+                               f"{first['words']}, which did not finish"), \
+        then
+    assert notified(c, "device", n) == ["start", "finish"]
+    finish, = told(c, "finish", "device", n)
+    count = _count(0, 2, 1, failed=2)
+    assert finish.startswith(
+        f"failed ({first['words']}: not done -- {first['why']}; 2 of 2 "
+        f"points not done; {_BIAS[0]:g} V: not done -- {first['why']}) | "
+        f"the run: {count} |"), finish
+    assert device.state == "failed" and count in device.detail, (
+        device.state, device.detail)
+
+
+def test_a_stopped_walk_says_no_finish_and_its_warm_launch_one(junction):
+    """`run-reports.md` § 2.4: a device walk stopped after its first point
+    sends its `start`, and no `finish` -- the run door reads it failed; the
+    walk launched again warm is a run of its own: its `start`, the point it
+    takes over listed as taken over in its index, and its `finish` saying
+    the round it walked.  The silent failures: a stopped walk said
+    finished, a taken-over point said not done."""
+    from support.real_runs import notified, stage_status, told
+    c = junction.walk_stopped
+    ended = junction.walk_ended
+    stopped = ended.attempts[-1]
+    said = notified(c, "device", stopped)
+    assert said[0] == "start" and "finish" not in said, said
+    assert set(said) <= {"start", "milestone"}, said
+    warm = stage_status(c.bundle, "device").attempts[-1]
+    assert notified(c, "device", warm) == ["start", "finish"]
+    _index, rows = _run_index(c, "device", warm)
+    assert [(r["bias_v"], r["done"], bool(r["started_from"]))
+            for r in rows] == [(_BIAS[0], True, True),
+                               (_BIAS[1], True, False)], rows
+    finish, = told(c, "finish", "device", warm)
+    assert finish.startswith(f"finished ({_BIAS[1]:g} V: converged in "), \
+        finish
+    assert f"| the run: {_count(2, 2, 1)} |" in finish, finish
 
 
 def _frame_curves(run, label, volts):
@@ -4269,6 +4637,40 @@ def test_a_fitted_window_computes_only_the_energies_the_finished_point_did_not(
         assert pb["shared"]["held"] == 401 and pb["shared"]["computed"] == 200
         if pa["current_a"]:
             assert abs(pb["current_a"] / pa["current_a"] - 1) < 1e-4
+
+
+@pytest.mark.parametrize("which", ["fitted", "finer"])
+def test_a_sharing_points_round_says_the_records_conductance(reused, which):
+    """§ 2a.16, *the point's result is its grid, joined*; `run-reports.md`
+    § 2.9: a transmission point that shares energies with a finished point
+    computes only part of its grid -- a wider window's wings, a finer
+    one's energies between the finished ones -- and the round that point
+    ends in says its G/G0 as the record does, T(E_F) on the grid joined --
+    whole, as the job reads each point (`points_index.point_fact`): the
+    message prints four digits, which this junction's T(E), near 1 across
+    the window, cannot tell apart.  The silent failure: a conductance
+    interpolated across the energies the point did not compute itself."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.points_index import point_fact
+    from support.real_runs import notified, told
+    c = reused[which]
+    assert notified(c, "transmission", 0) == ["start", "milestone", "finish"]
+    rec = _record(c)
+    index, rows = _run_index(c, "transmission", 0)
+    task = task_of(c.bundle)
+    names = stage_home(c.bundle, task, "transmission").names(task.shape)
+    record_g = {p["bias_v"]: p["conductance_g0"] for p in rec["points"]}
+    for r in rows:
+        g, why = point_fact(index, r, c.attempt("transmission", 0), names)
+        assert g == pytest.approx(record_g[r["bias_v"]], rel=1e-9), (
+            r["rel"], g, why, record_g)
+    milestone, = told(c, "milestone", "transmission", 0)
+    _same_words(milestone.split(" | ")[0],
+                f"running ({_round_said(rec, 'transmission', _BIAS[0], 1)})")
+    finish, = told(c, "finish", "transmission", 0)
+    _same_words(finish.split(" | ")[0],
+                f"finished ({_round_said(rec, 'transmission', _BIAS[1], 1)})")
 
 
 def test_a_finer_grid_keeps_every_finished_energy_and_reads_its_data_file(

@@ -19,18 +19,20 @@ fresh readers checked every section and row against the code, the changelog
 and the tree at 2.47.12, each claim at its cited place; §§ 1ad and 5u moved
 whole, §§ 1ae, 1ac, 1ak, 5q, 5r, 5s, 5t, 5w and the queue as they stood, and
 § 2's RL42, GATHER-WARM, E14, V1.9, V1.14 and GKN, to [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md); what stays was
-rewritten from their findings — each row re-checked carries its note, and the
-decisions of the day (MV-RETRACT, VV-CAMERA) and the rows the readers found
-missing have theirs. A second pass the same evening brought § 1af, § 1ah,
+rewritten from their findings — each row re-checked carries its note, and
+the rows the readers found missing have theirs. A second pass the same evening brought § 1af, § 1ah,
 the queue and the handover to the day's end.
 
 ---
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-29)*
 
-**Where we are: 2.52.0.** The releases are the changelog's rows; the
+**Where we are: 2.53.0.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
-last: a frame set's frames re-averaged after the run over another motion —
+last: a transport sweep reports as one run — one start, a milestone per
+voltage done at every frame, a failed point once per reason, one finish
+(2.53.0, § 1af R-e). Before: a frame set's frames re-averaged after the run
+over another motion —
 a bell curve at another temperature, or a swing — each frame weighted from
 its position along the mode (2.52.0, § 1al F3,
 `science/vibrational-averaging.md` § 5.4, `postprocess.reaveraged`); a
@@ -58,7 +60,7 @@ user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
 it is, the user's ruling: "the user knows the information … don't do
 extra")*.
 
-**Last checked**: the fast batch on 2.52.0 (6,943 passed); the real-junction e2e on 2.52.0 (190 passed), the re-averaging broken six ways and seen to fail (the swing ignored, the reach refusal, the blind-shape line, the below-zero line, the swing's phase averages, the door's conductance from frame 0 alone); the walled vibration e2e on 2.51.1 (its failed part and finish counting the failed calls; the count's rule broken and seen to fail); the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
+**Last checked**: the fast batch on 2.53.0 (6,944 passed); the real-junction e2e on 2.53.0 (201 passed) with the SIESTA CO₂ vibration and the monitor e2e (29), the run-of-points report broken six ways and seen to fail (the walk's own rule asked as done, the conductance without the energy join, the failed count, the finish's state, the NEGF count, the point's word); a spin-polarized transmission's (T↑+T↓)/2 checked against the record on channel files made from a real point; the fast batch on 2.52.0 (6,943 passed); the real-junction e2e on 2.52.0 (190 passed), the re-averaging broken six ways and seen to fail (the swing ignored, the reach refusal, the blind-shape line, the below-zero line, the swing's phase averages, the door's conductance from frame 0 alone); the walled vibration e2e on 2.51.1 (its failed part and finish counting the failed calls; the count's rule broken and seen to fail); the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-28) — the user's to change.
 
@@ -68,8 +70,7 @@ free atoms' sentence the load adds — the user's AuBDTAu run on Sol among
 them; § 1t's wording (`PLACE_NOTE_UNKNOWN`,
 the user's words); `envs/recipes.py`'s comment calling ASE a monitor reader
 (`:1485-1487`, the user's file — § 1ae (k)); the page's label palette read
-from the kind table — a page change (§ 1ak S2.4); whether a Retract keeps the
-camera's angle too (MV-RETRACT).
+from the kind table — a page change (§ 1ak S2.4).
 
 **Only Sol can show**, the user's runs: E13 (the junction on Sol); SCHED-HDR
 (a group's header under a real scheduler); BENCH-SHELF; SCHED-R's SIGTERM;
@@ -95,12 +96,12 @@ description does not read still says *not marked as part of a calculation*
 (`web/results.md`). The import scan's *no upward import* is re-run with
 § 1ak S3, the next step that touches the layers.
 
-## 1u. The memory a run needs — (a) built 2.29.0; (b) and (c) left *(N6; the section as it stood: [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md) § 2)*
+## 1u. The memory a run needs — (a) built 2.29.0; (b) and (c) dropped by the user *(N6; the section as it stood: [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md) § 2)*
 
-**Left** (`execution/job-request.md` § 3.1a): **(b)** the engine's own
-analysis for a stage's first run — TBtrans's `TBT.Analyze`, TranSIESTA's
-`TS.Analyze` — read and shown beside the request, nothing in the code yet;
-**(c)** a formula from the system, only where (a) and (b) leave a gap.
+**(b)** the engine's own memory analysis and **(c)** a formula from the
+system are dropped *(the user, 2026-10-29: "same for fucking memory
+detection. i don't give a fuck")*: what a run's memory is stays the
+person's, (a)'s request.
 
 ## 1w. One door per setting — built 2.28.0–2.28.1; four parked items left *(the section as it stood: [`archive/2026-10-27-plan-consolidation.md`](?doc=archive/2026-10-27-plan-consolidation.md) § 2)*
 
@@ -179,7 +180,7 @@ are `engines/vibration.md` § 5.11. **Left**:
 After it, each a design brought to the user: the `electronic` kind
 (§ 5.10 ④), the measured intensity's factors as an option (M4-d) — § 1ac.
 
-## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user; its status line, `execution/run-reports.md` § 2.8, built 2.48.0; the vibration's events, § 2.2 and § 2.9, built 2.50.0; a transport run of points as one run left)*
+## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user; its status line, `execution/run-reports.md` § 2.8, built 2.48.0; the vibration's events, § 2.2 and § 2.9, built 2.50.0; a transport run of points as one run built 2.53.0)*
 
 *(The user, 2026-10-26: "the report should report the progress and/or the
 periodic update, as the monitor is designed for. i am asking you to do a
@@ -245,8 +246,9 @@ failing alike — and the rule became once per reason. **Left: R-e's transport
 half**, a transport run of points keeping an index, so a sweep reports as one
 run (handover (g)).
 
-**R-e, the transport half — proposed 2026-10-29, awaiting the user's
-answers.** A transport sweep — a device or transmission run of points,
+**R-e, the transport half — the user's go 2026-10-29 ("Go with
+recommendations"); built 2.53.0 (`execution/run-reports.md` § 2.4, § 2.8,
+§ 2.9; `engines/transport.md` § 2a.11).** A transport sweep — a device or transmission run of points,
 frames × voltages — reports as one run, as a SIESTA vibration's calls do.
 The single runs (the seed, the leads) are unchanged: their start and finish
 are their whole report.
@@ -275,11 +277,12 @@ are their whole report.
    ending read by `_run_ending`, which travels — the index holds what the
    walk saw, never a verdict.
 2. **The walk sends the run's events** through the monitor bundle's
-   `notify` verb (`run-reports.md` § 2.4): the start before its first point,
-   after each point the milestone or the part failed by § 2.9's rule, the
-   finish after its last — and from its stop trap, so a walk stopped by the
-   person still says its end. A walk killed outright (its wall, `kill -9`)
-   says no finish; `status` reads it failed, as a vibration's.
+   `notify` verb (`run-reports.md` § 2.4) — from each point's two report
+   steps, `mb_monitor.pyz point started` and `point ended`, since the walk
+   itself runs no Python: the start before the first point's engine, after
+   each point the milestone or the part failed by § 2.9's rule, the finish
+   after the last. A walk stopped by the person, or killed, says no finish;
+   `status` reads it failed, as a vibration's.
 3. **Each point's monitor is a member** of its run (`--member
    --launched-in`), as a vibration call's: no start or finish of its own,
    its N-hour clock from the run's notification record, the wall warned of
@@ -527,16 +530,13 @@ then the agreed designs, then § 0a's steps 2–6. The queue it replaces
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **§ 1af's transport half (R-e)** — a transport run of points reporting as one run, as the vibration's does (built 2.50.0); § 1al built 2.51.0–2.52.0 | § 1af | the half of an agreed design left |
-| **2** | **The day's two viewer decisions** — MV-RETRACT, VV-CAMERA — contract first | § 2 | the user's decisions, small; the second is the defect 2.47.11 fixed in MolView |
-| **3** | **§ 1ak S2.4** — the rest of the branches, the label palette (the user's call on the page change), then S2's done-when: its review and the browser walk of S2.3's and S2.4's pages | § 1ak | the stage under way |
-| **4** | **§ 1ak S3, S4, S5** | § 1ak | the rest of the agreed programme |
-| **5** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** | § 1ai | the last page keeping a lock of its own |
-| **6** | **N6 (b) — the engine's own memory analysis** | § 1u | the user's feature, (a) built |
-| **7** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |
-| **8** | **N12 group 4** — each item re-derived and located before it is brought for approval | this table | the six-agent review's last group |
-| **9** | **§ 1ag, § 1ah** — each a design brought with its science | §§ 1ag, 1ah | planned |
-| **10** | **THE ORDER's steps 2–6** | below | as the table says |
+| **1** | **§ 1ak S2.4** — the rest of the branches, the label palette (the user's call on the page change), then S2's done-when: its review and the browser walk of S2.3's and S2.4's pages | § 1ak | the stage under way |
+| **2** | **§ 1ak S3, S4, S5** | § 1ak | the rest of the agreed programme |
+| **3** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** | § 1ai | the last page keeping a lock of its own |
+| **4** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |
+| **5** | **N12 group 4** — each item re-derived and located before it is brought for approval | this table | the six-agent review's last group |
+| **6** | **§ 1ag, § 1ah** — each a design brought with its science | §§ 1ag, 1ah | planned |
+| **7** | **THE ORDER's steps 2–6** | below | as the table says |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 
@@ -681,8 +681,6 @@ listed — stays here as step 3's detail:
 | **CARRY** | various | **Smaller items carried by archived sections**, each to become its own row when taken: TS9's undocumented-test count to re-measure (§ 5m); `generator_mismatch`'s severity (`validation/siesta.py:149`), `detect()` unable to say why it refused (`parse/registry.py:46-89`), Task setup acting on `onChange` (`task-setup/viewer.js:3811-3839`) (§ 10); P6 — an A/B swap passes `tests/test_backends.py:306`; P7 — the `ByElement(("Au",))` mutant lives in `tests/test_atom_selection.py:342-355`; P12 — `lib/projects/checkpoint.js:33`'s no-poll property is prose; § 11.5a's error surface, unwritten; `LAYER_TOL_ANG` untested (§ 11); the route-catalogue sweep (`web-api.md`: 11 documented routes that did not exist, 9 live ones undocumented, 2026-10-08 — re-measure after 2026-10-09's corrections); the noted items in M2a (an unreadable zip or an exception escaping `main` reports in Python's words; a failing `ending` exits 1, which the wrapper treats as 2), M2b (the Build route's peptide branch collects no warnings, so the C-terminus warning reaches no web user) and M2c (`create_app(config={})` reads the disk config through the snapshot); N5d (the label handed to the wrapper through a `Resources` field — waits for a yes); `BlockSize` as a benchmark axis — built as a value axis (`prep_inputs.py:94-106`), re-derive what is left | the archived sections | open · *Re-checked 2026-10-28:* `LAYER_TOL_ANG` (`cell.py:731`) still untested; the BlockSize cite `prep_inputs.py:94-106` is past (no BlockSize there now) — split into rows or retire item by item |
 | **TPL** | engines / template | **`engines/template.md` § 12.1's open rows without one of their own**: row 3 — G3's `kind`, which no layer dispatches on; row 4 — `read_by` declared and unconsumed (no caller asks `select(read_by=…)`); row 5 — `kind = "monitor"` with no items; row 7 — BENCH-MARKS SIESTA-only. (Row 1 is W47, row 8 W44, row 6 closed) | `engines/template.md` § 12.1 | open · *2026-10-18:* `read_by` declared on one item (`catalogue:1003`) and read by nothing outside `template.py`; no `kind = "monitor"` in the catalogue — § 12.1 row 5 re-read when taken · *Re-checked 2026-10-28:* `read_by` declared on one item (catalogue `:1004`) and read nowhere outside `template.py`; no `kind = "monitor"` item |
 | **SMALL** | various | **Smaller open items found in the contracts** (2026-09-29, each searched in the plan and not found): the Raman/IR finite-difference steps untested for convergence, ΔF ≫ σ_F not estimated, two textbook references owed (`normal-modes.md`); V1.22's dropped warning half; `dm0` seeding (`pyscf.md`); a SIESTA road run whose held-first sort reorders atoms, `info.calculation` on the PySCF road (K18), the v1 reader's residue (`vibration.md`); the G-5a `gpu_used` read-back (`engines/overview.md`); § 6b's two questions (`stages.md`); multi-node MPI and `config init --site`; hand-typed wrapper comment claims (`script-preparation.md`); a test `gpu.md` lists that does not exist; a PySCF residual shown with no tolerance (`run-reports.md`); the per-trial SCF plot (`bench-summary.md`); five known gaps in `projects.md`; `ttl` / `detail` / a `success` level for notifications; whether the markdown editor returns (`presenters.md`); legacy response keys (`web-api.md:76,246-251`); an unexercised APPLY arm and the getter/setter bridge (`results.md`); the calculation-wide block editable only by hand (`task-setup.md`); a per-layer overlay refresh and `.pdb` on the download row (`molview.md`); `title` carried by hand at ten sites (`structure.md`); `MOLBUILDER_LOG` (A1.15); the SLURM-shaped `Resources` (`backend-architecture.md` § 7); the gcc 15 migration against the GPU SIESTA pin (`installation.md`); `references.bib`'s unverified entries | the contracts, 2026-09-29 | open — re-derive each when taken · *Re-checked 2026-10-28:* V1.22's *dropped warning half* withdrawn — values are values (the user, 2026-10-24); the rest re-derived when taken |
-| **MV-RETRACT** | front end / MolView | **Retract keeps the View settings** *(the user, 2026-10-28)*: a Retract puts the structure back and leaves the drawing's View settings — style, labels, what is shown — as the person set them; `lib/molview/model.js` `restoreState` resets them today (`view.reset()`), and `web/molview.md` § 11.2 says *with the drawing at its defaults*. Contract first; whether the camera's angle is kept too is asked with it | the user, 2026-10-28 | decided, not built |
-| **VV-CAMERA** | front end / VibrationView | **The vibration viewer's first camera looks along the structure's thinnest axis** *(the user, 2026-10-28)*: 2.47.11's MolView fit (`web/molview.md` § 9.6) for the vibration viewer — `index.js` `setStructure` turns, then fits; `_seal.js` `refit`, which the Spectra page calls on a tab's opening, stays a zoom; `web/vibrationview.md` has no first-camera rule yet. Contract first | the user, 2026-10-28 | decided, not built |
 | **SWEEP-RELAX** | engines / vibration | **A displacement sweep's later stage taking the first stage's `relax` call over** (`engines/vibration.md` § 5.11 § 1, § 6): each stage relaxes in its own run today, and § 5.9's summary refuses two geometries | § 1ae, handover (a) | open |
 | **SPIN-EF** | engines / vibration | **A spin-polarized optical frame's Fermi level reads none**: SIESTA prints `ef_up` / `ef_dn` under a fixed spin, and the record reads `scf[-1].get("ef")` (`spectra/siesta_vibration.py`) | § 1ae, handover (m) | open |
 | **SCHED-HDR** | scheduler | **A group's header seen under a real scheduler** — Q13's leftover ([`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md)) | Q13 | the user's, on Sol |

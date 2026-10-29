@@ -104,11 +104,31 @@ class PointsOf:
     #: transport point, a vibration's SIESTA call -- what the walk and the
     #: prep's line name it by.
     unit: str = "point"
+    #: ``(calc, stage, run_dir, names, points) -> (path, index) | None``:
+    #: the run's index launch writes for its points' report steps -- each
+    #: of ``points`` a :class:`RunPoint`, in the walk's order -- so the run
+    #: reports as one run (`engines/transport.md` § 2a.11; `run-reports.md`
+    #: § 2.4); ``None`` where launch writes none this way (a vibration's
+    #: run in phases writes its own, `submit._phased_walk`).
+    run_index: Callable = lambda calc, stage, run, names, points: None
 
     def walls(self, n: int) -> int:
         """How many of the card's walls a run of ``n`` points asks: one
         where its points share it, else one each; ``0`` for none."""
         return min(n, 1) if self.one_wall else n
+
+
+@dataclass(frozen=True)
+class RunPoint:
+    """One point of a run as launch walks it, for its kind's run index
+    (:attr:`PointsOf.run_index`): the point, its prepared folder below the
+    stage (its deck), the run it was taken over from -- ``None`` for a point
+    this run walks -- and the point this run walks before it that it needs
+    (its ``rel``), ``None`` where it needs none."""
+    point: object
+    prepared: object
+    taken_from: Optional[str] = None
+    needs: Optional[str] = None
 
 
 def points_of(task) -> Optional[PointsOf]:
@@ -136,5 +156,5 @@ def rung_points_of(calc, stage: str) -> tuple:
     return tuple(pts.rung_points(calc, stage)) if pts is not None else ()
 
 
-__all__ = ["PointsOf", "points_of", "walls_of",
+__all__ = ["PointsOf", "RunPoint", "points_of", "walls_of",
            "rung_points_of"]

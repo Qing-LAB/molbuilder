@@ -10,6 +10,11 @@ Two energies are one when they lie within :data:`SAME_ENERGY_EV`: the
 energies of two runs agree to rounding (10⁻¹⁵ eV), and an energy a few
 10⁻⁶ eV away is another (the transmission's narrowest features are as wide
 as its broadening, 10⁻⁴ eV at the catalogue's defaults).
+
+**It travels beside a job** in the monitor's bundle
+(`runwrap.MONITOR_COMPANIONS`), so a transmission run's report step joins a
+point's energies by this same rule (`transport.points_index`): imported from
+the package here, from its copy there; reading a deck stays the package's.
 """
 from __future__ import annotations
 
@@ -29,7 +34,10 @@ SHARED_DIR = "shared"
 #: The molbuilder block of a transmission deck that records its sharing:
 #: which finished point, the grid, and the contours -- its name the deck
 #: record's (`deck_record`).
-from ..deck_record import BLOCK_SHARED  # noqa: E402
+try:                                        # inside molbuilder
+    from ..deck_record import BLOCK_SHARED  # noqa: E402
+except ImportError:                         # beside a job
+    from deck_record import BLOCK_SHARED  # type: ignore[no-redef]  # noqa: E402
 
 
 def spacing(window: Tuple[float, float, int]) -> float:
@@ -132,7 +140,10 @@ class Contours:
     def of_deck(cls, text: str) -> Optional["Contours"]:
         """The sharing a deck records, or ``None`` for a deck that computes
         its window whole."""
-        from ..deck_record import read_json_block
+        try:                                # inside molbuilder
+            from ..deck_record import read_json_block
+        except ImportError:                 # beside a job
+            from deck_record import read_json_block  # type: ignore[no-redef]
         rec = read_json_block(text, BLOCK_SHARED)
         return cls.of_record(rec) if rec is not None else None
 
@@ -196,24 +207,33 @@ def _consecutive(indices: Sequence[int], step: int) -> List[List[int]]:
 _NOT_ALONG_E = frozenset(("atoms", "outside_device"))
 
 
-def joined(folder: Path, read: Callable[[Path], Dict]) -> Dict:
+def joined(folder: Path, read: Callable[[Path], Dict], *,
+           window_of: Optional[Callable[[Path], Optional[
+               Tuple[float, float, int]]]] = None) -> Dict:
     """THE ONE JOIN: what ``read`` answers of the point in ``folder`` --
     ``energy_ev`` and every value along it -- joined with what it answers of
     the point's ``shared/``, recursively, an energy the point computed
     itself taken from its own run, the whole in the grid's order; and, for
-    a point whose deck records its sharing, only the energies of the grid
-    it describes (`engines/transport.md` § 2a.16).  A quantity one side
+    a point that shares energies, only the energies of the grid it
+    describes (`engines/transport.md` § 2a.16).  A quantity one side
     holds and the other does not is dropped: no point holds a value on part
-    of its grid."""
+    of its grid.  ``window_of`` answers that grid for a folder, ``None`` for
+    a point that does not share -- by default the sharing its deck records
+    (:func:`sharing_of`); beside a job, which reads no deck, the run's
+    index's (`points_index`)."""
     own = read(folder)
     shared = Path(folder) / SHARED_DIR
     if not shared.is_dir():
         return own
-    other = joined(shared, read)
+    other = joined(shared, read, window_of=window_of)
     out = _merge(own, other)
-    contours = sharing_of(folder)
-    if contours is not None:
-        out = _on(out, grid(*contours.window))
+    if window_of is None:
+        contours = sharing_of(folder)
+        window = contours.window if contours is not None else None
+    else:
+        window = window_of(Path(folder))
+    if window is not None:
+        out = _on(out, grid(*window))
     return out
 
 

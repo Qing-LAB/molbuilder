@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
+from .conductance import at_fermi, per_spin_channel
 
 if TYPE_CHECKING:
     from .stages import Point
@@ -160,12 +161,18 @@ def _ran(run_dir):
     return parse_fdf_params(read_deck(deck), source=deck.name)
 
 
-def deck_spin(run_dir) -> str:
-    """The spin the run's own deck states -- ``non-polarized`` or
-    ``polarized`` -- in any word SIESTA accepts for it (`parse.fdf`), SIESTA's
-    own default, non-polarized, where the deck states none."""
-    return ("polarized" if _ran(run_dir).spin_treatment == "unrestricted"
+def spin_of(params) -> str:
+    """The spin a deck's parameters state (`parse.fdf.parse_fdf_params`) --
+    ``non-polarized`` or ``polarized`` -- in any word SIESTA accepts for it,
+    SIESTA's own default, non-polarized, where the deck states none: the
+    one rule the record and a transport run's index read it by."""
+    return ("polarized" if params.spin_treatment == "unrestricted"
             else "non-polarized")
+
+
+def deck_spin(run_dir) -> str:
+    """The spin the run's own deck states (:func:`spin_of`)."""
+    return spin_of(_ran(run_dir))
 
 
 def point_transmission(where, label: str, spin: str) -> Dict:
@@ -188,30 +195,31 @@ def point_transmission(where, label: str, spin: str) -> Dict:
                             leads=tuple(LEAD_NAMES))
     except (OSError, ValueError) as exc:
         raise RecordError(str(exc)) from exc
-    have = {c for c, a in av.items() if "transmission" in a}
+    curves = {c: a["transmission"] for c, a in av.items()
+              if "transmission" in a}
+    if (spin == "polarized" and "up" in curves and "down" in curves
+            and av["up"]["energy_ev"] != av["down"]["energy_ev"]):
+        raise RecordError("the two spin channels' energy grids differ")
+    # PER SPIN CHANNEL, the one rule (`conductance.per_spin_channel`), which a
+    # transmission run's milestone reads by too (`run-reports.md` § 2.9).
+    try:
+        transmission = per_spin_channel(curves, spin)
+    except ValueError as exc:
+        raise RecordError(str(exc)) from None
     if spin == "polarized":
-        missing = [c for c in ("up", "down") if c not in have]
-        if missing:
-            raise RecordError(
-                f"the deck is spin-polarized and the run wrote no "
-                f"{' or '.join(missing)} channel transmission")
         up, dn = av["up"], av["down"]
-        if up["energy_ev"] != dn["energy_ev"]:
-            raise RecordError("the two spin channels' energy grids differ")
         t_up, t_dn = up["transmission"], dn["transmission"]
         return {"energy_ev": up["energy_ev"],
-                "transmission": [(a + b) / 2.0 for a, b in zip(t_up, t_dn)],
+                "transmission": transmission,
                 "channels": {"up": t_up, "down": t_dn},
                 # THE TOTAL, T↑ + T↓, what the report draws beside the two
                 # (`web/results.md` § 2.5).
                 "transmission_total": [a + b for a, b in zip(t_up, t_dn)],
                 "transmission_file": [up["files"]["transmission"],
                                       dn["files"]["transmission"]]}
-    if "unpolarized" not in have:
-        raise RecordError("the run wrote no transmission file")
     one = av["unpolarized"]
     return {"energy_ev": one["energy_ev"],
-            "transmission": one["transmission"],
+            "transmission": transmission,
             "transmission_file": one["files"]["transmission"]}
 
 
@@ -405,17 +413,6 @@ def iv_notes_placed(iv: Dict) -> List[Dict]:
     return out
 
 
-def conductance_g0(energies: List[float], trans: List[float]
-                   ) -> Optional[float]:
-    """T interpolated at E = 0 (the grid is E − E_F) — G(E_F) in G0."""
-    import numpy as np
-    e = np.asarray(energies, dtype=float)
-    t = np.asarray(trans, dtype=float)
-    if e.min() > 0 or e.max() < 0:
-        return None                    # window does not straddle E_F
-    return float(np.interp(0.0, e, t))
-
-
 def _outs_newest_first(where: Path, token: str) -> List[Path]:
     """A rung's engine outputs in ``where``, its NEWEST RUN first -- the
     run door's (`runs.Run.outputs`), by the run number every one carries,
@@ -576,9 +573,8 @@ def _stage_facts(calc, label: str) -> List[Dict]:
                 # door read for this run (`point_rows`, above), never a
                 # second rule.
                 from ..jobset.continuation import points_verdict
-                from .stages import points_summary
-                fact["state"], said = points_verdict(points,
-                                                     points_summary(points))
+                from .points_index import summary
+                fact["state"], said = points_verdict(points, summary(points))
                 fact["detail"] = (f"{said}; the run the transmission "
                                   f"gathered ({fact['attempt']}); the "
                                   f"stage's newest run is "
@@ -718,14 +714,16 @@ def _science(out: Path, answers: str) -> Dict:
     # cycles -- the shift between the device's zero and the seed's.  A run
     # continued from a density file has no periodic start
     # (:func:`_periodic_shift` follows its chain).
-    periodic = [c for c in hist if c.get("phase") == "periodic"
-                and c.get("vha_ev") is not None]
+    from ..parse.engines.siesta_grammar import (PHASE_NEGF, PHASE_PERIODIC,
+                                                rows_of_phase)
+    periodic = [c for c in rows_of_phase(hist, PHASE_PERIODIC)
+                if c.get("vha_ev") is not None]
     if periodic:
         fact["periodic"] = {"vha_ev": periodic[-1]["vha_ev"]}
     # THE NEGF PHASE'S OWN FIGURES -- never the periodic start's
     # (`engines/transport.md` § 2a.12): its last row's E_F and charge, and
     # how many cycles it ran.
-    negf = [c for c in hist if c.get("phase") == "negf"]
+    negf = rows_of_phase(hist, PHASE_NEGF)
     if negf:
         last = negf[-1]
         # `vha_ev` is the last NEGF cycle's `ts-Vha`, as TranSIESTA printed
@@ -1000,12 +998,13 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                               "computed": sharing.computed}}
                   if sharing is not None else {})
         if st.state != "finished":
+            from ..jobset.continuation import NEVER_REACHED
             unreached = (st.state in ("pending", "queued")
                          and _run_ended(run))
             entry = {**at, "attempt": rel,
                      "state": "failed" if unreached else st.state,
-                     "why": ("the walk ended before it reached this point"
-                             if unreached else st.detail), **shares}
+                     "why": NEVER_REACHED if unreached else st.detail,
+                     **shares}
             # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
             # one sentence the point's run record states it in
             # (`tbtrans_loop`, `model/parse.md` § 5d.1b, § 5d.5).
@@ -1078,7 +1077,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             # states its own (`engines/transport.md` § 2a.12).
             "state": st.state,
             **read,
-            "conductance_g0": conductance_g0(energies, read["transmission"]),
+            # G/G0 = T(E_F), the one rule (`conductance.at_fermi`), which a
+            # transmission run's milestone says too (`run-reports.md` § 2.9).
+            "conductance_g0": at_fermi(energies, read["transmission"]),
             # THE TOTAL, and the figure it came from (`CURRENT_MEANS`), with
             # the run's k-sampling.
             **currents,

@@ -77,23 +77,31 @@ FIELDS: Tuple[ReportField, ...] = (
     # from its first call (`run-reports.md` § 2.8).
     ReportField("elapsed_s", "How long it has been running", "elapsed",
                 span=True),
-    # A MEMBER'S OWN CALL'S CLOCK -- a SIESTA vibration's calls are the one
-    # run of points that reports as one run (§ 2.4).
-    ReportField("call_elapsed_s", "How long this call has been running",
-                "this call", span=True, engines=("siesta",),
-                calculations=("vibration",)),
+    # A MEMBER'S OWN POINT'S CLOCK -- a SIESTA vibration's calls and a
+    # transport sweep's points report as one run (§ 2.4); the card says it
+    # in the kind's word for one, the report's ``call_unit``.
+    ReportField("call_elapsed_s",
+                "How long this call or point has been running",
+                "this {unit}", span=True, engines=("siesta",),
+                calculations=("vibration", "transport")),
     # THE PACE (§ 2.8): the run's units of work -- an engine's steps, or a
-    # run of points' calls -- finished, left where the run states how many
-    # there are, the mean a finished one took, and what the left need at it.
-    ReportField("units_done", "How many of its steps or calls are finished",
-                "finished", calculations=("optimization", "vibration")),
-    ReportField("units_left", "How many of its calls are left", "to go",
-                engines=("siesta",), calculations=("vibration",)),
-    ReportField("unit_s", "How long one step or call takes", "each took",
-                span=True, calculations=("optimization", "vibration")),
-    ReportField("left_at_pace_s", "How long the calls left need at that pace",
+    # run of points' calls or points -- finished, left where the run states
+    # how many there are, the mean a finished one took, and what the left
+    # need at it.
+    ReportField("units_done",
+                "How many of its steps, calls or points are finished",
+                "finished",
+                calculations=("optimization", "vibration", "transport")),
+    ReportField("units_left", "How many of its calls or points are left",
+                "to go", engines=("siesta",),
+                calculations=("vibration", "transport")),
+    ReportField("unit_s", "How long one step, call or point takes",
+                "each took", span=True,
+                calculations=("optimization", "vibration", "transport")),
+    ReportField("left_at_pace_s",
+                "How long the calls or points left need at that pace",
                 "at that pace", span=True, engines=("siesta",),
-                calculations=("vibration",)),
+                calculations=("vibration", "transport")),
     ReportField("n_iters", "SCF iterations", "SCF iters", part="scf"),
     ReportField("energy", "The last energy", "energy", " eV"),
     # The step the ENGINE began, in its own numbering: a relaxation's move, a

@@ -80,6 +80,7 @@ ROLE_PYSCF_LOG   = ".log"                # PySCF's own log, a rung's own
 ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
 ROLE_SPECTRA_DATA = ".spectra.nc"        # the same result as structured data
 ROLE_PHASES      = ".phases.json"        # a run in phases: its calls, the index
+ROLE_POINTS      = ".points.json"        # a transport run of points: its index
 ROLE_NOTIFIED    = ".notified.json"      # a run's notification record
 ROLE_OPTICAL     = ".optical.nc"         # a run in phases' optical calls, as data
 ROLE_INITIAL     = "_initial.xyz"
@@ -1164,6 +1165,22 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "own python for the rest (`spectra.siesta_vibration`: "
                     "the plan, record and finish verbs)",
              door="siesta.vibration_phases.read_index"),
+    # A TRANSPORT RUN OF POINTS -- its index (`engines/transport.md`
+    # § 2a.11): every point of a device or transmission run, what makes it
+    # done, and how each ended as its report steps saw it.
+    Artifact(ROLE_POINTS, "the index of a transport run of points: every "
+                          "point of the run in the walk's order -- its "
+                          "folder, frame and voltage, the point it needs, "
+                          "whether it was taken over and from where, what "
+                          "it must hold to be done -- the cited set's "
+                          "weights, and each point's start, end, exit and "
+                          "verdict as its report steps saw them",
+             attempt="always", engine="siesta", calculation="transport",
+             kind="record",
+             writer="launch, for the points it opens (`submit`); each "
+                    "point's report steps (`mb_monitor.pyz point`) for the "
+                    "rest",
+             door="transport.points_index.read_index"),
     Artifact(ROLE_SPECTRA, "the spectrum this run computed: frequencies, "
                               "the strengths the engine computes, "
                               "thermochemistry -- written by the run itself",

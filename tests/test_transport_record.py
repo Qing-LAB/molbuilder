@@ -8,13 +8,14 @@ whose integral the contract states exactly.
 """
 from __future__ import annotations
 
-from molbuilder.transport.record import conductance_g0, low_bias_iv
+from molbuilder.transport.conductance import at_fermi
+from molbuilder.transport.record import low_bias_iv
 
 
 def test_conductance_needs_the_window_to_straddle_ef():
     """G = G0 · T(E_F) is read at E_F = 0 (§ 2a.4): a window that does not
     straddle it answers None, never an extrapolated number."""
-    assert conductance_g0([0.5, 1.0], [1.0, 1.0]) is None
+    assert at_fermi([0.5, 1.0], [1.0, 1.0]) is None
 
 
 def test_a_perfect_channels_low_bias_current_is_g0_times_v():

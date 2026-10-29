@@ -10,8 +10,9 @@ MODULE  jobset.transport_points (floor 4, beside `jobset.points`): the
 """
 from __future__ import annotations
 
+from ..transport.points_index import summary
 from ..transport.stages import (STAGE_FACT, frames_of, hands_on, points_in,
-                                points_summary, products_of, rung_points)
+                                products_of, rung_points)
 from .points import PointsOf
 
 
@@ -20,7 +21,7 @@ def _declared_rung_points(calc, stage: str, *, read=None):
 
 
 def _declared_summary(rows, run, names) -> str:
-    return points_summary(rows)
+    return summary(rows)
 
 
 def _declared_points_in(run, task, stage: str, base):
@@ -39,6 +40,55 @@ def _converges(stage: str) -> bool:
     return STAGE_FACT.get(stage, "scf") != "product"
 
 
+def _run_index(calc, stage: str, run, names, points):
+    """THE RUN'S INDEX, as launch writes it (`engines/transport.md` § 2a.11;
+    `transport.points_index`): every point of the run in the walk's order --
+    its folder, words and frame's, voltage, the point it needs, the run it
+    was taken over from, the energy grid its deck describes
+    (`energies.deck_window`) and what it must hold to be done, each with the
+    words its absence is said in (`continuation.must_hold`, asked of its
+    prepared deck) -- with what the rung's points compute (the
+    kind table's ``computes``), the leads' pair, the spin the decks state
+    (`record.spin_of`) and the frames' weights, where the cited set states
+    them (`frameset.read`).  ``(path, index)``."""
+    from pathlib import Path
+    from ..frameset import read as read_frame_set
+    from ..parse.fdf import parse_fdf_params, read_deck
+    from ..runfiles import FIRST_ATTEMPT
+    from ..structure import frame_words
+    from ..transport.compose import recorded_junction
+    from ..transport.energies import deck_window
+    from ..transport.points_index import add_point, empty_index, index_path
+    from ..transport.record import spin_of
+    from ..transport.transiesta import LEAD_NAMES, LEAD_PAIR
+    from .continuation import must_hold
+    base, task = Path(calc.base), calc.task
+    recorded = recorded_junction(base)
+    rows = (read_frame_set(recorded.structure) if recorded is not None
+            else None)
+    script = calc.job(stage).script
+    decks = {rp.point.rel: read_deck(Path(rp.prepared) / script)
+             for rp in points}
+    index = empty_index(
+        stage=stage, computes=STAGE_FACT[stage], pair=LEAD_PAIR,
+        leads=LEAD_NAMES,
+        spin=spin_of(parse_fdf_params(decks[points[0].point.rel],
+                                      source=script)),
+        weights=rows.weights if rows is not None else None)
+    products = products_of(stage, task.label, base_dir=base)
+    for rp in points:
+        pt = rp.point
+        deck = decks[pt.rel]
+        add_point(index, rel=pt.rel, words=pt.words(), frame=pt.frame,
+                  frame_words=(frame_words(pt.frame, pt.of)
+                               if pt.frame is not None else None),
+                  bias_v=pt.bias_v, needs=rp.needs,
+                  must_hold=must_hold(rp.prepared, products, deck_text=deck),
+                  verdict_counts=POINTS.verdict_counts(stage, pt),
+                  window=deck_window(deck), taken_from=rp.taken_from)
+    return index_path(run, names, FIRST_ATTEMPT), index
+
+
 #: THE DECLARATION, named by the kind table (the pair's ``points``): a
 #: transport rung's points are a frame of the cited set and a voltage each,
 #: decided at prep.
@@ -47,4 +97,5 @@ POINTS = PointsOf(rung_points=_declared_rung_points,
                   products_of=_declared_products,
                   hands_on=_declared_hands_on,
                   summary=_declared_summary,
-                  converges=_converges)
+                  converges=_converges,
+                  run_index=_run_index)

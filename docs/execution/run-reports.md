@@ -195,11 +195,10 @@ its own job states ([`running-a-job.md`](?doc=execution/running-a-job.md)
 § 3.6). A record or a wall that does not read, or a header that
 states no start (one written before it did), is said once in a `[WALL]`
 line, and nothing is counted. **A run of points' points**: a member's
-monitor — a vibration's call (§ 2.4) — reads the run's one launch record
-through `--launched-in` and counts as the run's; a transport sweep's point,
-whose monitor is no member, finds none in its own folder and counts nothing
-— and a point, one SCF or one transmission, states no steps: what warns
-for a member is its run's pace, below.
+monitor — a vibration's call, a transport sweep's point (§ 2.4) — reads the
+run's one launch record through `--launched-in` and counts as the run's; a
+point, one SCF or one transmission, states no steps: what warns for a member
+is its run's pace, below.
 
 **It warns once, and only where it can say why**: for a run of points whose
 index states its calls (§ 2.8), when the calls left need more than the wall
@@ -399,21 +398,30 @@ A run directory's own state — `pending`, `queued`, `running`, `failed`,
 A report never says `pending` or `queued`: a monitor exists only while its run
 runs.
 
-**A run in phases reports as one run** ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.11 § 7a): each SIESTA call's run script starts its own monitor as a
-**member** (`--member --launched-in <run>`), which watches that call, sends
+**A run of points reports as one run** — a SIESTA vibration's calls
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a) and a
+transport sweep's points, frames × voltages
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11): each point's
+run script starts its own monitor as a
+**member** (`--member --launched-in <run>`), which watches that point, sends
 `scf_converged`, `periodic` and `wall_near` by the policy, counts its clock
 from the run's own record, and sends neither `start` nor `finish`; the run's
-`start` is sent once by the plan step of its first call, a `milestone` or a
-`part_failed` by a call's record step (§ 2.9), and its `finish` by the record
-step that completes the index, each through the bundle's `notify` verb
+`start` is sent once by the step before its first point's engine — a
+vibration's plan step, a transport point's report step — a `milestone` or a
+`part_failed` by the step after a point's engine (§ 2.9), and its `finish` by
+the step after the run's last point, each through the bundle's `notify` verb
 (`mb_monitor.pyz notify <event> --dir <run>`), which reads the policy from
 the environment the run script exports (`MB_NOTIFY_CHANNELS`,
 `MB_NOTIFY_REPORT`), skips a `start` already sent and a `part_failed` of a
 reason already reported (§ 2.9), and writes the run's notification record
-(§ 2.5). Every event but the `start` — sent before any call has ended —
-carries the run's count and clock, read from the run's index after the step
-that sends it wrote it (§ 2.8).
+(§ 2.5). Every event carries the run's count, read from the run's index
+after the step that sends it wrote it — the `start`'s, the run's points
+before any has ended, those taken over among them done — and, once a point
+has started, the run's clock (§ 2.8). A transport sweep's points are walked by one
+job; a walk stopped by the person, or killed, sends no `finish`, and the run
+door reads the run failed — as a vibration's — and nor does a walk one of
+whose points ended before its first report step, the index never seeing it
+end (`engines/transport.md` § 2a.11).
 
 ### 2.5 What it writes
 
@@ -612,6 +620,7 @@ of points is its index's reader; a new clock or count is a report field.
 | **the parts of an engine's output** — the SCF, a TranSIESTA device's set-up, SIESTA's optical calculation; each begins with a line the engine prints, and some print nothing more until they end | the engine's grammar: the SCF and a TranSIESTA device's set-up are read by their own rows (`siesta_grammar.scf_row`, the `ts:` facts); every part that begins with a line of its own is a row of one table, `siesta_grammar.PARTS` — the part, the line that begins it, its words, and its note: what is true of its output while it runs (the optical calculation's, *it prints nothing until it ends*, `Src/optical.F`). The reading pass reads the table by one rule (`_section_rules`, as its other rules); the latest part begun is underway (`SiestaReader.part`), until the SCF's next row speaks again or the run ends | the part underway in the reading pass's one sentence, and since when — *SIESTA's optical calculation -- it prints nothing until it ends (since 20:02)* (`doing`, [`model/parse.md`](?doc=model/parse.md) § 2b). *Since* is when the monitor first read the part underway, within one wake |
 | **which part a fact belongs to** | each report field's declaration (`report_fields.FIELDS`, § 4.1a): its `part` — `scf` for the SCF's iterations and rate, `run` for the rest; the residuals are the SCF's | a part's facts said together: the part underway's as they stand, a part that has ended as ended — *its SCF converged in 6 iterations (33s), dDmax 5e-06 (tol 1e-05)* — never a finished SCF's last row as the row in flight; on a card, a field whose part has ended (`ReportField.ended`) is left off the grid for the summary line, the record carrying the part underway (§ 4.1a) |
 | **a run of points' position** — a vibration run's calls ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a) | the run's index (`<label>_01_freq-run0.phases.json`, the run's first attempt's — whichever attempt a call's own run is, a call retried in place included), read through its one reader and the one done rule — `vibration_phases.read_index`, `rows_of`, `summary`: the rows and words the run's own record step reads — which travel in the monitor's bundle; read again only when the index changes | a member monitor (§ 2.4) says its run's count and its own call, its own call running — its monitor is its witness, where the index says a call not ended pending — *the run: relax done · fc done · optical 0 of 121 \| this call: frame 0, the equilibrium* |
+| **a transport sweep's position** — a device or transmission run's points ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | the run's index (`<label>_<NN>_<stage>-run<N>.points.json` at the run's root), which launch writes — every point, its frame, voltage and what makes it done — and each point's report steps stamp; read through its one reader and the one done rule — `transport.points_index.read_index`, `rows_of`, `summary` — which travel in the monitor's bundle; read again only when the index changes. The kind's index is found by the readers the monitor carries (`monitor.RUN_INDEXES`), each asked for its file in the run's folder | the same as a vibration's — *the run: 7 of 12 points done, 1 failed (3 frames × 4 voltages) \| this point: frame index 1 (of 3) · 0.4 V* — the pace over the points this run computed |
 | **the clocks** — the run's and, for a member, its call's | the run's start — a member's, its run's first call's start in the index (the calls this run computed, not those taken over; a call retried in place keeps its first attempt's start), else this monitor's own start — and a member's call, from its own monitor's start; each a report field (§ 4.1a); the job's wall as § 2.1b counts it. The run's finish, which its walk sends once (§ 2.4), says the run's clock from the same index | each named — *the run 5h · this call 2h*, the wall beside them, *wall 12h: 7h left*; a run that is no member says *the run* alone |
 
 **The pace and what is left** — read from the same structures, over the
@@ -660,22 +669,35 @@ by its count and pace, in the periodic report (§ 2.8).
 
 **Which runs.** A run of points that reports as one run (§ 2.4): a SIESTA
 vibration's calls ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.11 § 7a). Its record step runs after each call's engine and reads the
-run's index. A transport sweep's points do not report as one run yet — each
-sends its own `start` and `finish` — until its run keeps an index
-([`plans/plan.md`](?doc=plans/plan.md) § 1af, R-e).
+§ 5.11 § 7a), and a transport sweep's points — a device or a transmission
+run of frames × voltages ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.11) *(R-e's transport half, the user, 2026-10-29)*. After each point's
+engine a step of its run script writes how the point ended into the run's
+index and reads the index: a vibration's record step (`mb_vibration.pyz
+record`), a transport point's report step (`mb_monitor.pyz point ended`) —
+which **never fails its point**: a report it cannot make is logged in the
+point's session log, and the point's ending is its engine's. A transport
+calculation's single runs — the seed, each lead — report alone, their
+`start` and `finish` their whole report.
 
-**When.** A call's record step first writes how the call ended into the
-index. It then asks the walk's own question: does the run still have calls
-to run? A call still to run is listed, not ended, and every phase it needs
-holds a call that is done (`_still_to_run`).
+**When.** A point's step first writes how the point ended into the
+index. It then asks the walk's own question: does the run still have points
+to run? A point still to run is listed, not ended, and every point it needs
+ended as the walk needs it — a vibration call the phases before its own,
+each holding a call done (`_still_to_run`); a device point the point before
+it in its frame, whose run **finished** — ended with exit 0, converged or
+not: *a voltage that does not finish ends that frame's chain*
+(`engines/transport.md` § 2a.9), and one that finished unconverged hands
+its state on, though not done — and so on up its chain; a transmission
+point none (`transport.points_index.still_to_run`).
 
-| the call | calls left to run | sent |
+| the point | points left to run | sent |
 |---|---|---|
-| not done, by the one done rule (`vibration_phases.rows_of`) | yes | `part_failed`: the call, and why it is not done — once per reason (below) |
-| done, and the last of its phase to end | yes | `milestone`: the phase's outcome |
-| done, with others of its phase still to end | yes | nothing — the count is the periodic report's |
-| either | none | the `finish` (§ 2): the run's state by the one rule over the index, and the outcome of the phase this call ended |
+| not done, by the one done rule (`vibration_phases.rows_of`, `transport.points_index.rows_of`) — and, on a transport sweep, not the last of its round | yes | `part_failed`: the point, and why it is not done — once per reason (below) |
+| a vibration's call, done, the last of its phase to end | yes | `milestone`: the phase's outcome |
+| a transport sweep's point, done or not, the last of its **round** — the voltage's points at every frame, none of them still to run *(the user, 2026-10-26: "one voltage across every frame would be a transport milestone")* | yes | `milestone`: the round's outcome, each frame's point in it |
+| any other | yes | nothing — the count is the periodic report's |
+| any | none | the `finish` (§ 2): the run's state by the one rule over the index — a vibration's finished when every call is done; a transport sweep's by the status door's rule, finished when every point's run finished, converged or not (`continuation.points_verdict`, `_run_ending.points_state`), a point the walk never ran stamped so in the index first and counted failed, as the status door lists a point the ended walk never reached (`points_index.close`) — the first point not done, in the order `status` lists them, and how many, and the outcome of the phase or the round this point ended |
 
 **What a milestone says** — the phase's outcome, from the record the step
 has just written and nothing else:
@@ -685,16 +707,21 @@ has just written and nothing else:
 | the relaxation (`relax`) | whether it converged, in how many moves, and the largest force on the free atoms against its tolerance — *the relaxation converged in 41 moves: the largest force on the free atoms 0.0381 eV/Ang (tol 0.04)*. The record is of the call's newest output, so a relaxation the wrapper retried in place (`running-a-job.md` § 3.5) counts its last attempt's moves, and says *in 12 moves of its last attempt*; one continued from an earlier run's geometry ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6) counts the moves since, and says *in 9 moves continuing freq/run-1/relax* | the relaxation record the step writes into the index (`parse.contract.relaxation_of_output`, [`model/parse.md`](?doc=model/parse.md) § 5b.1) |
 | the force constants (`fc`) | how many modes, and how many of them imaginary; the largest force on the free atoms at the reference geometry against the tolerance, and whether that makes it a stationary point at this level of theory, as the result states it; how many optical calls were planned — *the force constants: 60 modes, none imaginary; at the reference geometry the largest force on the free atoms 0.38 eV/Ang (tol 0.04) -- not a stationary point at this level of theory; 121 optical calls planned* (frame 0 and each mode's two sides). This is the moment the person may stop a Raman phase that would be wasted | the analysis the step writes the result from (`result_of`): its modes, its `relaxation` block's verdict ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2), and the calls `_plan_optical` planned |
 | the optical calls (`optical`) | — the last phase: its end is the run's end, which the `finish` says | — |
+| a device round | each frame's point at the voltage: converged, and in how many NEGF iterations — the reading pass's count of its last SCF — or not done and why, or not run and why — *0.2 V -- frame index 0 (of 3): converged in 41 NEGF iterations; frame index 1 (of 3): not done -- finished, not converged (SCF NO); frame index 2 (of 3): converged in 44 NEGF iterations*; a run of one frame says the voltage and its point alone | the point's output, read by the reading pass that travels with the monitor (`siesta_reader`), and its row in the index |
+| a transmission round | each frame's conductance at E_F, G/G₀ = T(E_F) — the record's own rule (`transport.conductance.at_fermi`), on the point's k-averaged transmission per spin channel, a polarized point's two channels averaged, (T↑ + T↓)/2, as the record states it (`engines/transport.md` § 2a.12) — and, where every frame's point is done and the frames state their weights, the frames' average at the voltage — *0.2 V -- G/G0: frame index 0 (of 3) 0.02134, frame index 1 (of 3) 0.01987, frame index 2 (of 3) 0.02311; the frames' average 0.02145* | the values the record reads: TBtrans's k-averaged text files (`tbtrans.averaged_files`, `read_averaged`, which travel) — the point's own and, for a point that shares energies with a finished point, its `shared/`'s, joined by the record's one join (`energies.joined`, which travels; `engines/transport.md` § 2a.16) — each printed energy put on the point's grid, the energies its data file holds, within half the printed last decimal (`tbtrans.PRINTED_HALF_DECIMAL_EV`); and the leads' pair, the spin, the weights and each point's grid launch wrote into the index |
+| the last round | — its end is the run's end, which the `finish` says, with the round's outcome | — |
 
 A relaxation is done whether or not it converged (done is finished,
 [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 5), so the force
 constants run after it either way. The milestone says which it was; what to
 do about it is the person's.
 
-**What a part's failure says**: the call, by its words (`Call.words`), and
-why it is not done, by the one rule's words — the exit, what the record step
-could not do, or `_run_ending.not_done_why` — *mode 7 (4271 cm⁻¹), +δQ: not
-done -- exit 1*. A failed `finish` names the first call not done in the same
+**What a part's failure says**: the point, by its words (`Call.words`,
+`transport.stages.Point.words`), and why it is not done, by the one rule's
+words — the exit, what the record step could not do, or
+`_run_ending.not_done_why` — *mode 7 (4271 cm⁻¹), +δQ: not done -- exit 1*;
+*frame index 1 (of 3) · 0.4 V: not done -- finished, not converged (SCF
+NO)*. A failed `finish` names the first call not done in the same
 words, and how many are not done when more than one is — *…: not done --
 exit 1; 9 of 121 calls not done*.
 
@@ -965,6 +992,7 @@ when — because somebody parses it later with no session to ask:
 | `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near`, `milestone`, `part_failed` or `finish` (§ 2); `test` from the setup page's button (§ 4.1b) |
 | `state` | the monitor | `running`, then `finished` or `failed` (§ 2.3) |
 | `text` | the monitor | the summary line: the state and its detail, then every fact below that the run has stated, in words and units — what a chat card shows |
+| `call_unit` | the monitor | what one point of a run of points is called in its kind's word — `call` for a vibration's, `point` for a transport sweep's (§ 2.8, `monitor.RUN_INDEXES`) — which a card's `call_elapsed_s` label says (`report_cards`); absent for a run that is no member |
 | `part` | the monitor | the part of the run underway, as the reading pass names it (§ 2.8) — absent while the SCF speaks and once the run has ended; a card's grid leaves a field whose part has ended for the summary line |
 | `elapsed_s` … `eta_s` | the monitor | the report fields, below |
 | `v` | the listener | the record's shape, `1`, so a reader a year from now does not infer it from which keys happen to be present |
@@ -978,11 +1006,11 @@ card all read; each is read by § 2.3's readers:
 | field | unit | what it is | runs that state it |
 |---|---|---|---|
 | `elapsed_s` | s — a length of time, said in words on a card (`6h`, `ui-contract.md` § 4) | the run's clock: wall time since its monitor started — a member's, since its run's first call this run computed started (§ 2.8) | every run |
-| `call_elapsed_s` | s, a length of time | a member's own call's clock, since its monitor started (§ 2.8) | `vibration` on SIESTA: a run in phases' call |
-| `units_done` | — | the run's units of work finished: an engine's steps, or the phase underway's calls a run of points computed — those its pace is the mean of (§ 2.8) | `optimization`, `vibration` |
-| `units_left` | — | the phase underway's calls not yet ended — where the run's index states how many there are | `vibration` on SIESTA |
-| `unit_s` | s, a length of time | the mean a finished unit took | `optimization`, `vibration` |
-| `left_at_pace_s` | s, a length of time | the time the calls left need at that mean | `vibration` on SIESTA |
+| `call_elapsed_s` | s, a length of time | a member's own point's clock, since its monitor started (§ 2.8) — its card's label names it in the kind's word, *this call* for a vibration's, *this point* for a transport sweep's (`report_cards`, the report's `call_unit`) | `vibration` and `transport` on SIESTA: a run of points' call or point |
+| `units_done` | — | the run's units of work finished: an engine's steps, or the phase underway's calls — a transport sweep's points — a run of points computed, those its pace is the mean of (§ 2.8) | `optimization`, `vibration`, `transport` |
+| `units_left` | — | what the walk will still run, where the run's index states how many there are: the phase underway's calls not yet ended; a transport sweep's points not yet ended, never one after a point of its frame whose run did not finish (`points_index.still_to_run`) | `vibration`, `transport` on SIESTA |
+| `unit_s` | s, a length of time | the mean a finished unit took | `optimization`, `vibration`, `transport` |
+| `left_at_pace_s` | s, a length of time | the time the calls or points left need at that mean | `vibration`, `transport` on SIESTA |
 | `n_iters` | — | SCF iterations so far in the current phase: SIESTA's timing rows, a PySCF run's SCF history across its finished steps — part `scf` (§ 2.8) | every run |
 | `energy` | eV | the latest SCF energy: E_KS of SIESTA's last SCF row, or a PySCF step's energy | every run |
 | `geom_step` | — | the step the engine began, in its own numbering — a relaxation's move, a force-constant run's displacement | `optimization`, `vibration` |

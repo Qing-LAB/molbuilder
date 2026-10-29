@@ -544,6 +544,39 @@ def _before_block(finish: Optional[str], script_name: str,
     )
 
 
+def _report_block(names, member: str, verb: str, *, pad: str = "") -> str:
+    """ONE OF A POINT'S TWO REPORT STEPS (`engines/transport.md` § 2a.11;
+    `run-reports.md` § 2.4, § 2.9): the monitor's bundle, run with the job's
+    own python, told which run and which try -- ``point started`` before
+    the engine, which stamps the point's start in the run's index and sends
+    the run's `start` once; ``point ended`` after it, told the engine's
+    exit, which stamps how the point ended and sends what the run's rule
+    calls for -- a failed part, a round's milestone, the run's `finish`.
+    **It never fails the point**: what it cannot do is logged here, and the
+    conclusion stays the engine's."""
+    from .monitor import POINT_ENDED, POINT_STARTED, POINT_VERB
+    words = f"{POINT_VERB} {verb}"
+    call = (f'"$_mb_py" {MONITOR_BUNDLE} {words} --label "{names.label}" '
+            f'--stage "{names.stage}" --run "$_run_n" '
+            f'--launched-in "{member}"'
+            + (' --exit "$_siesta_exit"' if verb == POINT_ENDED else ""))
+    return (
+        f"{pad}# --- The run's report step: {words} (run-reports.md 2.9) ---\n"
+        f"{pad}# This point's {'start' if verb == POINT_STARTED else 'end'} "
+        f"into the run's index, and the run's message it\n"
+        f"{pad}# calls for.  IT NEVER FAILS THIS POINT: what it cannot do is\n"
+        f"{pad}# logged here.\n"
+        f"{pad}if [ -f {MONITOR_BUNDLE} ]; then\n"
+        f"{pad}    {call} \\\n"
+        f'{pad}        || _log WARN "report step: {words} exited $? -- the '
+        f"run's index or its message may lack this point\"\n"
+        f"{pad}else\n"
+        f'{pad}    _log WARN "report step: {MONITOR_BUNDLE} is not beside the '
+        f'deck -- {words} not run"\n'
+        f"{pad}fi\n"
+    )
+
+
 def _finish_check_block(finish: Optional[str]) -> str:
     """Before the engine starts: can the job's finish run here?  Asked with
     the python that will run it (``$_mb_py``, the activated env's, checked
@@ -2135,7 +2168,8 @@ def render_run_wrapper(script_path: Path, *,
                         deck_text: Optional[str] = None,
                         notes: Optional[list] = None,
                         steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
-                        member: Optional[str] = None) -> str:
+                        member: Optional[str] = None,
+                        reports: bool = False) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     ``notes`` receives what the rendering has to say and does not refuse
@@ -2149,6 +2183,11 @@ def render_run_wrapper(script_path: Path, *,
     finish verb after a clean exit, as a job with a finish and no steps
     does.  ``member`` makes the run script's monitor a member of a run of
     points' (§ 7a): the way from the call's folder up to the run's.
+    ``reports`` runs the run's two report steps around the engine -- a
+    transport point's (`engines/transport.md` § 2a.11): the monitor's
+    bundle's ``point started`` before it and ``point ended`` after it,
+    success or failure, which stamp the run's index and send the run's
+    events; their failure is logged, never the point's (:func:`_report_block`).
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.
     With the object passed whole there is no subset to choose, and *which*
@@ -2278,6 +2317,12 @@ def render_run_wrapper(script_path: Path, *,
             f"`{script_path.name}`: this launcher finishes a SIESTA job with "
             f"{', '.join(sorted(_FINISH_BUNDLES))}; it cannot finish a "
             f"{category} job with {finish!r}")
+    from .monitor import POINT_ENDED, POINT_STARTED
+    if reports and not member:
+        raise WrapperError(
+            f"`{script_path.name}`: a point's report steps stamp its run's "
+            f"index, and the point names no run above it (its monitor is "
+            f"no member)")
     if steps is not None and finish is None:
         raise WrapperError(
             f"`{script_path.name}`: a job's Python steps run its finish "
@@ -3498,6 +3543,8 @@ def render_run_wrapper(script_path: Path, *,
             + _before_block(finish, script_name,
                             steps[0] if steps is not None else None,
                             after=(steps[1] if steps is not None else None))
+            + (_report_block(names, member, POINT_STARTED)
+               if reports else "")
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
                f'_siesta_retry_max={_retries}\n'
                f'# Retry: re-exec this wrapper as the NEXT RUN -- --run N+1,\n'
@@ -3646,6 +3693,8 @@ def render_run_wrapper(script_path: Path, *,
             + _finish_block(finish, script_name,
                             after=(steps[1] if steps is not None else None),
                             failed=True)
+            + (_report_block(names, member, POINT_ENDED, pad="    ")
+               if reports else "")
             + '    # CONCLUDED -- an error is a conclusion (project-\n'
             '    # layout.md 1.6, "the other file"): the engine returned\n'
             '    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
@@ -3681,6 +3730,7 @@ def render_run_wrapper(script_path: Path, *,
             + '$_out_file"\n'
             + _finish_block(finish, script_name,
                             after=(steps[1] if steps is not None else None))
+            + (_report_block(names, member, POINT_ENDED) if reports else "")
             + conclude_line(0) + "\n"
         )
     else:
@@ -3990,6 +4040,17 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     # A MEMBER'S RUN -- its index, read through its one reader and the one
     # done rule (`siesta.vibration_phases`, `run-reports.md` § 2.8).
     "vibration_phases.py": "molbuilder.siesta.vibration_phases",
+    # A TRANSPORT RUN OF POINTS -- its index, its rows by the one done rule
+    # and what a round's milestone says, and the conductance at E_F by the
+    # record's own rule (`transport.points_index`, `transport.conductance`;
+    # `run-reports.md` § 2.8, § 2.9).
+    "points_index.py":     "molbuilder.transport.points_index",
+    "conductance.py":      "molbuilder.transport.conductance",
+    # ...AND A TRANSMISSION POINT'S ENERGIES JOINED by the record's own rule
+    # (`transport.energies.joined`), its sharing record's block named by the
+    # deck record (`deck_record`).
+    "energies.py":         "molbuilder.transport.energies",
+    "deck_record.py":      "molbuilder.deck_record",
 }
 
 
@@ -4025,10 +4086,13 @@ _ENDING_UNREADABLE = (f"the ending cannot be read here ({MONITOR_BUNDLE} "
 #: IT SAYS ITS LOAD, in the session log's own line (`run-reports.md` § 2.6):
 #: ``monitor: starting ...`` before the import and ``... started`` after it,
 #: so a ``starting`` with no ``started`` is a monitor that died loading -- and
-#: the error follows it, one line and the traceback.  The `ending` and `loads`
-#: verbs print no pair: the wrapper waits on their answers and reads their
-#: exit status -- `loads` answers whether the bundle loads on this python and
-#: nothing else, so the wrapper can ask it once (`_mb_ending_able`).
+#: the error follows it, one line and the traceback.  The verbs that are no
+#: monitor print no pair: `ending` and `loads`, whose answers the wrapper
+#: waits on and reads by their exit status -- `loads` answers whether the
+#: bundle loads on this python and nothing else, so the wrapper can ask it
+#: once (`_mb_ending_able`) -- `retried`, a warm retry's record, and the run's
+#: own steps, `notify` and a transport point's `point` (`run-reports.md`
+#: § 2.4).
 #:
 #: WRITTEN IN THE PYTHON EVERY INTERPRETER PARSES -- no f-strings, no print
 #: function -- because its whole job is to report a python that cannot load
@@ -4039,7 +4103,8 @@ _BUNDLE_MAIN = (
     f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
     f"(time.strftime({LOG_CLOCK!r}), level, message))\n"
     "    sys.stderr.flush()\n"
-    "_asked = sys.argv[1:2] in (['ending'], ['loads'], ['retried'])\n"
+    "_asked = sys.argv[1:2] in (['ending'], ['loads'], ['retried'], "
+    "['notify'], ['point'])\n"
     "if not _asked:\n"
     f"    _say('INFO', 'monitor: starting {MONITOR_BUNDLE} on python %s (%s)'"
     " % (sys.version.split()[0], sys.executable))\n"
@@ -4377,7 +4442,8 @@ def render_wrappers(script_path: Path, *,
                     warm: Optional[Sequence[str]] = None,
                     deck_text: Optional[str] = None,
                     steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
-                    member: Optional[str] = None) -> RenderedWrapper:
+                    member: Optional[str] = None,
+                    reports: bool = False) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
 
     ``deck_text`` is the deck as it will be written, for one `prep` has
@@ -4439,7 +4505,7 @@ def render_wrappers(script_path: Path, *,
         n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
         finish=finish, resumes=resumes, warm=warm, deck_text=deck_text,
-        notes=_notes, steps=steps, member=member)
+        notes=_notes, steps=steps, member=member, reports=reports)
     _validate_rendered_wrapper(text, script_path)
     # THE STAGE'S NAMES NAME IT (`runfiles.RunNames`), as every file of it.
     files = [(names.name(".run.sh"), text)]
@@ -4501,7 +4567,8 @@ def write_run_wrapper(script_path: Path, *,
                       warm: Optional[Sequence[str]] = None,
                       plan=None, notes: Optional[list] = None,
                       steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
-                      member: Optional[str] = None) -> Path:
+                      member: Optional[str] = None,
+                      reports: bool = False) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     ``plan`` (`jobset.planned.Plan`) receives the files instead of the disk,
@@ -4532,7 +4599,7 @@ def write_run_wrapper(script_path: Path, *,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir, finish=finish,
                                resumes=resumes, warm=warm,
-                               steps=steps, member=member,
+                               steps=steps, member=member, reports=reports,
                                # THE DECK AS THE PLAN HOLDS IT, a block
                                # read from a file beside it inlined.
                                deck_text=(read_deck(script_path,

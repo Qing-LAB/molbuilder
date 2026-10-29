@@ -2627,11 +2627,12 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     prep's, written for every point, their walls summed (`group.envelope`,
     `prep.prep_calculation`) -- the points done before walk on past.  Run
     here, each point is told its card's wall (`running-a-job.md` § 3.6)."""
+    from ..persist import json_text
     from ..runrecord import launch_record, next_run, read_continued_from
     from ..transport.energies import SHARED_DIR
     from ..warmfiles import never_carried
     from .continuation import done
-    from .points import points_of
+    from .points import RunPoint, points_of
     base, task = Path(calc.base), calc.task
     job, names, stage = m.job, m.names, m.job.name
     stage_dir, run, prev = m.container, m.run_dir, m.ran
@@ -2693,6 +2694,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     # its record the run that COMPUTED it, one hop (`engines/transport.md`
     # § 2a.11): a point taken over from a point itself taken over names the
     # run that ran it.
+    # WHERE EACH POINT NOT WALKED CAME FROM, for the run's index.
+    taken_from: Dict[str, str] = {}
     for pdir, _v, src in taken:
         at = RunRef.at(base, src)
         # The source's own record is its ORIGIN only when it names a point
@@ -2702,6 +2705,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         marker = read_continued_from(src, names, FIRST_ATTEMPT)
         origin = (marker if marker is not None
                   and not marker.within(RunRef.at(base, prev)) else at)
+        taken_from[_v.rel] = str(origin)
         hand_over(base, HandOver(
             pdir, names, FIRST_ATTEMPT, CONTINUED, source=origin,
             files=tuple((at, f.name) for f in sorted(src.iterdir())
@@ -2717,6 +2721,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         from .reuse import take_into
         take_into(calc, across.taken, m.points, plan.writes,
                   given=[t["file"] for t in m.took])
+        taken_from.update((t.point.rel, t.copied_from)
+                          for t in across.taken)
     # THE WALK: round by round -- every frame's point at a voltage, then the
     # next voltage (`engines/transport.md` § 2a.11) -- a point's start the
     # closest voltage before it in ITS frame (§ 2a.9), which ran a round
@@ -2753,6 +2759,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     # before it in its frame, walked here -- a frame's chain, which a
     # failed point stops (§ 2a.9).
     last_in_frame: Dict[Any, int] = {}
+    needs_of: Dict[str, str] = {}
     for pdir, pt in walked:
         if scratch_at and pt.volts not in seen_rounds:
             seen_rounds.add(pt.volts)
@@ -2771,6 +2778,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
                              files=tuple((at, f) for f in hand), walk=True)
             hand_over(base, start, plan.writes)
         needs.append(last_in_frame.get(pt.frame))
+        if hand and needs[-1] is not None:
+            needs_of[pt.rel] = walked[needs[-1]][1].rel
         last_in_frame[pt.frame] = len(steps)
         steps.append((f"{stage}@{pt.rel}",
                       f"{run.name}/{pt.rel}", names.name(".run.sh"),
@@ -2793,6 +2802,18 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
                f"{'; '.join(across.why)}; "
                if across is not None and across.why else "")
             + f"runs {', '.join(said)}")
+    # THE RUN'S INDEX, for its points' report steps, by the rung's own
+    # declaration (`points.PointsOf.run_index`; `engines/transport.md`
+    # § 2a.11): every point in the walk's order -- round by round -- with
+    # where each not walked came from and what each walked one needs.
+    got = declared.run_index(
+        calc, stage, run, names,
+        [RunPoint(pt, stage_dir / pt.rel, taken_from=taken_from.get(pt.rel),
+                  needs=needs_of.get(pt.rel))
+         for _p, pt in sorted(m.points, key=lambda pp: (
+             rounds.index(pp[1].volts), order.index(pp[1])))])
+    if got is not None:
+        plan.writes.text(got[0], json_text(got[1]))
     member = dataclasses.replace(m, read_from=stage_dir / walked[0][1].rel,
                                  walk=walk,
                                  copied=across.taken if across else ())

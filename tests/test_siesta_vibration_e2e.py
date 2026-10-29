@@ -64,6 +64,7 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available, set_template_value
+from support.real_runs import notified, told
 from support.road import CO2, CO2_HELD_FIRST, group_words, ladder_edited
 
 pytestmark = [
@@ -206,42 +207,6 @@ def _index_of(run, stage: str = "freq", n: int = 0) -> dict:
     (path, _rf), = find(run.attempt(stage, n), task_of(run.bundle).label,
                         role=ROLE_PHASES)
     return read_index(path)
-
-
-def _notified(run, stage: str = "freq", n: int = 0) -> list:
-    """The events run ``n`` sent, by its record (`runrecord.read_notified`),
-    named as its stage's files are (`jobset.naming.stage_home`) -- a run in
-    phases is one run in its folder, its records named as its first
-    (`runfiles.FIRST_ATTEMPT`, as its index is)."""
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import FIRST_ATTEMPT
-    from molbuilder.runrecord import read_notified
-    from molbuilder.task import of as task_of
-    task = task_of(run.bundle)
-    names = stage_home(run.bundle, task, stage).names(task.shape)
-    return [e["event"] for e in read_notified(run.attempt(stage, n), names,
-                                              FIRST_ATTEMPT)]
-
-
-def _told(run, event: str, stage: str = "freq", n: int = 0) -> list:
-    """WHAT THE RUN SAID AT ``event``, in order: the summary lines its
-    ``notify`` verb wrote into the run's own monitor log, the record every
-    event leaves whether or not a channel is set up (`run-reports.md`
-    § 2.5) -- named as the run's files are (`monitor.WatchedRun`)."""
-    import re
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.monitor import WatchedRun
-    from molbuilder.runfiles import FIRST_ATTEMPT
-    from molbuilder.task import of as task_of
-    task = task_of(run.bundle)
-    names = stage_home(run.bundle, task, stage).names(task.shape)
-    log = WatchedRun(names=names, run=FIRST_ATTEMPT,
-                     directory=run.attempt(stage, n)).path(".monitor.log")
-    said = re.compile(r"\[NOTIFY\] \(stub\) (\w+): (.*)$")
-    return [m.group(2) for m in map(said.search,
-                                   log.read_text(encoding="utf-8")
-                                   .splitlines())
-            if m and m.group(1) == event]
 
 
 def _the_optical_record(run, computed_in, n: int = 0):
@@ -526,13 +491,13 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     # THE RUN REPORTED AS ONE RUN (§ 7a, `run-reports.md` § 2.9): its
     # start; a milestone at each phase it went on after -- the relaxation,
     # the force constants; its finish.
-    assert _notified(run) == ["start", "milestone", "milestone", "finish"]
+    assert notified(run, "freq") == ["start", "milestone", "milestone", "finish"]
     # THE LAUNCH ENDS WITH THE RESULT: the record step wrote it (§ 5.11 § 3).
     d = _the_result(run)
     _common_assertions(d, optical=True)
     # EACH MILESTONE SAYS ITS PHASE'S OUTCOME, from the record its step
     # wrote, and the run's count after it (`run-reports.md` § 2.9).
-    after_relax, after_fc = _told(run, "milestone")
+    after_relax, after_fc = told(run, "milestone", "freq")
     rec = index["calls"][0]["relaxation"]
     assert after_relax.startswith(
         f"running (the relaxation "
@@ -887,11 +852,11 @@ def test_ticked_the_run_measures_at_the_geometry_as_given(ticked):
     status, _folder = _the_run(ticked)
     assert status.detail == "fc done", status.detail
     assert _index_of(ticked)["phases"] == [FC]
-    assert _notified(ticked) == ["start", "finish"]
+    assert notified(ticked, "freq") == ["start", "finish"]
     d = _the_result(ticked)
     # THE FORCE CONSTANTS END THE RUN, so the finish says their outcome
     # (`run-reports.md` § 2.9), with the result's own stationarity verdict.
-    finish, = _told(ticked, "finish")
+    finish, = told(ticked, "finish", "freq")
     assert finish.startswith(
         f"finished (the force constants: {len(d['modes'])} modes, "), finish
     stationary = {True: "a stationary point",
@@ -1572,8 +1537,8 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
                 (index[name], before[name])
     # THE CALLS TAKEN OVER LEAVE NO RECORD STEP OF THIS RUN, so no
     # milestone; its finish counts the run as the status door does.
-    assert _notified(run, n=2) == ["start", "finish"]
-    finish, = _told(run, "finish", n=2)
+    assert notified(run, "freq", n=2) == ["start", "finish"]
+    finish, = told(run, "finish", "freq", n=2)
     assert f"| the run: {status.detail} |" in finish, finish
     d, _data, _calls = _the_optical_record(
         run, n=2, computed_in={name: (run1 if name in finished else run2)
@@ -1636,7 +1601,7 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     assert len(ran) >= 2, rows
     assert not any(r["done"] for r in ran), ran
     assert len({r["why"] for r in ran}) == 1, ran
-    sent = _notified(run, n=2)
+    sent = notified(run, "freq", n=2)
     assert sent[0] == "start" and sent[-1] == "finish", sent
     assert sent.count("part_failed") == 1, sent
     # ...the wall's warning, which a member monitor may send once before
@@ -1644,13 +1609,13 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     assert set(sent) <= {"start", "wall_near", "part_failed", "finish"}, sent
     assert sent.count("wall_near") <= 1, sent
     first = ran[0]
-    told, = _told(run, "part_failed", n=2)
-    assert told.startswith(
+    said, = told(run, "part_failed", "freq", n=2)
+    assert said.startswith(
         f"running ({first['words']}: not done -- {first['why']}) | the "
         f"run: relax done · fc done · optical {len(taken)} of "
-        f"{len(optical)} ({len(taken)} taken over, 1 failed) |"), told
+        f"{len(optical)} ({len(taken)} taken over, 1 failed) |"), said
     left = [r for r in rows if not r["done"]]
-    finish, = _told(run, "finish", n=2)
+    finish, = told(run, "finish", "freq", n=2)
     assert finish.startswith(
         f"failed ({left[0]['words']}: not done -- {left[0]['why']}; "
         f"{len(left)} of {len(rows)} calls not done) | the run: relax done "

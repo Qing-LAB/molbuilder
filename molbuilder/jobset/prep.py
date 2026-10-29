@@ -215,6 +215,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 resumes=point_facts.get("resumes", job.resumes),
                 steps=point_facts.get("steps"),
                 member=point_facts.get("member"),
+                reports=point_facts.get("reports", False),
                 plan=plan,
                 # WHAT THE RENDERING SAYS (`gpu.md` G6), onto the answer.
                 notes=notes,
@@ -549,10 +550,12 @@ class Rung:
     #: ``(sources, point) -> sources``: the rows a point's deck states --
     #: a vibration phase's, the items its role reads; every row by default.
     sources_at: Callable = lambda sources, point: sources
-    #: ``point -> {resumes, steps, member}``: how a point's run script is
-    #: rendered beyond the job's own facts -- a vibration phase's `resumes`,
-    #: its two Python steps and its monitor as a member of the run
-    #: (`engines/vibration.md` § 5.11 § 3, § 7a); ``{}`` renders the job's.
+    #: ``point -> {resumes, steps, member, reports}``: how a point's run
+    #: script is rendered beyond the job's own facts -- a vibration phase's
+    #: `resumes`, its two Python steps and its monitor as a member of the run
+    #: (`engines/vibration.md` § 5.11 § 3, § 7a); a transport point's
+    #: monitor a member and its two report steps (`engines/transport.md`
+    #: § 2a.11); ``{}`` renders the job's.
     wrapper_at: Callable = lambda point: {}
     #: ``point -> bool``: whether a point's deck relaxes -- its progress
     #: log's targets (`_seed_trajectory_log`); by default the render kind's.
@@ -758,6 +761,10 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
                     # that runs once, its one point.
                     "contours": (contours or {}).get(point_key(point))},
                 points=points, at_point=at_point,
+                # EACH POINT REPORTS AS A MEMBER OF ITS RUN
+                # (`engines/transport.md` § 2a.11): its monitor a member,
+                # its way up to the run's, and its two report steps.
+                wrapper_at=lambda pt: {"member": pt.to_run, "reports": True},
                 struct_at=lambda pt: at_frame(struct, pt),
                 provide_data=provide_data, job_facts=job_facts)
 

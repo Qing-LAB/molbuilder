@@ -124,7 +124,10 @@ class Layout:
             f = _fields.BY_NAME[name]
             if f.ended(report.get("part")):
                 continue
-            out.append((f.card, f.said(val)))
+            # A LABEL NAMING ONE OF A RUN'S POINTS says it in the kind's
+            # word -- a vibration's call, a transport sweep's point.
+            out.append((f.card.format(unit=report.get("call_unit") or "call")
+                        if "{unit}" in f.card else f.card, f.said(val)))
         return out
 
 
