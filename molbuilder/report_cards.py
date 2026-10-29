@@ -105,8 +105,10 @@ class Layout:
         """The card's fields for ``report`` at ``kind``: the receiver's order
         for the report's event, narrowed by ``items`` (the calculation's
         ``notify.report`` -- a ceiling, never a floor, `stages.md` § 6.9),
-        then by what the run stated (an absent field stays absent), then cut
-        at the receiver's limit.  Each as ``(label, value said)``."""
+        then by what the run stated (an absent field stays absent) and by
+        the part underway (a field whose part has ended is the summary
+        line's, said there as ended -- `run-reports.md` § 2.8), then cut at
+        the receiver's limit.  Each as ``(label, value said)``."""
         rc = self.receiver(kind)
         order = rc.order.get(str(report.get("event") or ""))
         names = _fields.NAMES if order is None else order
@@ -120,6 +122,8 @@ class Layout:
             if val is None or val == "":
                 continue                 # absent stays absent -- unknown is not 0
             f = _fields.BY_NAME[name]
+            if f.ended(report.get("part")):
+                continue
             out.append((f.card, f.said(val)))
         return out
 

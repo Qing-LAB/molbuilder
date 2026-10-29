@@ -568,6 +568,41 @@ SCF_CONVERGED_MARKER = "scf convergence by"
 SCF_NOT_CONV_MARKER = "scf_not_conv"
 SCF_NOT_CONVERGED_MARKER = "scf did not converge"
 
+
+class OutputPart(NamedTuple):
+    """A part of a SIESTA-family run that begins with a line of its own
+    (`execution/run-reports.md` § 2.8): its name, the line that begins it
+    (matched case-insensitively anywhere in the line), the words a reader
+    says it underway in, and what is true of its output while it runs --
+    ``None`` for a part that prints as it goes."""
+    name: str
+    begins: str
+    words: str
+    note: Optional[str]
+
+
+#: THE PARTS OF A RUN THAT BEGIN WITH A LINE OF THEIR OWN -- what the
+#: reading pass says the run is doing once one begins (`model/parse.md`
+#: § 2b, ``doing``), until the SCF's next row speaks again or the run ends.
+#: The SCF and a
+#: TranSIESTA device's set-up are read by their own rows (:func:`scf_row`,
+#: the ``ts:`` facts); a part here prints its opening line and, where its
+#: ``note`` says so, nothing a reader can count until it ends.  A part met
+#: in the field is a row added here, never a branch in a reader.
+PARTS: Tuple[OutputPart, ...] = (
+    # ``Src/optical.F``: every pair of an occupied and an empty band within
+    # the photon-energy window, one at a time (`transition_rate.F`); it
+    # prints its settings, then nothing until the spectrum is written.
+    OutputPart("optical", begins="optical: performing optical calculation",
+               words="SIESTA's optical calculation",
+               note="it prints nothing until it ends"),
+)
+
+
+def output_part(name: Optional[str]) -> Optional[OutputPart]:
+    """The row of :data:`PARTS` named ``name``, or ``None``."""
+    return next((p for p in PARTS if p.name == name), None)
+
 #: What each CAUSE means, in words a person reads -- a cause being the first
 #: fatal line's marker, or :data:`SCF_NOT_CONV_MARKER` when SIESTA made the
 #: SCF fatal (`_run_ending.RunEnding.cause`).  The viewer's "Reason:" line is

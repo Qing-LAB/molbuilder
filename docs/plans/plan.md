@@ -28,20 +28,18 @@ the queue and the handover to the day's end.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-28)*
 
-**Where we are: 2.47.12.** The releases are the changelog's rows; the
+**Where we are: 2.48.0.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
-day's last two: a structure lying along z opens side on, and a project's
-topics are its kinds' (2.47.11); a lead, a summary and a retired stage read
-from the kind table, a vibration writing no `.HSX`, and the monitor's line
-from the run's structure decided, not built (2.47.12). Since: the monitor's
-line built in the checkout, its release 2.48.0 under way (§ 1af); and
+day's last: the monitor says where the run is, read from its declared
+structure — the parts of an engine's output, the part each fact belongs to,
+a run of points' position, the clocks and the pace (2.48.0, § 1af); and
 `engines/vibration.md` § 2.2a, what the force a relaxed structure shows under
 the vibration's own settings does and does not change — measured on the
 user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
 it is, the user's ruling: "the user knows the information … don't do
 extra")*.
 
-**Last checked**: the fast batch on 2.47.12 (6,921 passed), the files its last revision touched after it (151 passed), its chapters rendered; the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
+**Last checked**: the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-28) — the user's to change.
 
@@ -160,7 +158,7 @@ After it, each a design brought to the user: the named set's share (D-e), the
 `electronic` kind (§ 5.10 ④), the measured intensity's factors as an option
 (M4-d) — § 1ac.
 
-## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user; its status line, `execution/run-reports.md` § 2.8, built for 2.48.0; its events next, contract first, a release of their own)*
+## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user; its status line, `execution/run-reports.md` § 2.8, built 2.48.0; its events next, contract first, a release of their own)*
 
 *(The user, 2026-10-26: "the report should report the progress and/or the
 periodic update, as the monitor is designed for. i am asking you to do a
@@ -203,26 +201,18 @@ reports as one run — which needs its run to keep the index a vibration's
 keeps, so the monitor can tell its first and last point (R-e's transport
 half, `engines/vibration.md` § 5.11 § 7a, handover (g) above).
 
-**The status line — built for 2.48.0, in the checkout, not yet released**
-*(the user, 2026-10-28, of a Raman call's periodic card that said `periodic
-SCF iteration 6 … elapsed 2h` two hours into SIESTA's optical calculation:
-"the monitor should be more context aware"; "more structure/parser framework
-driven, instead of explicit patch of code to handle individual cases")*:
-[`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.8, the line
-read from the run's declared structure — the parts of an engine's output
-(`siesta_grammar.PARTS`, read by the one reading pass), the part each fact
-belongs to (`report_fields`' `part`), a run of points' position
-(`vibration_phases.read_index`, `rows_of` — the one done rule, moved there
-from the record step — and `summary`, in the monitor's bundle), the run's and
-the call's clocks, the pace and what is left, and a run of points' wall
-warning by the projection above. Built and checked: the real CO₂ e2e
-(`test_an_optical_calls_monitor_says_where_its_run_is`, 174 s), broken three
-ways and seen to fail each time (the grammar's line, the reader's part rule,
-the monitor's pace); a member monitor's line read on a real Raman run of ours.
-**Left for the release**: § 2.8 folded into § 2's rules as built (§ 2.1b,
-§ 2.3, § 2.5, § 4.1a, § 4.1c), `model/parse.md` § 2b, `engines/vibration.md`
-§ 5.11 and § 6; the changelog row; the fast batch, the render check, two
-review rounds.
+**The status line — built 2.48.0** *(the user, 2026-10-28, of a Raman
+call's periodic card that said `periodic SCF iteration 6 … elapsed 2h` two
+hours into SIESTA's optical calculation: "the monitor should be more context
+aware"; "more structure/parser framework driven, instead of explicit patch of
+code to handle individual cases")*: [`execution/run-reports.md`](?doc=execution/run-reports.md)
+§ 2.8 — the rules and the changelog's row say what it does. Its two review
+rounds found, and the release fixed before it shipped: a finished call's line
+still saying its part underway; no status line when a part began; the card's
+grid showing the SCF's rate after the SCF had ended; the part's sentence
+composed twice; a retried call reading another attempt's index and
+restarting the run's clock; failed calls counted as left; the run's finish
+saying *the run 0s*.
 
 **Changed shape (R3a, 2026-10-28)**: the events are a release of their own,
 after 2.48.0, contract first — a milestone at a phase's end, a part that
@@ -435,7 +425,7 @@ then the agreed designs, then § 0a's steps 2–6. The queue it replaces
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **The monitor's line from the run's declared structure** — built in the checkout; its documents folded, reviewed and released as 2.48.0; then **§ 1af's events**, written into `execution/run-reports.md` § 2 first, a release of their own | § 1af | the user's live Raman run reported a finished SCF as running, and the user's go (2026-10-28) |
+| **1** | **§ 1af's events** — a milestone at a phase's end, a part that failed, `scf_converged` on geometry moves only, a transport run of points as one run — written into `execution/run-reports.md` § 2 first, a release of their own; the status line they stand on built 2.48.0 | § 1af | the user's live Raman run reported a finished SCF as running, and the user's go (2026-10-28) |
 | **2** | **The day's two viewer decisions** — MV-RETRACT, VV-CAMERA — contract first | § 2 | the user's decisions, small; the second is the defect 2.47.11 fixed in MolView |
 | **3** | **§ 1ak S2.4** — the rest of the branches, the label palette (the user's call on the page change), then S2's done-when: its review and the browser walk of S2.3's and S2.4's pages | § 1ak | the stage under way |
 | **4** | **§ 1ak S3, S4, S5** | § 1ak | the rest of the agreed programme |
@@ -496,7 +486,7 @@ can show**: the handover's.
 5. this section records the commits, the review and its outcome — and only
    then does the next step start.
 
-A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-28 on 2.47.12 (6,921 passed, none failed); the real-junction e2e and the SIESTA CO₂ vibration e2e ran 2026-10-27 on 2.47.1 (196 passed), the PySCF vibration e2e on 2.47.0; the e2e batch last ran whole 2026-10-16 (396, all passing).
+A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-28 on 2.48.0 (6,922 passed, none failed); the real-junction e2e and the SIESTA CO₂ vibration e2e ran 2026-10-27 on 2.47.1 (196 passed), the PySCF vibration e2e on 2.47.0; the e2e batch last ran whole 2026-10-16 (396, all passing).
 
 **The Q19 row** — the three passes, its phase 1 done and its later phases
 listed — stays here as step 3's detail:

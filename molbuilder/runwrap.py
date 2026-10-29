@@ -3985,6 +3985,9 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     # THE ATOMS A RUN HELD, 0-based through the one numbering door, which
     # the SIESTA reading pass states for every reader of it.
     "engine_atom_index.py": "molbuilder.engine_atom_index",
+    # A MEMBER'S RUN -- its index, read through its one reader and the one
+    # done rule (`siesta.vibration_phases`, `run-reports.md` § 2.8).
+    "vibration_phases.py": "molbuilder.siesta.vibration_phases",
 }
 
 

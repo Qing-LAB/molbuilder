@@ -205,6 +205,11 @@ class SiestaReader:
         #: The step SIESTA said it began last: ``(what a step is, its
         #: number)``, in its own words (`siesta_grammar.STEP_BEGIN`).
         self.step_begun: Optional[Tuple[str, int]] = None
+        #: THE PART OF THE RUN UNDERWAY (`execution/run-reports.md` § 2.8):
+        #: a row of `siesta_grammar.PARTS` once its opening line is read,
+        #: until the SCF's next row speaks or the run ends; ``None`` while
+        #: the SCF speaks, before anything does, and once the run has ended.
+        self.part: Optional[str] = None
         self._active: Optional[SectionRule] = None
         self._in_input_echo = False
         self._line_no = 0
@@ -392,6 +397,8 @@ class SiestaReader:
         # somehow did, the abort is the load-bearing fact.
         if self.run_state not in ("stopped", "out_of_memory"):
             self.run_state = "ended"
+        # NO PART IS UNDERWAY once the run has ended (§ 2.8).
+        self.part = None
         # The node's time of day at the end (naive: SIESTA states no zone).
         _G.read_launch_line(line, self.runtime_info)
 
@@ -670,6 +677,7 @@ class SiestaReader:
                        "SCF row missing 'energy' (E_KS) -- downstream plot "
                        "can't render this cycle")
             return
+        self.part = None
         # A NEW PHASE IS NOT A RESTART.  The periodic initialization's cycles
         # stay beside the NEGF loop's, and the new phase starts with its
         # convergence unanswered.
@@ -909,13 +917,26 @@ class SiestaReader:
         self.ts_info.setdefault("electrodes", {}).setdefault(
             lead, {})["gf_reused"] = True
 
+    def _part_begins(self, name: str):
+        """The handler of a `siesta_grammar.PARTS` row's opening line: the
+        part it names is underway."""
+        def _begin(line: str, line_no: int) -> None:
+            self.part = name
+        return _begin
+
     def _where_words(self) -> str:
         """WHERE THE RUN IS, in words -- the one precedence (`model/parse.md`
         § 2b, ``doing``): the row in flight's phase and iteration
         (`transiesta.scf_words`), else TranSIESTA's set-up as it stands
-        (`transiesta.setup_words`); ``""`` with neither.  Read by `now()`
-        for the monitor and by `finish()` for the ending, so the two say
-        the same words."""
+        (`transiesta.setup_words`); ``""`` with neither -- unless a part of
+        `siesta_grammar.PARTS` began after the SCF's last row: then that
+        part, in the table's words, and said so where it prints nothing
+        until it ends (`run-reports.md` § 2.8).  Read by `now()` for the
+        monitor and by `finish()` for the ending, so the two say the same
+        words."""
+        part = _G.output_part(self.part)
+        if part is not None:
+            return part.words + (f" -- {part.note}" if part.note else "")
         # THE ROW IN FLIGHT, by `now()`'s own rule: the current SCF's last
         # row, else the last committed step's -- so a step boundary keeps
         # its words.
@@ -1263,6 +1284,12 @@ class SiestaReader:
                             matches_regex_ci(_G.TBT_CURRENT.pattern),
                             matches_regex_ci(_G.TBT_POWER.pattern)),
                         on_start=self._on_tbt_current),
+            # THE PARTS THAT BEGIN WITH A LINE OF THEIR OWN, from the one
+            # table (`siesta_grammar.PARTS`, `run-reports.md` § 2.8).
+            *[SectionRule(name=f"part_{p.name}", aliases=[p.begins],
+                          start=contains_ci(p.begins),
+                          on_start=self._part_begins(p.name))
+              for p in _G.PARTS],
             SectionRule(name="run_start", aliases=[">> Start of run"],
                         start=matches_regex_ci(_G.RUN_START.pattern),
                         on_start=self._on_run_start),
@@ -1373,7 +1400,8 @@ class SiestaReader:
 
         ``{phase, cycle, energy, dDmax, dHmax, dq, residuals, step,
         step_kind, steps_done, max_force, max_force_all, stress_voigt_kbar,
-        forces_not_computed, criteria, targets, tbtrans, done_pct, eta_s}``,
+        forces_not_computed, criteria, targets, tbtrans, done_pct, eta_s,
+        doing, part, scf_converged}``,
         each present only when the
         output states it: the
         current SCF row's values (a NEGF row's charge among them), and as
@@ -1385,7 +1413,9 @@ class SiestaReader:
         computes no forces, the sentence in their place -- and what each
         must reach;
         TBtrans's account of its loop, a copy, and the pass underway's share
-        done and the time TBtrans says it has left.
+        done and the time TBtrans says it has left; where the run is, in
+        words, and a part of the output underway by name; the last SCF's
+        verdict.
         """
         out: Dict[str, Any] = {}
         cycle = (self._current_scf[-1] if self._current_scf else
@@ -1434,6 +1464,13 @@ class SiestaReader:
         where = self._where_words()
         if where:
             out["doing"] = where
+        # THE PART UNDERWAY, by name -- its sentence is ``doing`` -- and the
+        # last SCF's verdict: what the monitor says an ended SCF's facts by
+        # (`run-reports.md` § 2.8).
+        if _G.output_part(self.part) is not None:
+            out["part"] = self.part
+        if self.scf_converged is not None:
+            out["scf_converged"] = self.scf_converged
         return out
 
     def _forces_now(self) -> Dict[str, Any]:

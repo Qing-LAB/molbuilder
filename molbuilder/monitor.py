@@ -122,6 +122,7 @@ try:                                        # inside molbuilder
     from .parse.engines.siesta_reader import SiestaReader
     from .parse.engines.tbtrans import loop_words
     from .parse.instruments.scf_timing_rows import timing_of
+    from .siesta import vibration_phases as _vp
     from .trajectory_log import keys as _K
 except ImportError:                         # beside the job
     import _run_ending as _ending
@@ -135,6 +136,7 @@ except ImportError:                         # beside the job
     from siesta_reader import SiestaReader
     from tbtrans import loop_words
     from scf_timing_rows import timing_of
+    import vibration_phases as _vp
     import keys as _K
 
 
@@ -211,27 +213,79 @@ class JobStatus:
     #: whose record states no wall -- a run here.
     wall_s: Optional[float] = None
     wall_left_s: Optional[float] = None
+    #: THE PART OF THE RUN UNDERWAY (`run-reports.md` § 2.8), the reading
+    #: pass's: a row of the output's parts table by name -- ``doing`` its
+    #: sentence -- ``None`` while the SCF speaks and once the run has ended;
+    #: when this monitor first read it begin; and the last SCF's verdict,
+    #: which an ended SCF's facts are said with.
+    part: Optional[str] = None
+    part_since: Optional[float] = None
+    scf_converged: Optional[bool] = None
+    #: A MEMBER'S RUN (§ 2.8): the run's count in its own words
+    #: (`vibration_phases.summary`), this call's, and this call's clock --
+    #: ``elapsed_s`` being the run's.
+    run_words: Optional[str] = None
+    call_words: Optional[str] = None
+    call_elapsed_s: Optional[float] = None
+    #: THE PACE (§ 2.8): what a unit of the run's work is, in words -- an
+    #: engine's step, a run of points' call -- how many are finished and,
+    #: where the run states how many there are, left; the mean a finished
+    #: one took; and the time the left need at it.
+    unit_words: Optional[str] = None
+    units_done: Optional[int] = None
+    units_left: Optional[int] = None
+    unit_s: Optional[float] = None
+    left_at_pace_s: Optional[float] = None
 
     def as_text(self) -> str:
-        """The summary line every channel shows: the state, then where the
-        run is -- phase, iteration, energy, each residual against its
-        criterion, the force against its tolerance, the step, the rate,
-        TBtrans's loop -- and at the end how each phase converged and the
-        exit."""
+        """The summary line every channel shows, in the order of
+        `run-reports.md` § 2.8: the state; a member's run and call; the part
+        underway -- since when, for one that prints nothing until it ends;
+        the SCF's facts, as they stand or, once another part is underway,
+        as ended; the energy, the force and the step; TBtrans's loop; the
+        pace; at the end how each phase converged and the exit; the clocks;
+        the wall."""
+        span = _fields.span_words
         head = self.state + (f" ({self.detail})" if self.detail else "")
         bits = [head]
-        # WHERE THE RUN IS, in the reading pass's words (`model/parse.md`
-        # § 2b, ``doing``) -- not repeated when the head's detail, the run
-        # door's, already says them.
+        if self.run_words:
+            bits.append(f"the run: {self.run_words}")
+        if self.call_words:
+            bits.append(f"this call: {self.call_words}")
+        # WHERE THE RUN IS, in the reading pass's one sentence
+        # (`model/parse.md` § 2b, ``doing``) -- a part of the output's parts
+        # table with when this monitor saw it begin; not repeated when the
+        # head's detail, the run door's, already says it.
         if self.doing and not (self.detail and self.doing in self.detail):
-            bits.append(self.doing)
-        if self.n_iters:
+            bits.append(self.doing + (
+                "" if self.part is None or self.part_since is None else
+                " (since " + time.strftime(
+                    "%H:%M", time.localtime(self.part_since)) + ")"))
+        residuals = [f"{name} {value:.3g}{(' ' + unit) if unit else ''}"
+                     + (f" (tol {tol:g})" if tol is not None else "")
+                     for name, (value, tol, unit) in self.residuals.items()]
+        # A PART'S FACTS ENDED once another part is underway (§ 2.8), each
+        # field by its own declaration; the SCF's sentence -- its
+        # iterations, their time, its residuals -- by its iterations'.
+        ended = {f.name: f.ended(self.part) for f in _fields.FIELDS}
+        scf_ended = ended["n_iters"]
+        if scf_ended and (self.n_iters or residuals):
+            # AN SCF THAT HAS ENDED, said as ended (§ 2.8) -- its facts
+            # together, never its last row as the row in flight.
+            said = {True: "converged", False: "did not converge"}.get(
+                self.scf_converged, "ended")
+            took = (f" ({span(self.n_iters * self.per_iter_s)})"
+                    if self.n_iters and self.per_iter_s is not None else "")
+            bits.append(", ".join(
+                [f"its SCF {said}"
+                 + (f" in {self.n_iters} iterations{took}"
+                    if self.n_iters else "")] + residuals))
+        elif self.n_iters:
             bits.append(f"{self.n_iters} SCF rows")
         if self.energy is not None:
             bits.append(f"E {self.energy:.6f} eV")
-        for name, (value, tol, unit) in self.residuals.items():
-            bits.append(f"{name} {value:.3g}{(' ' + unit) if unit else ''}"
-                        + (f" (tol {tol:g})" if tol is not None else ""))
+        if not scf_ended:
+            bits += residuals
         if self.forces_not_computed:
             bits.append(self.forces_not_computed)
         elif self.max_force is not None:
@@ -243,11 +297,18 @@ class JobStatus:
                            else ""))
         if self.geom_step is not None:
             bits.append(f"{self.step_kind or 'step'} {self.geom_step}")
-        if self.per_iter_s is not None:
+        if self.per_iter_s is not None and not ended["per_iter_s"]:
             bits.append(f"{self.per_iter_s:.2f} s/iter")
         loop = loop_words(self.tbtrans, over=self.state not in LIVE_STATES)
         if loop:
             bits.append(loop)
+        if self.unit_s is not None and self.units_done:
+            bits.append(f"each {self.unit_words or 'step'} takes "
+                        f"{span(self.unit_s)} ({self.units_done} done)"
+                        + (f" -- the {self.units_left} left need about "
+                           f"{span(self.left_at_pace_s)} at that pace"
+                           if self.units_left and self.left_at_pace_s
+                           is not None else ""))
         if self.converged:
             bits.append("converged: " + ", ".join(
                 f"{ph} {'yes' if ok else 'no' if ok is False else '?'}"
@@ -257,11 +318,12 @@ class JobStatus:
                         else "geometry did not converge within its moves")
         if self.exit:
             bits.append(f"exit {self.exit.split(' at ')[0]}")
+        bits.append(f"the run {span(self.elapsed_s)}"
+                    + (f" · this call {span(self.call_elapsed_s)}"
+                       if self.call_elapsed_s is not None else ""))
         if self.wall_s is not None and self.wall_left_s is not None:
-            bits.append(f"wall {_fields.span_words(self.wall_s)}: "
-                        f"{_fields.span_words(max(0.0, self.wall_left_s))} "
-                        f"left")
-        bits.append(f"elapsed {_fields.span_words(self.elapsed_s)}")
+            bits.append(f"wall {span(self.wall_s)}: "
+                        f"{span(max(0.0, self.wall_left_s))} left")
         return " | ".join(bits)
 
 
@@ -365,6 +427,12 @@ class WatchedRun:
     launched_in: Optional[Path] = None
     #: Each live output, and the reader fed from it.
     _growth: Dict[Path, "_Growth"] = field(default_factory=dict)
+    #: The part of the run last read underway, and when this monitor first
+    #: read it (`run-reports.md` § 2.8).
+    _part_seen: Optional[Tuple[Optional[str], float]] = None
+    #: A member's run, read once per version of its index: ``(the index's
+    #: mtime, the index, its rows by the one done rule)``.
+    _run_cache: Optional[Tuple[int, Dict[str, Any], List[Dict[str, Any]]]] = None
 
     @property
     def label(self) -> str:
@@ -427,7 +495,79 @@ class WatchedRun:
             m = timing_of(timing)
             st.n_iters = m.get("rows") or st.n_iters
             st.per_iter_s = m.get("s_per_iter")
+        # WHEN THE PART UNDERWAY BEGAN, as this monitor first read it -- within
+        # one wake of its opening line (`run-reports.md` § 2.8).
+        if self._part_seen is None or self._part_seen[0] != st.part:
+            self._part_seen = (st.part, now_epoch)
+        if st.part is not None:
+            st.part_since = self._part_seen[1]
+        if self.launched_in is not None:
+            self._read_run(st, now_epoch)
         return st
+
+    def _read_run(self, st: JobStatus, now_epoch: float) -> None:
+        """A MEMBER'S RUN (`run-reports.md` § 2.8; `engines/vibration.md`
+        § 5.11 § 7a): its count and this call, in the run's own words, from
+        its index through the one reader and the one done rule
+        (`vibration_phases.read_index`, `rows_of`, `summary`); the run's
+        clock from its first call this run computed, this call's from this
+        monitor's start; and the pace of the phase underway's calls, once
+        one has finished.  An index that does not read -- being rewritten,
+        or none -- leaves the line without them.  The index is the run's
+        first attempt's, whichever attempt this call's run is -- a call
+        retried in place reads the run it belongs to."""
+        idx = _vp.index_path(self.launched_in, self.names, _rf.FIRST_ATTEMPT)
+        try:
+            version = idx.stat().st_mtime_ns
+        except OSError:
+            return
+        if self._run_cache is None or self._run_cache[0] != version:
+            try:
+                index = _vp.read_index(idx)
+                rows = _vp.rows_of(index, self.launched_in, self.label)
+            except (OSError, ValueError, KeyError, TypeError):
+                return
+            self._run_cache = (version, index, rows)
+        _version, index, rows = self._run_cache
+        try:
+            rel = Path(os.path.relpath(self.directory,
+                                       self.launched_in)).as_posix()
+        except ValueError:
+            rel = None
+        me = next((r for r in rows if r["rel"] == rel), None)
+        # THIS CALL IS RUNNING -- its monitor is its witness; the index
+        # says it pending until its record step writes its end.
+        st.run_words = _vp.summary(
+            [dict(r, state="running") if r is me and not r["ended"] else r
+             for r in rows], index.get("phases") or ())
+        if me is None:
+            return
+        st.call_words = me["words"]
+        st.call_elapsed_s = st.elapsed_s
+        clock = _run_clock(rows, now_epoch)
+        if clock is not None:
+            st.elapsed_s = clock
+        same = [r for r in rows if r["phase"] == me["phase"]]
+        if len(same) < 2:
+            return
+        # THE PACE, over the calls this run computed -- as its clock is --
+        # never one taken over from an earlier run's allocation.
+        took = []
+        for r in same:
+            if r["done"] and not r.get("started_from"):
+                a = _rr.stamp_time(r.get("started"))
+                b = _rr.stamp_time(r.get("ended_at"))
+                if a is not None and b is not None:
+                    took.append((b - a).total_seconds())
+        st.unit_words = f"{me['phase']} call"
+        st.units_done = sum(1 for r in same
+                            if r["done"] and not r.get("started_from"))
+        # LEFT: the calls not yet ended -- a call that ended without being
+        # done is not walked again (`engines/vibration.md` § 5.11 § 3).
+        st.units_left = sum(1 for r in same if not r["ended"])
+        if took:
+            st.unit_s = sum(took) / len(took)
+            st.left_at_pace_s = st.unit_s * st.units_left
 
     @staticmethod
     def _apply(st: JobStatus, state: Dict[str, Any]) -> None:
@@ -454,6 +594,8 @@ class WatchedRun:
                                  and every > st.max_force else None)
         st.tbtrans = state.get("tbtrans")
         st.doing = state.get("doing")
+        st.part = state.get("part")
+        st.scf_converged = state.get("scf_converged")
         st.done_pct = state.get("done_pct")
         st.eta_s = state.get("eta_s")
 
@@ -499,6 +641,18 @@ class WatchedRun:
             st.relaxed = ending.relaxed
         st.exit = rs.concluded
         return st
+
+
+def _run_clock(rows: List[Dict[str, Any]], now_epoch: float
+               ) -> Optional[float]:
+    """A RUN OF POINTS' CLOCK (`run-reports.md` § 2.8): since its first call
+    this run computed started -- a call taken over from an earlier run is
+    not this run's time; ``None`` before one has started."""
+    starts = [t for t in (_rr.stamp_time(r["started"]) for r in rows
+                          if r.get("started") and not r.get("started_from"))
+              if t is not None]
+    return (max(0.0, now_epoch - min(starts).timestamp()) if starts
+            else None)
 
 
 def _mtime(path: Path) -> float:
@@ -1831,6 +1985,9 @@ def make_webhook_notifier(url: str, *,
             # whole Discord body -- Discord ignores a bare `text`
             # (`run-reports.md` § 4.1b).
             "state":      status.state,
+            # THE PART UNDERWAY, which a field of an ended part is said by
+            # (`report_fields.ReportField.ended`, § 2.8).
+            "part":       status.part,
             # EVERY FIELD THE DECLARATION NAMES, by its own name -- which is
             # the status's attribute (`report_fields`, `stages.md` § 6.9).
             **{f.name: getattr(status, f.name) for f in _fields.FIELDS},
@@ -2000,6 +2157,10 @@ def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
         return curr.cycle is not None
     if curr.tbtrans != prev.tbtrans:
         return curr.tbtrans is not None
+    if curr.part != prev.part:
+        # A PART OF THE OUTPUT BEGAN -- its opening line read, the SCF's
+        # last row unchanged (`run-reports.md` § 2.8).
+        return curr.part is not None
     if curr.cycle is None and curr.doing != prev.doing:
         # TRANSIESTA'S SET-UP MOVED, before the first SCF row: a lead's
         # cell checked, its surface Green's function begun, sized, written
@@ -2138,6 +2299,7 @@ def run_monitor(watched: "WatchedRun", *,
     step_began = start
     longest_s: Optional[float] = None
     steps_timed = 0
+    step_times: List[float] = []
     wall_warned = warned_before
 
     def _count_down(st: JobStatus, now: float) -> None:
@@ -2220,6 +2382,19 @@ def run_monitor(watched: "WatchedRun", *,
             _util_tick(now)
         st = watched.read(start, now)
         _count_down(st, now)
+        # A STEP'S LENGTH, from one step finishing to the next (§ 2.2), and
+        # the pace of the run's steps where its index states no other unit
+        # of work (`run-reports.md` § 2.8).
+        if (st.steps_done is not None
+                and st.steps_done > (prev.steps_done or 0)):
+            took = now - step_began
+            step_times.append(took)
+            longest_s = took if longest_s is None else max(longest_s, took)
+            step_began, steps_timed = now, st.steps_done
+        if st.unit_s is None and step_times:
+            st.unit_words = st.step_kind or "step"
+            st.units_done = st.steps_done
+            st.unit_s = sum(step_times) / len(step_times)
 
         if not alive:
             # WHY IT STOPPED comes first: the closing record is evidence
@@ -2260,14 +2435,23 @@ def run_monitor(watched: "WatchedRun", *,
                 or st.state != prev.state):
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
 
-        # A STEP'S LENGTH, from one step finishing to the next (§ 2.2), and
-        # the one warning: the step underway may not finish before the wall.
-        if (st.steps_done is not None
-                and st.steps_done > (prev.steps_done or 0)):
-            took = now - step_began
-            longest_s = took if longest_s is None else max(longest_s, took)
-            step_began, steps_timed = now, st.steps_done
+        # THE ONE WARNING (§ 2.1b): a run of points whose units left need
+        # more than the wall leaves at the measured pace (§ 2.8, plan § 1af);
+        # else the step underway that may not finish before the wall.
         if (not wall_warned and st.wall_left_s is not None
+                and st.left_at_pace_s is not None and st.units_left
+                and st.wall_left_s < st.left_at_pace_s):
+            wall_warned = True
+            _append(log, f"[{_iso(now)}] [WALL] "
+                         f"{_fields.span_words(max(0.0, st.wall_left_s))} "
+                         f"left; {st.units_left} {st.unit_words}s left at "
+                         f"{_fields.span_words(st.unit_s)} each "
+                         f"({st.units_done} done) need about "
+                         f"{_fields.span_words(st.left_at_pace_s)} -- the "
+                         f"run may not finish before the wall")
+            _said(st, "wall_near", now)
+        elif (not wall_warned and st.wall_left_s is not None
+                and st.left_at_pace_s is None
                 and longest_s is not None and st.wall_left_s < longest_s):
             wall_warned = True
             steps = ("the one step so far" if steps_timed == 1 else
@@ -2650,6 +2834,19 @@ def _notify_main(argv) -> int:
     st = JobStatus(state=(a.state or ("running" if a.event == "start"
                                       else "finished")),
                    detail=a.detail)
+    if a.event == "finish":
+        # THE RUN'S CLOCK, from its index -- the finish is the run's, sent
+        # after its last call, whose record step has just written the
+        # index (§ 2.8).
+        try:
+            index = _vp.read_index(_vp.index_path(
+                watched.directory, watched.names, _rf.FIRST_ATTEMPT))
+            clock = _run_clock(_vp.rows_of(index, watched.directory,
+                                           watched.label), now)
+        except (OSError, ValueError, KeyError, TypeError):
+            clock = None
+        if clock is not None:
+            st.elapsed_s = clock
     _fire(st, a.event)
     watched.note(a.event, now)
     return 0

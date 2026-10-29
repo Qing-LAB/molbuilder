@@ -67,8 +67,7 @@ try:                                        # inside molbuilder
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
     from ..parse.engines.siesta_reader import SiestaReader
-    from ..parse.engines._run_ending import (ending_of, not_done_why,
-                                             verdict_of)
+    from ..parse.engines._run_ending import ending_of, verdict_of
     from ..parse.fdf import (GEOMETRY_KEYS, deck_atoms, fdf_key, read_deck,
                              read_fdf, system_label)
     from ..runfiles import compose
@@ -102,8 +101,8 @@ try:                                        # inside molbuilder
     from ..siesta.vibration_phases import (FC, IR_CHARGES, OPTICAL, RELAX,
                                            Call,
                                            add_call, calls_of, entry_of,
-                                           index_path, phase, products_of,
-                                           read_index, summary, write_index)
+                                           index_path, phase, read_index,
+                                           rows_of, summary, write_index)
     from .normal_modes import displaced, mode_over_atoms, q_for_largest_move
     from .selection import select_modes
 except ImportError:                         # beside a job, in mb_vibration.pyz
@@ -116,7 +115,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                            hessian_from_fc, read_fc, reference_frame_of)
     from siesta_reader import SiestaReader
     from _run_ending import (ending_of,  # type: ignore[no-redef]
-                             not_done_why, verdict_of)
+                             verdict_of)
     from fdf import (GEOMETRY_KEYS, deck_atoms,  # type: ignore[no-redef]
                      fdf_key, read_deck, read_fdf, system_label)
     from runfiles import compose
@@ -149,7 +148,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from vibration_phases import (FC, IR_CHARGES, OPTICAL,  # type: ignore[no-redef]
                                   RELAX, Call, add_call,
                                   calls_of, entry_of, index_path, phase,
-                                  products_of, read_index, summary,
+                                  read_index, rows_of, summary,
                                   write_index)
     from normal_modes import displaced, mode_over_atoms, q_for_largest_move
     from selection import select_modes
@@ -746,6 +745,12 @@ def plan_call(deck, phase_name: str) -> None:
     seed = (here.folder / compose(here.label, rule.seed[1])
             if rule.seed is not None else None)
     seeded = seed is not None and seed.is_file()
+    # A CALL RETRIED IN PLACE keeps its start: a warm retry runs the run
+    # script, and this step, again -- the call began with its first
+    # attempt, and the run's clock and pace count from it
+    # (`run-reports.md` § 2.8).
+    listed = entry_of(index, call) or {}
+    began = listed.get("started") if listed.get("ended") is None else None
     add_call(index, call,
              deck_sha256=sha256_of(here.deck),
              coordinates_sha256=sha256_of(coords),
@@ -754,7 +759,7 @@ def plan_call(deck, phase_name: str) -> None:
              seed_from=(f"{rule.seed[0]}, copied by the walk" if seeded
                         else f"its own warm files, from {continued}"
                         if continued is not None else None),
-             started=stamp())
+             started=began or stamp())
     write_index(here.index, index)
     _say("INFO", f"vibration: {call.words()} planned -- coordinates from "
                  f"{came_from}")
@@ -986,7 +991,8 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
     calls = [c for c in calls_of(index) if c.phase == OPTICAL]
     if not calls:
         return None
-    states = {r["name"]: r["state"] for r in _rows(here, index)
+    states = {r["name"]: r["state"]
+              for r in rows_of(index, here.run_dir, here.label)
               if r["phase"] == OPTICAL}
     atoms = res.atom_index_map_stated()
     run_rel = here.run_dir.relative_to(here.root).as_posix()
@@ -1086,9 +1092,10 @@ def _force_constants(here: _CallHere, index: dict
     ``None`` where the call left no output.  What the finish writes the
     result from and what each optical call's record is put in the user
     order by.  ``None`` where the force-constant call is not done by the
-    run's one done rule (:func:`_rows`) -- a call that failed leaves its
+    run's one done rule (`vibration_phases.rows_of`) -- a call that failed leaves its
     output and a partial `.FC`, and builds nothing (§ 5)."""
-    if not any(r["done"] for r in _rows(here, index) if r["phase"] == FC):
+    if not any(r["done"] for r in rows_of(index, here.run_dir, here.label)
+               if r["phase"] == FC):
         return None
     fc_out = _newest_output(here.run_dir / FC, here.names)
     if fc_out is None:
@@ -1103,47 +1110,12 @@ class _NothingToWrite(Exception):
     """The finish has no force constants to write a result from."""
 
 
-def _rows(here: _CallHere, index: dict) -> List[dict]:
-    """Each call the index lists, by the one done rule this machine's
-    done door asks (§ 5.11 § 6, § 7; `continuation.done`): done when it
-    ended with exit 0, its record step did not fail, its SCF converged
-    where its phase's verdict counts (`PhaseRule.verdict_counts`, the
-    verdict its record step read) and it holds its phase's products
-    (`products_of`) -- the last two said in the rule's own words
-    (`_run_ending.not_done_why`); each row with the call's words and the
-    run it was taken over from, where it was (`summary`)."""
-    rows = []
-    for row in index.get("calls") or []:
-        call = Call.from_dict(row)
-        ended = row.get("ended") is not None
-        said = row.get("verdict")
-        why = "; ".join(w for w in (
-            (f"exit {row.get('exit')}" if ended
-             and row.get("exit") not in (0, "0") else None),
-            row.get("record_error")) if w) or None
-        if ended and why is None:
-            why = not_done_why(
-                (said["of"], bool(said["converged"])) if said else None,
-                counts=phase(call.phase).verdict_counts,
-                missing=[name for name in products_of(
-                    here.names.stage, here.label, here.root, point=call)
-                    if not (here.run_dir / call.rel / name).is_file()])
-        ok = ended and why is None
-        rows.append({"phase": row["phase"], "name": row.get("name"),
-                     "words": call.words(), "done": ok, "ended": ended,
-                     "started_from": row.get("taken_from"),
-                     "state": ("finished" if ok else
-                               "failed" if ended else "pending"),
-                     "why": why})
-    return rows
-
-
 def _still_to_run(here: _CallHere, index: dict) -> List[dict]:
     """THE CALLS THE WALK MAY STILL RUN (§ 5.11 § 5): listed, not ended,
     and every phase each needs -- of those the run walks -- holding a call
     done (`PHASES`' ``needs``, the walk's).  A call whose need did not end
     done is not run, so the finish runs whatever ended without it."""
-    rows = _rows(here, index)
+    rows = rows_of(index, here.run_dir, here.label)
     walked = set(index.get("phases") or ())
     done = {r["phase"] for r in rows if r["done"]}
     return [r for r in rows if not r["ended"]
@@ -1152,10 +1124,10 @@ def _still_to_run(here: _CallHere, index: dict) -> List[dict]:
 
 
 def _run_state(here: _CallHere, index: dict) -> Tuple[str, str]:
-    """The run's state from its index, by the one done rule (:func:`_rows`):
+    """The run's state from its index, by the one done rule (`vibration_phases.rows_of`):
     finished when every call is done, else failed naming the first call not
     done by its words, and why where its record step said."""
-    rows = _rows(here, index)
+    rows = rows_of(index, here.run_dir, here.label)
     words = summary(rows, index.get("phases") or ())
     first = next((r for r in rows if not r["done"]), None)
     if first is None:
@@ -1223,7 +1195,7 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
     _say("INFO", f"vibration: {call.words()} ended, exit {exit_code}")
     # WHAT THE STEP ITSELF COULD NOT DO is the call's, in the index -- its
     # conclusion then reads failed, and the run's one done rule says so
-    # too (:func:`_rows`) -- and the step's failure, said after the finish
+    # too (`vibration_phases.rows_of`) -- and the step's failure, said after the finish
     # has had its turn: a record that cannot be written never keeps the
     # run from ending.
     failed = None
@@ -1237,7 +1209,7 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
 
     # WHAT IT SAYS IT CONVERGED, read from its output by the reader this
     # machine's status door reads it with (`_run_ending.verdict_of`) -- the
-    # one done rule's verdict (:func:`_rows`).
+    # one done rule's verdict (`vibration_phases.rows_of`).
     if output.is_file():
         try:
             said = verdict_of([ending_of(output)])
@@ -1261,7 +1233,8 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
             if got is None:
                 # NOT DONE by the one rule -- not converged, or no .FC --
                 # so nothing to analyse; the call's row says why (§ 5).
-                why = next(r["why"] for r in _rows(here, index)
+                why = next(r["why"] for r in rows_of(index, here.run_dir,
+                                                     here.label)
                            if r["phase"] == FC)
                 _say("INFO", f"vibration: {call.words()} is not done -- "
                              f"{why}: nothing to analyse")

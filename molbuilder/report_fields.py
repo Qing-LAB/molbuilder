@@ -37,6 +37,18 @@ class ReportField:
     engines: Tuple[str, ...] = ()
     #: The calculation kinds that have it; empty is every kind.
     calculations: Tuple[str, ...] = ()
+    #: WHICH PART OF THE RUN IT BELONGS TO (`run-reports.md` § 2.8):
+    #: ``"scf"`` for an SCF's own facts, said as ended once another part of
+    #: the run is underway (:meth:`ended`); ``"run"`` for the rest.
+    part: str = "run"
+
+    def ended(self, part_underway: Optional[str]) -> bool:
+        """Has the part this field belongs to ended?  -- another part of the
+        run underway, as the reading pass names it (``None`` while the SCF
+        speaks, and once the run has ended); a fact of the run as a whole
+        never ends."""
+        return (self.part != "run" and part_underway is not None
+                and part_underway != self.part)
 
     def applies(self, engine: Optional[str],
                 calculation: Optional[str]) -> bool:
@@ -61,9 +73,28 @@ class ReportField:
 #: framework reader `run-reports.md` § 2.3 names, and ``engines`` /
 #: ``calculations`` say which runs write what it reads.
 FIELDS: Tuple[ReportField, ...] = (
+    # THE RUN'S CLOCK -- a member of a run of points' too: the run's,
+    # from its first call (`run-reports.md` § 2.8).
     ReportField("elapsed_s", "How long it has been running", "elapsed",
                 span=True),
-    ReportField("n_iters", "SCF iterations", "SCF iters"),
+    # A MEMBER'S OWN CALL'S CLOCK -- a SIESTA vibration's calls are the one
+    # run of points that reports as one run (§ 2.4).
+    ReportField("call_elapsed_s", "How long this call has been running",
+                "this call", span=True, engines=("siesta",),
+                calculations=("vibration",)),
+    # THE PACE (§ 2.8): the run's units of work -- an engine's steps, or a
+    # run of points' calls -- finished, left where the run states how many
+    # there are, the mean a finished one took, and what the left need at it.
+    ReportField("units_done", "How many of its steps or calls are finished",
+                "finished", calculations=("optimization", "vibration")),
+    ReportField("units_left", "How many of its calls are left", "to go",
+                engines=("siesta",), calculations=("vibration",)),
+    ReportField("unit_s", "How long one step or call takes", "each took",
+                span=True, calculations=("optimization", "vibration")),
+    ReportField("left_at_pace_s", "How long the calls left need at that pace",
+                "at that pace", span=True, engines=("siesta",),
+                calculations=("vibration",)),
+    ReportField("n_iters", "SCF iterations", "SCF iters", part="scf"),
     ReportField("energy", "The last energy", "energy", " eV"),
     # The step the ENGINE began, in its own numbering: a relaxation's move, a
     # force-constant run's displacement.  A transport rung is a single point
@@ -82,7 +113,8 @@ FIELDS: Tuple[ReportField, ...] = (
     # Each engine's stamped SCF rows, timed by one rule (`run-reports.md`
     # § 2.3, `scf_timing_rows.timing_of`): the SIESTA wrapper's tee, a PySCF
     # deck's progress log.
-    ReportField("per_iter_s", "Seconds per SCF iteration", "per iter", " s"),
+    ReportField("per_iter_s", "Seconds per SCF iteration", "per iter", " s",
+                part="scf"),
     # THE ENGINE'S OWN ESTIMATE (`run-reports.md` § 4.1a): of the spin pass
     # underway, the share TBtrans says is done and the time it says is left,
     # read by the output's reading pass -- the transport calculation's

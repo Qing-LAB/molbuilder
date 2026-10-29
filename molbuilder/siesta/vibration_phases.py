@@ -2,7 +2,8 @@
 a point of the run, and the run's index (`engines/vibration.md` § 5.11).
 
 MODULE  siesta.vibration_phases (floor 1 + stdlib; travels in
-        ``mb_vibration.pyz``, `runwrap.VIBRATION_COMPANIONS`)
+        ``mb_vibration.pyz`` and ``mb_monitor.pyz``,
+        `runwrap.VIBRATION_COMPANIONS`, `runwrap.MONITOR_COMPANIONS`)
 ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         deck is, what turns it on, where its calls' coordinates and seed
         come from, what a call must hold to be done, which warm-files
@@ -13,11 +14,15 @@ ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         (``<label>_<stage>-run<N>.phases.json``, :func:`write_index` /
         :func:`read_index`) lists every call: what it is, from what, how it
         ended -- written by launch for the calls it opens and by the run's
-        own python for the rest, rewritten whole.  The kind's declaration
+        own python for the rest, rewritten whole; its rows by the one
+        done rule (:func:`rows_of`) and their count (:func:`summary`) are
+        what the run's python, its finish and a member monitor's line say
+        (`run-reports.md` § 2.8).  The kind's declaration
         as a rung of points is floor 4's, `jobset.vibration_points`, which
         asks this module's calls, their state and the run's count.
 USED-BY `jobset.prep`, `jobset.submit`, `jobset.vibration_points`,
-        `spectra.siesta_vibration`, `parse.sidecars.vibration_phases`
+        `spectra.siesta_vibration`, `parse.sidecars.vibration_phases`,
+        `monitor`
 """
 from __future__ import annotations
 
@@ -26,7 +31,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # TWO WAYS, because this module travels beside a job (`runwrap.
-# VIBRATION_COMPANIONS`), where the package is not installed.
+# VIBRATION_COMPANIONS`, `runwrap.MONITOR_COMPANIONS`), where the package
+# is not installed.
 try:                                       # inside molbuilder
     from ..persist import check_schema, json_text, read_json, write_bytes
     from ..runfiles import ROLE_PHASES, compose
@@ -280,6 +286,50 @@ def add_call(index: Dict[str, Any], call: Call, **facts) -> Dict[str, Any]:
 #  points asks them (`jobset.vibration_points`)                          #
 # --------------------------------------------------------------------- #
 
+def rows_of(index: Dict[str, Any], run_dir, label: str) -> List[Dict[str, Any]]:
+    """EACH CALL THE INDEX LISTS, BY THE ONE DONE RULE (§ 5.11 § 6, § 7;
+    `continuation.done` asks the same pieces): done when it ended with exit
+    0, its record step did not fail, its SCF converged where its phase's
+    verdict counts (`PhaseRule.verdict_counts`, the verdict its record step
+    read) and it holds its phase's products (:func:`products_of`) -- the
+    last two said in the rule's own words (`_run_ending.not_done_why`).
+    Each row carries the call's words, its start and end as the index
+    stamped them, and the run it was taken over from, where it was --
+    what :func:`summary` counts, the run's own record step asks (the walk
+    and the run's state) and a member monitor reads (`run-reports.md`
+    § 2.8).  ``run_dir`` is the run's folder, ``label`` the calculation's."""
+    try:                                   # inside molbuilder
+        from ..parse.engines._run_ending import not_done_why
+    except ImportError:                    # beside a job
+        from _run_ending import not_done_why  # type: ignore[no-redef]
+    rows = []
+    for row in index.get("calls") or []:
+        call = Call.from_dict(row)
+        ended = row.get("ended") is not None
+        said = row.get("verdict")
+        why = "; ".join(w for w in (
+            (f"exit {row.get('exit')}" if ended
+             and row.get("exit") not in (0, "0") else None),
+            row.get("record_error")) if w) or None
+        if ended and why is None:
+            why = not_done_why(
+                (said["of"], bool(said["converged"])) if said else None,
+                counts=phase(call.phase).verdict_counts,
+                missing=[name for name in products_of("", label, None,
+                                                      point=call)
+                         if not (Path(run_dir) / call.rel / name).is_file()])
+        ok = ended and why is None
+        rows.append({"phase": row["phase"], "name": row.get("name"),
+                     "rel": call.rel, "words": call.words(), "done": ok,
+                     "ended": ended, "started": row.get("started"),
+                     "ended_at": row.get("ended"),
+                     "started_from": row.get("taken_from"),
+                     "state": ("finished" if ok else
+                               "failed" if ended else "pending"),
+                     "why": why})
+    return rows
+
+
 def summary(rows, phases=()) -> str:
     """The count in the run's words: *relax done · fc done · optical 7 of
     11 (4 taken over)*; the optical phase with no call yet, where the run
@@ -381,4 +431,4 @@ def force_constants_call(run_dir) -> Path:
 __all__ = ["SCHEMA", "RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES",
            "phase", "phases_on", "IR_CHARGES", "Call", "index_path", "empty_index",
            "read_index", "write_index", "calls_of", "entry_of", "add_call",
-           "summary", "products_of", "force_constants_call"]
+           "rows_of", "summary", "products_of", "force_constants_call"]

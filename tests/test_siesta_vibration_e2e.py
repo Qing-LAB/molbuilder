@@ -538,6 +538,80 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
             "result") in said.output and "--cold" in said.output, said.output
 
 
+def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
+    """`execution/run-reports.md` § 2.8: the reading pass says SIESTA's
+    optical calculation underway from its opening line -- read by the
+    output's parts table -- until the run ends; a member monitor of an
+    optical call says its run's count and its own call from the run's
+    index, the pace of the phase's finished calls and the calls left, and
+    the run's clock from its first call beside the call's own.
+
+    THE SILENT FAILURE (the user's Raman run on Sol, 2026-10-28): two hours
+    into SIESTA's optical calculation the card said *periodic SCF iteration
+    6 … 5.43 s/iter … elapsed 2h* -- a converged SCF as the row in flight,
+    the call's clock unnamed as the run's, nothing of the 121 calls.  Only a
+    real optical call's output carries the part's opening line, and only a
+    real run's index its calls' starts and ends."""
+    import time
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.monitor import WatchedRun
+    from molbuilder.parse.engines.siesta_grammar import output_part
+    from molbuilder.parse.engines.siesta_reader import SiestaReader
+    from molbuilder.runfiles import FIRST_ATTEMPT, find
+    from molbuilder.siesta import vibration_phases as vp
+    from molbuilder.task import of as task_of
+    from molbuilder.runrecord import stamp_time
+    run = real_co2_vibration
+    task = task_of(run.bundle)
+    folder = run.attempt("freq", 0)
+    call = folder / "optical" / _OPTICAL_CALLS[1]
+    (out, _rf), = find(call, task.label, role=".out")
+    # THE READING PASS, fed the output as the monitor's wakes feed it: the
+    # SCF speaks until the part's opening line -- found by the grammar's
+    # own declaration -- the part from it, and no part once the run ends.
+    begins = output_part("optical").begins
+    lines = out.read_text(encoding="utf-8", errors="replace").split("\n")
+    at = next(i for i, ln in enumerate(lines) if begins in ln.lower())
+    reader = SiestaReader()
+    for ln in lines[:at]:
+        reader.feed(ln)
+    before = reader.now()
+    assert before.get("part") is None, before.get("part")
+    assert "SCF iteration" in (before.get("doing") or ""), before.get("doing")
+    reader.feed(lines[at])
+    during = reader.now()
+    assert during.get("part") == "optical", during.get("part")
+    assert during.get("doing") == ("SIESTA's optical calculation -- it "
+                                   "prints nothing until it ends"), during
+    for ln in lines[at + 1:]:
+        reader.feed(ln)
+    assert reader.now().get("part") is None, reader.now().get("part")
+    # THE MEMBER MONITOR, as the call's run script starts it -- the run's
+    # folder its `--launched-in` -- read once the call has ended.
+    names = stage_home(run.bundle, task, "freq").names(task.shape)
+    watched = WatchedRun(names=names, run=0, directory=call,
+                         launched_in=folder)
+    now = time.time()
+    st = watched.read(now - 1.0, now)
+    text = st.as_text()
+    n = len(_OPTICAL_CALLS)
+    assert st.run_words and f"optical {n} of {n}" in st.run_words, text
+    assert st.call_words and st.call_words.startswith(
+        f"mode {_PICKED_MODES[0]} "), text
+    assert "SIESTA's optical calculation" not in text, text
+    assert (st.units_done, st.units_left) == (n, 0), text
+    assert st.unit_s is not None and st.unit_s > 0, text
+    assert "each optical call takes " in text, text
+    assert st.call_elapsed_s is not None and "this call" in text, text
+    # THE RUN'S CLOCK, from its first call's start in its index.
+    rows = vp.rows_of(vp.read_index(vp.index_path(folder, names,
+                                                  FIRST_ATTEMPT)),
+                      folder, task.label)
+    first = min(stamp_time(r["started"]).timestamp() for r in rows
+                if r.get("started"))
+    assert abs(st.elapsed_s - (now - first)) < 1.0, (st.elapsed_s, now - first)
+
+
 def test_the_optical_calls_are_one_data_file_the_result_cites(
         real_co2_vibration):
     """THE RAMAN PHASE'S RECORD (`engines/vibration.md` § 5.11 § 8, § 6.2):

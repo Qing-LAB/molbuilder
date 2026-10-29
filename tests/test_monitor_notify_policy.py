@@ -173,6 +173,24 @@ def test_the_layout_lays_a_card_out_by_event_and_receiver(event, kind, labels):
     assert web["inline"] is True
 
 
+def test_a_part_that_has_ended_leaves_the_grid_for_the_line():
+    """`run-reports.md` § 2.8: a report sent while another part of the run
+    is underway -- SIESTA's optical calculation, after its SCF -- leaves
+    the SCF's own fields (those declared its part, `report_fields`) off
+    every receiver's grid; the summary line says them as ended.  THE
+    SILENT FAILURE: the user's Raman card, two hours into the optical
+    calculation, read *per iter 5.43 s · SCF iters 6* as if the SCF were
+    in flight."""
+    rec = {**_EVERY, "event": "periodic", "part": "optical"}
+    for kind in ("discord", "slack"):
+        got, _inline, _text = _wire_fields(kind, rec)
+        assert "SCF iters" not in got and "per iter" not in got, (kind, got)
+        assert {"elapsed", "energy", "max force", "step"} <= set(got), (kind,
+                                                                        got)
+    web = M.card(rec, receiver="web")
+    assert [f[0] for f in web["fields"]] == _wire_fields("discord", rec)[0]
+
+
 def test_the_layouts_limit_cuts_the_grid_and_the_web_has_none(tmp_path, monkeypatch):
     """§ 4.1c `limit`: a copy that lets Slack show two fields cuts the grid
     there; the web receiver, `0`, shows every field the run stated."""
@@ -196,8 +214,8 @@ def test_the_layouts_limit_cuts_the_grid_and_the_web_has_none(tmp_path, monkeypa
      "discord takes 25 fields at most"),
     (lambda d: d["receivers"].pop("web"), "no layout for the receiver 'web'"),
     (lambda d: d["receivers"]["web"]["order"].update(
-        scf_converged=["elapsed_s"], periodic=["elapsed_s"],
-        finish=["elapsed_s"], wall_near=["elapsed_s"]),
+        {event: [n for n in names if n not in ("n_iters", "energy")]
+         for event, names in d["receivers"]["web"]["order"].items()}),
      "shows n_iters, energy"),
     (lambda d: d["receivers"]["web"]["order"].update(stop=["energy"]),
      "stop: not an event"),

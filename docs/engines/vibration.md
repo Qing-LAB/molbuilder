@@ -2470,8 +2470,9 @@ row count is not $6\,N\,n_{\mathrm{free}}$, § 5.5); an
 optical call — finished, its SCF converged, its `.EPSIMG` beside it; and no call
 whose record step failed. **One rule on both sides**: this machine's done
 door (`continuation.done`, for `status` and launch's take-over) and the
-job's own record step (`siesta_vibration._rows`, for what the finish
-writes and the run's state it sends) ask the same pieces — whether the
+job's own record step (`vibration_phases.rows_of`, for what the finish
+writes and the run's state it sends, and for where a member monitor says
+its run is, [`run-reports.md`](?doc=execution/run-reports.md) § 2.8) ask the same pieces — whether the
 phase's verdict counts (`PhaseRule.verdict_counts`), the verdict read from
 the call's output by one reader (`_run_ending.verdict_of`; the record step
 writes it into the index), and the sentence for a finished call not done
@@ -2521,7 +2522,7 @@ points is read:
 | a call's output | the SIESTA output parser — the trajectory viewer for `relax`, the force-constant reader for `fc`'s `.FC`, the `.EPSIMG` reader (`parse/engines/siesta_epsimg.py`, registered — [`model/parse.md`](?doc=model/parse.md) § 5f) | as any run's output |
 | the run's state | **the run of points' rule** (`continuation.points_state`, `engines/transport.md` § 2a.11), its rows the index's calls and its words **one rule over the index, `vibration_phases.summary`** — it travels (stdlib), so the finish's `notify finish` and this machine's `status` count in the same words. *pending* for a call the index lists whose folder is not opened; *queued* while no call the run walks itself has run and its job is not over; *running* while a call runs, or the walk is between two (the job going, `joblist`), or every call has ended and the job still goes — its last call's record step, or the finish, at work; *finished* when every call is done **and** the finish's entry says exit 0 **and** the result is on disk; *failed* naming the first call not done, by its words and why where its record step said, or the finish — every call ended, the job gone, and no finish entry that ended with exit 0 in the index (the finish never ran, or was stopped inside it: its entry is written once it has ended) is *failed*, *the finish did not end*. The index lists `relax` and `fc` from launch, so the window before the first call reads *queued*, never *finished, 0 of 0*; the optical calls appear as the `fc` call's record step plans them, so the count says *optical 3 of 10* once they exist — *(4 taken over)* beside it where a warm launch took calls over — and *optical: after fc* before — only where the run walks the optical phase (the index's `phases`) | `status`, Task setup, the Results ladder, the walk's monitor line |
 | a call, in words and on the wire | the vibration's own point type, `vibration_phases.Call` — phase, name, mode, side; `rel`, `words`, `to_wire` — the shape `transport.stages.Point` has; the readers typed on it (`points_summary`, `run_folders`, `_sweep_status`, `stage_run_state`, `every_run`'s wire form, the ladder's run rows) ask the rung's row | *relax done · fc done · optical 7 of 11 (4 taken over)* |
-| the index `<label>_01_freq-run<N>.phases.json` | a row of `runfiles.WRITTEN` with its one reader (`vibration_phases.read_index`) and a registry parser, so the Results tab lists it as an aspect of the run | the phases the run walks (its job's row at launch); per call: its phase and folder; what it is (the relaxation; the force constants; frame 0, or mode $\nu$'s side at its frequency and $\delta Q$); its deck's sha256; its coordinates' sha256 and where they came from; its seed and where from; its start, end and exit; its verdict, as its output states it (`{"of": "SCF", "converged": …}`, § 6); its record step's failure, where it failed (the call then not done); computed here or taken over from run-N; the selection as asked and as applied; **the finish's entry** (started, ended, exit — written once the finish has ended). Written by launch (the calls it opens) and by the run's own Python (the plan step fills its call's entry, the `fc` call's record step adds the optical calls, each record step completes its call's, the finish adds its own) — rewritten whole, atomically |
+| the index `<label>_01_freq-run<N>.phases.json` | a row of `runfiles.WRITTEN` with its one reader (`vibration_phases.read_index`) and a registry parser, so the Results tab lists it as an aspect of the run | the phases the run walks (its job's row at launch); per call: its phase and folder; what it is (the relaxation; the force constants; frame 0, or mode $\nu$'s side at its frequency and $\delta Q$); its deck's sha256; its coordinates' sha256 and where they came from; its seed and where from; its start (its first attempt's: a warm retry in place runs the plan step again and keeps it), end and exit; its verdict, as its output states it (`{"of": "SCF", "converged": …}`, § 6); its record step's failure, where it failed (the call then not done); computed here or taken over from run-N; the selection as asked and as applied; **the finish's entry** (started, ended, exit — written once the finish has ended). Written by launch (the calls it opens) and by the run's own Python (the plan step fills its call's entry, the `fc` call's record step adds the optical calls, each record step completes its call's, the finish adds its own) — rewritten whole, atomically |
 | the run's notification record `notified.json`, at the run's root beside its launch record (`runrecord.notified_path`) | a row of `runfiles.WRITTEN`, the monitor's own (`run-reports.md` § 2.6), its parser registered (`parse/sidecars/notified.py`): every event sent for the run, when — written by `mb_monitor.pyz notify` and by a member monitor for every event it sends (`scf_converged`, `periodic`, `wall_near`); read by every member monitor for its N-hour clock and by the `notify` verb, which sends no second `start` | kind-blind; a transport run of points writes none — its points send their own events (§ 7a) |
 | the run folder `run-<n>/` | `runs.folder_answer`, of the one folder: a container answers no state and no record. **A run of points' root** is read as its run of points by the view floor 6 composes (`runstatus.points_view`, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.2): the run's state — its points' — its calls, the call at work and its record, and what the run opens: `.spectra.json` at the root once it is written, else the call at work's result; `run_answer` for a file at its root answers the run's, so a viewer of the result polls while the run goes | the Results tab follows the run |
 
@@ -2553,12 +2554,14 @@ which a point has none of, and keeps its own N-hour clock and
   § 3.6) — so every call's `MaxWalltime` counts what is left of the run's
   wall, and a run here is told its card's wall for the whole run, not per
   call;
-- **where the run is** *(decided 2026-10-28, not built)*: the run's
-  position and the call's own, from the run's index through its one
-  reader (`vibration_phases.summary`, `Call.words`); the run's clock and
-  the call's, each named; the pace of the phase underway's finished calls
-  and the calls left ([`run-reports.md`](?doc=execution/run-reports.md)
-  § 2.8);
+- **where the run is**: the run's count and the call's own, from the
+  run's index through its one reader and the one done rule
+  (`vibration_phases.read_index`, `rows_of`, `summary`), read again only
+  when the index changes; the run's clock — from its first call this run
+  computed — and the call's, each named; the pace of the phase underway's
+  finished calls and the calls left, and the wall warned of once when they
+  need more than it leaves ([`run-reports.md`](?doc=execution/run-reports.md)
+  § 2.1b, § 2.8);
 - **the events** — the run speaks as **one run**, never as 121 calls:
 
 | occasion | sent by | how |
