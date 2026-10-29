@@ -204,11 +204,16 @@ CITATION_CONDITION = (
     "-- its folder, launched by `jobset launch` so its run record says how "
     "it ended, its region labels in its deck's block -- or a structure pair "
     "that records the optimization it came from -- its .xyz, its "
-    ".molstruct.json carrying info.calculation, as the Results tab or "
-    "`molbuilder xv2xyz --from-run` saves a finished relaxation "
-    "(engines/transport.md 3.1).  Relax the junction through `molbuilder describe` "
-    "-> `prep task` -> `launch task`, then cite that run or the pair saved "
-    "from it")
+    ".molstruct.json carrying info.calculation: one geometry, as the "
+    "Results tab or `molbuilder xv2xyz --from-run` saves a finished "
+    "relaxation, or a frame set, the junction moved along one vibration "
+    "mode, as the Results tab's Write frame set saves it from a vibration's "
+    "result (engines/transport.md 3.1).  Relax the junction through "
+    "`molbuilder describe` -> `prep task` -> `launch task`, then cite that "
+    "run or the pair saved from it; to move it along a vibration, open the "
+    "vibration's result on the Results tab, select the mode, press Write "
+    "frame set and cite the .xyz it saves -- a vibration's own folder is "
+    "not cited")
 
 
 def classify_citation(cited: Path) -> "CitedRun | CitedPair":

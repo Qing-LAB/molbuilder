@@ -28,7 +28,7 @@ the queue and the handover to the day's end.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-28)*
 
-**Where we are: 2.49.2.** The releases are the changelog's rows; the
+**Where we are: 2.49.3.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
 day's last: a SIESTA vibration's infrared is the free atoms' — the system the
 person declared by what they freed — shown when the result opens, with no
@@ -36,7 +36,7 @@ choice of atoms anywhere, and the Spectrum page's one bar above the chart
 (light, charges, laser, width) applied by *Update* under the page busy fence
 (2.49.0, `web/spectra.md` § 2.1, § 3.2), with the page's controls never
 reused from an old copy and a chart lane's reason written across its panel
-(2.49.1); the monitor says where the run is,
+(2.49.1); a refused transport citation names the frame-set road — a vibration is cited through a mode's frame set, never its own folder (2.49.3, `engines/transport.md` § 3.1); the monitor says where the run is,
 read from its declared structure (2.48.0, § 1af); and
 `engines/vibration.md` § 2.2a, what the force a relaxed structure shows under
 the vibration's own settings does and does not change — measured on the

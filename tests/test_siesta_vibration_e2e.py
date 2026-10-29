@@ -619,6 +619,29 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     assert abs(st.elapsed_s - (now - first)) < 1.0, (st.elapsed_s, now - first)
 
 
+@pytest.mark.parametrize("cited", ["the stage's folder", "its run"])
+def test_a_vibration_cited_as_a_junction_names_its_frame_sets(
+        real_co2_vibration, cited):
+    """`engines/transport.md` § 3.1: a transport calculation takes a
+    vibration through one of its modes -- a frame set, written from its
+    result by the Results tab's *Write frame set* (`web/spectra.md` § 4.3)
+    -- never through the vibration's own folder, which the citation door
+    refuses; its refusal names that way.
+
+    THE SILENT FAILURE (the user, on Sol, 2026-10-28): the extension's
+    frame-set chooser, given a vibration's stage folder, refused it and named
+    one way only -- relax the junction -- a road away from the frames the
+    person asked for."""
+    from molbuilder.transport.compose import ComposeError, classify_citation
+    run = real_co2_vibration.attempt("freq", 0)
+    with pytest.raises(ComposeError) as got:
+        classify_citation(run.parent if cited == "the stage's folder"
+                          else run)
+    said = str(got.value)
+    assert "Write frame set" in said and "cite the .xyz it saves" in said, \
+        said
+
+
 def test_the_optical_calls_are_one_data_file_the_result_cites(
         real_co2_vibration):
     """THE RAMAN PHASE'S RECORD (`engines/vibration.md` § 5.11 § 8, § 6.2):
