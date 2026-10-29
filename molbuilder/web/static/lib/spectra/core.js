@@ -209,17 +209,15 @@
             // persists.
             animAmplitudeMode: "display",   // or "zero-point" / "thermal"
             animTemperature:   298,         // K
-            // WHAT IS ASKED OF A SIESTA RESULT'S CHARGES (web/spectra.md
-            // § 3.2): the atoms by a label of its structure -- none until the
-            // person names one -- the light's direction, the partition
+            // THE CHOICES THE BAR APPLIED (web/spectra.md § 2.1) -- what
+            // every load asks; a change in the bar is not one until Update.
+            // The infrared's (§ 3.2): the light's direction, the partition
             // (Hirshfeld, the user's default).
-            irAtoms:           "",
             irDirection:       "z",         // x, y, z, or "vector"
             irVector:          "0 0 1",     // its three numbers, when a vector
             irPartition:       "hirshfeld",
-            // WHAT IS ASKED OF A SIESTA RESULT'S OPTICAL CALLS
-            // (web/spectra.md § 3.3): the laser's wavelength in nm -- none
-            // until the person types one -- and the electronic broadening
+            // The Raman's (§ 3.3): the laser's wavelength in nm -- none
+            // until the person applies one -- and the electronic broadening
             // in eV, the run's own while empty.  Text, as the boxes hold it.
             ramanLaserNm:      "",
             ramanBroadenEv:    "",
@@ -230,7 +228,7 @@
             watchInFlight: false,
             watchAbort:    null,
             loadAbort:     null,
-            // The views asked again (`_refreshViews`), in flight.
+            // Update's ask of the views (`onViewUpdate`), in flight.
             viewsAbort:    null,
             // Consecutive transient-error counter.  After
             // WATCH_MAX_ERRORS in a row, transition to ERROR.
@@ -346,6 +344,9 @@
             (el, i) => put(el, vec[i]));
         put(els.ramanLaser,       u.ramanLaserNm);
         put(els.ramanBroaden,     u.ramanBroadenEv);
+        // THE BAR NOW SHOWS THE APPLIED CHOICES: nothing waits on Update.
+        _barError = null;
+        _renderBar(state.fileState.results);
         // The mode pairing owns more than its own value: it decides whether the
         // temperature box or the size slider is the one on screen.  Re-run the
         // handler init() runs, for the same reason init() runs it.
@@ -416,7 +417,6 @@
         if (sel) return [...sel.options].some(o => o.value === v);
         if (k === "animTemperature") return v >= 0;
         if (k === "irVector") return _vectorOf(v) !== null;
-        if (k === "irAtoms") return v === "" || _setOf(v) !== null;
         if (k === "ramanLaserNm" || k === "ramanBroadenEv")
             return v === "" || _positiveOf(v) !== null;
         return true;
@@ -471,7 +471,6 @@
         prefAlias("animSpeed");
         prefAlias("animAmplitudeMode");
         prefAlias("animTemperature");
-        prefAlias("irAtoms");
         prefAlias("irDirection");
         prefAlias("irVector");
         prefAlias("irPartition");
@@ -650,12 +649,11 @@
             // Each field is written when the payload carries it: the results
             // by `renderResults`, how the run is doing by the load and the
             // tick that fetched them.
-            // NEW RESULTS REPLACE THE ONES A VIEWS ASK WAS MADE OF: its
-            // answer is for those, so it goes (`_refreshViews`).
-            if (payload.results !== undefined) {
-                if (payload.results !== state.fileState.results) _abortViews();
+            // NEW RESULTS DO NOT STOP AN UPDATE: its answer is the views at
+            // the choices it commits, laid on the results then on screen
+            // (`onViewUpdate`).
+            if (payload.results !== undefined)
                 state.fileState.results = payload.results;
-            }
             if (payload.run !== undefined)
                 state.fileState.run = payload.run;
             return;
@@ -1121,10 +1119,11 @@
     // `_resolve_within_roots` (~ and $VARS expanded, symlinks followed), so
     // a server-echoed path would not equal the string the caller holds and
     // APPLY would drop every payload.  One string feeds both sides.
-    async function fetchResults(path, signal) {
+    async function fetchResults(path, signal, ask) {
         // WHAT THIS LOAD ASKS, remembered as it leaves -- what a restore of
-        // the knobs compares against (`_prefsRestore`).
-        const ask = _askOf();
+        // the knobs compares against (`_prefsRestore`): the applied
+        // choices, or those Update asks with (`onViewUpdate`).
+        ask = ask || _askOf();
         const sent = JSON.stringify(ask);
         _lastAsk = sent;
         const r = await fetch("/api/spectra/load", {
@@ -1132,9 +1131,9 @@
             headers: { "Content-Type": "application/json" },
             // THE TEMPERATURE RIDES WITH THE ASK: each mode comes back with
             // its thermal spread at it (web/spectra.md § 4.1).
-            // AND WHAT IS ASKED OF THE CHARGES, when the person named the
-            // atoms (web/spectra.md § 3.2): a result that cannot answer says
-            // why in `infrared_said` and loads all the same.
+            // AND THE BAR'S CHOICES (web/spectra.md § 2.1): a result that
+            // cannot answer says why in `infrared_said` or `raman_said` and
+            // loads all the same.
             body:    JSON.stringify(Object.assign({ path: path }, ask)),
             signal:  signal,
         });
@@ -1142,16 +1141,19 @@
     }
 
     /* WHAT EVERY LOAD ASKS beside the file: the temperature, the infrared
-     * and the Raman at a laser (web/spectra.md § 3.2, § 3.3, § 4.1). */
+     * and the Raman at a laser (web/spectra.md § 3.2, § 3.3, § 4.1) -- at
+     * the choices the bar applied, or at ``choices``, the bar's own, which
+     * Update asks with. */
     let _lastAsk = null;
-    function _askOf() {
+    function _askOf(choices) {
+        const c = choices || state.uiPrefs;
         // THE REFERENCE'S TEMPERATURE, where the frame-set dialog named one
         // for this file (web/spectra.md § 4.3); unnamed, the door takes the
         // run's own thermochemistry temperature.
         const ref = (_refTemp && _refTemp.path === state.fileState.path)
             ? { reference_temperature_k: _refTemp.t } : {};
         return Object.assign({ temperature_k: state.animTemperature },
-                             _infraredAsk(), _ramanAsk(), ref);
+                             _infraredAsk(c), _ramanAsk(c), ref);
     }
     let _refTemp = null;
 
@@ -1229,11 +1231,10 @@
         _askAgainIfChanged(asked);
     }
 
-    /* AN ANSWER TO AN OLDER ASK -- a load or a tick that left before the
-     * person changed a control the ask carries (the views, the
-     * temperature) -- is drawn, then the file is asked again with the
-     * controls as they are now, the way a tick asks it (web/spectra.md
-     * § 3.3, § 7). */
+    /* AN ANSWER TO AN OLDER ASK -- a load or a tick that left before Update
+     * applied a change, or before the temperature changed -- is drawn, then
+     * the file is asked again with the choices as they now are, the way a
+     * tick asks it (web/spectra.md § 2.1, § 7). */
     function _askAgainIfChanged(asked) {
         if (asked !== JSON.stringify(_askOf())) watchTick();
     }
@@ -1530,8 +1531,8 @@
     }
 
     /* A MODE'S INFRARED, ONE ACCESSOR (web/spectra.md § 3.2): the infrared
-     * the load door derived from a SIESTA result's charges for the atoms,
-     * direction and partition the person asked, where it answered one;
+     * the load door derived from a SIESTA result's free atoms' charges at
+     * the direction and partition the bar applied, where it answered one;
      * otherwise the strength the file states (PySCF's).  The page computes
      * neither. */
     function _irModeOf(m, r) {
@@ -1617,9 +1618,9 @@
                 .toPrecision(6);
         return String(Number(s));
     }
-    /* WHAT A RAMAN VIEW IS, in words -- the column and the summary
-     * (web/spectra.md § 3.3): the light's direction, the laser, the width;
-     * the static number names no laser, it does not depend on one. */
+    /* WHAT A RAMAN VIEW IS, in words (web/spectra.md § 3.3): the light's
+     * direction, the laser, the width; the static number names no laser,
+     * it does not depend on one. */
     function _ramanViewWords(view, laser = true) {
         return "light along " + _alongWords(view)
              + (laser ? ", " + view.laser_nm + " nm" : "")
@@ -1631,12 +1632,12 @@
             .concat(laser ? [view.laser_nm + "nm"] : [])
             .concat([_widthWords(view.broaden_ev) + "eV"]).join("_");
     }
-    /* THE LINE ASKING FOR THE LASER, said beside the boxes and in the
-     * chart's Raman lane (web/spectra.md § 3.3). */
+    /* THE LINE ASKING FOR THE LASER, said on the bar's line and in the
+     * chart's Raman lane (web/spectra.md § 2.1, § 3.3). */
     const RAMAN_PROMPT =
         "type the laser's wavelength \u2014 the strength depends on it";
-    /* WHAT A SIESTA RAMAN SHOWING NO VIEW SAYS, in one wording for the line
-     * beside the boxes and the chart's lane: the door's reason where it
+    /* WHAT A SIESTA RAMAN SHOWING NO VIEW SAYS, in one wording for the
+     * bar's line and the chart's lane: the door's reason where it
      * refused the ask, else the laser asked for; null where a view is
      * shown, or the Raman is not the optical calls'. */
     function _ramanWait(r) {
@@ -1645,41 +1646,27 @@
             ? { words: "not given: " + r.raman_said, kind: "warn" }
             : { words: RAMAN_PROMPT, kind: "muted" };
     }
-    /* WHAT EVERY LOAD ASKS OF THE RAMAN (web/spectra.md § 3.3): once a
-     * laser is typed, it and the width -- the run's own while the width's
-     * box is empty; nothing before, since no number is shown until the
-     * laser is named. */
-    function _ramanAsk() {
-        const nm = _positiveOf(state.ramanLaserNm);
+    /* WHAT EVERY LOAD ASKS OF THE RAMAN (web/spectra.md § 3.3), from the
+     * choices ``c``: once a laser is among them, it and the width -- the
+     * run's own while no width is; nothing before, since no number is shown
+     * until a laser is applied. */
+    function _ramanAsk(c) {
+        const nm = _positiveOf(c.ramanLaserNm);
         if (nm === null) return {};
         const ask = { laser_nm: nm };
-        const w = _positiveOf(state.ramanBroadenEv);
+        const w = _positiveOf(c.ramanBroadenEv);
         if (w !== null) ask.broaden_ev = w;
         return { raman: ask };
     }
     /* WHAT EVERY LOAD ASKS OF THE INFRARED (web/spectra.md § 3.2): the
-     * light's direction always -- a held engine's dipole change is read
-     * along it -- and, once a set is named, the set and the partition; the
-     * door answers what applies to the result. */
-    function _infraredAsk() {
-        const ask = { direction: state.irDirection === "vector"
-                          ? _vectorOf(state.irVector) : state.irDirection };
-        const set = _setOf(state.irAtoms);
-        if (set !== null) {
-            ask.atoms = set;
-            ask.partition = state.irPartition;
-        }
-        return { infrared: ask };
-    }
-    /* A named set as the select holds it -- its ask as JSON text -- or null
-     * for none, or for text that is no ask. */
-    function _setOf(text) {
-        if (!text) return null;
-        try {
-            const v = JSON.parse(text);
-            return (typeof v === "string" && v)
-                || (v && typeof v === "object" && v.set === "free") ? v : null;
-        } catch (_) { return null; }
+     * light's direction -- a held engine's dipole change is read along it
+     * -- and the partition of the free atoms' charges; the door answers
+     * what applies to the result. */
+    function _infraredAsk(c) {
+        return { infrared: {
+            direction: c.irDirection === "vector" ? _vectorOf(c.irVector)
+                                                  : c.irDirection,
+            partition: c.irPartition } };
     }
 
     /* The one sentence under the mode positions, saying why there are no
@@ -1694,18 +1681,19 @@
                  + "intensities were not requested in this run, so there are "
                  + "no heights.  Click a line to pick its mode.";
         }
-        // A STRENGTH WAITS FOR YOU: a SIESTA result's, derived when you ask
-        // -- its infrared from the run's charges for the atoms you name
+        // A STRENGTH WAITS FOR YOU: a SIESTA result's, derived when the
+        // page asks -- its infrared from the free atoms' charges
         // (web/spectra.md § 3.2), its Raman from the optical calls at the
-        // laser you type (§ 3.3).
+        // laser you apply (§ 3.3).
         if (_irFromCharges(r) || _ramanOptical(r) || _ramanNoneComputed(r)) {
             const irWords = !ir ? "no infrared was requested in this run"
                 : r.infrared_said
                     ? "the infrared asked of the run's charges could not "
-                      + "be given (why: above the modes table)"
-                    : "name the atoms above the modes table for their "
-                      + "infrared, from the run's charges";
-            // THE LINE BESIDE THE BOXES' WORDS (`_ramanWait`); a view
+                      + "be given (why: in the bar above the chart)"
+                : r.infrared_absent
+                    ? "the result states no charges (why: above the chart)"
+                    : "no real mode has an infrared strength";
+            // THE BAR'S LINE'S WORDS (`_ramanWait`); a view
             // shown with no number yet is a run whose picked modes have
             // not both sides done.
             const ramanWords = !raman ? "no Raman was requested in this run"
@@ -1713,7 +1701,7 @@
                     ? "no mode lay in the range Raman was asked for (the "
                       + "Methods paragraph says which)"
                 : _ramanWait(r)
-                    ? _ramanWait(r).words + " (above the modes table)"
+                    ? _ramanWait(r).words + " (in the bar above the chart)"
                     : "no picked mode has both of its sides done yet";
             return "Each line marks where a mode is -- "
                  + irWords + "; " + ramanWords
@@ -1730,9 +1718,8 @@
              + "log says why.";
     }
 
-    /* WHAT AN INFRARED VIEW IS, in the one wording every place names it by --
-     * the column headers, the run summary (web/spectra.md § 3.2): the atoms,
-     * the direction, the partition. */
+    /* WHAT AN INFRARED VIEW IS, in the run summary's words (web/spectra.md
+     * § 3.2): the atoms, the direction, the partition. */
     function _partitionName(p) {
         return String(p).charAt(0).toUpperCase() + String(p).slice(1);
     }
@@ -1749,12 +1736,97 @@
             ? "averaged over orientations"
             : "along " + _alongWords(view);
         // A stored dipole change is the whole system's, of no partition.
-        return view.atoms_label + ", " + how
+        return _irAtomsWords(view) + ", " + how
              + (view.source === "dipole" ? ""
                 : ", " + _partitionName(view.partition));
     }
+    /* The atoms a view is of, by name -- the free atoms with their count. */
+    function _irAtomsWords(view) {
+        return view.source === "dipole" ? view.atoms_label
+             : view.atoms_label + " (" + view.atoms.length + ")";
+    }
+    /* THE TABLE'S NOTES (web/spectra.md § 3): a marked column's note --
+     * the mark, the column's name, then what the number is, how it was
+     * computed and the view it was computed for, in the view's words.
+     * Built from nodes, a link among them. */
+    function _setNote(el, mark, name, parts) {
+        if (!el) return;
+        if (!parts) {
+            el.replaceChildren();
+            el.hidden = true;
+            return;
+        }
+        const head = document.createElement("strong");
+        head.textContent = name;
+        el.replaceChildren(mark + " ", head, ...parts.map(
+            p => (typeof p === "string" ? document.createTextNode(p) : p)));
+        el.hidden = false;
+    }
+    /* The light the infrared asks, in a note's words. */
+    function _irLightWords(view) {
+        return view.orientation === "free"
+            ? "light from every direction, as a tumbling molecule meets it,"
+            : "light polarized along " + _alongWords(view);
+    }
+    function _irNote(view) {
+        const along = view.orientation === "free"
+            ? ", averaged over directions" : " along the light's direction";
+        // A STORED DIPOLE CHANGE is every atom's, the held ones' included
+        // -- a view of one is a held result's (web/spectra.md § 3.2).
+        if (view.source === "dipole")
+            return [" — how strongly " + _irLightWords(view) + " is absorbed "
+                    + "by this vibration: the square of the change in the "
+                    + "whole system's dipole — every atom's, the held ones' "
+                    + "included —" + along + ", computed by PySCF. A "
+                    + "vibration that moves no dipole along the light is "
+                    + "dark for it."];
+        // THE FREE ATOMS ARE THE SYSTEM; the held ones, where there are
+        // any, are not in it.
+        const held = view.orientation === "free" ? ""
+            : "; the held atoms are not in it";
+        return [" — how strongly " + _irLightWords(view) + " is absorbed as "
+                + "this vibration moves " + _irAtomsWords(view) + ": the "
+                + "square of the change in the free atoms' dipole" + along
+                + ", that dipole made of each free atom's "
+                + _partitionName(view.partition) + " charge at every nudge "
+                + "of the force-constant run" + held + ". A vibration that "
+                + "moves no dipole along the light is dark for it."];
+    }
+    function _chargeNote(view) {
+        return [" — how much " + view.atoms_label
+                + "' total charge changes during this vibration, per unit of "
+                + "the mode's coordinate — positive where they lose "
+                + "electrons, negative where they gain them — from the same "
+                + _partitionName(view.partition) + " charges."];
+    }
+    function _ramanNote(view) {
+        return [" — how strongly this vibration scatters laser light of "
+                + view.laser_nm + " nm polarized along " + _alongWords(view)
+                + ": the square of how fast the cell's polarizability along "
+                + _alongWords(view) + " changes along the mode, from SIESTA's "
+                + "optical calculation at ±δQ, its spectrum smoothed to "
+                + _widthWords(view.broaden_ev) + " eV."];
+    }
+    function _ramanStaticNote(view) {
+        const link = document.createElement("a");
+        link.href = "/documents?doc=science/vibrational-optical-response.md";
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "the method, § 3.1";
+        return [" — the same at zero frequency, independent of any laser, the "
+                + "spectrum smoothed to " + _widthWords(view.broaden_ev)
+                + " eV; where the zero-frequency limit is defined, ", link,
+                "."];
+    }
+    /* The notes' block shows while one of its notes does. */
+    function _renderNotes() {
+        if (!els.modesNotes) return;
+        els.modesNotes.hidden = ![...els.modesNotes.children]
+            .some(note => !note.hidden);
+    }
+
     /* A SIESTA RESULT'S INFRARED is its charges' (web/spectra.md § 3.2):
-     * its route `charges`, derived on request for the atoms named. */
+     * its route `charges`, the free atoms', derived with every load. */
     function _irFromCharges(r) {
         return !!(r && (r.ir_route === "charges" || r.partial_charges));
     }
@@ -1767,23 +1839,19 @@
     /* The run summary's infrared line -- module scope, so a change of the
      * infrared view rewrites it without rebuilding the page. */
     function _irRouteLabel(r) {
-        // A SIESTA RESULT'S INFRARED is its charges', for the atoms the
-        // person names (web/spectra.md § 3.2, § 9b.3).
-        if (_irFromCharges(r)) {
-            if (r.infrared)
-                return "from the run's charges — " + _irViewWords(r.infrared);
-            return r.infrared_said
-                ? "from the run's charges — not given: " + r.infrared_said
-                : "from the run's charges — name the atoms above "
-                  + "the modes table";
-        }
+        // A SIESTA RESULT'S INFRARED is its free atoms' charges'
+        // (web/spectra.md § 3.2, § 9b.3).
+        if (_irFromCharges(r) && r.infrared)
+            return "from the run's charges — " + _irViewWords(r.infrared);
+        if (_irFromCharges(r) && r.infrared_said)
+            return "from the run's charges — not given: " + r.infrared_said;
         // A RUN THAT DID NOT ASK, by its own record, on either engine.
         if (r.phase_ir === "not requested") return "not requested";
         // A RESULT STATING NO CHARGES and no record of the phase: why is
-        // the door's, said once above the modes table (`infrared_absent`).
+        // the door's, said once in the bar's place (`infrared_absent`).
         if (r.infrared_absent) {
             return "none in this result — it states no charges (why: above "
-                 + "the modes table)";
+                 + "the chart)";
         }
         // A HELD MOLECULE'S COLUMN is its stored dipole change along the
         // light (web/spectra.md § 3.2): the summary says which view it is.
@@ -1844,26 +1912,12 @@
                 return "computed \u2014 " + r.raman_route;
         }
     }
-    /* THE INFRARED CONTROLS (web/spectra.md § 3.2): shown for a result that
-     * states its charges, the labels the door served as the atoms' choices,
-     * the door's reason when it could not answer, and the infrared column
-     * titled by what was asked. */
-    function _renderInfraredControls(results) {
-        // WHAT IS ASKED FOLLOWS WHERE THE INFRARED COMES FROM (web/spectra.md
-        // § 3.2): a result's charges -- the set, the direction, the
-        // partition; a held engine's dipole change -- the direction alone;
-        // a free molecule -- no direction at all.
-        const source = results && results.infrared_source;
-        const charges = source === "charges";
-        const free = _irFree(results);
-        const has = charges || (source === "dipole" && !free);
-        if (els.irControls) els.irControls.hidden = !has;
-        if (els.irAtomsRow) els.irAtomsRow.hidden = !charges;
-        if (els.irPartitionRow) els.irPartitionRow.hidden = !charges;
+    /* THE INFRARED'S COLUMNS (web/spectra.md § 3.2): titled short, the
+     * view in their notes under the table; and, for a SIESTA result that
+     * states no charges, the door's reason in the bar's place. */
+    function _renderInfraredColumns(results) {
+        const charges = !!(results && results.infrared_source === "charges");
         if (els.irExplain) els.irExplain.hidden = !charges;
-        if (els.irDirectionRow) els.irDirectionRow.hidden = free || !has;
-        if (els.irVector) els.irVector.hidden = free || !has
-            || state.irDirection !== "vector";
         // WHY A RESULT OF THIS ROUTE HAS NO CHARGES is the door's sentence
         // (`spectra.infrared.no_charges_reason`), shown where it says one.
         const absent = (results && results.infrared_absent) || "";
@@ -1871,152 +1925,196 @@
             els.irAbsent.textContent = absent;
             els.irAbsent.hidden = !absent;
         }
-        if (charges && els.irAtoms) {
-            // THE SETS, the door's: the built-in "the free atoms", then the
-            // structure's labels -- each option's value the ask it names.
-            const sets = results.infrared_sets || [];
-            const keep = [els.irAtoms.options[0]];
-            els.irAtoms.replaceChildren(...keep, ...sets.map(set => {
-                const o = document.createElement("option");
-                o.value = JSON.stringify(set.ask);
-                o.textContent = set.name;
-                return o;
-            }));
-            els.irAtoms.value = sets.some(
-                set => JSON.stringify(set.ask) === state.irAtoms)
-                ? state.irAtoms : "";
-        }
-        if (els.irStatus) setStatus(els.irStatus,
-            (results && results.infrared_said) || "",
-            results && results.infrared_said ? "warn" : "muted");
+        // A COLUMN NAMED SHORT, ITS VIEW IN ITS NOTE (web/spectra.md § 3).
         const view = results && results.infrared;
+        const moved = !!(view && view.source === "charges");
         if (els.irColHead) els.irColHead.textContent = view
-            ? "IR — " + _irViewWords(view) + " (km/mol)"
-            : "IR (km/mol)";
-        if (els.chargeColHead) els.chargeColHead.textContent =
-            (view && view.source === "charges")
-            ? "Charge moved — " + view.atoms_label + ", "
-              + _partitionName(view.partition) + " (e/(√amu·Å))"
-            : "Charge moved (e/(√amu·Å))";
+            ? "IR* (km/mol)" : "IR (km/mol)";
+        if (els.chargeColHead) els.chargeColHead.textContent = moved
+            ? "Charge moved† (e/(√amu·Å))" : "Charge moved (e/(√amu·Å))";
+        _setNote(els.noteIr, "*", "IR", view ? _irNote(view) : null);
+        _setNote(els.noteCharge, "†", "Charge moved",
+                 moved ? _chargeNote(view) : null);
+        _renderNotes();
     }
 
-    /* THE RAMAN CONTROLS (web/spectra.md § 3.3): a row of their own, shown
-     * for a result whose Raman is SIESTA's optical calls -- the laser and
-     * the width; on the line beside them the run's own width once the door
-     * has said it, the door's reason where it could not answer, and until a
-     * laser is typed the line asking for one; the Raman columns titled by
-     * what was asked. */
-    function _renderRamanControls(results) {
+    /* THE RAMAN'S COLUMNS (web/spectra.md § 3.3): the static strength
+     * beside the laser's where a view answered one, each titled by what it
+     * is, the view in its note. */
+    function _renderRamanColumns(results) {
         const optical = _ramanOptical(results);
-        if (els.ramanControls) els.ramanControls.hidden = !optical;
         const view = results && results.raman;
-        // THE STATIC STRENGTH stands beside the laser's where a view
-        // answered one -- set with the view, whenever it changes.
         if (els.modesTable) els.modesTable.classList.toggle(
             "route-no-raman-static", !view);
-        if (optical) {
-            const wait = _ramanWait(results);
-            setStatus(els.ramanStatus, wait ? wait.words
-                      : "the run's own broadening: "
-                        + _widthWords(view.run_broaden_ev) + " eV",
-                      wait ? wait.kind : "muted");
-        }
         // THE QUANTITY NAMED AS WHAT IT IS: SIESTA's strength at a laser,
         // PySCF's tumbling-molecule activity -- never one name for both.
         if (els.ramanColHead) els.ramanColHead.textContent = view
-            ? "Raman strength, " + _ramanViewWords(view) + " (Å⁴/amu)"
+            ? "Raman strength‡ (Å⁴/amu)"
             : optical ? "Raman strength (Å⁴/amu)" : "Raman activity (Å⁴/amu)";
         if (els.ramanStaticColHead) els.ramanStaticColHead.textContent = view
-            ? "Raman strength, static, " + _ramanViewWords(view, false)
-              + " (Å⁴/amu)"
+            ? "Raman strength, static§ (Å⁴/amu)"
             : "Raman strength, static (Å⁴/amu)";
+        _setNote(els.noteRaman, "‡", "Raman strength",
+                 view ? _ramanNote(view) : null);
+        _setNote(els.noteRamanStatic, "§", "Raman strength, static",
+                 view ? _ramanStaticNote(view) : null);
+        _renderNotes();
     }
 
-    function onRamanChange() {
-        const laser = els.ramanLaser ? els.ramanLaser.value.trim() : "";
-        const width = els.ramanBroaden ? els.ramanBroaden.value.trim() : "";
-        // A BOX HOLDS A POSITIVE NUMBER OR NOTHING -- the door's rule;
-        // typed otherwise, the line beside the boxes says so and nothing is
-        // asked.  What the browser could not read as a number reads as ""
-        // -- its `badInput` says it was not left empty.
+    /* THE BAR ABOVE THE CHART (web/spectra.md § 2.1): each choice shown
+     * where the result has it -- the light's direction where the infrared
+     * has one to ask (a held result's charges or stored dipole change), the
+     * partition where it is the charges', the laser and the width where the
+     * Raman is SIESTA's optical calls -- Update enabled while the bar
+     * differs from the choices applied, and one line saying what waits and
+     * what the door said. */
+    let _barError = null;
+    function _renderBar(results) {
+        const source = results && results.infrared_source;
+        const charges = source === "charges";
+        const free = _irFree(results);
+        const direction = (charges || source === "dipole") && !free;
+        const optical = !!results && _ramanOptical(results);
+        if (els.viewBar) els.viewBar.hidden = !(direction || charges || optical);
+        if (els.irDirectionRow) els.irDirectionRow.hidden = !direction;
+        if (els.irVector) els.irVector.hidden = !direction
+            || !els.irDirection || els.irDirection.value !== "vector";
+        if (els.irPartitionRow) els.irPartitionRow.hidden = !charges;
+        if (els.ramanControls) els.ramanControls.hidden = !optical;
+        const changed = _barChanged();
+        if (els.viewUpdate) els.viewUpdate.disabled = !changed;
+        if (!els.viewStatus) return;
+        // A REFUSED OR FAILED UPDATE is said first, the rest of the line
+        // after it -- the bar still reads *changed* (web/spectra.md § 2.1).
+        const parts = _barError ? [_barError] : [];
+        let kind = _barError ? "warn" : "muted";
+        if (changed) parts.push("changed — Update to show it");
+        if (results && results.infrared_said) {
+            parts.push("Infrared not given: " + results.infrared_said);
+            kind = "warn";
+        }
+        if (optical) {
+            const wait = _ramanWait(results);
+            parts.push("Raman: " + (wait ? wait.words
+                : "the run's own broadening: "
+                  + _widthWords(results.raman.run_broaden_ev) + " eV"));
+            if (wait && wait.kind === "warn") kind = "warn";
+        }
+        setStatus(els.viewStatus, parts.join(" · "), kind);
+    }
+
+    /* THE BAR'S CHOICES AS TYPED, in the applied choices' shape -- or
+     * ``error``, the door's rule a box breaks: a direction is three
+     * numbers, not all zero; a box holds a positive number or nothing.
+     * What the browser could not read as a number reads as "" -- its
+     * `badInput` says it was not left empty. */
+    function _barChoices() {
+        const value = (el, dflt) => (el ? el.value.trim() : dflt);
         const unread = el => !!(el && el.validity && el.validity.badInput);
-        if (unread(els.ramanLaser)
-            || (laser !== "" && _positiveOf(laser) === null)) {
-            setStatus(els.ramanStatus, "a wavelength is a positive number "
-                      + "of nm", "warn");
-            return;
-        }
-        if (unread(els.ramanBroaden)
-            || (width !== "" && _positiveOf(width) === null)) {
-            setStatus(els.ramanStatus, "a broadening is a positive number "
-                      + "of eV, the run's own or more", "warn");
-            return;
-        }
-        state.ramanLaserNm = laser;
-        state.ramanBroadenEv = width;
-        _refreshViews(els.ramanStatus);
-    }
-
-    function onInfraredChange() {
-        state.irAtoms = els.irAtoms ? els.irAtoms.value : "";
-        state.irDirection = els.irDirection ? els.irDirection.value : "z";
-        if (els.irVector) els.irVector.hidden =
-            _irFree(state.fileState.results) || state.irDirection !== "vector";
-        if (state.irDirection === "vector") {
-            // THE THREE NUMBERS AS TYPED, asked only when they are a
-            // direction; otherwise the line beside the controls says why.
+        const c = {
+            irDirection: value(els.irDirection, state.irDirection),
+            irVector: state.irVector,
+            irPartition: value(els.irPartition, state.irPartition),
+            ramanLaserNm: value(els.ramanLaser, ""),
+            ramanBroadenEv: value(els.ramanBroaden, ""),
+        };
+        if (c.irDirection === "vector") {
             const typed = [els.irVecX, els.irVecY, els.irVecZ]
                 .map(el => (el ? el.value : "")).join(" ");
-            if (_vectorOf(typed) === null) {
-                setStatus(els.irStatus, "a direction is three numbers, not "
-                          + "all zero", "warn");
-                return;
-            }
-            state.irVector = _vectorOf(typed).join(" ");
+            const vec = _vectorOf(typed);
+            if (vec === null)
+                return { error: "a direction is three numbers, not all zero" };
+            c.irVector = vec.join(" ");
         }
-        state.irPartition = els.irPartition ? els.irPartition.value
-                                            : "hirshfeld";
-        _refreshViews(els.irStatus);
+        if (unread(els.ramanLaser)
+            || (c.ramanLaserNm !== "" && _positiveOf(c.ramanLaserNm) === null))
+            return { error: "a wavelength is a positive number of nm" };
+        if (unread(els.ramanBroaden)
+            || (c.ramanBroadenEv !== ""
+                && _positiveOf(c.ramanBroadenEv) === null))
+            return { error: "a broadening is a positive number of eV, the "
+                            + "run's own or more" };
+        return c;
     }
 
-    /* THE VIEWS ASKED AGAIN (web/spectra.md § 3.2, § 3.3): the door answers
-     * with the new choices, and what it says of the infrared and the Raman
-     * replaces what the page holds -- the file has not changed, so the
-     * chart and the table are drawn again and nothing else.  The answer is
-     * taken only while the results it was asked of are still the page's: a
-     * load, or a watch tick that brought new ones, aborts it (`transition`).
-     * A failure is said on ``line``, the line beside the controls that
-     * asked. */
-    async function _refreshViews(line) {
-        const path = state.fileState.path, held = state.fileState.results;
-        if (!path || !held) return;
+    /* THE BAR DIFFERS FROM THE CHOICES APPLIED -- a box it cannot read
+     * included, so Update says why. */
+    function _barChanged() {
+        const c = _barChoices();
+        if (c.error) return true;
+        return Object.keys(c).some(k => c[k] !== state.uiPrefs[k]
+            && !(k === "irVector" && c.irDirection !== "vector"));
+    }
+
+    function onBarInput() {
+        _barError = null;
+        _renderBar(state.fileState.results);
+    }
+
+    /* UPDATE (web/spectra.md § 2.1): the load door asked with the bar's
+     * choices under the page busy fence, its Cancel aborting the ask.  The
+     * choices are committed when the answer lands, and what it says of the
+     * infrared and the Raman replaces what the page holds -- the file has
+     * not changed, so the chart, the table, the notes, the summary and the
+     * Methods paragraph are drawn again and nothing else.  A watch tick
+     * that brought new results meanwhile asked with the choices then
+     * applied; the next one asks with these. */
+    async function onViewUpdate() {
+        const choices = _barChoices();
+        if (choices.error) {
+            _barError = choices.error;
+            _renderBar(state.fileState.results);
+            return;
+        }
+        const path = state.fileState.path;
+        if (!path || !state.fileState.results) return;
+        _barError = null;
         _abortViews();
         const asked = new AbortController();
         state.lifecycle.viewsAbort = asked;
-        let body;
+        const ask = async () => {
+            let body;
+            try {
+                body = (await fetchResults(path, asked.signal,
+                                           _askOf(choices))).body;
+            } catch (exc) {
+                if (!asked.signal.aborted) {
+                    _barError = String((exc && exc.message) || exc);
+                    _renderBar(state.fileState.results);
+                }
+                return;
+            }
+            const held = state.fileState.results;
+            if (asked.signal.aborted || path !== state.fileState.path
+                || !held) return;
+            if (!body.ok || !body.results) {
+                _barError = body.error || "the load door answered no results";
+                _renderBar(held);
+                return;
+            }
+            Object.keys(choices).forEach(k => { state[k] = choices[k]; });
+            held.infrared = body.results.infrared || null;
+            held.infrared_said = body.results.infrared_said || null;
+            held.raman = body.results.raman || null;
+            held.raman_said = body.results.raman_said || null;
+            held.methods_text = body.results.methods_text || held.methods_text;
+            held.bibliography_keys = body.results.bibliography_keys
+                || held.bibliography_keys;
+            _renderInfraredColumns(held);
+            _renderRamanColumns(held);
+            _renderBar(held);
+            _renderStrengths(held);
+            _renderMethods(held);
+        };
+        const fence = root.molbuilder && root.molbuilder.pageBusy;
         try {
-            body = (await fetchResults(path, asked.signal)).body;
-        } catch (exc) {
-            if (!asked.signal.aborted)
-                setStatus(line, String((exc && exc.message) || exc), "warn");
-            return;
+            if (fence) await fence.run("Updating the spectrum…",
+                                       [() => asked.abort()], ask);
+            else await ask();
+        } finally {
+            if (state.lifecycle.viewsAbort === asked)
+                state.lifecycle.viewsAbort = null;
         }
-        if (asked.signal.aborted || held !== state.fileState.results) return;
-        state.lifecycle.viewsAbort = null;
-        if (!body.ok || !body.results) {
-            setStatus(line, body.error || "the load door answered no results",
-                      "warn");
-            return;
-        }
-        held.infrared = body.results.infrared || null;
-        held.infrared_said = body.results.infrared_said || null;
-        held.raman = body.results.raman || null;
-        held.raman_said = body.results.raman_said || null;
-        held.methods_text = body.results.methods_text || held.methods_text;
-        _renderInfraredControls(held);
-        _renderRamanControls(held);
-        _renderStrengths(held);
-        _renderMethods(held);
     }
 
     function _abortViews() {
@@ -2241,8 +2339,9 @@
         const haveModes = (results.modes || []).length > 0;
         if (els.spectrumSection) els.spectrumSection.hidden = !haveModes;
         _renderHeading(results);
-        _renderInfraredControls(results);
-        _renderRamanControls(results);
+        _renderInfraredColumns(results);
+        _renderRamanColumns(results);
+        _renderBar(results);
         if (els.modesTable) {
             // A COLUMN FOR EACH STRENGTH THE RUN ASKED FOR (web/spectra.md
             // § 9b.3), on either engine -- not one asked and none computed.
@@ -2682,15 +2781,16 @@
     // ----- The calculation's data files --------------------------
     /* THE CALCULATION'S DATA FILES, downloaded (web/spectra.md § 3.3;
      * engines/vibration.md § 5.11 § 10): its vibration data files as they
-     * are and, when a laser is typed, the Raman view at the boxes' laser and
-     * width -- composed by the server (`GET /api/spectra/export`), one zip;
+     * are and, when a laser is applied, the Raman view on screen -- at the
+     * laser and width the bar applied (§ 2.1) -- composed by the server (`GET /api/spectra/export`), one zip;
      * a refusal in its words beside the buttons, and what the export holds
      * without.  The table's own CSV, below, stays the rows on screen. */
     async function exportDataFiles(fmt) {
         const path = state.fileState.path;
         if (!path) return;
         const q = new URLSearchParams({ path: path, format: fmt });
-        const ask = _ramanOptical(state.results) ? _ramanAsk().raman : null;
+        const ask = _ramanOptical(state.results)
+            ? _ramanAsk(state.uiPrefs).raman : null;
         if (ask) {
             q.set("laser_nm", String(ask.laser_nm));
             if (ask.broaden_ev != null)
@@ -2721,10 +2821,10 @@
         const view = state.results.infrared;
         const hasCharge = !!state.results.partial_charges;
         const hasEs = _routeHas(state.results, "es_mode_selection");
-        // THE HEADER NAMES WHAT A VIEW IS (web/spectra.md § 3.2): the atoms,
-        // the direction and the partition the infrared was asked for.
-        const irHead = view ? "ir_km_mol_"
-                              + view.atoms_label.replace(/\s+/g, "_")
+        // THE HEADER NAMES WHAT A VIEW IS (web/spectra.md § 3.2): the
+        // direction and the partition the infrared was asked for -- the
+        // atoms always the free atoms', or a stored dipole's whole system.
+        const irHead = view ? "ir_km_mol"
                               + (view.orientation === "free" ? "_averaged"
                                  : "_along_" + _directionWords(view, "_"))
                               + (view.partition ? "_" + view.partition : "")
@@ -2743,9 +2843,7 @@
             .concat(ramanHeads)
             .concat(hasIr ? [irHead] : [])
             .concat(hasCharge ? [view
-                ? "charge_moved_e_per_amu12_ang_"
-                  + view.atoms_label.replace(/\s+/g, "_") + "_"
-                  + view.partition
+                ? "charge_moved_e_per_amu12_ang_" + view.partition
                 : "charge_moved_e_per_amu12_ang"] : [])
             .concat(["has_imag"])
             .concat(hasEs ? ["has_es"] : []);
@@ -4290,28 +4388,31 @@
         els.animExportStatus    = $("anim-export-status");
         els.framesetBtn         = $("frameset-btn");
         els.framesetStatus      = $("frameset-status");
-        els.irControls          = $("ir-controls");
-        els.irAtoms             = $("ir-atoms");
+        els.viewBar             = $("view-bar");
+        els.viewUpdate          = $("view-update");
+        els.viewStatus          = $("view-status");
         els.irDirection         = $("ir-direction");
         els.irVector            = $("ir-vector");
         els.irDirectionRow      = $("ir-direction-row");
-        els.irAtomsRow          = $("ir-atoms-row");
         els.irPartitionRow      = $("ir-partition-row");
         els.irExplain           = $("ir-explain");
         els.irVecX              = $("ir-vec-x");
         els.irVecY              = $("ir-vec-y");
         els.irVecZ              = $("ir-vec-z");
         els.irPartition         = $("ir-partition");
-        els.irStatus            = $("ir-status");
         els.irAbsent            = $("ir-absent");
         els.chargeColHead       = $("charge-col-head");
         els.irColHead           = $("ir-col-head");
         els.ramanControls       = $("raman-controls");
         els.ramanLaser          = $("raman-laser");
         els.ramanBroaden        = $("raman-broaden");
-        els.ramanStatus         = $("raman-status");
         els.ramanColHead        = $("raman-col-head");
         els.ramanStaticColHead  = $("raman-static-col-head");
+        els.modesNotes          = $("modes-notes");
+        els.noteIr              = $("note-ir");
+        els.noteCharge          = $("note-charge");
+        els.noteRaman           = $("note-raman");
+        els.noteRamanStatic     = $("note-raman-static");
         els.exportCsv           = $("spectra-export-csv");
         els.exportNetcdf        = $("spectra-export-netcdf");
         els.exportStatus        = $("spectra-export-status");
@@ -4401,14 +4502,13 @@
             _on(els.modesTbody,    "click", onTableRowClick);
             _on(els.modesFilter,   "input", onFilterInput);
             _on(els.modesCsvBtn,   "click", exportCSV);
-            _on(els.irAtoms,       "change", onInfraredChange);
-            _on(els.irDirection,   "change", onInfraredChange);
-            _on(els.irVecX,        "change", onInfraredChange);
-            _on(els.irVecY,        "change", onInfraredChange);
-            _on(els.irVecZ,        "change", onInfraredChange);
-            _on(els.irPartition,   "change", onInfraredChange);
-            _on(els.ramanLaser,    "change", onRamanChange);
-            _on(els.ramanBroaden,  "change", onRamanChange);
+            // THE BAR (web/spectra.md § 2.1): a change asks nothing --
+            // the line says it waits -- until Update.
+            for (const el of [els.irDirection, els.irVecX, els.irVecY,
+                              els.irVecZ, els.irPartition, els.ramanLaser,
+                              els.ramanBroaden])
+                _on(el, "input", onBarInput);
+            _on(els.viewUpdate,    "click", onViewUpdate);
             _on(els.exportCsv,     "click", () => exportDataFiles("csv"));
             _on(els.exportNetcdf,  "click", () => exportDataFiles("netcdf"));
         }

@@ -493,7 +493,7 @@ them, and failed on a non-`none` `display` without a `[hidden]` guard — until
 2026-09-10, when it was retired with the other tests that read source for where code
 lives (`082ba979`). So this is checked by hand, per sheet, as the list below says; the
 behaviour it protects is asserted where a page test reads the COMPUTED style (e.g.
-`test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibration_as_its_modes`, whose `.spectra-phase[hidden]` case is exactly this
+`test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared`, whose `.spectra-phase[hidden]` case is exactly this
 class).
 
 ### 3.2 Per-feature option-dependency traversal

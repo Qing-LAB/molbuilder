@@ -365,8 +365,8 @@ real rather than aspirational.
 ### 6.2 Heights only where strengths exist — decided by the data, not by a setting
 
 A run computes frequencies before it computes intensities, and some results
-carry none until a person asks for a view (SIESTA's, whose infrared and
-Raman are derived on request, [`engines/vibration.md`](?doc=engines/vibration.md)
+carry none until a view is derived from them (SIESTA's, whose infrared is
+derived at every load and whose Raman waits on a laser, [`engines/vibration.md`](?doc=engines/vibration.md)
 § 5.10 ②, § 5.11 § 10), so a result can arrive with some strengths or with none:
 
 ```

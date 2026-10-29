@@ -558,8 +558,8 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
                 f"the static field of the held ones; thermochemistry is "
                 f"vibrational-only.  With Compute IR on, every atom's "
                 f"Hirshfeld and Voronoi charge is recorded at every nudge, "
-                f"so the spectrum viewer gives the infrared of the atoms "
-                f"you name; with Compute Raman on, Raman comes from the "
+                f"so the spectrum viewer gives the free atoms' infrared; "
+                f"with Compute Raman on, Raman comes from the "
                 f"optical calls at the modes Raman for picks."),
             where="structure.regions"))
     # THE RELAXATION IS THE PERSON'S EXPLICIT CHOICE (`engines/vibration.md`

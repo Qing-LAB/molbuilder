@@ -1,26 +1,28 @@
-"""THE INFRARED OF A SET OF ATOMS, from a SIESTA force-constant run's charges
+"""THE INFRARED OF THE FREE ATOMS, from a SIESTA force-constant run's charges
 (`science/vibrational-optical-response.md` § 2; `engines/vibration.md`
 § 5.10 ②, § 6.6).
 
 MODULE  spectra.infrared (L2; numpy, the result and the structure)
 ROLE    :func:`infrared_view` -- the ONE derivation of what a person asks of
-        the charges a result states (``partial_charges``): for a set of
-        atoms, light polarized along a direction, a partition, per mode the
-        set's dipole change, its infrared strength along that direction and
-        the charge the mode moves into or out of the set;
-        :func:`labelled_atoms` -- a label of the result's structure as its
-        atoms, the one way both doors name the set, and :func:`labels_of`
-        the labels it may be named by; :func:`read_ask` -- the load door's
-        reading of what a person asks (atoms, direction, partition), by the
-        rules :func:`infrared_view` applies to a script's ask too;
-        :func:`no_charges_reason` -- why a result states no charges, in
-        its own facts
+        the charges a result states (``partial_charges``): for light
+        polarized along a direction and a partition, per mode the free
+        atoms' dipole change, its infrared strength along that direction and
+        the charge the mode moves into or out of the free atoms;
+        :func:`read_ask` -- the load door's reading of what a person asks
+        (direction, partition), by the rules :func:`infrared_view` applies
+        to a script's ask too; :func:`no_charges_reason` -- why a result
+        states no charges, in its own facts
 USED-BY the spectrum viewer's load door (`web/spectra.md` § 3.2) and a
         person's script (`molbuilder.postprocess.infrared_view`)
 
+**The free atoms are the system.**  The atoms the vibration moved are what
+the person declared to be calculated; the held atoms are not in the
+infrared, and no other set is offered (`web/spectra.md` § 3.2; the user,
+2026-10-28).
+
 **Nothing chosen is stored.**  The result holds every atom's charge at every
-force-constant step; the set, the direction and the partition are the
-person's, asked here and derived on request -- never written into the file
+force-constant step; the direction and the partition are the person's,
+asked here and derived on request -- never written into the file
 (`engines/vibration.md` § 6.6).
 
 **The direction is applied after the run.**  The field enters only through
@@ -30,8 +32,8 @@ product of it (§ 2.3 of the method).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from numbers import Integral, Real
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from numbers import Real
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -44,6 +46,9 @@ from .results import PARTITIONS, SpectraResults, mass_of
 #: The directions a person names by an axis.
 DIRECTIONS: Dict[str, Tuple[float, float, float]] = {
     "x": (1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0), "z": (0.0, 0.0, 1.0)}
+#: The light's direction a view is taken along when the person names none
+#: (the user, 2026-10-24: "default to z direction").
+DEFAULT_DIRECTION = "z"
 #: The partition a view is taken by when the person names none -- Hirshfeld,
 #: whose shares change smoothly as the atoms move (the method's § 1a).
 DEFAULT_PARTITION = "hirshfeld"
@@ -60,14 +65,14 @@ ORIENTATION_HELD = "held"
 ORIENTATION_FREE = "free"
 
 #: WHERE A RESULT'S INFRARED COMES FROM (:func:`source_of`): SIESTA's
-#: charges, for a set the person names; or the dipole change the engine
-#: stored whole (PySCF, `engines/vibration.md` § 4.6), the whole system's.
+#: charges, the free atoms'; or the dipole change the engine stored whole
+#: (PySCF, `engines/vibration.md` § 4.6), the whole system's.
 SOURCE_CHARGES = "charges"
 SOURCE_DIPOLE = "dipole"
-#: The built-in set (`web/spectra.md` § 3.2): everything the vibration moved.
-FREE_SET: Dict[str, str] = {"set": "free"}
-FREE_SET_NAME = "the free atoms"
-#: The set a stored dipole change is of.
+#: The atoms a charges view is of (`web/spectra.md` § 3.2): everything the
+#: vibration moved.
+FREE_ATOMS_NAME = "the free atoms"
+#: The atoms a stored dipole change is of.
 WHOLE_SYSTEM_NAME = "the whole system"
 
 
@@ -78,11 +83,11 @@ class InfraredError(ValueError):
 
 @dataclass(frozen=True)
 class InfraredMode:
-    """One mode's infrared, for the set and direction asked."""
+    """One mode's infrared, for the direction asked."""
     index_1based: int
     frequency_cm1: float
     has_imag: bool
-    #: the set's dipole change along the mode, a vector, in e/amu^½
+    #: the atoms' dipole change along the mode, a vector, in e/amu^½
     #: (e·Å per amu^½·Å)
     dmu_dq_e_per_amu12: Tuple[float, float, float]
     #: ``A(ê)`` -- the integrated absorption for a field along ê, km/mol
@@ -91,7 +96,8 @@ class InfraredMode:
     #: is at or below the infrared channel's band floor
     #: (`activity.CHANNEL_PRESENT_FLOOR_IR_KM_MOL`) -- no band to rank against
     relative: Optional[float]
-    #: the charge the mode moves into or out of the set, e per amu^½·Å --
+    #: the charge the mode moves into or out of the free atoms, e per
+    #: amu^½·Å --
     #: ``None`` for a stored dipole change, the whole system's, which
     #: exchanges charge with nothing
     charge_moved_e_per_amu12_ang: Optional[float]
@@ -99,8 +105,9 @@ class InfraredMode:
 
 @dataclass(frozen=True)
 class InfraredView:
-    """What :func:`infrared_view` answers: the set (its label and atoms by
-    user index), how the molecule meets the light (:func:`orientation_of`)
+    """What :func:`infrared_view` and :func:`dipole_view` answer: the atoms
+    it is of (their name and user indices), how the molecule meets the
+    light (:func:`orientation_of`)
     and, held, the direction, the partition, the step the derivatives were
     taken at, and every mode's infrared."""
     atoms_label: str
@@ -164,44 +171,6 @@ def source_of(result: SpectraResults) -> Optional[str]:
             m.ir_intensity_km_mol is not None for m in result.modes):
         return SOURCE_DIPOLE
     return None
-
-
-def sets_of(result: SpectraResults) -> List[Dict[str, Any]]:
-    """The sets the infrared of a charges result may be asked of, each as
-    the page shows it and as an ask names it: the built-in
-    :data:`FREE_SET`, then every label of the structure that holds atoms."""
-    return ([{"name": FREE_SET_NAME, "ask": dict(FREE_SET)}]
-            + [{"name": label, "ask": label} for label in labels_of(result)])
-
-
-def atoms_of(result: SpectraResults, atoms: Any) -> Tuple[List[int], str]:
-    """The set an ask names, by user index, and its name: the built-in
-    :data:`FREE_SET` -- the atoms the vibration moved -- or a label of the
-    result's structure."""
-    if atoms == FREE_SET:
-        return sorted(int(k) for k in result.free_atom_idxs), FREE_SET_NAME
-    if isinstance(atoms, str) and atoms:
-        return labelled_atoms(result, atoms), atoms
-    raise InfraredError(f"the set is a label of the result's structure or "
-                        f"{FREE_SET}, not {atoms!r}")
-
-
-def labels_of(result: SpectraResults) -> List[str]:
-    """The labels of the result's structure that hold atoms -- what a set
-    may be named by (`web/spectra.md` § 3.2)."""
-    regions = _structure_of(result).regions or {}
-    return sorted(k for k, v in regions.items() if v)
-
-
-def labelled_atoms(result: SpectraResults, label: str) -> List[int]:
-    """The atoms of ``label``, a label of the result's structure, by user
-    index -- refused naming the labels it holds."""
-    regions = _structure_of(result).regions or {}
-    if label not in regions or not regions[label]:
-        raise InfraredError(
-            f"the result's structure holds no label {label!r}; its labels "
-            f"are {labels_of(result) or 'none'}")
-    return sorted(int(i) for i in regions[label])
 
 
 def no_charges_reason(result: SpectraResults) -> str:
@@ -270,48 +239,42 @@ def _partition_named(partition: Any) -> str:
 
 
 #: The keys an ask may carry.
-ASK_KEYS = ("atoms", "direction", "partition")
+ASK_KEYS = ("direction", "partition")
 
 
 def read_ask(raw: Any) -> Dict[str, Any]:
     """WHAT A PERSON ASKS of a result's infrared, as the load door reads it:
-    ``{direction, atoms, partition}`` -- ``direction`` ``x``, ``y``, ``z``
-    or three numbers not all zero, always; ``atoms`` a label of the result's
-    structure or :data:`FREE_SET`, or ``None`` where no set is named (a
-    stored dipole change is the whole system's); ``partition`` one of
-    :data:`PARTITIONS`, :data:`DEFAULT_PARTITION` when unsaid -- by the
-    rules :func:`infrared_view` applies to every ask.  Refused by name when
-    it is not one -- another key, a value of another kind: a malformed ask,
-    which no result could answer (the load door's 400, `web/web-api.md`)."""
-    shape = (f"infrared is {{direction: x, y, z or three numbers, atoms: a "
-             f"label of the result's structure or {FREE_SET}, partition: "
-             f"{' or '.join(PARTITIONS)}}} -- not {raw!r}")
-    if not isinstance(raw, dict) or raw.get("direction") is None \
-            or any(k not in ASK_KEYS for k in raw):
-        raise InfraredError(shape)
-    atoms = raw.get("atoms")
-    if atoms is not None and atoms != FREE_SET and not (
-            isinstance(atoms, str) and atoms):
-        raise InfraredError(shape)
-    _unit(raw["direction"])
+    ``{direction, partition}`` -- ``direction`` ``x``, ``y``, ``z`` or three
+    numbers not all zero, :data:`DEFAULT_DIRECTION` when unsaid;
+    ``partition`` one of :data:`PARTITIONS`, :data:`DEFAULT_PARTITION` when
+    unsaid -- by the rules :func:`infrared_view` applies to every ask.
+    Refused by name when it is not one -- another key, a value of another
+    kind: a malformed ask, which no result could answer (the load door's
+    400, `web/web-api.md`)."""
+    if not isinstance(raw, dict) or any(k not in ASK_KEYS for k in raw):
+        raise InfraredError(f"infrared is {{direction: x, y, z or three "
+                            f"numbers, partition: {' or '.join(PARTITIONS)}}}"
+                            f" -- not {raw!r}")
+    direction = raw.get("direction")
+    direction = DEFAULT_DIRECTION if direction is None else direction
+    _unit(direction)
     partition = raw.get("partition")
-    return {"atoms": (dict(atoms) if isinstance(atoms, dict) else atoms),
-            "direction": raw["direction"],
+    return {"direction": direction,
             "partition": _partition_named(
                 DEFAULT_PARTITION if partition is None else partition)}
 
 
-def infrared_view(result: SpectraResults, *, atoms: Sequence[int],
-                  direction: Union[str, Sequence[float]],
-                  partition: str = DEFAULT_PARTITION,
-                  atoms_label: str = "") -> InfraredView:
-    """THE INFRARED OF THE SET ``atoms`` (user indices) for light whose
-    field points along ``direction`` (``x``, ``y``, ``z`` or a vector), the
-    charges by ``partition`` -- from the result's ``partial_charges``, as
-    `science/vibrational-optical-response.md` § 2 states it:
+def infrared_view(result: SpectraResults, *,
+                  direction: Union[str, Sequence[float]] = DEFAULT_DIRECTION,
+                  partition: str = DEFAULT_PARTITION) -> InfraredView:
+    """THE INFRARED OF THE FREE ATOMS -- the atoms the vibration moved --
+    for light whose field points along ``direction`` (``x``, ``y``, ``z`` or
+    a vector), the charges by ``partition`` -- from the result's
+    ``partial_charges``, as `science/vibrational-optical-response.md` § 2
+    states it:
 
-    * the set's charge and dipole at every force-constant step, the dipole
-      about the set's own centre of mass at equilibrium -- the masses the
+    * the free atoms' charge and dipole at every force-constant step, the
+      dipole about their own centre of mass at equilibrium -- the masses the
       result states -- and at that step's positions --
       the reference geometry with the step's atom moved by its side times
       the step;
@@ -328,8 +291,7 @@ def infrared_view(result: SpectraResults, *, atoms: Sequence[int],
       goes by (`engines/vibration.md` § 6.6).
 
     Refused, by name: a result that states no charges, a partition it does
-    not state, an empty set or an atom it does not hold, a direction that
-    is no direction."""
+    not state, a direction that is no direction."""
     pc = result.partial_charges
     if pc is None:
         raise InfraredError(f"the result states no charges: "
@@ -337,30 +299,23 @@ def infrared_view(result: SpectraResults, *, atoms: Sequence[int],
     if _partition_named(partition) not in pc["charges_e"]:
         raise InfraredError(f"the result states {sorted(pc['charges_e'])} "
                             f"charges, not {partition!r}")
-    n = int(result.n_atoms_total)
-    if isinstance(atoms, (str, bytes)) or not all(
-            isinstance(a, Integral) and not isinstance(a, bool)
-            for a in atoms):
-        raise InfraredError(f"the set is one or more of the result's {n} "
-                            f"atoms, by user index -- not {atoms!r}")
-    chosen = sorted({int(a) for a in atoms})
-    if not chosen or any(not 0 <= a < n for a in chosen):
-        raise InfraredError(f"the set is one or more of the result's {n} "
-                            f"atoms, by user index -- not {list(atoms)}")
+    # THE FREE ATOMS in the result's own order -- the canonical pattern's
+    # rows follow it.
+    free = [int(k) for k in result.free_atom_idxs]
     e, name = _unit(direction)
     e = np.asarray(e, dtype=float)
 
     structure = _structure_of(result)
     positions = np.asarray(structure.positions, dtype=float)
     q = np.asarray(pc["charges_e"][partition], dtype=float)
-    # THE CENTRE OF MASS of the set at equilibrium, a fixed point: where a
-    # mode moves charge into or out of the set, the dipole change depends on
-    # it (the method's § 2.1; the user, 2026-10-24: "center should be mass
-    # center").
+    # THE CENTRE OF MASS of the free atoms at equilibrium, a fixed point:
+    # where a mode moves charge into or out of them, the dipole change
+    # depends on it (the method's § 2.1; the user, 2026-10-24: "center
+    # should be mass center").
     masses = np.array([mass_of(a, structure.elements,
                                result.equilibrium_masses_amu)
-                       for a in chosen])
-    centre = (masses[:, None] * positions[chosen]).sum(axis=0) / masses.sum()
+                       for a in free])
+    centre = (masses[:, None] * positions[free]).sum(axis=0) / masses.sum()
     delta = float(pc["displacement_ang"])
     steps = pc["steps"]
 
@@ -369,8 +324,8 @@ def infrared_view(result: SpectraResults, *, atoms: Sequence[int],
         s = steps[i]
         if s["atom"] is not None:
             p[s["atom"], "xyz".index(s["axis"])] += s["side"] * delta
-        qs = q[i, chosen]
-        return ((p[chosen] - centre) * qs[:, None]).sum(axis=0), float(qs.sum())
+        qs = q[i, free]
+        return ((p[free] - centre) * qs[:, None]).sum(axis=0), float(qs.sum())
 
     # THE DERIVATIVES PER ATOM AND AXIS -- steps come in -/+ pairs
     # (`results.FC_STEP_PATTERN`, checked when the result was built).
@@ -382,7 +337,6 @@ def infrared_view(result: SpectraResults, *, atoms: Sequence[int],
         dmu_dR[key] = (mu_p - mu_m) / (2.0 * delta)
         dQ_dR[key] = (Q_p - Q_m) / (2.0 * delta)
 
-    free = [int(k) for k in result.free_atom_idxs]
     orientation = orientation_of(result)
     rows = []
     for m in result.modes:
@@ -395,7 +349,8 @@ def infrared_view(result: SpectraResults, *, atoms: Sequence[int],
         rows.append((m, dmu, _strength(orientation, e, dmu * DEBYE_E_ANGSTROM),
                      float(dQ)))
     held = orientation == ORIENTATION_HELD
-    return InfraredView(atoms_label=str(atoms_label), atoms=tuple(chosen),
+    return InfraredView(atoms_label=FREE_ATOMS_NAME,
+                        atoms=tuple(sorted(free)),
                         source=SOURCE_CHARGES, orientation=orientation,
                         direction=(tuple(float(x) for x in e) if held
                                    else None),
@@ -471,12 +426,10 @@ def dipole_view(result: SpectraResults, *,
                         modes=_modes_of(rows))
 
 
-__all__ = ["ASK_KEYS", "CHARGES_KEPT_SINCE", "DEFAULT_PARTITION", "DIRECTIONS",
-           "FREE_SET", "FREE_SET_NAME", "ORIENTATION_FREE", "ORIENTATION_HELD",
-           "SOURCE_CHARGES", "SOURCE_DIPOLE", "WHOLE_SYSTEM_NAME", "atoms_of",
-           "dipole_absent_reason", "dipole_view", "direction_name",
-           "orientation_of", "sets_of",
-           "source_of",
-"InfraredError", "InfraredMode",
-           "InfraredView", "infrared_view", "labelled_atoms", "labels_of",
-           "no_charges_reason", "read_ask"]
+__all__ = ["ASK_KEYS", "CHARGES_KEPT_SINCE", "DEFAULT_DIRECTION",
+           "DEFAULT_PARTITION", "DIRECTIONS", "FREE_ATOMS_NAME",
+           "ORIENTATION_FREE", "ORIENTATION_HELD", "SOURCE_CHARGES",
+           "SOURCE_DIPOLE", "WHOLE_SYSTEM_NAME", "InfraredError",
+           "InfraredMode", "InfraredView", "dipole_absent_reason",
+           "dipole_view", "direction_name", "infrared_view",
+           "no_charges_reason", "orientation_of", "read_ask", "source_of"]

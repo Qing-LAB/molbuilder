@@ -68,7 +68,7 @@
         <h2>Results</h2>
         {#- THE CALCULATION'S DATA FILES (docs/web/spectra.md § 3.3): the
             vibration data files as they are, and the Raman view at the
-            laser typed -- composed by the server, one zip; a refusal in its
+            laser applied -- composed by the server, one zip; a refusal in its
             words beside the buttons. -#}
         <div id="spectra-export" class="spectra-inline-row">
           <span>Export the data files:</span>
@@ -97,13 +97,69 @@
       </details>
 
       {#- THE SPECTRUM, OR THE MODE POSITIONS (web/spectra.md § 2, § 9b.3):
-          with no strength computed -- a SIESTA result until its infrared is
-          asked of the atoms the person names -- the chart draws
+          with no strength computed -- a SIESTA result with no infrared view
+          while no laser is applied for its Raman -- the chart draws
           one line at each mode (spectrumchart.md § 6.2), the heading says
           "Mode positions", the controls below go (no height for a width or
           a floor to act on), and #spectrum-absent says why. -#}
       <div id="spectrum-section" hidden>
       <h3 id="spectrum-heading" class="subsection-h">Spectrum</h3>
+      {#- THE BAR (docs/web/spectra.md § 2.1): what the strengths are
+          computed with -- the infrared's light and charges (§ 3.2), the
+          Raman's laser and width (§ 3.3) -- each shown where the result
+          has the choice.  A change asks nothing until Update, which asks
+          the load door under the page busy fence; the page computes
+          nothing. -#}
+      <div id="view-bar" class="view-bar" hidden>
+        <div class="view-bar-controls">
+          {#- No direction for a free molecule: nothing held, its strength
+              is the orientation average (web/spectra.md § 3.2). -#}
+          <label class="inline-label" id="ir-direction-row"><span>Light along</span>
+            <select id="ir-direction">
+              <option value="x">x</option>
+              <option value="y">y</option>
+              <option value="z" selected>z</option>
+              <option value="vector">a vector…</option>
+            </select>
+          </label>
+          {#- THE FIELD'S DIRECTION AS THREE NUMBERS -- only its direction
+              counts; the door normalises it (web/spectra.md § 3.2). -#}
+          <span id="ir-vector" class="inline-label" hidden>
+            <input id="ir-vec-x" type="number" step="any" value="0" aria-label="x">
+            <input id="ir-vec-y" type="number" step="any" value="0" aria-label="y">
+            <input id="ir-vec-z" type="number" step="any" value="1" aria-label="z">
+          </span>
+          <label class="inline-label" id="ir-partition-row"><span>Charges</span>
+            <select id="ir-partition">
+              <option value="hirshfeld" selected>Hirshfeld</option>
+              <option value="voronoi">Voronoi</option>
+            </select>
+          </label>
+          {#- THE RAMAN AT A LASER (§ 3.3): no laser until the person applies
+              one -- the strength depends on it; the width the run's own
+              while empty, never below it.  Not the chart's line width, on
+              the frequency axis. -#}
+          <span id="raman-controls" class="view-bar-group" hidden>
+            <label class="inline-label"><span>Laser wavelength (nm)</span>
+              <input id="raman-laser" type="number" step="any" min="0"
+                     list="raman-lasers" placeholder="532, 633, 785…">
+              <datalist id="raman-lasers">
+                <option value="532"></option>
+                <option value="633"></option>
+                <option value="785"></option>
+              </datalist>
+            </label>
+            <label class="inline-label"><span>Electronic broadening (eV)</span>
+              <input id="raman-broaden" type="number" step="any" min="0"
+                     placeholder="the run's own">
+            </label>
+          </span>
+          <button id="view-update" type="button" disabled>Update</button>
+        </div>
+        <p id="view-status" class="status muted" role="status"
+           aria-live="polite"></p>
+      </div>
+      <p id="ir-absent" class="status muted ir-absent" hidden></p>
       <p id="spectrum-absent" class="status muted spectrum-absent" hidden></p>
       <!-- Spectrum controls.  Each control is a BLOCK carrying its own
            label and its own hint, and the blocks lay out side by side
@@ -187,75 +243,6 @@
 
       <div id="mode-tab-table" class="panel-tabpanel" role="tabpanel"
            aria-labelledby="mode-tabbtn-table">
-        {#- THE INFRARED OF A SET OF ATOMS, on a SIESTA result whose run
-            printed its charges (docs/web/spectra.md § 3.2): the person names
-            the atoms, the light's direction and the partition; the load door
-            answers, and the page computes nothing. -#}
-        <div id="ir-controls" class="modes-table-controls ir-controls" hidden>
-          <label class="inline-label" id="ir-atoms-row"><span>Atoms</span>
-            <select id="ir-atoms">
-              <option value="">— name the atoms —</option>
-            </select>
-          </label>
-          {#- No direction for a free molecule: nothing held, its strength
-              is the orientation average (web/spectra.md § 3.2). -#}
-          <label class="inline-label" id="ir-direction-row"><span>Light along</span>
-            <select id="ir-direction">
-              <option value="x">x</option>
-              <option value="y">y</option>
-              <option value="z" selected>z</option>
-              <option value="vector">a vector…</option>
-            </select>
-          </label>
-          {#- THE FIELD'S DIRECTION AS THREE NUMBERS -- only its direction
-              counts; the door normalises it (web/spectra.md § 3.2). -#}
-          <span id="ir-vector" class="inline-label" hidden>
-            <input id="ir-vec-x" type="number" step="any" value="0" aria-label="x">
-            <input id="ir-vec-y" type="number" step="any" value="0" aria-label="y">
-            <input id="ir-vec-z" type="number" step="any" value="1" aria-label="z">
-          </span>
-          <label class="inline-label" id="ir-partition-row"><span>Charges</span>
-            <select id="ir-partition">
-              <option value="hirshfeld" selected>Hirshfeld</option>
-              <option value="voronoi">Voronoi</option>
-            </select>
-          </label>
-          <span id="ir-status" class="status muted" role="status"
-                aria-live="polite"></span>
-          <p class="ir-explain" id="ir-explain">Both divide the same thing — how the
-            electrons moved when the atoms bonded — between neighbouring
-            atoms. Voronoi draws a wall halfway between two nuclei;
-            Hirshfeld shares the charge at each point in proportion to how
-            much each lone atom would have there. Where the molecule ends and
-            the metal begins is a convention, so the numbers differ between
-            the two; the ranking of the modes should not. Hirshfeld is shown
-            first because its shares change smoothly as the atoms move.
-            <em>Why — <a href="/documents?doc=science/vibrational-optical-response.md"
-            target="_blank" rel="noopener">the method, § 1a</a>.</em></p>
-        </div>
-        <p id="ir-absent" class="status muted ir-absent" hidden></p>
-        {#- THE RAMAN OF A SIESTA RESULT AT A LASER (docs/web/spectra.md
-            § 3.3), a row of its own: no laser until the person types one --
-            the strength depends on it; the width the run's own while empty,
-            never below it, the run's said on the line beside.  Not the
-            chart's line width, on the frequency axis. -#}
-        <div id="raman-controls" class="modes-table-controls raman-controls" hidden>
-          <label class="inline-label"><span>Laser wavelength (nm)</span>
-            <input id="raman-laser" type="number" step="any" min="0"
-                   list="raman-lasers" placeholder="532, 633, 785…">
-            <datalist id="raman-lasers">
-              <option value="532"></option>
-              <option value="633"></option>
-              <option value="785"></option>
-            </datalist>
-          </label>
-          <label class="inline-label"><span>Electronic broadening (eV)</span>
-            <input id="raman-broaden" type="number" step="any" min="0"
-                   placeholder="the run's own">
-          </label>
-          <span id="raman-status" class="status muted" role="status"
-                aria-live="polite"></span>
-        </div>
         <div class="modes-table-controls">
           <input id="modes-filter" type="text"
                  placeholder="Filter (matches any visible column)"
@@ -284,7 +271,7 @@
                     mode, not two spectra: one Hessian, two property
                     derivatives on the same eigenvectors. -#}
                 <th data-col="ir_intensity_km_mol"   data-numeric="1" class="ir-col" id="ir-col-head">IR (km/mol)</th>
-                {#- THE CHARGE A MODE MOVES into or out of the named atoms
+                {#- THE CHARGE A MODE MOVES into or out of the free atoms
                     (docs/web/spectra.md § 3.2), beside its infrared. -#}
                 <th id="charge-col-head" data-col="charge_moved" data-numeric="1" class="charge-col">Charge moved (e/(√amu·Å))</th>
                 <th data-col="has_imag">imag?</th>
@@ -297,6 +284,27 @@
             </thead>
             <tbody id="modes-tbody"></tbody>
           </table>
+        </div>
+        {#- THE TABLE'S NOTES (docs/web/spectra.md § 3): a column whose
+            number needs its method said is named short with a mark, and the
+            mark's note -- what the number is, how it was computed, the view
+            it was computed for -- sits here, the partition's explanation the
+            last.  Part of the table: always visible, never a tooltip. -#}
+        <div id="modes-notes" class="modes-notes" hidden>
+          <p id="note-ir" hidden></p>
+          <p id="note-charge" hidden></p>
+          <p id="note-raman" hidden></p>
+          <p id="note-raman-static" hidden></p>
+          <p class="ir-explain" id="ir-explain"><strong>Charges</strong> — both
+            divide the same thing — how the electrons moved when the atoms
+            bonded — between neighbouring atoms. Voronoi draws a wall halfway
+            between two nuclei; Hirshfeld shares the charge at each point in
+            proportion to how much each lone atom would have there. Where one
+            group of atoms ends and the next begins is a convention, so the
+            numbers differ between the two. Hirshfeld is shown first because its shares change smoothly
+            as the atoms move.
+            <em>Why — <a href="/documents?doc=science/vibrational-optical-response.md"
+            target="_blank" rel="noopener">the method, § 1a</a>.</em></p>
         </div>
       </div>
 

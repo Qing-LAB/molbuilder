@@ -145,15 +145,16 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     § 4.3), the run's own thermochemistry temperature when the dialog has
     named none -- the tab holds no constant and derives nothing.
 
-    ``infrared`` is what the tab asks of the result's infrared: on a SIESTA
-    result stating its charges, the named set's view; on a PySCF result
-    holding atoms, the stored dipole change along the light's direction --
-    ``results.infrared``, from the one derivation (`spectra.infrared`,
-    `web/spectra.md` § 3.2).  A view the result cannot give -- a label its
-    structure does not hold, a partition it does not state, no charges, no
-    stored vector -- is ``results.infrared_said``, the refusal in its words,
-    and the result still loads: the tab sends the person's remembered
-    choice with every load, and another result need not hold it.
+    ``infrared`` is what the tab asks of the result's infrared -- the
+    light's direction and the partition, along z by Hirshfeld charges when
+    not asked: on a SIESTA result stating its charges, the free atoms'
+    view, with every load; on a PySCF result holding atoms, the stored
+    dipole change along the light's direction -- ``results.infrared``, from
+    the one derivation (`spectra.infrared`, `web/spectra.md` § 3.2).  A view
+    the result cannot give -- a partition it does not state, no stored
+    vector -- is ``results.infrared_said``, the refusal in its words, and
+    the result still loads: the tab sends the person's remembered choice
+    with every load, and another result need not hold it.
 
     ``raman`` is what the tab asks of a SIESTA result's optical calls --
     the laser and the width (`engines/vibration.md` § 5.11 § 10):
@@ -248,15 +249,14 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
             mode["reference_max_displacement_ang"] = {
                 str(n): reference_max_displacement(mode, float(ref_t), n)
                 for n in NODES}
-    # THE LABELS A SET MAY BE NAMED BY, where the result states its charges
-    # (`web/spectra.md` § 3.2) -- the structure's, read through its own
-    # door, so the page picks no structure apart; and, for a SIESTA result
-    # that states none, why, in its own facts.
+    # THE FREE ATOMS' INFRARED, where the result states its charges
+    # (`web/spectra.md` § 3.2); and, for a SIESTA result that states none,
+    # why, in its own facts.
     from molbuilder.spectra.infrared import (SOURCE_CHARGES, SOURCE_DIPOLE,
                                              ORIENTATION_HELD, InfraredError,
-                                             atoms_of, dipole_view,
-                                             infrared_view, no_charges_reason,
-                                             orientation_of, sets_of,
+                                             dipole_view, infrared_view,
+                                             no_charges_reason,
+                                             orientation_of, read_ask,
                                              source_of)
     from molbuilder.spectra.methods import with_infrared_view
     # WHERE ITS INFRARED COMES FROM, and held or free -- whether the light's
@@ -265,34 +265,25 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     if source is not None:
         payload["infrared_source"] = source
         payload["infrared_orientation"] = orientation_of(results)
-    if source == SOURCE_CHARGES and results.structure_stated():
-        payload["infrared_sets"] = sets_of(results)
-    elif source is None and str(results.engine).lower() == "siesta":
+    if source is None and str(results.engine).lower() == "siesta":
         # ...A SIESTA RESULT STATING NO CHARGES says why, once, from its own
         # facts (`infrared.no_charges_reason`): written before charges were
         # kept, Compute IR off, or printed none.
         payload["infrared_absent"] = (f"This result states no charges, so "
                                       f"it carries no infrared: "
                                       f"{no_charges_reason(results)}.")
-    # WHAT IS ASKED, answered where it applies: a charges result's named
-    # set; a held engine-dipole result's direction; a set named of a result
-    # with no charges, the reason.  A free result's column is the file's.
+    # WHAT IS ASKED -- the defaults when nothing is -- answered where it
+    # applies: a charges result's free atoms, with every load; a held
+    # engine-dipole result's direction.  A free engine-dipole result's
+    # column is the file's.
+    asked = infrared if infrared is not None else read_ask({})
     view = None
     try:
-        if infrared is None:
-            pass
-        elif source == SOURCE_CHARGES and infrared["atoms"] is not None:
-            atoms, name = atoms_of(results, infrared["atoms"])
-            view = infrared_view(results, atoms=atoms,
-                                 direction=infrared["direction"],
-                                 partition=infrared["partition"],
-                                 atoms_label=name)
+        if source == SOURCE_CHARGES:
+            view = infrared_view(results, **asked)
         elif source == SOURCE_DIPOLE \
                 and payload["infrared_orientation"] == ORIENTATION_HELD:
-            view = dipole_view(results, direction=infrared["direction"])
-        elif source is None and infrared["atoms"] is not None:
-            payload["infrared_said"] = (f"the result states no charges: "
-                                        f"{no_charges_reason(results)}")
+            view = dipole_view(results, direction=asked["direction"])
     except InfraredError as exc:
         payload["infrared_said"] = str(exc)
     if view is not None:

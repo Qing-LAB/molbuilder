@@ -601,7 +601,7 @@ Built 2026-09-23 and described with the PySCF route, side by side, in § 4b.4
 and step by step in § 4b.6:
 force constants by central differences of SIESTA's forces over the free atoms
 only, derived by the job itself right after the run (`vibration.md` § 5.5) through the same harmonic path.
-Its infrared comes from the run's own charges, for the atoms a person names;
+Its infrared comes from the run's own charges, the free atoms';
 its Raman from SIESTA's optical calculation at displaced geometries, at a
 laser the person names (§ 4a.6).
 
@@ -609,9 +609,9 @@ laser the person names (§ 4a.6).
 
 The SIESTA path (§ 3.1a, and the design document) computes **frequencies and
 mode shapes**, and records **every atom's Hirshfeld and Voronoi charge at every
-force-constant step** — from which the infrared of a set of atoms the person
-names is derived after the run: the set's dipole by its atoms' charges, its
-change along each mode, for light in vacuum along a direction the person
+force-constant step** — from which the infrared of the free atoms is
+derived after the run: their dipole by their charges, its change along each
+mode, for light in vacuum along a direction the person
 picks ([`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
 § 2; `vibration.md` § 5.10 ②). Born effective charges from the Berry-phase
 polarisation are the route for an insulating crystal, and SIESTA computes them
@@ -816,7 +816,7 @@ labour is reproduced here with a third column — what this tool does today.
 | δ convergence | none for the Hessian | required | `fc_displacement` is a stage item, so a ladder of δ runs is describable, and `jobset summarize task` compares the stages into `<label>.fc-sweep.json` (§ 4b.6 C; `spectra/displacement_sweep.py`). PySCF's strengths and its probe are finite differences with steps of their own (§ 4b.5) |
 | active-region convergence | useful | strongly recommended | two structures, two runs; the artifact records the free set; no matching tool (§ 4b.9) |
 | normal modes | yes | yes | one function for both, with the rank rule in front of the eigenproblem (§ 4b.1) |
-| infrared and Raman | molecular response calculations | hard at a metal surface | PySCF: built (§ 4a); SIESTA: the infrared of a named set of atoms from the run's charges, Raman from its optical calls at a laser (§ 4a.6, § 4b.7) |
+| infrared and Raman | molecular response calculations | hard at a metal surface | PySCF: built (§ 4a); SIESTA: the infrared of the free atoms from the run's charges, Raman from its optical calls at a laser (§ 4a.6, § 4b.7) |
 | frontier-orbital modulation | natural | use projected densities of states and resonances instead | the PySCF probe is built, two points per mode (§ 4b.5 G); nothing on SIESTA |
 | surface modes | a finite-cluster approximation | natural | — |
 | transport $T(E, Q)$ | not its strength | TranSIESTA / TBtrans | built: a mode's frame set, and transport at every frame (`vibration.md` § 5.10 ③; `transport.md` § 2a.9) |
@@ -1188,12 +1188,14 @@ two SCFs on the displaced pair of § 4b.6 G, SIESTA writing the density grid at
 each. Not built (§ 4b.9).
 
 **5. What the tool offers on SIESTA, and what it does not** (§ 4a.6):
-problems 1 and 2 above are why the infrared is the dipole of a named set of
-atoms by their charges, not of the cell. The metal's rearrangement of point
-3 enters it twice: in the set's own charges, partitioned from the whole
-density at every step, and in the charge the mode moves between the set and
-the metal, reported beside the strength; the metal atoms' own charges are
-left out of the set's dipole, whose origin in a metal is not defined. Two
+problems 1 and 2 above are why the infrared is the dipole of the free
+atoms by their charges, not of the cell. The rearrangement of point 3 enters
+it twice: in the free atoms' own charges, partitioned from the whole density
+at every step, and in the charge the mode moves into or out of them,
+reported beside the strength; the held atoms are not in the dipole — the
+free atoms are the system the vibration was described for
+([`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 0, § 2.5). Two
 more the discussion adds: the
 local optical field at the molecule is not the incident field — the infrared
 is for light in vacuum, the field at the molecule taken as the incident one,

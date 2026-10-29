@@ -9,7 +9,7 @@ optical calls in 2.42.0–2.43.0 and its strength at a laser in 2.44.0
 force-constant input), § 5.10 ② (the charge each mode moves), ③ (a mode's
 frames) and § 5.11 (one run in phases — Raman its optical phase); [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5 and § 2a (the displacement); [`normal-modes.md`](?doc=science/normal-modes.md)
-§ 4a.6, § 4b.7 (the infrared of a named set of atoms, and Raman on SIESTA at
+§ 4a.6, § 4b.7 (the infrared of the free atoms, and Raman on SIESTA at
 a metal surface); `plans/plan.md` § 1ac.
 
 *Written 2026-10-24 at the user's request: "we need a new method document for
@@ -43,15 +43,14 @@ to the others**, for light polarized along $\hat e$? And **where should the
 frames along a mode sit** — the maximum displacement?
 
 Everything comes from SIESTA's own electronic structure at the mode's
-geometries. **No field is applied in any calculation**, and the metal's own
-bulk response is left out *(the user: "the polarizability of the metal cluster
-is a fake statement")* — in the infrared, the metal atoms' own charges are not
-in the set's dipole; for Raman, the response of the metal at the contact is
-kept, and the molecule's share is stated beside it (§ 3.1).
+geometries. **No field is applied in any calculation.** In the infrared, the
+dipole is the free atoms' — the system the person described by what they
+freed — and the held atoms are not in it; for Raman, the polarizability is
+the whole cell's (§ 3.1, § 3.4).
 
 | | a mode shows in the spectrum when it changes … | read from |
 |---|---|---|
-| **infrared** | the molecule's **dipole** — how its charge sits | the charges SIESTA prints at every step of the vibration itself |
+| **infrared** | the free atoms' **dipole** — how their charge sits | the charges SIESTA prints at every step of the vibration itself |
 | **Raman** | the **polarizability** — how easily light shifts the electrons | SIESTA's optical calculation at the mode's displaced geometries |
 
 ### 0.1 What the person gives
@@ -59,7 +58,7 @@ kept, and the molecule's share is stated beside it (§ 3.1).
 | input | for | default |
 |---|---|---|
 | the relaxed junction — its structure, labels and held atoms | everything | — |
-| the molecule — a label the person names (`BDT` on AuBDTAu) | the infrared dipole | — |
+| the free atoms — every atom not held, the person's choice when describing the vibration | the modes and the infrared dipole | the structure's held atoms (`frozen_atoms`) |
 | the light's direction $\hat e$ | infrared and Raman | z on the spectrum viewer, which takes x, y, z or any vector *(the user, 2026-10-24)*; a script names it. None for a free molecule — nothing held — whose infrared is the orientation average (§ 2.3). The infrared takes any direction at no cost (§ 2.3); Raman takes one per optical run: z, the gap's axis, by default, another chosen before the run (`plans/plan.md` § 1ac, D-h) |
 | the charge partition | infrared | Hirshfeld (§ 1a) |
 | the modes to compute Raman for — fixed before the run, since a mode exists only after the force-constant run | Raman | every mode — *Raman for*, the setting both engines share: all modes, or the modes in a frequency range a chemist knows before the run ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1, § 5.11 § 9) |
@@ -71,8 +70,8 @@ kept, and the molecule's share is stated beside it (§ 3.1).
 | step | what runs | molbuilder today |
 |---|---|---|
 | **1. The vibration** | SIESTA's force-constant run on the relaxed junction, as today: each free atom nudged ±0.0212 Å along x, y and z, a self-consistent solution at each — $1 + 6\,n_{\mathrm{free}}$ of them; SIESTA prints every atom's Hirshfeld and Voronoi charge after each | **exists** — the charges since 2.35.2 |
-| **2. Infrared, every mode** | nothing more: the vibration's finish stores the charges of step 1; asked for a set of atoms, a direction and a partition, one function derives each mode's dipole change → its infrared strength $A_\nu(\hat e)$ and rank (§ 2; a worked example, § 2.4) | **built 2.36.0** — the spectrum viewer and `molbuilder.postprocess.infrared_view` |
-| **3. Raman, the chosen modes** | the vibration run's optical phase, after its force-constant phase in the same run: the geometries at $0$ and $\pm\delta Q$ along each chosen mode (§ 3.2); one SIESTA single point at each with its optical calculation (the `OpticalCalculation` option: the light-absorption spectrum from its own states, § 3.1) → the polarizability at each, at the laser's frequency the person enters after the run (static beside it) → its change → the Raman strength $R_\nu(\hat e)$ and rank (§ 3), from the whole cell's change, the named set's share beside it (§ 3.4) | **built** — the optical phase 2.42.0–2.43.0, the strength at a laser 2.44.0: the spectrum viewer and `molbuilder.postprocess.raman_view` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10); the named set's share not yet designed (§ 3.4); in a cell holding metal, the value at the laser is the one to read and the static one is not defined (§ 3.1) |
+| **2. Infrared, every mode** | nothing more: the vibration's finish stores the charges of step 1; asked for a direction and a partition, one function derives each mode's dipole change — the free atoms' → its infrared strength $A_\nu(\hat e)$ and rank (§ 2; a worked example, § 2.4) | **built 2.36.0** — the spectrum viewer and `molbuilder.postprocess.infrared_view` |
+| **3. Raman, the chosen modes** | the vibration run's optical phase, after its force-constant phase in the same run: the geometries at $0$ and $\pm\delta Q$ along each chosen mode (§ 3.2); one SIESTA single point at each with its optical calculation (the `OpticalCalculation` option: the light-absorption spectrum from its own states, § 3.1) → the polarizability at each, at the laser's frequency the person enters after the run (static beside it) → its change → the Raman strength $R_\nu(\hat e)$ and rank (§ 3), from the whole cell's change (§ 3.4) | **built** — the optical phase 2.42.0–2.43.0, the strength at a laser 2.44.0: the spectrum viewer and `molbuilder.postprocess.raman_view` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10); in a cell holding metal, the value at the laser is the one to read and the static one is not defined (§ 3.1) |
 | **4. The displacement** | nothing: the reference maximum displacement at the person's temperature, from the vibration result, beside the person's own (§ 4; an example, § 4.1) | **built 2.36.0** — the *Write frame set…* dialog and `molbuilder.postprocess.reference_max_displacement` |
 
 ```mermaid
@@ -80,7 +79,7 @@ flowchart TD
     J["relaxed junction<br/>(its structure, labels, held atoms)"] --> FC["1. SIESTA force-constant run<br/>Hirshfeld and Voronoi charges at every step"]
     FC --> MODES["the modes: ω_ν, L^(ν)<br/>(the vibration's finish)"]
     FC --> QS["every atom's charge<br/>at every displaced step"]
-    QS --> IR["2. infrared, every mode<br/>∂μ_M/∂Q → A_ν(ê) and its rank"]
+    QS --> IR["2. infrared, every mode<br/>∂μ_F/∂Q → A_ν(ê) and its rank"]
     MODES --> IR
     MODES --> DISP["4. the displacement<br/>reference d_T at a temperature"]
     MODES --> FR["3. Raman, each chosen mode<br/>frames 0, ±δQ: the run's optical phase"]
@@ -91,16 +90,21 @@ flowchart TD
 
 **What it costs** (§ 5.1, measured on AuBDTAu): infrared and the
 displacement, nothing beyond the vibration already run; keeping the held gold
-in Raman and reporting the named set's share beside the whole, no SIESTA run
-either; Raman, $1 + 2\times$(the number of modes) SIESTA runs — frame 0 once,
+in Raman, no SIESTA run either; Raman, $1 + 2\times$(the number of modes) SIESTA runs — frame 0 once,
 $\pm\delta Q$ for each mode — each one junction SCF and SIESTA's optical
 calculation: for five modes about 20–40 min of SCF on 64 ranks, against the
 vibration's 3.3 h; the optical calculation's own cost not yet measured.
 
 **Which atoms.** The modes are defined on the **free set** $F$, every atom the
-vibration moves. The infrared dipole is the **molecule's**, $M$; the free
-metal atoms move in the modes, and when they move the molecule's charges
-change — that is counted — but their own charges are the metal's and are not.
+vibration moves, and **the infrared is $F$'s**: its dipole made of the free
+atoms' charges. $F$ is the system the person described — they chose what to
+free when they described the vibration — and the held atoms are not part of
+it *(the user, 2026-10-28: "whatever is free is the whole thing that we're
+trying to calculate … whatever is fixed … is not taking into consideration";
+"I see no point at all to select any atoms")*. No other set is offered: a
+set other than the one the vibration was described for is not the
+calculation's intention. How much another set would change the numbers is
+measured in § 2.5, as information.
 
 ### 0.3 Where each number comes from
 
@@ -118,13 +122,12 @@ change — that is counted — but their own charges are the metal's and are not
 | symbol | what it is | unit |
 |---|---|---|
 | $F$ | the free set: every atom the vibration moves | — |
-| $M$ | the molecule: the atoms of the label the person names | — |
 | $m_k$ | atom $k$'s mass, as the vibration result states it | amu |
 | $\omega_\nu$ | mode $\nu$'s frequency, as the result states it | cm$^{-1}$ |
 | $\mathbf L^{(\nu)}$ | mode $\nu$'s displacement pattern over $F$, normalised with the masses, $\sum_{k\in F} m_k\,\lvert\mathbf L_k^{(\nu)}\rvert^2 = 1$ (`engines/vibration.md` § 6.3); zero on every held atom | amu$^{-1/2}$ |
 | $Q_\nu$ | how far the structure is moved along mode $\nu$: atom $k$ moves by $Q_\nu\,\mathbf L_k^{(\nu)}$ | amu$^{1/2}$ Å |
 | $q_a$ | atom $a$'s partial charge: its valence charge less the electrons a partition gives it — positive where electrons left it; by Hirshfeld [Hirshfeld1977] or Voronoi [FonsecaGuerra2004], both computed (§ 1a) | $e$ |
-| $\bar{\mathbf r}_M^{\,0}$ | the molecule's centre of mass at equilibrium, $\sum_{a\in M} m_a\mathbf r_a^0 \big/ \sum_{a\in M} m_a$, the masses the result states — a fixed point *(the user, 2026-10-24: "center should be mass center")* | Å |
+| $\bar{\mathbf r}_F^{\,0}$ | the free atoms' centre of mass at equilibrium, $\sum_{a\in F} m_a\mathbf r_a^0 \big/ \sum_{a\in F} m_a$, the masses the result states — a fixed point *(the user, 2026-10-24: "center should be mass center")* | Å |
 | $\hat e$ | the direction of the light's field, the person's choice | — |
 | $\varepsilon_{\hat e\hat e}(\omega)$ | the cell's dielectric function for a field along $\hat e$, $\varepsilon_1 + i\varepsilon_2$ | — |
 | $V_{\mathrm{cell}}$ | the cell's volume | Å³ |
@@ -195,13 +198,13 @@ integrates to the atom's valence charge.
 
 **What it means for this method.**
 
-1. **Every number changes with the partition.** The molecule's charge
-   depends on where the S–Au boundary is drawn, and that boundary is a
-   convention — no partition is the true one. What should not change is the
-   ranking of the modes; where it does, that is a finding — the ranking is
-   then set by how the bond is split, not by the molecule. (In the worked
-   example of § 2.4 the two partitions give the same ranking and strengths
-   about five times apart.)
+1. **Every number changes with the partition.** The free atoms' charge
+   depends on where the boundary between them and the held atoms is drawn,
+   and that boundary is a convention — no partition is the true one. Where
+   the ranking of the modes changes with it, the ranking is set by how the
+   bond is split. (In the worked example of § 2.4 the one bright mode reads
+   0.13 km/mol by Hirshfeld and 47.2 by Voronoi; on CO₂, § 7, the two
+   partitions give the same ranking, the strengths about twice apart.)
 2. **Smoothness as atoms move.** The derivatives compare charges at
    geometries $2\delta$ = 0.042 Å apart. Under Voronoi the wall moves with the
    atoms and points of SIESTA's grid jump from one atom to the other; under
@@ -218,7 +221,7 @@ integrates to the atom's valence charge.
 
 **The idea.** Light whose field points along $\hat e$ pushes positive and
 negative charge apart along $\hat e$. A mode absorbs it when moving along the
-mode changes the molecule's dipole along $\hat e$ — the charges move, or the
+mode changes the dipole along $\hat e$ — the charges move, or the
 charged atoms move, or both. How strongly is the square of that change.
 
 ```text
@@ -229,40 +232,36 @@ charged atoms move, or both. How strongly is the square of that change.
                           shifted)
 ```
 
-### 2.1 The molecule's charge and dipole
+### 2.1 The free atoms' charge and dipole
 
 **Why partial charges.** The cell's own dipole is not defined for a periodic
 metal, and the Born effective charges SIESTA can compute come from the
 Berry-phase polarization, which is defined for an insulator [KingSmith1993]
 (SIESTA 5.4.2 manual, `BornCharge` and `PolarizationGrids`: the system "must be
-an insulator"; `normal-modes.md` § 4b.7); the charges of the molecule's own
-atoms are defined in any cell. From them, at any geometry $R$:
+an insulator"; `normal-modes.md` § 4b.7); the charges of the atoms are
+defined in any cell. From the free atoms' charges, at any geometry $R$:
 
 $$
-q_M(R) = \sum_{a\in M} q_a(R),
+q_F(R) = \sum_{a\in F} q_a(R),
 \qquad
-\boldsymbol\mu_M(R) = \sum_{a\in M} q_a(R)\,\bigl(\mathbf r_a(R) - \bar{\mathbf r}_M^{\,0}\bigr).
+\boldsymbol\mu_F(R) = \sum_{a\in F} q_a(R)\,\bigl(\mathbf r_a(R) - \bar{\mathbf r}_F^{\,0}\bigr).
 $$
 
-As the molecule vibrates, its electrons shift at the bonds to the metal, so
-$q_M$ changes along a mode (the user: "the bridge's charge transfer (electron
-density) correctly calculated in different modes"). Two numbers are given for
-each mode by the one derivation — the dipole change as the full vector; the
+As the free atoms move, charge moves between them and the held atoms, so
+$q_F$ changes along a mode. Two numbers are given for each mode by the one
+derivation — the dipole change as the full vector; the
 spectrum viewer shows the strength it gives along $\hat e$ (§ 2.3) and the
 charge moved:
 
-- **the dipole change** $\partial\boldsymbol\mu_M/\partial Q_\nu$, taken about
-  the molecule's own centre of mass at equilibrium, $\bar{\mathbf r}_M^{\,0}$, a fixed point — no point outside
-  the molecule enters it. Where the mode moves charge, the number depends on
+- **the dipole change** $\partial\boldsymbol\mu_F/\partial Q_\nu$, taken about
+  the free atoms' own centre of mass at equilibrium, $\bar{\mathbf r}_F^{\,0}$, a fixed point — no point outside
+  them enters it. Where the mode moves charge, the number depends on
   that centre: moving it by $\Delta\mathbf r$ changes
-  $\partial\boldsymbol\mu_M/\partial Q_\nu$ by
-  $-(\partial q_M/\partial Q_\nu)\,\Delta\mathbf r$, which is why the
+  $\partial\boldsymbol\mu_F/\partial Q_\nu$ by
+  $-(\partial q_F/\partial Q_\nu)\,\Delta\mathbf r$, which is why the
   charge moved is reported beside it;
-- **the charge the mode moves** $\partial q_M/\partial Q_\nu$ between the
-  molecule and the metal — beside it, not folded in: its dipole depends on
-  where in the metal the charge comes from, which these charges do not say.
-  (The set may be any label of the structure the person names; the
-  molecule's is the one this method is about.)
+- **the charge the mode moves** $\partial q_F/\partial Q_\nu$ into or out
+  of the free atoms — beside the dipole change, not folded in.
 
 ### 2.2 Read from the force-constant run, with no extra calculation
 
@@ -291,24 +290,23 @@ geometry's own positions — so both the charges changing and the charged
 atoms moving are counted:
 
 $$
-\frac{\partial\boldsymbol\mu_M}{\partial R_{k\beta}}
-\approx \frac{\boldsymbol\mu_M(R^{+}_{k\beta}) - \boldsymbol\mu_M(R^{-}_{k\beta})}{2\delta},
+\frac{\partial\boldsymbol\mu_F}{\partial R_{k\beta}}
+\approx \frac{\boldsymbol\mu_F(R^{+}_{k\beta}) - \boldsymbol\mu_F(R^{-}_{k\beta})}{2\delta},
 \qquad
-\frac{\partial q_M}{\partial R_{k\beta}}
-\approx \frac{q_M(R^{+}_{k\beta}) - q_M(R^{-}_{k\beta})}{2\delta},
+\frac{\partial q_F}{\partial R_{k\beta}}
+\approx \frac{q_F(R^{+}_{k\beta}) - q_F(R^{-}_{k\beta})}{2\delta},
 $$
 
 where $R^{\pm}_{k\beta}$ is the geometry with free atom $k$ moved by
-$\pm\delta$ along $\beta \in \{x, y, z\}$. Every free atom counts, the metal
-ones too: moving a free gold atom changes the molecule's charges. Projected
-onto each mode,
+$\pm\delta$ along $\beta \in \{x, y, z\}$. Every free atom counts, by its own
+charge and by its motion. Projected onto each mode,
 
 $$
-\frac{\partial\boldsymbol\mu_M}{\partial Q_\nu}
-= \sum_{k\in F}\sum_{\beta} \frac{\partial\boldsymbol\mu_M}{\partial R_{k\beta}}\;L^{(\nu)}_{k\beta},
+\frac{\partial\boldsymbol\mu_F}{\partial Q_\nu}
+= \sum_{k\in F}\sum_{\beta} \frac{\partial\boldsymbol\mu_F}{\partial R_{k\beta}}\;L^{(\nu)}_{k\beta},
 \qquad
-\frac{\partial q_M}{\partial Q_\nu}
-= \sum_{k\in F}\sum_{\beta} \frac{\partial q_M}{\partial R_{k\beta}}\;L^{(\nu)}_{k\beta}.
+\frac{\partial q_F}{\partial Q_\nu}
+= \sum_{k\in F}\sum_{\beta} \frac{\partial q_F}{\partial R_{k\beta}}\;L^{(\nu)}_{k\beta}.
 $$
 
 Every mode's values come out of the one run that gave the modes, once for
@@ -316,10 +314,10 @@ each partition.
 
 ```mermaid
 flowchart LR
-    S["the steps' charges<br/>q_a at each ±δ"] --> MU["the molecule's dipole μ_M<br/>and charge q_M at each step"]
-    MU --> D["∂μ_M/∂R and ∂q_M/∂R<br/>for each free atom and direction"]
+    S["the steps' charges<br/>q_a at each ±δ"] --> MU["the free atoms' dipole μ_F<br/>and charge q_F at each step"]
+    MU --> D["∂μ_F/∂R and ∂q_F/∂R<br/>for each free atom and direction"]
     L["each mode's pattern L^(ν)<br/>(the result)"] --> P
-    D --> P["projected on the mode:<br/>∂μ_M/∂Q_ν, ∂q_M/∂Q_ν"]
+    D --> P["projected on the mode:<br/>∂μ_F/∂Q_ν, ∂q_F/∂Q_ν"]
     P --> A["A_ν(ê) and its rank"]
 ```
 
@@ -330,9 +328,9 @@ $\hat e$, mode $\nu$'s integrated absorption is
 
 $$
 A_\nu(\hat e) = \frac{N_A}{4\varepsilon_0 c^2}\,
-\Bigl(\hat e\cdot\frac{\partial\boldsymbol\mu_M}{\partial Q_\nu}\Bigr)^{2}
+\Bigl(\hat e\cdot\frac{\partial\boldsymbol\mu_F}{\partial Q_\nu}\Bigr)^{2}
 = 126.768\ \tfrac{\mathrm{km}}{\mathrm{mol}}
-\times \Bigl(\hat e\cdot\frac{\partial\boldsymbol\mu_M}{\partial Q_\nu}\Bigr)^{2} ,
+\times \Bigl(\hat e\cdot\frac{\partial\boldsymbol\mu_F}{\partial Q_\nu}\Bigr)^{2} ,
 $$
 
 with the derivative in D Å$^{-1}$ amu$^{-1/2}$ (a charge of $e$ moved 1 Å is
@@ -360,9 +358,9 @@ molecule's infrared reports (`spectra.infrared.orientation_of`). Each mode's $A_
 strongest real mode's — an imaginary mode is never the reference.
 
 **The direction is applied after the run.** The light's field enters only
-through the projection $\hat e\cdot\partial\boldsymbol\mu_M/\partial Q_\nu$:
+through the projection $\hat e\cdot\partial\boldsymbol\mu_F/\partial Q_\nu$:
 the coupling is first order in the field, so the run needs no field, and the
-force-constant charges give the whole vector $\partial\boldsymbol\mu_M/\partial Q_\nu$
+force-constant charges give the whole vector $\partial\boldsymbol\mu_F/\partial Q_\nu$
 — one run answers every direction, each a dot product (the viewer's *Light
 along*, `web/spectra.md` § 3.2).
 
@@ -374,43 +372,89 @@ it.
 ### 2.4 A worked example — the toy junction, from its real run
 
 The charges are those the force-constant run of § 7 printed: the toy junction
-`claude-transport-walk` — a straight chain of 22 hydrogen atoms, nine held on
-each side, its four-atom `bridge` (user indices 9–12) the molecule $M$, its
-middle two (10, 11) free; $\hat e = \hat z$, along the chain. The steps were
-read and the derivatives formed by a measurement script, as § 2.2 states
-them, and the built function (2.36.0) gives the same numbers (§ 7).
+`claude-transport-walk` — a straight chain of 22 hydrogen atoms, ten held on
+each side and the middle two (user indices 10, 11) free, the set $F$;
+$\hat e = \hat z$, along the chain. The run predates the result keeping its
+charges (2.36.0), so they were read from its output by the record step's own
+reading (`siesta_vibration.partial_charges_of`) and the built function
+derived the numbers.
 
 **The modes** (the run's result): two free hydrogen atoms give six modes. The
 four that move them off the chain's axis (along x or y) are imaginary (−666.35 and
 −481.53 cm⁻¹, each twice) — a straight hydrogen chain is not a minimum
 sideways; their dipole change along z is zero. The two along the chain:
 
-| mode | frequency | the two free atoms | $\partial\mu_{M,z}/\partial Q$ ($e$ amu$^{-1/2}$), Hirshfeld / Voronoi | $A_\nu(\hat z)$ (km/mol), Hirshfeld / Voronoi | $\partial q_M/\partial Q$ ($e$ amu$^{-1/2}$ Å$^{-1}$), Hirshfeld / Voronoi |
+| mode | frequency | the two free atoms | $\partial\mu_{F,z}/\partial Q$ ($e$ amu$^{-1/2}$), Hirshfeld / Voronoi | $A_\nu(\hat z)$ (km/mol), Hirshfeld / Voronoi | $\partial q_F/\partial Q$ ($e$ amu$^{-1/2}$ Å$^{-1}$), Hirshfeld / Voronoi |
 |---|---|---|---|---|---|
-| 5 | 2023.77 cm⁻¹ | move together, both along −z | −0.0853 / −0.1865 | **21.3 / 101.8** | 0 / 0 |
-| 6 | 2548.37 cm⁻¹ | move apart, mirror images | 0 / 0 | **0 / 0** | −0.0395 / −0.0373 |
+| 5 | 2023.77 cm⁻¹ | move together, both along −z | −0.0067 / −0.1270 | **0.1 / 47.2** | 0 / 0 |
+| 6 | 2548.37 cm⁻¹ | move apart, mirror images | 0 / 0 | **0 / 0** | −0.0128 / −0.0206 |
 
 **Why — the symmetry, and what it checks.** The chain is the same on both
-sides of a mirror plane through the bridge's centre ($z$ = 11 Å).
+sides of a mirror plane through the free pair's centre ($z$ = 11 Å).
 
 - **Mode 6** is its own mirror image: the two atoms move apart as each
   other's reflection. The dipole along z changes sign under that mirror, so
   it cannot change in this mode — **infrared-silent**, under either
-  partition. The bridge's total charge does not change sign under the
+  partition. The pair's total charge does not change sign under the
   mirror, so it *can* change — and does: the mode moves charge between the
-  bridge and the metal. Its dipole change reads zero about the bridge's
+  free pair and the held atoms. Its dipole change reads zero about the pair's
   centre, which lies on the mirror plane; about a centre $\Delta z$ away it
-  would read $-(\partial q_M/\partial Q)\,\Delta z$ (§ 2.1).
+  would read $-(\partial q_F/\partial Q)\,\Delta z$ (§ 2.1).
 - **Mode 5** turns into its own reverse under the mirror (both atoms shift the
   same way). Now the dipole along z can change — **infrared-active** — and
   the total charge cannot change at first order.
 
 Both zeros come out of the numbers, not out of an assumption: the method
-reads symmetry correctly. The two partitions **rank the modes the same** and
-put mode 5's strength about five times apart (21.3 against 101.8 km/mol) —
-§ 1a's point, in numbers. (Each free atom's own $\partial\mu_{M,z}/\partial z$
-is $0.0606\,e$ under Hirshfeld and $0.1324\,e$ under Voronoi: how much charge
-the molecule's dipole sees move with the atom.)
+reads symmetry correctly. The two partitions agree on which mode is dark and
+put mode 5's strength far apart (0.1 against 47.2 km/mol): for two hydrogen
+atoms in a chain, how the electrons between them are shared is most of the
+answer — § 1a's point, in numbers.
+
+### 2.5 What another set of atoms would give — measured, for information
+
+The set is the free atoms because they are the system the vibration was
+described for (§ 0, *Which atoms*). The numbers below say how much the
+strengths move when the same arithmetic sums the dipole over another set —
+the AuBDTAu vibration on Sol (2026-10-28; 20 free atoms, the 12 of BDT and 8
+Au at its two contacts; 292 held; light along z; Hirshfeld), every number
+from the run's stored charges by the arithmetic of § 2.1–2.3 summed over
+each set, the free atoms' row the built function's own:
+
+| the set the dipole is summed over | atoms | 498 cm⁻¹ | 1040 cm⁻¹ | 1073 cm⁻¹ | 125 cm⁻¹ | 3071 cm⁻¹ | every mode |
+|---|---|---|---|---|---|---|---|
+| BDT | 12 | 26.8 | 29.1 | 6.1 | 2.0 | 0.15 | 74.5 |
+| **the free atoms** | 20 | 3.1 | 4.0 | 0.03 | 29.3 | 28.2 | 103.2 |
+| BDT and the Au within 5 Å of it | 36 | 0.2 | 1.1 | 2.9 | 5.9 | 56.9 | 122.2 |
+| BDT and the Au within 11 Å of it | 188 | 9.0 | 2.3 | 12.5 | 1.9 | 68.6 | 149.4 |
+| every atom of the cell | 312 | 9.5 | 4.2 | 13.9 | 1.6 | 54.8 | 144.2 |
+| the held atoms alone | 292 | 23.4 | 0.0 | 15.1 | 44.7 | 4.4 | 180.8 |
+
+(km/mol.) The strengths move with the set's edge — taking in more of the
+gold changes them, up to the whole cell — and atoms that never move still
+give a strength, from the charge induced on them (the held atoms' row).
+
+**What the literature says** — references, not a verdict on any
+calculation:
+
+- For a molecule on one metal surface with vacuum above it, a measured
+  infrared band follows the dipole change perpendicular to the surface, the
+  metal's image response included [Greenler1966, Hoffmann1983];
+  first-principles studies compute the infrared of adsorbates on metal slabs
+  [Zaitsev2018, Zhou2021], a slab's dipole taken in a cell with a vacuum gap
+  and a dipole correction [Bengtsson1999].
+- The polarization of a cell periodic in every direction is defined for an
+  insulator, through the geometric phase of its states [Resta1994,
+  RestaVanderbilt2007]; a charge moving near conductors induces a current in
+  them [Shockley1938, Ramo1939].
+- A molecular junction's vibrations have been measured by Raman scattering
+  together with its conduction [Ward2008]; which modes inelastic electron
+  tunnelling shows is described by propensity rules [TroisiRatner2006,
+  Paulsson2008].
+- A dipole derivative splits into a charge term, a charge-flux term and a
+  dipole-flux term; atomic charges alone carry the first two
+  [HaidukeBruns2005].
+- With atoms held, the modes are a partial Hessian's, an approximation
+  assessed against the full Hessian [VesterOlsen2024].
 
 ---
 
@@ -691,9 +735,7 @@ $\langle\alpha'^{\,2}_{\hat e\hat e}\rangle = (45a'^2 + 4\gamma'^2)/45$
 same number.
 
 **Reported**: for each chosen mode, $R_\nu(\hat e)$ from the whole cell's
-change — the named set's share of that change beside it (§ 3.4) is not built
-yet ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10, D-e) — and
-$R_\nu(\hat e)/\max_{\nu'}R_{\nu'}(\hat e)$. Frame 0's $\alpha$ is the
+change (§ 3.4) and $R_\nu(\hat e)/\max_{\nu'}R_{\nu'}(\hat e)$. Frame 0's $\alpha$ is the
 equilibrium polarizability, the same for every mode, reported once.
 
 **On the toy junction of § 2.4**, the step would be
@@ -796,7 +838,7 @@ M4-d).
   (`Optical.NumberOfBands`) — a pair weighs about one over its energy
   squared, so 3 Ry keeps all the basis describes (§ 3.1, *The cutoff*).
 
-### 3.4 What is reported — the held gold's response kept, the named set's share beside it *(decided 2026-10-24)*
+### 3.4 What is reported — the whole cell's response, the held gold's kept *(decided 2026-10-24)*
 
 **The question.** Most of a junction's gold is held. In the AuBDTAu vibration
 on Sol (2026-10-24) 20 atoms are free — the 12 of BDT and 8 Au, four at each
@@ -835,26 +877,22 @@ of the fixed atoms will not feel much but the ones closer to the molecule
 will contribute some, and molecule will feel it")*. Gold farther from the
 contact barely changes.
 
-**Decided: both numbers** *(the user, 2026-10-24: "i suggest we include both
-numbers such that we will not miss the correct physics to say the least";
-"i am not convinced that completely remove fixed Au is the correct
-solution")*:
-
-| number | what it holds | why it is reported |
-|---|---|---|
-| the whole cell's $\partial\alpha_{\hat e\hat e}/\partial Q_\nu$, and $R_\nu(\hat e)$ from it | every electron's response — the molecule's, the free gold's and the held gold's | the junction's own Raman: the contact's charge transfer and shifted states are the physics, not background |
-| the named set's share of it | each transition counted by how much of it sits on the atoms of a label the person names — BDT and the free gold, say | how much of the change is the molecule's own: a convention, stated beside the value as the charge partitions are (§ 1a); how a transition is shared between atoms is designed with the contract |
+**Decided: the whole cell's number** *(the user, 2026-10-24: "i am not
+convinced that completely remove fixed Au is the correct solution")* — the
+whole cell's $\partial\alpha_{\hat e\hat e}/\partial Q_\nu$, and $R_\nu(\hat e)$ from it:
+every electron's response, the molecule's, the free gold's and the held
+gold's — the contact's charge transfer and shifted states are the physics,
+not background. No share of it on a set of atoms is reported *(the user,
+2026-10-28: "I see no point at all to select any atoms")*.
 
 **Rejected: leaving the held gold out of the electrons.** It would drop the
 contact's physics above, and where it draws the line between the molecule and
-the metal would be arbitrary — the line is drawn instead by the share,
-reported beside the whole and never in place of it.
+the metal would be arbitrary.
 
-**The infrared, the same physics, one number.** The infrared has no whole-cell
-number — a periodic metal's dipole is not defined (§ 2.1) — so it reads the
-charges of a set the person names. The contact gold is in it when the label
-holds it, and the charge each mode moves between the set and everything else
-is reported beside the strength (§ 2.1).
+**The infrared** has no whole-cell number — a periodic metal's dipole is
+not defined (§ 2.1, § 2.5) — so it reads the charges of the free atoms, the
+system the vibration was described for; the charge each mode moves into or
+out of them is reported beside the strength (§ 2.1).
 
 **What it does not settle** (§ 3.1): whether the far gold's part cancels in
 the whole cell's difference at the settings a person can afford — the
@@ -863,8 +901,7 @@ Published work holds the far metal fixed as this does [Zayak2011,
 Frederiksen2007]; it finds the substrate's own response changing with the
 mode part of the signal, not noise [Zayak2011, Oren2012], and splits no
 periodic cell's derivative into a molecule's share — junction theory
-projects the polarizability on the molecule instead [Galperin2008], the
-nearest published counterpart of the named set's share. Whether $\alpha$ is
+projects the polarizability on the molecule instead [Galperin2008]. Whether $\alpha$ is
 taken static or at the laser's frequency is decided: both, the laser's the
 one the strength is ranked by (§ 3.1, D-f) — beside a metal, the laser's the
 only one defined.
@@ -968,7 +1005,6 @@ time its iterations times the run's average iteration:
 |---|---|---|
 | the infrared, every mode | none | read from the vibration's own steps (§ 2.2) |
 | keeping the held gold in Raman (§ 3.4) | none | it is in every run already: all 312 atoms' electrons are solved at every step |
-| the named set's share beside the whole (§ 3.4) | none | worked out afterwards from each frame's saved states — a post-processing step, not yet designed, so not measured |
 | Raman for $N$ chosen modes | $1 + 2N$ — frame 0 once, $\pm\delta Q$ for each mode | each run one junction SCF and SIESTA's optical calculation |
 
 **The calculation for five modes**: $1 + 2\times5 = 11$ runs, each started
@@ -1023,16 +1059,19 @@ with opposite signs — as the
 chain's symmetry asks. Molbuilder's reader reads the output without a
 warning, and the modes are the earlier run's to the last digit. **From the same
 run, the infrared strengths of § 2.4**: the symmetry-forbidden mode reads
-zero under both partitions, the allowed one does not — and the built
-function (2.36.0) gives § 2.4's numbers again, 21.3 and 101.8 km/mol.
+zero under both partitions, the allowed one does not — 0.1 and 47.2 km/mol
+for the free pair, the built function's numbers.
 
 **CO₂ with its carbon held, through jobset** (the SIESTA vibration e2e,
 `tests/test_siesta_vibration_e2e.py`, 2.36.0): on the relaxed molecule and on
 the unrelaxed one alike, under both partitions, a field along z sees neither
 bend, a field along x neither stretch; each stretch's dipole change along z
 opposes the oxygens' net motion — their charge is negative under both
-partitions — and the neutral molecule moves no charge (below
-$5\times10^{-5}\,e$ amu$^{-1/2}$). **The stretch whose oxygens move apart
+partitions — and no bend moves charge into or out of the free oxygens
+(below $10^{-4}\,e$ amu$^{-1/2}$), while the stretch whose oxygens move
+apart moves it between them and the held carbon: −0.0218 (Hirshfeld) and
++0.0334 (Voronoi) $e$ amu$^{-1/2}$ at 1312 cm⁻¹ on the relaxed molecule —
+the two partitions disagreeing even in sign. **The stretch whose oxygens move apart
 reads 0.5 % of the other** on the relaxed molecule (1.13 against
 215.3 km/mol, Hirshfeld), not zero: the computed modes themselves are not
 quite the symmetric pair — the oxygens' z components (−0.164, 0.189) give an
@@ -1101,7 +1140,7 @@ against PySCF's, which molbuilder computes already (`engines/vibration.md`
 infrared half needs only the two vibrations that exist; PySCF's
 `ir_intensity_km_mol` is the tumbling molecule's, so it is compared with the
 mean of SIESTA's three axes, $\tfrac13[A_\nu(\hat x)+A_\nu(\hat y)+A_\nu(\hat z)]$
-(§ 2.3), the whole molecule the set. The Raman half needs the Raman runs (§ 5) and a comparison that is like for
+(§ 2.3), the whole molecule being its free atoms. The Raman half needs the Raman runs (§ 5) and a comparison that is like for
 like: PySCF stores the
 orientation-averaged activity, $45a'^2+7\gamma'^2$, from coupled-perturbed
 theory, while $R_\nu(\hat e)$ is one component from independent states —
@@ -1115,15 +1154,14 @@ $R_\nu$, not the junction's formulation.
 
 ## 8. What the method assumes
 
-1. **Point charges** (infrared): the molecule's dipole is its atoms' partial
+1. **Point charges** (infrared): the free atoms' dipole is their partial
    charges at their positions; each atom's own dipole is not in it, and two
    partitions give two answers.
 2. **Independent states** (Raman): SIESTA's optical calculation, without
    local-field effects (§ 3.3).
 3. **The metal** (Raman): no free-electron (Drude) term is added, so the
    static value beside a metal is not defined and the laser's is the one to
-   read; the contact gold's response is kept in the whole cell's number, the
-   molecule's share stated beside it; the far gold cancels between the frames
+   read; the contact gold's response is kept in the whole cell's number; the far gold cancels between the frames
    only where it is computed alike at both; a free atom that is part of the
    metal can make $\alpha$ jump with the displacement (§ 3.1).
 4. **The polarizability at the laser's frequency** (Raman), from
@@ -1230,6 +1268,53 @@ Added 2026-10-27, each checked against Crossref and in `references.bib`:
 - [Frederiksen2007] T. Frederiksen, M. Paulsson, M. Brandbyge, A.-P. Jauho,
   *Phys. Rev. B* **75**, 205413 (2007), doi:10.1103/PhysRevB.75.205413 — a
   junction's vibrations in a dynamic region, the rest fixed.
+- [SiestaOptical2021] the SIESTA developers, *Calculation of optical
+  properties*, SIESTA school 2021 tutorial,
+  docs.siesta-project.org/projects/siesta/en/school-2021/tutorials/optical-properties.
+- [Greenler1966] R. G. Greenler, *J. Chem. Phys.* **44**, 310–315 (1966),
+  doi:10.1063/1.1726462 — the infrared of adsorbed molecules on metal
+  surfaces by reflection.
+- [Hoffmann1983] F. M. Hoffmann, *Surf. Sci. Rep.* **3**, 107 (1983),
+  doi:10.1016/0167-5729(83)90001-8 — infrared reflection–absorption
+  spectroscopy of adsorbed molecules.
+- [Zaitsev2018] N. L. Zaitsev, P. Jakob, R. Tonner, *J. Phys.: Condens.
+  Matter* **30**, 354001 (2018), doi:10.1088/1361-648X/aad576 — the
+  vibrations of PTCDA on Ag(111).
+- [Zhou2021] X. Zhou, H. Vejayan, R. D. Beck, H. Guo, B. Jiang, *J. Phys.
+  Chem. Lett.* **12**, 11164–11169 (2021), doi:10.1021/acs.jpclett.1c03342
+  — the infrared activities of species adsorbed on metal surfaces.
+- [Bengtsson1999] L. Bengtsson, *Phys. Rev. B* **59**, 12301–12304 (1999),
+  doi:10.1103/PhysRevB.59.12301 — the dipole correction for surface
+  supercells.
+- [Resta1994] R. Resta, *Rev. Mod. Phys.* **66**, 899–915 (1994),
+  doi:10.1103/RevModPhys.66.899 — the macroscopic polarization of
+  crystalline dielectrics by the geometric phase.
+- [RestaVanderbilt2007] R. Resta, D. Vanderbilt, in *Physics of
+  Ferroelectrics: A Modern Perspective*, Topics in Applied Physics **105**,
+  31–68 (2007), doi:10.1007/978-3-540-34591-6_2 — the modern theory of
+  polarization.
+- [Shockley1938] W. Shockley, *J. Appl. Phys.* **9**, 635–636 (1938),
+  doi:10.1063/1.1710367 — currents induced in conductors by a moving
+  charge.
+- [Ramo1939] S. Ramo, *Proc. IRE* **27**, 584–585 (1939),
+  doi:10.1109/JRPROC.1939.228757 — currents induced by electron motion.
+- [Ward2008] D. R. Ward, N. J. Halas, J. W. Ciszek, J. M. Tour, Y. Wu,
+  P. Nordlander, D. Natelson, *Nano Lett.* **8**, 919–924 (2008),
+  doi:10.1021/nl073346h — conduction and Raman measured together in
+  molecular junctions.
+- [TroisiRatner2006] A. Troisi, M. A. Ratner, *Nano Lett.* **6**,
+  1784–1788 (2006), doi:10.1021/nl0609394 — propensity rules for inelastic
+  electron tunnelling spectra.
+- [Paulsson2008] M. Paulsson, T. Frederiksen, H. Ueba, N. Lorente,
+  M. Brandbyge, *Phys. Rev. Lett.* **100**, 226604 (2008),
+  doi:10.1103/PhysRevLett.100.226604 — inelastic propensity rules for
+  nanoscale junctions, unified.
+- [HaidukeBruns2005] R. L. A. Haiduke, R. E. Bruns, *J. Phys. Chem. A*
+  **109**, 2680–2688 (2005), doi:10.1021/jp045357u — a dipole derivative
+  decomposed into charge, charge-flux and dipole-flux terms.
+- [VesterOlsen2024] J. Vester, J. M. H. Olsen, *J. Chem. Theory Comput.*
+  **20**, 9533–9546 (2024), doi:10.1021/acs.jctc.4c00882 — the partial
+  Hessian approximation assessed in vibrational analysis.
 - SIESTA 5.4.2 manual, `OpticalCalculation`, `Optical.*`, `Charge.Hirshfeld`,
   `BornCharge` and `PolarizationGrids`; its source `Src/optical.F`,
   `Src/partial_charges.F90`, `Src/grdsam.F`, `Src/siesta_analysis.F90`,

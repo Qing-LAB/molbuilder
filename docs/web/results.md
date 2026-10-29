@@ -1205,8 +1205,8 @@ non-greedy regex stopped at the new guard's `return`.*
 "e2e means you can calculate a CO2 molecule within 5 min and use that output
 to do this")*: the trajectory viewer draws a real H2 relaxation
 (`test_siesta_run_in_the_viewer_e2e.py`) and the spectra viewer a real CO2
-vibration's modes, picked from the dropdown
-(`test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibration_as_its_modes`)
+vibration's spectrum, picked from the dropdown
+(`test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared`)
 -- a load whose caller lost its `path` draws nothing. The guards themselves
 run on each viewer's shipped functions (`test_trajectory_transition_js.py`,
 `test_spectra_transition_js.py`): an answer for another file, one after

@@ -28,22 +28,32 @@ the queue and the handover to the day's end.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-28)*
 
-**Where we are: 2.48.0.** The releases are the changelog's rows; the
+**Where we are: 2.49.0.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
-day's last: the monitor says where the run is, read from its declared
-structure — the parts of an engine's output, the part each fact belongs to,
-a run of points' position, the clocks and the pace (2.48.0, § 1af); and
+day's last: a SIESTA vibration's infrared is the free atoms' — the system the
+person declared by what they freed — shown when the result opens, with no
+choice of atoms anywhere, and the Spectrum page's one bar above the chart
+(light, charges, laser, width) applied by *Update* under the page busy fence
+(2.49.0, `web/spectra.md` § 2.1, § 3.2); the monitor says where the run is,
+read from its declared structure (2.48.0, § 1af); and
 `engines/vibration.md` § 2.2a, what the force a relaxed structure shows under
 the vibration's own settings does and does not change — measured on the
 user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
 it is, the user's ruling: "the user knows the information … don't do
 extra")*.
 
-**Last checked**: the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
+**Last checked**: the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-28) — the user's to change.
 
-**Decisions that wait on the user**: § 1t's wording (`PLACE_NOTE_UNKNOWN`,
+**Decisions that wait on the user**: the chart's lane titles — a lane's
+words longer than the lane (SIESTA's Raman before a laser is applied, *type
+the laser's wavelength — …*) run over the next lane's title, seen on the
+2.49.0 walk, now that the infrared shows beside it on open
+(`spectrumchart.md` § 8.3); a result written before 2.49.0 keeps its stored
+Methods sentence (*the infrared of a chosen set of atoms*), shown beside the
+free atoms' sentence the load adds — the user's AuBDTAu run on Sol among
+them; § 1t's wording (`PLACE_NOTE_UNKNOWN`,
 the user's words); `envs/recipes.py`'s comment calling ASE a monitor reader
 (`:1485-1487`, the user's file — § 1ae (k)); the page's label palette read
 from the kind table — a page change (§ 1ak S2.4); whether a Retract keeps the
@@ -154,9 +164,8 @@ are `engines/vibration.md` § 5.11. **Left**:
 - **(m)** a spin-polarized optical frame's Fermi level — row SPIN-EF;
 - M4's Raman viewer walked in a browser — § 1ak S5's walk.
 
-After it, each a design brought to the user: the named set's share (D-e), the
-`electronic` kind (§ 5.10 ④), the measured intensity's factors as an option
-(M4-d) — § 1ac.
+After it, each a design brought to the user: the `electronic` kind
+(§ 5.10 ④), the measured intensity's factors as an option (M4-d) — § 1ac.
 
 ## 1af. What a run reports, by the kind of calculation *(2026-10-26; the design agreed with the user; its status line, `execution/run-reports.md` § 2.8, built 2.48.0; its events next, contract first, a release of their own)*
 
@@ -393,8 +402,6 @@ every piece and decision of the section is built (2.35.2–2.45.0) or withdrawn
 - **B — energies along a mode**, measured: one SCF per frame of a frame set,
   the `electronic` kind's first output (`engines/vibration.md` § 5.10 ④, not
   built).
-- **D-e — the named set's share** of the Raman change (the method's § 3.4),
-  designed from its published counterpart.
 - **D-h — the polarizability table** (six optical runs a geometry), decided
   once an optical run's cost on a junction frame is measured — the user's, on
   Sol; the AuBDTAu run of 2026-10-28 measures it (the handover).

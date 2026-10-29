@@ -6,8 +6,8 @@ one of FOUR cases, read from the file's own record, the same on both engines
 (`engines/vibration.md` § 5.11 § 8) --
 
 * the run asked for none: `phase_ir` and `phase_raman` both *not requested*;
-* a strength waits for you: a SIESTA result stating its charges, told to
-  name the atoms for their infrared (§ 3.2);
+* a strength waits for you: a SIESTA result stating its charges whose
+  infrared the load door could not give, told where its reason is (§ 3.2);
 * they are still being computed: a run whose Raman or infrared phase is
   still to finish;
 * the run asked and recorded none -- a SIESTA Raman range that kept no
@@ -85,7 +85,9 @@ def test_the_sentence_names_the_case_and_the_viewer_waits_for_infrared():
      kept_none) = _judge([
         _file(_SIESTA),
         _file(_SIESTA, phase_ir="complete", ir_route="charges",
-              partial_charges={"displacement_ang": 0.0212}),
+              partial_charges={"displacement_ang": 0.0212},
+              infrared_said="the result states ['hirshfeld'] charges, not "
+                            "'voronoi'"),
         _file({**_PYSCF, "compute_ir": False}),
         _file(_PYSCF, phase_ir="running"),
         _file(_PYSCF, phase_ir="empty"),
@@ -97,8 +99,8 @@ def test_the_sentence_names_the_case_and_the_viewer_waits_for_infrared():
     for asked_none in (siesta_off, off):
         assert "not requested in this run" in asked_none["sentence"], \
             asked_none
-    assert "name the atoms above the modes table for their infrared" \
-        in charged["sentence"]
+    assert "the infrared asked of the run's charges could not be given " \
+        "(why: in the bar above the chart)" in charged["sentence"], charged
     assert "no Raman was requested in this run" in charged["sentence"]
     for mid in (mid_sweep, before_sweep):
         assert "still being computed" in mid["sentence"], mid

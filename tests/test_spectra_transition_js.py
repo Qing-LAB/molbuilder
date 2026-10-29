@@ -217,7 +217,7 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         id="a poll that says the run finished is drawn, and ends the follow"),
     pytest.param(
         {"machine": "WATCHING", "run": _LIVE, "in_flight": False},
-        # The person types a laser while the poll is out: its answer is to
+        # The person applies a laser by Update while the poll is out: its answer is to
         # the older ask.
         'answer = async () => { _ask = { raman: { laser_nm: 633 } };'
         '  answer = async () => new Promise(() => {});'

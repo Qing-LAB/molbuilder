@@ -101,11 +101,9 @@
     gap: var(--space-xs);
     min-width: 0;          /* a grid item may shrink below its content */
 }
-/* The infrared and Raman rows' labels are the same component
- * (web/spectra.md § 3.2, § 3.3). */
+/* The bar's labels are the same component (web/spectra.md § 2.1). */
 .spectrum-controls .inline-label,
-.ir-controls .inline-label,
-.raman-controls .inline-label {
+.view-bar .inline-label {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
@@ -205,19 +203,38 @@
 .modes-table.route-no-charge .charge-col,
 .modes-table.route-no-es .es-col { display: none; }
 
-/* The infrared and Raman controls of a SIESTA result (web/spectra.md
- * § 3.2, § 3.3): table-controls rows, the infrared's explanation on a line
- * of its own beneath. */
-.ir-controls[hidden],
-.raman-controls[hidden],
-.ir-controls .inline-label[hidden] { display: none; }
-.ir-controls input[type="number"],
-.raman-controls input[type="number"] { width: var(--sp-number-w); }
-.ir-explain {
-    flex-basis: 100%;
-    margin: 0;
+/* THE BAR ABOVE THE CHART (web/spectra.md § 2.1): what the strengths are
+ * computed with, in one wrapping row -- Update at its end -- and its one
+ * line beneath. */
+.view-bar {
+    margin: var(--space-xs) 0 var(--space-sm);
+    font-size: var(--text-sm);
+}
+.view-bar-controls,
+.view-bar-group {
+    display: flex;
+    gap: var(--space-sm) var(--space-md);
+    align-items: center;
+    flex-wrap: wrap;
+}
+.view-bar[hidden],
+.view-bar-group[hidden],
+.view-bar .inline-label[hidden] { display: none; }
+.view-bar input[type="number"] { width: var(--sp-number-w); }
+/* The line is a line of its own, so none of page-shell's left indent
+ * (meant for a status trailing a button). */
+.view-bar .status { margin: var(--space-xs) 0 0; }
+/* THE TABLE'S NOTES (web/spectra.md § 3): each marked column's note under
+ * the table, the partition's explanation the last. */
+.modes-notes {
+    margin: var(--space-sm) 0 0;
+    font-size: var(--text-sm);
     color: var(--text-muted);
 }
+.modes-notes[hidden],
+.modes-notes p[hidden] { display: none; }
+.modes-notes p { margin: 0 0 var(--space-xs); }
+.ir-explain { margin: 0; }
 /* Why this run has no charges: a line of its own, so none of page-shell's
  * left indent (meant for a status trailing a button). */
 .ir-absent { margin: var(--space-sm) 0; }

@@ -199,9 +199,9 @@ def _direction_words(view: Mapping[str, Any]) -> str:
 
 
 def infrared_view_sentence(view: Mapping[str, Any]) -> str:
-    """The sentence naming the infrared a page shows of a SIESTA result
-    (`web/spectra.md` § 3.2): the atoms, the partition and how the molecule
-    meets the light -- held, in one orientation, along the light's direction,
+    """The sentence naming the infrared a page shows of a result
+    (`web/spectra.md` § 3.2): the free atoms and their partition, or the
+    whole system's dipole change, and how the molecule meets the light -- held, in one orientation, along the light's direction,
     three times the orientation average; or free, nothing held, the
     orientation average itself (`science/vibrational-optical-response.md`
     § 2.3)."""
@@ -209,8 +209,9 @@ def infrared_view_sentence(view: Mapping[str, Any]) -> str:
     head = ("The infrared shown is the whole system's, from the dipole "
             "change the engine computed along each mode"
             if view.get("source") == "dipole" else
-            f"The infrared shown is that of {view['atoms_label']}, from "
-            f"their {partition} charges")
+            f"The infrared shown is that of {view['atoms_label']}, the "
+            f"{len(view['atoms'])} atoms the vibration moved, from their "
+            f"{partition} charges")
     if view.get("orientation") == "free":
         return (f"{head}, averaged over orientations: no atom is held, so the "
                 f"molecule tumbles, as a free molecule's infrared intensity "
@@ -331,8 +332,7 @@ def siesta_methods_text(*, displacement_bohr: float, n_free: int,
     # added once the run knows whether its optical calls were planned.
     intensities = (
         f" {' and '.join(named)} atomic charges were recorded at every "
-        f"displacement, from which the infrared of a chosen set of atoms is "
-        f"derived."
+        f"displacement, from which the free atoms' infrared is derived."
         if named else
         # A FINISH THAT KEEPS NO CHARGES IS A RUN THAT ASKED FOR NONE: one
         # that asked and printed none is refused (`siesta_vibration.

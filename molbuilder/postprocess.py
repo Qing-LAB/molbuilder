@@ -10,8 +10,8 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         ``read_transport_data`` / ``read_spectra_data`` /
         ``read_optical_data`` -- the data files a calculation writes, each
         with its atom index map, and ``read_raman_data`` -- an exported
-        Raman view; ``infrared_view`` -- the infrared of a set of atoms from
-        a SIESTA vibration result's charges (`spectra.infrared`);
+        Raman view; ``infrared_view`` -- the free atoms' infrared from a
+        SIESTA vibration result's charges (`spectra.infrared`);
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
         optical calls (`spectra.raman`); and
         ``reference_max_displacement`` -- a mode's reference displacement
@@ -125,37 +125,30 @@ def raman_view(path, *, laser_nm: float, broaden_ev: "float | None" = None):
     return raman_view_of(path, laser_nm=laser_nm, broaden_ev=broaden_ev)
 
 
-def infrared_view(path, *, direction, atoms=None,
+def infrared_view(path, *, direction="z",
                   partition: "str | None" = None):
     """THE INFRARED of a vibration result ``<label>.spectra.json``, as the
     spectrum viewer asks it (`spectra.infrared`): ``direction`` ``x``,
-    ``y``, ``z`` or a vector; on a SIESTA result, from its charges, of
-    ``atoms`` -- a label of its structure, ``{"set": "free"}`` for the atoms
-    the vibration moved, or user indices -- by ``partition``, ``hirshfeld``
-    or ``voronoi`` (:data:`spectra.infrared.DEFAULT_PARTITION` when
-    unsaid); on a PySCF result, the whole system's, from the dipole change
-    it stored (``atoms`` not named).  Held or free by the result's own held
-    atoms (`engines/vibration.md` § 4.6; `science/vibrational-optical-
+    ``y``, ``z`` or a vector; on a SIESTA result, the free atoms' -- the
+    atoms the vibration moved -- from their charges, by ``partition``,
+    ``hirshfeld`` or ``voronoi`` (:data:`spectra.infrared.DEFAULT_PARTITION`
+    when unsaid); on a PySCF result, the whole system's, from the dipole
+    change it stored (no partition named).  Held or free by the result's own
+    held atoms (`engines/vibration.md` § 4.6; `science/vibrational-optical-
     response.md` § 2.3)."""
     from .sidecars.spectra import parse_spectra_json
     from .spectra.infrared import (DEFAULT_PARTITION, SOURCE_DIPOLE,
-                                   InfraredError, atoms_of, dipole_view,
+                                   InfraredError, dipole_view,
                                    infrared_view as _view, source_of)
     result = parse_spectra_json(path)
     if source_of(result) == SOURCE_DIPOLE:
-        if atoms is not None:
+        if partition is not None:
             raise InfraredError(f"{path}: a {result.engine} result's infrared "
-                                f"is the whole system's -- name no atoms")
+                                f"is the whole system's dipole change -- it "
+                                f"has no partition")
         return dipole_view(result, direction=direction)
-    if atoms is None:
-        raise InfraredError(f"{path}: name the atoms -- a label, "
-                            f"{{'set': 'free'}} or user indices")
-    if isinstance(atoms, (str, dict)):
-        chosen, label = atoms_of(result, atoms)
-    else:
-        chosen, label = list(atoms), ""
-    return _view(result, atoms=chosen, direction=direction,
-                 partition=partition or DEFAULT_PARTITION, atoms_label=label)
+    return _view(result, direction=direction,
+                 partition=partition or DEFAULT_PARTITION)
 
 
 def reference_max_displacement(path, *, mode: int, temperature_k: float,

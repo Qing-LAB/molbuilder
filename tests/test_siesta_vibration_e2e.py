@@ -334,11 +334,15 @@ def _states_its_charges_and_their_infrared(d):
     index (the deck is a 3-cycle of the input) -- each step's charges
     summing to zero, the cell being neutral, and at the reference the
     oxygens negative and the carbon positive under both.  The infrared
-    derived from them (`science/vibrational-optical-response.md` § 2) reads
-    what holds exactly for any geometry along the axis, relaxed or not: a
-    field along z sees no bend, a field along x no stretch; each stretch's
-    dipole change along z opposes the oxygens' net motion along it --
-    negative charge moved; and the whole molecule, neutral, moves no charge.
+    derived from them (`science/vibrational-optical-response.md` § 2) is
+    the free atoms' -- the two oxygens, the carbon held (`web/spectra.md`
+    § 3.2) -- and reads what holds exactly for any geometry along the axis,
+    relaxed or not: a field along z sees no bend, a field along x no
+    stretch; each stretch's dipole change along z opposes the oxygens' net
+    motion along it -- negative charge moved; and the oxygens' charge
+    changes only as the held carbon's does, the cell neutral: no bend moves
+    any, a plane through the axis turning each bend into its own negative,
+    while the stretches move charge between the oxygens and the carbon.
     (How silent the stretch whose oxygens move apart reads depends on the
     mesh, which tells the two oxygens apart -- 0.5 % of the other at this
     test's 150 Ry, 6.5e-8 at 500 Ry, the method's § 7 -- so it is not
@@ -347,7 +351,8 @@ def _states_its_charges_and_their_infrared(d):
     MUTATIONS THIS MUST FAIL AGAINST: the finish's steps out of SIESTA's
     order -- an axis swapped lights a forbidden band, a side swapped turns
     each stretch's sign -- or a step's charges left in the deck's order,
-    which puts the carbon's charge on an oxygen."""
+    which puts the carbon's charge on an oxygen; the view taken over the
+    whole molecule, which, neutral, moves no charge in any mode."""
     from molbuilder.spectra.infrared import infrared_view
     from molbuilder.spectra.results import SpectraResults
     pc = d["partial_charges"]
@@ -365,9 +370,10 @@ def _states_its_charges_and_their_infrared(d):
     oxygens_z = [float(np.asarray(m["eigenvector_canonical"])[:, 2].sum())
                  for m in d["modes"]]
     for partition in ("hirshfeld", "voronoi"):
-        along_z = infrared_view(result, atoms=[0, 1, 2], direction="z",
-                                partition=partition).modes
-        along_x = infrared_view(result, atoms=[0, 1, 2], direction="x",
+        view = infrared_view(result, direction="z", partition=partition)
+        assert (view.atoms_label, view.atoms) == ("the free atoms", (0, 1))
+        along_z = view.modes
+        along_x = infrared_view(result, direction="x",
                                 partition=partition).modes
         stretch = max(m.intensity_km_mol for m in along_z[2:])
         bend = max(m.intensity_km_mol for m in along_x[:2])
@@ -379,8 +385,9 @@ def _states_its_charges_and_their_infrared(d):
         for k in (2, 3):
             assert along_z[k].dmu_dq_e_per_amu12[2] * oxygens_z[k] < 0, \
                 (partition, k, along_z[k], oxygens_z[k])
-        assert all(abs(m.charge_moved_e_per_amu12_ang) < 1e-3
-                   for m in along_z), (partition, along_z)
+        moved = [m.charge_moved_e_per_amu12_ang for m in along_z]
+        assert all(abs(q) < 1e-3 for q in moved[:2]), (partition, moved)
+        assert max(abs(q) for q in moved[2:]) > 1e-3, (partition, moved)
 
 
 def _a_bend_pair_and_two_stretches(modes):
@@ -843,23 +850,25 @@ def _shown(page, selector):
         "  return !!e && e.getClientRects().length > 0; }", selector)
 
 
-def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
+def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
         ticked, page, monkeypatch):
-    """**The ticked road's result, looked at**: the Results tab shows a
-    SIESTA vibration as its modes, not a spectrum (`web/spectra.md`; the
-    user, 2026-09-28: "there should be no width or spectrum for siesta
-    result. it is just mode of frequency, and animation of the mode").
-    Opened the way a person opens it, through the tab's dropdown:
+    """**The ticked road's result, looked at** (`web/spectra.md` § 2.1,
+    § 3.2), opened the way a person opens it, through the tab's dropdown:
 
-    * mode positions, not a spectrum: one line of one height at each mode, no
-      curve, no height numbers, no width control, under *Mode positions*, one
-      sentence saying which case it is -- a result stating its charges: name
-      the atoms for their infrared (§ 2; `spectrumchart.md` § 6.2);
+    * the free atoms' infrared shown when it opens -- the oxygens, the
+      carbon held -- along z by Hirshfeld charges: a spectrum, the column
+      titled with its note's mark, a number in every cell, its note under the table
+      naming the free atoms, the light and the charges, the run summary
+      saying the same; no choice of atoms anywhere;
+    * the bar above the chart holding *Light along* and *Charges*, no Raman
+      boxes -- the run asked for none -- and *Update* disabled;
+    * a change in the bar asks nothing: the line says it waits, the column
+      and its note stay as they were; *Update* asks the load door under the
+      page busy fence, and the view, its note and the summary follow;
     * the modes table without the columns the route cannot compute, and the
-      run summary saying the Raman was *not requested* -- the box unticked
-      ran no optical calls -- and the probe *not computed on this route*
-      (§ 9b.3);
-    * no phase dot for Raman or the probe (§ 3);
+      run summary saying the Raman was *not requested* and the probe *not
+      computed on this route* (§ 9b.3); no phase dot for Raman or the probe
+      (§ 3);
     * the electronic-structure tab naming the planned projected density of
       states, never PySCF's ``es_mode_selection`` (§ 9b.3);
     * the thermochemistry labelled as vibrational contributions, no
@@ -868,8 +877,8 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
 
     Every hiding is read from the COMPUTED style, never the attribute or the
     class: a ``display`` rule of the element's own beats ``[hidden]``.  The
-    silent failure: a SIESTA result drawn as a spectrum with heights and a
-    width it never computed, or a table offering intensities it has not.
+    silent failure: an infrared of another set of atoms than the free ones,
+    a bar change applied without Update, or Update asking outside the fence.
     """
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.runfiles import ROLE_SPECTRA
@@ -879,6 +888,18 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
     d = _the_result(ticked)
     attempt = ticked.attempt("freq")
     result = on_label_at(attempt, ROLE_SPECTRA)
+
+    def summary():
+        return page.evaluate("""() => {
+            const dl = document.getElementById("results-summary-list");
+            const out = {};
+            dl.querySelectorAll("dt").forEach(dt => {
+                out[dt.textContent] = dt.nextElementSibling.textContent; });
+            return out; }""")
+
+    def cells():
+        return page.eval_on_selector_all(
+            "#modes-tbody td.ir-col", "ts => ts.map(t => t.textContent)")
 
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -894,88 +915,126 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
             "  '#results-file-picker-select option')]"
             "  .some(o => o.value === want)", arg=str(result), timeout=20000)
         page.select_option("#results-file-picker-select", value=str(result))
-        # the rows are drawn by the same call that decides the spectrum
-        # section (core.js renderResults), so once they are on the page
-        # that decision is too
         page.wait_for_selector("#modes-tbody tr", state="attached",
                                timeout=30000)
 
-        # MODE POSITIONS, NOT A SPECTRUM (§ 2): one line of one height at
-        # each mode, no curve and no height numbers, no width control, and
-        # the one sentence saying why there are no heights.
-        assert _shown(page, "#spectrum-chart")
-        assert page.inner_text("#spectrum-heading") == "Mode positions"
-        assert not _shown(page, "#broadening-fwhm")
-        assert not _shown(page, "#display-floor")
-        absent = page.inner_text("#spectrum-absent")
-        assert "name the atoms above the modes table for their infrared" \
-            in absent, absent
+        # THE FREE ATOMS' INFRARED ON OPEN (§ 3.2): a spectrum, the column
+        # titled short with its note, a number in every cell, the summary
+        # naming the view -- and no choice of atoms.
+        page.wait_for_function(
+            "() => document.getElementById('ir-col-head').textContent"
+            "  === 'IR* (km/mol)'", timeout=20000)
+        assert page.inner_text("#spectrum-heading") == "Spectrum"
+        assert _shown(page, "#broadening-fwhm")
+        assert not _shown(page, "#spectrum-absent")
         assert page.locator("#modes-tbody tr").count() == len(d["modes"])
-        drawn = page.wait_for_function(
-            "() => { const g = document.querySelector("
-            "  '#spectrum-chart .js-plotly-plot');"
-            "  if (!g || !g.data) return null;"
-            "  return {traces: g.data.map(t => ({type: t.type,"
-            "    mode: t.mode || '', x: t.x, y: t.y})),"
-            "    ticks: g.layout.yaxis.showticklabels}; }",
-            timeout=20000).json_value()
-        bars = [t for t in drawn["traces"] if t["type"] == "bar"]
-        assert len(bars) == 1, drawn
-        freqs = [m["frequency_cm1"] for m in d["modes"]]
-        assert bars[0]["x"] == pytest.approx(freqs)
-        assert len(set(bars[0]["y"])) == 1, bars[0]["y"]
-        assert not [t for t in drawn["traces"]
-                    if t["type"] == "scatter" and "lines" in t["mode"]], drawn
-        assert drawn["ticks"] is False, drawn
+        along_z = cells()
+        assert len(along_z) == len(d["modes"]) and "—" not in along_z, \
+            along_z
+        note = page.inner_text("#note-ir")
+        assert note.startswith("* IR — how strongly light polarized along z "
+                               "is absorbed as this vibration moves the free "
+                               "atoms (2): "), note
+        assert "Hirshfeld charge" in note and \
+            "the held atoms are not in it" in note, note
+        assert page.inner_text("#charge-col-head") == \
+            "Charge moved† (e/(√amu·Å))"
+        assert page.inner_text("#note-charge").startswith(
+            "† Charge moved — how much the free atoms' total charge changes "
+            "during this vibration, per unit of the mode's coordinate — "
+            "positive where they lose electrons, negative where they gain "
+            "them — from the same Hirshfeld charges."), \
+            page.inner_text("#note-charge")
+        assert _shown(page, "#ir-explain")
+        assert summary()["IR intensities"] == (
+            "from the run's charges — the free atoms (2), along z, "
+            "Hirshfeld"), summary()["IR intensities"]
+        assert page.locator("#ir-atoms").count() == 0
+
+        # THE BAR (§ 2.1): the light and the charges, no Raman -- the run
+        # asked for none -- and nothing to update.
+        assert _shown(page, "#view-bar")
+        assert _shown(page, "#ir-direction") and _shown(page, "#ir-partition")
+        assert not _shown(page, "#raman-controls")
+        assert not _shown(page, "#ir-absent")
+        assert page.is_disabled("#view-update")
+
+        # A CHANGE ASKS NOTHING UNTIL UPDATE: the line says it waits, the
+        # view on screen stays the one its note names.
+        page.select_option("#ir-direction", value="x")
+        assert page.inner_text("#view-status") == \
+            "changed — Update to show it"
+        assert not page.is_disabled("#view-update")
+        assert page.inner_text("#note-ir").startswith(
+            "* IR — how strongly light polarized along z "), \
+            page.inner_text("#note-ir")
+        assert cells() == along_z
+
+        # UPDATE, UNDER THE FENCE (`ui-contract.md` § 10): each claim's
+        # reason the bar's.
+        page.evaluate("""() => {
+            const fence = window.molbuilder.pageBusy, claim = fence.claim;
+            window.__claims = [];
+            fence.claim = function (reason, cancelers) {
+                window.__claims.push(reason);
+                return claim.call(fence, reason, cancelers); }; }""")
+        # HELD, THEN CANCELLED (§ 2.1): while Update's ask is out the window
+        # is covered; Cancel aborts it and nothing is committed -- the view
+        # stays along z and the bar still reads *changed*.
+        held = []
+
+        def hold(route):
+            held.append(route)
+        page.route("**/api/spectra/load", hold)
+        page.click("#view-update")
+        page.wait_for_function(
+            "() => window.molbuilder.pageBusy.isClaimed()", timeout=20000)
+        assert _shown(page, ".page-busy-cover")
+        page.click(".page-busy-cancel")
+        page.wait_for_function(
+            "() => !window.molbuilder.pageBusy.isClaimed()", timeout=20000)
+        page.unroute("**/api/spectra/load")
+        assert len(held) == 1, held
+        assert page.inner_text("#note-ir").startswith(
+            "* IR — how strongly light polarized along z "), \
+            page.inner_text("#note-ir")
+        assert cells() == along_z
+        # the bar drawn again by a touch of another choice, there and back:
+        # still x against the z applied
+        page.select_option("#ir-partition", value="voronoi")
+        page.select_option("#ir-partition", value="hirshfeld")
+        assert page.inner_text("#view-status") == \
+            "changed — Update to show it"
+        assert not page.is_disabled("#view-update")
+        # ...AND LET THROUGH: the view, its note and the summary along x.
+        page.click("#view-update")
+        page.wait_for_function(
+            "() => document.getElementById('note-ir').textContent"
+            "  .startsWith('* IR — how strongly light polarized along x ')",
+            timeout=20000)
+        assert page.evaluate("() => window.__claims") == [
+            "Updating the spectrum…"] * 2
+        assert not page.evaluate("() => window.molbuilder.pageBusy"
+                                 ".isClaimed()")
+        assert summary()["IR intensities"] == (
+            "from the run's charges — the free atoms (2), along x, "
+            "Hirshfeld"), summary()["IR intensities"]
+        along_x = cells()
+        assert "—" not in along_x and along_x != along_z, along_x
+        assert page.is_disabled("#view-update")
+        assert page.inner_text("#view-status") == ""
 
         # THE TABLE AND THE SUMMARY BY ROUTE (§ 9b.3): what SIESTA cannot
-        # compute has no column, and the summary says so for each -- and
-        # its infrared, the run's charges', has its column and the charge
-        # moved beside it, empty until the atoms are named (§ 3.2).
+        # compute has no column, and the summary says so for each.
         for col in ("raman_activity_a4_amu", "has_es", "gap_eq_ev"):
             assert not _shown(page, f'#modes-table th[data-col="{col}"]'), col
         assert _shown(page, '#modes-table th[data-col="frequency_cm1"]')
         assert _shown(page, '#modes-table th[data-col="ir_intensity_km_mol"]')
         assert _shown(page, '#modes-table th[data-col="charge_moved"]')
-        assert _shown(page, "#ir-controls") and not _shown(page, "#ir-absent")
-        # THE SETS (§ 3.2): the built-in free atoms, then the structure's
-        # labels -- each option's value the ask it names.
-        offered = page.eval_on_selector_all(
-            "#ir-atoms option", "os => os.map(o => [o.value, o.textContent])")
-        assert offered == [["", "— name the atoms —"],
-                           ['{"set":"free"}', "the free atoms"],
-                           ['"frozen_atoms"', "frozen_atoms"]], offered
-        summary = page.evaluate("""() => {
-            const dl = document.getElementById("results-summary-list");
-            const out = {};
-            dl.querySelectorAll("dt").forEach(dt => {
-                out[dt.textContent] = dt.nextElementSibling.textContent; });
-            return out; }""")
-        assert summary["Raman"] == "not requested", summary["Raman"]
-        assert summary["Per-mode orbital energies"].startswith(
-            "not computed on this route"), summary["Per-mode orbital energies"]
-        assert not _shown(page, "#raman-controls")
-        assert summary["IR intensities"] == (
-            "from the run's charges — name the atoms above the modes "
-            "table"), summary["IR intensities"]
-
-        # THE ATOMS NAMED, the door answers (§ 3.2): the column titled by
-        # what was asked, a number in every cell, the summary saying so.
-        page.select_option("#ir-atoms", value='"frozen_atoms"')
-        page.wait_for_function(
-            "() => document.getElementById('ir-col-head').textContent"
-            "  === 'IR — frozen_atoms, along z, Hirshfeld (km/mol)'",
-            timeout=20000)
-        cells = page.eval_on_selector_all(
-            "#modes-tbody td.ir-col", "ts => ts.map(t => t.textContent)")
-        assert len(cells) == len(d["modes"]) and "—" not in cells, cells
-        said = page.evaluate("""() => {
-            const dt = [...document.querySelectorAll(
-                "#results-summary-list dt")].find(
-                x => x.textContent === "IR intensities");
-            return dt.nextElementSibling.textContent; }""")
-        assert said == ("from the run's charges — frozen_atoms, along "
-                        "z, Hirshfeld"), said
+        said = summary()
+        assert said["Raman"] == "not requested", said["Raman"]
+        assert said["Per-mode orbital energies"].startswith(
+            "not computed on this route"), said["Per-mode orbital energies"]
 
         # A DOT FOR EACH PHASE THE RUN HAS, BY ROUTE (§ 3;
         # `engines/vibration.md` § 5.11 § 8): no Raman -- no optical calls
@@ -1083,14 +1142,15 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
     """**The shared run's Raman, on its page** (`web/spectra.md` § 3.3),
     opened as a person opens it, through the Results tab's dropdown:
 
-    * before a laser is typed, no Raman number -- the Raman column titled
-      *Raman strength* with a dash in every cell, the line beside the boxes
-      asking for the laser, the run summary saying the same;
-    * the laser typed, 633 nm: the column titled by what was asked (the
-      light's direction, the laser, the width -- the run's own), a number for
-      each picked mode and a dash for the others, the static strength beside
-      it, the width box offering the run's own width, the run summary naming
-      the route, the laser and the width;
+    * before a laser is applied, no Raman number -- the Raman column titled
+      *Raman strength* with a dash in every cell, the bar's line asking for
+      the laser, the run summary saying the same;
+    * the laser typed, 633 nm, and *Update* (§ 2.1): the column titled
+      with its note's mark, the note naming what was asked (the light's
+      direction, the laser, the width -- the run's own), a number for each
+      picked mode and a dash for the others, the static strength beside it,
+      the bar's line saying the run's own width, the run summary naming the
+      route, the laser and the width;
     * the Raman dot complete -- the route has the phase;
     * Export as NetCDF hands over one zip holding the run's two data files
       and the view at that laser.
@@ -1140,13 +1200,15 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
         page.wait_for_selector("#modes-tbody tr", state="attached",
                                timeout=30000)
 
-        # NO NUMBER BEFORE THE LASER IS NAMED.
+        # NO NUMBER BEFORE THE LASER IS NAMED; the bar's line asks for it.
+        assert _shown(page, "#view-bar")
         assert _shown(page, "#raman-laser") and _shown(page, "#raman-broaden")
         assert page.inner_text("#raman-col-head") == "Raman strength (Å⁴/amu)"
         assert set(column(".raman-col:not(.raman-static-col)")) == {"—"}
         assert not _shown(page, "#raman-static-col-head")
-        assert page.inner_text("#raman-status") == (
-            "type the laser's wavelength — the strength depends on it")
+        assert not _shown(page, "#note-raman")
+        assert page.inner_text("#view-status") == (
+            "Raman: type the laser's wavelength — the strength depends on it")
         assert summary("Raman").endswith(
             "type the laser's wavelength — the strength depends on it"), \
             summary("Raman")
@@ -1154,22 +1216,32 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
         assert "spectra-phase-complete" in page.get_attribute(
             '.spectra-phase-dot[data-phase="raman"]', "class")
 
-        # THE LASER TYPED: the door answers, the page draws its answer.
+        # THE LASER TYPED, then Update (§ 2.1): the door answers, the page
+        # draws its answer.
         page.fill("#raman-laser", str(int(_LASER_NM)))
-        page.locator("#raman-laser").dispatch_event("change")
+        assert page.inner_text("#view-status").startswith(
+            "changed — Update to show it"), page.inner_text("#view-status")
+        page.click("#view-update")
         page.wait_for_function(
             "() => document.getElementById('raman-col-head').textContent"
-            "  .startsWith('Raman strength, light along z, 633 nm, ')",
-            timeout=20000)
-        # THE RUN'S OWN WIDTH, said beside the boxes, names both columns.
-        said = page.inner_text("#raman-status")
-        assert said.startswith("the run's own broadening: ") and \
-            said.endswith(" eV"), said
-        width = said[len("the run's own broadening: "):-len(" eV")]
-        assert page.inner_text("#raman-col-head") == (
-            f"Raman strength, light along z, 633 nm, {width} eV (Å⁴/amu)")
-        assert page.inner_text("#raman-static-col-head") == (
-            f"Raman strength, static, light along z, {width} eV (Å⁴/amu)")
+            "  === 'Raman strength‡ (Å⁴/amu)'", timeout=20000)
+        # THE RUN'S OWN WIDTH, said on the bar's line, names both notes.
+        said = page.inner_text("#view-status")
+        head = "Raman: the run's own broadening: "
+        assert said.startswith(head) and said.endswith(" eV"), said
+        width = said[len(head):-len(" eV")]
+        assert page.inner_text("#raman-static-col-head") == \
+            "Raman strength, static§ (Å⁴/amu)"
+        assert page.inner_text("#note-raman") == (
+            "‡ Raman strength — how strongly this vibration scatters laser "
+            "light of 633 nm polarized along z: the square of how fast the "
+            "cell's polarizability along z changes along the mode, from "
+            f"SIESTA's optical calculation at ±δQ, its spectrum smoothed to "
+            f"{width} eV."), page.inner_text("#note-raman")
+        assert page.inner_text("#note-raman-static").startswith(
+            "§ Raman strength, static — the same at zero frequency, "
+            f"independent of any laser, the spectrum smoothed to {width} eV"
+            ), page.inner_text("#note-raman-static")
         laser = column(".raman-col:not(.raman-static-col)")
         static = column(".raman-static-col")
         assert _shown(page, "#raman-static-col-head")
@@ -1188,12 +1260,21 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
         download = caught.value
         assert download.suggested_filename == \
             f"{label}.vibration-netcdf.zip", download.suggested_filename
+        folder = f"{label}.vibration-netcdf"
+        got = Path(download.path()).parent / "unzipped"
         with zipfile.ZipFile(io.BytesIO(Path(download.path()).read_bytes())) \
                 as z:
             names = sorted(z.namelist())
-        folder = f"{label}.vibration-netcdf"
+            z.extract(f"{folder}/{label}.raman.nc", got)
         assert names == sorted(f"{folder}/{n}" for n in (
             f"{label}.spectra.nc", optical.name, f"{label}.raman.nc")), names
+        # ...THE VIEW ON SCREEN, read back through its reader: the laser
+        # applied, the run's own width.
+        from molbuilder.postprocess import read_raman_data
+        data = read_raman_data(got / folder / f"{label}.raman.nc")
+        assert data["laser_nm"] == _LASER_NM, data["laser_nm"]
+        assert data["broaden_ev"] == pytest.approx(float(width), rel=1e-5), \
+            (data["broaden_ev"], width)
 
     unexpected = [e for e in errors if _PLOTLY_HIDDEN_RESIZE not in e]
     assert unexpected == [], f"the page reported JS errors: {unexpected}"
