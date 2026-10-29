@@ -1762,50 +1762,49 @@
             p => (typeof p === "string" ? document.createTextNode(p) : p)));
         el.hidden = false;
     }
-    /* The light the infrared asks, in a note's words. */
-    function _irLightWords(view) {
-        return view.orientation === "free"
-            ? "light from every direction, as a tumbling molecule meets it,"
-            : "light polarized along " + _alongWords(view);
-    }
+    /* THE NOTES IN PLAIN WORDS (web/spectra.md § 3.2, § 3.3): what the
+     * number is, then how it was made, then what zero means. */
     function _irNote(view) {
-        const along = view.orientation === "free"
-            ? ", averaged over directions" : " along the light's direction";
+        const free = view.orientation === "free";
+        const light = free
+            ? "infrared light, averaged over all directions, as for a freely "
+              + "tumbling molecule"
+            : "infrared light polarized along " + _alongWords(view);
+        const axis = free ? "" : " along " + _alongWords(view);
+        const unseen = free ? "Zero means light does not see this vibration."
+            : "Zero means light along " + _alongWords(view)
+              + " does not see this vibration.";
         // A STORED DIPOLE CHANGE is every atom's, the held ones' included
         // -- a view of one is a held result's (web/spectra.md § 3.2).
         if (view.source === "dipole")
-            return [" — how strongly " + _irLightWords(view) + " is absorbed "
-                    + "by this vibration: the square of the change in the "
-                    + "whole system's dipole — every atom's, the held ones' "
-                    + "included —" + along + ", computed by PySCF. A "
-                    + "vibration that moves no dipole along the light is "
-                    + "dark for it."];
+            return [" — how strongly this vibration absorbs " + light
+                    + ". It is the square of how much the whole system's "
+                    + "dipole" + axis + " changes as the vibration moves it, "
+                    + "held atoms included, as PySCF computes it. " + unseen];
         // THE FREE ATOMS ARE THE SYSTEM; the held ones, where there are
-        // any, are not in it.
-        const held = view.orientation === "free" ? ""
-            : "; the held atoms are not in it";
-        return [" — how strongly " + _irLightWords(view) + " is absorbed as "
-                + "this vibration moves " + _irAtomsWords(view) + ": the "
-                + "square of the change in the free atoms' dipole" + along
-                + ", that dipole made of each free atom's "
-                + _partitionName(view.partition) + " charge at every nudge "
-                + "of the force-constant run" + held + ". A vibration that "
-                + "moves no dipole along the light is dark for it."];
+        // any, are not counted.
+        return [" — how strongly this vibration absorbs " + light + ". It is "
+                + "the square of how much the free atoms' ("
+                + view.atoms.length + ") dipole" + axis + " changes as the "
+                + "vibration moves them, the dipole built from each free "
+                + "atom's " + _partitionName(view.partition) + " charge. "
+                + (free ? "" : "Held atoms are not counted. ") + unseen];
     }
     function _chargeNote(view) {
-        return [" — how much " + view.atoms_label
-                + "' total charge changes during this vibration, per unit of "
-                + "the mode's coordinate — positive where they lose "
-                + "electrons, negative where they gain them — from the same "
-                + _partitionName(view.partition) + " charges."];
+        return [" — how much electric charge the free atoms gain or lose as "
+                + "this vibration moves them, per unit of vibration ("
+                + _partitionName(view.partition) + " charges). Positive: "
+                + "they lose electrons. Negative: they gain electrons."];
     }
     function _ramanNote(view) {
         return [" — how strongly this vibration scatters laser light of "
                 + view.laser_nm + " nm polarized along " + _alongWords(view)
-                + ": the square of how fast the cell's polarizability along "
-                + _alongWords(view) + " changes along the mode, from SIESTA's "
-                + "optical calculation at ±δQ, its spectrum smoothed to "
-                + _widthWords(view.broaden_ev) + " eV."];
+                + ". It is the square of how much the structure's "
+                + "polarizability along " + _alongWords(view) + " changes as "
+                + "the vibration moves it, from SIESTA's optical calculation "
+                + "with the atoms pushed slightly each way, the absorption "
+                + "spectrum smoothed by " + _widthWords(view.broaden_ev)
+                + " eV."];
     }
     function _ramanStaticNote(view) {
         const link = document.createElement("a");
@@ -1813,10 +1812,10 @@
         link.target = "_blank";
         link.rel = "noopener";
         link.textContent = "the method, § 3.1";
-        return [" — the same at zero frequency, independent of any laser, the "
-                + "spectrum smoothed to " + _widthWords(view.broaden_ev)
-                + " eV; where the zero-frequency limit is defined, ", link,
-                "."];
+        return [" — the same, in the limit of zero light frequency, so it "
+                + "does not depend on the laser (absorption spectrum smoothed "
+                + "by " + _widthWords(view.broaden_ev) + " eV). When this "
+                + "limit is meaningful: ", link, "."];
     }
     /* The notes' block shows while one of its notes does. */
     function _renderNotes() {

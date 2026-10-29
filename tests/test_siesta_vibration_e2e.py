@@ -932,18 +932,20 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
         assert len(along_z) == len(d["modes"]) and "—" not in along_z, \
             along_z
         note = page.inner_text("#note-ir")
-        assert note.startswith("* IR — how strongly light polarized along z "
-                               "is absorbed as this vibration moves the free "
-                               "atoms (2): "), note
-        assert "Hirshfeld charge" in note and \
-            "the held atoms are not in it" in note, note
+        assert note == (
+            "* IR — how strongly this vibration absorbs infrared light "
+            "polarized along z. It is the square of how much the free atoms' "
+            "(2) dipole along z changes as the vibration moves them, the "
+            "dipole built from each free atom's Hirshfeld charge. Held atoms "
+            "are not counted. Zero means light along z does not see this "
+            "vibration."), note
         assert page.inner_text("#charge-col-head") == \
             "Charge moved† (e/(√amu·Å))"
         assert page.inner_text("#note-charge").startswith(
-            "† Charge moved — how much the free atoms' total charge changes "
-            "during this vibration, per unit of the mode's coordinate — "
-            "positive where they lose electrons, negative where they gain "
-            "them — from the same Hirshfeld charges."), \
+            "† Charge moved — how much electric charge the free atoms gain "
+            "or lose as this vibration moves them, per unit of vibration "
+            "(Hirshfeld charges). Positive: they lose electrons. Negative: "
+            "they gain electrons."), \
             page.inner_text("#note-charge")
         assert _shown(page, "#ir-explain")
         assert summary()["IR intensities"] == (
@@ -966,7 +968,8 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
             "changed — Update to show it"
         assert not page.is_disabled("#view-update")
         assert page.inner_text("#note-ir").startswith(
-            "* IR — how strongly light polarized along z "), \
+            "* IR — how strongly this vibration absorbs infrared light "
+            "polarized along z."), \
             page.inner_text("#note-ir")
         assert cells() == along_z
 
@@ -996,7 +999,8 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
         page.unroute("**/api/spectra/load")
         assert len(held) == 1, held
         assert page.inner_text("#note-ir").startswith(
-            "* IR — how strongly light polarized along z "), \
+            "* IR — how strongly this vibration absorbs infrared light "
+            "polarized along z."), \
             page.inner_text("#note-ir")
         assert cells() == along_z
         # the bar drawn again by a touch of another choice, there and back:
@@ -1010,7 +1014,8 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
         page.click("#view-update")
         page.wait_for_function(
             "() => document.getElementById('note-ir').textContent"
-            "  .startsWith('* IR — how strongly light polarized along x ')",
+            "  .startsWith('* IR — how strongly this vibration absorbs '"
+            "  + 'infrared light polarized along x.')",
             timeout=20000)
         assert page.evaluate("() => window.__claims") == [
             "Updating the spectrum…"] * 2
@@ -1234,14 +1239,17 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
             "Raman strength, static§ (Å⁴/amu)"
         assert page.inner_text("#note-raman") == (
             "‡ Raman strength — how strongly this vibration scatters laser "
-            "light of 633 nm polarized along z: the square of how fast the "
-            "cell's polarizability along z changes along the mode, from "
-            f"SIESTA's optical calculation at ±δQ, its spectrum smoothed to "
+            "light of 633 nm polarized along z. It is the square of how much "
+            "the structure's polarizability along z changes as the vibration "
+            "moves it, from SIESTA's optical calculation with the atoms "
+            "pushed slightly each way, the absorption spectrum smoothed by "
             f"{width} eV."), page.inner_text("#note-raman")
-        assert page.inner_text("#note-raman-static").startswith(
-            "§ Raman strength, static — the same at zero frequency, "
-            f"independent of any laser, the spectrum smoothed to {width} eV"
-            ), page.inner_text("#note-raman-static")
+        assert page.inner_text("#note-raman-static") == (
+            "§ Raman strength, static — the same, in the limit of zero light "
+            "frequency, so it does not depend on the laser (absorption "
+            f"spectrum smoothed by {width} eV). When this limit is "
+            "meaningful: the method, § 3.1."), \
+            page.inner_text("#note-raman-static")
         laser = column(".raman-col:not(.raman-static-col)")
         static = column(".raman-static-col")
         assert _shown(page, "#raman-static-col-head")

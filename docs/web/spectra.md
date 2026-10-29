@@ -355,21 +355,18 @@ partition, in that order (*the free atoms (20), along z, Hirshfeld*): the
 infrared column *IR\* (km/mol)* and the charge column *Charge moved†
 (e/(√amu·Å))*, each named in full by its note under the table (§ 3) —
 
-> \* **IR** — how strongly light polarized along z is absorbed as this
-> vibration moves the free atoms (20): the square of the change in the free
-> atoms' dipole along the light's direction, that dipole made of each free
-> atom's Hirshfeld charge at every nudge of the force-constant run; the held
-> atoms are not in it. A vibration that moves no dipole along the light is
-> dark for it.
+> \* **IR** — how strongly this vibration absorbs infrared light polarized
+> along z. It is the square of how much the free atoms' (20) dipole along z
+> changes as the vibration moves them, the dipole built from each free
+> atom's Hirshfeld charge. Held atoms are not counted. Zero means light
+> along z does not see this vibration.
 >
-> † **Charge moved** — how much the free atoms' total charge changes during
-> this vibration, per unit of the mode's coordinate — positive where they
-> lose electrons, negative where they gain them — from the same Hirshfeld
-> charges.
+> † **Charge moved** — how much electric charge the free atoms gain or lose
+> as this vibration moves them, per unit of vibration (Hirshfeld charges).
+> Positive: they lose electrons. Negative: they gain electrons.
 
-— for a free molecule *light from every direction, as a tumbling molecule
-meets it*, its dipole change *averaged over directions*, and no held atoms
-to name; the run summary *from the run's charges — the free atoms (20),
+— for a free molecule *infrared light, averaged over all directions, as for
+a freely tumbling molecule*, and no held atoms to name; the run summary *from the run's charges — the free atoms (20),
 along z, Hirshfeld*; the CSV's columns `ir_km_mol_along_z_hirshfeld`
 (`ir_km_mol_averaged_hirshfeld` for a free molecule; `ir_km_mol_along_z`
 for a held PySCF result's, below) and
@@ -408,10 +405,10 @@ the strength along that direction, from the vector the file keeps
 (`dipole_derivative_d_per_ang_amu12`, schema 12), named *IR\* (km/mol)*, its
 note saying it plainly:
 
-> \* **IR** — how strongly light polarized along z is absorbed by this
-> vibration: the square of the change in the whole system's dipole — every
-> atom's, the held ones' included — along the light's direction, computed by
-> PySCF. A vibration that moves no dipole along the light is dark for it.
+> \* **IR** — how strongly this vibration absorbs infrared light polarized
+> along z. It is the square of how much the whole system's dipole along z
+> changes as the vibration moves it, held atoms included, as PySCF computes
+> it. Zero means light along z does not see this vibration.
 
 A held PySCF result written before schema 12 keeps no vector: the column
 stays the orientation average, and the bar's line says the direction cannot
@@ -447,13 +444,15 @@ one the width, not the laser, since it reads the smoothed spectrum and no
 laser:
 
 > ‡ **Raman strength** — how strongly this vibration scatters laser light of
-> 633 nm polarized along z: the square of how fast the cell's polarizability
-> along z changes along the mode, from SIESTA's optical calculation at ±δQ,
-> its spectrum smoothed to 0.0272114 eV.
+> 633 nm polarized along z. It is the square of how much the structure's
+> polarizability along z changes as the vibration moves it, from SIESTA's
+> optical calculation with the atoms pushed slightly each way, the
+> absorption spectrum smoothed by 0.0272114 eV.
 >
-> § **Raman strength, static** — the same at zero frequency, independent of
-> any laser, the spectrum smoothed to 0.0272114 eV; where the zero-frequency
-> limit is defined, [the method, § 3.1](?doc=science/vibrational-optical-response.md). A picked mode whose two sides are
+> § **Raman strength, static** — the same, in the limit of zero light
+> frequency, so it does not depend on the laser (absorption spectrum
+> smoothed by 0.0272114 eV). When this limit is meaningful:
+> [the method, § 3.1](?doc=science/vibrational-optical-response.md). A picked mode whose two sides are
 not both done reads its state in both cells, the laser's and the static
 one — `pending` or `failed` — the reason on hover; a mode no call was made
 for, `—`. The table's CSV names the

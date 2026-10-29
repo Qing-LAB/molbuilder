@@ -28,7 +28,7 @@ the queue and the handover to the day's end.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-28)*
 
-**Where we are: 2.49.1.** The releases are the changelog's rows; the
+**Where we are: 2.49.2.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
 day's last: a SIESTA vibration's infrared is the free atoms' — the system the
 person declared by what they freed — shown when the result opens, with no
