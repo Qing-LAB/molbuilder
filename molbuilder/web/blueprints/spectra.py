@@ -3,9 +3,11 @@
 Routes:
 
     GET  /spectrum-calculation          the page (rendered template).
-    POST /api/spectra/load              parse an uploaded <job>.spectra.json
-                                        (or read JSON body) into the typed
-                                        SpectraResults shape
+    POST /api/spectra/load              read the <label>.spectra.json the
+                                        Results tab's dropdown picked into
+                                        the typed SpectraResults shape
+    POST /api/spectra/frameset          a mode of the result shown, as a
+                                        frame set
     GET  /api/spectra/export            a vibration result's data files and
                                         its Raman view at a laser, as
                                         NetCDF or as tables -- one zip
@@ -19,19 +21,12 @@ Response shapes mirror Build's: every endpoint returns
 ``{"ok": True, ...}`` on success or ``{"ok": False, "error":
 "<msg>"}`` on failure.
 
-The load path:
-
-  * Multipart: ``file=`` form-data field with the .spectra.json
-    bytes.
-  * JSON: ``{"path": "..."}`` to read from a local path (useful
-    when the user runs the deck and wants to load results from
-    a known job dir without manually uploading).
-  * JSON: ``{"json": {...}}`` to parse a dict in-memory (for
-    programmatic callers; matches parse_spectra_json_dict).
+The load path is the file the Results tab's dropdown picked, ``{"path":
+...}`` -- the one road a result reaches the page by (`web/spectra.md`
+§ 7).
 """
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, render_template, request
@@ -44,7 +39,6 @@ from molbuilder.sidecars.spectra import (
     SpectraJsonNotFoundError,
     SpectraJsonSchemaError,
     parse_spectra_json,
-    parse_spectra_json_dict,
 )
 from molbuilder.spectra.results import motion_share_by_element
 from ...spectra.methods import with_ir_route
@@ -83,6 +77,7 @@ def _page_constants():
     load rather than copied into the browser (`architecture.md` § 3; user,
     2026-09-27: one source per fact).  Named by what each converts."""
     from molbuilder import constants as C
+    from molbuilder.mode_frames import NODES
     from molbuilder.spectra import activity as A
     return {
         "hartree_ev":          C.HARTREE_EV,               # 1 Eh in eV
@@ -91,38 +86,33 @@ def _page_constants():
         # or below it has no band (`engines/vibration.md` § 6.6)
         "ir_present_floor_km_mol":    A.CHANNEL_PRESENT_FLOOR_IR_KM_MOL,
         "raman_present_floor_a4_amu": A.CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU,
+        # the frame-set rules the generator writes, its default first
+        # (`mode_frames.NODES`, `web/spectra.md` § 4.3)
+        "frameset_nodes": list(NODES),
     }
 
 
-def _temperature_k(body, form, key: str = "temperature_k"):
+def _temperature_k(body, key: str = "temperature_k"):
     """A temperature the tab asks at -- ``temperature_k``, the animation's
     thermal spreads', or ``frameset_temperature_k``, the frame-set
-    dialog's -- in the JSON body or the upload's form, as a
-    float, ``None`` when the request names none; a value that is not one is
-    refused with the reason (a 400, `web-api.md` § 2), by the rule every
-    door shares (`spectra.derived.checked_temperature_k`)."""
+    dialog's -- in the JSON body, as a float, ``None`` when the request
+    names none; a value that is not one is refused with the reason (a 400,
+    `web-api.md` § 2), by the rule every door shares
+    (`spectra.derived.checked_temperature_k`)."""
     raw = (body or {}).get(key)
-    if raw is None and form is not None:
-        raw = form.get(key)
     if raw is None or raw == "":
         return None
     from molbuilder.spectra.derived import checked_temperature_k
     return checked_temperature_k(raw)
 
 
-def _view_asked(body, form, key: str, read_ask) -> Optional[Dict[str, Any]]:
+def _view_asked(body, key: str, read_ask) -> Optional[Dict[str, Any]]:
     """What the tab asks of a view of the result (`web/spectra.md` § 3.2,
-    § 3.3) -- ``key`` in the JSON body, or as JSON text in the upload's
-    form, read by the one reading every door of that view shares
-    (``read_ask``: `spectra.infrared.read_ask` for ``infrared``,
-    `spectra.raman.read_ask` for ``raman``).  ``None`` when not asked; a
-    malformed ask is refused with the reason (a 400)."""
+    § 3.3) -- ``key`` in the JSON body, read by the one reading every door
+    of that view shares (``read_ask``: `spectra.infrared.read_ask` for
+    ``infrared``, `spectra.raman.read_ask` for ``raman``).  ``None`` when
+    not asked; a malformed ask is refused with the reason (a 400)."""
     raw = (body or {}).get(key)
-    if raw is None and form is not None and form.get(key):
-        try:
-            raw = json.loads(form.get(key))
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{key} is a JSON object: {exc}") from None
     if raw is None:
         return None
     return read_ask(raw)
@@ -132,7 +122,7 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
             temperature_k: Optional[float] = None,
             infrared: Optional[Dict[str, Any]] = None,
             frameset_temperature_k: Optional[float] = None,
-            raman: Optional[Dict[str, Any]] = None, path=None):
+            raman: Optional[Dict[str, Any]] = None, *, path):
     """The one success reply for /api/spectra/load — the typed results as a
     dict, plus what only the server can work out.
 
@@ -217,10 +207,9 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     elements = (list(_Structure.from_dict(payload["structure"]).elements)
                 if payload.get("structure") else [])
     masses = (payload.get("equilibrium") or {}).get("masses_amu")
-    # An empty free-atom list is "not recorded", not "no atom is free" -- a
-    # result that never tracked the partition has one eigenvector row per atom,
-    # which is what passing None means downstream.
-    free = payload.get("free_atom_idxs") or None
+    # THE FREE ATOMS, which the reader's partition rule guarantees -- one
+    # eigenvector row each.
+    free = payload["free_atom_idxs"]
     for mode in payload.get("modes") or []:
         rows = mode.get("eigenvector_canonical") or mode.get("eigenvector_display")
         if not rows or not elements:
@@ -251,10 +240,9 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     # THE FREE ATOMS' INFRARED, where the result states its charges
     # (`web/spectra.md` § 3.2); and, for a SIESTA result that states none,
     # why, in its own facts.
-    from molbuilder.spectra.infrared import (SOURCE_CHARGES, SOURCE_DIPOLE,
-                                             ORIENTATION_HELD, InfraredError,
-                                             dipole_view, infrared_absent,
-                                             infrared_view, orientation_of,
+    from molbuilder.spectra.infrared import (SOURCE_DIPOLE, ORIENTATION_FREE,
+                                             InfraredError, infrared_absent,
+                                             infrared_view_of, orientation_of,
                                              read_ask, source_of)
     from molbuilder.spectra.methods import with_infrared_view
     # WHERE ITS INFRARED COMES FROM, and held or free -- whether the light's
@@ -269,20 +257,19 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     absent = infrared_absent(results)
     if absent is not None:
         payload["infrared_absent"] = absent
-    # WHAT IS ASKED -- the defaults when nothing is -- answered where it
-    # applies: a charges result's free atoms, with every load; a held
-    # engine-dipole result's direction.  A free engine-dipole result's
-    # column is the file's.
+    # WHAT IS ASKED -- the defaults when nothing is -- answered by the one
+    # door (`infrared.infrared_view_of`) for every result with an infrared,
+    # but one: a free result whose infrared is the engine's own shows the
+    # file's column, the orientation average, and no choice (§ 3.2).
     asked = infrared if infrared is not None else read_ask({})
     view = None
-    try:
-        if source == SOURCE_CHARGES:
-            view = infrared_view(results, **asked)
-        elif source == SOURCE_DIPOLE \
-                and payload["infrared_orientation"] == ORIENTATION_HELD:
-            view = dipole_view(results, direction=asked["direction"])
-    except InfraredError as exc:
-        payload["infrared_said"] = str(exc)
+    if source is not None and not (
+            source == SOURCE_DIPOLE
+            and payload["infrared_orientation"] == ORIENTATION_FREE):
+        try:
+            view = infrared_view_of(results, **asked)
+        except InfraredError as exc:
+            payload["infrared_said"] = str(exc)
     if view is not None:
         payload["infrared"] = view.to_wire()
         # THE WRITE-UP NAMES WHAT IS SHOWN (`web/spectra.md` § 9b.3).
@@ -294,15 +281,10 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     # § 5.11 § 10).
     if raman is not None:
         from molbuilder.spectra.methods import with_raman_view
-        from molbuilder.spectra.raman import (RamanError, raman_view_of,
+        from molbuilder.spectra.raman import (raman_view_of,
                                               require_optical_route)
         try:
             require_optical_route(results)
-            if path is None:
-                raise RamanError(
-                    "this result was opened without its folder, so the "
-                    "optical calls' data file beside it cannot be read -- "
-                    "open it from its run")
             payload["raman"] = raman_view_of(path, result=results,
                                              **raman).to_wire()
         except (ValueError, OSError) as exc:
@@ -316,32 +298,22 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
                 payload["bibliography_keys"] = extract_citation_keys(
                     payload["methods_text"])
     # HOW THE RUN THE FILE BELONGS TO IS DOING -- the one door's answer, which
-    # the viewer follows; ``None`` for an upload or an inline result, which
-    # belong to no run (`web/results.md` § 4.1).
+    # the viewer follows; ``None`` for a file no run of ours holds
+    # (`web/results.md` § 4.1).
     return jsonify({"ok": True, "results": payload, "run": run})
 
 
 @bp.route("/api/spectra/load", methods=["POST"])
 def api_spectra_load():
-    """Parse a spectra.json (file upload / on-disk path / inline JSON)
-    into the typed :class:`SpectraResults`, returned as a JSON-safe
-    dict the UI consumes directly.
-
-    Three input modes (mutually exclusive; pick whichever fits):
-
-      1. ``file=``                multipart upload of the JSON bytes.
-      2. ``{"path": "..."}``      read from a local path.  Useful for
-                                  the post-run "I have results on
-                                  disk" case where the user just
-                                  enters the job dir.
-      3. ``{"json": {...}}``      parse an in-memory dict (for
-                                  programmatic callers, e.g. the
-                                  live-watch poller that already has
-                                  the JSON in hand).
+    """Read the ``<label>.spectra.json`` the Results tab's dropdown picked --
+    ``{"path": ...}``, the one road a result reaches the page by
+    (`web/spectra.md` § 7) -- into the typed :class:`SpectraResults`,
+    returned as a JSON-safe dict the UI consumes directly.
 
     Returns on success::
 
-        {"ok": True, "results": <SpectraResults.to_dict()>}
+        {"ok": True, "results": <SpectraResults.to_dict() and what only
+         the server works out>, "run": <runs.run_answer(path), or None>}
 
     On failure the response carries a structured error that maps
     1-to-1 to the parser's exception hierarchy so the UI can
@@ -354,99 +326,49 @@ def api_spectra_load():
       * SpectraJsonMalformedError -> 400
       * SpectraJsonFieldError     -> 400
     """
-    # THE TEMPERATURE THE TAB ASKS ITS THERMAL SPREADS AT, whichever way the
-    # result arrives (`_temperature_k`).
+    body = request.get_json(silent=True) or {}
+    # WHAT THE TAB ASKS -- the temperatures, the views -- each by the one
+    # reading its doors share.
     try:
-        temperature_k = _temperature_k(request.get_json(silent=True),
-                                       request.form)
-        frameset_temperature_k = _temperature_k(
-            request.get_json(silent=True), request.form,
-            "frameset_temperature_k")
+        temperature_k = _temperature_k(body)
+        frameset_temperature_k = _temperature_k(body, "frameset_temperature_k")
         from molbuilder.spectra import infrared as _ir, raman as _raman
-        infrared = _view_asked(request.get_json(silent=True), request.form,
-                               "infrared", _ir.read_ask)
-        raman = _view_asked(request.get_json(silent=True), request.form,
-                            "raman", _raman.read_ask)
+        infrared = _view_asked(body, "infrared", _ir.read_ask)
+        raman = _view_asked(body, "raman", _raman.read_ask)
     except ValueError as exc:
         return jsonify({"ok": False, "kind": "field", "error": str(exc)}), 400
-    # ---- multipart upload ---------------------------------------- #
-    if request.files.get("file"):
-        upload = request.files["file"]
-        try:
-            raw = upload.read().decode("utf-8")
-        except UnicodeDecodeError as exc:
-            return _err_load(
-                SpectraJsonMalformedError(
-                    f"uploaded file is not UTF-8: {exc.reason} "
-                    f"at byte {exc.start}"
-                )
-            )
-        try:
-            d = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            return _err_load(SpectraJsonMalformedError(
-                f"uploaded file is not valid JSON: {exc}"
-            ))
-        try:
-            results = parse_spectra_json_dict(d)
-        except SpectraJsonError as exc:
-            return _err_load(exc)
-        return _loaded(results, temperature_k=temperature_k,
-                       infrared=infrared, raman=raman,
-                       frameset_temperature_k=frameset_temperature_k)
-
-    # ---- JSON body (path or inline JSON) ------------------------- #
-    body = request.get_json(silent=True) or {}
     path = body.get("path")
-    inline = body.get("json")
-    if path:
-        # THE FENCE (web-api.md § 2.1).  The parser -- correctly, being a
-        # generic reader -- does a bare open(), so without it any path the
-        # server process could read would have its EXISTENCE readable from
-        # here, which is filesystem enumeration.  The rate limiter's
-        # attack-string screen reads the URL, and this path arrives in a
-        # JSON body, so nothing else stands here.
-        from .files import _PickerError, _resolve_within_roots
-        try:
-            path = _resolve_within_roots(path)
-        except _PickerError as exc:
-            return jsonify({"ok": False, "error": exc.message}), exc.status
-        # THE RUN'S END IS READ BEFORE THE FILE'S LAST READ (`web/results.md`
-        # § 4.1): the run this file belongs to is asked after the file is
-        # read, and when it is no longer live the file is read again if it
-        # changed in between -- so the viewer stops on the file's last state.
-        from molbuilder.runs import run_answer
-        try:
-            before = _version(path)
+    if not path:
+        return jsonify({"ok": False,
+                        "error": "no path -- the result is the file the "
+                                 "Results tab's dropdown picked"}), 400
+    # THE FENCE (web-api.md § 2.1).  The parser -- correctly, being a
+    # generic reader -- does a bare open(), so without it any path the
+    # server process could read would have its EXISTENCE readable from
+    # here, which is filesystem enumeration.  The rate limiter's
+    # attack-string screen reads the URL, and this path arrives in a
+    # JSON body, so nothing else stands here.
+    from .files import _PickerError, _resolve_within_roots
+    try:
+        path = _resolve_within_roots(path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    # THE RUN'S END IS READ BEFORE THE FILE'S LAST READ (`web/results.md`
+    # § 4.1): the run this file belongs to is asked after the file is
+    # read, and when it is no longer live the file is read again if it
+    # changed in between -- so the viewer stops on the file's last state.
+    from molbuilder.runs import run_answer
+    try:
+        before = _version(path)
+        results = parse_spectra_json(path)
+        run = run_answer(path)
+        if not (run and run["live"]) and _version(path) != before:
             results = parse_spectra_json(path)
-            run = run_answer(path)
-            if not (run and run["live"]) and _version(path) != before:
-                results = parse_spectra_json(path)
-        except SpectraJsonError as exc:
-            return _err_load(exc)
-        return _loaded(results, run=run, temperature_k=temperature_k,
-                       infrared=infrared, raman=raman, path=path,
-                       frameset_temperature_k=frameset_temperature_k)
-    if inline is not None:
-        if not isinstance(inline, dict):
-            return _err_load(SpectraJsonMalformedError(
-                f"'json' field must be an object, got {type(inline).__name__}"
-            ))
-        try:
-            results = parse_spectra_json_dict(inline)
-        except SpectraJsonError as exc:
-            return _err_load(exc)
-        return _loaded(results, temperature_k=temperature_k,
-                       infrared=infrared, raman=raman,
-                       frameset_temperature_k=frameset_temperature_k)
-
-    return jsonify({
-        "ok":    False,
-        "error": (
-            "no input -- send a multipart 'file' field, "
-            "or JSON {'path': '<...>'} or {'json': {...}}"
-        ),
-    }), 400
+    except SpectraJsonError as exc:
+        return _err_load(exc)
+    return _loaded(results, run=run, temperature_k=temperature_k,
+                   infrared=infrared, raman=raman, path=path,
+                   frameset_temperature_k=frameset_temperature_k)
 
 
 # --------------------------------------------------------------------- #
@@ -469,8 +391,9 @@ def _version(path) -> Optional[Tuple[int, int]]:
 def api_spectra_frameset():
     """A MODE'S FRAME SET, written through the one generator
     (`engines/vibration.md` § 5.10 ③; `web/spectra.md` § 4.3):
-    ``{run, mode, temperature_k, nodes, out}`` -- the vibration run's
-    folder, the temperature the frames sample, the rule, and the pair's
+    ``{path, mode, temperature_k, nodes, out}`` -- the vibration result the
+    page shows, whose folder is its run's, the temperature the frames
+    sample, the rule (the generator's default when unsaid), and the pair's
     ``.xyz``, each path inside the tree (the fence, `web-api.md` § 2.1).
     Answers ``{ok, path, frames, said}``, or the generator's refusal in its
     words (400)."""
@@ -479,13 +402,15 @@ def api_spectra_frameset():
     from .files import _PickerError, _resolve_within_roots
     body = request.get_json(silent=True) or {}
     try:
-        run = _resolve_within_roots(str(body.get("run") or ""))
+        # THE RUN IS THE RESULT'S FOLDER, derived here as the export's is.
+        run = _resolve_within_roots(str(body.get("path") or "")).parent
         out = _resolve_within_roots(str(body.get("out") or ""))
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
     try:
         mode = int(body.get("mode"))
-        nodes = int(body.get("nodes") or 3)
+        rule = ({} if body.get("nodes") is None
+                else {"nodes": int(body["nodes"])})
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "mode and nodes are whole "
                                               "numbers"}), 400
@@ -494,7 +419,7 @@ def api_spectra_frameset():
         got = frameset_from_mode(
             run, mode=mode,
             temperature_k=body.get("temperature_k"),
-            nodes=nodes, out=out, root=root)
+            out=out, root=root, **rule)
     except FrameSetError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     try:

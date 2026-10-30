@@ -790,10 +790,12 @@ takes from other runs is one hand-over, its files and its record
 § 5.4); a trial's deck is rendered into its folder. The run
 script is told the run's own label — a trial's is the trial's. `prep` seeds a
 stage's first run's progress channel, the preview a viewer finds before the
-run starts, beside the deck and then moved into the run it opens; a stage it
-opens no run for — one launched, or one copied in — keeps no seed, the stub
-taken out (`prep._open_attempts`, one home for both); a later run's progress
-is its engine's own.
+run starts, beside the deck and then moved into the run it opens — a run of
+points', beside each point's deck the run opens (`PointsOf.rung_points`), and
+none beside a deck the run opens no point for, a vibration's `optical/`
+container; a stage it opens no run for — one launched, or one copied in —
+keeps no seed, the stub taken out (`prep._open_attempts`, one home for both);
+a later run's progress is its engine's own.
 
 **`prep` opens only a first run** — and, for a transport calculation that
 reuses a finished one, copies in whole the runs of each group it reuses, each
@@ -2137,8 +2139,8 @@ stage they belong to; the engine's cannot, because SIESTA gives no choice.
 |---|---|
 | stage directory | `<seq>_<name>` — `01_coarse`, `02_tight` |
 | deck | `<label>_<NN>_<name>.fdf` **inside `<NN>_<name>/`** — the same token, and the repetition is a self-check |
-| trajectory log | `<label>_<NN>_<name>.molwatch.log`, in the attempt — seeded beside the deck and moved in (§ 1.0) |
-| warm files | `<label>.XV` `.DM` `.CG` — bare, inside the attempt |
+| trajectory log | `<label>_<NN>_<name>.molwatch.log`, in the run — seeded beside the deck and moved in (§ 1.0, § 1.6.2) |
+| warm files | `<label>.XV` `.DM` `.CG` — bare, inside the run |
 
 **The log is named for the deck that produced it** — so it needs no convention
 of its own, and it lands wherever the deck's name is already correct.
@@ -2570,8 +2572,8 @@ with a copy of each stage file it reads.
 | `<label>_initial.molstruct.json` *(PySCF)* | the input geometry's cell and labels | the PySCF deck | none | result |
 | `<label>_optimized.molstruct.json` *(PySCF)* | the relaxed geometry's cell and labels -- the sidecar of the restart file `_optimized.xyz` | the PySCF deck | none | result |
 | `<label>.constraints.txt` *(PySCF)* — only: atoms are held | which atoms are held still, in geomeTRIC's own format | the PySCF deck | none | derived |
-| `<base>-run<N>.phases.json` *(SIESTA, vibration)* | the index of a run in phases: every SIESTA call of the run -- its phase and folder, what it is (the relaxation; the force constants; a mode's side at its displacement), what it was written from and seeded with, how it ended, whether it was taken over -- and the finish's entry | launch, for the calls it opens (`submit`); the run's own python for the rest (`spectra.siesta_vibration`: the plan, record and finish verbs) | `siesta.vibration_phases.read_index` | record |
-| `<base>-run<N>.points.json` *(SIESTA, transport)* | the index of a transport run of points: every point of the run in the walk's order -- its folder, frame and voltage, the point it needs, whether it was taken over and from where, what it must hold to be done -- the cited set's weights, and each point's start, end, exit and verdict as its report steps saw them | launch, for the points it opens (`submit`); each point's report steps (`mb_monitor.pyz point`) for the rest | `transport.points_index.read_index` | record |
+| `<base>-run<N>.phases.json` *(SIESTA, vibration)* | the index of a run in phases: every SIESTA call of the run -- its phase and folder, what it is (the relaxation; the force constants; a mode's side at its displacement), what it was written from and seeded with, how it ended, whether it was taken over -- and the finish's entry; one per run, named for its first try, -run0, whichever try writes to it | launch, for the calls it opens (`submit`); the run's own python for the rest (`spectra.siesta_vibration`: the plan, record and finish verbs) | `siesta.vibration_phases.read_index` | record |
+| `<base>-run<N>.points.json` *(SIESTA, transport)* | the index of a transport run of points: every point of the run in the walk's order -- its folder, frame and voltage, the point it needs, whether it was taken over and from where, what it must hold to be done -- the cited set's weights, and each point's start, end, exit and verdict as its report steps saw them; one per run, named for its first try, -run0, whichever try writes to it | launch, for the points it opens (`submit`); each point's report steps (`mb_monitor.pyz point`) for the rest | `transport.points_index.read_index` | record |
 | `<label>.spectra.json` *(vibration)* | the spectrum this run computed: frequencies, the strengths the engine computes, thermochemistry -- written by the run itself | the run itself: the PySCF deck, or a SIESTA vibration's `fc` record step and its finish (`mb_vibration.pyz`) | `parse.sidecars.spectra.SpectraSidecarFileParser` | result |
 | `<label>.spectra.nc` *(vibration)* | the spectrum as data on its grids -- the structure, the modes, the thermochemistry, every variable stating itself (NetCDF-4); the JSON's sha256 beside | the run itself, with the JSON (`sidecars.spectra.write_spectra_payload`) | `spectra.datafile.read_spectra_data` | result |
 | `<label>.optical.nc` *(SIESTA, vibration)* | the optical calls as data on their grids -- each frame's eps2 over the photon energies, its mode, side and geometry, its SCF facts, and the settings the calls read (NetCDF-4) | the run's own record steps -- the force constants', every frame pending, then each optical call's -- and its finish (`spectra.siesta_vibration`, `spectra.optical_data.write_optical_data`) | `spectra.optical_data.read_optical_data` | result |
@@ -2653,7 +2655,7 @@ relative to that folder — a run a sequence's group sent, the sequence's own
 <!-- manifest:launch -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias sweep's points, a task's stages sharing one job, or a task's groups launched one after another in one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a run of points' walk (a vibration's calls, a bias sweep's points), a task's stages sharing one job, or a task's groups launched one after another in one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
 | `<group>.sbatch` — only: a target with a scheduler, no `--no-sbatch` | its queue header — a task's group's, a run of points' walk's, a benchmark's shelf's, a sequence of groups' | prep (`prep.walk_header_of`), written again at each prep; launch sends it | none | derived |
 | `<group>.log` | every member's output, in order | the group's sequencer, as it runs | none | record |
 | `<group>.launch.json` | a sequence of groups' launch record: its groups and their stages, how its one job was sent, its id -- what each run it sends records of that job | launch (`jobset/sequence.py`), before the job goes; its id once the scheduler gives it | `jobset.sequence.read_record` | record |
@@ -2905,7 +2907,9 @@ single history live in their own contracts and are cited, not repeated.
 6b. **Every directory this tree makes below the calculation root carries a
    `calcdir.json`, and the root carries `task.json`** (§ 1.4a) — stamped by
    the one opener (§ 1.6.2) and its two siblings (`naming.open_container`,
-   `materialize.open_scratch`), a benchmark's folders, `launch/` and a device
+   `materialize.open_scratch`) — and, for a stage copied in whole from a
+   finished calculation, its stage folder by the copy itself
+   (`naming.stamp_containers`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — a benchmark's folders, `launch/` and a device
    run's `tsgf/` (role `scratch`: the engine's scratch of the run above it,
    read alone, no run asked of it — [`engines/transport.md`](?doc=engines/transport.md)
    § 2a.11) among them. So *container-or-run-or-scratch* — § 1.4's rule — is

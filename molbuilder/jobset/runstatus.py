@@ -34,7 +34,7 @@ from .commands import (block, command, launch_lines, launch_pending,
                        prep_group_lines)
 from .model import JobSet
 from .continuation import (gathered_lines, point_rows, points_state,
-                           taken_over)
+                           stage_run_state, taken_over)
 from .plan import resources_text
 
 # Engine-native warm-restart files keyed by the project id (system label),
@@ -302,20 +302,53 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     """EVERY RUN OF A STAGE, each with its own state -- the root's bird's-eye
     (`web/results.md` § 2.4): each attempt in order and, for a swept rung,
     each attempt's points (`transport.stages.points_in`), read as `status`
-    reads a run (`run_state_of`), with the file it opens, root-relative:
-    the run door's answer (`runs.openable`) -- the root's `task.json` for a
-    transmission run, whose result is the report at its point (§ 0.1).
-    ``[]`` for a stage nothing has prepared."""
+    reads a run (`run_state_of`) -- a launched run of points' points as
+    `status` reads them, once per run (`continuation.points_state`): a point
+    its ended walk never reached failed -- with the file it opens,
+    root-relative: the run door's answer (`runs.openable`) -- the root's
+    `task.json` for a transmission run, whose result is the report at its
+    point (§ 0.1).  ``[]`` for a stage nothing has prepared."""
     from ..runs import openable, run_of, state_of, transmission_point
+    from .naming import stage_home
     if not st.dir:
         return []
     root = Path(base)
     rows: List[Dict[str, Any]] = []
+    by_run: Dict[int, Dict[str, dict]] = {}
+
+    def _point_row(n: int, pt) -> Optional[dict]:
+        # A LAUNCHED RUN OF POINTS' ROW FOR ``pt``, read once per run.
+        if n not in by_run:
+            got: Dict[str, dict] = {}
+            run_dir = root / st.dir / attempt_name(n)
+            try:
+                launch = launch_record(run_dir)
+            except LaunchRecordError:
+                launch = None
+            if launch is not None:
+                _s, _d, pts = points_state(
+                    run_dir, stage_home(root, task, st.ref.name).names, task,
+                    st.ref.name, launch=launch, base=root)
+                got = {p["folder"]: p for p in pts}
+            by_run[n] = got
+        return by_run[n].get(f"{attempt_name(n)}/{pt.rel}")
+
     for n, folder, pt in run_folders(root, task, root / st.dir, st.ref.name):
         run = run_of(folder)
         if run is None:
             continue
-        got = state_of(run)
+        row = _point_row(n, pt) if pt is not None else None
+        # THE RUN'S ROWS ANSWER ITS POINTS, read once per run; the run
+        # door's own reading only for a run that has none (a single run,
+        # or one not launched).
+        if row is not None:
+            state, detail, converged = (
+                row["state"], row["detail"] if row["done"] else row["why"],
+                row["verdict_words"])
+        else:
+            got = state_of(run)
+            state, detail, converged = (got.state, got.detail,
+                                        got.converged_words)
         # A TRANSMISSION RUN'S POINT IS THE DOOR'S, the one it opens the
         # report at -- its one point too, when the rung runs once.
         pt = transmission_point(folder) or pt
@@ -343,9 +376,9 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
             **(pt.to_wire() if pt is not None
                else dict.fromkeys(("frame", "of", "bias_v"))),
             "dir": str(folder.relative_to(root)),
-            "state": got.state,
-            "detail": got.detail,
-            "converged": got.converged_words,
+            "state": state,
+            "detail": detail,
+            "converged": converged,
             # ROOT-RELATIVE: the file the row opens -- the run's own, or
             # the root's task.json for a transmission point.
             "opens": opens_rel,
@@ -397,13 +430,15 @@ def _sweep_status(calc, job, *, run: Path, names, columns: dict
         # THE ONE RULE the gather asks too (`continuation.points_state`).
         state, detail, pts = points_state(run, names, task, job.name,
                                           launch=launch, base=base)
-    # CONVERGED, in its own column (`job-system.md`, rule 4): yes for a rung
-    # with an SCF (`STAGE_FACT`: the transmission converges nothing) when
-    # every point's output says it converged; NO when one says it did not;
-    # otherwise nothing yet.
-    scf_rung = declared.converges(job.name)
-    converged = ("SCF NO" if any(p["converged"] is False for p in pts)
-                 else "SCF yes" if scf_rung and pts
+    # CONVERGED, in its own column (`job-system.md`, rule 4): the first
+    # point whose output says it did not, in that verdict's own words (a
+    # relaxation's `geometry NO`, an SCF's `SCF NO`); yes for a rung that
+    # computes an SCF -- its roles' fact in the kind table (`computes`; a
+    # transmission, a product of the device's, converges nothing) -- when
+    # every point's output says it converged; otherwise nothing yet.
+    no = next((p for p in pts if p["converged"] is False), None)
+    converged = (no["verdict_words"] if no is not None
+                 else "SCF yes" if pts and _computes_scf(task, job.name)
                  and all(p["converged"] is True for p in pts)
                  else None)
     if launch is None:
@@ -414,6 +449,18 @@ def _sweep_status(calc, job, *, run: Path, names, columns: dict
         attempt=run.name, launch=launch, points=pts,
         gathered=gathered_lines(run), copied_from=_copied(base, run),
         **columns)
+
+
+def _computes_scf(task, stage: str) -> bool:
+    """Whether the rung ``stage`` computes an SCF -- its roles' fact in the
+    kind table (`execution/architecture.md` § 3.3: a role's ``computes``),
+    the stage's roles by the one rule (`template.stage_roles`)."""
+    from ..kind_table import kind
+    from ..template import stage_roles
+    k = kind(str(task.calculation))
+    return any((r := k.role(name)) is not None and r.computes == "scf"
+               for name in stage_roles(str(task.engine),
+                                       str(task.calculation), stage) or ())
 
 
 def _job_status(calc, job, *, dirs, refs) -> StageStatus:
@@ -698,12 +745,12 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                         [])
             elif bad is not None:
                 # LAUNCHED AGAIN: a run of points takes over every point
-                # its latest run finished (`engines/transport.md` § 2a.11,
+                # done in its latest run (`engines/transport.md` § 2a.11,
                 # `engines/vibration.md` § 5.11 § 6); any other stage
                 # continues from its own latest run or starts over -- its
                 # job's one fact (`Job.relaunch_continues`).
-                again = ("it takes over every point its own latest run "
-                         "finished, or `--cold` runs them all again"
+                again = ("it takes over every point done in its own latest "
+                         "run, or `--cold` runs them all again"
                          if bad.points else
                          "it continues from its own latest run, or `--cold` "
                          "starts it over" if bad.relaunch_continues else
@@ -800,13 +847,13 @@ def _sweep_took_over(s: StageStatus, base) -> str:
     taken over from an earlier run, named by that run; a run that took none
     over walked every point (the first launch, or ``--cold``)."""
     from ..runrecord import RunRef
-    here = RunRef.at(base, Path(base) / s.dir / s.attempt)
     # A POINT COPIED from the finished calculation this one reuses -- taken
     # over from it, or in a run copied in whole (`engines/transport.md`
     # § 2a.16).
     copied = [p["point"] for p in s.points if p.get("copied_from")]
-    taken = [(p["point"], p["started_from"]) for p in s.points
-             if taken_over(p, here) and not p.get("copied_from")]
+    # TAKEN OVER, as launch decided it (`continuation.taken_over`).
+    taken = [(p["point"], p["taken_from"]) for p in s.points
+             if taken_over(p) and not p.get("copied_from")]
     if not taken and not copied:
         return "nothing taken over -- every point walked"
     # THE RUN a point was taken over from, the run its point lies in.
@@ -969,14 +1016,13 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
     it, and its state in the status door's words.  The run answers through
     its own launch record, by the run door (`runs.run_of`,
     `parse.dirs.run_state_of`): that run, never its stage's newest.  A run
-    of points, a container no one run of
-    ours speaks for, is answered by its stage's row of `jobset status`,
-    naming the newest run it reads; a run no longer on disk, and a
-    calculation that does not read, are said."""
+    of points, a container no one run of ours speaks for, is answered of
+    that run by its points (`continuation.stage_run_state`); a run no
+    longer on disk, and a calculation that does not read, are said."""
     from ..calcdirs import CONTAINER, where
     from ..runs import run_of, state_of
     base = Path(calculation)
-    rows: Optional[Dict[str, StageStatus]] = None
+    calc = None
     unread: Optional[str] = None
     out = []
     for stage, member in members.items():
@@ -995,23 +1041,27 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
                         if not record.exists()
                         else "its launch record names no run of ours"))
             continue
-        if rows is None:
-            rows = {}
+        # A RUN OF POINTS: THAT RUN, by the one door for a run's state
+        # whichever kind (`continuation.stage_run_state`) -- never its
+        # stage's newest.
+        if calc is None and unread is None:
             try:
                 from ..calculation import open as open_calculation
-                rows = {stage_key(s.name): s for s in jobset_status(
-                    open_calculation(base)).stages}
+                calc = open_calculation(base)
             except (OSError, ValueError, KeyError) as exc:
                 unread = f"its calculation does not read: {exc}"
-        row = rows.get(stage_key(stage))
-        if row is None:
+        named = (next((s.name for s in calc.task.stages
+                       if stage_key(s.name) == stage_key(stage)), None)
+                 if calc is not None else None)
+        if named is None:
             out.append((stage, run,
                         unread or "its description no longer holds it"))
             continue
-        newest = (f"{row.dir}/{row.attempt}" if row.dir and row.attempt
-                  else None)
-        out.append((stage, run, _said(row.state, row.detail)
-                    + (f" (its newest run, {newest})" if newest else "")))
+        try:
+            state, detail = stage_run_state(calc, named, record.parent)
+        except LaunchRecordError as exc:
+            state, detail = "unreadable", str(exc)
+        out.append((stage, run, _said(state, detail)))
     return out
 
 

@@ -56,14 +56,11 @@ class FrameRows:
         rows = self.structure if frame is None else self.frames[frame]
         return next((r["value"] for r in rows if r["name"] == name), None)
 
-    def structure_rows(self) -> Dict[str, Any]:
-        """The structure's rows, ``{name: value}``, as written."""
-        return {r["name"]: r["value"] for r in self.structure}
 
-
-def _number(value: Any) -> Optional[float]:
+def finite_number(value: Any) -> Optional[float]:
     """``value`` as a finite number, or ``None`` -- true/false is not a
-    number here, though Python counts it as one."""
+    number here, though Python counts it as one.  The one rule every
+    reader of a frame's row asks (`frame_average`)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     v = float(value)
@@ -98,7 +95,7 @@ def _weights(frows, n: int) -> Tuple[Optional[Tuple[float, ...]],
                       f"-- each frame's curve is its own",)
     gone = [frame_words(f, n) for f, v in enumerate(stated) if v is None]
     bad = [f"{frame_words(f, n)}'s is {v!r}" for f, v in enumerate(stated)
-           if v is not None and _number(v) is None]
+           if v is not None and finite_number(v) is None]
     if gone or bad:
         why = "; ".join(
             ([f"{', '.join(gone)} {'states' if len(gone) == 1 else 'state'} "
@@ -114,4 +111,5 @@ def _weights(frows, n: int) -> Tuple[Optional[Tuple[float, ...]],
     return weights, ()
 
 
-__all__ = ["FrameRows", "WEIGHT_ROW", "WEIGHT_SUM_TOLERANCE", "read"]
+__all__ = ["FrameRows", "WEIGHT_ROW", "WEIGHT_SUM_TOLERANCE",
+           "finite_number", "read"]

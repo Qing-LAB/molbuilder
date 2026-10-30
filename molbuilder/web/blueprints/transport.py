@@ -299,7 +299,14 @@ def api_transport_describe_attempt() -> Any:
         # refusal is about something else entirely.
         try:
             from molbuilder.cell import entering
+            from molbuilder.transport.compose import _with_swapped_leads
             cited_struct, _src = labeled_citation_structure(cited)
+            # WITH THE RENAME HELD, as compose takes it (§ 4): the viewer
+            # and the orientation question show the junction as it will be
+            # composed.
+            if swap:
+                cited_struct = _with_swapped_leads(cited_struct,
+                                                   cited.path.name)
             # As this calculation will take it (`cell.entering`).
             structure_wire = entering(cited_struct).to_dict()
             if electrode_orientation(cited_struct) == ORDER_INVERTED:
@@ -422,7 +429,9 @@ def _describe_reused(folder: str, root) -> Any:
         # WHAT AN EXTENSION OF IT MAY CHANGE, AND WHAT IS FIXED
         # (`engines/transport.md` § 2a.16, *Extending it*): the rungs it
         # keeps, and what each control says -- drawn as they are.
-        "extend": Extension(rel, task).to_wire(),
+        # ...AND THE RUNG WHOSE WINDOW A FIT IS WRITTEN INTO
+        # (`jobset.reuse.SHARING_RUNG`), named for the page.
+        "extend": dict(Extension(rel, task).to_wire(), window=SHARING_RUNG),
     })
 
 
@@ -454,8 +463,8 @@ def api_transport_fit() -> Any:
         fit = fitted(finished_window(finished), lo, hi, finer)
     except (ReuseError, ValueError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    return jsonify({"ok": True, "words": fit.words(), "emin": fit.emin,
-                    "emax": fit.emax, "points": fit.points})
+    return jsonify({"ok": True, "words": fit.words(),
+                    "values": fit.values()})
 
 
 @bp.route("/api/transport/record", methods=["GET"])
@@ -662,7 +671,6 @@ def api_transport_describe() -> Any:
     from molbuilder.transport.stages import (TRANSPORT_STAGES,
                                              resolvable_override_names,
                                              stages_for_transport)
-    _RESOLVABLE = resolvable_override_names()
 
     body = request.get_json(silent=True) or {}
     # THE ENGINE IS THE PANEL THE PERSON DESCRIBED ON (`engines/transport.md`
@@ -678,6 +686,7 @@ def api_transport_describe() -> Any:
     no = why_no_transport(engine)
     if no:
         return jsonify({"ok": False, "error": f"engine {engine!r}: {no}"}), 400
+    _RESOLVABLE = resolvable_override_names(engine)
     citation = str(body.get("junction") or "")
     if not citation:
         return jsonify({"ok": False,
@@ -736,6 +745,11 @@ def api_transport_describe() -> Any:
             dest = contain(Path(dest_raw), root)
         except OutsideRoot as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
+        # A CALCULATION LIVES UNDER A TOPIC, as Build's door refuses it.
+        from .files import calculation_folder_refusal
+        too_high = calculation_folder_refusal(dest)
+        if too_high:
+            return jsonify({"ok": False, "error": too_high}), 400
 
     # THE CALCULATION IT REUSES, or THE CITATION -- what the description
     # starts from (`engines/transport.md` § 2a.16, § 3.1).
@@ -817,7 +831,7 @@ def api_transport_describe() -> Any:
                             "error": f"{_name!r} is not a parameter this "
                                      f"calculation can carry: `prep` "
                                      f"resolves each rung against the "
-                                     f"SIESTA schema, and either no field "
+                                     f"{engine} schema, and either no field "
                                      f"of it has that name or it is a "
                                      f"machine fact the description must "
                                      f"never carry (engines/template.md "
@@ -830,11 +844,16 @@ def api_transport_describe() -> Any:
                                      f"carries the items the catalogue "
                                      f"marks `shared` for transport"}), 400
     try:
-        stages = tuple(stages_for_transport(bags))
+        stages = tuple(stages_for_transport(engine, bags))
         # THE stages.md 6.2 RULE: an override names a PROMOTED field, and
         # `varies` is the promotion -- the one rule both describe roads ask
-        # (`task.fresh_varies`).
+        # (`task.fresh_varies`).  An extension keeps what the finished
+        # calculation varied, a column it promoted with no override among
+        # it: `varies` is intent, and no artefact records it (§ 6.2), as
+        # `molbuilder describe --reuses` keeps it.
         varies = fresh_varies(stages)
+        if finished is not None:
+            varies = tuple(dict.fromkeys((*finished.task.varies, *varies)))
         # THE CALCULATION IT REUSES, as the cards change it -- its label
         # and its rename its own, its junction the finished one or a frame
         # set of it, which the writer checks (§ 2a.16, `reuse.citing`); or
@@ -880,8 +899,7 @@ def api_transport_describe() -> Any:
             return jsonify({"ok": False, "error": no.message,
                             "findings": _issues_to_json([Issue(
                                 "error", no.message,
-                                where=f"task.{no.where}" if no.where
-                                else "")])}), 400
+                                )])}), 400
     # The template's text through the one door the schema route draws both
     # surfaces from (`_panel_template`) -- a value its field cannot take, or
     # a citation it refuses (a cited run that carried a net charge, ES7),
@@ -889,11 +907,14 @@ def api_transport_describe() -> Any:
     from molbuilder.transport.citation_defaults import check_pseudopotentials
     try:
         if finished is not None:
-            _tmpl_text = _reused_template(finished, shared_chosen)
+            # AN EXTENSION'S TEMPLATE IS THE FINISHED CALCULATION'S: its
+            # shared values are fixed (§ 2a.16 table), and a change is
+            # refused above.
+            _tmpl_text = finished.template_text
         else:
             check_pseudopotentials(cited, shared_chosen.get("psml_lib"))
             _tmpl_text = _panel_template(cited.path, shared_chosen,
-                                         label=task.label)
+                                         label=task.label, engine=engine)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -958,20 +979,10 @@ def api_transport_describe() -> Any:
                                                tree_root=root)
             except ReuseError as exc:
                 return jsonify({"ok": False, "error": str(exc)}), 400
-            # WHAT IT WILL REUSE, AND WHAT RUNS -- the one answer prep
-            # composes (`jobset.reuse.decide`), said once it is described
-            # (§ 2a.16, *Extending it*); nothing written.
-            from molbuilder.calculation import open as _open_calc
-            from molbuilder.jobset.errors import PrepError
-            from molbuilder.jobset.reuse import decide
-            try:
-                _made = _open_calc(dest)
-                _reuse = decide(_made, _made.request.numbers)
-                manifest = (_reuse.lines(dest) if _reuse is not None
-                            else None)
-            except PrepError as exc:
-                notes = list(notes) + [Issue(
-                    "warn", f"what it will reuse is not known yet -- {exc}")]
+            # WHAT IT WILL REUSE, AND WHAT RUNS -- said once it is
+            # described (§ 2a.16, *Extending it*); nothing written.
+            manifest, said = _manifest_of(dest)
+            notes = list(notes) + said
         else:
             written = write_description(_desc, dest)
     except (DescribeError, OSError) as exc:
@@ -994,6 +1005,24 @@ def api_transport_describe() -> Any:
     })
 
 
+def _manifest_of(where) -> tuple:
+    """WHAT A DESCRIBED EXTENSION AT ``where`` WILL REUSE, AND WHAT RUNS --
+    the one answer prep composes (`jobset.reuse.decide`), in the manifest's
+    words: ``(lines or None, notes)``, a note saying why where it is not
+    known yet."""
+    from molbuilder.calculation import open as _open_calc
+    from molbuilder.issues import Issue
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.reuse import decide
+    try:
+        made = _open_calc(where)
+        reuse = decide(made, made.request.numbers)
+        return (reuse.lines(where) if reuse is not None else None), []
+    except PrepError as exc:
+        return None, [Issue(
+            "warn", f"what it will reuse is not known yet -- {exc}")]
+
+
 def _plan_of(desc, finished, *, root, task, notices, cfg) -> Any:
     """THE PLAN ALONE (`engines/transport.md` § 2a.16, *On the page*): what
     the description ``desc`` would copy from ``finished`` and run -- the one
@@ -1004,15 +1033,11 @@ def _plan_of(desc, finished, *, root, task, notices, cfg) -> Any:
     import shutil
     import tempfile
     from pathlib import Path
-    from molbuilder.issues import Issue
     if finished is None:
         return jsonify({"ok": True, "plan": True, "manifest": None,
                         "notices": _issues_to_json(
                             notices, cfg=cfg, calculation="transport")})
-    from molbuilder.calculation import open as _open_calc
     from molbuilder.describe import DescribeError
-    from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.reuse import decide
     from molbuilder.transport.reuse import ReuseError, write_reusing
     staging = None
     try:
@@ -1023,14 +1048,8 @@ def _plan_of(desc, finished, *, root, task, notices, cfg) -> Any:
                                             tree_root=root)
         except (ReuseError, DescribeError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-        try:
-            made = _open_calc(where)
-            reuse = decide(made, made.request.numbers)
-            manifest = reuse.lines(where) if reuse is not None else None
-        except PrepError as exc:
-            manifest = None
-            notes = list(notes) + [Issue(
-                "warn", f"what it will reuse is not known yet -- {exc}")]
+        manifest, said = _manifest_of(where)
+        notes = list(notes) + said
     except OSError as exc:
         # THE TREE REFUSING THE HIDDEN FOLDER, said as Describe says it.
         return jsonify({"ok": False,
@@ -1079,7 +1098,7 @@ def api_transport_schema() -> Any:
     from molbuilder.transport.citation_defaults import (asked_of_the_person,
                                                         citation_answers)
     from molbuilder.transport.compose import ComposeError, resolve_citation
-    from molbuilder.transport.stages import (RUNG_NOTES, TRANSPORT_STAGES,
+    from molbuilder.transport.stages import (TRANSPORT_STAGES, rung_notes,
                                              why_no_transport)
     from molbuilder import template as _T
 
@@ -1131,12 +1150,13 @@ def api_transport_schema() -> Any:
                                  "rung's tab"}), 400
     if reuses:
         # A CALCULATION THAT REUSES A FINISHED ONE (`engines/transport.md`
-        # § 2a.16): both surfaces drawn from that calculation's template as
-        # the panel changes it, and a rung's tab holding its own overrides.
+        # § 2a.16): both surfaces drawn from that calculation's template,
+        # its shared values fixed, and a rung's tab holding its own
+        # overrides.
         from molbuilder.transport.reuse import ReuseError, reused
         try:
             finished, rel = reused(reuses, tree_root=projects_root())
-            template = _T.read_template(_reused_template(finished, shared))
+            template = _T.read_template(finished.template_text)
         except (ReuseError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         from molbuilder.transport.reuse import Extension
@@ -1162,7 +1182,8 @@ def api_transport_schema() -> Any:
             return jsonify({"ok": False, "error": str(exc)}), 400
         try:
             template = _T.read_template(
-                _panel_template(cited.path, shared, label="transport"))
+                _panel_template(cited.path, shared, label="transport",
+                                engine=engine))
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         try:
@@ -1196,7 +1217,8 @@ def api_transport_schema() -> Any:
                                 "engine": engine, "source": source}
     if surface == "rung":
         response["rung"] = rung
-        response["rungs"] = [{"name": n, "index": i, "note": RUNG_NOTES[n]}
+        notes = rung_notes()
+        response["rungs"] = [{"name": n, "index": i, "note": notes[n]}
                              for i, n in enumerate(TRANSPORT_STAGES, start=1)]
         if held is not None:
             # WHAT THE RUNG'S TAB HOLDS of the calculation it reuses -- its
@@ -1209,39 +1231,8 @@ def api_transport_schema() -> Any:
     return jsonify(response)
 
 
-def _reused_template(finished, shared: Dict[str, Any]) -> str:
-    """The template a calculation that reuses ``finished`` writes, from what
-    the shared panel holds (`engines/transport.md` § 2a.16): the finished
-    calculation's, each value the panel changed said to be the person's,
-    through the one door (`template.with_values_set`) -- the one text the
-    describe door writes and the schema route draws from, as
-    :func:`_panel_template` is for a citation.  A BLANK IS NOT CHOSEN
-    (`form-schema.md` § 1.1): a field the panel drew holding a value
-    somebody gave, sent blank, was emptied -- written valueless, not
-    chosen; one it drew blank, a value nobody chose, is as it was."""
-    from ._shared import config_from_params
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.template import (config_from_template, read_template,
-                                     with_values_set)
-    text = finished.template_text
-    was = config_from_template(text, SiestaConfig)
-    drawn = {it.name for it in read_template(text).items
-             if it.is_set and it.source != "default"}
-    typed = {k: v for k, v in shared.items() if v not in (None, "")}
-    cfg = config_from_params(SiestaConfig, typed, "transport")
-    changed = {k: getattr(cfg, k) for k in typed
-               if getattr(cfg, k) != getattr(was, k, None)}
-    emptied = {k: None for k, v in shared.items()
-               if v in (None, "") and k in drawn}
-    for values, source in ((changed, "person"), (emptied, "default")):
-        if values:
-            text = with_values_set(text, SiestaConfig,
-                                   calculation="transport", values=values,
-                                   source=source)
-    return text
-
-
-def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str) -> str:
+def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str,
+                    engine: str) -> str:
     """The template a transport describe writes, from what the shared panel
     holds -- the one text the describe door writes and the schema route
     draws both surfaces from, so the tab cannot show one calculation and
@@ -1261,10 +1252,10 @@ def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str) -> str:
     refuses (a cited run that carried a net charge, ES7).
     """
     from ._shared import config_from_params
-    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.engine_table import config_class
     from molbuilder.transport.citation_defaults import transport_template_text
     typed = {k: v for k, v in shared.items() if v not in (None, "")}
-    cfg = config_from_params(SiestaConfig, typed, "transport")
+    cfg = config_from_params(config_class(engine), typed, "transport")
     chosen = {k: getattr(cfg, k) for k in typed
               if getattr(cfg, k, None) is not None}
     blank = sorted(k for k, v in shared.items() if v in (None, ""))

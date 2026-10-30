@@ -10,7 +10,7 @@ MODULE  jobset.transport_points (floor 4, beside `jobset.points`): the
 """
 from __future__ import annotations
 
-from ..transport.points_index import summary
+from ..transport.points_index import UNIT, summary
 from ..transport.stages import (STAGE_FACT, frames_of, hands_on, points_in,
                                 products_of, rung_points)
 from .points import PointsOf
@@ -32,12 +32,15 @@ def _declared_products(stage: str, label: str, base, point=None):
     return products_of(stage, label, base_dir=base)
 
 
-def _declared_hands_on(stage: str, label: str, base):
-    return hands_on(stage, label, base)
-
-
-def _converges(stage: str) -> bool:
-    return STAGE_FACT.get(stage, "scf") != "product"
+def _taken_from(run, names, point):
+    """The run ``point`` was taken over from, as launch wrote it into the
+    run's index (`engines/transport.md` § 2a.11)."""
+    from ..transport.points_index import entry_of, index_path, read_index
+    path = index_path(run, names)
+    if not path.is_file():
+        return None
+    return (entry_of(read_index(path), point.rel) or {}).get(
+        "taken_from") or None
 
 
 def _run_index(calc, stage: str, run, names, points):
@@ -94,7 +97,8 @@ def _run_index(calc, stage: str, run, names, points):
 POINTS = PointsOf(rung_points=_declared_rung_points,
                   points_in=_declared_points_in,
                   products_of=_declared_products,
-                  hands_on=_declared_hands_on,
+                  hands_on=hands_on,
                   summary=_declared_summary,
-                  converges=_converges,
-                  run_index=_run_index)
+                  taken_from=_taken_from,
+                  run_index=_run_index,
+                  unit=UNIT)

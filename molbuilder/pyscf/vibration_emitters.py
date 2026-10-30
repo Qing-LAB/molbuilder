@@ -85,7 +85,9 @@ from ..envs.hints import fix_cmd as _fix_cmd   # noqa: E402
 
 from ..atom_permutation import MAP_KEY
 from ..spectra.methods import frequency_range_words
-from ..spectra.results import SCHEMA_VERSION
+from ..spectra.results import (PHASE_COMPLETE, PHASE_EMPTY,
+                               PHASE_NOT_REQUESTED, PHASE_RUNNING,
+                               SCHEMA_VERSION)
 
 
 
@@ -260,12 +262,14 @@ def _emit_constants(struct: Structure,
     # definition every PySCF deck carries (`input.emit_outfile_helper`,
     # beside the script).
     out.append("")
-    out.append("# Phase status vocabulary -- matches molbuilder.spectra.results")
+    # THE PHASE WORDS, written from their one home at render
+    # (`spectra.results.PHASE_*`), as the schema version is.
+    out.append("# Phase status vocabulary -- molbuilder.spectra.results's,")
     out.append("# so the on-disk JSON round-trips into the typed SpectraResults.")
-    out.append("PHASE_EMPTY    = 'empty'")
-    out.append("PHASE_RUNNING  = 'running'")
-    out.append("PHASE_COMPLETE = 'complete'")
-    out.append("PHASE_NOT_REQUESTED = 'not requested'   # never asked for; terminal (vibration.md 4.9)")
+    out.append(f"PHASE_EMPTY    = {PHASE_EMPTY!r}")
+    out.append(f"PHASE_RUNNING  = {PHASE_RUNNING!r}")
+    out.append(f"PHASE_COMPLETE = {PHASE_COMPLETE!r}")
+    out.append(f"PHASE_NOT_REQUESTED = {PHASE_NOT_REQUESTED!r}   # never asked for; terminal (vibration.md 4.9)")
     out.append("")
     out.append("# The SCF class + functional + basis + dispersion.  The class is")
     out.append("# composed from the method and the spin treatment (pyscf/layout.py")
@@ -376,9 +380,9 @@ def _emit_constants(struct: Structure,
 
 
 def _config_to_jsonable_dict(cfg: "VibrationConfigView") -> dict:
-    """Reduce a VibrationConfigView to a plain JSON-safe dict (provenance
-    payload for spectra.json.config).  Uses dataclasses.asdict so
-    new fields land in the snapshot automatically.
+    """Reduce the config a VibrationConfigView adapts to a plain JSON-safe
+    dict (provenance payload for spectra.json.config).  Uses
+    dataclasses.asdict so new fields land in the snapshot automatically.
 
     **And the electronic state as RESOLVED** (`electronic_state`,
     `science/chemistry-correctness.md` § 2a): the config holds a blank where
@@ -386,7 +390,7 @@ def _config_to_jsonable_dict(cfg: "VibrationConfigView") -> dict:
     say what charge this run carried (plan § 5s.4).  The resolved values and
     where each came from ride beside it."""
     import dataclasses
-    out = dataclasses.asdict(cfg)
+    out = dataclasses.asdict(cfg.config)
     out["electronic_state"] = cfg.state.as_dict()
     return out
 
@@ -522,9 +526,9 @@ def _emit_frozen_mask() -> List[str]:
 
 
 def _emit_initial_state() -> List[str]:
-    """Initialise the in-memory SpectraResults-shape dict and
-    write the first checkpoint marking phase_frequencies=running
-    (Setup complete; harmonic analysis about to start)."""
+    """Initialise the in-memory SpectraResults-shape dict and write the
+    first checkpoint, every phase still to come -- the equilibrium SCF
+    opens the frequencies' phase (`engines/vibration.md` § 4.9)."""
     out: List[str] = []
     out.append("# ============================================================")
     out.append("#  Initial state -- write before any heavy compute")
@@ -573,7 +577,7 @@ def _emit_initial_state() -> List[str]:
     out.append("    'config':                    CONFIG,")
     out.append("    'methods_text':              METHODS_TEXT,")
     out.append("    'bibliography_keys':         BIBLIOGRAPHY_KEYS,")
-    out.append("    'phase_frequencies':         PHASE_RUNNING,")
+    out.append("    'phase_frequencies':         PHASE_EMPTY,")
     out.append("    'phase_raman':               (PHASE_EMPTY if COMPUTE_RAMAN else PHASE_NOT_REQUESTED),")
     out.append("    'phase_ir':                  (PHASE_EMPTY if COMPUTE_IR else PHASE_NOT_REQUESTED),")
     out.append("    'raman_route':               'none',")
@@ -680,6 +684,9 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure,
     out.append("state['structure'] = _mb_equilibrium_structure(")
     out.append("    ELEMENTS, COORDS_EQ_ANG, _MB_SIDECAR)")
     out.append("state.pop('frozen_atom_idxs', None)")
+    out.append("# THE EQUILIBRIUM SCF OPENS THE FREQUENCIES' PHASE, which the")
+    out.append("# harmonic analysis closes (engines/vibration.md 4.9).")
+    out.append("state['phase_frequencies'] = PHASE_RUNNING")
     out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("print(f'Equilibrium SCF: E = {E_eq:.10f} Ha; HOMO index = {HOMO_IDX}')")
     out.append("")

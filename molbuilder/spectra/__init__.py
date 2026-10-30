@@ -1,6 +1,6 @@
-"""The spectra ARTIFACT layer -- results, mode selection, Methods prose.
-
-See ``docs/web/spectra.md`` for the full design contract.
+"""The vibration kind's own modules -- its result, how it is read, written,
+derived and exported (`engines/vibration.md` § 6, the result file;
+`web/spectra.md`, the page).
 
 Public surface (engine-agnostic):
 
@@ -8,20 +8,18 @@ Public surface (engine-agnostic):
   * :class:`molbuilder.spectra.results.ModeData`
   * :class:`molbuilder.spectra.results.ModeElectronicStructure`
 
-THIS PACKAGE HOLDS NO PRODUCER: no engine registry, no engine class,
-no standalone generator.  The vibration calculation KIND is the one
-producer -- ``molbuilder.pyscf.vibration_deck`` renders the deck
-through the ordinary ``spec_for`` seam, composing the emitters in
-``molbuilder.pyscf.vibration_emitters``.  Every module in this
-package serves the ARTIFACT: ``results`` (the ``.spectra.json``
-shape), ``selection`` (which modes get per-mode ES), ``methods``
-(the Methods paragraph the deck header carries) -- and the two
-engine-agnostic derivations every engine's artifact rests on:
-``activity`` (which modes are active in a channel) and ``normal_modes``
-(which whole-body motions a vibration removes, and the one path that
-removes them; ``docs/science/normal-modes.md``).  The PySCF script
-imports ``normal_modes`` from ``mb_pyscf.pyz``; a SIESTA finish runs both
-from ``mb_vibration.pyz``.
+A kind's own modules (`execution/architecture.md` § 3.3): ``results``
+(the ``.spectra.json`` shape and its one reader), ``datafile`` (its
+``.spectra.nc``), ``normal_modes`` and ``vibrational_analysis`` (the
+harmonic analysis both engines' results rest on;
+``docs/science/normal-modes.md``), ``activity``, ``infrared``, ``raman``
+and ``optical_data`` (the derivations on request), ``selection`` and
+``methods`` (which modes get per-mode ES, the Methods paragraph),
+``siesta_vibration`` (the SIESTA job's plan, record and finish steps),
+``displacement_sweep`` and ``export``.  The PySCF deck is rendered by
+``molbuilder.pyscf.vibration_deck`` through the ordinary ``spec_for``
+seam; the PySCF script imports ``normal_modes`` from ``mb_pyscf.pyz``, a
+SIESTA finish runs from ``mb_vibration.pyz``.
 """
 
 # NO CONFIG RE-EXPORT.  A spectra calculation is described by `PySCFConfig`;

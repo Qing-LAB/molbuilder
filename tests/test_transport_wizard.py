@@ -30,9 +30,16 @@ def _au_device():
     z1 = z0 + 1.5 + 2 * 1.8 + 1.5
     for layer in range(4):                       # right electrode
         elems.append("Au"); pos.append([1.0, 1.0, z1 + layer * d]); right.append(i); i += 1
+    zs = np.asarray(pos, dtype=float)[:, 2]
+    # ITS CELL, as every junction states one (`engines/transport.md`
+    # § 2a.9), built as `support.junction` builds its own: a one-atom chain
+    # is a wire, isolated across in an 8 A box, and the transport boundary
+    # leaves one layer spacing of room.
     s = Structure(
         elements=elems, positions=np.asarray(pos, dtype=float),
-        regions={"L-electrode": left, "bridge": bridge, "R-electrode": right})
+        regions={"L-electrode": left, "bridge": bridge, "R-electrode": right},
+        cell=np.diag([8.0, 8.0, float(zs.max() - zs.min()) + d]),
+        axis_kind=("isolated", "isolated", "transport"))
     # The leads are frozen, as a junction's are (`engines/transport.md` § 4);
     # the bridge is deliberately left free, so a gate asking about every atom
     # rather than the leads would fail here.
@@ -48,14 +55,13 @@ def _au_device():
 def test_extract_clones_atoms_and_uses_device_lateral_cell():
     dev = _au_device()
     m = extract_electrode_model(dev, "L-electrode")
-    assert m.n_atoms == 4
+    assert len(m.elements) == 4
     assert set(m.elements) == {"Au"}
-    assert m.n_layers == 4
     assert m.positions[:, 2].min() == pytest.approx(0.0)   # shifted to 0
     # lateral cell is the DEVICE cell, not the electrode's own (1.0) extent
-    from molbuilder.transport.transiesta import _compute_cell_from_extents
-    a, b, _c = _compute_cell_from_extents(dev)
-    assert (m.cell_a, m.cell_b) == pytest.approx((a, b))
+    lead = m.as_structure()
+    assert np.asarray(lead.cell)[:2] == pytest.approx(
+        np.asarray(dev.cell)[:2])
 
 
 # --------------------------------------------------------------------- #
@@ -92,7 +98,7 @@ def test_the_bridge_is_not_required_to_be_frozen():
     bridge relaxes while the leads do not, so a gate that demanded every
     atom be frozen would refuse every correct junction."""
     dev = _au_device()                     # bridge atoms 4, 5 are free
-    assert extract_electrode_model(dev, "L-electrode").n_layers == 4
+    assert len(extract_electrode_model(dev, "L-electrode").elements) == 4
 
 
 def test_a_lead_that_moved_is_refused_when_a_starting_geometry_is_given():
@@ -212,10 +218,12 @@ def test_the_seam_verdict_is_measured_and_said(n_layers, verdict, severity):
     from molbuilder import script_emit as _sc
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.runfiles import RunNames
+    from molbuilder.electronic_state import electronic_state
     from molbuilder.siesta.input import spec_for
     from molbuilder.template import role_answers
     from molbuilder.kind_table import rung_label
-    m = extract_electrode_model(_au111_lead(n_layers), "L-electrode")
+    junction = _au111_lead(n_layers)
+    m = extract_electrode_model(junction, "L-electrode")
     seam = [n for n in m.notes if n.where == "lead.seam"]
     assert len(seam) == 1, f"exactly one seam note: {m.notes}"
     assert verdict in seam[0].message, f"{n_layers} layers -> {seam[0]}"
@@ -224,7 +232,10 @@ def test_the_seam_verdict_is_measured_and_said(n_layers, verdict, severity):
     cfg = dataclasses.replace(
         SiestaConfig(system_label=label),
         **role_answers("siesta", "transport", "electrode_L"))
+    # THE STATE IS DECIDED ONCE, ON THE WHOLE JUNCTION (`engines/
+    # transport.md` § 3.1), as prep decides it for every rung's deck.
     spec = spec_for(lead, cfg, calculation="transport",
+                    state=electronic_state(junction, cfg, kind="transport"),
                     names=RunNames(label, "02_electrode_L"))
     said = [i for i in _sc.render_deck(spec, lead, cfg).findings
             if i.where == "lead.seam"]
@@ -237,7 +248,7 @@ def test_a_faulted_seam_is_REPORTED_not_refused():
     composes -- the person may be doing exactly what they meant."""
     m = extract_electrode_model(_au111_lead(4), "L-electrode")
     assert m.z_period == pytest.approx(9.4182, abs=1e-3)
-    assert m.n_layers == 4
+    assert len(m.elements) == 2 * 2 * 4
 
 
 def test_the_faulted_seam_note_names_the_LAYER_COUNT_as_the_cause():

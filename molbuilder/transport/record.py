@@ -175,7 +175,8 @@ def deck_spin(run_dir) -> str:
     return spin_of(_ran(run_dir))
 
 
-def point_transmission(where, label: str, spin: str) -> Dict:
+def point_transmission(where, label: str, spin: str, *,
+                       av: Optional[Dict] = None) -> Dict:
     """What TBtrans wrote at one point, read through the SIESTA family's
     parser (`tbtrans_nc.point_averages`, `model/parse.md` § 5e): its
     k-averaged transmission on the data file's energies, at full precision
@@ -185,16 +186,14 @@ def point_transmission(where, label: str, spin: str) -> Dict:
     averaged, (T↑ + T↓)/2, each kept whole in ``channels`` and their sum in
     ``transmission_total`` -- and ``transmission_file``.  :class:`RecordError`
     names what is missing: a polarized deck whose run wrote one channel is
-    not done (`engines/transport.md` § 2a.12)."""
-    from ..parse.engines.tbtrans_nc import point_averages
-    from .transiesta import LEAD_NAMES, LEAD_PAIR
-    # THE PAIR, from the leads' own block names (`TS.Elecs`), left to
-    # right: the file TBtrans writes for it, never the first of a glob.
-    try:
-        av = point_averages(where, label, pair=LEAD_PAIR,
-                            leads=tuple(LEAD_NAMES))
-    except (OSError, ValueError) as exc:
-        raise RecordError(str(exc)) from exc
+    not done (`engines/transport.md` § 2a.12).  ``av`` is the point's
+    averages where the caller read them already (:func:`point_averages_of`,
+    one read for the transmission and the DOS)."""
+    if av is None:
+        try:
+            av = point_averages_of(where, label)
+        except (OSError, ValueError) as exc:
+            raise RecordError(str(exc)) from exc
     curves = {c: a["transmission"] for c, a in av.items()
               if "transmission" in a}
     if (spin == "polarized" and "up" in curves and "down" in curves
@@ -223,8 +222,21 @@ def point_transmission(where, label: str, spin: str) -> Dict:
             "transmission_file": one["files"]["transmission"]}
 
 
+def point_averages_of(where, label: str) -> Dict:
+    """What TBtrans averaged at one point, read once through the SIESTA
+    family's parser (`tbtrans_nc.point_averages`, `model/parse.md` § 5e) --
+    the pair from the leads' own block names (`TS.Elecs`), left to right:
+    the file TBtrans writes for it, never the first of a glob.  Raises
+    what the parser raises."""
+    from ..parse.engines.tbtrans_nc import point_averages
+    from .transiesta import LEAD_NAMES, LEAD_PAIR
+    return point_averages(where, label, pair=LEAD_PAIR,
+                          leads=tuple(LEAD_NAMES))
+
+
 def point_currents(where, spin: str, *,
-                   now: Optional[Dict] = None) -> Dict:
+                   now: Optional[Dict] = None,
+                   outs: Optional[List[Path]] = None) -> Dict:
     """The current TBtrans printed at one point -- its own Landauer integral,
     parsed, never recomputed -- as the record says it
     (:data:`CURRENT_MEANS`): ``current_a_printed``, the first figure it
@@ -237,11 +249,13 @@ def point_currents(where, spin: str, *,
     (`siesta_reader.read_output`, ``now()["tbtrans"]``, `model/parse.md`
     § 5d.5): each pass's currents beside its channel; ``None`` where the
     run printed none.  ``now`` is the newest output's reading where the
-    caller holds it already (`collect_record`: one read per point); an
-    older output is read only when the newest printed no current."""
+    caller holds it already (`collect_record`: one read per point), and
+    ``outs`` its outputs, newest try first; an older output is read only
+    when the newest printed no current."""
     from ..parse.engines.siesta_reader import read_output
     out: Dict = {"current_a": None, "current_a_printed": None}
-    for i, path in enumerate(_outs_newest_first(where)):
+    for i, path in enumerate(outs if outs is not None
+                             else _outs_newest_first(where)):
         reading = now if (i == 0 and now is not None) else read_output(path).now()
         loop = reading.get("tbtrans") or {}
         for k in ("k_points", "k_method"):
@@ -276,12 +290,18 @@ def point_currents(where, spin: str, *,
     return out
 
 
-def deck_temperature_k(run_dir) -> float:
-    """The electronic temperature the point's own deck states, in kelvin
-    (`parse.fdf`: ``300 K`` or an energy), SIESTA's default 300 K when the
-    deck states none."""
-    said = _ran(run_dir).electronic_temperature_k
+def temperature_k_of(params) -> float:
+    """The electronic temperature a deck's parameters state
+    (`parse.fdf.parse_fdf_params`), in kelvin (``300 K`` or an energy),
+    SIESTA's default 300 K when the deck states none."""
+    said = params.electronic_temperature_k
     return 300.0 if said is None else float(said)
+
+
+def deck_temperature_k(run_dir) -> float:
+    """The electronic temperature the point's own deck states
+    (:func:`temperature_k_of`)."""
+    return temperature_k_of(_ran(run_dir))
 
 
 def window_short_of(emin_ev: float, emax_ev: float, volts: float,
@@ -446,7 +466,7 @@ def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
     return [(Point(), run, run)]
 
 
-def _stage_facts(calc, label: str) -> List[Dict]:
+def _stage_facts(calc, label: str, *, status) -> List[Dict]:
     """One entry per rung of the ladder: where it stands, and its own answer.
 
     **A transport result is FIVE calculations, and the record says so**, so
@@ -469,13 +489,14 @@ def _stage_facts(calc, label: str) -> List[Dict]:
       BULK run whose *"E_F is the reference energy"* (§ 2a.13), T(E) is
       measured relative to it, and `G = G0 * T(E_F)` is evaluated at it.
     * *transmission* -- has its own `points` / `pending` / `failed` blocks.
+
+    ``status`` is that door's answer, read once by the caller
+    (:func:`collect_record`) for every part of the record.
     """
     from ..jobset.naming import ladder_homes
-    from ..jobset.runstatus import jobset_status
     from .stages import STAGE_FACT, TRANSPORT_STAGES, frames_of, rung_points
 
     base, task = Path(calc.base), calc.task
-    status = jobset_status(calc)
     by_name = {s.name: s for s in status.stages}
     tokens = {h.name: h.token for h in ladder_homes(base, task)}
     # THE DEVICE RUN THE TRANSMISSION READ, when it has one -- the device
@@ -549,7 +570,8 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             # convergence card follows the selected point (`web/results.md`
             # § 2.5); the rung's own facts are its first point's.
             fact["by_point"] = _rung_points(base, task, name, answers,
-                                            run=run, rung=fact)
+                                            run=run, rung=fact,
+                                            rows=points)
             _bridge_charge_from_0v(fact["by_point"])
             # WHAT EACH POINT STARTED FROM AND TOOK -- the status door's own
             # reading of the point's `.continued-from` and `.gathered-from`
@@ -799,16 +821,23 @@ def _contour_facts(contours: Dict) -> Dict:
 
 
 def _rung_points(base: Path, task, name: str, answers: str,
-                 run: Optional[Path] = None, *, rung: Dict) -> List[Dict]:
+                 run: Optional[Path] = None, *, rung: Dict,
+                 rows=()) -> List[Dict]:
     """``[{frame, bias_v, point, attempt, state, detail, ...science}]`` --
-    each point of a rung that runs per point, its state the run door's
-    (`run_status`) and its own answer (:func:`_science`); ``run`` names the
+    each point of a rung that runs per point, its state the status door's
+    row (``rows``, read once per answer: `architecture.md` § 3.2) -- the
+    run door's (`runs.concluded`) only for a run the status door has no
+    rows for -- and its own answer (:func:`_science`); ``run`` names the
     run to read instead of the latest.  A point with no folder yet -- no run
     opened, the rung described or prepared and not launched -- is the
-    rung's own row (``rung``: its state and detail, the status door's)."""
+    rung's own row (``rung``: its state and detail, the status door's).
+    A point the ended walk never reached is failed, as the rows say it
+    (`continuation.never_reached`, `engines/transport.md` § 2a.11), never
+    one still to come."""
     from ..jobset.naming import stage_home
     from ..runs import concluded
     names = stage_home(base, task, name).names
+    said = {r["folder"]: r for r in rows or ()}
     out: List[Dict] = []
     for pt, where, run in result_folders(base, task, name, run=run):
         entry: Dict = {**pt.to_wire(), "point": pt.words()}
@@ -817,11 +846,16 @@ def _rung_points(base: Path, task, name: str, answers: str,
             out.append(entry)
             continue
         entry["attempt"] = str(where.relative_to(base))
-        # THE POINT'S STATE, the one door's, with its run's launch record
-        # (`runs.concluded`, given the run's folder: the scheduler asked
-        # once where it can, `running-a-job.md` § 4.2).
-        st = concluded(where, names, base=base, launched_in=run)
-        entry.update(state=st.state, detail=st.detail)
+        # THE POINT'S STATE: the status door's row, as the ladder reads it
+        # (`runstatus.every_run`); the one door's own read (`runs.concluded`,
+        # with its run's launch record) only where no row was handed in.
+        row = said.get(f"{run.name}/{pt.rel}") if run is not None else None
+        if row is not None:
+            entry.update(state=row["state"],
+                         detail=row["detail"] if row["done"] else row["why"])
+        else:
+            st = concluded(where, names, base=base, launched_in=run)
+            entry.update(state=st.state, detail=st.detail)
         outs = _outs_newest_first(where)
         if outs:
             entry.update(_science(outs[0], answers))
@@ -932,27 +966,32 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     junction_atoms = (AtomIndexMap.of_engine_record(junction.atom_order,
                                                     junction.n_atoms)
                       if junction is not None else None)
-    stages = _stage_facts(calc, task.label)
+    # WHERE EACH RUNG STANDS, the status door's one answer, read once for
+    # every part of the record (`runstatus.jobset_status`).
+    from ..jobset.runstatus import jobset_status
+    status = jobset_status(calc)
+    stages = _stage_facts(calc, task.label, status=status)
     # A POINT NOT OPENED stands where its rung does -- the ready door's
     # `ready` / `waiting` and what for, on the rung's row (prep opens every
     # point at once).
     rung = next(f for f in stages if f["stage"] == "transmission")
     opened = False                        # an attempt open: it is prepared
-    # WHETHER EACH RUN OF POINTS HAS ENDED, by the one rule the status door
-    # asks (`continuation.points_state`) -- read once a run: a point a
-    # stopped walk never reached is no point still to come.
-    ended_runs: Dict[str, bool] = {}
+    # THE TRANSMISSION'S POINTS AS THE STATUS DOOR READ THEM -- each one's
+    # state, what it is a copy of -- one per point folder below its run
+    # (`continuation.points_state`): a point the ended walk never reached
+    # is failed there, never one still to come (`engines/transport.md`
+    # § 2a.11).
+    rows = {r["folder"]: r for s in status.stages
+            if s.name == "transmission" for r in (s.points or ())}
+    # WHAT TBTRANS AVERAGED AT EACH FOLDER, read once for the transmission
+    # and the DOS (`point_averages_of`).
+    averaged: Dict[Path, Dict] = {}
 
-    def _run_ended(run) -> bool:
-        key = str(run)
-        if key not in ended_runs:
-            from ..jobset.continuation import stage_run_state
-            try:
-                state, _said = stage_run_state(calc, "transmission", run)
-            except (OSError, ValueError, KeyError):
-                state = "unreadable"
-            ended_runs[key] = state in ("finished", "failed")
-        return ended_runs[key]
+    def _averages(folder) -> Dict:
+        key = Path(folder)
+        if key not in averaged:
+            averaged[key] = point_averages_of(folder, task.label)
+        return averaged[key]
     for pt, where, run in result_folders(base, task, "transmission"):
         # WHICH POINT, on every entry: its frame (``None`` with no frame
         # axis), its folder below the run, and in words.
@@ -976,15 +1015,22 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                 keep_reading(outs[0], version_of(outs[0]), reader.finish())
             except OSError:
                 now = None
-        # THE POINT'S STATE, the one door's -- asked as every reader asks
-        # it, with its run's launch record (`runs.concluded`, given the
-        # run's folder: the scheduler asked once where it can); one that
-        # does not read is said.
-        from ..runs import concluded
-        st = concluded(where, names, base=base, launched_in=run)
-        if st.state == "unreadable":
+        # THE POINT'S STATE: the status door's row (``rows``, read once
+        # for the record), as the ladder reads it (`runstatus.every_run`);
+        # the one door's own read (`runs.concluded`, with its run's launch
+        # record) only for a run the status door has no rows for.  One
+        # that does not read is said.
+        row = rows.get(f"{run.name}/{pt.rel}") if run is not None else None
+        if row is not None:
+            state = row["state"]
+            why = row["detail"] if row["done"] else row["why"]
+        else:
+            from ..runs import concluded
+            st = concluded(where, names, base=base, launched_in=run)
+            state, why = st.state, st.detail
+        if state == "unreadable":
             failed.append({**at, "attempt": rel,
-                           "state": "unreadable", "why": st.detail})
+                           "state": "unreadable", "why": why})
             continue
         # WHAT ITS RUN COMPUTES, beside what it shares -- the energies of
         # its grid its own run computes, and those the finished point holds
@@ -994,42 +1040,40 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         shares = ({"shared": {"from": sharing.source, "held": sharing.held,
                               "computed": sharing.computed}}
                   if sharing is not None else {})
-        if st.state != "finished":
-            from ..jobset.continuation import NEVER_REACHED
-            unreached = (st.state in ("pending", "queued")
-                         and _run_ended(run))
-            entry = {**at, "attempt": rel,
-                     "state": "failed" if unreached else st.state,
-                     "why": NEVER_REACHED if unreached else st.detail,
+        if state != "finished":
+            entry = {**at, "attempt": rel, "state": state, "why": why,
                      **shares}
             # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
             # one sentence the point's run record states it in
             # (`tbtrans_loop`, `model/parse.md` § 5d.1b, § 5d.5).
             progress = tbtrans_loop(
                 outs[0] if outs else None,
-                over=st.state in FINAL_STATES, now=now)
+                over=state in FINAL_STATES, now=now)
             if progress:
                 entry["progress"] = {
                     "said": progress["progress"],
                     **({"estimated_at": progress["estimated_at"]}
                        if "estimated_at" in progress else {})}
-            (pending if st.state in ("pending", "queued", "running")
-             and not unreached else failed).append(entry)
+            (pending if state in ("pending", "queued", "running")
+             else failed).append(entry)
             continue
         # WHAT TBTRANS WROTE, through the family's one reader -- a point
         # that does not read is that point's failure, said in its words; the
         # other points still read.
         try:
-            spin = deck_spin(where)
+            # ITS DECK, read once: its spin and its temperature
+            # (`spin_of`, `temperature_k_of`).
+            params = _ran(where)
+            spin = spin_of(params)
             # ITS GRID, JOINED -- its own run's energies and those it shares
             # with a finished calculation's point (`energies.joined`,
             # `engines/transport.md` § 2a.16).
             read = joined(where, lambda f: point_transmission(
-                f, task.label, spin))
+                f, task.label, spin, av=_averages(f)))
         except (OSError, ValueError, RecordError) as exc:
             failed.append({**at, "attempt": rel, "state": "finished",
                            "why": f"the run finished without its "
-                                  f"transmission: {exc} ({st.detail})"})
+                                  f"transmission: {exc} ({why})"})
             continue
         # THE DOS, ITS PARTS AND THE EIGENCHANNELS -- TBtrans's averages,
         # and each region's from the data file's kept reading -- a polarized
@@ -1037,7 +1081,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # (`tbtnc.point_dos`; `web/results.md` § 2.5).
         def _dos(folder, spin=spin):
             return point_dos(folder, task.label, regions, spin,
-                             junction_atoms)
+                             junction_atoms, av=_averages(folder))
         dos = None
         dos_why = None
         try:
@@ -1051,14 +1095,15 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # its run from, the finished calculation this one reuses (§ 2a.16):
         # the run that computed it (`runrecord.copied_of`).
         from ..runrecord import copied_of
-        copied = copied_of(base, where)
+        copied = (row.get("copied_from") if row is not None
+                  else copied_of(base, where))
         # ITS CURRENT, and which it is (`engines/transport.md` § 2a.16): the
         # printed figures' total, or -- for a point that shares energies --
         # the record's over its joined grid.
-        currents = point_currents(where, spin, now=now)
+        currents = point_currents(where, spin, now=now, outs=outs)
         currents.update(
             joined_currents(read, pt.volts or 0.0,
-                            BOLTZMANN_EV_K * deck_temperature_k(where),
+                            BOLTZMANN_EV_K * temperature_k_of(params),
                             spacing(sharing.window))
             if sharing is not None else {"current_from": "tbtrans"})
         energies = read["energy_ev"]
@@ -1066,13 +1111,13 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             **at,
             # ITS FRAME'S ROWS, whole -- what the frame is, as its writer
             # stated it (`model/structure.md` § 2.2d).
-            "customized": (junction.customized_rows(
-                frame=pt.frame if pt.frame is not None else 0)
-                if junction is not None else []),
+            "customized": ([dict(r) for r in frame_set.frames[
+                pt.frame if pt.frame is not None else 0]]
+                if frame_set is not None else []),
             "attempt": rel,
-            # ITS STATE, the run door's word, as a pending or failed point
-            # states its own (`engines/transport.md` § 2a.12).
-            "state": st.state,
+            # ITS STATE, as a pending or failed point states its own
+            # (`engines/transport.md` § 2a.12).
+            "state": state,
             **read,
             # G/G0 = T(E_F), the one rule (`conductance.at_fermi`), which a
             # transmission run's milestone says too (`run-reports.md` § 2.9).
@@ -1476,7 +1521,9 @@ def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
         return None
     out: Dict = {"device_ef_ev": dev["ef"], "frame": "transiesta"}
     seed_ef = (by.get("seed") or {}).get("fermi_ev")
-    leads = {n: by[n].get("fermi_ev") for n in ("electrode_L", "electrode_R")
+    # THE LEADS, the kind table's (`CalculationKind.leads`).
+    from ..kind_table import kind
+    leads = {n: by[n].get("fermi_ev") for n in kind("transport").leads
              if n in by and by[n].get("fermi_ev") is not None}
     if seed_ef is not None:
         out["seed_ef_ev"] = seed_ef

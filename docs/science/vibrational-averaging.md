@@ -710,7 +710,9 @@ d_{\mathrm{out}} = \sqrt2\,x_{\mathrm{out}}\;\sigma\,\max_A\lvert\mathbf L_A\rve
 $$
 
 $x_{\mathrm{out}}$ the rule's outermost node (§ 5.1: $\sqrt{3/2}$ for three
-frames, 2.0202 for five, 2.6520 for seven). Each frame states its own largest
+frames, 2.0202 for five, 2.6520 for seven); $\max_A\lvert\mathbf L_A\rvert$ is
+`normal_modes.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
+(`mode_frames.outermost_move` asks it). Each frame states its own largest
 single-atom move beside it — the check a person reads against a bond length.
 
 **An example — mode 48 of the user's AuBDTAu vibration on Sol**
@@ -959,8 +961,10 @@ calculation's data file, where every frame's $q_f$ and $T_f(E)$ sit
 (`molbuilder.postprocess.reaveraged`, [`model/parse.md`](?doc=model/parse.md)
 § 3; [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
 § 3.2). It writes nothing: the record and its data file keep the set's own
-average (§ 8). A voltage whose points are not all done has no re-averaged
-value, as it has no average (`engines/transport.md` § 2a.12).
+average (§ 8). Each voltage is averaged by the record's own rule, the one
+`frame_average.at_voltage` that writes the set's average, with the new
+weights: a voltage whose points are not all done has no re-averaged value,
+as it has no average (`engines/transport.md` § 2a.12).
 
 ---
 

@@ -85,13 +85,12 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
 @dataclass(frozen=True)
 class CitationAnswers:
     """What the citation answers of the items it defaults
-    (`engines/transport.md` § 3.1, § 3.8.1): ``kind``, the citation's --
-    ``"run"`` or ``"pair"``; ``values`` in ``SiestaConfig``'s field names;
+    (`engines/transport.md` § 3.1, § 3.8.1): ``values`` in ``SiestaConfig``'s
+    field names;
     ``source`` ``"deck"`` (a cited run's own deck), ``"pair"`` (a cited
     pair's record) or ``"none"`` (a record that states nothing, or a deck
     the unit door could not read); and ``source_name`` the file the answers
     were read from."""
-    kind: str
     values: Dict[str, Any]
     source: str
     source_name: str = ""
@@ -115,8 +114,7 @@ def citation_answers(cited_path) -> CitationAnswers:
     from .. import template as _T
 
     cited = classify_citation(Path(cited_path))
-    kind = "pair" if isinstance(cited, CitedPair) else "run"
-    if kind == "pair":
+    if isinstance(cited, CitedPair):
         record, source, name = cited.calculation, "pair", cited.path.name
     else:
         deck = declared(cited.run).deck
@@ -127,8 +125,7 @@ def citation_answers(cited_path) -> CitationAnswers:
         # A record that states nothing -- a deck the unit door refuses
         # answers nothing here; the refusal itself is prep's to raise, by
         # name.
-        return CitationAnswers(kind=kind, values={}, source="none",
-                               source_name="")
+        return CitationAnswers(values={}, source="none", source_name="")
     taken = [it.name for it in _T.select(_T.catalogue(), engine="siesta",
                                          citation=True)
              if "transport" in it.citation
@@ -161,14 +158,14 @@ def citation_answers(cited_path) -> CitationAnswers:
         kw.pop("unpaired_electrons")
     if "mesh_cutoff" in kw:
         kw["mesh_cutoff"] = float(kw["mesh_cutoff"])
-    return CitationAnswers(kind=kind, values=kw, source=source,
-                           source_name=name, net_charge=charge)
+    return CitationAnswers(values=kw, source=source, source_name=name,
+                           net_charge=charge)
 
 
-def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
-                                **chosen) -> "SiestaConfig":
+def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
+                                blank=(), **chosen) -> "SiestaConfig":
     """The config `molbuilder describe` and the describe door write a transport
-    template from: the citation's answers (:func:`citation_answers`), then
+    template from: the citation's ``answers`` (:func:`citation_answers`), then
     what the person chose on the shared panel (``chosen``, in the same
     field names) laid over them -- the person may change any of it, for
     every rung that reads it at once (`engines/transport.md` § 2a.7 ruling
@@ -180,7 +177,6 @@ def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
     "work it out" (`science/chemistry-correctness.md` § 2a).
     """
     from ..config.siesta import SiestaConfig
-    answers = citation_answers(cite_dir)
     if answers.net_charge:
         # ES7 (`science/chemistry-correctness.md` § 2a): a transport
         # calculation's boundaries are OPEN -- the leads set the electron
@@ -272,9 +268,11 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
     card beside it says.
     """
     from .. import template as _T
-    cfg = siesta_config_from_citation(cite_dir, label=label, blank=blank,
-                                      **chosen)
+    # THE CITATION READ ONCE (`engines/transport.md` § 3.8.0), every frame
+    # of a frame set and the electrode gate with it.
     cited = citation_answers(cite_dir)
+    cfg = siesta_config_from_citation(cited, label=label, blank=blank,
+                                      **chosen)
     mine = _the_persons(chosen)
     answered = (set(cited.values) - set(blank)) | set(mine)
     unanswered = sorted(

@@ -37,6 +37,7 @@ class ReadOnce:
         self.calc = calc
         self._junction = None
         self._decks: dict = {}
+        self._runs: dict = {}
 
     def junction(self):
         if self._junction is None:
@@ -49,6 +50,25 @@ class ReadOnce:
             self._decks[key] = rung_deck_now(self.calc, stage,
                                              self.junction(), point=point)
         return self._decks[key]
+
+    def points_run(self, stage: str, run: Path):
+        """An upstream run of points' ``(launch record, (state, detail,
+        rows))`` -- its state ``None`` for a run never launched -- read once
+        for every point of the rung that takes it (`continuation.
+        points_state`).  A record that does not read raises, as its reader
+        does (`runrecord.LaunchRecordError`)."""
+        key = (stage, run)
+        if key not in self._runs:
+            from ..runrecord import launch_record
+            from .continuation import points_state
+            base, task = Path(self.calc.base), self.calc.task
+            launch = launch_record(run)
+            self._runs[key] = (launch, None if launch is None else
+                               points_state(run, stage_home(base, task,
+                                                            stage).names,
+                                            task, stage, launch=launch,
+                                            base=base))
+        return self._runs[key]
 
 
 def transport_inputs(calc, stage: str, *, point=None,
@@ -120,11 +140,9 @@ def transport_inputs(calc, stage: str, *, point=None,
         from .materialize import latest_attempt
         newest = latest_attempt(up_dir) if up_dir.is_dir() else None
         if up_points and newest is not None:
-            from ..runrecord import LaunchRecordError, launch_record
-            from .continuation import points_state
-            _names = home.names
+            from ..runrecord import LaunchRecordError
             try:
-                _launch = launch_record(newest)
+                _launch, _state = once.points_run(upstream, newest)
             except LaunchRecordError as exc:
                 # A RECORD THAT DOES NOT READ is said in its reader's
                 # words, as the refusal it is (`job-system.md` R-L21).
@@ -143,11 +161,10 @@ def transport_inputs(calc, stage: str, *, point=None,
                     + q2)
             else:
                 # THE ONE RULE the status door asks (`continuation.
-                # points_state`): a chain that stopped is a run that ended
-                # with points not done, never one still queued.
-                st, _d, rows = points_state(newest, _names, task, upstream,
-                                            launch=_launch,
-                                            base=base)
+                # points_state`), read once for every point here: a chain
+                # that stopped is a run that ended with points not done,
+                # never one still queued.
+                st, _d, rows = _state
                 not_done = [f"{p['point']} ({p['why']})" for p in rows
                             if not p["done"]]
                 if st in ("queued", "running"):

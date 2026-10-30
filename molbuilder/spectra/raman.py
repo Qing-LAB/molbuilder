@@ -5,7 +5,7 @@ optical calls' eps2 (`engines/vibration.md` § 5.11 § 10;
 MODULE  spectra.raman (L2; numpy, the optical calls' data file, the variable
         record)
 ROLE    :func:`raman_view` -- the one derivation: each frame's eps2, the spin
-        channels summed, broadened to the width asked (:func:`broadened`),
+        channels summed, broadened to the width asked (:func:`spreader`),
         its real part by Kramers-Kronig at the laser and static
         (:func:`eps1_minus_one`), the polarizability -- complex at the laser,
         its imaginary part the spectrum itself there (:func:`eps2_at`) --
@@ -95,8 +95,8 @@ def photon_energy_ev(laser_nm: float) -> float:
 def width_words(ev: float) -> str:
     """A width as it is shown, eV: six significant digits, rounded UP, so
     the run's own width typed back as shown is never narrower than the
-    run's -- which :func:`spreader` refuses.  The page's `_widthWords`
-    applies the same rule."""
+    run's -- which :func:`spreader` refuses.  Served with every view
+    (:meth:`RamanView.to_wire`), which the page shows as written."""
     x = float(ev)
     s = f"{x:.6g}"
     if float(s) < x:
@@ -143,13 +143,6 @@ def spreader(energies: Sequence[float], run_ev: float, width_ev: float):
         y = np.asarray(y, dtype=float)
         return fftconvolve(y, kernel, mode="full")[reach:reach + y.size]
     return spread
-
-
-def broadened(energies: Sequence[float], eps2: Sequence[float],
-              run_ev: float, width_ev: float) -> np.ndarray:
-    """``eps2``, spread by SIESTA at ``run_ev`` on the uniform grid
-    ``energies``, as spread at ``width_ev`` (:func:`spreader`)."""
-    return spreader(energies, run_ev, width_ev)(eps2)
 
 
 def _spline(energies: np.ndarray, eps2: np.ndarray):
@@ -274,6 +267,9 @@ class RamanView:
                 "photon_energy_ev": self.photon_energy_ev,
                 "broaden_ev": self.broaden_ev,
                 "run_broaden_ev": self.run_broaden_ev,
+                # THE WIDTHS AS SHOWN, by the one rule (:func:`width_words`).
+                "broaden_words": width_words(self.broaden_ev),
+                "run_broaden_words": width_words(self.run_broaden_ev),
                 "direction": list(self.direction),
                 "direction_name": self.direction_name,
                 "delta_ang": self.delta_ang,
@@ -704,7 +700,7 @@ def read_raman_data(path) -> Dict[str, Any]:
 
 
 __all__ = ["ASK_KEYS", "RAMAN_SCHEMA", "READABLE_RAMAN_SCHEMAS", "RamanError",
-           "RAMAN_FILE", "RamanMode", "RamanView", "WHAT", "broadened",
+           "RAMAN_FILE", "RamanMode", "RamanView", "WHAT",
            "width_words",
            "eps1_minus_one", "eps2_at", "has_optical_route",
            "optical_data_of", "spreader",

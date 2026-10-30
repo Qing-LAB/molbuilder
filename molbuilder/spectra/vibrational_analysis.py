@@ -50,8 +50,7 @@ try:                                        # inside molbuilder
                             checkpoint_words, launch_as_typed)
     from .methods import extract_citation_keys
     from .normal_modes import (display_form, frequencies_cm1,
-                               thermo_temperatures, vibrational_modes,
-                               vibrational_thermo, vibrational_thermo_grid)
+                               vibrational_modes, vibrational_only_thermo)
     from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                           SCHEMA_VERSION, ModeData, SpectraResults)
 except ImportError:                         # beside a job, in mb_vibration.pyz
@@ -62,8 +61,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                           checkpoint_words, launch_as_typed)
     from methods import extract_citation_keys
     from normal_modes import (display_form, frequencies_cm1,
-                              thermo_temperatures, vibrational_modes,
-                              vibrational_thermo, vibrational_thermo_grid)
+                              vibrational_modes, vibrational_only_thermo)
     from results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                          SCHEMA_VERSION, ModeData, SpectraResults)
 
@@ -163,51 +161,20 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
             has_imag=bool(f < 0),
         ))
 
-    kept = np.array([m.frequency_cm1 for m in modes if not m.has_imag])
-    n_imag = int(sum(1 for m in modes if m.has_imag))
-    zpe = vibrational_thermo(kept, temperature_K)[0]
-    # No total energy is reported by a route that hands in only a block, so
-    # the curves are the vibrational contributions above the electronic
-    # minimum (e_ref = 0), through the one grid home both writers share; the
-    # headline temperature is on the grid, so the headline IS a grid row.
-    grid = vibrational_thermo_grid(kept, thermo_temperatures(temperature_K),
-                                   0.0)
-    k_head = grid["temperatures_K"].index(float(temperature_K))
     n_rigid = int(len(patterns))
-    thermo = {
-        "regime": "vibrational-only",
-        "temperature_K": float(temperature_K),
-        # NO PRESSURE ENTERS the vibrational sums -- only the gas-phase
-        # translational term takes one -- so none is recorded
-        # (`engines/vibration.md` § 4.7).
-        "pressure_atm": None,
-        "zpe_eh": zpe,
-        "h_eh": grid["h_eh"][k_head],
-        "s_eh_k": grid["s_eh_k"][k_head],
-        "g_eh": grid["g_eh"][k_head],
-        "n_modes": len(modes),
-        "n_imag_excluded": n_imag,
-        "n_rigid_removed": n_rigid,
-        "note": ("The harmonic VIBRATIONAL contributions of the free atoms "
-                 "at this temperature -- ZPE, U_vib, S_vib and F_vib = "
-                 "ZPE + U_vib - T*S_vib -- the headline and the grid "
-                 "alike.  Good for the zero-point and vibrational "
-                 "free-energy correction of one structure against another "
-                 "computed the same way; not an enthalpy or a free energy "
-                 "of the system: this route carries no electronic energy, "
-                 "a free molecule's translation and rotation are not "
-                 "added, and no pressure enters.  Modes below about 100 "
-                 "cm-1 are anharmonic in practice and carry most of S_vib, "
-                 "so the entropy is the least reliable number; the "
-                 "whole-body motions of the free atoms were removed before "
-                 "diagonalising"),
-        "grid": grid,
-    }
+    # THE ONE VIBRATIONAL-ONLY BLOCK both routes write (`normal_modes`,
+    # `engines/vibration.md` § 4.7): a route that hands in only a block
+    # reports no electronic energy, so its sums stand on none.
+    thermo = vibrational_only_thermo(
+        [m.frequency_cm1 for m in modes], [m.has_imag for m in modes],
+        temperature_K, n_rigid=n_rigid,
+        why="this route hands in the force constants alone and carries no "
+            "electronic energy")
 
     relaxation = _stationarity(reference_forces_ev_ang, n, free_b,
                                force_criterion_ev_ang, geometry_note,
                                already_relaxed, ladder_relaxation,
-                               relaxation_stage, str(engine))
+                               relaxation_stage)
     return SpectraResults(
         schema_version=SCHEMA_VERSION,
         engine=str(engine),
@@ -215,7 +182,6 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         molbuilder_version=str(molbuilder_version),
         timestamp=(timestamp or datetime.now(timezone.utc).isoformat()
                    .replace("+00:00", "Z")),
-        structure_hash=None,
         structure=(dict(structure) if structure is not None else None),
         # LISTED BY USER INDEX, each atom's engine index the deck's order
         # (`model/overview.md` § 2.2b, F2: a result for the user).
@@ -261,17 +227,16 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     )
 
 
-def nonstationary_remedy(relaxation_stage: Optional[str],
-                         engine: str = "") -> str:
+def nonstationary_remedy(relaxation_stage: Optional[str]) -> str:
     """THE remedy for a reference geometry that is not a stationary point
     (`engines/vibration.md` § 2.2, § 5.5, § 5.8) — one text, written by
     `prep`, by the SIESTA finish into the result, and by the PySCF deck's
     gradient check, so the three cannot advise differently for one fact.
 
     ``relaxation_stage`` is the stage whose run relaxed the geometry, or
-    ``None`` when the person stated it relaxed.  ``engine`` says what "relax
-    first" is: on SIESTA the run's `relax` call, on PySCF the deck's own
-    relaxation phase -- each on when `already_relaxed` is unticked."""
+    ``None`` when the person stated it relaxed: then "relax first" is the
+    calculation's own relaxation -- on whichever engine, on when
+    `already_relaxed` is unticked."""
     if relaxation_stage:
         # THE RUN RELAXED FIRST and still ended off a stationary point: the
         # relaxation needs more steps, from the state saved before the
@@ -293,12 +258,10 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
                 f"`{launch_as_typed(s)} --cold` {LAUNCH_MODE_NOTE} -- "
                 f"every call of the run again, the relaxation from the "
                 f"structure at the steps it has.")
-    first = ("untick `already_relaxed` (Task setup, or task.json) so the "
-             "run relaxes first"
-             if str(engine).lower() == "siesta" else
-             "untick `already_relaxed` so the calculation relaxes first")
     return (f"Relax first -- if this stage was launched, first go back to "
-            f"{LAUNCHED_WAY_BACK}{_RESTORE}; then {first}, or relax "
+            f"{LAUNCHED_WAY_BACK}{_RESTORE}; then untick `already_relaxed` "
+            f"(Task setup, or task.json) so the calculation relaxes first, "
+            f"or relax "
             f"elsewhere at this level of theory and hand the result over -- "
             f"or keep this run knowing that.")
 
@@ -314,8 +277,7 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
                   criterion_ev_ang: Optional[float], geometry_note: str,
                   already_relaxed: bool,
                   ladder_relaxation: Optional[Mapping[str, Any]],
-                  relaxation_stage: Optional[str],
-                  engine: str = "") -> dict:
+                  relaxation_stage: Optional[str]) -> dict:
     """The result's ``relaxation`` block: the forces at the block's geometry
     judged against the criterion (R5 -- the largest absolute Cartesian
     COMPONENT over the free atoms, the convention the PySCF deck judges its
@@ -360,8 +322,7 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
                            # block refuses one that does not)
                            + nonstationary_remedy(
                                relaxation_stage if isinstance(
-                                   ladder_relaxation, Mapping) else None,
-                               engine))
+                                   ladder_relaxation, Mapping) else None))
     ladder = ladder_relaxation if isinstance(ladder_relaxation, Mapping) else None
     return {"enabled": ladder is not None,
             "already_relaxed": bool(already_relaxed),

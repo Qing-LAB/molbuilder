@@ -68,13 +68,14 @@ TRANSPORT_STAGES = _kind("transport").role_names
 STAGE_FACT = {r.name: r.computes for r in _kind("transport").roles}
 
 
-def resolvable_override_names() -> frozenset:
-    """The names a per-stage override may carry — **asked, never listed.**
+def resolvable_override_names(engine: str) -> frozenset:
+    """The names a per-stage override may carry on ``engine`` — **asked,
+    never listed.**
 
     `prep` resolves a rung's config through
-    :func:`molbuilder.resolve.resolve` against
-    :class:`~molbuilder.config.siesta.SiestaConfig`, so a name that is not one
-    of its fields is refused there by name, and a RUN SETTING -- the
+    :func:`molbuilder.resolve.resolve` against the engine's config class
+    (`engine_table.config_class`), so a name that is not one of its fields
+    is refused there by name, and a RUN SETTING -- the
     catalogue's ``execution`` items, the machine's answers among them -- is
     refused as an override: it is the rung's run card's (`engines/stages.md`
     § 6.8d, plan § 5w K5). Those two facts are the whole vocabulary, and
@@ -85,11 +86,11 @@ def resolvable_override_names() -> frozenset:
     """
     import dataclasses
 
-    from ..config.siesta import SiestaConfig
+    from ..engine_table import config_class
     from ..template import run_settings
 
-    on_the_card = run_settings("siesta")
-    return frozenset(f.name for f in dataclasses.fields(SiestaConfig)
+    on_the_card = run_settings(engine)
+    return frozenset(f.name for f in dataclasses.fields(config_class(engine))
                      if f.name not in on_the_card)
 
 
@@ -292,8 +293,9 @@ def hands_on(stage: str, task_label: str, base_dir) -> list:
     """What a point of ``stage`` hands to the next point's start -- the
     calculation's ``along`` row (`warm-files.toml` [transport]), of the
     files this rung itself declares (:func:`warm_declaration`: the device's
-    ``.TSDE``; the transmission declares none) -- ``[]`` for a rung with no
-    points (`engines/transport.md` § 2a.11).  The one answer the walk hands
+    ``.TSDE``; the transmission declares none) -- ``[]`` for a rung that
+    does not run per point, the seed and the leads
+    (`engines/transport.md` § 2a.11).  The one answer the walk hands
     on by and :func:`products_of` asks a point to hold."""
     if stage not in per_point_rungs():
         return []
@@ -339,12 +341,12 @@ def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
 
 def warm_declaration(stage: str, task_label: str, base_dir=None):
     """What a transport rung takes from a run of itself it CONTINUES --
-    `launch` opening its next attempt after a stop -- the § 4.2a vocabulary
-    rows for the transport type, on the stages where continuing means
-    anything -- the seed and the device, each with the vocabulary's carry
-    rows (`warm-files.toml` [transport]: the ``.DM``, and the ``.TSDE``,
-    the NEGF density, read under ``DM.UseSaveDM``, which the device deck
-    writes ``.true.``).  A rung takes no
+    `launch` opening its next run after a stop -- the § 4.2a vocabulary's
+    carry rows for the transport type over ``[base]``, on the stages where
+    continuing means anything, the seed and the device (`warm-files.toml`:
+    the ``.XV`` and ``.DM`` every SIESTA run carries, and [transport]'s
+    ``.TSDE``, the NEGF density, read under ``DM.UseSaveDM``, which the
+    device deck writes ``.true.``).  A rung takes no
     ``--from`` at prep (`continuation.cannot_be_named`).
 
     The electrode single-points and the transmission post-processing
@@ -399,54 +401,64 @@ def why_no_transport(engine: str) -> Optional[str]:
             f"transport ships on {ships}")
 
 
-#: What each rung computes and hands on -- the ONE-LINE NOTE a surface puts
-#: beside the rung's name (`engines/transport.md` § 2a.3 "the results that
-#: propagate", § 6.1; the tab strip of § 3.8.2a).  The index a surface shows
-#: is the rung's position in TRANSPORT_STAGES, one-based.
-RUNG_NOTES = {
-    "seed": ("A closed periodic SCF of the whole junction.  It writes the "
-             "density the device starts from -- a starting guess only: it "
-             "spares the device iterations and changes no result.  "
-             "k-points: the shared k-point grid in the electrode plane "
-             "(x, y), and one k-point along z, because the cell is long "
-             "along z and the device only starts from this density."),
-    "electrode_L": ("The left lead as a bulk crystal.  It writes the "
-                    "Hamiltonian, overlap and Fermi level the device builds "
-                    "the left self-energy from, and the device takes them "
-                    "as given.  k-points: the shared k-point grid in the "
-                    "electrode plane (x, y), which must be the device's, "
-                    "and many k-points along z (the lead's own count, 100 "
-                    "unless set), because the lead's Hamiltonian and Fermi "
-                    "level depend on them."),
-    "electrode_R": ("The right lead, likewise, on the same k-points as the "
-                    "left.  Two lead runs even when the leads are "
-                    "identical, so the record stays auditable and the "
-                    "Results tab compares their Fermi levels."),
-    "device": ("The open-boundary NEGF SCF of the junction between the two "
-               "leads, at the bias.  It writes the converged Hamiltonian "
-               "the transmission reads -- one per bias point.  k-points: "
-               "the shared k-point grid in the electrode plane (x, y), and "
-               "one k-point along z, where the leads' self-energies stand "
-               "in for everything beyond the cell."),
-    "transmission": ("T(E) over the energy window, from that Hamiltonian.  "
-                     "tbtrans runs no SCF, so this tab has no SCF settings: "
-                     "the ones behind this T(E) are the device's and the "
-                     "two leads', on their tabs, and T(E) is only as "
-                     "converged as those runs.  k-points: its own "
-                     "transmission k-point grid in the electrode plane "
-                     "(x, y), finer than the shared one -- three times it "
-                     "unless you set it -- because T(E) changes more "
-                     "sharply from one k-point to the next than the density "
-                     "does; and one k-point along z.  Nothing consumes its "
-                     "output, so changing the window or the grid re-runs "
-                     "the transmission alone, never an NEGF cycle."),
-}
+def rung_notes() -> Dict[str, str]:
+    """What each rung computes and hands on -- the ONE-LINE NOTE a surface
+    puts beside the rung's name (`engines/transport.md` § 2a.3 "the results
+    that propagate", § 6.1; the tab strip of § 3.8.2a), each number it
+    names asked of its home: the lead's k-point count along z (the
+    catalogue's ``electrode_kz``) and the transmission grid's factor
+    (`kmesh.TRANSMISSION_PER_SCF`).  The index a surface shows is the
+    rung's position in TRANSPORT_STAGES, one-based."""
+    from ..kmesh import TRANSMISSION_PER_SCF as _TBT_FACTOR
+    from ..template import catalogue, one
+    _LEAD_KZ = one(catalogue(), "electrode_kz", engine="siesta").default
+    return {
+        "seed": ("A closed periodic SCF of the whole junction.  It writes the "
+                 "density the device starts from -- a starting guess only: it "
+                 "spares the device iterations and changes no result.  "
+                 "k-points: the shared k-point grid in the electrode plane "
+                 "(x, y), and one k-point along z, because the cell is long "
+                 "along z and the device only starts from this density."),
+        "electrode_L": ("The left lead as a bulk crystal.  It writes the "
+                        "Hamiltonian, overlap and Fermi level the device builds "
+                        "the left self-energy from, and the device takes them "
+                        "as given.  k-points: the shared k-point grid in the "
+                        "electrode plane (x, y), which must be the device's, "
+                        f"and many k-points along z (the lead's own count, "
+                        f"{_LEAD_KZ} unless set), because the lead's "
+                        "Hamiltonian and Fermi level depend on them."),
+        "electrode_R": ("The right lead, likewise, on the same k-points as the "
+                        "left.  Two lead runs even when the leads are "
+                        "identical, so the record stays auditable and the "
+                        "Results tab compares their Fermi levels."),
+        "device": ("The open-boundary NEGF SCF of the junction between the two "
+                   "leads, at the bias.  It writes the converged Hamiltonian "
+                   "the transmission reads -- one per bias point.  k-points: "
+                   "the shared k-point grid in the electrode plane (x, y), and "
+                   "one k-point along z, where the leads' self-energies stand "
+                   "in for everything beyond the cell."),
+        "transmission": ("T(E) over the energy window, from that Hamiltonian.  "
+                         "tbtrans runs no SCF, so this tab has no SCF settings: "
+                         "the ones behind this T(E) are the device's and the "
+                         "two leads', on their tabs, and T(E) is only as "
+                         "converged as those runs.  k-points: its own "
+                         "transmission k-point grid in the electrode plane "
+                         "(x, y), finer than the shared one -- "
+                         f"{_TBT_FACTOR} times it unless you set it -- because "
+                         "T(E) changes more "
+                         "sharply from one k-point to the next than the density "
+                         "does; and one k-point along z.  Nothing consumes its "
+                         "output, so changing the window or the grid re-runs "
+                         "the transmission alone, never an NEGF cycle."),
+    }
 
 
-def stages_for_transport(bags=None):
-    """The composite's five rungs as ``Stage`` objects, each carrying the
-    overrides that are ITS OWN -- *bags* maps a rung name to that rung's
-    mapping, and a rung not named gets an empty bag.
+def stages_for_transport(engine: str, bags=None):
+    """The composite's rungs as ``Stage`` objects -- the ladder a new
+    description starts from (`jobset.ladder.fresh_stages`, the pair's
+    ``ladder``) -- each carrying the overrides that are ITS OWN: *bags*
+    maps a rung name to that rung's mapping, and a rung not named gets an
+    empty bag.
 
     One door, so the two construction sites -- `molbuilder describe` and the web
     describe door -- cannot build the ladder differently.  A rung this
@@ -457,13 +469,14 @@ def stages_for_transport(bags=None):
     placed, and the description's own check and ``resolve`` refuse a value
     on a rung that does not read it (``template.unread_overrides``).
     """
+    from ..jobset.ladder import fresh_stages
     from ..task import Stage
 
+    rungs = [st.name for st in fresh_stages("transport", engine)]
     bags = dict(bags or {})
-    unknown = sorted(set(bags) - set(TRANSPORT_STAGES))
+    unknown = sorted(set(bags) - set(rungs))
     if unknown:
         raise ValueError(
             f"no such rung {', '.join(map(repr, unknown))} -- a transport "
-            f"ladder's rungs are {', '.join(TRANSPORT_STAGES)}.")
-    return [Stage(name=n, overrides=dict(bags.get(n) or {}))
-            for n in TRANSPORT_STAGES]
+            f"ladder's rungs are {', '.join(rungs)}.")
+    return [Stage(name=n, overrides=dict(bags.get(n) or {})) for n in rungs]

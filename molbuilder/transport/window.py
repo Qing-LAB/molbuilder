@@ -11,7 +11,13 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Dict, Tuple
+
+#: THE WINDOW'S THREE ITEMS, by the catalogue's names -- what a fitted
+#: window is written into (the transmission's own fields, `jobset.reuse`'s
+#: rung of them).
+WINDOW_ITEMS = ("transmission_emin_ev", "transmission_emax_ev",
+                "transmission_n_points")
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,11 @@ class Fitted:
     @property
     def spacing(self) -> float:
         return (self.emax - self.emin) / self.points
+
+    def values(self) -> Dict[str, float]:
+        """The window as the catalogue names its items (:data:`WINDOW_ITEMS`)
+        -- what a surface writes into the transmission's fields."""
+        return dict(zip(WINDOW_ITEMS, (self.emin, self.emax, self.points)))
 
     def words(self) -> str:
         """``-3…3 eV asked, fitted to the finished grid -- -3.00748…3.00748
@@ -75,4 +86,4 @@ def fitted(window: Tuple[float, float, int], lo: float, hi: float,
                   points=n * finer + left + right, kept=n)
 
 
-__all__ = ["Fitted", "fitted"]
+__all__ = ["Fitted", "WINDOW_ITEMS", "fitted"]

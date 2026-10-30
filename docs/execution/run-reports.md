@@ -683,9 +683,10 @@ calculation's single runs — the seed, each lead — report alone, their
 index. It then asks the walk's own question: does the run still have points
 to run? A point still to run is listed, not ended, and every point it needs
 ended as the walk needs it — a vibration call the phases before its own,
-each holding a call done (`_still_to_run`); a device point the point before
-it in its frame, whose run **finished** — ended with exit 0, converged or
-not: *a voltage that does not finish ends that frame's chain*
+each holding a call done (`vibration_phases.still_to_run`); a device point the point it
+starts from — the closest voltage before it in its frame, where the walk runs
+it — whose run **finished** — ended with exit 0, converged or not: *a voltage
+that does not finish ends the chain that starts from it*
 (`engines/transport.md` § 2a.9), and one that finished unconverged hands
 its state on, though not done — and so on up its chain; a transmission
 point none (`transport.points_index.still_to_run`).
@@ -696,7 +697,7 @@ point none (`transport.points_index.still_to_run`).
 | a vibration's call, done, the last of its phase to end | yes | `milestone`: the phase's outcome |
 | a transport sweep's point, done or not, the last of its **round** — the voltage's points at every frame, none of them still to run *(the user, 2026-10-26: "one voltage across every frame would be a transport milestone")* | yes | `milestone`: the round's outcome, each frame's point in it |
 | any other | yes | nothing — the count is the periodic report's |
-| any | none | the `finish` (§ 2): the run's state by the one rule over the index — a vibration's finished when every call is done; a transport sweep's by the status door's rule, finished when every point's run finished, converged or not (`continuation.points_verdict`, `_run_ending.points_state`), a point the walk never ran stamped so in the index first and counted failed, as the status door lists a point the ended walk never reached (`points_index.close`) — the first point not done, in the order `status` lists them, and how many, and the outcome of the phase or the round this point ended |
+| any | none | the `finish` (§ 2): the run's state by the one rule over the index — a vibration's finished when every call is done; a transport sweep's by the status door's rule, finished when every point's run finished, converged or not (`continuation.points_verdict`, `_run_ending.points_state`), a point the walk never ran — a vibration's call, a transport point — stamped so in the index first and counted failed, as the status door lists a point the ended walk never reached (`vibration_phases.close`, `points_index.close`) — the first point not done, in the order `status` lists them, and how many, and the outcome of the phase or the round this point ended |
 
 **What a milestone says** — the phase's outcome, from the record the step
 has just written and nothing else:
@@ -991,7 +992,7 @@ when — because somebody parses it later with no session to ask:
 | `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near`, `milestone`, `part_failed` or `finish` (§ 2); `test` from the setup page's button (§ 4.1b) |
 | `state` | the monitor | `running`, then `finished` or `failed` (§ 2.3) |
 | `text` | the monitor | the summary line: the state and its detail, then every fact below that the run has stated, in words and units — what a chat card shows |
-| `call_unit` | the monitor | what one point of a run of points is called in its kind's word — `call` for a vibration's, `point` for a transport sweep's (§ 2.8, `monitor.RUN_INDEXES`) — which a card's `call_elapsed_s` label says (`report_cards`); absent for a run that is no member |
+| `call_unit` | the monitor | what one point of a run of points is called in its kind's word — `call` for a vibration's, `point` for a transport sweep's, each stated in its index's module (`vibration_phases.UNIT`, `points_index.UNIT`), which the monitor reads (`RUN_INDEXES`, § 2.8) — which a card's `call_elapsed_s` label says (`report_cards`); absent for a run that is no member |
 | `part` | the monitor | the part of the run underway, as the reading pass names it (§ 2.8) — absent while the SCF speaks and once the run has ended; a card's grid leaves a field whose part has ended for the summary line |
 | `elapsed_s` … `eta_s` | the monitor | the report fields, below |
 | `v` | the listener | the record's shape, `1`, so a reader a year from now does not infer it from which keys happen to be present |

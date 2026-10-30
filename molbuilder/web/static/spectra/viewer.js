@@ -1,27 +1,21 @@
-/* /spectra page bootstrap.
+/* The Spectrum calculation page's bootstrap (`web/spectra.md`).
  *
- * Two responsibilities, both /spectra-specific (the generic
- * /results flow already lives in lib/spectra/core.js + the
- * spectra inspector adapter):
+ * Two responsibilities, both this page's own (a finished result is
+ * shown on the Results tab, through lib/spectra/core.js and the
+ * spectra inspector):
  *
- *   1. Mount the spectra-inspector core against ``document`` so
- *      the schema form + Generate / Methods / Issues / script-
- *      preview / Save handlers wire up.
+ *   1. Mount the spectra core against ``document``, so the vibration
+ *      form, its checks and the hand-over to Task setup wire up.
  *
- *   2. Wire the Inspect-structure card:
- *      mount MolView in ``#spectra-molview-host`` and hook the
- *      ``#load-from-sidebar-btn`` so the user can pick a
- *      structure file in the Projects sidebar and click Load to
- *      see it in the viewer.  The spectra inspector's Generate POST
- *      reads the structure OFF THE MODEL at send time
- *      (core.js reads the structure off the viewer this page mounted)
- *      -- no push, no in-memory holder.
+ *   2. Wire the Inspect-structure card: mount MolView in
+ *      ``#spectra-molview-host`` and hook ``#load-from-sidebar-btn`` so
+ *      the person can pick a structure in the Projects sidebar and load
+ *      it.  The hand-over reads the structure OFF THE MODEL when it is
+ *      sent -- no push, no in-memory holder.
  *
  * Mirrors the Optimization tab's pattern in
- * structure-optimization/viewer.js (the Load button, the info
- * readout, the sidebar onCommit subscription).  Optimization
- * carries the SIESTA/PySCF schema; spectra carries the spectra
- * schema and its own machinery in core.js.
+ * structure-optimization/viewer.js (the Load button, the info readout,
+ * the sidebar onCommit subscription).
  */
 import { mount, formula as mvFormula } from "/static/lib/molview/index.js";
 

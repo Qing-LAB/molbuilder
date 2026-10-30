@@ -680,7 +680,8 @@ frequency step zero (`dw = smooth/10`, `Src/optical.F`).
 - **The step is the vibration's own, taken, never typed.** Every free atom is
   moved by $\pm\delta Q\,\mathbf L_k^{(\nu)}$,
   $\delta Q = \delta/\max_k\lvert\mathbf L_k^{(\nu)}\rvert$ — the atom that moves
-  most by $\delta$, the force-constant run's own step read from its result
+  most by $\delta$ (`normal_modes.largest_move`, the one $\max_k\lvert\mathbf L_k\rvert$
+  the frame set's outermost move takes too), the force-constant run's own step read from its result
   (`partial_charges.displacement_ang`, `engine_metadata.fc_displacement_ang`),
   in the same linear range — and the step is stated beside the strengths. It
   is not the frame generator's spread, which is the motion to average over

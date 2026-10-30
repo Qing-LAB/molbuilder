@@ -101,6 +101,18 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
   viewer's badge shows the open file's own ending.
+- **The views a calculation's runs are read through** (plan § 1ak S3): the
+  views door on floor 6 (`views_of`), **a run of points' view**
+  (`points_view` — at a run of points' root and its points' folders: its
+  state and count, the point at work with its record and the file it opens),
+  **the point a folder is** (`point_of`, asked of the kind's declaration) and
+  the row's `opens_report`, with the route serving them beside the folder's
+  answer (`ladder`, `points`, `point`) and every path whole. § 0.2, § 2,
+  § 2.4 and § 3a describe them as they will be. Today the route builds the
+  ladder itself (`jobset_status`, `runstatus.every_run`), a run of points'
+  root opens nothing and hides the Run panel, a transmission point is found
+  by `runs.transmission_point`, and the page joins a folder and a file name
+  itself.
 
 ## 1. What the page is
 
@@ -528,8 +540,8 @@ user, 2026-10-11: "this would give the view a logical starting place so the
 user see the summary and guide to go down to other places")*. Each run's row
 carries two more buttons, under *files*: **input** — the deck the run read,
 in its own folder (`Run.deck`) — and **check report** — the `.validation.txt`
-prep wrote beside the deck it copied, in the stage's folder or the bias
-point's within it (`Run.report`, in `Run.prepared`) — while that deck is
+prep wrote beside the deck it copied, in the folder prep wrote it in
+(`Run.report`, in `Run.prepared`, § 3a) — while that deck is
 the same calculation as the one the run read (`deck_record.same_calculation`,
 the record's `current`, [`job-request.md`](?doc=execution/job-request.md) § 6): a re-prep for a job request
 keeps it so, and the check there is the run's too; one that changed the
@@ -974,7 +986,7 @@ four sections**, in the order a person asks them when a number looks wrong:
 | **Verdict** | how the run ended, each phase's convergence, each finding as a sentence with its number; the last step's largest force on its free atoms and, when it is the larger, on the held atoms; the stress in the (x, y) plane, a transport run's electrode plane — its xx, yy and xy components, in kbar, as the engine printed them in the tensor the record keeps raw — or, for a TranSIESTA device, the sentence that it computes no forces or stress (`model/parse.md` § 5d.6); the run's earlier tries and how each ended — a try is one start of the run script in the run's folder, its files numbered `-run<N>` ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) | `verdict`, `earlier` |
 | **Setup** | one table — parameter · default · asked · used — the rows where asked ≠ used first and marked; an item the deck does not set reads *engine default*; a key read to several values shows them all, and the engine's own echo beside them; then, folded with its count, the keys the engine read that no catalogue item names; then the pseudopotentials | `setup` |
 | **Computation** | engine, build and solver; host and environment; the launch asked beside the ranks the engine ran on — and, for a run a sequence's group sent, the sequence that sent it, by its name, its job the sequence's (`computation.launch.sequence`); start, end, engine wall time, seconds per iteration by phase; TBtrans's account of its loop and, while its estimate stands, when it was made (a transmission); peak memory against its limit; the exit | `computation` |
-| **Deck** | its path and sha256; whether it is still the stage's current deck; for a gathered rung, what was taken from which run; **View**, which opens it in the sidebar's text viewer (`projects.showPreview`) | `deck` |
+| **Deck** | its path and sha256; whether it is still the stage's current deck — the deck prep wrote for it, read with the files beside the run's own, so a vibration call's coordinates, which its job writes, never read as a change (`runs.Run.current`); for a gathered rung, what was taken from which run — a point of a run of points, its run's gather and its own (`.gathered-from` at `run-<n>/` and in the point's folder); **View**, which opens it in the sidebar's text viewer (`projects.showPreview`) | `deck` |
 
 **Generic, so a new fact is a label.** The panel does not know engines or
 kinds. It walks the record's parts and renders each field through one table

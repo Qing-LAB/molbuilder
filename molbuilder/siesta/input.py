@@ -20,7 +20,8 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..runfiles import PSEUDO_FILE, RunNames, compose as _rf, fixed_name
+from ..runfiles import (PSEUDO_FILE, VIBRATION_BUNDLE, RunNames,
+                        compose as _rf, fixed_name)
 from ..structure import Structure
 # SiestaConfig is the L1 dataclass; this module imports it for use by
 # the generator below.  External callers can import it from either
@@ -520,13 +521,6 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     }
 
 
-def _vibration_bundle() -> str:
-    """The name of a SIESTA vibration's bundle -- the launcher's
-    (`runwrap.VIBRATION_BUNDLE`), which builds and ships it."""
-    from ..runwrap import VIBRATION_BUNDLE
-    return VIBRATION_BUNDLE
-
-
 def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, names: "RunNames",
                cell: Optional[np.ndarray] = None,
@@ -966,7 +960,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # deck names the bundle, whose steps plan and record its call
         # (`engines/vibration.md` § 5.3, 5.5, 5.11 § 3).
         vibration=(vibration if _vibration else None),
-        finish=(_vibration_bundle() if _vibration else None),
+        finish=(VIBRATION_BUNDLE if _vibration else None),
     )
     def _science(struct, cfg) -> str:
         """The deck, built in the order SIESTA reads it.
@@ -1559,7 +1553,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "#     for molecules under ~50 atoms anyway, since",
                 "#     ScaLAPACK overhead dominates.",
             ]
-            if cfg.relax_type and cfg.relax_type.lower() != "none":
+            # A DECK THAT RELAXES -- its geometry loop's facts, never a
+            # force-constant or an optical call's (`_relaxation_facts`).
+            if _derived.get("relax_kind"):
                 out += [
                     "#",
                     "# Relaxation oscillates near minimum:",

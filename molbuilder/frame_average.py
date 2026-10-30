@@ -38,6 +38,8 @@ import math
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .frameset import WEIGHT_ROW, finite_number
+
 # ----------------------------------------------------------------------- #
 #  A mode's frame set's vocabulary -- how its maker's rows are said        #
 # ----------------------------------------------------------------------- #
@@ -155,7 +157,7 @@ ROWS: Tuple[Row, ...] = (
     Row("node_sigma", "frame", "derived", None,
         "q in units of σ", None,
         "the same position in units of the spread, q / sigma"),
-    Row("weight", "frame", "given", None,
+    Row(WEIGHT_ROW, "frame", "given", None,
         "Weight", None,
         "the frame's share of the mode's average: the sampling rule's "
         "weight at this frame's node, the weights summing to 1, so "
@@ -230,15 +232,6 @@ def _states_a_mode(frame_set) -> bool:
     """Do the frames state a mode -- the structure's ``mode_index_1based``?"""
     return frame_set is not None and \
         frame_set.value("mode_index_1based") is not None
-
-
-def _number(value: Any) -> Optional[float]:
-    """``value`` as a finite number, or ``None`` -- true/false is no
-    number here, though Python counts it as one."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    v = float(value)
-    return v if math.isfinite(v) else None
 
 
 # ----------------------------------------------------------------------- #
@@ -403,7 +396,7 @@ def average_block(n_frames: Optional[int], frame_set,
     ``same_volts`` the stages' one voltage rule.  ``why`` says, in one
     sentence, why there is no average: nothing composed yet, one structure,
     or frames that do not each state a weight."""
-    from .frameset import WEIGHT_ROW, WEIGHT_SUM_TOLERANCE
+    from .frameset import WEIGHT_SUM_TOLERANCE
     if frame_set is not None:
         check_units(frame_set)
     weights = (list(frame_set.weights) if frame_set is not None
@@ -444,12 +437,12 @@ def average_block(n_frames: Optional[int], frame_set,
         v = float(p["bias_v"])
         if not any(same_volts(v, u) for u in voltages):
             voltages.append(v)
-    block["at"] = [_at_voltage(v, n_frames, weights, points, missing,
+    block["at"] = [at_voltage(v, n_frames, weights, points, missing,
                                same_volts) for v in voltages]
     return block
 
 
-def _at_voltage(v: float, n: int, weights: List[float],
+def at_voltage(v: float, n: int, weights: List[float],
                 points: List[Dict], missing: List[Dict],
                 same_volts: Callable[[float, float], bool]) -> Dict:
     """One voltage's entry of :func:`average_block`."""
@@ -655,7 +648,7 @@ def _row_words(row: Dict[str, Any]) -> str:
     said = _said(row["name"], row.get("unit"), None, _STRUCTURE,
                  value=row["value"])
     v = said["value"]
-    text = f"{v:.6g}" if _number(v) is not None else str(v)
+    text = f"{v:.6g}" if finite_number(v) is not None else str(v)
     return (f"{said['words']} {text}"
             + (f" {said['page_unit']}" if said.get("page_unit") else ""))
 
@@ -744,7 +737,7 @@ def _masses(structure) -> Optional[List[Any]]:
 def _or_nan(value) -> float:
     """``value`` as a number for a variable, NaN -- the fill value -- where
     it is none or not a number."""
-    v = _number(value)
+    v = finite_number(value)
     return float("nan") if v is None else v
 
 
@@ -898,6 +891,7 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
 
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
            "MASS_CHANNEL", "ROWS", "ReaverageError", "Row", "STRUCTURE_ROWS",
-           "answer", "average_block", "average_said", "citation_block",
+           "answer", "at_voltage", "average_block", "average_said",
+           "citation_block",
            "data_file_variables", "fill_data_file", "motion_weights",
            "summary_lines", "warnings_of", "with_meanings"]

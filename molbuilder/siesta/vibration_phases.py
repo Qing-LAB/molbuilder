@@ -35,14 +35,24 @@ from typing import Any, Dict, List, Optional, Tuple
 # VIBRATION_COMPANIONS`, `runwrap.MONITOR_COMPANIONS`), where the package
 # is not installed.
 try:                                       # inside molbuilder
-    from ..persist import check_schema, json_text, read_json, write_bytes
-    from ..runfiles import FIRST_TRY, ROLE_PHASES, compose
+    from .. import runrecord as _rr
+    from ..runfiles import ROLE_PHASES, compose
 except ImportError:                        # beside a job
-    from persist import (check_schema, json_text,  # type: ignore[no-redef]
-                         read_json, write_bytes)
-    from runfiles import FIRST_TRY, ROLE_PHASES, compose
+    import runrecord as _rr  # type: ignore[no-redef]
+    from runfiles import ROLE_PHASES, compose
 
 SCHEMA = "molbuilder/vibration-phases@1"
+
+#: What one point of the run is called -- each SIESTA call (`run-reports.md`
+#: § 2.8, `call_unit`): read by the run of points' declaration and the
+#: monitor.
+UNIT = "call"
+
+#: The run's index written whole, and a call not done in the words a failed
+#: part and a failed finish name it by -- every run of points' own
+#: (`runrecord`).
+write_index = _rr.write_index
+not_done_words = _rr.not_done_words
 
 #: The phases' names -- one spelling each, the folder below the stage and
 #: below a run that holds the phase's deck, and a call's.
@@ -218,9 +228,9 @@ class Call:
 
 def index_path(run_dir, names) -> Path:
     """Where the run's index lies: at the run's root, named for its first
-    try, ``<label>_<stage>-run0.phases.json`` (`runfiles.ROLE_PHASES`) --
-    launch writes it there, and every try of the run reads it."""
-    return Path(run_dir) / names.name(ROLE_PHASES, run=FIRST_TRY)
+    try, ``<label>_<stage>-run0.phases.json`` (`runfiles.ROLE_PHASES`,
+    `runrecord.index_path`)."""
+    return _rr.index_path(run_dir, names, ROLE_PHASES)
 
 
 def empty_index(phases) -> Dict[str, Any]:
@@ -235,22 +245,8 @@ def empty_index(phases) -> Dict[str, Any]:
 
 def read_index(path) -> Dict[str, Any]:
     """The index at ``path``, refused by name when it is not one of this
-    schema."""
-    p = Path(path)
-    try:
-        d = read_json(p)
-        check_schema(d.get("schema") if isinstance(d, dict) else "",
-                     SCHEMA, label=p.name)
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"{p.name}: {exc}") from exc
-    return d
-
-
-def write_index(path, index: Dict[str, Any]) -> Path:
-    """The index written whole, atomically (`persist.write_bytes`)."""
-    p = Path(path)
-    write_bytes(p, json_text(index).encode("utf-8"))
-    return p
+    schema (`runrecord.read_index`)."""
+    return _rr.read_index(path, SCHEMA)
 
 
 def calls_of(index: Dict[str, Any]) -> List[Call]:
@@ -307,10 +303,14 @@ def rows_of(index: Dict[str, Any], run_dir, label: str) -> List[Dict[str, Any]]:
     rows = []
     for row in index.get("calls") or []:
         call = Call.from_dict(row)
-        ended = row.get("ended") is not None
+        # A CALL THE ENDED WALK NEVER RAN (:func:`close`) ended with it,
+        # not done -- its why the index's.
+        never = row.get("not_run")
+        ran = row.get("ended") is not None
+        ended = ran or never is not None
         said = row.get("verdict")
-        why = "; ".join(w for w in (
-            (f"exit {row.get('exit')}" if ended
+        why = never or "; ".join(w for w in (
+            (f"exit {row.get('exit')}" if ran
              and row.get("exit") not in (0, "0") else None),
             row.get("record_error")) if w) or None
         if ended and why is None:
@@ -326,10 +326,59 @@ def rows_of(index: Dict[str, Any], run_dir, label: str) -> List[Dict[str, Any]]:
                      "ended": ended, "started": row.get("started"),
                      "ended_at": row.get("ended"),
                      "started_from": row.get("taken_from"),
+                     "taken_from": row.get("taken_from"),
                      "state": ("finished" if ok else
                                "failed" if ended else "pending"),
-                     "why": why})
+                     "why": why, "not_run": never})
     return rows
+
+
+def still_to_run(index: Dict[str, Any], rows) -> List[Dict[str, Any]]:
+    """THE CALLS THE WALK MAY STILL RUN (§ 5.11 § 5): not ended, and every
+    phase each needs -- of those the run walks -- holding a call done
+    (`PhaseRule.needs`, the walk's).  A call whose need did not end done is
+    not run, so the finish runs once none is left."""
+    walked = set(index.get("phases") or ())
+    done = {r["phase"] for r in rows if r["done"]}
+    return [r for r in rows if not r["ended"]
+            and all(n in done for n in phase(r["phase"]).needs
+                    if n in walked)]
+
+
+def run_state(rows) -> "tuple[str, Optional[str]]":
+    """THE RUN'S STATE, once no call is left to run, by the one done rule:
+    finished when every call is done (§ 5.11 § 7), else failed naming the
+    first call not done and how many when more than one is -- ``None``
+    when every call is done."""
+    rows = list(rows)
+    left = [r for r in rows if not r["done"]]
+    if not left:
+        return "finished", None
+    return "failed", (not_done_words(left[0])
+                      + (f"; {len(left)} of {len(rows)} calls not done"
+                         if len(left) > 1 else ""))
+
+
+def close(index: Dict[str, Any], rows) -> Dict[str, Any]:
+    """THE WALK OVER -- no call left to run (:func:`still_to_run`): each
+    call it never ran stamped so in the index, ``not_run`` its why -- the
+    phase it needs that did not end done, or the walk that never reached
+    it -- so the run's count and state say it as the status door does a
+    call the ended walk never reached: failed (`run-reports.md` § 2.9), as
+    a transport run's are (`transport.points_index.close`).  Asked by the
+    record step that runs the finish, before it."""
+    walked = set(index.get("phases") or ())
+    done = {r["phase"] for r in rows if r["done"]}
+    words = {r["phase"]: r["words"] for r in rows}
+    for r in rows:
+        if r["ended"]:
+            continue
+        need = next((n for n in phase(r["phase"]).needs
+                     if n in walked and n not in done), None)
+        entry_of(index, Call(r["phase"], r.get("name")))["not_run"] = (
+            f"{words.get(need, need)} did not end done" if need
+            else "the walk never reached it")
+    return index
 
 
 def summary(rows, phases=()) -> str:
@@ -339,6 +388,10 @@ def summary(rows, phases=()) -> str:
     phase with no call yet, where the run walks it (``phases``, the
     index's), *after fc* -- or, the force constants done, *no mode
     picked*."""
+    try:                                   # inside molbuilder
+        from ..parse.dirs.job import FINAL_STATES
+    except ImportError:                    # beside a job, the monitor's
+        from job import FINAL_STATES  # type: ignore[no-redef]
     parts: List[str] = []
     by: Dict[str, list] = {}
     for r in rows:
@@ -346,19 +399,31 @@ def summary(rows, phases=()) -> str:
     for p in PHASES:
         got = by.get(p.name)
         if not got:
-            if p.name == OPTICAL and by and OPTICAL in phases:
-                # BEFORE THE FORCE CONSTANTS, or after them with no mode
-                # picked -- the selection's answer (§ 5.11 § 7).
-                fc_done = any(r["done"] for r in by.get(FC) or [])
-                parts.append("optical: no mode picked" if fc_done
-                             else "optical: after fc")
+            if p.planned and by and p.name in phases:
+                # BEFORE THE CALL ITS COORDINATES COME FROM, or after it
+                # with no mode picked -- the selection's answer (§ 5.11 § 7).
+                source_done = any(r["done"] for r in by.get(p.coordinates)
+                                  or [])
+                parts.append(f"{p.name}: no mode picked" if source_done
+                             else f"{p.name}: after {p.coordinates}")
             continue
         n_done = sum(bool(r["done"]) for r in got)
-        taken = sum(bool(r.get("started_from")) and not r.get("copied_from")
+        # TAKEN OVER is the index's ``taken_from`` (`continuation.taken_over`),
+        # the key the job's rows and the status door's rows share.
+        taken = sum(bool(r.get("taken_from")) and not r.get("copied_from")
                     for r in got if r["done"])
-        failed = sum(r["state"] == "failed" for r in got)
+        # ENDED WITHOUT BEING DONE -- one rule for the job's rows and
+        # `status`'s, each row's ``state`` its run's, as a transport run's
+        # count says it (`transport.points_index.summary`).
+        failed = sum(1 for r in got
+                     if not r["done"] and r.get("state") in FINAL_STATES)
         if len(got) == 1:
-            parts.append(f"{p.name} {'done' if n_done else got[0]['state']}")
+            # ONE CALL: its word by the rule the count uses -- failed when
+            # it ended without being done, whatever state its row producer
+            # gave it (the job's rows and the status door's name the same
+            # rule, `run-reports.md` § 2.9).
+            parts.append(f"{p.name} "
+                         f"{'done' if n_done else 'failed' if failed else got[0]['state']}")
         else:
             notes = ([f"{taken} taken over"] if taken else []) + (
                 [f"{failed} failed"] if failed else [])
@@ -435,7 +500,8 @@ def force_constants_call(run_dir) -> Path:
     return Path(run_dir) / Call(FC, FC).rel
 
 
-__all__ = ["SCHEMA", "RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES",
+__all__ = ["SCHEMA", "UNIT", "RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES",
            "phase", "phases_on", "IR_CHARGES", "Call", "index_path", "empty_index",
            "read_index", "write_index", "calls_of", "entry_of", "add_call",
-           "rows_of", "summary", "products_of", "force_constants_call"]
+           "rows_of", "still_to_run", "run_state", "close", "not_done_words",
+           "summary", "products_of", "force_constants_call"]

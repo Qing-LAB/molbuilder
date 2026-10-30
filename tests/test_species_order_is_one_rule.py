@@ -66,6 +66,7 @@ def test_the_override_reaches_a_transport_deck_too():
     import numpy as np
     from molbuilder import script_emit as _sc
     from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.electronic_state import electronic_state
     from molbuilder.siesta.input import spec_for
     from molbuilder.structure import Structure
 
@@ -80,6 +81,7 @@ def test_the_override_reaches_a_transport_deck_too():
         cfg = SiestaConfig(system_label="t", species_order=order)
         deck = _sc.render_deck(
             spec_for(struct, cfg, calculation="transport",
+                     state=electronic_state(struct, cfg, kind="transport"),
                      names=RunNames("t", "04_device")),
             struct, cfg)
         return [ln.split()[2] for ln in deck.splitlines()

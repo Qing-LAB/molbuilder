@@ -195,17 +195,16 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
     five rungs onto four texts -- the device and the transmission are two,
     because two programs read them (`transport.md` § 6.1b).
     """
-    import numpy as np
-
     from molbuilder import script_emit as sc
     from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.electronic_state import electronic_state
     from molbuilder.siesta.input import spec_for
-    from molbuilder.structure import Structure
 
     struct = _toy_junction()
     cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
     deck = sc.render_deck(
         spec_for(struct, cfg, calculation="transport",
+                 state=electronic_state(struct, cfg, kind="transport"),
                  names=RunNames("kwcheck", token)),
         struct, cfg)
     assert "PAO.BasisSize" in deck, (
@@ -221,12 +220,10 @@ def test_the_device_deck_holds_no_label_siesta_cannot_read():
     whether ANY installed binary knows a label, and blind to a `TBT.*` line
     finding its way back into the device deck -- a line `tbtrans` knows and
     `siesta`, which reads this deck, never will."""
-    import numpy as np
-
     from molbuilder import script_emit as sc
     from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.electronic_state import electronic_state
     from molbuilder.siesta.input import spec_for
-    from molbuilder.structure import Structure
 
     bins = _engine_binaries()
     siesta = next((b for b in (bins or ()) if b.name == "siesta"), None)
@@ -236,6 +233,7 @@ def test_the_device_deck_holds_no_label_siesta_cannot_read():
     cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
     deck = sc.render_deck(
         spec_for(struct, cfg, calculation="transport",
+                 state=electronic_state(struct, cfg, kind="transport"),
                  names=RunNames("kwcheck", "04_device")),
         struct, cfg)
     _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")
@@ -290,6 +288,7 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
     from molbuilder.transport.sort import (REGION_BRIDGE,
                                              REGION_LEFT_ELECTRODE,
                                              REGION_RIGHT_ELECTRODE)
+    from molbuilder.electronic_state import electronic_state
     from molbuilder.siesta.input import spec_for
     from molbuilder.structure import Structure
 
@@ -299,9 +298,13 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
     else:
         n, regions = 6, {REGION_LEFT_ELECTRODE: [0, 1], REGION_BRIDGE: [2, 3],
                          REGION_RIGHT_ELECTRODE: [4, 5]}
+    # Its cell, as every junction states one (§ 2a.9): a chain in an 8 A
+    # box, one 2 A spacing of room at the transport boundary.
     struct = Structure(
         elements=["Au"] * n,
         positions=np.array([[0, 0, 2.0 * i] for i in range(n)], dtype=float),
+        cell=np.diag([8.0, 8.0, 2.0 * n]),
+        axis_kind=("isolated", "isolated", "transport"),
         regions=regions)
     # THE LIVE DECK.  `emit_electrode_declarations` -- the emitter this
     # checks -- is reached through `transport/deck.py`.  The
@@ -310,6 +313,7 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
     # converges while doing it).
     cfg = SiestaConfig(system_label="J")
     spec = spec_for(struct, cfg, calculation="transport",
+                    state=electronic_state(struct, cfg, kind="transport"),
                     names=RunNames("J", "04_device"))
     deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 

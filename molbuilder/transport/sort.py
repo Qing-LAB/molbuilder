@@ -51,7 +51,7 @@ from ..structure import REMAPPED_NOT_EDITED, Structure
 # each is the region a lead is cut from, named on the lead's role
 # (`execution/architecture.md` § 3.3), so a rename happens there, once.
 
-from ..kind_table import kind as _kind, lead_of  # noqa: E402
+from ..kind_table import kind as _kind  # noqa: E402
 
 _LEADS = _kind("transport").leads
 REGION_LEFT_ELECTRODE  = _LEADS["electrode_L"]
@@ -328,11 +328,11 @@ def deck_own_structure(engine: str, kind: str,
     """What a deck of ``stage`` of an ``(engine, kind)`` calculation is when
     its atoms are A STRUCTURE OF ITS OWN -- not the user's, reordered or
     not: a transport lead rung's electrode cell (a lead role,
-    `kind_table.lead_of`; `model/overview.md` § 2.2a, *a structure derived
-    from the user's*) -- in words; ``None`` for every other deck."""
-    if stage is not None and str(kind) == "transport":
+    the kind's own ``leads``; `model/overview.md` § 2.2a, *a structure
+    derived from the user's*) -- in words; ``None`` for every other deck."""
+    if stage is not None:
         from .deck import rung_of
-        if lead_of(rung_of(stage)) is not None:
+        if rung_of(stage) in _kind(kind).leads:
             return OWN_STRUCTURE_WORDS
     return None
 

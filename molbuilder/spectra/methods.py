@@ -415,12 +415,9 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
         disp_clause = f" with the {name} dispersion correction [{cite}]"
 
     # Atom-count clause -- only when we have a Structure to count from.
-    # Structure stores elements as a list of element symbols; n_atoms
-    # is its length.  Defensive try/except so a duck-typed mock (in
-    # tests) carrying `.elements` works too.
     atom_clause = ""
     if struct is not None:
-        n_atoms = _count_structure_atoms(struct)
+        n_atoms = len(struct.elements)
         if n_atoms:
             # THE ONE COUNT prep's check states (`validation.spectra.
             # modes_of`), imported here because this paragraph is written on
@@ -513,26 +510,13 @@ def _paragraph_electronic_structure(cfg: "VibrationConfigView") -> str:
 
 def _frequency_window_clause(cfg: "VibrationConfigView") -> str:
     """Inline phrase describing the frequency window when one is in
-    effect.  Empty string when no window or selector=explicit
-    (window is ignored there)."""
+    effect, in the one wording of a range (:func:`frequency_range_words`).
+    Empty string when no window or selector=explicit (window is ignored
+    there)."""
     if cfg.es_mode_selection == "explicit":
         return ""
-    fmin = cfg.freq_min_cm1
-    fmax = cfg.freq_max_cm1
-    if fmin is None and fmax is None:
-        return ""
-    if fmin is not None and fmax is not None:
-        return f" within the {fmin:g}-{fmax:g} cm⁻¹ window"
-    if fmin is not None:
-        return f" with frequency ≥ {fmin:g} cm⁻¹"
-    return f" with frequency ≤ {fmax:g} cm⁻¹"
-
-
-def _count_structure_atoms(struct: Structure) -> int:
-    """The structure's atom count -- ``len(struct.elements)``, the one
-    shape a `Structure` has (a duck-typed fallback for mocks stood here
-    until 2026-10-18)."""
-    return len(struct.elements)
+    words = frequency_range_words(cfg.freq_min_cm1, cfg.freq_max_cm1)
+    return f" with frequencies {words}" if words else ""
 
 
 

@@ -221,13 +221,19 @@ def estimate_from(deck_text: str, n_orbitals: int) -> float:
 
 def _lead_orbitals(base, task) -> Dict[str, Optional[int]]:
     """Each lead's orbital count from its newest run's output (the reading
-    pass's ``n_orbitals``), ``None`` where the lead has not run."""
+    pass's ``n_orbitals``), ``None`` where the lead has not run -- keyed by
+    the lead's block name (`TS.Elecs`).  The leads are the kind table's
+    (`kind_table.CalculationKind.leads`, each role to the region it is cut
+    from), each region's block name TranSIESTA's (`transiesta.lead_name`)."""
     from ..jobset.materialize import latest_attempt
     from ..jobset.naming import stage_home
+    from ..kind_table import kind
     from ..parse import detect
     from ..runs import run_of
+    from .transiesta import lead_name
     out: Dict[str, Optional[int]] = {}
-    for stage, lead in (("electrode_L", "L"), ("electrode_R", "R")):
+    for stage, region in kind(task.calculation).leads.items():
+        lead = lead_name(region)
         attempt = latest_attempt(stage_home(base, task, stage).dir)
         run = run_of(attempt) if attempt is not None else None
         output = run.stdout if run is not None else None
@@ -287,18 +293,20 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
         return (f"{scratch_dir}/: one pair at a time; the size is known once "
                 f"the leads have run")
     same = len(set(orbitals.values())) == 1
+    one = next(iter(orbitals.values()))
     sizes, energies = [], []
     for v, deck in read:
         energies.append(energy_points(deck))
         if same:
-            sizes.append(f"{size_words(file_bytes(orbitals['L'], deck))} a lead at {v:g} V")
+            sizes.append(f"{size_words(file_bytes(one, deck))} a lead at {v:g} V")
         else:
             sizes.append(", ".join(
                 f"{lead} {size_words(file_bytes(n, deck))}"
                 for lead, n in orbitals.items()) + f" a lead at {v:g} V")
     k = k_points_time_reversed(first.grid)
-    orbs = (f"{orbitals['L']} orbitals" if same
-            else f"L {orbitals['L']}, R {orbitals['R']} orbitals")
+    orbs = (f"{one} orbitals" if same
+            else ", ".join(f"{lead} {n}" for lead, n in orbitals.items())
+            + " orbitals")
     return (f"{scratch_dir}/: one pair at a time, about "
             + " and ".join(sizes)
             + f" ({orbs} × {k} k-point{'s' if k != 1 else ''} × "

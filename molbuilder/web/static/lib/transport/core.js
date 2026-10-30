@@ -145,9 +145,18 @@ const WORKSPACE_TAG = "transport";
      * page's two numberings never read as one. */
     function _rungLabel(r) { return r.index + " \u00b7 " + r.name; }
 
+    /* THE RUNG LIST AS THE SERVER LAST ANSWERED IT (`stages.rung_notes`),
+     * so a part of the page that names a rung by its name alone says it
+     * as the tabs do. */
+    var _rungRows = [];
+    function _rungWords(name) {
+        var r = _rungRows.filter(function (x) { return x.name === name; })[0];
+        return r ? _rungLabel(r) : name;
+    }
+
     /* THE RAIL'S STAGE LIST is the rung list the tab strip is built from
-     * -- name, ladder index, one-line note (transport/stages.py
-     * RUNG_NOTES) -- so the two say the same thing from one answer. */
+     * -- name, ladder index, one-line note (`transport.stages.rung_notes`)
+     * -- so the two say the same thing from one answer. */
     function _renderStageFlow(rungs) {
         var host = root.document.getElementById("transport-stage-flow");
         if (!host) return;
@@ -182,6 +191,7 @@ const WORKSPACE_TAG = "transport";
                 }
                 if (seq !== _rungsSeq) return false;
                 var rungs = body.rungs || [];
+                _rungRows = rungs;
                 _renderStageFlow(rungs);
                 // A REBUILD KEEPS THE TAB the person is on (the form is
                 // rebuilt when the junction changes): read the active rung
@@ -211,9 +221,8 @@ const WORKSPACE_TAG = "transport";
                         // THE WINDOW FITTED TO THE FINISHED GRID, beside its
                         // fields, for a calculation that reuses one
                         // (engines/transport.md \u00a7 2a.16).
-                        r.name === "transmission" && _reuses
-                            ? fitRow({ reuses: _reuses,
-                                       name: _extend ? _extend.name : _reuses,
+                        _extend && r.name === _extend.window
+                            ? fitRow({ reuses: _reuses, name: _extend.name,
                                        use: function (v) { _useWindow(v); } })
                             : null,
                         // AN EXTENSION'S RUNG: what a change here re-runs,
@@ -222,7 +231,7 @@ const WORKSPACE_TAG = "transport";
                         // (\u00a7 2a.16; `Extension.says`, drawn as it is).
                         _extend ? _el("p", { "class": "hint" },
                             _extend.says[r.name]) : null,
-                        _extend && r.name === "transmission"
+                        _extend && r.name === _extend.window
                             ? _el("p", { "class": "hint" },
                                   _extend.says.window) : null,
                         host);
@@ -739,8 +748,6 @@ const WORKSPACE_TAG = "transport";
      * only; 5. the plan, then Describe.  The shared panel, the chemistry
      * card and the fixed stages' tabs are the finished calculation's, and
      * are not drawn as controls. */
-    var RUNG_WORDS = { seed: "The seed", electrode_L: "The left lead",
-                       electrode_R: "The right lead" };
     function _paintExtend() {
         var host = _$("transport-extend");
         var bias = _$("transport-bias-reruns");
@@ -847,9 +854,10 @@ const WORKSPACE_TAG = "transport";
         var title = _$("transport-fixed-title");
         if (title) title.textContent = "4. Fixed by " + name;
         var fixed = _el("details", { id: "transport-extend-fixed" },
-            _el("summary", null, "The shared values, and the seed's and "
-                + "both leads', as " + name + " ran them (view only) — "
-                + "changing one is a new calculation: the way out above"),
+            _el("summary", null, "The shared values, and "
+                + _extend.fixed.map(_rungWords).join(", ") + ", as " + name
+                + " ran them (view only) — changing one is a new "
+                + "calculation: the way out above"),
             _el("div", { "class": "hint",
                          id: "transport-extend-fixed-list" }));
         fixed.addEventListener("toggle", function () {
@@ -890,7 +898,7 @@ const WORKSPACE_TAG = "transport";
         list.textContent = "";
         var parts = [["Shared by every stage", _sharedSchema]].concat(
             _extend.fixed.map(function (r) {
-                return [RUNG_WORDS[r] || r, _rungSchemas[r]];
+                return [_rungWords(r), _rungSchemas[r]];
             }));
         parts.forEach(function (part) {
             var items = [];
@@ -933,7 +941,7 @@ const WORKSPACE_TAG = "transport";
         surfaces.forEach(function (surface) {
             var r = _restored[surface];
             r.names.forEach(function (n) {
-                said.push((RUNG_WORDS[surface] || surface) + " " + r.label(n)
+                said.push(_rungWords(surface) + " " + r.label(n)
                           + " " + _said(r.values[n]));
             });
         });
@@ -1815,20 +1823,21 @@ const WORKSPACE_TAG = "transport";
         return (fc && fs) ? _fetchAndRender(fc, fs) : Promise.resolve(false);
     }
 
-    /* THE FITTED WINDOW, USED: written into the transmission's own fields,
-     * as a value typed there is, and kept with them (`_saveSurface`). */
+    /* THE FITTED WINDOW, USED: written into its rung's own fields (the
+     * extension names the rung, `extend.window`), as a value typed there
+     * is, and kept with them (`_saveSurface`); the fit's own words are
+     * beside its row. */
     function _useWindow(values) {
         var fs = root.molbuilder && root.molbuilder.formSchema;
-        var host = _rungHosts.transmission;
-        var schema = _rungSchemas.transmission;
+        var rung = _extend && _extend.window;
+        var host = rung && _rungHosts[rung];
+        var schema = rung && _rungSchemas[rung];
         if (!fs || !host || !schema) return;
         fs.setValues(host, schema, values);
-        _saveSurface(host, schema, fs, "transmission");
+        _saveSurface(host, schema, fs, rung);
         _schedulePlan();
-        _setStatus("The transmission window is the fitted one -- "
-                   + values.transmission_emin_ev.toFixed(5) + "\u2026"
-                   + values.transmission_emax_ev.toFixed(5) + " eV at "
-                   + values.transmission_n_points + " points.");
+        _setStatus("The window on " + _rungWords(rung)
+                   + " is the fitted one.");
     }
 
     /** The bias list as typed: volts, in order. */
@@ -1849,15 +1858,26 @@ const WORKSPACE_TAG = "transport";
 
     /* THE BIAS ON EACH RUNG'S TAB IS THE LIST'S POINTS: the device and the
      * transmission are answered point by point (`template.PER_POINT`), so
-     * their locked box shows the list as typed, kept current with it. */
+     * their locked box shows the list as typed, kept current with it and
+     * with the treatment held -- one voltage, one run; several, one run at
+     * 0 V under the low-bias approximation (`engines/transport.md`
+     * § 2a.10), else one run, a point per voltage (§ 2a.11). */
     function _echoBias() {
         var fs = root.molbuilder && root.molbuilder.formSchema;
         if (!fs || typeof fs.showPoints !== "function") return;
         var pts = _biasList();
-        fs.showPoints(_$("transport-form-container"), "bias_voltage_v",
+        var picked = root.document.querySelector(
+            'input[name="transport-bias-treatment"]:checked');
+        var runs = pts.length <= 1 ? "one run"
+            : !picked ? "choose the treatment above"
+            : picked.value === "true"
+              ? "one run, at 0 V (the low-bias approximation)"
+              : "one run, a point per voltage";
+        // THE FIELDS ANSWERED POINT BY POINT are the schema's to mark
+        // (`data-per-point`, `form-schema.js`); the page names none.
+        fs.showPoints(_$("transport-form-container"),
             pts.some(isNaN) ? "the bias list, above"
-                : pts.join(", ") + " V \u2014 "
-                  + (pts.length > 1 ? "one run per point" : "one run"));
+                : pts.join(", ") + " V \u2014 " + runs);
     }
 
     /* THE BUILDER: 0 V first, then start..stop by step, written into the
@@ -1869,7 +1889,7 @@ const WORKSPACE_TAG = "transport";
         list.addEventListener("input", _syncTreatment);
         root.document.querySelectorAll(
             'input[name="transport-bias-treatment"]').forEach(function (b) {
-                b.addEventListener("change", _schedulePlan);
+                b.addEventListener("change", _syncTreatment);
             });
         fill.addEventListener("click", function () {
             var a = Number(_$("transport-bias-start").value);

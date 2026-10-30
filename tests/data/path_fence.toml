@@ -455,12 +455,12 @@ rule = "/api/spectra/frameset"
 method = "POST"
 [[route.path]]
 where = "json"
-name = "run"
-request = { json = { run = "{outside_dir}", mode = 1, temperature_k = 300, nodes = 3, out = "{inside_dir}/frames.xyz" } }
+name = "path"
+request = { json = { path = "{outside_file}", mode = 1, temperature_k = 300, nodes = 3, out = "{inside_dir}/frames.xyz" } }
 [[route.path]]
 where = "json"
 name = "out"
-request = { json = { run = "{inside_dir}", mode = 1, temperature_k = 300, nodes = 3, out = "{outside_dir}/frames.xyz" } }
+request = { json = { path = "{inside_file}", mode = 1, temperature_k = 300, nodes = 3, out = "{outside_dir}/frames.xyz" } }
 
 [[route]]
 rule = "/api/structure/analyze"
@@ -590,16 +590,16 @@ method = "POST"
 [[route.path]]
 where = "json"
 name = "junction"
-request = { json = { engine = "siesta", junction = "{outside_dir}", dest = "{inside_dir}" } }
+request = { json = { engine = "siesta", junction = "{outside_dir}", dest = "{calc_dir}" } }
 [[route.path]]
 where = "json"
 name = "junction"
-request = { json = { engine = "siesta", junction = "{outside_by_climbing}", dest = "{inside_dir}" } }
+request = { json = { engine = "siesta", junction = "{outside_by_climbing}", dest = "{calc_dir}" } }
 refusal = ["may not contain '..'"]
 [[route.path]]
 where = "json"
 name = "junction"
-request = { json = { engine = "siesta", junction = "{link_out_from_root}", dest = "{inside_dir}" } }
+request = { json = { engine = "siesta", junction = "{link_out_from_root}", dest = "{calc_dir}" } }
 [[route.path]]
 where = "json"
 name = "dest"
@@ -607,11 +607,11 @@ request = { json = { engine = "siesta", junction = "{inside_file}", dest = "{out
 [[route.path]]
 where = "json"
 name = "reuses"
-request = { json = { engine = "siesta", junction = "{inside_file}", reuses = "{outside_dir}", dest = "{inside_dir}" } }
+request = { json = { engine = "siesta", junction = "{inside_file}", reuses = "{outside_dir}", dest = "{calc_dir}" } }
 [[route.path]]
 where = "json"
 name = "reuses"
-request = { json = { engine = "siesta", junction = "{inside_file}", reuses = "{outside_by_climbing}", dest = "{inside_dir}" } }
+request = { json = { engine = "siesta", junction = "{inside_file}", reuses = "{outside_by_climbing}", dest = "{calc_dir}" } }
 refusal = ["may not contain '..'"]
 
 [[route]]

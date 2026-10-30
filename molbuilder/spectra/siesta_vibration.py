@@ -9,18 +9,20 @@ ROLE    the SIESTA route's FINISH (`engines/vibration.md` § 5.5): read a
 USED-BY each call's run script of a SIESTA vibration's run in phases,
         which runs ``mb_vibration.pyz plan`` before SIESTA and ``record``
         after it (`engines/vibration.md` § 5.11 § 3,
-        `runwrap.VIBRATION_BUNDLE`); :func:`finish` is the door for anything
-        holding a finished force-constant call
+        `runwrap.VIBRATION_BUNDLE`); the bundle's ``finish`` verb is the
+        door, by hand, for anything holding a finished force-constant
+        call (§ 5.5)
 TRAVELS in ``mb_vibration.pyz`` (`runwrap.VIBRATION_COMPANIONS`)
 
 SIESTA takes no second derivative.  Its force-constant run nudges the free
 atoms and writes ``<SystemLabel>.FC``; everything after that is the harmonic
 analysis both engines share (`spectra.vibrational_analysis`).  A vibration
 calculation ends with its result on both engines (user, 2026-09-28), so the
-SIESTA job runs that analysis itself, in the attempt, with the job's own
+SIESTA job runs that analysis itself, in its run, with the job's own
 python -- there is no step after the launch.
 
-EVERY INPUT IS A RECORD THE ATTEMPT HOLDS, and each is read by its owner:
+EVERY INPUT IS A RECORD THE CALL'S FOLDER HOLDS, and each is read by its
+owner:
 
   * the deck (``SystemLabel``, the species, the FC range) -- the fdf
     reader, `parse.fdf`;
@@ -52,7 +54,7 @@ import sys
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -72,7 +74,7 @@ try:                                        # inside molbuilder
                              read_fdf, system_label)
     from ..runfiles import compose
     from ..structure import Structure
-    from ..parse.contract import relaxation_of_output
+    from ..parse.contract import judged_force, relaxation_of_output
     from ..deck_record import (DeckRecordUnreadable, box_of_run,
                                extract_atom_metadata,
                                extract_engine_offset,
@@ -93,16 +95,18 @@ try:                                        # inside molbuilder
     from ..runfiles import (COORDINATES_FILE, FIRST_TRY, MONITOR_BUNDLE,
                             PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL, ROLE_SPECTRA,
                             VIBRATION_BUNDLE,
-                            RunNames, beside_the_deck, find, fixed_name,
+                            RunNames, beside_the_deck, fixed_name,
                             parse)
     from ..paths import frame_token, run_folder_of
-    from ..runrecord import newest_run, read_continued_from, stamp
+    from ..runrecord import (newest_output, not_done_words,
+                             read_continued_from, stamp)
     from ..siesta.deck_lines import coordinates_text
     from ..siesta.vibration_phases import (FC, IR_CHARGES, OPTICAL, RELAX,
                                            Call,
-                                           add_call, calls_of, entry_of,
-                                           index_path, phase, read_index,
-                                           rows_of, write_index)
+                                           add_call, calls_of, close,
+                                           entry_of, index_path, phase,
+                                           read_index, rows_of, run_state,
+                                           still_to_run, write_index)
     from .normal_modes import displaced, mode_over_atoms, q_for_largest_move
     from .selection import select_modes
 except ImportError:                         # beside a job, in mb_vibration.pyz
@@ -120,7 +124,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                      fdf_key, read_deck, read_fdf, system_label)
     from runfiles import compose
     from structure import Structure
-    from contract import relaxation_of_output  # type: ignore[no-redef]
+    from contract import judged_force, relaxation_of_output  # type: ignore[no-redef]
     from deck_record import (DeckRecordUnreadable, box_of_run,
                              extract_atom_metadata,
                              extract_engine_offset, extract_vibration_record,
@@ -139,16 +143,17 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from persist import sha256_of  # type: ignore[no-redef]
     from runfiles import (COORDINATES_FILE, FIRST_TRY,  # type: ignore[no-redef]
                           MONITOR_BUNDLE, PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL,
-                          ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck, find,
+                          ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck,
                           fixed_name, parse)
     from paths import frame_token, run_folder_of  # type: ignore[no-redef]
-    from runrecord import (newest_run,  # type: ignore[no-redef]
-                           read_continued_from, stamp)
+    from runrecord import (newest_output,  # type: ignore[no-redef]
+                           not_done_words, read_continued_from, stamp)
     from deck_lines import coordinates_text
     from vibration_phases import (FC, IR_CHARGES, OPTICAL,  # type: ignore[no-redef]
                                   RELAX, Call, add_call,
-                                  calls_of, entry_of, index_path, phase,
-                                  read_index, rows_of, write_index)
+                                  calls_of, close, entry_of, index_path,
+                                  phase, read_index, rows_of, run_state,
+                                  still_to_run, write_index)
     from normal_modes import displaced, mode_over_atoms, q_for_largest_move
     from selection import select_modes
 
@@ -161,12 +166,10 @@ GEOMETRY_NOTE = ("the force-constant run relaxes nothing: its reference "
 def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                      already_relaxed: bool,
                      force_criterion_from: str = "",
-                     relaxation: Optional[Mapping[str, Any]],
                      temperature_K: float,
                      masses_amu: Sequence[float],
                      molbuilder_version: str,
                      raman: Optional[Mapping[str, Any]] = None,
-                     relaxation_stage: Optional[str] = None,
                      title: str = "",
                      identity: Optional[Mapping[str, Any]] = None) -> dict:
     """The deck's ``vibration`` block, format v5 (`engines/vibration.md`
@@ -185,25 +188,16 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
     result states (`engines/vibration.md` § 6.10.1) -- and placed in the
     deck as given (`script_emit.emit_vibration_record`).  Its keys are read
     by :func:`result_of`.  The relaxation record is the `relax` call's, read
-    from the run's index at the finish, so ``relaxation`` is ``None`` from
-    prep; a record given names the stage it is of."""
-    if relaxation is not None and not relaxation_stage:
-        # THE RECORD NAMES THE STAGE IT IS OF: the finish's remedy for a
-        # reference geometry that is not stationary is chosen by it
-        # (`vibrational_analysis.nonstationary_remedy`), and a record with no
-        # stage would fall to the person's-statement remedy.
-        raise ValueError("a relaxation record in the vibration block needs "
-                         "the stage it is of (relaxation_stage)")
+    from the run's index at the finish (§ 5.11 § 3), so the block states it
+    ``null``, and its stage with it."""
     return {"stage": str(stage),
             "force_criterion_ev_ang": (None if force_criterion_ev_ang is None
                                        else float(force_criterion_ev_ang)),
             # where the tolerance came from -- said, never read
             "force_criterion_from": str(force_criterion_from),
             "already_relaxed": bool(already_relaxed),
-            "relaxation": (dict(relaxation) if relaxation is not None
-                           else None),
-            "relaxation_stage": (str(relaxation_stage)
-                                 if relaxation is not None else None),
+            "relaxation": None,
+            "relaxation_stage": None,
             "temperature_K": float(temperature_K),
             "masses_amu": [float(m) for m in masses_amu],
             "molbuilder_version": str(molbuilder_version),
@@ -221,7 +215,7 @@ class FinishError(ValueError):
 @dataclass(frozen=True)
 class ForceConstantRun:
     """What a finished SIESTA force-constant run holds, every field read from
-    the attempt through the reader that owns it.  Per-atom fields are in the
+    the call's folder through the reader that owns it.  Per-atom fields are in the
     deck's order -- the sorted copy's (`engines/vibration.md` § 5.2)."""
     deck: Path
     output: Path
@@ -269,11 +263,11 @@ class ForceConstantRun:
 
 
 def read_force_constant_run(deck, output) -> ForceConstantRun:
-    """Every input the finish needs, read from the attempt ``deck`` sits in
+    """Every input the finish needs, read from the folder ``deck`` sits in
     and from ``output``, the run's own account.  Raises :class:`FinishError`
     naming the file when a record is missing or two of them disagree."""
     deck, output = Path(deck), Path(output)
-    attempt = deck.parent
+    folder = deck.parent
     # THE DECK WHOLE, its coordinates read from the file beside it
     # (`parse.fdf.read_deck`, `engines/vibration.md` § 5.11 § 4).
     text = read_deck(deck)
@@ -349,9 +343,9 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
 
     # THE ENGINE'S NAME ON THE LABEL, composed by the one grammar
     # (`runfiles.compose`), which travels beside the job too.
-    fc_path = attempt / compose(label, ".FC")
+    fc_path = folder / compose(label, ".FC")
     if not fc_path.is_file():
-        raise FinishError(f"no {fc_path.name} in {attempt}: the "
+        raise FinishError(f"no {fc_path.name} in {folder}: the "
                           f"force-constant run left no force constants")
     return ForceConstantRun(
         deck=deck, output=output, label=label,
@@ -475,11 +469,6 @@ def result_of(run: ForceConstantRun,
         # § 1): the remedy's launch line names it.
         rec["relaxation_stage"] = rec.get("stage")
     criterion = rec.get("force_criterion_ev_ang")
-    if rec.get("relaxation") is not None and not rec.get("relaxation_stage"):
-        raise FinishError(
-            f"{run.deck.name}'s vibration block carries a relaxation record "
-            f"but not the stage it is of -- a deck prepared before its "
-            f"remedy named the stage (2026-09-29): prepare the stage again")
     if rec.get("temperature_K") is None:
         raise FinishError(
             f"{run.deck.name}'s vibration block states no temperature_K -- "
@@ -572,22 +561,13 @@ def _with_raman_phase(res, run, optical, phase: str):
         bibliography_keys=extract_citation_keys(methods))
 
 
-def finish(deck, output) -> Path:
-    """Finish the force-constant run ``deck`` ran (its output ``output``):
-    write ``<label>.spectra.json`` beside it and return its path.  The same
-    door for anything holding a finished force-constant call."""
-    return _finished(deck, output)[2]
-
-
-def _finished(deck, output, *, into=None, relaxation=None):
-    """The force-constant call ``deck`` ran, read and analysed; its result
-    pair written into ``into`` (the run's root, `engines/vibration.md`
-    § 5.11 § 2) -- beside the deck with none -- with ``relaxation``, the
-    run's `relax` call's record."""
+def _finished(deck, output):
+    """THE ``finish`` VERB, by hand (`engines/vibration.md` § 5.5): the
+    force-constant call ``deck`` ran (its output ``output``), read and
+    analysed, its result written beside the deck."""
     run = read_force_constant_run(deck, output)
-    res = result_of(run, relaxation=relaxation)
-    out = (Path(into) if into is not None else Path(deck).parent) / compose(
-        run.label, ROLE_SPECTRA)
+    res = result_of(run)
+    out = Path(deck).parent / compose(run.label, ROLE_SPECTRA)
     dump_spectra_json(res, out)
     return run, res, out
 
@@ -649,17 +629,6 @@ def _species_index(deck_text: str) -> Mapping[str, int]:
     return {str(r[2]): int(r[0]) for r in rows}
 
 
-def _newest_output(folder: Path, names: "RunNames") -> Optional[Path]:
-    """The engine output of the call in ``folder``'s NEWEST TRY --
-    `runrecord.newest_run`'s: the highest try any file of the call reached
-    -- or ``None`` where that try printed none: an engine that died before
-    its first line is never read from the try before it."""
-    n = newest_run(folder, names)
-    got = [p for p, rf in find(folder, names.label, role=".out",
-                               stage=names.stage) if rf.run == n]
-    return got[0] if n is not None and got else None
-
-
 def _reading(output: Path):
     """SIESTA's one reading pass over ``output`` (`SiestaReader`)."""
     return SiestaReader().feed_text(
@@ -667,9 +636,9 @@ def _reading(output: Path):
 
 
 def _call_of(here: _CallHere, phase_name: str) -> "Call":
-    """The call this folder is: the phase's own for the relaxation and the
-    force constants, the folder's name for an optical call."""
-    return Call(phase_name, here.folder.name if phase_name == OPTICAL
+    """The call this folder is: the folder's name for a call its phase
+    plans in the job (`PhaseRule.planned`), else the phase's own."""
+    return Call(phase_name, here.folder.name if phase(phase_name).planned
                 else phase_name)
 
 
@@ -710,18 +679,27 @@ def plan_call(deck, phase_name: str) -> None:
     index = read_index(here.index)
     coords = here.folder / COORDINATES_FILE
     came_from = "the structure, as prep wrote it"
-    # A RELAXATION CONTINUED from its own last run's warm files, handed
-    # over by launch (§ 5.11 § 3, § 6): the run it continues, said.
-    continued = (read_continued_from(here.folder)
-                 if phase_name == RELAX else None)
+    # A CALL CONTINUED from its own last run's warm files -- the hand-over
+    # launch makes of a relaxation not done (§ 5.11 § 3, § 6): the run it
+    # continues, said.
+    continued = read_continued_from(here.folder)
     if continued is not None:
         came_from = f"its own last geometry, continued from {continued}"
-    if phase_name == FC and RELAX in {c.phase for c in calls_of(index)}:
-        out = _newest_output(here.run_dir / RELAX, here.names)
+    # ITS COORDINATES, where its phase's row says they come from
+    # (`PhaseRule.coordinates`): planned by the record step of the call they
+    # come from, or that call's last geometry step, where the run walks it.
+    source = rule.coordinates
+    if rule.planned:
+        row = entry_of(index, call) or {}
+        came_from = str(row.get("coordinates_from") or
+                        f"planned by the {source} call's record step")
+    elif source in {c.phase for c in calls_of(index)}:
+        source_dir = here.run_dir / Call(source, source).rel
+        out = newest_output(source_dir, here.names)
         if out is None:
-            raise FinishError(f"the relaxation left no output in "
-                              f"{here.run_dir / RELAX}: the force constants "
-                              f"have no geometry to take")
+            raise FinishError(f"{source_dir.name} left no output in "
+                              f"{source_dir}: {call.words()} has no "
+                              f"geometry to take")
         reading = _reading(out)
         steps = reading.get("steps") or []
         last = next((s for s in reversed(steps) if s.get("coords")), None)
@@ -733,11 +711,7 @@ def plan_call(deck, phase_name: str) -> None:
         coords.write_text(coordinates_text(labels, positions,
                                            _species_index(text)),
                           encoding="utf-8")
-        came_from = f"{RELAX}/{out.name}, its last geometry step"
-    elif phase_name == OPTICAL:
-        row = entry_of(index, call) or {}
-        came_from = str(row.get("coordinates_from") or
-                        "planned by the force constants' record step")
+        came_from = f"{source}/{out.name}, its last geometry step"
     if not coords.is_file():
         raise FinishError(f"{coords.name} is not beside {here.deck.name}: "
                           f"the call has no coordinates to compute at")
@@ -804,9 +778,7 @@ def _relaxation_outcome(record: Optional[Mapping[str, Any]],
     if not record:
         return None
     n = int(record["n_steps"])
-    force = record.get("max_force_free_ev_ang")
-    if force is None:
-        force = record["max_force_ev_ang"]
+    force = judged_force(record)
     said = "converged" if record["converged"] else "did not converge"
     since = ((" of its last try" if retried else "")
              + (f" continuing {continued}" if continued else ""))
@@ -842,12 +814,6 @@ def _force_constants_outcome(res: SpectraResults, planned: int) -> str:
         bits.append(f"{planned} optical call{'' if planned == 1 else 's'} "
                     f"planned")
     return "; ".join(bits)
-
-
-def _not_done_words(row: Mapping[str, Any]) -> str:
-    """A call not done, in the words a failed part and a failed finish name
-    it by (`run-reports.md` § 2.9): its words, and why by the one rule."""
-    return f"{row['words']}: not done -- {row['why'] or row['state']}"
 
 
 def _failure_reason(row: Mapping[str, Any], exit_code: int,
@@ -1018,7 +984,7 @@ def _call_facts(here: _CallHere, folder: Path) -> dict:
     (the deck's order), its SCF's iterations, total energy and Fermi level,
     and the build; from that try's session log, the engine's wall time
     (`wrapper_log`, the one source of it)."""
-    out = _newest_output(folder, here.names) if folder.is_dir() else None
+    out = newest_output(folder, here.names) if folder.is_dir() else None
     if out is None:
         return {}
     reading = _reading(out)
@@ -1164,7 +1130,7 @@ def _force_constants(here: _CallHere, index: dict
     if not any(r["done"] for r in rows_of(index, here.run_dir, here.label)
                if r["phase"] == FC):
         return None
-    fc_out = _newest_output(here.run_dir / FC, here.names)
+    fc_out = newest_output(here.run_dir / FC, here.names)
     if fc_out is None:
         return None
     relax_row = entry_of(index, Call(RELAX, RELAX))
@@ -1177,45 +1143,20 @@ class _NothingToWrite(Exception):
     """The finish has no force constants to write a result from."""
 
 
-def _still_to_run(here: _CallHere, index: dict) -> List[dict]:
-    """THE CALLS THE WALK MAY STILL RUN (§ 5.11 § 5): listed, not ended,
-    and every phase each needs -- of those the run walks -- holding a call
-    done (`PHASES`' ``needs``, the walk's).  A call whose need did not end
-    done is not run, so the finish runs whatever ended without it."""
-    rows = rows_of(index, here.run_dir, here.label)
-    walked = set(index.get("phases") or ())
-    done = {r["phase"] for r in rows if r["done"]}
-    return [r for r in rows if not r["ended"]
-            and all(n in done for n in phase(r["phase"]).needs
-                    if n in walked)]
-
-
-def _run_state(here: _CallHere, index: dict) -> Tuple[str, Optional[str]]:
-    """The run's state from its index, by the one done rule (`vibration_phases.rows_of`):
-    finished when every call is done, else failed naming the first call not
-    done by its words, and why where its record step said.  The run's count
-    is the `notify` verb's, read from the same index (`run-reports.md`
-    § 2.4)."""
-    rows = rows_of(index, here.run_dir, here.label)
-    left = [r for r in rows if not r["done"]]
-    if not left:
-        return "finished", None
-    # HOW MANY, beside the first: a failed part was said once per reason,
-    # so the finish counts them (`run-reports.md` § 2.9).
-    return "failed", (_not_done_words(left[0])
-                      + (f"; {len(left)} of {len(rows)} calls not done"
-                         if len(left) > 1 else ""))
-
-
 def _finish_run(here: _CallHere, index: dict,
                 outcome: Optional[str] = None) -> None:
     """THE FINISH, once no call the walk may still run is left
-    (:func:`_still_to_run`, § 5.11 § 3, § 5): the result pair rewritten
+    (`vibration_phases.still_to_run`, § 5.11 § 3, § 5): each call the walk
+    never ran stamped so in the index first (`vibration_phases.close`), so
+    the run's count and state say it failed; the result pair rewritten
     final from the force-constant call, with the `relax` call's record and
     the Raman phase's state -- nothing to write where the force constants
     never ran, the run's state saying why; the finish's own entry; the
-    run's `finish` sent with its state and ``outcome``, the outcome of the
+    run's `finish` sent with its state -- by the one done rule
+    (`vibration_phases.run_state`) -- and ``outcome``, the outcome of the
     phase the last call ended (`run-reports.md` § 2.9)."""
+    close(index, rows_of(index, here.run_dir, here.label))
+    write_index(here.index, index)
     started = stamp()
     try:
         got = _force_constants(here, index)
@@ -1245,7 +1186,7 @@ def _finish_run(here: _CallHere, index: dict,
         code = 1
     index["finish"] = {"started": started, "ended": stamp(), "exit": code}
     write_index(here.index, index)
-    state, why = _run_state(here, index)
+    state, why = run_state(rows_of(index, here.run_dir, here.label))
     if code != 0:
         state, why = "failed", "; ".join(
             w for w in (why, f"the finish exited {code}") if w)
@@ -1258,7 +1199,7 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
     (§ 5.11 § 3): how it ended into the run's index; the `relax` call's
     relaxation record; the force constants' analysis -- the result pair at
     the run's root, the optical calls planned; and, once no call the walk
-    may still run is left (:func:`_still_to_run`), the finish; while calls
+    may still run is left (`vibration_phases.still_to_run`), the finish; while calls
     are left, the run speaks when a phase ends or a call fails
     (`run-reports.md` § 2.9)."""
     here = _here(deck)
@@ -1376,15 +1317,15 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
     # call not done is a part that failed, and the last call of its phase
     # to end, done, is the phase's milestone; with none left, the finish
     # says the run's end and this phase's outcome with it.
-    if not _still_to_run(here, index):
+    rows = rows_of(index, here.run_dir, here.label)
+    if not still_to_run(index, rows):
         _finish_run(here, index, outcome)
     else:
-        rows = rows_of(index, here.run_dir, here.label)
         mine = next(r for r in rows if r["rel"] == call.rel)
         if not mine["done"]:
             # SAID ONCE PER REASON: the `notify` verb sends no second
             # failure for a reason the run has already reported.
-            _notify(here, "part_failed", detail=_not_done_words(mine),
+            _notify(here, "part_failed", detail=not_done_words(mine),
                     reason=_failure_reason(mine, exit_code, failed_what))
         elif all(r["ended"] for r in rows if r["phase"] == phase_name):
             _notify(here, "milestone",

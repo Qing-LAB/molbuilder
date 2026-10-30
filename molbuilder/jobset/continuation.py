@@ -534,6 +534,20 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
             "cold": True}
 
 
+def point_done(declared, run, pdir, pt, names, *, task, stage: str, base,
+               launch) -> Tuple[bool, str]:
+    """Whether the point ``pt`` of a run of points, in ``pdir`` below
+    ``run``, is DONE -- the done door (:func:`done`) asked with its kind's
+    declaration (`points.PointsOf`): what the point must hold, whether its
+    verdict counts, what the run's own record says against it.  The one
+    question status (:func:`point_rows`) and launch's walks ask of a point."""
+    return done(pdir, names, launch=launch, launched_in=run,
+                products=declared.products_of(stage, task.label, base,
+                                              point=pt),
+                verdict_counts=declared.verdict_counts(stage, pt),
+                record_says=declared.record_says(run, names, pt))
+
+
 def point_rows(run, names, task, stage: str, *, launch, base):
     """A SWEPT RUN'S POINTS AS `status` READS THEM -- `StageStatus.points`'
     rows for ``run``: the folder each ran in, whether it is done, what it
@@ -546,6 +560,7 @@ def point_rows(run, names, task, stage: str, *, launch, base):
     stage's latest run, the record for the run a transmission gathered
     (§ 2a.12), so the two never read a point two ways.  Returns ``(rows,
     running)``, the second whether any point not done is running."""
+    from ..parse.engines._run_ending import verdict_words
     from ..runs import concluded
     from ..runrecord import copied_of, read_continued_from
     from .points import points_of
@@ -553,13 +568,8 @@ def point_rows(run, names, task, stage: str, *, launch, base):
     gathered = gathered_lines(run)
     pts, running = [], False
     for pdir, pt in declared.points_in(run, task, stage, base):
-        # WHAT THIS POINT MUST HOLD TO BE DONE, by its kind's declaration
-        # (`points.PointsOf.products_of`), the point itself asked.
-        ok, why = done(pdir, names, launch=launch, launched_in=run,
-                       products=declared.products_of(stage, task.label, base,
-                                                     point=pt),
-                       verdict_counts=declared.verdict_counts(stage, pt),
-                       record_says=declared.record_says(run, names, pt))
+        ok, why = point_done(declared, run, pdir, pt, names, task=task,
+                             stage=stage, base=base, launch=launch)
         # ITS RUN'S STATE AND VERDICT, through the one door every reader of
         # a run's state asks (`runs.concluded`: the run's record, and the
         # scheduler where this machine sent its job, its answer written
@@ -570,8 +580,8 @@ def point_rows(run, names, task, stage: str, *, launch, base):
               if opened else None)
         state = ("finished" if ok else st.state if st is not None
                  else "pending")
-        converged = (st.verdict[1] if st is not None
-                     and st.verdict is not None else None)
+        verdict = st.verdict if st is not None else None
+        converged = verdict[1] if verdict is not None else None
         running = running or state == "running"
         unread = None
         try:
@@ -590,45 +600,58 @@ def point_rows(run, names, task, stage: str, *, launch, base):
         pts.append({**pt.to_wire(),
                     "point": pt.words(), "folder": f"{run.name}/{pt.rel}",
                     "state": state, "done": ok, "why": why,
+                    # ITS RUN'S STATE IN THE STATUS DOOR'S WORDS.
+                    "detail": st.detail if st is not None else None,
                     "opened": opened, "converged": converged,
+                    # THE VERDICT IN ITS OWN WORDS -- `geometry NO` for a
+                    # relaxation, `SCF NO` for an SCF (`job-system.md`,
+                    # rule 4).
+                    "verdict_words": verdict_words(verdict),
                     "started_from": src, "start_unread": unread,
+                    # WHAT LAUNCH TOOK IT OVER FROM, its run's own index
+                    # (`points.PointsOf.taken_from`).
+                    "taken_from": declared.taken_from(run, names, pt),
                     "copied_from": copied, "took": took})
     return pts, running
 
 
-def points_verdict(pts, summary: str) -> "tuple[str, str]":
+def points_verdict(pts, summary: str, *, by_done: bool = False
+                   ) -> "tuple[str, str]":
     """A run of points' state once nothing in it runs -- THE RUN'S STATE IS
     ITS POINTS' RUNS': finished when every one finished -- converged or not,
     which is the converged column's (`job-system.md`, rule 4) -- else
-    failed; the first point not done says why, after ``summary``, the
-    count in the kind's words (`points.PointsOf.summary`).  The one rule,
-    asked by :func:`points_state` and by the transport record for the run
-    its transmission gathered (`engines/transport.md` § 2a.12); the state
-    is `_run_ending.points_state`'s, which a transport run's job asks too."""
+    failed; with ``by_done``, its kind's rule (`points.PointsOf.
+    finished_by_done`), finished only when every point is DONE (a
+    vibration's calls, `engines/vibration.md` § 5.11 § 7).  The first point
+    not done says why, after ``summary``, the count in the kind's words
+    (`points.PointsOf.summary`).  The one rule, asked by
+    :func:`points_state` and by the transport record for the run its
+    transmission gathered (`engines/transport.md` § 2a.12); the state is
+    `_run_ending.points_state`'s, which a transport run's job asks too."""
     from ..parse.engines._run_ending import points_state
     state = points_state(p["state"] for p in pts)
+    if by_done and any(not p["done"] for p in pts):
+        state = "failed"
     first = next((p for p in pts if not p["done"]), None)
     return state, (summary if first is None
                    else f"{summary}; {first['point']}: {first['why']}")
 
 
-def taken_over(p, here) -> bool:
-    """Whether a point was taken over from an earlier run -- its record
-    names the run that computed it (one hop, `engines/transport.md`
-    § 2a.11), a run outside ``here`` (`runrecord.RunRef`)."""
-    from ..runrecord import RunRef
-    said = p.get("started_from")
-    return bool(said) and not RunRef.read(said).within(here)
+def taken_over(p) -> bool:
+    """Whether a point was taken over from an earlier run -- its run's own
+    index names the run that computed it (one hop, `engines/transport.md`
+    § 2a.11; :func:`point_rows`' ``taken_from``), as launch decided it: a
+    `relax` call continued warm from its own last run ran here, and is not
+    (`engines/vibration.md` § 5.11 § 6)."""
+    return bool(p.get("taken_from"))
 
 
-def _walked_here(pts, run: Path, base: Path) -> list:
-    """The points ``run`` walks itself -- every point but those it took
+def _walked_here(pts) -> list:
+    """The points a run walks itself -- every point but those it took
     over from an earlier run (:func:`taken_over`) and those copies of the
     finished calculation's points (`engines/transport.md` § 2a.16): taken
     over from it, or a run copied in whole, which walks none."""
-    from ..runrecord import RunRef
-    here = RunRef.at(base, run)
-    return [p for p in pts if not (p["done"] and (taken_over(p, here)
+    return [p for p in pts if not (p["done"] and (taken_over(p)
                                                   or p.get("copied_from")))]
 
 
@@ -682,7 +705,7 @@ def points_state(run, names, task, stage: str, *, launch, base
     summary = declared.summary(pts, run, names)
     if running:
         return "running", summary, pts
-    walked = _walked_here(pts, run, base)
+    walked = _walked_here(pts)
     if walked and all(p["opened"] and p["state"] in ("pending", "queued")
                       for p in walked):
         # NOTHING THIS RUN WALKS HAS RUN YET -- the points it took over
@@ -696,7 +719,8 @@ def points_state(run, names, task, stage: str, *, launch, base
                               else "launched, nothing run yet"), pts
         pts = never_reached(pts)
         state, detail = points_verdict(pts, declared.summary(pts, run,
-                                                             names))
+                                                             names),
+                                       by_done=declared.finished_by_done)
         return state, (detail + (" -- its walk ended before any point "
                                  "started" if own else
                                  " -- its job ended before any point "
@@ -707,7 +731,8 @@ def points_state(run, names, task, stage: str, *, launch, base
     # THE WALK HAS ENDED: a point it never reached is failed.
     pts = never_reached(pts)
     summary = declared.summary(pts, run, names)
-    state, detail = points_verdict(pts, summary)
+    state, detail = points_verdict(pts, summary,
+                                   by_done=declared.finished_by_done)
     # WHAT THE RUN NEEDS BEYOND ITS POINTS, by its kind (`points.PointsOf.
     # also_needs`): a vibration's finish, which writes the result after its
     # last call (`engines/vibration.md` § 5.11 § 7) -- still running while

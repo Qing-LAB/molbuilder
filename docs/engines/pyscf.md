@@ -297,11 +297,13 @@ pair written by it (`StructureCodec.write_moved`,
 reads the last one back through molbuilder's one XYZ reader
 (`Structure.from_xyz`); and the relaxation (`relax_policy.relax`, below). A
 vibration script imports, besides ([`vibration.md`](?doc=engines/vibration.md)
-§ 4): the HOMO rule and its orbital window, the Hessian with $d\mu/dR$ and the GPU
-array bridge (`spectra/pyscf_vibration.py`); the harmonic path, the
+§ 4): the HOMO rule and its orbital window, the Hessian with $d\mu/dR$, the GPU
+array bridge and the structure the result states (`spectra/pyscf_vibration.py`,
+`equilibrium_structure`); the harmonic path, the
 wavenumbers, the display form and the thermochemistry with its temperature
 grid (`spectra/normal_modes.py`) — the steps the SIESTA route takes too; the
-structure hash, the result's writer and its non-finite scrub
+infrared strength (`spectra/activity.py`, `ir_strength_km_mol`); the
+result's writer and its non-finite scrub
 (`sidecars/spectra.py`), with the derived values the writer states beside
 every mode and the activity rule they ask (`spectra/derived.py`,
 `spectra/activity.py`, [`vibration.md`](?doc=engines/vibration.md) § 6.6);

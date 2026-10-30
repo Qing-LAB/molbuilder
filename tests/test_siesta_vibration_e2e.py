@@ -474,6 +474,25 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     fc_file = fc[2].on_label(".FC")
     assert fc_file is not None and fc_file.is_file(), \
         "the force-constant call must leave its .FC"
+    # THE RUN DOOR ON THE RUN'S CALLS (`web/results.md` § 3a; § 5.11 § 1,
+    # § 2): the force-constant call's deck is still its stage's -- the
+    # coordinates its job wrote beside it are the run's own, never a change
+    # -- so its report is the one prep wrote beside the phase's deck; an
+    # optical call runs the deck prep wrote for its phase, `optical/`.
+    # MUTATIONS THIS MUST FAIL AGAINST: the stage's deck read beside its own
+    # folder, so the call's inlined coordinates read as a change (`current`
+    # False, no report); the walk up to the prepared folder dropped, so an
+    # optical call's prepared folder is not its phase's.
+    from molbuilder.runs import run_of
+    from molbuilder.siesta.vibration_phases import Call
+    fc_run = fc[2]
+    stage_dir = fc_run.place.root / fc_run.stage
+    assert fc_run.current is True, fc_run.current
+    assert (fc_run.report is not None
+            and fc_run.report.parent == stage_dir / FC), fc_run.report
+    f000 = run_of(folder / Call(OPTICAL, "f000").rel)
+    assert f000.prepared == stage_dir / OPTICAL, f000.prepared
+    assert f000.current is True, f000.current
     # THE INDEX: every call, how it ended, the selection, the finish.
     index = _index_of(run)
     assert index["phases"] == [RELAX, FC, OPTICAL]
@@ -1609,6 +1628,17 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     assert set(sent) <= {"start", "wall_near", "part_failed", "finish"}, sent
     assert sent.count("wall_near") <= 1, sent
     first = ran[0]
+    # THE WALLED CALL'S OWN LOG says what a launch again does with a point
+    # not done -- runs it as its run's rule starts it -- never a single
+    # run's "launch this stage again to continue" (`engines/vibration.md`
+    # § 5.11 § 6; `running-a-job.md` § 3.5).  MUTATION THIS MUST FAIL
+    # AGAINST: the wall line composed without the member flag.
+    from molbuilder.runs import run_of
+    walled = run_of(run.attempt("freq", 2) / first["rel"]).session_log
+    walled_log = walled.read_text(errors="replace")
+    assert ("stopped at its wall" in walled_log
+            and "launch this stage again to continue" not in walled_log), \
+        walled_log[-1500:]
     said, = told(run, "part_failed", "freq", n=2)
     assert said.startswith(
         f"running ({first['words']}: not done -- {first['why']}) | the "

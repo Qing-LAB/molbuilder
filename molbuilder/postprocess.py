@@ -135,22 +135,14 @@ def infrared_view(path, *, direction="z",
     atoms the vibration moved -- from their charges, by ``partition``,
     ``hirshfeld`` or ``voronoi`` (:data:`spectra.infrared.DEFAULT_PARTITION`
     when unsaid); on a PySCF result, the whole system's, from the dipole
-    change it stored (no partition named).  Held or free by the result's own
+    change it stored, of no partition.  Held or free by the result's own
     held atoms (`engines/vibration.md` § 4.6; `science/vibrational-optical-
-    response.md` § 2.3)."""
+    response.md` § 2.3) -- the spectrum viewer's own door
+    (`spectra.infrared.infrared_view_of`)."""
     from .sidecars.spectra import parse_spectra_json
-    from .spectra.infrared import (DEFAULT_PARTITION, SOURCE_DIPOLE,
-                                   InfraredError, dipole_view,
-                                   infrared_view as _view, source_of)
-    result = parse_spectra_json(path)
-    if source_of(result) == SOURCE_DIPOLE:
-        if partition is not None:
-            raise InfraredError(f"{path}: a {result.engine} result's infrared "
-                                f"is the whole system's dipole change -- it "
-                                f"has no partition")
-        return dipole_view(result, direction=direction)
-    return _view(result, direction=direction,
-                 partition=partition or DEFAULT_PARTITION)
+    from .spectra.infrared import DEFAULT_PARTITION, infrared_view_of
+    return infrared_view_of(parse_spectra_json(path), direction=direction,
+                            partition=partition or DEFAULT_PARTITION)
 
 
 def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
@@ -165,13 +157,14 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
     Answers ``{motion, frames, weights, reach, bias_v, energy_ev,
     transmission, conductance_g0, conductance_change_percent, said}``: at
     each voltage the averaged T(E), G/G0 at E_F and its change in per cent
-    of frame 0's -- NaN at a voltage whose points are not all done, said --
-    and what is said beside them.  Refused by name
+    of frame 0's -- by the record's own rule at each voltage
+    (`frame_average.at_voltage`), with these weights: NaN where it has no
+    value, its reason said, a voltage whose points are not all done among
+    them -- and what is said beside them.  Refused by name
     (`frame_average.ReaverageError`): what `motion_weights` refuses, and a
     data file of another schema (`transport.datafile.DataFileError`)."""
     import numpy as np
-    from .frame_average import motion_weights
-    from .structure import frame_words
+    from .frame_average import at_voltage, motion_weights
     from .transport.datafile import read_data_file
     data = read_data_file(path)["variables"]
 
@@ -188,37 +181,44 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
         swing_quanta=swing_quanta, frequency_cm1=scalar("frequency_cm1"),
         zero_point_amplitude_amu12_ang=scalar(
             "zero_point_amplitude_amu12_ang"))
-    w = np.asarray(got["weights"], dtype=float)
-    n = len(w)
+    weights = list(got["weights"])
+    n = len(weights)
     bias = [float(v) for v in value("bias_v")]
+    energy = [float(e) for e in value("energy_ev")]
     curves = np.asarray(value("transmission"), dtype=float)
     g = np.asarray(value("conductance_g0"), dtype=float)
     done = np.asarray(value("done")) == 1
+    # THE DONE POINTS AS THE RECORD HOLDS THEM, each on the file's one grid,
+    # its conductance ``None`` where the file keeps none.
+    points = [{"frame": f, "bias_v": v, "energy_ev": energy,
+               "transmission": curves[f, b, :],
+               "conductance_g0": (float(g[f, b]) if np.isfinite(g[f, b])
+                                  else None)}
+              for b, v in enumerate(bias) for f in range(n) if done[f, b]]
     said = list(got["said"])
-    transmission = np.full((len(bias), curves.shape[-1]), np.nan)
+    transmission = np.full((len(bias), len(energy)), np.nan)
     conductance = np.full(len(bias), np.nan)
     change = np.full(len(bias), np.nan)
     for b, v in enumerate(bias):
-        # A VOLTAGE WHOSE POINTS ARE NOT ALL DONE has no average, as the
-        # record's has none (`engines/transport.md` § 2a.12).
-        waits = [f for f in range(n) if not done[f, b]]
-        if waits:
-            names = ", ".join(frame_words(f, n) for f in waits)
-            said.append(f"at {v:g} V {names} "
-                        f"{'is' if len(waits) == 1 else 'are'} not done: no "
-                        f"average there")
-            continue
-        transmission[b] = w @ curves[:, b, :]
-        if np.all(np.isfinite(g[:, b])):
-            conductance[b] = float(w @ g[:, b])
-            if g[0, b]:
-                change[b] = 100.0 * (conductance[b] - g[0, b]) / g[0, b]
+        # EACH VOLTAGE BY THE RECORD'S RULE, with these weights: no value
+        # where it has none, its reason said (`engines/transport.md`
+        # § 2a.12) -- the file's own axis, so a voltage is its own index.
+        at = at_voltage(v, n, weights, points, [], lambda a, c: a == c)
+        for why in (at["why"], at["conductance_why"]):
+            if why:
+                said.append(f"at {v:g} V: {why}")
+        if at["transmission"] is not None:
+            transmission[b] = at["transmission"]
+        if at["conductance_g0"] is not None:
+            conductance[b] = at["conductance_g0"]
+        if at["conductance_change_percent"] is not None:
+            change[b] = at["conductance_change_percent"]
     return {"motion": got["motion"],
             "frames": [{"frame": f, "q_amu12_ang": float(q[f]),
-                        "weight": float(w[f])} for f in range(n)],
-            "weights": list(got["weights"]), "reach": got["reach"],
+                        "weight": float(weights[f])} for f in range(n)],
+            "weights": weights, "reach": got["reach"],
             "bias_v": bias,
-            "energy_ev": [float(e) for e in value("energy_ev")],
+            "energy_ev": energy,
             "transmission": transmission, "conductance_g0": conductance,
             "conductance_change_percent": change, "said": said}
 

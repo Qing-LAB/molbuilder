@@ -1,13 +1,11 @@
 """The TranSIESTA emitters — the transport composite's deck layer.
 
-The TranSIESTA emitters `transport/deck.py` (and `wizard.py`, for the lead's
-box) reach into:
+The TranSIESTA emitters `transport/deck.py` reach into:
 
 * :func:`emit_electrode_declarations` and :func:`_emit_geometry` — reused by
   `transport/deck.py`, the pipeline every one of the five rungs renders
   through.
-* :func:`_compute_cell_from_extents` and
-  :func:`_find_electrode_regions` — reused by `transport/wizard.py`, whose
+* :func:`_find_electrode_regions` — reused by `transport/wizard.py`, whose
   `extract_electrode_model` derives the lead `compose.py` hands to prep.
 * :func:`pole_count` — TranSIESTA's rule for how many poles an equilibrium
   pole ENERGY gives, written once for the settings gate's refusal and the
@@ -40,29 +38,6 @@ from ..runfiles import compose
 from ..structure import Structure
 
 
-#: Transverse vacuum per side (Å) for an ISOLATED electrode — a nanowire or
-#: chain lead, periodic along transport and genuinely vacuum-surrounded
-#: across it — when the structure states no vacuum of its own.
-#:
-#: 15 Å is the SIESTA-canonical floor for isolated transverse padding
-#: (electronic tails fall off by ~5–8 Å in vacuum).  Lower → exchange-
-#: correlation tails leak; higher → unnecessary basis cost.  **A transport
-#: lead needs more than an ordinary molecule does**: it is the object the
-#: self-energy is built from, so its images must be electrostatically
-#: isolated or Σ describes a wire coupled to its own copies.
-#:
-#: A TRANSPORT DEFAULT, NOT AN OVERRIDE.  `Structure.effective_vacuum`
-#: supplies 3 Å where nobody has chosen — right for a molecule in a box and
-#: five times too thin for a lead — so transport answers the same question
-#: with its own default, the way the electrode's dense transport-axis k is a
-#: default rather than something a person must discover
-#: (`engines/transport.md` § 2a.7).  What it is NOT is a second home for the
-#: value: a structure that STATES a vacuum is obeyed verbatim, because
-#: `vacuum` is already the person's control (Modify → Cell, carried in the
-#: sidecar).
-_ISOLATED_ELECTRODE_VACUUM_ANG = 15.0
-
-
 #: Each lead's TranSIESTA name, the ``<name>`` of its ``%block
 #: TS.Elec.<name>``.  TranSIESTA takes any string there; these are the two
 #: the decks have always carried.
@@ -71,6 +46,13 @@ _BLOCK_NAME = {REGION_LEFT_ELECTRODE: "L", REGION_RIGHT_ELECTRODE: "R"}
 #: THE TWO LEADS as TBtrans names them -- the ``TS.Elecs`` blocks, in
 #: `sort.ELECTRODE_LABELS`' order: what its outputs key each lead by.
 LEAD_NAMES = tuple(_BLOCK_NAME[label] for label in ELECTRODE_LABELS)
+
+
+def lead_name(region: str) -> str:
+    """The TranSIESTA name of the lead cut from ``region`` -- a lead region
+    of `sort.ELECTRODE_LABELS` -- the ``<name>`` of its ``TS.Elec.<name>``
+    block, which TBtrans's outputs key that lead by (:data:`LEAD_NAMES`)."""
+    return _BLOCK_NAME[region]
 
 #: THE PAIR TBtrans names a transmission file by -- the two leads, left to
 #: right, as its ``.AVTRANS`` names them (``L-R``): the one spelling the
@@ -182,50 +164,6 @@ def _find_electrode_regions(
     return [(label, name, idxs) for (label, name, idxs, _z) in out]
 
 
-def _compute_cell_from_extents(struct: Structure) -> Tuple[float, float, float]:
-    """The box for a structure that states none — PER AXIS, by its kind.
-
-    `Structure.resolve_cell`'s rule, with transport's own vacuum default:
-
-      * ``isolated``  -> ``bbox + 2 * vacuum``.  A nanowire or chain lead is
-        vacuum-surrounded across the wire and this is its cross-section;
-      * ``transport`` -> ``bbox``.  The device length is matched, not padded
-        (§ 6.2), and vacuum is meaningless there;
-      * ``periodic``  -> **refused.**  § 7: *"the box is NOT recoverable from
-        atom extents (padding fabricates an orthorhombic box that severs the
-        periodic gold)"* — a rectangle cannot tile Au(111), so there is no
-        honest number and none is invented.
-
-    THE VACUUM IS THE PERSON'S.  Three states
-    (`structure-periodicity.md` § 2): a number used verbatim, ``[0,0,0]``
-    meaning no gap DELIBERATELY and also used, and unset -- the only one
-    :data:`_ISOLATED_ELECTRODE_VACUUM_ANG` answers.
-
-    **Why not just call `resolve_cell`?**  Because its default where nobody
-    chose is 3 A -- right for a molecule in a box and five times too thin
-    for a lead, which is the object the self-energy is built from and whose
-    images must be electrostatically isolated.  The RULE is shared; only the
-    default differs, the way the electrode's dense transport-axis k is a
-    transport default rather than something to discover (§ 2a.7).
-    """
-    pos = struct.positions
-    extent = pos.max(axis=0) - pos.min(axis=0)
-    stated = struct.vacuum
-    out = []
-    for i, kind in enumerate(struct.axis_kind):
-        if kind == "periodic":
-            raise ValueError(
-                f"axis {i} is 'periodic' but this structure states no cell; "
-                f"a periodic axis needs a commensurate lattice from "
-                f"construction or import, never a bounding box "
-                f"(engines/transport.md 7)")
-        per_side = (float(stated[i]) if stated is not None
-                    else _ISOLATED_ELECTRODE_VACUUM_ANG)
-        pad = 2.0 * per_side if kind == "isolated" else 0.0
-        out.append(float(extent[i]) + pad)
-    return (out[0], out[1], out[2])
-
-
 # --------------------------------------------------------------------- #
 #  .fdf emission helpers -- the geometry and electrode blocks           #
 #  `transport/deck.py` lays into the deck (`_emit_geometry`,            #
@@ -259,107 +197,61 @@ def axis_vacuum(cell: np.ndarray,
     return out
 
 
-def _lattice_block(struct: Structure, cell: np.ndarray, *,
-                   fabricated: bool = False) -> List[str]:
-    """Emit the LatticeVectors block.
-
-    If ``cell`` is provided (the structure's real lattice — hexagonal,
-    triclinic, whatever), it is emitted VERBATIM; the block judges nothing
-    (the kind gate does, `validation/__init__.py`).
-
-    ``fabricated`` says the structure stated no lattice, so ``cell`` is the
-    orthorhombic vacuum box :func:`_emit_geometry` built from atom extents — a
-    model of an ISOLATED cluster, flagged loudly because it is wrong for a
-    periodic surface electrode (the hex Au(111) case).  It is written at the
-    precision the atoms were placed against, never rounded.
-
-    **THIS ARM IS FOR AN ISOLATED ELECTRODE, AND IT IS A REAL CASE**
-    (user, 2026-09-23).  A nanowire or chain lead is periodic along
-    transport and genuinely vacuum-surrounded across it, so a derived
-    transverse box IS the model -- and it needs MORE vacuum than an
-    ordinary molecule, because the lead is what the self-energy is built
-    from and its images must be electrostatically isolated.
-
-    It is NOT for a periodic surface electrode.  `engines/transport.md`
-    § 7 is about that case: *"the box is NOT recoverable from atom extents
-    (padding fabricates an orthorhombic box that severs the periodic
-    gold)"* -- a rectangle cannot tile Au(111).  That case never reaches
-    here: the citation door refuses a junction stating no cell, and I6 is
-    held by copying the device's lateral vectors (§ 5).
+def _lattice_block(struct: Structure, cell: np.ndarray) -> List[str]:
+    """Emit the LatticeVectors block: the structure's own lattice --
+    hexagonal, triclinic, whatever -- VERBATIM.  A transport calculation
+    derives no cell (`engines/transport.md` § 2a.9): the citation door
+    refuses a junction stating none, and a lead takes the device's lateral
+    vectors (§ 5, I6).  The block judges nothing (the kind gate does,
+    `validation/__init__.py`).
     """
     lines = ["LatticeConstant        1.0 Ang"]
     cell = np.asarray(cell, dtype=float)
-    if not fabricated:
-        # THE KIND, NOT THE BOOLEAN: `struct.pbc` flattens `transport` and
-        # `periodic` to the same True, and the per-axis line and the warning
-        # below need them apart.  The fallback answers `("isolated",) * 3`,
-        # as every other `axis_kind or ...` in the tree does (`__post_init__`
-        # always fills the kinds).
-        kinds = struct.axis_kind or ("isolated",) * 3
-        vac = axis_vacuum(cell, struct.positions)
-        lines += [
-            "# Explicit lattice preserved from the structure (NOT",
-            "# recomputed from atom extents).  Per-axis boundary:",
-        ]
-        names = ("a", "b", "c (transport)")
-        for ax in range(3):
-            kind = kinds[ax]
-            lines.append(
-                f"#   {names[ax]:<14} {kind:<8} | empty span "
-                f"{vac[ax]:.2f} Å")
-        # WHETHER THE ROOM IS RIGHT IS THE GATE'S ONE RULE, measured from the
-        # lead (`engines/transport.md` § 6.1c, I12 both ways; its findings
-        # land in the deck's `.validation.txt`) -- the lines above are the
-        # measurement, and this block judges nothing.
-        lines.append("%block LatticeVectors")
-        for ax in range(3):
-            v = cell[ax]
-            lines.append(f"  {v[0]:14.8f} {v[1]:14.8f} {v[2]:14.8f}")
-        lines.append("%endblock LatticeVectors")
-    else:
-        lines += [
-            "# WARNING: no lattice on the structure — an orthorhombic",
-            "# VACUUM BOX was derived from the atom extents: each ISOLATED",
-            "# axis gets the structure's own vacuum on both sides (15 Å per",
-            "# side where none is set), and a transport axis gets the atom",
-            "# span with no padding at all.  This models an",
-            "# ISOLATED CLUSTER, NOT a periodic surface electrode.  For a",
-            "# real Au(111) lead, supply the structure's hexagonal cell",
-            "# (set Structure.cell / the molstruct sidecar's 'cell').",
-            "%block LatticeVectors",
-            *(f"  {v[0]:14.8f} {v[1]:14.8f} {v[2]:14.8f}" for v in cell),
-            "%endblock LatticeVectors",
-        ]
+    # THE KIND, NOT THE BOOLEAN: `struct.pbc` flattens `transport` and
+    # `periodic` to the same True, and the per-axis line below needs them
+    # apart.  The fallback answers `("isolated",) * 3`,
+    # as every other `axis_kind or ...` in the tree does (`__post_init__`
+    # always fills the kinds).
+    kinds = struct.axis_kind or ("isolated",) * 3
+    vac = axis_vacuum(cell, struct.positions)
+    lines += [
+        "# Explicit lattice preserved from the structure (NOT",
+        "# recomputed from atom extents).  Per-axis boundary:",
+    ]
+    names = ("a", "b", "c (transport)")
+    for ax in range(3):
+        kind = kinds[ax]
+        lines.append(
+            f"#   {names[ax]:<14} {kind:<8} | empty span "
+            f"{vac[ax]:.2f} Å")
+    # WHETHER THE ROOM IS RIGHT IS THE GATE'S ONE RULE, measured from the
+    # lead (`engines/transport.md` § 6.1c, I12 both ways; its findings
+    # land in the deck's `.validation.txt`) -- the lines above are the
+    # measurement, and this block judges nothing.
+    lines.append("%block LatticeVectors")
+    for ax in range(3):
+        v = cell[ax]
+        lines.append(f"  {v[0]:14.8f} {v[1]:14.8f} {v[2]:14.8f}")
+    lines.append("%endblock LatticeVectors")
     return lines
 
 
-def engine_frame_for(struct: Structure, cell: Optional[np.ndarray] = None):
+def engine_frame_for(struct: Structure):
     """The frame a transport rung's atoms are placed with -- ONE box decision
-    and ONE placement (`model/structure-periodicity.md` § 6.0).
-
-    The box is ``cell`` when given, else the structure's own, else -- an
-    isolated lead that states none -- the vacuum box
-    :func:`_compute_cell_from_extents` sizes with transport's own default.
-    ``deck.py`` computes it once per deck and hands the same frame to the
-    coordinate block and to the deck's ENGINE-OFFSET record."""
+    and ONE placement (`model/structure-periodicity.md` § 6.0): the box is
+    the structure's own cell (a transport calculation derives none,
+    `engines/transport.md` § 2a.9).  ``deck.py`` computes it once per deck
+    and hands the same frame to the coordinate block and to the deck's
+    ENGINE-OFFSET record."""
     from ..cell import to_engine
-    if cell is None and struct.cell is None:
-        box = np.diag(_compute_cell_from_extents(struct))
-    else:
-        box = np.asarray(cell if cell is not None else struct.cell, dtype=float)
-    return to_engine(struct, box=box)
+    return to_engine(struct, box=np.asarray(struct.cell, dtype=float))
 
 
-def _emit_geometry(struct: Structure,
-                   cell: Optional[np.ndarray] = None,
-                   cfg=None, frame=None) -> List[str]:
+def _emit_geometry(struct: Structure, cfg=None, frame=None) -> List[str]:
     """Lattice + AtomicCoordinates blocks.
 
-    The lattice comes from ``cell`` (or ``struct.cell``) when present —
-    preserved verbatim so a hexagonal Au(111) surface keeps its real
-    cell.  Only when no lattice is available does it fall back to the
-    orthorhombic vacuum box (an isolated-cluster model), with a loud
-    warning.
+    The lattice is the structure's own, preserved verbatim so a hexagonal
+    Au(111) surface keeps its real cell.
 
     Coordinates are emitted in the ENGINE frame by the one placement rule
     (`model/structure-periodicity.md` § 6.0): the design coordinates plus
@@ -392,9 +284,8 @@ def _emit_geometry(struct: Structure,
 
     # THE BOX, THEN ONE PLACEMENT (`engine_frame_for`).  A deck passes the
     # frame it records; a direct call gets the same answer computed here.
-    fabricated = cell is None and struct.cell is None
     if frame is None:
-        frame = engine_frame_for(struct, cell)
+        frame = engine_frame_for(struct)
 
     lines: List[str] = ["# --- Geometry ---", ""]
     lines.append(f"NumberOfAtoms          {struct.n_atoms}")
@@ -409,7 +300,7 @@ def _emit_geometry(struct: Structure,
         lines.append(f"  {species_idx[sp]:>3}  {z:>3}  {sp}")
     lines.append("%endblock ChemicalSpeciesLabel")
     lines.append("")
-    lines.extend(_lattice_block(struct, frame.cell, fabricated=fabricated))
+    lines.extend(_lattice_block(struct, frame.cell))
     lines.append("")
     lines.append("AtomicCoordinatesFormat        Ang")
     lines.append("%block AtomicCoordinatesAndAtomicSpecies")

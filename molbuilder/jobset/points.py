@@ -12,7 +12,9 @@ ROLE    one door, the pair's declaration, so that no reader of a run's
         and the record read each point's own files -- each through the
         kind's declaration (:class:`PointsOf`), never through its name.
 USED-BY `jobset.submit`, `jobset.continuation`, `jobset.runstatus`,
-        `jobset.ready`, `jobset.prepared_with`, `runs`
+        `jobset.ready`, `jobset.prepared_with`, `jobset.materialize`
+        (`open_sweep_run`), `jobset.prep` (`walk_words`, `walls_of`),
+        `runs`
 
 A transport calculation's points are a frame of the cited set and a voltage,
 decided at prep (`jobset.transport_points`); a SIESTA vibration's are the
@@ -64,10 +66,6 @@ class PointsOf:
     #: done · fc done · optical 7 of 11* (the phases the run walks read off
     #: its index).
     summary: Callable
-    #: ``stage -> bool``: whether a point of ``stage`` converges an SCF --
-    #: the converged column (`job-system.md`, rule 4); the transmission,
-    #: a product of the device's, converges nothing.
-    converges: Callable
     #: ``(run_dir, names, task, stage, base) -> Optional[str]``: what a run
     #: of points needs BEYOND its points done to be finished -- ``None``
     #: when nothing, else why not: a vibration's finish, which writes the
@@ -94,6 +92,18 @@ class PointsOf:
     #: (`engines/vibration.md` § 5.11 § 7) -- ``None`` where it says
     #: nothing.
     record_says: Callable = lambda run, names, point: None
+    #: ``(run_dir, names, point) -> Optional[str]``: the run ``point`` was
+    #: taken over from, as launch decided it and wrote it into the run's
+    #: index (`engines/transport.md` § 2a.11; `engines/vibration.md` § 5.11
+    #: § 6) -- ``None`` for a point the run walks itself, a warm `relax`
+    #: call continued from its own last run among them.
+    taken_from: Callable = lambda run, names, point: None
+    #: Whether the run is FINISHED only once every point is DONE -- a
+    #: vibration's calls, its result built from them all
+    #: (`engines/vibration.md` § 5.11 § 7) -- rather than once every
+    #: point's run finished, converged or not, the converged column saying
+    #: the rest (a bias sweep's points, `engines/transport.md` § 2a.11).
+    finished_by_done: bool = False
     #: Whether the run's points SHARE THE STAGE'S ONE WALL -- the card's
     #: wall is the run's, every point counting from the run's start (a
     #: vibration's calls, `engines/vibration.md` § 5.11 § 7a) -- rather than

@@ -111,6 +111,20 @@ def _depth_inside_root(resolved: Path) -> Optional[int]:
     return None if parts is None else len(parts)
 
 
+def calculation_folder_refusal(resolved: Path) -> Optional[str]:
+    """Why ``resolved`` cannot hold a calculation, or ``None``: a
+    calculation lives under a topic -- project / topic / its folder, three
+    levels inside the picker's root (`job-contracts.md` § 2.5).  Asked by
+    every door that writes a calculation into a folder (Build's hand-over,
+    the Transport tab's Describe), so they refuse in one set of words."""
+    depth = _depth_inside_root(resolved)
+    if depth is None or depth < 3:
+        return ("That folder is too high in the tree -- a calculation lives "
+                "under a topic (projects / project / topic / your folder). "
+                "Pick or make one further down in the sidebar.")
+    return None
+
+
 def _root_containing(candidate) -> "Optional[Tuple[Path, Path]]":
     """``(root, resolved)`` for the first allowed root that contains
     ``candidate``, or ``None``.

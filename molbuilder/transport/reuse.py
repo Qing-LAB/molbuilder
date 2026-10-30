@@ -233,10 +233,8 @@ def fixed_rungs() -> List[str]:
 
 @dataclass(frozen=True)
 class Refused:
-    """A change an extension does not take, in its words, and where it lands
-    -- ``where`` the control it names (`task.bias`), or ``""``."""
+    """A change an extension does not take, in its words."""
     message: str
-    where: str = ""
 
 
 @dataclass(frozen=True)

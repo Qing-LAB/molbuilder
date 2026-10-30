@@ -55,6 +55,7 @@ from ..parse.engines import siesta_grammar as _G
 from ..runfiles import compose
 from ..siesta import layout as _sl
 from ..structure import Structure
+from ..kmesh import TRANSMISSION_PER_SCF as _TBT_FACTOR
 
 #: Which deck SHAPE each rung renders — a table, because FOUR texts serve
 #: FIVE rungs (`engines/transport.md` § 6.1) and which text a rung gets is a
@@ -191,12 +192,11 @@ def _device_layout(derived, frame, state_block, point, scratch_dir):
         _sl.mpi_section(algorithm=derived.get("algorithm")),
         _sc.Block("what this rung runs", _emit_device_run),
         # THE LEADS' SURFACE GREEN'S FUNCTIONS ARE THE RUN'S, in its
-        # scratch folder (§ 2a.11, *What a run's points share*): the block
-        # names them there from the point's folder.
+        # scratch folder (§ 2a.11, *What a run's points share*), or beside
+        # the run's files where the vocabulary states none: the block names
+        # them there from the point's folder.
         _sc.Block("the junction: its electrodes and reservoirs",
-                  _electrode_block(
-                      f"{point.to_run if point is not None else '.'}"
-                      f"/{scratch_dir}")),
+                  _electrode_block(_gf_folder(point, scratch_dir))),
         TS_DEVICE_SECTION,
         # THE BIAS WINDOW'S LINE, written at every point with the window the
         # cutoff gives; TranSIESTA reads it under bias alone (§ 2a.11).
@@ -358,12 +358,14 @@ def _electrode_block(gf_in):
     return render
 
 
-def _enginescratch_dir_of() -> Optional[str]:
-    """The engine's own vocabulary's scratch folder (`warm-files.toml`
-    [transport] ``scratch_dir``) -- what a deck rendered with none handed
-    names (`engines/transport.md` § 2a.11)."""
-    from ..warmfiles import warm_list
-    return warm_list("siesta", "transport").scratch_dir
+def _gf_folder(point, scratch_dir: Optional[str]) -> str:
+    """Where a device point's deck names the leads' surface Green's
+    functions, from the point's folder: the run's scratch folder -- the
+    calculation's vocabulary's ``scratch_dir`` (`warm-files.toml`
+    [transport], `engines/transport.md` § 2a.11) -- or, where it states
+    none, beside the run's files, as the vocabulary says."""
+    to_run = point.to_run if point is not None else "."
+    return to_run if scratch_dir is None else f"{to_run}/{scratch_dir}"
 
 
 def _emit_neq_contour(struct, cfg) -> str:
@@ -704,7 +706,7 @@ _TRANSVERSE_ADVICE = (
     "# you change it in the template, and one pair for every SCF stage --",
     "# TranSIESTA stops on a lead sampled on other k-points.  Along z this",
     "# stage takes one k-point.  The transmission's TBT.k is its own grid,",
-    "# tbt_k_grid: three times this pair unless you set it",
+    f"# tbt_k_grid: {_TBT_FACTOR} times this pair unless you set it",
     "# (engines/transport.md 0.2).",
 )
 
@@ -726,9 +728,9 @@ def _k_mesh_block(mesh, *, advice=()):
 #  The spec.                                                            #
 # ===================================================================== #
 
-def transport_spec(struct: Structure, cfg, *,
+def transport_spec(struct: Structure, cfg, *, state,
                    stage_token: Optional[str] = None,
-                   state=None, point=None,
+                   point=None,
                    scratch_dir: Optional[str] = None,
                    contours=None) -> "_sc.DeckSpec":
     """The ``DeckSpec`` for one transport rung.
@@ -739,9 +741,12 @@ def transport_spec(struct: Structure, cfg, *,
     them (`Point.to_run`); ``None`` for a rung that runs once, or a deck
     rendered for no point in particular, whose way to the run is ``.``.
     ``scratch_dir`` is the folder of the run's own the leads' files live in
-    -- the vocabulary's (`warm-files.toml` [transport] ``scratch_dir``,
-    `engines/transport.md` § 2a.11), which prep hands down; a caller that
-    hands none gets the engine's own file's.  ``contours`` is a transmission
+    -- the calculation's vocabulary's (`warm-files.toml` [transport]
+    ``scratch_dir``, `engines/transport.md` § 2a.11), which prep hands down;
+    ``None`` where it states none, the files then beside the run's.
+    ``state`` is the calculation's electronic state, decided ONCE on the
+    whole junction and handed to every rung
+    (`science/chemistry-correctness.md` § 2a).  ``contours`` is a transmission
     point's sharing with a finished calculation's point
     (`energies.Contours`; `engines/transport.md` § 2a.16), ``None`` for a
     point that computes its window whole.
@@ -764,15 +769,6 @@ def transport_spec(struct: Structure, cfg, *,
             f"{', '.join(SHAPE_OF_RUNG)} (engines/transport.md 4.2).  "
             f"`prep` names the rung and hands it down as `stage_token`.")
 
-    # THE ONE STATE of the calculation (`science/chemistry-correctness.md`
-    # § 2a): `prep` resolves it ONCE, on the whole junction, and hands it to
-    # every rung -- a rung's own structure (a lead, the device) is not where
-    # a blank spin is decided.  A caller that hands none is answered on this
-    # structure.
-    handed = state is not None
-    if state is None:
-        from ..electronic_state import electronic_state
-        state = electronic_state(struct, cfg, kind="transport")
     # THE RUNG'S K-POINT MESH(ES), worked out once (`kmesh.mesh_for`,
     # `engines/siesta.md` § 6.1): read by the block that writes each, the
     # parallel split and the settings gate.  The transmission carries two --
@@ -784,11 +780,9 @@ def transport_spec(struct: Structure, cfg, *,
     layout = ({"seed": _seed_layout,
                "electrode": _electrode_layout,
                "device": _device_layout}[shape](
-                   derived, frame, _state_block(state, on_junction=handed),
-                   point, scratch_dir or _enginescratch_dir_of())
+                   derived, frame, _state_block(state), point, scratch_dir)
               if shape != "transmission" else _transmission_layout(
-                  derived, frame, _state_block(state, on_junction=handed),
-                  point, scratch_dir or _enginescratch_dir_of(),
+                  derived, frame, _state_block(state), point, scratch_dir,
                   contours=contours))
     return _sc.DeckSpec(
         engine="siesta",
@@ -905,7 +899,7 @@ def _contour_facts(cfg) -> dict:
                        f"{float(temp):g} K"}}
 
 
-def _state_block(state, *, on_junction: bool):
+def _state_block(state):
     """WHERE THE CHARGE AND SPIN CAME FROM, in every rung's deck
     (`science/chemistry-correctness.md` § 2a.5, ES2) -- each value beside its
     source, as the optimization deck writes them."""
@@ -913,13 +907,12 @@ def _state_block(state, *, on_junction: bool):
 
     def emit(struct, cfg) -> str:
         lines = [f"# Spin: {t.value} ({t.said});",
-                 f"#   unpaired electrons (2S): {c.value} ({c.said})."]
-        if on_junction:
-            lines += ["#   Decided ONCE, on the whole junction, and the same "
-                      "on every rung:",
-                      "#   TranSIESTA joins the leads' self-energies to the "
-                      "device, so all",
-                      "#   five rungs solve the same spin channels."]
+                 f"#   unpaired electrons (2S): {c.value} ({c.said}).",
+                 "#   Decided ONCE, on the whole junction, and the same "
+                 "on every rung:",
+                 "#   TranSIESTA joins the leads' self-energies to the "
+                 "device, so all",
+                 "#   five rungs solve the same spin channels."]
         lines.append(f"# NetCharge: not written -- {q.value:+d} ({q.said}).")
         return "\n".join(lines)
 

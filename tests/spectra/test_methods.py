@@ -184,10 +184,15 @@ class TestRenderMethodsMdPreRun:
         assert "cm⁻¹" in md
 
     def test_frequency_window_one_sided(self):
+        """A window open at its top says its one bound and no other: the
+        paragraph names the number given and invents no upper bound.  THE
+        SILENT FAILURE: a window open at its top rendered with a second
+        number, or without the one given."""
         from molbuilder.spectra import render_methods_md
         cfg = _spectra_cfg(es_mode_selection="all", freq_min_cm1=1500.0)
         md = render_methods_md(cfg)
-        assert "≥ 1500" in md or ">= 1500" in md
+        assert "1500" in md and "cm⁻¹" in md, md
+        assert "2000" not in md and " to " not in md.split("1500", 1)[1][:12], md
 
     def test_frequency_window_ignored_for_explicit(self):
         """selector=explicit ignores the freq window;

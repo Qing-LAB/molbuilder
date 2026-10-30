@@ -13,8 +13,8 @@
  */
 
 /** A row offering the fit for the calculation `reuses` names -- `name`,
- *  as the server names it (`Extension.name`); `use` takes
- *  `{transmission_emin_ev, transmission_emax_ev, transmission_n_points}`. */
+ *  as the server names it (`Extension.name`); `use` takes the fitted
+ *  window's values as the server names them (`window.Fitted.values`). */
 export function fitRow({ reuses, name, use, doc = document }) {
     const el = (tag, attrs, ...kids) => {
         const n = doc.createElement(tag);
@@ -27,8 +27,9 @@ export function fitRow({ reuses, name, use, doc = document }) {
                                 "aria-label": label });
         return [el("label", null, label + " ", i), i];
     };
-    const [loLabel, lo] = num("-3", "from", "any");
-    const [hiLabel, hi] = num("3", "to", "any");
+    // THE RANGE IS THE PERSON'S TO STATE (§ 2a.16): the row starts blank.
+    const [loLabel, lo] = num("", "from", "any");
+    const [hiLabel, hi] = num("", "to", "any");
     const [finerLabel, finer] = num("1", "times finer", "2");
     const ask = el("button", { type: "button", class: "btn" }, "Fit");
     const said = el("span", { class: "status", role: "status" });
@@ -65,9 +66,7 @@ export function fitRow({ reuses, name, use, doc = document }) {
     });
     take.addEventListener("click", () => {
         if (!fitted) return;
-        use({ transmission_emin_ev: fitted.emin,
-              transmission_emax_ev: fitted.emax,
-              transmission_n_points: fitted.points });
+        use(fitted.values);
     });
     return el("div", { class: "fdf-actions" },
               el("strong", null, "The window, fitted to the grid of "

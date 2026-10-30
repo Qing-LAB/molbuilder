@@ -1093,17 +1093,14 @@ def api_task_setup_handover():
     dest_dir = None
     if body.get("dest"):
         from molbuilder.describe import DescribeError, refuse_described
-        from .files import _depth_inside_root
+        from .files import calculation_folder_refusal
         try:
             dest_dir = _resolve_within_roots(str(body["dest"]))
         except _PickerError as exc:
             return jsonify({"ok": False, "error": exc.message}), exc.status
-        depth = _depth_inside_root(dest_dir)
-        if depth is None or depth < 3:
-            return jsonify({"ok": False, "error": (
-                "That folder is too high in the tree -- a calculation lives "
-                "under a topic (projects / project / topic / your folder). "
-                "Pick or make one further down in the sidebar.")}), 400
+        too_high = calculation_folder_refusal(dest_dir)
+        if too_high:
+            return jsonify({"ok": False, "error": too_high}), 400
         try:
             refuse_described(dest_dir, shown=str(body["dest"]))
         except DescribeError as exc:
@@ -1666,8 +1663,7 @@ def api_task_setup_save():
             return jsonify({"ok": False, "error": no.message,
                             "findings": _issues_to_json([Issue(
                                 "error", no.message,
-                                where=f"task.{no.where}" if no.where
-                                else "")])}), 400
+                                )])}), 400
 
     # WHAT A STAGE THAT HAS RUN COMPUTES IS NOT CHANGED (`web/task-setup.md`
     # § 8; the user, 2026-10-27): its settings, its points, or the stage
@@ -2670,11 +2666,14 @@ def _folder_extension(task, folder) -> Optional[dict]:
     reuses = getattr(task, "reuses", "") or ""
     if not reuses:
         return None
+    from molbuilder.jobset.reuse import SHARING_RUNG
     from molbuilder.projects import find_projects_root
     from molbuilder.transport.reuse import Extension, ReuseError
     try:
-        return Extension.of(reuses, tree_root=find_projects_root(
-            pathlib.Path(folder))).to_wire()
+        # ...AND THE RUNG WHOSE WINDOW A FIT IS WRITTEN INTO, as the
+        # Transport tab's extend answer names it.
+        return dict(Extension.of(reuses, tree_root=find_projects_root(
+            pathlib.Path(folder))).to_wire(), window=SHARING_RUNG)
     except ReuseError as exc:
         return {"error": str(exc)}
 

@@ -17,8 +17,8 @@ import numpy as np
 import pytest
 
 from molbuilder.constants import RYDBERG_EV
-from molbuilder.spectra.raman import (broadened, eps1_minus_one,
-                                      photon_energy_ev)
+from molbuilder.spectra.raman import (eps1_minus_one, photon_energy_ev,
+                                      spreader)
 
 #: SIESTA's grid at the default run width, 0.002 Ry: Optical.Broaden / 10
 #: apart up to 10 Ry (`Src/optical.F`; `engines/vibration.md` § 13, R-c).
@@ -102,7 +102,7 @@ def test_a_run_widened_after_it_equals_the_wider_spread(width_ev):
     same transitions spread at ``width_ev`` directly -- two of SIESTA's
     Gaussians make one."""
     sticks = [(3.0, 1.0), (3.05, 0.4), (7.2, 2.5), (20.0, 0.8)]
-    widened = broadened(GRID, siesta_spread(sticks, RUN_EV), RUN_EV, width_ev)
+    widened = spreader(GRID, RUN_EV, width_ev)(siesta_spread(sticks, RUN_EV))
     direct = siesta_spread(sticks, width_ev)
     assert np.max(np.abs(widened - direct)) == pytest.approx(
         0.0, abs=1e-4 * np.max(direct))

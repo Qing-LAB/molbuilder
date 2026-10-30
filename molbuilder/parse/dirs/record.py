@@ -84,9 +84,9 @@ class RunFiles:
     #: The calculation's kind, from its description -- the caller's
     #: (`runs.run_of`), never read here: this floor knows no calculation.
     calculation: Optional[str] = None
-    #: The stage's own deck, as the run door places it -- the copy in the
-    #: stage's folder, a trial's run's own.
-    stage_deck: Optional[Path] = None
+    #: Whether the run's deck is still its stage's -- the run door's one
+    #: answer (`runs.Run.current`); ``None`` with nothing to compare.
+    current: Optional[bool] = None
 
 
 def _read(path: Optional[Path], *, head: Optional[int] = None,
@@ -109,7 +109,7 @@ def _read(path: Optional[Path], *, head: Optional[int] = None,
 def run_files(directory, *, names, launched_in, run: Optional[int] = None,
               status=None, engine: Optional[str] = None,
               calculation: Optional[str] = None,
-              stage_deck: Optional[Path] = None) -> Optional[RunFiles]:
+              current: Optional[bool] = None) -> Optional[RunFiles]:
     """What the run of the stage ``names`` names (`runfiles.RunNames`) left
     in ``directory``, found through the doors that own each name -- or
     ``None`` when no deck of it is here.
@@ -194,7 +194,7 @@ def run_files(directory, *, names, launched_in, run: Optional[int] = None,
         progress_log=this_run(".molwatch.log"),
         monitor_log=this_run(".monitor.log"),
         util_csv=this_run(".util.csv"),
-        earlier=earlier, calculation=calculation, stage_deck=stage_deck,
+        earlier=earlier, calculation=calculation, current=current,
         launched_in=Path(launched_in))
 
 
@@ -550,28 +550,23 @@ def _concluded(f: RunFiles) -> Dict[str, Any]:
 
 def _deck(f: RunFiles) -> Dict[str, Any]:
     """The deck as run: its path and hash, whether it is still the stage's
-    deck, and what it was gathered from."""
+    deck -- the run door's answer (`runs.Run.current`) -- and what it was
+    gathered from: its run's gather, at ``run-<n>/`` where the run's points
+    share it, then what a point took alone (§ 5d.1; `engines/transport.md`
+    § 2a.11)."""
     from ...runrecord import read_gathered_from
-    from ...deck_record import same_calculation
-    from ..fdf import read_deck
     if f.deck is None:
         return {}
     text = _read(f.deck)
     deck: Dict[str, Any] = {
         "path": f.deck.name,
         "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
-    # THE STAGE'S OWN DECK, where the run door places it (`runs.Run.
-    # stage_deck`): in the folder prep wrote it in -- the stage's, or a bias
-    # point's within it; for a benchmark trial it is the run's own, one
-    # file, with nothing to compare.
-    stage_deck = f.stage_deck
-    if (stage_deck is not None and stage_deck.is_file()
-            and stage_deck.resolve() != f.deck.resolve()):
-        # EACH DECK WHOLE, its coordinates file inlined (`parse.fdf.
-        # read_deck`, the one reader of a deck's file).
-        deck["current"] = not same_calculation(
-            f.engine, read_deck(f.deck), read_deck(stage_deck))
-    gathered = read_gathered_from(f.directory)
+    if f.current is not None:
+        deck["current"] = f.current
+    gathered = list(read_gathered_from(f.launched_in))
+    if f.directory.resolve() != f.launched_in.resolve():
+        gathered += [g for g in read_gathered_from(f.directory)
+                     if g not in gathered]
     if gathered:
         deck["gathered_from"] = [{"file": fn, "from": str(src)}
                                  for src, fn in gathered]
@@ -704,7 +699,7 @@ def _merge(into: Dict[str, Any], part: Dict[str, Any]) -> None:
 def run_record(directory, *, names, launched_in, run: Optional[int] = None,
                status=None, engine: Optional[str] = None,
                calculation: Optional[str] = None,
-               stage_deck: Optional[Path] = None,
+               current: Optional[bool] = None,
                fields: Optional[Tuple[str, ...]] = None
                ) -> Optional[Dict[str, Any]]:
     """The record of the run of the stage ``names`` names in ``directory``
@@ -719,7 +714,7 @@ def run_record(directory, *, names, launched_in, run: Optional[int] = None,
     (`execution/job-request.md` § 3.1a)."""
     f = run_files(directory, names=names, run=run, status=status,
                   engine=engine, calculation=calculation,
-                  stage_deck=stage_deck, launched_in=launched_in)
+                  current=current, launched_in=launched_in)
     if f is None:
         return None
 

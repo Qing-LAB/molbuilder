@@ -1963,12 +1963,14 @@ physics; the walk runs a voltage at every frame, then the next voltage —
 § 2a.11, *What a run's points share*.)*
 
 - **Within a frame**, the voltages chain as a sweep does (§ 2a.11): the 0 V
-  point from the seed's density, each further voltage from the converged point
-  before it **in the same frame**.
+  point from the seed's density, each further voltage from the converged
+  point of the voltage closest to it among those before it **in the same
+  frame** — the one point it waits on.
 - **Across frames**, nothing chains: each frame is a geometry in its own right,
   so its 0 V point starts from the seed's density, never from another frame.
-- **A voltage that does not finish ends that frame's chain**, and the walk goes
-  on with the other frames.
+- **A voltage that does not finish ends the chain that starts from it**: the
+  points of its frame that start from it, and theirs, are not run, and the
+  walk goes on with every other point.
 - **Under the low-bias approximation** each frame runs once, at 0 V, and its
   I–V is computed from its own T(E, 0) at the listed voltages.
 
@@ -2240,7 +2242,11 @@ the transport tab asks, with nothing chosen, once its list holds a second
 voltage) — and is refused without it: never inferred from the count. A list of
 one voltage is the single bias, and states none — written so, `[0.0]`, by both roads (`molbuilder describe` with no `--bias`, the Transport tab's box); an empty list is written by neither and no reader fills one in (2026-10-18). The tab's list is typed, or
 filled by its **start / stop / step** builder — 0 V first, then the walk — and
-stays editable; one list either way. Beside the junction slot,
+stays editable; one list either way. The device's and the transmission's tabs
+show the list in their locked bias box with what it makes under the treatment
+held, kept current as either changes: one voltage, *one run*; several,
+*one run, at 0 V* under the low-bias approximation, else *one run, a point per
+voltage* (the table below; § 2a.11). Beside the junction slot,
 `"swap_electrodes": true` states the electrode rename this calculation makes
 in its own copy of the cited junction (§ 4); false writes no key.
 
@@ -2379,12 +2385,14 @@ holds no deck at the stage level: every deck is a point's.
 (`continuation.done`), never from a second record: **done** when its run
 finished, its SCF converged by the engine's own output (the device's), and it
 holds what the rungs downstream take from it (the DAG, `stage_inputs`: the
-device's `.TS.HSX` and `.TSDE`; the transmission's `.TBT.nc` — or, on a
-polarized junction, its `.TBT_UP.nc` and `.TBT_DN.nc` both, the two files
-TBtrans writes in its place — and, for a transmission point that shares
-energies with a finished calculation, its `shared/` holding its
-`.copied-from` (§ 2a.16) *(found 2026-10-18: the door asked for `.TBT.nc`
-alone, so a polarized sweep read 0 of N done and was walked again)*). Its
+device's `.TS.HSX`; the transmission's `.TBT.nc` — or, on a polarized
+junction, its `.TBT_UP.nc` and `.TBT_DN.nc` both, the two files TBtrans
+writes in its place — and, for a transmission point that shares energies
+with a finished calculation, its `shared/` holding its `.copied-from`,
+§ 2a.16) and what a later point of its run starts from (`hands_on`, the
+`along` row of `warm-files.toml`'s `[transport]`: the device's `.TSDE`)
+*(found 2026-10-18: the door asked for `.TBT.nc` alone, so a polarized sweep
+read 0 of N done and was walked again)*. Its
 record is
 what its wrapper already writes as it ends — the conclusion marker and the
 outputs. A point has no record of its own beyond that: *queued*, *running*,
@@ -2392,9 +2400,11 @@ outputs. A point has no record of its own beyond that: *queued*, *running*,
 its points' files — each point's run by the one status door — and the jobs
 launched from this machine, by one rule (`continuation.points_state`, *One
 door for each place* below; `job-system.md`, *What marks each state*). Every
-reader asks it — `status`, the gather, `jobset scratch`, the record: a point
-the ended walk never reached is failed, *the walk ended before it reached
-this point* (`continuation.never_reached`), never one still to come — in
+reader asks it — `status`, the gather, `jobset scratch`, the run door (the
+Results tab's ladder and a point's own folder), the record's points and the
+data file's `device_state`: a point the ended walk never reached is failed,
+*the walk ended before it reached this point* (`continuation.never_reached`),
+never one still to come — in
 `status`'s count, the record and the run's own finish alike
 (`run-reports.md` § 2.9).
 
@@ -2412,11 +2422,12 @@ so the record says what each point started from: a point that starts from
 another point names it in its `.continued-from`; the 0 V point starts from what
 its run gathered, which its own `.gathered-from` names (`status <stage>`: *from
 what it gathered*) — the file catalogue's two words for the two starts
-(`project-layout.md` § 5). The device
-walk ends a frame's chain at a voltage that does not finish — the voltages
-after it in that frame would start from it — and goes on with the other
-frames; the transmission walk goes on — its points are independent — and says
-which did not. The walk's files are the stage's, in its `launch/` folder:
+(`project-layout.md` § 5). A device
+point waits on the point it starts from and on nothing else: a voltage that
+does not finish ends the chain that starts from it — the points whose start
+is it, and theirs — and the walk goes on with every other point; the
+transmission walk goes on — its points are independent — and says which did
+not. The walk's files are the stage's, in its `launch/` folder:
 the header prep wrote for a queue, `<label>_<NN>_<stage>-sweep.sbatch` (the
 device's `AuBDT_04_device-sweep.sbatch`) — one allocation for every point,
 their walls summed (`group.envelope`), sent as it is at every launch of the
@@ -2438,7 +2449,8 @@ and one `finish`. Three pieces, the vibration's (`engines/vibration.md`
   (`transport.points_index`, which travels with the monitor):
   launch writes every point of the run in the walk's order — its folder,
   words, frame and voltage, the point it needs (a device point's, the point
-  before it in its frame), whether it was taken over and from where, what
+  it starts from, where this walk runs it), whether it was taken over and
+  from where, what
   makes it done (the stage's products, and a sharing point's `shared/`,
   `continuation.must_hold`) and the energy grid its deck describes — and
   the frames' weights where the cited set states them; each point's report
@@ -2545,7 +2557,8 @@ calls are (`run-reports.md` § 2.9), with its axes (*3 of 5 points done
 voltages)* — `transport.points_index.summary`, the job's own count too —
 and *(between two points)* while the walk is between them);
 `status <stage>` says what the run gathered and what it continued from, read
-at the point (*0 V, 0.2 V taken over from run-1; the rest walked*), then lists
+at the point (*0 V, 0.2 V taken over from run-1; the rest walked* — taken
+over as the run's index records launch's decision, `taken_from`), then lists
 the points — each run's state, done or not done and why, what each started
 from, and what each alone took (a transmission point's device point). Every transport rung's
 `status <stage>` shows its gather the same way.
@@ -2601,8 +2614,8 @@ little at a time; frames are **independent** — each a geometry in its own
 right — so **each frame's first point starts from the seed's density** (its
 own copy, taken from the seed's run, its `.gathered-from`), never from
 another frame, and a
-voltage that does not finish ends **its frame's** chain while the walk goes on
-with the other frames. The seed is frame 0's geometry (the approximate gate,
+voltage that does not finish ends **the chain that starts from it** while the
+walk goes on with every other point. The seed is frame 0's geometry (the approximate gate,
 § 2a.9: a nearby geometry's density is a start, not a result). `status` counts
 *k of N points done (F frames × V voltages)* — *, m failed* beside it where
 points ended without being done; warm takes the done points over
@@ -2664,8 +2677,10 @@ that is 123 + 123 + 46 energy points: 294 against 125 with the formula's
 **`tsgf/`, a folder of its own inside the run**: `run-<n>/tsgf/`
 ([`job-contracts.md`](?doc=execution/job-contracts.md) *Directories*). The
 folder's name is the vocabulary's — `warm-files.toml` `[transport]
-scratch_dir`, the fourth fact a swept section states (§ 4.2a) — and every
-writer and reader of it takes it from there. The files are named on the
+scratch_dir`, the fourth fact a swept section states (§ 4.2a), read from the
+calculation's own copy of it — and every writer and reader of it takes it from
+there, the device's deck among them; a copy that states none has no folder,
+and the deck names the files beside the run's. The files are named on the
 engine's own name with the voltage in it, `<label>.<voltage>.TSGF<lead>`
 (`transiesta.lead_gf_file`: `AuBDT.v0.2.TSGFL`), and live nowhere else: a
 point's folder never holds one.
@@ -5020,7 +5035,7 @@ So transport supplies **four layout tables**, selected by the `stage_token` that
 | stage | deck shape | items in its layout |
 |---|---|---|
 | `seed` | an ordinary SCF | the electronic contract; no TS/TBT rows |
-| `electrode_L`, `electrode_R` | a bulk lead | contract + `electrode_kz` + semi-infinite direction |
+| `electrode_L`, `electrode_R` | a bulk lead | contract + `electrode_kz` (its k-points along the lead's periodic axis, z) |
 | `device` | the NEGF SCF | contract + `TS.*` contour rows + the chemical potentials; the shared k-point grid in the electrode plane and one k-point along z ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | `transmission` | **its own text since 2026-09-29** (the same text as `device` until then) | the `TS.*` junction description `tbtrans` reads plus the `TBT.*` rows; the binary is `Job.program = tbtrans` (§ 6.1b) |
 
@@ -5492,12 +5507,12 @@ correct order".)*
 | | why |
 |---|---|
 | **One tab per rung**, in ladder order, numbered `1 · seed` … `5 · transmission`. The strip is `lib/tab-strip.js`'s, the switcher the engine strips already use | the person answers *which rung* by choosing the tab. A value typed there is that rung's own override bag; nothing routes |
-| **Each tab opens with one line** on what the rung computes and what it hands on — `transport/stages.py::RUNG_NOTES`, served by the schema route | the flow § 6.1 draws, read at the point of setting |
+| **Each tab opens with one line** on what the rung computes and what it hands on — `transport/stages.py::rung_notes()`, its numbers read from the catalogue and `kmesh`, served by the schema route | the flow § 6.1 draws, read at the point of setting |
 | **A tab offers** the items the rung owns (`stages` names it) and the items any rung may set (no `stages`) | never another rung's item — that is on its own tab — and never a shared one — that is card 2 |
 | **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count. **Every card is named with the rung** (*seed · Convergence targets*) and one sentence above them says the values are the rung's own over the template's — the schema's `card_prefix` and `stage_words` *(user, 2026-10-09: "make sure the title and text in each panel for these stages are clear ... so the user is not confused by the repetition")* | the rung's own physics is what the eye lands on; the seed, both leads and the device each carry the same SCF settings with their own values, and each tab says whose they are |
 | **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`template.unread_overrides`, the description's check — `validation/task.py`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
 | **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, every one — the seed among them, since the device starts from its density (user, 2026-10-12, withdrawing ruling Q4's skip) — its stages the kind's roles (`execution/architecture.md` § 3.3); the description's reader refuses any other ladder, naming the five rungs, and Task setup offers no control that would change it (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk; the reader took all three until 2026-10-11, and Task setup's stage table offered them |
-| **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one that already holds a `task.json` (one calculation per folder), and one inside the citation (§ 3.1) — the checks `molbuilder describe` asks, through the same two functions (`describe.refuse_described`, `compose.refuse_inside_citation`) — and writes the template, `task.json` and `job-request.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `molbuilder describe`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | the refusal belongs to the door that writes; until 2026-10-11 the browser wrote the server's text through the content-blind layer and the one-folder refusal lived in the page alone |
+| **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one above a calculation's place — the projects root, a project, a bare topic (`job-contracts.md` § 2.5, in the words of the file layer's one depth door, `files.calculation_folder_refusal`, which Build's hand-over asks too) — one that already holds a `task.json` (one calculation per folder), and one inside the citation (§ 3.1) — the checks `molbuilder describe` asks, through the same two functions (`describe.refuse_described`, `compose.refuse_inside_citation`) — and writes the template, `task.json` and `job-request.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `molbuilder describe`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | the refusal belongs to the door that writes; until 2026-10-11 the browser wrote the server's text through the content-blind layer and the one-folder refusal lived in the page alone |
 
 The numbered cards and the tab strip read as one order: **1 cite the junction
 → 2 the shared description, once → 3 check the chemistry → 4 each rung, on
@@ -5741,7 +5756,7 @@ a visually logical way".)*
 (`form-components.css` `.page-cols` / `.page-aside`, Task setup's rail) with
 four cards about the whole calculation: **the five stages, in order** (the
 rung list the schema route answers, each rung's note — the same notes its tab
-opens with, `RUNG_NOTES`); **k-points: what each stage samples, and why**; **SCF
+opens with, `rung_notes()`); **k-points: what each stage samples, and why**; **SCF
 settings: each stage has its own**; **after you describe** (prepare, launch,
 read back). The rail stays on screen while the steps are worked through.
 
@@ -5764,7 +5779,7 @@ k-points along z, the transmission k-point grid.
   the one-point warning, and the sources. Sections, not a table: the rail is
   narrow (`--page-aside-w`), and a rail card's sections share one small
   heading style (`form-components.css`, `.page-aside .card h3`).
-* **Each stage's note** (`transport/stages.py` `RUNG_NOTES`) — the stages card
+* **Each stage's note** (`transport/stages.py` `rung_notes()`) — the stages card
   lists them, each headed by the stage's own number as its tab is
   (*1 · seed*), and each stage's tab opens with its own — says which
   k-points that stage samples and why, in a sentence or two.
@@ -6101,9 +6116,10 @@ flowchart LR
 >
 > - the **device** walk hands the previous point's `.TSDE` (the NEGF
 >   density) forward, so $V_{i+1}$ converges from $V_i$ instead of from
->   scratch — and therefore **ends a frame's chain at a failed point**:
->   walking on in that frame would converge from a state the failure
->   poisoned, and the other frames start from the seed, as every frame does;
+>   scratch — and therefore **ends the chain that starts from a failed
+>   point**: a point that would start from it would converge from a state
+>   the failure poisoned; every other point walks on, and every frame starts
+>   from the seed;
 > - the **transmission** walk hands nothing forward — each point re-reads
 >   the device's saved H — so a bad point says nothing about the next: the
 >   walk **continues**, and the exit code reports any failure.

@@ -1122,10 +1122,11 @@
      * shown in its locked box as ``text`` -- the page holds them (the
      * Transport tab's bias list), the form only the place to say them.
      * Never collected: the box stays locked and blank. */
-    function showPoints(container, name, text) {
+    /* THE FIELDS ANSWERED POINT BY POINT are the schema's own marks
+     * (`data-per-point`): every one in `container` shows `text`. */
+    function showPoints(container, text) {
         if (!container) return;
-        for (const lab of container.querySelectorAll(
-                 '[data-per-point="' + cssEsc(name) + '"]')) {
+        for (const lab of container.querySelectorAll("[data-per-point]")) {
             for (const c of lab.querySelectorAll("input")) {
                 c.placeholder = text;
                 c.title = text;

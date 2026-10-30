@@ -476,7 +476,7 @@ gathers what is already there, one import for a person's script:
 | `read_optical_data(path)` | a SIESTA vibration's optical calls' data file, `<label>.optical.nc` (`spectra.optical_data.read_optical_data`), with its atom index map |
 | `raman_view(path, *, laser_nm, broaden_ev=None)` | the Raman of a SIESTA vibration result at a laser, from its optical calls' data file: the spectrum viewer's one derivation (`spectra.raman.raman_view_of`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) |
 | `read_raman_data(path)` | an exported Raman view, `<label>.raman.nc` (`spectra.raman.read_raman_data`) |
-| `reaveraged(path, *, temperature_k, swing_quanta=0)` | a frame set's transport calculation, from its data file `<label>.transport.nc`, averaged over another motion than the set's: the bell curve at `temperature_k` — the junction's, or a randomly pumped mode's effective one — with a swing adding `swing_quanta` quanta on it; each frame weighted from its position along the mode alone (`frame_average.motion_weights`, [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5.4); answered as `{motion, frames, weights, reach, bias_v, energy_ev, transmission, conductance_g0, conductance_change_percent, said}` — the motion's quanta, spreads and turning points; each frame's position and weight; how far the frames reach against the motion; at each voltage the averaged T(E), G/G₀ and its change from frame 0's; and what is said beside them (three frames blind to the shape, a weight below zero, a voltage not all done) — nothing written. Refused by name: frames stating no position along a mode, two frames at one position, a temperature not kelvin 0 or more, swing quanta below 0, a swing whose turning points lie beyond the outermost frame |
+| `reaveraged(path, *, temperature_k, swing_quanta=0)` | a frame set's transport calculation, from its data file `<label>.transport.nc`, averaged over another motion than the set's: the bell curve at `temperature_k` — the junction's, or a randomly pumped mode's effective one — with a swing adding `swing_quanta` quanta on it; each frame weighted from its position along the mode alone (`frame_average.motion_weights`, [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5.4), each voltage by the record's own rule (`frame_average.at_voltage`); answered as `{motion, frames, weights, reach, bias_v, energy_ev, transmission, conductance_g0, conductance_change_percent, said}` — the motion's quanta, spreads and turning points; each frame's position and weight; how far the frames reach against the motion; at each voltage the averaged T(E), G/G₀ and its change from frame 0's; and what is said beside them (three frames blind to the shape, a weight below zero, a voltage not all done) — nothing written. Refused by name: frames stating no position along a mode, two frames at one position, a temperature not kelvin 0 or more, swing quanta below 0, a swing whose turning points lie beyond the outermost frame |
 | `outermost_move(path, *, mode, temperature_k, nodes=3)` | a vibration result's mode — by its number — and how far a frame set at that temperature moves the atom that moves most at its outermost frames, for a rule of 3, 5 or 7 frames, in Å, read through the result's reader (`mode_frames.outermost_move`, [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5); `None` for an imaginary mode, a temperature not kelvin 0 or more refused |
 
 `from molbuilder.postprocess import parse, atom_index_map,
@@ -1778,11 +1778,17 @@ with the default alone — SIESTA has not started, so `asked` is the deck's and
 Its name and sha256 · `current`, whether the stage's deck is still the
 calculation it ran — the run settings aside, a re-prep for its job request
 keeping it so (`deck_record.same_calculation`, [`job-request.md`](?doc=execution/job-request.md) § 6) — against the deck prep wrote, in the folder
-the run's was copied from — the stage's, or a bias point's within it
-(`runs.Run.prepared`, since 2026-10-11; the stage's folder alone until then,
-which a bias point's run never matched), where the run door places it —
-`runs.Run.stage_deck`; a benchmark trial's record states none, its deck rendered into its run) · for a gathered rung, what was taken from which attempt, read
-from `.gathered-from` (`runrecord.read_gathered_from`, beside its writer
+the run's was copied from — the stage's, a bias point's within it, or a
+vibration call's phase folder (`runs.Run.prepared`), where the run door places
+it — `runs.Run.stage_deck`; a benchmark trial's record states none, its deck
+rendered into its run. That deck is read with the files beside the run's own,
+so what a deck reads from a file beside it — a vibration call's coordinates,
+which its job writes by design ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.11 § 1) — is the run's, and only what prep fixes is compared: one answer,
+`runs.Run.current`, which the record and the run's check report (`Run.report`)
+both give · for a gathered rung, what was taken from which run, read
+from `.gathered-from` — a point of a run of points, its run's at `run-<n>/`
+and its own (`runrecord.read_gathered_from`, beside its writer
 `write_gathered_from`) — the provenance a transport record cites, never a newest-file guess.
 
 ### 5d.5 The grammar — the SIESTA family's output lines

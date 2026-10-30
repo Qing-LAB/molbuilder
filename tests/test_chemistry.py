@@ -456,7 +456,13 @@ class TestSpeciesLabel:
         silently wrong rather than fail.
         """
         from molbuilder.transport.transiesta import _emit_geometry
-        block = [l.split() for l in _emit_geometry(self._two_golds(), None)
+        # THE JUNCTION'S BOX, which the transport geometry block writes
+        # verbatim -- a junction always states one (`engines/transport.md`
+        # § 2a.9).
+        golds = self._two_golds().replace(
+            cell=np.diag([8.0, 8.0, 8.0]),
+            axis_kind=("isolated", "isolated", "transport"))
+        block = [l.split() for l in _emit_geometry(golds, None)
                  if "Au" in l and l.strip().startswith(("1", "2"))]
         assert block == [["1", "79", "Au1"], ["2", "79", "Au2"]], block
 
@@ -465,7 +471,9 @@ class TestSpeciesLabel:
         not reach an engine input at all.
         """
         from molbuilder.transport.transiesta import _emit_geometry
-        s = Structure(elements=["Xx"], positions=np.zeros((1, 3)))
+        s = Structure(elements=["Xx"], positions=np.zeros((1, 3)),
+                      cell=np.diag([8.0, 8.0, 8.0]),
+                      axis_kind=("isolated", "isolated", "transport"))
         with pytest.raises(KeyError):
             _emit_geometry(s, None)
 

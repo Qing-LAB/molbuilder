@@ -629,9 +629,8 @@ def output_part(name: Optional[str]) -> Optional[OutputPart]:
 CAUSE_WORDS = {
     **{m: "out of memory" for m, st in FATAL_MARKERS if st == "out_of_memory"},
     "siesta: error": "an engine error",
-    OUT_OF_TIME_MARKER: "its wall (MaxWalltime): the engine stopped with its "
-                        "restart state saved; a launch again continues "
-                        "from it",
+    OUT_OF_TIME_MARKER: "its wall (MaxWalltime): the engine stopped and "
+                        "saved its restart state",
     PROPOR_MARKER: "MPI rank distribution error (propor)",
     DIE_MARKER: "a rank stopped the run",
     "siesta died": "the engine died",

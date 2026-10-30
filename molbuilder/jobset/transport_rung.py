@@ -148,8 +148,11 @@ def transport_parts(task, stage: str, composed, config):
     # atoms, same relaxation, a subset rather than a geometry derived from
     # anywhere else.  That is what lets the seam stay `spec_for(struct,
     # cfg, ...)`: a deck describes a structure, and these are two.
-    if lead_of(stage) is not None:
-        model = (composed.electrode_left if stage == "electrode_L"
+    region = lead_of(stage)
+    if region is not None:
+        # THE LEAD BY ITS REGION, as the kind table names it (`leads`).
+        from ..transport.sort import REGION_LEFT_ELECTRODE
+        model = (composed.electrode_left if region == REGION_LEFT_ELECTRODE
                  else composed.electrode_right)
         struct = model.as_structure()
         # The lead's identity IS the .TSHS stem the device deck names --

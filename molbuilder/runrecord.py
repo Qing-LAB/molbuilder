@@ -334,6 +334,57 @@ def newest_run(where, names: "_rf.RunNames") -> Optional[int]:
     return _rf.latest_run(Path(where), names.stem)
 
 
+def newest_output(where, names: "_rf.RunNames") -> Optional[Path]:
+    """THE ENGINE OUTPUT OF THE RUN'S NEWEST TRY in ``where``
+    (:func:`newest_run`) -- ``None`` where that try printed none: an engine
+    that died before its first line is never read from the try before it.
+    Asked of a point's folder by a run of points' own steps (a vibration
+    call's coordinates and facts, a transport round's NEGF count)."""
+    n = newest_run(where, names)
+    if n is None:
+        return None
+    out = Path(where) / names.name(".out", run=n)
+    return out if out.is_file() else None
+
+
+# --------------------------------------------------------------------- #
+#  A run of points' index -- what every kind's index shares              #
+#  (`engines/vibration.md` § 5.11 § 7, `engines/transport.md` § 2a.11)   #
+# --------------------------------------------------------------------- #
+
+def index_path(run_dir, names: "_rf.RunNames", role: str) -> Path:
+    """Where a run of points keeps its index, ``role`` its kind's
+    catalogue row: at the run's root, named for its first try -- launch
+    writes it there, and every try of the run reads it."""
+    return Path(run_dir) / names.name(role, run=_rf.FIRST_TRY)
+
+
+def read_index(path, schema: str) -> dict:
+    """A run of points' index at ``path``, refused by name -- the file
+    named -- when it is not one of ``schema``."""
+    p = Path(path)
+    try:
+        d = _persist().read_json(p)
+        _persist().check_schema(d.get("schema") if isinstance(d, dict)
+                                else "", schema, label=p.name)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{p.name}: {exc}") from exc
+    return d
+
+
+def write_index(path, index: dict) -> Path:
+    """A run of points' index written whole, atomically
+    (`persist.write_json`)."""
+    return _persist().write_json(path, index)
+
+
+def not_done_words(row: dict) -> str:
+    """A point of a run not done, in the words a failed part and a failed
+    finish name it by (`run-reports.md` § 2.9): its words, and why by its
+    kind's done rule."""
+    return f"{row['words']}: not done -- {row['why'] or row['state']}"
+
+
 def write_launch(where: Path, *, mode: str, command: List[str],
                  job_id: Optional[str] = None,
                  continued_from: Optional[RunRef] = None,
@@ -629,4 +680,6 @@ def copied_in(stage_dir) -> Optional[str]:
 
 
 __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run",
+           "newest_output", "index_path", "read_index", "write_index",
+           "not_done_words",
            "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]

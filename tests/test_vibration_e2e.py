@@ -153,6 +153,42 @@ def water(tmp_path_factory):
     return bundle, d
 
 
+def test_a_result_whose_run_asked_no_infrared_says_so_at_the_one_door(
+        water, monkeypatch):
+    """`engines/vibration.md` § 3.1, `web/spectra.md` § 3.2: a result whose
+    run had Compute IR off carries no infrared, and the one door every
+    reader asks (`spectra.infrared.infrared_view_of`, through
+    `postprocess.infrared_view` and the load route alike) refuses it by
+    name, in the result's own facts -- "Compute IR was off".  The water
+    run above asked Raman and not infrared.  THE SILENT FAILURE: the
+    refusal blaming the charges the run never printed, or a route of its
+    own answering differently from the script's door.  MUTATION THIS MUST
+    FAIL AGAINST: `no_charges_reason` not asking `phase_ir`."""
+    from molbuilder.postprocess import infrared_view
+    from molbuilder.projects import PROJECTS_ROOT_ENV, find_projects_root
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    from molbuilder.spectra.infrared import InfraredError
+    from molbuilder.web.app import create_app
+    bundle, d = water
+    # THE LOAD DOOR'S FENCE: the result lies in the tree the server serves.
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(find_projects_root(bundle)))
+    assert d["phase_ir"] == "not requested"
+    path = on_label_at(bundle / "01_freq" / "run-0", ROLE_SPECTRA)
+    with pytest.raises(InfraredError) as e:
+        infrared_view(path)
+    assert "Compute IR was off" in str(e.value), str(e.value)
+    # ...and the load route: the result loads, its infrared said absent in
+    # the same words, no view (`web/spectra.md` § 3.2).
+    r = create_app(config={}).test_client().post(
+        "/api/spectra/load", json={"path": str(path),
+                                   "infrared": {"direction": "z"}})
+    assert r.status_code == 200, r.get_json()
+    got = r.get_json()["results"]
+    assert "Compute IR was off" in got.get("infrared_absent", ""), got
+    assert "infrared" not in got, sorted(got)
+
+
 def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(water):
     bundle, d = water
 
@@ -608,20 +644,22 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     # load door answers the stored dipole change along each axis, and the
     # three average back to the file's own orientation average -- one vector
     # read two ways.
-    from molbuilder.spectra.results import SpectraResults
+    # Asked of the load door as the page asks it, the result's own path.
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
     from molbuilder.web.app import create_app
-    from molbuilder.spectra.infrared import read_ask
-    from molbuilder.web.blueprints.spectra import _loaded
-    result = SpectraResults.from_dict(d)
-    with create_app().app_context():
-        along = {}
-        for axis in "xyz":
-            got = _loaded(result, infrared=read_ask(
-                {"direction": axis})).get_json()["results"]
-            assert (got["infrared_source"], got["infrared_orientation"]) == \
-                ("dipole", "held"), got.get("infrared_said")
-            along[axis] = [m["intensity_km_mol"]
-                           for m in got["infrared"]["modes"]]
+    result = on_label_at(attempt, ROLE_SPECTRA)
+    web = create_app(config={}).test_client()
+    along = {}
+    for axis in "xyz":
+        reply = web.post("/api/spectra/load", json={
+            "path": str(result), "infrared": {"direction": axis}})
+        assert reply.status_code == 200, reply.get_json()
+        got = reply.get_json()["results"]
+        assert (got["infrared_source"], got["infrared_orientation"]) == \
+            ("dipole", "held"), got.get("infrared_said")
+        along[axis] = [m["intensity_km_mol"]
+                       for m in got["infrared"]["modes"]]
     for k, m in enumerate(d["modes"]):
         mean = sum(along[a][k] for a in "xyz") / 3.0
         assert mean == pytest.approx(m["ir_intensity_km_mol"], rel=1e-9), \

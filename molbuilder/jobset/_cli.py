@@ -446,7 +446,7 @@ def _init_transport(*, out_dir, run_name, engine, slots_opt,
     # one, through the one door both describe roads take
     # (`transport.stages.stages_for_transport`).
     from ..transport.stages import stages_for_transport
-    stages = tuple(stages_for_transport())
+    stages = tuple(stages_for_transport(engine))
     try:
         task = Task(
             engine=engine,
@@ -616,9 +616,7 @@ def _init_reusing(*, out_dir, reuses, engine, bias_opt,
             fit = fitted(finished_window(finished), lo, hi, finer)
         except ValueError as exc:
             raise click.ClickException(f"--window {window_opt}: {exc}")
-        window = {"transmission_emin_ev": fit.emin,
-                  "transmission_emax_ev": fit.emax,
-                  "transmission_n_points": fit.points}
+        window = fit.values()
         task = dataclasses.replace(
             task, varies=tuple(dict.fromkeys((*task.varies, *window))),
             stages=tuple(Stage(s.name, {**s.overrides, **window})
@@ -2743,22 +2741,17 @@ def migrate_cmd(bundle: str) -> None:
         click.echo(f"  {line}")
 
 
-#: Each kind's export, by the calculation's kind: a module with
-#: ``export(calc, fmt, **asks)``, ``name_of(calc, fmt)`` and ``ASKS``.
-_EXPORTS = {"transport": "molbuilder.transport.export",
-            "vibration": "molbuilder.spectra.export"}
-
-
 def _export_of(calc):
-    """The export module of ``calc``'s kind (:data:`_EXPORTS`), or refused
-    naming the kinds that export."""
-    import importlib
-    kind = calc.task.calculation
-    if kind not in _EXPORTS:
+    """The export module of ``calc``'s kind -- the kind table's ``export``
+    (`kind_table.export_of`) -- or refused naming the kinds that export."""
+    from ..kind_table import export_of, kind, kinds
+    module = export_of(calc.task.calculation)
+    if module is None:
+        exporting = [k for k in kinds() if kind(k).export]
         raise click.ClickException(
-            f"a {kind} calculation has no export -- {' and '.join(_EXPORTS)} "
-            f"calculations do")
-    return importlib.import_module(_EXPORTS[kind])
+            f"a {calc.task.calculation} calculation has no export -- "
+            f"{' and '.join(exporting)} calculations do")
+    return module
 
 
 @jobset_group.command("export",
@@ -2806,7 +2799,7 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
             f"{to} is inside the calculation -- an export is written "
             f"outside it, its own records untouched; name another folder "
             f"with --to")
-    # THE KIND'S EXPORT (`_EXPORTS`): what it asks beyond its form, and its
+    # THE KIND'S EXPORT (`_export_of`): what it asks beyond its form, and its
     # name, known before anything is composed.
     module = _export_of(calc)
     asks = {k: v for k, v in (("laser_nm", laser_nm),

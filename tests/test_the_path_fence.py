@@ -48,7 +48,9 @@ def tree(tmp_path, monkeypatch):
     from molbuilder.projects import PROJECTS_ROOT_ENV
     root = tmp_path / "projects"
     inside = root / "P" / "here"
-    inside.mkdir(parents=True)
+    # A CALCULATION'S FOLDER, three levels in, where a door that writes a
+    # calculation is pointed -- so it reaches the path it is probed with.
+    (inside / "calc").mkdir(parents=True)
     (inside / "notes.txt").write_text("inside\n")
     outside = tmp_path / "outside"
     outside.mkdir()
@@ -135,6 +137,7 @@ def test_a_path_outside_the_projects_tree_is_refused(tree, route, probe):
               "outside_dir": str(outside),
               "inside_file": str(inside / "notes.txt"),
               "inside_dir": str(inside),
+              "calc_dir": str(inside / "calc"),
               "outside_by_climbing": "P/" + os.path.relpath(
                   outside, tree["root"] / "P"),
               "link_out": "out",

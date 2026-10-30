@@ -27,9 +27,14 @@ the queue and the handover to the day's end.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-29)*
 
-**Where we are: 2.54.0.** The releases are the changelog's rows; the
+**Where we are: 2.54.1.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
-last: one layout — every stage a folder, every run a folder of its own; a
+last: the vibration and transport roads reviewed whole — fifteen readers,
+every file beside its chapter — and mended: a displacement sweep launches, a
+point waits on the point it starts from, a point never reached reads failed
+everywhere, a call not done is not finished, the fc call's panel no longer
+cries *deck changed*, Describe no longer writes into a topic (2.54.1); one
+run of points proposed, § 1am step 1b, the user's yes. Before: one layout — every stage a folder, every run a folder of its own; a
 description stating another is refused by name, nothing flat is written, and
 the code that served it is gone; a run holds tries, `-run<N>`, only the last
 concluding (2.54.0, § 1am step 1, `execution/project-layout.md` § 1). Before:
@@ -65,7 +70,7 @@ user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
 it is, the user's ruling: "the user knows the information … don't do
 extra")*.
 
-**Last checked**: the fast batch on 2.54.0 (6,909 passed); the e2e batch whole on 2.54.0 (562 passed) — a warm retry on real SIESTA concluding only its last try, a relaunch leaving run-0 as it was; its new checks broken and seen to fail (every try concluding, a retry started without `--continue`, the folder's reset keeping the written card, every run folder counted as launched); the fast batch on 2.53.2 (6,948 passed), the kind table's new facts each removed and seen to fail (the root's description, both kinds' science checks, a deck that relaxes; a transmission folder's report on the real-junction e2e, 8 failed) -- the relaxation words, read by no test; the fast batch on 2.53.1 (6,947 passed), its new rules broken three ways and seen to fail (the hand-over's describe hook called bare, a PySCF preset menu of two tiers, the keyword-deck check left unasked); the hand-over's browser e2e on 2.53.1 (7 passed); the fast batch on 2.53.0 (6,944 passed); the real-junction e2e on 2.53.0 (201 passed) with the SIESTA CO₂ vibration and the monitor e2e (29), the run-of-points report broken six ways and seen to fail (the walk's own rule asked as done, the conductance without the energy join, the failed count, the finish's state, the NEGF count, the point's word); a spin-polarized transmission's (T↑+T↓)/2 checked against the record on channel files made from a real point; the fast batch on 2.52.0 (6,943 passed); the real-junction e2e on 2.52.0 (190 passed), the re-averaging broken six ways and seen to fail (the swing ignored, the reach refusal, the blind-shape line, the below-zero line, the swing's phase averages, the door's conductance from frame 0 alone); the walled vibration e2e on 2.51.1 (its failed part and finish counting the failed calls; the count's rule broken and seen to fail); the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
+**Last checked**: the fast batch on 2.54.1 (6,907 passed); the vibration, real-junction, optimization, stopped-run, wall and PySCF e2e files on 2.54.1 (265 passed), the trial's points rule and the optical call's prepared folder each broken and seen to fail, the Results tab loaded headless on a real result after the page edit; the fast batch on 2.54.0 (6,909 passed); the e2e batch whole on 2.54.0 (562 passed) — a warm retry on real SIESTA concluding only its last try, a relaunch leaving run-0 as it was; its new checks broken and seen to fail (every try concluding, a retry started without `--continue`, the folder's reset keeping the written card, every run folder counted as launched); the fast batch on 2.53.2 (6,948 passed), the kind table's new facts each removed and seen to fail (the root's description, both kinds' science checks, a deck that relaxes; a transmission folder's report on the real-junction e2e, 8 failed) -- the relaxation words, read by no test; the fast batch on 2.53.1 (6,947 passed), its new rules broken three ways and seen to fail (the hand-over's describe hook called bare, a PySCF preset menu of two tiers, the keyword-deck check left unasked); the hand-over's browser e2e on 2.53.1 (7 passed); the fast batch on 2.53.0 (6,944 passed); the real-junction e2e on 2.53.0 (201 passed) with the SIESTA CO₂ vibration and the monitor e2e (29), the run-of-points report broken six ways and seen to fail (the walk's own rule asked as done, the conductance without the energy join, the failed count, the finish's state, the NEGF count, the point's word); a spin-polarized transmission's (T↑+T↓)/2 checked against the record on channel files made from a real point; the fast batch on 2.52.0 (6,943 passed); the real-junction e2e on 2.52.0 (190 passed), the re-averaging broken six ways and seen to fail (the swing ignored, the reach refusal, the blind-shape line, the below-zero line, the swing's phase averages, the door's conductance from frame 0 alone); the walled vibration e2e on 2.51.1 (its failed part and finish counting the failed calls; the count's rule broken and seen to fail); the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-28) — the user's to change.
 
@@ -440,6 +445,7 @@ whole layout so that nothing after it has to carry two.
 | # | step | what becomes true | closes | state |
 |---|---|---|---|---|
 | 1 | **One layout** | Every stage is a folder and every run a folder of its own (`run-<n>/`); a description stating `flat` is refused by name, nothing flat is written, and the code that exists only for it goes: the per-run launch records, `.last-run`, warm files read in place, a calculation folder that is a run, the shape question and its vocabulary. No migration *(the user: "simply deny anything that's flat and don't generate anything flat. Remove the code that's flat, and that's it")* | the flat layout; X2 | **built 2.54.0** — four review rounds, the last two in parallel over every touched file whole with its owning chapter |
+| 1b | **One run of points** *(proposed 2026-10-30 after the vibration/transport review; the user's yes)* | A SIESTA vibration's run in phases and a transport run of points share ONE walk in launch (over the declaration: the points in order, each point's start, take-over of done points, one or many walls, points planned by an earlier point's step), ONE index door (read, write, stamps, `close`, rows, run state, still-to-run, summary — each kind adding its own fields), ONE report path (the monitor's in-process verb; milestones declared per pair), and the phase table read, not named; what a relaunch does with a point not done becomes a declared part (`relaunch_of`), read by the walk and by the run script's advice. Today the two are two implementations (`submit._phased_walk` / `_points_walk`; `vibration_phases` / `points_index`, their index machinery copied line for line; `siesta_vibration` / `monitor._point_main`), which five reviewers found independently and which caused several of the 2.54.1 road failures. The deferred items of 2.54.1 belong to it: transport's `shared/` clause inside the shared done door (`continuation.must_hold`); the vibration's `points_in` re-reading the plan; `PointsOf.record_says` deciding nothing; a point's way up to its run from two sources and its steps rendered two ways (`steps` / `reports`); the PySCF deck writing its mode records and removed-motions block as text beside the shared builder; which rung runs TBtrans decided by stage name in prep beside `SHAPE_OF_RUNG`; the relaunch rule's words composed twice (prep, status); the fit's rung laid onto `Extension.to_wire()` by hand in two doors; a point's prepared folder spelled by the walks and by `Run.prepared`'s climb; transport's `shared/` spelled four times in launch; the phase-name branches of `_phased_walk`; `transmission_point` asking `transport.stages.points_in` directly (`point_of`, § 1ak S3) | the archive's *one implementation*; step 2 needs `relaunch_of` | **proposed** — contract first: `architecture.md` § 3.3, `job-system.md`, `vibration.md` § 5.11, `transport.md` § 2a.11, `run-reports.md` § 2 |
 | 2 | **The run script names no engine** | `runwrap` writes one skeleton and reads the engine's record — its program, its environment and a GPU run's ([`gpu.md`](?doc=execution/gpu.md) G6, G8; `configuration.md` § 4's categories), one process or ranks, keyword deck — and asks the parse layer by meaning (`_mb_ending scf-stopped`, `out-of-time`, `advice`); the retry budget reaches only a rung that runs an SCF (`stages = "scf"`, as `use_gpu`); the deck echoed and its held atoms counted by the monitor bundle's readers | X4–X9, X10, X11, X13, X50 (the run script's part), R32; § 1ak S2.4's run script | designed; the partial build is set aside until step 1 lands |
 | 3 | **Every engine and kind fact asked of its record** (A18) | the engine's settings checks, its reading of *the same calculation*, its label bound, a pair's sort key, a kind's export, the rung builders in the kind's own modules, the page served the records | the archive's *engine and kind records* list | open |
 | 4 | **Every name and record through its owner** (A14, A11, A16) | a `runfiles` constant for every role named in code, `compose` refusing a role no row has; every record path formed by its owner; nothing climbs to a root | *names and records* | open |
@@ -452,9 +458,16 @@ Each step: the owning contracts read end to end, the contract text first,
 then the code; its targeted tests and the e2e its road needs; mutations; two
 review rounds; a release.
 
-**Found while building step 1, older than it — each to the step that owns
-it** (verified in the code; the review rounds of 2026-10-29):
+**Found while building step 1, and in the vibration/transport review of
+2.54.1 — each to the step that owns it** (verified in the code):
 
+- **Fixed in 2.54.1**: `_plan_group` walking a run-of-points member as one
+  run; the phases' warm files (the job declares the relaxation's, the walk
+  carries them and says so); `Run.prepared` for an optical call; the folder
+  answer's status at a run of points' root; the two `_newest_output`
+  helpers; a member copied in whole left unstamped; the web reuse describe
+  dropping a promoted column.
+- **Step 1b, one run of points**: listed in its row.
 - **Step 2, the run script**: a device run's `--cold` names, and with
   `--force` removes, its gathered leads — `project-layout.md` § 1.6.7 rules
   they are inputs, not warm state; geomeTRIC's scratch folder stops
@@ -462,28 +475,34 @@ it** (verified in the code; the review rounds of 2026-10-29):
   vibration's banner promises a checkpoint its deck never reads;
   `MB_RETRY_N` and the try number carry one value; two starts in one second
   share a session log.
-- **Step 5, one reader**: a run's newest output answered by two helpers
-  (`spectra.siesta_vibration._newest_output`, `transport.points_index`'s).
-- **§ 1ak S3, the floors**: `Run.prepared` maps an optical call's folder
-  wrongly, so an optical call has no stage deck and no report; the folder
-  answer gives a run of points' root a status; the `shared/` walk-up lives in
-  `folder_answer`, not `openable`.
+- **§ 1ak S3, the floors**: the `shared/` walk-up lives in `folder_answer`,
+  not `openable`; the contract names `points_view`, `point_of` and
+  `views_of` (architecture § 3.2, vibration § 5.11 § 7, results.md § 0,
+  § 0.4) which no code holds — results.md § 0 says "as they will be":
+  **the user's** — build S3, or state the live road until then; measured:
+  no road makes a citable structure pair with no cell (a pair that records
+  its optimization carries the run's box; one that records none is refused
+  first for that), so `compose`'s "states no cell" refusal (transport.md
+  § 2a.9) is reached by no road — say so or delete it.
 - **§ 1ak S4, tests through the doors**: tests whose input is typed by hand
   rather than made by the road *(the user, 2026-10-29: "handcrafted tests
   proves nothing that we want to be working, and it needs maintainance
   itself")* — launch records planted in `tests/support/road.py` and the
   sent-run tests, the cold sweep's table of planted files, a stage-folder
   test's hand-built plan, the transport e2e's relaxation made by hand.
-- **Open, in no step yet**: launch's `_plan_group` walks a run of points or
-  phases member as one run; a vibration's phases' warm files are not
-  checked; a member copied in whole that runs once leaves its stage folder
-  unstamped (invariant 6b; `naming.stamp_containers` in `reuse.copy_in`);
-  the device's size estimate reads a lead's latest run, not its newest
-  launched (`gf_files._lead_orbitals`); the web's reuse describe drops what
-  the finished calculation varied with no override; status names no next
-  step for a group member that is missing (`_steps`; job-system's table has
-  no row); the label cap leaves no room for the try counter
-  (`runfiles.longest_tail`).
+- **Tests owed, through the road** (each needs a fixture no existing e2e
+  makes — the wall road's fixtures are the way): a relaxation stopped at
+  its card wall, launched again warm twice — `status freq` names the run
+  that computed it (`submit._take_over` asks the previous run's index); a
+  SIESTA stage with a retry budget of 0 stopped at its wall — the session
+  log's wall line; a vibration with `scf_must_converge` off and an fc call
+  ending SCF NO — status and the finish card both say *fc failed*.
+- **Open, in no step yet**: `gf_files._lead_orbitals` reads a lead's latest
+  run (on the road the newest launched one); status names no next step for
+  a group member that is missing (`_steps`; job-system's table has no row);
+  the label cap leaves no room for the try counter (`runfiles.longest_tail`);
+  a point's record does not state the run it continued from, though its
+  `.continued-from` does (two sources — the user's).
 
 ## 1ak. One system for a calculation's files — the code, the page and the folders as one design, driven by declared data *(2026-10-28; S0–S2.3 built 2.47.6–2.47.12; the section as it stood: [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2)*
 

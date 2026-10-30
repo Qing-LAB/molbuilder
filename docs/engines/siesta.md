@@ -238,7 +238,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 1 | Header | `SystemName` / `SystemLabel` / atom + species counts | `SystemName` == `SystemLabel` == `cfg.system_label` (same value, default `"siesta"`) |
 | 2 | Lattice (3×3 Å) | `cell=` kwarg, or `resolve_cell()` vacuum box | § 6 |
 | 3 | Species table | `%block ChemicalSpeciesLabel`, ordered by Z | |
-| 4 | Atomic coordinates | `%block AtomicCoordinatesAndAtomicSpecies` (Å) | every atom, no reorder |
+| 4 | Atomic coordinates | `%block AtomicCoordinatesAndAtomicSpecies` (Å) | every atom, no reorder — but a vibration's call: held atoms first, from a sorted copy of the structure, the block read from `coordinates.fdf` beside the deck (`< coordinates.fdf`, [`vibration.md`](?doc=engines/vibration.md) § 5.11 § 4) |
 | 5 | **Frozen atoms** | `%block Geometry.Constraints` (1-based indices) | only if `struct.frozen_atoms`; the 3-stage boundary carrier (see [`model/structure-annotations.md`](?doc=model/structure-annotations.md)) |
 | 6 | Basis & grid | `MeshCutoff`, `PAO.BasisSize`, `PAO.EnergyShift` | |
 | 7 | XC (+ dispersion template) | `XC.functional`, `XC.authors` | commented DFT-D template for non-vdW XC |
@@ -252,8 +252,8 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 15 | Output flags | `WriteForces`, `WriteCoorStep`, `WriteCoorXmol`, `SaveHS`, … | `WriteForces` and `WriteCoorStep` always `true`, on every kind: molbuilder reads each step's forces and coordinates back, so the rung fixes them (`role`, [`template.md` § 6.4](?doc=engines/template.md)). `SaveHS` on by default, as SIESTA's own — off on a vibration, whose `.HSX` nothing reads ([`vibration.md`](?doc=engines/vibration.md) § 3.1) |
 | 16 | Troubleshooting block | inline tuning hints | only if `verbose_comments` |
 
-**The vibration kind's force-constant deck** (its `freq` stage; the `relax`
-stage renders the whole table) renders this table without row 14 — a
+**The vibration kind's force-constant deck** (its `freq` stage's `fc` phase;
+the run's `relax` phase renders the whole table) renders this table without row 14 — a
 force-constant run relaxes nothing — plus a *Force constants* section and the
 `MD.TypeOfRun FC` block, from a copy of the structure sorted held-first so
 the free atoms are one `FC.First`..`FC.Last` range, with its own start
@@ -332,7 +332,8 @@ default-gap box is reported as thin, correctly: it is well-formed and not yet
 converged.
 
 *(When the resolved charge ≠ 0, **`prep` writes** a `makov_payne_correction.py`
-post-process script beside the deck — `engines._siesta_sibling_artifacts` →
+post-process script beside every deck it writes — a stage's, each phase folder
+of a vibration's run, each point of a transport rung — `engines._siesta_sibling_artifacts` →
 `siesta/makov_payne.py` — that estimates the residual image-charge energy after
 the run. It is not part of the `.fdf` itself: the deck's own text instructs
 `python3 makov_payne_correction.py`, and that file has to exist, which is why
@@ -767,9 +768,9 @@ SIESTA subtracts itself
 clock. The output reads `failed` with the wall as its cause, in SIESTA's own
 line (`siesta_grammar.OUT_OF_TIME_MARKER`; the `SCF_NOT_CONV` warning it
 prints on the way out is not the cause); the wrapper does not warm-retry it,
-saying `stopped at its wall (MaxWalltime): the restart state is saved;
-launch this stage again to continue`; the next launch continues from the
-files it saved whole. Every line a person sees of the wall is
+and says what a launch again does with the run — a single run continues
+from the files it saved, a call of a run in phases as its run's rule starts
+a call not done. Every line a person sees of the wall is
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6's
 table.
 
@@ -793,8 +794,9 @@ every reader reads it back through `runfiles.parse`, with the run's label —
 one spelling, no second regex.
 
 For a charged molecule **`prep`** also drops a `makov_payne_correction.py`
-script next to the `.fdf` (§ 4); it reads the run's output -- its last
-energy, its cell and SIESTA's own `Emadel` -- with SIESTA's one reading pass,
+script next to every `.fdf` it writes (§ 4); it reads the run's output --
+its newest try's, or a hand run's unnumbered one (`runrecord.newest_run`) --
+its last energy, its cell and SIESTA's own `Emadel` -- with SIESTA's one reading pass,
 from the monitor's bundle beside it in every run (`mb_monitor.pyz`), so it
 runs where molbuilder is not installed and reads the output as every other
 reader does. And each per-stage `.molwatch.log` carries

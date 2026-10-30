@@ -1,8 +1,9 @@
 """WHAT ``summarize task`` ADDS UP FOR A VIBRATION -- its force-constant
 stages compared, a displacement sweep (`engines/vibration.md` § 5.9): the
-summary the kind table names for the kind on both engines (``sum``,
-`execution/architecture.md` § 3.3).  Only a SIESTA vibration with two or
-more force-constant stages has one; any other says why
+summary the kind table names for a SIESTA vibration (``sum``,
+`execution/architecture.md` § 3.3; a PySCF vibration's pair names none,
+its one run giving every displacement).  Only a SIESTA vibration with two
+or more force-constant stages has one; any other says why
 (`spectra.displacement_sweep.why_no_sweep`).
 
 MODULE  jobset.vibration_sum (floor 6, beside `jobset.summarize`): the

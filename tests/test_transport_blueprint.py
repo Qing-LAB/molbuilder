@@ -44,11 +44,12 @@ class TestTransportSchemaEndpoint:
         tab can fold the cards that hold none of the rung's own.  The
         un-narrowed answer carries the rung list the strip is built from:
         name, one-based ladder index, one-line note."""
-        from molbuilder.transport.stages import RUNG_NOTES, TRANSPORT_STAGES
+        from molbuilder.transport.stages import TRANSPORT_STAGES, rung_notes
         body = web.get("/api/transport/schema?engine=siesta&surface=rung").get_json()
         assert [r["name"] for r in body["rungs"]] == list(TRANSPORT_STAGES)
         assert [r["index"] for r in body["rungs"]] == [1, 2, 3, 4, 5]
-        assert all(r["note"] == RUNG_NOTES[r["name"]] and r["note"]
+        notes = rung_notes()
+        assert all(r["note"] == notes[r["name"]] and r["note"]
                    for r in body["rungs"])
         seed = web.get("/api/transport/schema?engine=siesta&surface=rung&rung=seed").get_json()
         assert seed["ok"] and seed["rung"] == "seed"
@@ -120,7 +121,7 @@ class TestTransportSchemaEndpoint:
             assert not (offered & machine), sorted(offered & machine)
             assert echoed <= role, sorted(echoed - role)
             from molbuilder.transport.stages import resolvable_override_names
-            unresolvable = offered - resolvable_override_names()
+            unresolvable = offered - resolvable_override_names("siesta")
             assert not unresolvable, (
                 f"the form offers {sorted(unresolvable)}, which `prep` "
                 f"refuses by name -- a control the door is guaranteed to "

@@ -61,10 +61,7 @@ from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
 from ..issues import Issue
 from ..structure import Structure
 from .sort import ELECTRODE_LABELS
-from .transiesta import (
-    _compute_cell_from_extents,
-    _find_electrode_regions,
-)
+from .transiesta import _find_electrode_regions
 
 #: Where a seam verdict is filed (`Issue.where`), on the card and in a lead
 #: deck's `.validation.txt` alike.
@@ -81,18 +78,11 @@ class ElectrodeModel:
     """
 
     label: str                       # device region label, e.g. "L-electrode"
-    block_name: str                  # sanitized TS.Elec name, e.g. "L"
     elements: List[str]
     positions: np.ndarray            # (M, 3) Å, shifted to min-z = 0
     lat_a: np.ndarray                # device lateral vector a (3,), Å
     lat_b: np.ndarray                # device lateral vector b (3,), Å
-    cell_a: float                    # |lat_a| (Å), for display/checks
-    cell_b: float                    # |lat_b| (Å)
     z_period: float                  # proposed bulk repeat (Å)
-    z_span: float                    # top-layer − bottom-layer z (Å)
-    n_layers: int
-    d_interlayer: float              # THE layer spacing (Å) -- checked equal
-    n_atoms: int
     #: The DEVICE's transverse axis kinds, carried so the lead can state its
     #: own periodicity honestly.  A slab electrode tiles the plane and is
     #: `periodic, periodic`; a nanowire or chain lead is vacuum-surrounded
@@ -372,15 +362,14 @@ def extract_electrode_model(
     ``ComposeError`` verbatim.  A refusal names atoms in the user order
     (``Structure.atoms_named``).
     """
-    electrodes = {lab: (name, idxs)
-                  for lab, name, idxs in _find_electrode_regions(device)}
+    electrodes = {lab: idxs
+                  for lab, _name, idxs in _find_electrode_regions(device)}
     if label not in electrodes:
         raise ValueError(
             f"region {label!r} is not an electrode region; found "
             f"{sorted(electrodes) or 'none'} "
             f"(the leads are {' and '.join(ELECTRODE_LABELS)})")
-    block_name, idxs = electrodes[label]
-    idxs = sorted(idxs)
+    idxs = sorted(electrodes[label])
 
     _refuse_unless_frozen_bulk(device, label, idxs, prior_positions,
                                held_by_relaxation)
@@ -389,16 +378,12 @@ def extract_electrode_model(
     elems = [device.elements[i] for i in idxs]
 
     # Lateral cell from the DEVICE (not the electrode's own extent) so
-    # the lead tiles the device cross-section exactly (I6).  Prefer the
-    # device's REAL lattice vectors (preserves a hexagonal Au(111)
-    # surface); fall back to an orthorhombic extent box only when the
-    # device carries no cell.
-    if device.cell is not None:
-        dc = np.asarray(device.cell, dtype=float)
-        lat_a, lat_b = dc[0].copy(), dc[1].copy()
-    else:
-        a, b, _c = _compute_cell_from_extents(device)
-        lat_a, lat_b = np.array([a, 0.0, 0.0]), np.array([0.0, b, 0.0])
+    # the lead tiles the device cross-section exactly (I6): its REAL
+    # lattice vectors, a hexagonal Au(111) surface kept -- a junction
+    # always states its cell (the citation door refuses one that does not,
+    # `engines/transport.md` § 2a.9).
+    dc = np.asarray(device.cell, dtype=float)
+    lat_a, lat_b = dc[0].copy(), dc[1].copy()
 
     # Shift so the lowest layer is at z = 0 (clean periodic cell).
     z = pos[:, 2]
@@ -420,17 +405,11 @@ def extract_electrode_model(
     # THE DEVICE'S OWN ANSWER, not a guess: the lead tiles the same
     # cross-section, so it is periodic across the wire exactly when the
     # device is (`engines/transport.md` § 5, I6).
-    # `("isolated",) * 3` like every other such fallback in the tree;
-    # unreachable -- `__post_init__` always fills `axis_kind`.
-    dev_kind = tuple(getattr(device, "axis_kind", None)
-                     or ("isolated",) * 3)
+    dev_kind = tuple(device.axis_kind)
     return ElectrodeModel(
-        label=label, block_name=block_name, elements=elems, positions=pos,
-        lat_a=lat_a, lat_b=lat_b,
-        transverse_kind=(dev_kind[0], dev_kind[1]),
-        cell_a=float(np.linalg.norm(lat_a)), cell_b=float(np.linalg.norm(lat_b)),
-        z_period=zper, z_span=z_span, n_layers=n_layers,
-        d_interlayer=d_inter, n_atoms=len(elems), notes=notes)
+        label=label, elements=elems, positions=pos, lat_a=lat_a, lat_b=lat_b,
+        transverse_kind=(dev_kind[0], dev_kind[1]), z_period=zper,
+        notes=notes)
 
 
 __all__ = [

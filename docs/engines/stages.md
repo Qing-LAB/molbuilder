@@ -960,7 +960,7 @@ because each of its trials is rendered at its own point.
 **`vibration`** — the described vibrational-spectroscopy job, whose template
 the catalogue narrows by the `calculations` key (`template.md` § 6.3) and whose
 warm files `pyscf/warm-files.toml` declares; and **`transport`**, the composite
-with its own codec rules (`task.py`): exactly one `junction` slot, cited as a tree-relative directory path whose files satisfy
+with its own codec rules (`task.py`): exactly one `junction` slot, cited by its tree-relative path — a finished relaxation run's folder, or a structure pair's `.xyz` — which satisfies
 [`transport.md`](?doc=engines/transport.md) § 3.1, no `structure`, a `bias`
 list — `siesta/warm-files.toml`'s `[transport]` section declares its warm
 vocabulary.
@@ -1786,8 +1786,9 @@ were written for files at one level and would silently have lost data in a tree.
   until 2026-08-11; all three were deleted on 2026-08-10 — § 3.)*
 - **Carrying a finished run into the next calculation** — **it is CITED, never
   bundled** (retired 2026-08-29; `job-contracts.md` § 5 holds the closure).  A
-  calculation that builds on a finished result names the run explicitly
-  (a directory whose files satisfy [`transport.md`](?doc=engines/transport.md) § 3.1) and `prep` composes from it —
+  calculation that builds on a finished result names it explicitly — a
+  finished run's folder, or a structure pair that records the run its
+  geometry came from ([`transport.md`](?doc=engines/transport.md) § 3.1) — and `prep` composes from it —
   [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1 is the
   shipped instance.  The which-script tie-break question the old handoff carried
   died with it: a citation names ONE run, so there is nothing to guess.

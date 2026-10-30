@@ -22,7 +22,7 @@ The deck is the run's own, handed by its caller (`runs.declared(run).deck`,
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 
 def contract_of(deck) -> Optional[Dict[str, Any]]:
@@ -283,6 +283,17 @@ def relaxation_of_output(path, traj, *,
         "run_state": str(getattr(traj, "run_state", "") or ""),
         "geometry_sha256": last.structure.geometry_fingerprint(),
     }
+
+
+def judged_force(rec: Mapping[str, Any]) -> Optional[float]:
+    """THE FORCE A RELAXATION RECORD IS JUDGED BY (`engines/vibration.md`
+    § 2.2; `model/parse.md` § 5b.1): the largest on the atoms it moved
+    (``max_force_free_ev_ang``) where the record says, else on every atom
+    (``max_force_ev_ang``) -- the rule :func:`relaxation_of_output` judges
+    ``converged`` by, asked of its record by the finish's words and the
+    settings gate alike."""
+    free = rec.get("max_force_free_ev_ang")
+    return free if free is not None else rec.get("max_force_ev_ang")
 
 
 def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:

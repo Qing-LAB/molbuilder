@@ -80,7 +80,6 @@ def _make_results(complete: bool = True) -> SpectraResults:
         engine_version             = "2.6.0",
         molbuilder_version         = "1.2.0",
         timestamp                  = "2026-05-11T12:00:00Z",
-        structure_hash             = "sha256:abc123",
         n_atoms_total              = 2,
         free_atom_idxs             = [0, 1],
         frozen_atom_idxs           = [],

@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import io
 import json
 
 import numpy as np
@@ -68,7 +67,6 @@ def _make_minimal_results() -> SpectraResults:
         engine_version             = "2.6.0",
         molbuilder_version         = "1.2.0",
         timestamp                  = "2026-05-11T12:00:00Z",
-        structure_hash             = "sha256:abc",
         n_atoms_total              = 2,
         free_atom_idxs             = [0, 1],
         frozen_atom_idxs           = [],
@@ -268,22 +266,6 @@ class TestSpectraPage:
 
 class TestLoadEndpoint:
 
-    def test_multipart_upload_round_trip(self, web_client, tmp_path):
-        original = _make_minimal_results()
-        p = tmp_path / "x.spectra.json"
-        dump_spectra_json(original, p)
-        with open(p, "rb") as fh:
-            r = web_client.post(
-                "/api/spectra/load",
-                data={"file": (io.BytesIO(fh.read()), "x.spectra.json")},
-                content_type="multipart/form-data",
-            )
-        assert r.status_code == 200, r.data
-        body = r.get_json()
-        assert body["ok"] is True
-        assert body["results"]["engine"] == "pyscf"
-        assert len(body["results"]["modes"]) == 1
-
     def test_the_thermal_spread_is_served_at_the_temperature_asked(
             self, web_client, tmp_path):
         """`web/spectra.md` § 4.1: the load door serves each mode's thermal
@@ -387,7 +369,8 @@ class TestLoadEndpoint:
         or more, and another rule than three, five or seven frames.  The
         silent failure: a set written at a temperature the person never
         stated, or at a rule the page does not offer."""
-        body = {"run": str(tmp_path), "mode": 1, "nodes": 3,
+        body = {"path": str(tmp_path / "x.spectra.json"), "mode": 1,
+                "nodes": 3,
                 "out": str(tmp_path / "frames.xyz"), **ask}
         r = web_client.post("/api/spectra/frameset", data=json.dumps(body),
                             content_type="application/json")
@@ -430,7 +413,8 @@ class TestLoadEndpoint:
         assert body["ok"] is True
         assert body["results"]["n_atoms_total"] == 2
 
-    def test_load_says_which_atoms_each_mode_belongs_to(self, web_client):
+    def test_load_says_which_atoms_each_mode_belongs_to(self, web_client,
+                                                        tmp_path):
         """The panel describes a mode by the atoms that CARRY it, and working
         that out needs atomic masses — which the browser does not have; a
         schema-7 result states the masses its modes were weighted by
@@ -452,9 +436,11 @@ class TestLoadEndpoint:
         original.modes[0].eigenvector_canonical = np.array([[0.98, 0., 0.],
                                                             [1.15, 0., 0.]])
         original.modes[0].eigenvector_display   = original.modes[0].eigenvector_canonical
+        p = tmp_path / "ch.spectra.json"
+        dump_spectra_json(original, p)
 
         r = web_client.post("/api/spectra/load",
-                            data=json.dumps({"json": original.to_dict()}),
+                            data=json.dumps({"path": str(p)}),
                             content_type="application/json")
         body = r.get_json()
         assert r.status_code == 200, body
@@ -477,28 +463,20 @@ class TestLoadEndpoint:
                                                        [1.09, 0., 0.]])
         assert "motion_share_by_element" not in original.to_dict()["modes"][0]
 
-    def test_a_result_without_a_geometry_still_loads(self, web_client):
+    def test_a_result_without_a_geometry_still_loads(self, web_client,
+                                                     tmp_path):
         """No elements stored means no shares can be computed — the spectrum
         must still open, one clause shorter."""
+        p = tmp_path / "bare.spectra.json"
+        dump_spectra_json(_make_minimal_results(), p)
         r = web_client.post(
             "/api/spectra/load",
-            data=json.dumps({"json": _make_minimal_results().to_dict()}),
+            data=json.dumps({"path": str(p)}),
             content_type="application/json")
         body = r.get_json()
         assert r.status_code == 200, body
         assert body["ok"] is True
         assert "motion_share_by_element" not in body["results"]["modes"][0]
-
-    def test_inline_json_input(self, web_client):
-        original = _make_minimal_results()
-        r = web_client.post(
-            "/api/spectra/load",
-            data=json.dumps({"json": original.to_dict()}),
-            content_type="application/json",
-        )
-        body = r.get_json()
-        assert r.status_code == 200, body
-        assert body["ok"] is True
 
     def test_no_input_400(self, web_client):
         r = web_client.post(
@@ -509,18 +487,7 @@ class TestLoadEndpoint:
         assert r.status_code == 400
         body = r.get_json()
         assert body["ok"] is False
-        assert "no input" in body["error"].lower()
-
-    def test_inline_non_dict_rejected(self, web_client):
-        r = web_client.post(
-            "/api/spectra/load",
-            data=json.dumps({"json": [1, 2, 3]}),
-            content_type="application/json",
-        )
-        assert r.status_code == 400
-        body = r.get_json()
-        assert body["ok"] is False
-        assert body["kind"] == "malformed"
+        assert "path" in body["error"].lower(), body
 
     def test_missing_file_path_404(self, web_client, tmp_path):
         bad = tmp_path / "does_not_exist.json"

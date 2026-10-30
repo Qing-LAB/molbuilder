@@ -388,47 +388,45 @@ def _monitor_block(names, notify_on_scf: bool,
     )
 
 
-#: The verb a job's finish bundle runs after a clean engine exit when the
-#: job states no steps of its own: the finish, on the deck and its output
-#: (`spectra.siesta_vibration.main`, `engines/vibration.md` § 5.5).
-FINISH_VERB = ("finish",)
-
-
 def _finish_block(finish: Optional[str], script_name: str, *,
-                  after: Optional[Sequence[str]] = None,
+                  after: Optional[Sequence[str]],
                   failed: bool = False) -> str:
     """The job's step after its engine: the finish bundle beside the deck,
     run with the job's own python (``$_mb_py``, the activated env's, checked
     once the try's number is, `running-a-job.md` § 2.2a) on the deck and
-    its output
-    (`engines/vibration.md` § 5.5) -- the finish verb, or the job's own
-    ``after`` words (a run in phases' ``record <phase>``, § 5.11 § 3, told
-    the engine's exit code).  After a clean exit, before the conclusion is
-    written, its failure is the job's: the conclusion records its exit
-    status and the wrapper exits with it.  ``failed`` renders it for the
-    engine's failure path: run so the record says how the call ended, its
-    own failure logged, the conclusion the engine's.  Empty when the job has
-    no finish, and on the failure path when it states no steps."""
-    if finish is None or (failed and after is None):
+    its output with the job's own ``after`` words -- a run in phases'
+    ``record <phase>`` (`engines/vibration.md` § 5.11 § 3), told the
+    engine's exit code: a finish arrives with its steps.  After a clean
+    exit, before the conclusion is written, its failure is the job's: the
+    conclusion records its exit status and the wrapper exits with it.
+    ``failed`` renders it for the engine's failure path: run so the record
+    says how the call ended, its own failure logged, the conclusion the
+    engine's.  Empty when the job has no finish."""
+    if finish is None or after is None:
         return ""
     # The marker's words for a failed finish, and the log line that says the
     # finish began, are their READERS' (`parse/dirs/job.py`,
     # `wrapper_log`, which travel and read them beside the job).
     from .parse.dirs.job import FINISH_FAILED
     from .wrapper_log import FINISH_STARTED
-    words = " ".join(after if after is not None else FINISH_VERB)
-    call = (f'"$_mb_py" {finish} {words} {script_name} "$_out_file"'
-            + (' --exit "$_siesta_exit"' if after is not None else ""))
+    words = " ".join(after)
+    call = (f'"$_mb_py" {finish} {words} {script_name} "$_out_file" '
+            f'--exit "$_siesta_exit"')
     pad = "    " if failed else ""
+    # WHOSE THE CONCLUSION IS: the step's after a clean engine, the
+    # engine's on its failure path.
+    whose = ([f"{pad}# result at the run's root.  Its failure is logged, and the\n",
+              f"{pad}# conclusion stays the engine's.\n"] if failed else
+             [f"{pad}# result at the run's root.  ITS FAILURE IS THE JOB'S --\n",
+              f"{pad}# the conclusion records its exit status and this wrapper exits\n",
+              f"{pad}# with it; its lines and any traceback are in this session log.\n"])
     head = (
         f"\n"
         f"{pad}# --- The calculation's own result (engines/vibration.md 5.5) ---\n"
         f"{pad}# The engine left what the result is derived from, not the result:\n"
         f"{pad}# {finish}, beside this deck, runs here with the job's own python,\n"
         f"{pad}# records how this call ended and, where it falls to it, writes the\n"
-        f"{pad}# result at the run's root.  ITS FAILURE IS THE JOB'S --\n"
-        f"{pad}# the conclusion records its exit status and this wrapper exits\n"
-        f"{pad}# with it; its lines and any traceback are in this session log.\n"
+        + "".join(whose) +
         f'{pad}_log INFO "{FINISH_STARTED} {finish} {words} {script_name} $_out_file"\n'
         f"{pad}set +e\n"
         f'{pad}if [ -f {finish} ]; then\n'
@@ -476,7 +474,6 @@ def _before_block(finish: Optional[str], script_name: str,
     if finish is None or not before:
         return ""
     from .parse.dirs.job import FINISH_FAILED
-    from .wrapper_log import FINISH_STARTED
     words = " ".join(before)
     return (
         f"# --- The call planned (engines/vibration.md 5.11 3) ---------\n"
@@ -484,7 +481,7 @@ def _before_block(finish: Optional[str], script_name: str,
         f"# run's index, written with the job's own python before the engine\n"
         f"# starts.  ITS FAILURE IS THE JOB'S: nothing is started, and the\n"
         f"# step after the engine records how the call ended.\n"
-        f'_log INFO "{FINISH_STARTED} {finish} {words} {script_name}"\n'
+        f'_log INFO "plan step: {finish} {words} {script_name}"\n'
         f"set +e\n"
         f'"$_mb_py" {finish} {words} {script_name}\n'
         f"_mb_plan_rc=$?\n"
@@ -1646,8 +1643,24 @@ _CLEAN_DECK_MODE = ("CLEAN (this deck reads no prior state; the files on "
                     "disk are not read)")
 
 
+def _ending_arms(*arms) -> str:
+    """ONE ``if``/``elif`` CHAIN over the engine's ending, for the run
+    script's failure arm: each of ``arms`` is ``None`` (not rendered) or
+    ``[condition, body]`` -- the bash test on ``_mb_ending`` and the lines
+    run when it holds, already indented one level deeper than the chain.
+    ``""`` with no arm, so a program with no wall and no retry budget
+    says nothing here."""
+    lines = []
+    for arm in (a for a in arms if a is not None):
+        cond, body = arm
+        lines.append(f"    {'if' if not lines else 'elif'} {cond}; then\n"
+                     + body)
+    return "".join(lines) + ("    fi\n" if lines else "")
+
+
 def _retry_texts(resumes: bool,
-                 restart_honoured: Optional[bool]) -> Dict[str, Optional[str]]:
+                 restart_honoured: Optional[bool],
+                 member: bool = False) -> Dict[str, Optional[str]]:
     """What a retry of this run does, in the words every retry text uses --
     ONE description (`running-a-job.md` § 3.5): a run whose kind cannot
     resume (`Job.resumes`, the kind's warm-files fact) re-runs from its first
@@ -1657,7 +1670,35 @@ def _retry_texts(resumes: bool,
     ``does`` is the retry's own message, ``policy`` the banner's retry line;
     ``mode``, ``usage`` and ``after`` are the non-resuming run's Mode line,
     ``--continue`` help and after-budget advice (``None``: the warm and cold
-    texts are the deck-restart ones, which already say what happens)."""
+    texts are the deck-restart ones, which already say what happens);
+    ``wall`` what follows a stop at the wall, ``capped`` a relaxation still
+    capped once the budget is spent.
+
+    **A POINT OF A RUN** (``member``: a vibration's call, a transport
+    point) is not continued by a launch again from its own state: launch
+    takes the run's points done over and runs the rest as its run's rule
+    starts a point not done (`engines/vibration.md` § 5.11 § 6,
+    `engines/transport.md` § 2a.11) -- and a relaxation capped unconverged
+    counts done for its run (§ 5.11 § 5) -- so a point's words say that,
+    never *launch again to continue*."""
+    texts = _run_retry_texts(resumes, restart_honoured)
+    if member:
+        again = ("a launch again takes the run's points done over and runs "
+                 "this one again, as its run's rule starts a point not done")
+        texts.update(
+            wall=f"this point is not done -- {again}",
+            after=(f"this point stays not done: {again} -- to change a "
+                   f"setting, " + way_back_words(True)),
+            capped=("the relaxation counts done for its run as it stands -- "
+                    "to relax further, launch the stage with --cold, or "
+                    + way_back_words(True, "give it more steps")))
+    return texts
+
+
+def _run_retry_texts(resumes: bool,
+                     restart_honoured: Optional[bool]
+                     ) -> Dict[str, Optional[str]]:
+    """:func:`_retry_texts` for a run of its own."""
     if not resumes:
         return {
             "does": ("re-running from its first step -- this kind of run "
@@ -1681,6 +1722,10 @@ def _retry_texts(resumes: bool,
                       "                   that step saved.\n"),
             "after": ("revisit mixing/smearing -- a re-run of this run "
                       "starts again from its first step"),
+            "wall": ("launch this stage again: it runs again from its first "
+                     "step -- this kind of run does not resume"),
+            "capped": ("revisit mixing/smearing -- a re-run of this run "
+                       "starts again from its first step"),
         }
     # THE LINE AFTER THE BUDGET, for every case, in molbuilder's own road:
     # a stage is launched again, never re-run inside its attempt, and a
@@ -1688,19 +1733,23 @@ def _retry_texts(resumes: bool,
     # after its run (`identity.way_back_words`).
     back = "to change a setting, " + way_back_words(True)
     if restart_honoured is False:
+        after = ("this deck reads no prior state, so a re-run starts again "
+                 "from its own coordinates -- " + back)
         return {"does": "re-running cold -- this deck declines prior state",
                 "policy": ("COLD, because this deck sets DM.UseSaveDM "
                            ".false.: a retry re-runs from the deck's "
                            "coordinates, it does not resume"),
-                "mode": None, "usage": None,
-                "after": ("this deck reads no prior state, so a re-run "
-                          "starts again from its own coordinates -- "
-                          + back)}
+                "mode": None, "usage": None, "after": after,
+                "wall": ("this deck reads no prior state: a launch again "
+                         "starts it from its own coordinates"),
+                "capped": after}
+    after = "launch the stage again to continue from this run -- or, " + back
     return {"does": "warm-restarting",
             "policy": "each resumes warm from what the run banked (--continue)",
-            "mode": None, "usage": None,
-            "after": ("launch the stage again to continue from this run -- "
-                      "or, " + back)}
+            "mode": None, "usage": None, "after": after,
+            "wall": ("the restart state is saved; launch this stage again to "
+                     "continue"),
+            "capped": after}
 
 
 def _fdf_honours_restart(text: Optional[str]) -> Optional[bool]:
@@ -2129,9 +2178,9 @@ def render_run_wrapper(script_path: Path, *,
     ``steps`` are a run in phases' two Python steps (`engines/vibration.md`
     § 5.11 § 3), each the words the ``finish`` bundle is run with: before
     the engine (``plan <phase>``) and after it, success or failure
-    (``record <phase>``, told the engine's exit code); ``None`` runs the
-    finish verb after a clean exit, as a job with a finish and no steps
-    does.  ``member`` makes the run script's monitor a member of a run of
+    (``record <phase>``, told the engine's exit code) -- a finish arrives
+    with its steps, prep giving every finish its two.  ``member`` makes the
+    run script's monitor a member of a run of
     points' (§ 7a): the way from the call's folder up to the run's.
     ``reports`` runs the run's two report steps around the engine -- a
     transport point's (`engines/transport.md` § 2a.11): the monitor's
@@ -2412,7 +2461,8 @@ def render_run_wrapper(script_path: Path, *,
     # by every text that speaks of a retry: the banner's retry line, the
     # retry's own message, a retry's Mode line, the --continue usage
     # and the line after the budget is spent (`running-a-job.md` § 3.5).
-    _retry = _retry_texts(resumes, _restart_honoured)
+    _retry = _retry_texts(resumes, _restart_honoured,
+                          member=member is not None)
     _py_reads_prior = (_py_deck_reads_prior(deck_text)
                        if suffix == ".py" else None)
 
@@ -3489,6 +3539,13 @@ def render_run_wrapper(script_path: Path, *,
             + _before_block(finish, script_name,
                             steps[0] if steps is not None else None,
                             after=(steps[1] if steps is not None else None))
+            # THE RECORD OF WHAT THE ENGINE WILL READ, once every step before
+            # it has written what it reads -- a call's plan step its
+            # coordinates (`engines/vibration.md` § 5.11 § 4).  PySCF
+            # writes its own from inside its script (it can read its
+            # objects back); SIESTA cannot, so the run script echoes the
+            # deck it is about to hand over.
+            + _effective_parameters_block(script_path)
             + (_report_block(names, member, POINT_STARTED)
                if reports else "")
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
@@ -3617,24 +3674,26 @@ def render_run_wrapper(script_path: Path, *,
                f'    # banner and the retry message say so.  Crash classes (propor\n'
                f'    # IMAX, generic aborts) are NOT retried -- rerunning\n'
                f'    # cannot fix a defective pseudo or a bad rank count.\n'
-               f'    # STOPPED AT ITS WALL (MaxWalltime, running-a-job.md 3.6):\n'
-               f'    # its restart state is saved and no time is left, so no\n'
-               f'    # retry here -- the next launch continues from it.\n'
-               f'    if _mb_ending stopped-by "{_G.OUT_OF_TIME_MARKER}"; then\n'
-               f'        echo "stopped at its wall (MaxWalltime): the restart '
-               f'state is saved; launch this stage again to continue" >&2\n'
-               f'    elif [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
-               f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"; then\n'
-               f'        _mb_warm_retry "SCF did not converge '
-               f'(SIESTA aborted under SCF.MustConverge)"\n'
-               f'    elif [ "$_siesta_retry" -gt 0 ] \\\n'
-               f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"; then\n'
-               f'        echo "SCF still unconverged after '
-               f'$_siesta_retry_max retry(s); '
-               + f'{_retry["after"]}.'
-               + '" >&2\n'
-               '    fi\n'
                if _retries > 0 else "")
+            # STOPPED AT ITS WALL (MaxWalltime, running-a-job.md 3.6): its
+            # restart state is saved and no time is left, so no retry --
+            # what a launch again does, said: for every program that takes
+            # the wall, whatever its retry budget.  The SCF-retry arms sit
+            # under the budget, one if/elif chain with it.
+            + _ending_arms(
+                ([f'_mb_ending stopped-by "{_G.OUT_OF_TIME_MARKER}"',
+                  f'        echo "stopped at its wall (MaxWalltime): '
+                  f'{_retry["wall"]}" >&2\n'] if _wall_words else None),
+                ([f'[ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
+                  f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"',
+                  '        _mb_warm_retry "SCF did not converge '
+                  '(SIESTA aborted under SCF.MustConverge)"\n']
+                 if _retries > 0 else None),
+                ([f'[ "$_siesta_retry" -gt 0 ] \\\n'
+                  f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"',
+                  f'        echo "SCF still unconverged after '
+                  f'$_siesta_retry_max retry(s); {_retry["after"]}." >&2\n']
+                 if _retries > 0 else None))
             + _finish_block(finish, script_name,
                             after=(steps[1] if steps is not None else None),
                             failed=True)
@@ -3664,7 +3723,7 @@ def render_run_wrapper(script_path: Path, *,
                f'unconverged"\n'
                f'elif _mb_ending relaxation-capped; then\n'
                f'    echo "WARNING: geometry still unconverged after '
-               f'$_siesta_retry_max retry(s); {_retry["after"]}." >&2\n'
+               f'$_siesta_retry_max retry(s); {_retry["capped"]}." >&2\n'
                f'elif [ "$_siesta_retry" -gt 0 ]; then\n'
                f'    echo "SIESTA converged after $_siesta_retry '
                f'retry(s)."\n'
@@ -3916,10 +3975,6 @@ def render_run_wrapper(script_path: Path, *,
         f"\n"
         f"{env_activation}"
         f"{env_prefix}"
-        # THE RECORD, before the engine starts.  PySCF writes its own from
-        # inside the script (it can read its objects back); SIESTA cannot, so
-        # its wrapper echoes the deck it is about to hand over.
-        f"{'' if _is_pyscf else _effective_parameters_block(script_path)}"
         f"{launch_block}"
         f"\n{_user_custom}\n"
     )

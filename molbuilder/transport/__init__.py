@@ -1,7 +1,8 @@
 """Electronic transport — the COMPOSITE calculation's engine layer.
 
 One calculation
-cites a finished junction attempt and derives five stages.  What lives
+cites a relaxed junction -- a finished relaxation run, or a structure pair
+saved from one -- and derives five stages.  What lives
 here:
 
   * :mod:`.compose`   — resolve the citation, extract + gate the
@@ -23,6 +24,18 @@ here:
     `engines/transport.md` § 6.1b); :mod:`.wizard` — the bulk-electrode
     derivation;
     :mod:`.sort` — the categorical atom sort.
+  * :mod:`.energies`  — a transmission point's grid, and the contours it
+    computes when it shares energies with a finished point; :mod:`.window`
+    — a wider window fitted to a finished grid.
+  * :mod:`.points_index` — a run of points' index: every point, what makes
+    it done, how it ended (launch writes it, each point's steps stamp it).
+  * :mod:`.conductance` — G/G0 = T(E_F) off a transmission;
+    :mod:`.tbtnc` — a transmission point's DOS for the report;
+    :mod:`.gf_files` — the leads' surface Green's function files, as
+    status says them.
+  * :mod:`.datafile`  — ``<label>.transport.nc``, the record's results as
+    data; :mod:`.export` — every result, as the data file or its tables.
+  * :mod:`.reuse`     — a calculation that reuses a finished one, described.
 
 **THERE IS NO ENGINE REGISTRY.**  A new engine is **described and rendered through ``spec_for``**
 (`engines/overview.md` § 5); it does not register.

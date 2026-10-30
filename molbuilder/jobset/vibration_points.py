@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..runfiles import ROLE_SPECTRA
-from ..siesta.vibration_phases import (FC, OPTICAL, RELAX, Call, calls_of,
+from ..siesta.vibration_phases import (FC, OPTICAL, RELAX, UNIT, Call,
+                                       calls_of,
                                        entry_of, index_path, phase,
                                        products_of, read_index, summary)
 from .points import PointsOf
@@ -86,15 +87,25 @@ def _declared_summary(rows, run, names) -> str:
     return summary(rows, phases)
 
 
-def _record_says(run, names, point: Call) -> Optional[str]:
-    """What the run's index says against ``point`` being done: its record
-    step's failure, where it failed (§ 5.11 § 7) -- ``None`` with no index
-    yet, or no entry."""
+def _entry(run, names, point: Call) -> dict:
+    """``point``'s entry in the run's index -- ``{}`` with no index yet, or
+    no entry."""
     path = index_path(run, names)
     if not path.is_file():
-        return None
-    row = entry_of(read_index(path), point) or {}
-    return row.get("record_error") or None
+        return {}
+    return entry_of(read_index(path), point) or {}
+
+
+def _record_says(run, names, point: Call) -> Optional[str]:
+    """What the run's index says against ``point`` being done: its record
+    step's failure, where it failed (§ 5.11 § 7)."""
+    return _entry(run, names, point).get("record_error") or None
+
+
+def _taken_from(run, names, point: Call) -> Optional[str]:
+    """The run ``point`` was taken over from, as launch wrote it into the
+    run's index (§ 5.11 § 6)."""
+    return _entry(run, names, point).get("taken_from") or None
 
 
 def _also_needs(run, names, task, stage: str, base) -> Optional[str]:
@@ -122,10 +133,11 @@ POINTS = PointsOf(rung_points=_declared_rung_points,
                   products_of=products_of,
                   hands_on=_declared_hands_on,
                   summary=_declared_summary,
-                  converges=lambda stage: True,
                   verdict_counts=lambda stage, point: phase(
                       point.phase).verdict_counts,
                   record_says=_record_says,
+                  taken_from=_taken_from,
                   also_needs=_also_needs,
                   containers=_declared_containers,
-                  planned_in_job=True, one_wall=True, unit="call")
+                  planned_in_job=True, one_wall=True, unit=UNIT,
+                  finished_by_done=True)

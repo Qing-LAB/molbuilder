@@ -53,8 +53,8 @@ mounted by two different pages, each a thin wrapper:
   (`lib/inspectors/spectra.js`, registered as **"Spectra results"**) mounts the
   same engine to display it. It never shows the generate-side form.
 
-Because both wrappers call into one engine, a fix to the chart or the mode table
-lands on both pages at once.
+The two halves share the module (`lib/spectra/core.js`) and nothing at run
+time: the tab mounts its describe half, the presenter its viewer half.
 
 ```mermaid
 flowchart TD
@@ -347,7 +347,7 @@ along z and Hirshfeld charges. The two are the person's, made in the bar:
 
 The door answers `infrared` — per mode the strength along the direction,
 $A(\hat e)$ in km/mol, and the charge the mode moves into or out of the free
-atoms, from `spectra.infrared.infrared_view`. **The page computes nothing**:
+atoms, from the one door `spectra.infrared.infrared_view_of`. **The page computes nothing**:
 the modes table shows both in their columns, the chart's infrared lane draws
 the strengths (§ 2), and the CSV export follows the table. **A view is named
 one way everywhere** — the free atoms with their count, the direction, the
@@ -474,9 +474,7 @@ columns, the running phrase. A PySCF run still sweeping states `raman_route`
 is shown, the chart's Raman lane and the bar's line say the same
 words: *type the laser's wavelength — the strength depends on it*, or *not
 given:* and the door's reason where it refused the ask (`spectrumchart.md`
-§ 8.3, `setAbsentWords`). A result opened without its folder — an upload —
-gets no view: the optical calls' data file beside it cannot be read, and the
-door says so. **The Methods paragraph** gains the view's sentence at load —
+§ 8.3, `setAbsentWords`). **The Methods paragraph** gains the view's sentence at load —
 the route, $\hat e$, $\delta$, the laser, the width, *independent states, no
 local field* — its citation among the result's keys (§ 9b.3). The laser and
 the width are remembered with the other view preferences (§ 7).
@@ -646,8 +644,9 @@ written without the other.
 The physics is the **tab's**, not the viewer's. VibrationView holds no frequency,
 no temperature and no physical constant — it receives a displacement array and a
 number and multiplies them ([`vibrationview.md`](?doc=web/vibrationview.md)
-§ 12.2). `lib/spectra/core.js` turns a mode's wavenumber into the amplitude above
-and chooses the eigenvector that pairs with it.
+§ 12.2). `lib/spectra/core.js` takes the amplitude the result states for the
+mode (`zero_point_amplitude_amu12_ang`, above) and chooses the eigenvector that
+pairs with it.
 
 ### 4.2 The sentence under the viewer — which atoms the mode belongs to
 
@@ -869,7 +868,7 @@ catalogue schema + hand-over doors (§ 5):
 |---|---|---|
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data — with `temperature_k`, each mode's thermal spread at it (§ 4.1); with `frameset_temperature_k` — the frame-set dialog's, the run's thermochemistry temperature when not asked — each mode's `frameset`: its mean number of quanta, its spread and that spread against its zero-point one, and the outermost frames' largest atom move for three, five and seven frames at it (§ 4.3); with `infrared: {direction, partition}`, the free atoms' infrared at those choices — along z by Hirshfeld charges when not asked, and derived with every load of a result that states its charges (§ 3.2); with `raman: {laser_nm, broaden_ev?}`, the Raman at that laser (§ 3.3) | `{ok, results}`, `results.infrared` the infrared view where the result has one, `results.raman` the Raman view when asked, `infrared_said` and `raman_said` the door's reason where it could not give one — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 | `GET /api/spectra/export` | `?path=` the result the viewer shows, `format=` `netcdf` or `csv`, `laser_nm=` and `broaden_ev=` the view's — the calculation's vibration data files and the Raman view, one zip (§ 3.3) | the zip, its name the server's, a sentence beside it in `X-Molbuilder-Said` — or `{ok: false, error}`, 400 naming what is refused, 404 for nothing there |
-| `POST /api/spectra/frameset` | `{run, mode, temperature_k, nodes, out}` — the vibration run's folder (the loaded result's) and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the one generator (`engines/vibration.md` § 5.10 ③) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the generator's refusal in its words |
+| `POST /api/spectra/frameset` | `{path, mode, temperature_k, nodes, out}` — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`mode_frames.NODES`, § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the one generator (`engines/vibration.md` § 5.10 ③) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the generator's refusal in its words |
 
 Each follows the app's `{ok: …}` envelope convention, the export's file
 aside. The form schema comes

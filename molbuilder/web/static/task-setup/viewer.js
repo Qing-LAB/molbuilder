@@ -308,7 +308,9 @@ function renderStages(task) {
     const fitHost = $("ts-window-fit");
     if (fitHost) {
         fitHost.textContent = "";
-        const row = stages.findIndex((st) => st && st.name === "transmission");
+        const rung = _fs.extension && _fs.extension.window;
+        const row = rung ? stages.findIndex((st) => st && st.name === rung)
+                         : -1;
         fitHost.hidden = !(task.calculation === "transport" && task.reuses
                            && row !== -1);
         if (!fitHost.hidden) {

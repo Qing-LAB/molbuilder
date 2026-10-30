@@ -25,9 +25,9 @@ three-stage contract, `engines/overview.md` § 3) and everything else
 straight through.
 
 THE BLOCKS AUTHORED HERE: the tracked relaxation
-(``phase_relaxation`` + step/max-force progress, complete-by-assertion
-under ``already_relaxed`` with the post-SCF gradient check that WARNS and
-never refuses), the thermochemistry (headline at (T, P), the documented
+(``phase_relaxation`` + step/max-force progress; ``not requested`` from
+the first write under ``already_relaxed``, vibration.md § 4.9, with the
+post-SCF gradient check that WARNS and never refuses), the thermochemistry (headline at (T, P), the documented
 default temperature grid the viewer's G/H/S curves draw, and the regime
 word — ``rrho`` for a free molecule, ``vibrational-only`` when atoms are
 frozen, `web/spectra.md` § 8), and the IR-only
@@ -69,30 +69,25 @@ class VibrationConfigView:
     # Public because it is the SHAPE, not an implementation detail: the
     # emitters and the Methods fragment annotate against it.
     """The adapter — see the module header: the one view both the
-    emitters and the kind's science read.
-
-    ``dataclasses.asdict`` works on it (the lifted constants emitter
-    records the config into the artifact that way) by advertising the
-    REAL config's fields — which is also the right record: the artifact's
-    ``config`` should say what the described PySCFConfig held, not the
-    adapter's."""
+    emitters and the kind's science read.  What the artifact's ``config``
+    records is the described PySCFConfig it adapts (:attr:`config`), not
+    the adapter's."""
 
     #: WHOSE VIEW THIS IS -- `template.engine_name` reads it, so a reader
     #: holding the view gets PySCF's answers, never the class name's.
     ENGINE = "pyscf"
 
     def __init__(self, cfg, struct: Structure):
-        from ..config.pyscf import PySCFConfig
-        # asdict() asks type(self) for __dataclass_fields__ and getattrs
-        # each name off the instance -- __getattr__ forwards to the real
-        # config, so the recorded dict is the config's own.
-        type(self).__dataclass_fields__ = PySCFConfig.__dataclass_fields__
-        type(self).__dataclass_params__ = PySCFConfig.__dataclass_params__
         self._cfg = cfg
         # THE HELD ATOMS, by the structure's one read of them.
         self.frozen_indices = [int(i) for i in (struct.frozen_atoms or [])]
         self._struct = struct
         self._state = None
+
+    @property
+    def config(self):
+        """The described PySCFConfig this view adapts."""
+        return self._cfg
 
     @property
     def state(self):
@@ -146,8 +141,8 @@ def _vib_constants(cfg, names) -> List[str]:
     from .. import constants
     from ..spectra.normal_modes import (display_form, frequencies_cm1,
                                         signed_omega, thermo_temperatures,
-                                        vibrational_modes, vibrational_thermo,
-                                        vibrational_thermo_grid)
+                                        vibrational_modes,
+                                        vibrational_only_thermo)
     from ..spectra.pyscf_vibration import (as_numpy, dipole_derivatives,
                                            equilibrium_structure, homo_index,
                                            mo_window)
@@ -155,6 +150,7 @@ def _vib_constants(cfg, names) -> List[str]:
     from ..spectra.selection import select_modes
     from ..trajectory_log.emitter import MolwatchEmitter
     from ..workingcopy_structure import StructureCodec
+    from .layout import GEOMETRY_SECTION
     from .relax_policy import (policy_of, relax, stop_if_past_wall,
                                wall_deadline)
     out = ["",
@@ -163,12 +159,10 @@ def _vib_constants(cfg, names) -> List[str]:
            "# The relaxation's convergence criteria (the shared geometry",
            "# items; the vibration template defaults them to the tight",
            "# tier -- a frequency deserves a real stationary point).",
-           f"GEOM_GMAX      = {float(cfg.geom_gmax)!r}",
-           f"GEOM_GRMS      = {float(cfg.geom_grms)!r}",
-           f"GEOM_DMAX      = {float(cfg.geom_dmax)!r}",
-           f"GEOM_DRMS      = {float(cfg.geom_drms)!r}",
-           f"GEOM_MAX_STEPS = {int(cfg.geom_max_steps)}",
-           f"GEOM_ETOL      = {float(cfg.geom_etol)!r}",
+           # ONE CONSTANT PER ITEM OF THE GEOMETRY SECTION, read from it
+           # (`layout.GEOMETRY_SECTION`), as the relaxation's call is.
+           *(f"GEOM_{_n[5:].upper():<9} = {getattr(cfg, _n)!r}"
+             for _n in GEOMETRY_SECTION.items),
            "# What the relaxation does when geomeTRIC reports its criteria",
            "# unmet at GEOM_MAX_STEPS (engines/pyscf.md 3): halt, continue",
            "# from the geometry reached, or proceed with it.",
@@ -189,8 +183,8 @@ def _vib_constants(cfg, names) -> List[str]:
                homo_index, mo_window,
                dipole_derivatives, as_numpy, vibrational_modes,
                signed_omega, frequencies_cm1, display_form,
-               thermo_temperatures, vibrational_thermo,
-               vibrational_thermo_grid, equilibrium_structure,
+               thermo_temperatures, vibrational_only_thermo,
+               equilibrium_structure,
                write_spectra_payload, finite_or_none, select_modes,
                ir_strength_km_mol, constants, AtomIndexMap),
            f"JSON_PATH = _mb_outfile({run_file_expr(names, ROLE_SPECTRA)})",
@@ -207,9 +201,11 @@ def _vib_state_init() -> List[str]:
     step from the first byte the viewer polls."""
     return [
         "",
-        "# v5: the relaxation is a tracked phase (spectra-migration plan",
-        "# D4); the thermo block rides the same schema bump (D2).",
-        "state['phase_relaxation'] = 'empty'",
+        "# The relaxation is a tracked phase; one the description never",
+        "# asked for -- the structure stated relaxed -- is `not requested`",
+        "# from the first write (vibration.md 4.9).",
+        "state['phase_relaxation'] = (PHASE_NOT_REQUESTED if ALREADY_RELAXED",
+        "                             else PHASE_EMPTY)",
         "state['relaxation'] = {'enabled': (not ALREADY_RELAXED),",
         "                       'already_relaxed': ALREADY_RELAXED,",
         "                       'n_steps': 0, 'max_force_eh_bohr': None,",
@@ -249,7 +245,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
         "# ============================================================",
         "if not ALREADY_RELAXED:",
         "    print('=== Stage: relaxation (geomeTRIC) ===')",
-        "    state['phase_relaxation'] = 'running'",
+        "    state['phase_relaxation'] = PHASE_RUNNING",
         "    _mb_write_spectra_payload(state, JSON_PATH)",
         "    _mf_relax = _build_mf_at(COORDS_EQ_ANG)",
     ]
@@ -350,6 +346,11 @@ def _vib_relax_block(cfg, names) -> List[str]:
         "        _mf_relax, ON_NONCONVERGENCE, GEOM_CONTINUE_RETRIES,",
         "        deadline=_MB_WALL_DEADLINE,",
         f"        {_opt_kw}, **_conv)",
+        # THE RELAXATION'S OWN VERDICT, into the progress log's footer
+        # (`MolwatchEmitter.relaxed`), so the run's ending states geometry
+        # yes / NO as the optimization deck's does (`engines/pyscf.md` § 4).
+        *(["    _molwatch.relaxed(bool(_geometric_converged))"]
+          if getattr(cfg, "write_molwatch_log", False) else []),
         # THE WALL STOPPED IT (`engines/pyscf.md` § 3.9): no spectrum is
         # computed past it -- the run ends failed, and a launch runs it
         # again; an unconverged relaxation below is `proceed`'s alone.
@@ -368,15 +369,11 @@ def _vib_relax_block(cfg, names) -> List[str]:
         out.append(emit_save_call("mol", ROLE_OPTIMIZED, names, indent="    "))
     out += [
         "    COORDS_EQ_ANG = mol.atom_coords(unit='Angstrom')",
-        "    state['phase_relaxation'] = 'complete'",
+        "    state['phase_relaxation'] = PHASE_COMPLETE",
         "    _mb_write_spectra_payload(state, JSON_PATH)",
-        "else:",
-        "    # Complete-BY-ASSERTION: the user stated it; the gradient is",
-        "    # still checked (after the equilibrium SCF below, where the",
-        "    # mean field exists) and a warning -- never a refusal --",
-        "    # carries the number.",
-        "    state['phase_relaxation'] = 'complete'",
-        "    _mb_write_spectra_payload(state, JSON_PATH)",
+        "# A structure stated relaxed is not relaxed here: its gradient is",
+        "# checked after the equilibrium SCF below, where the mean field",
+        "# exists, and a warning -- never a refusal -- carries the number.",
     ]
     return out
 
@@ -389,7 +386,7 @@ def _vib_gradient_check() -> List[str]:
     (`vibrational_analysis.nonstationary_remedy`, `engines/vibration.md`
     § 5.5), written into the deck as a literal at render time."""
     from ..spectra.vibrational_analysis import nonstationary_remedy
-    _remedy = nonstationary_remedy(None, "pyscf")
+    _remedy = nonstationary_remedy(None)
     return [
         "",
         "if ALREADY_RELAXED:",
@@ -446,36 +443,18 @@ def _vib_thermo_block() -> List[str]:
         "# before diagonalising -- so nothing here filters for one.  An",
         "# imaginary mode has no harmonic partition function; it is left out",
         "# and the count is recorded, never dropped in silence.",
-        "_freqs_cm1 = np.array([m['frequency_cm1'] for m in",
-        "                       state['modes'] if not m['has_imag']])",
-        "_N_IMAG_EXCLUDED = int(sum(1 for m in state['modes'] if m['has_imag']))",
-        "# The harmonic sums, and the grid the viewer draws with the headline",
-        "# temperature ON it, come from the one home both engines share",
-        "# (spectra/normal_modes, imported above).",
-        "_regime = 'rrho' if not FROZEN_ATOM_IDXS else 'vibrational-only'",
-        "_zpe0 = _mb_vibrational_thermo(_freqs_cm1, THERMO_T_K)[0]",
-        "_T_GRID = _mb_thermo_temperatures(THERMO_T_K)",
-        "state['thermo'] = {",
-        "    'regime': _regime,",
-        "    'temperature_K': THERMO_T_K, 'pressure_atm': THERMO_P_ATM,",
-        "    'zpe_eh': _zpe0,",
-        "    'n_modes': int(len(state['modes'])),",
-        "    'n_imag_excluded': _N_IMAG_EXCLUDED,",
-        "    'n_rigid_removed': N_RIGID,",
-        "}",
         "# ONE QUANTITY UNDER ONE LABEL: the headline and every grid point are",
-        "# the same sum.  Free molecule: PySCF's full RRHO (electronic +",
-        "# translational + rotational + vibrational) at each T.  Atoms held:",
-        "# the vibrational sums above the electronic energy at each T -- there",
-        "# is no gas-phase translational or rotational partition function to",
-        "# add, and the whole-body motions of the free atoms were removed",
-        "# before diagonalising.",
-        "_grid = None",
-        "# Why a vibrational-only answer is one, said in its note: atoms held,",
-        "# or a free molecule whose full RRHO failed.",
-        "_why_vib_only = ('atoms are held, so the whole has no gas-phase '",
+        "# the same sum, the headline temperature ON the grid.  Free molecule:",
+        "# PySCF's full RRHO (electronic + translational + rotational +",
+        "# vibrational) at each T.  Atoms held -- or a free molecule whose full",
+        "# RRHO failed -- the vibrational-only block both engines write, from",
+        "# its one home (spectra/normal_modes, imported above), its note",
+        "# saying why.",
+        "_T_GRID = _mb_thermo_temperatures(THERMO_T_K)",
+        "_why_vib_only = (None if not FROZEN_ATOM_IDXS else",
+        "                 'atoms are held, so the whole has no gas-phase '",
         "                 'translation or rotation to add')",
-        "if _regime == 'rrho':",
+        "if _why_vib_only is None:",
         "    try:",
         "        def _rrho_at(_T):",
         "            # The same signed omega the modes were reported from;",
@@ -496,45 +475,38 @@ def _vib_thermo_block() -> List[str]:
         "            _grid['h_eh'].append(_h)",
         "            _grid['s_eh_k'].append(_s)",
         "            _grid['g_eh'].append(_g)",
-        "        state['thermo']['note'] = (",
-        "            'Full rigid-rotor harmonic-oscillator (RRHO) thermochemistry of '",
-        "            'the free molecule as an ideal gas at this temperature and '",
-        "            'pressure -- electronic, translational, rotational and '",
-        "            'vibrational -- via PySCF thermo, the headline and the grid '",
-        "            'alike.  Good for gas-phase reaction and binding free energies '",
-        "            'against species computed the same way; the vibrations are '",
-        "            'harmonic, so modes below about 100 cm-1 (torsions, hindered '",
-        "            'rotations) make the entropy the least reliable number')",
+        "        _k = _grid['temperatures_K'].index(float(THERMO_T_K))",
+        "        state['thermo'] = {",
+        "            'regime': 'rrho',",
+        "            'temperature_K': THERMO_T_K, 'pressure_atm': THERMO_P_ATM,",
+        "            # THE HEADLINE IS A ROW OF THE GRID, every number of it.",
+        "            'zpe_eh': _grid['zpe_eh'][_k], 'h_eh': _grid['h_eh'][_k],",
+        "            's_eh_k': _grid['s_eh_k'][_k], 'g_eh': _grid['g_eh'][_k],",
+        "            'n_modes': int(len(state['modes'])),",
+        "            'n_imag_excluded': int(sum(1 for m in state['modes']",
+        "                                       if m['has_imag'])),",
+        "            'n_rigid_removed': N_RIGID,",
+        "            'note': (",
+        "                'Full rigid-rotor harmonic-oscillator (RRHO) thermochemistry of '",
+        "                'the free molecule as an ideal gas at this temperature and '",
+        "                'pressure -- electronic, translational, rotational and '",
+        "                'vibrational -- via PySCF thermo, the headline and the grid '",
+        "                'alike.  Good for gas-phase reaction and binding free energies '",
+        "                'against species computed the same way; the vibrations are '",
+        "                'harmonic, so modes below about 100 cm-1 (torsions, hindered '",
+        "                'rotations) make the entropy the least reliable number'),",
+        "            'grid': _grid,",
+        "        }",
         "    except Exception as _e:",
         "        print(f'full-RRHO thermo unavailable ({_e}); '",
         "              'vibrational-only values recorded')",
-        "        _regime = 'vibrational-only'",
-        "        state['thermo']['regime'] = _regime",
         "        _why_vib_only = (f'PySCF thermo could not give the full RRHO '",
         "                         f'for this free molecule ({_e})')",
-        "        _grid = None",
-        "if _grid is None:",
-        "    _grid = _mb_vibrational_thermo_grid(_freqs_cm1, _T_GRID, float(E_eq))",
-        "    # No pressure enters the vibrational sums -- only the gas-phase",
-        "    # translational term takes one (engines/vibration.md 4.7).",
-        "    state['thermo']['pressure_atm'] = None",
-        "    state['thermo']['note'] = (",
-        "        'The harmonic VIBRATIONAL contributions of the free atoms at this '",
-        "        'temperature, above the electronic energy -- ZPE, U_vib, S_vib '",
-        "        'and F_vib = ZPE + U_vib - T*S_vib -- the headline and the grid '",
-        "        'alike, because ' + _why_vib_only + '.  Good for the zero-point '",
-        "        'and vibrational free-energy correction of one structure against '",
-        "        'another computed the same way; not the free energy of a '",
-        "        'molecule in the gas phase: no translation or rotation is added '",
-        "        'and no pressure enters.  Modes below about 100 cm-1 are '",
-        "        'anharmonic in practice and carry most of S_vib, so the entropy '",
-        "        'is the least reliable number; the whole-body motions of the free '",
-        "        'atoms were removed before diagonalising')",
-        "_k = _grid['temperatures_K'].index(float(THERMO_T_K))",
-        "state['thermo']['h_eh'] = _grid['h_eh'][_k]",
-        "state['thermo']['s_eh_k'] = _grid['s_eh_k'][_k]",
-        "state['thermo']['g_eh'] = _grid['g_eh'][_k]",
-        "state['thermo']['grid'] = _grid",
+        "if _why_vib_only is not None:",
+        "    state['thermo'] = _mb_vibrational_only_thermo(",
+        "        [m['frequency_cm1'] for m in state['modes']],",
+        "        [m['has_imag'] for m in state['modes']], THERMO_T_K,",
+        "        e_ref_eh=float(E_eq), n_rigid=N_RIGID, why=_why_vib_only)",
         "_mb_write_spectra_payload(state, JSON_PATH)",
     ]
 

@@ -1131,7 +1131,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
                           "(the relaxation; the force constants; a mode's "
                           "side at its displacement), what it was written "
                           "from and seeded with, how it ended, whether it "
-                          "was taken over -- and the finish's entry",
+                          "was taken over -- and the finish's entry; "
+                          "one per run, named for its first try, -run0, "
+                          "whichever try writes to it",
              attempt="always", engine="siesta", calculation="vibration",
              kind="record",
              writer="launch, for the calls it opens (`submit`); the run's "
@@ -1147,7 +1149,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
                           "whether it was taken over and from where, what "
                           "it must hold to be done -- the cited set's "
                           "weights, and each point's start, end, exit and "
-                          "verdict as its report steps saw them",
+                          "verdict as its report steps saw them; one per "
+                          "run, named for its first try, -run0, whichever "
+                          "try writes to it",
              attempt="always", engine="siesta", calculation="transport",
              kind="record",
              writer="launch, for the points it opens (`submit`); each "
@@ -1689,8 +1693,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="`jobset summarize` (`run_summarize_jobset`)"),
     Artifact(name="{group}.run.sh",
              what="a launch group's sequencer: a benchmark's trials, a "
-                  "bias sweep's points, a task's stages sharing one job, or "
-                  "a task's groups launched one after another in one job, "
+                  "run of points' walk (a vibration's calls, a bias "
+                  "sweep's points), a task's stages sharing one job, or a "
+                  "task's groups launched one after another in one job, "
                   "in order",
              when="launch", level="launch", kind="derived",
              writer="launch (`jobset/submit.py`), written again at each "

@@ -1610,27 +1610,19 @@
     /* A WIDTH AS SHOWN, eV: six significant digits, rounded UP -- the run's
      * own width typed back as shown is then never narrower than the run's,
      * which the door refuses (web/spectra.md § 3.3). */
-    function _widthWords(ev) {
-        const x = Number(ev);
-        let s = x.toPrecision(6);
-        if (Number(s) < x)
-            s = (Number(s) + Math.pow(10, Math.floor(Math.log10(x)) - 5))
-                .toPrecision(6);
-        return String(Number(s));
-    }
     /* WHAT A RAMAN VIEW IS, in words (web/spectra.md § 3.3): the light's
      * direction, the laser, the width; the static number names no laser,
      * it does not depend on one. */
     function _ramanViewWords(view, laser = true) {
         return "light along " + _alongWords(view)
              + (laser ? ", " + view.laser_nm + " nm" : "")
-             + ", " + _widthWords(view.broaden_ev) + " eV";
+             + ", " + view.broaden_words + " eV";
     }
     /* The same, in a CSV column's name. */
     function _ramanCsvWords(view, laser = true) {
         return ["along", _directionWords(view, "_")]
             .concat(laser ? [view.laser_nm + "nm"] : [])
-            .concat([_widthWords(view.broaden_ev) + "eV"]).join("_");
+            .concat([view.broaden_words + "eV"]).join("_");
     }
     /* THE LINE ASKING FOR THE LASER, said on the bar's line and in the
      * chart's Raman lane (web/spectra.md § 2.1, § 3.3). */
@@ -1803,7 +1795,7 @@
                 + "polarizability along " + _alongWords(view) + " changes as "
                 + "the vibration moves it, from SIESTA's optical calculation "
                 + "with the atoms pushed slightly each way, the absorption "
-                + "spectrum smoothed by " + _widthWords(view.broaden_ev)
+                + "spectrum smoothed by " + view.broaden_words
                 + " eV."];
     }
     function _ramanStaticNote(view) {
@@ -1814,7 +1806,7 @@
         link.textContent = "the method, § 3.1";
         return [" — the same, in the limit of zero light frequency, so it "
                 + "does not depend on the laser (absorption spectrum smoothed "
-                + "by " + _widthWords(view.broaden_ev) + " eV). When this "
+                + "by " + view.broaden_words + " eV). When this "
                 + "limit is meaningful: ", link, "."];
     }
     /* The notes' block shows while one of its notes does. */
@@ -1824,10 +1816,12 @@
             .some(note => !note.hidden);
     }
 
-    /* A SIESTA RESULT'S INFRARED is its charges' (web/spectra.md § 3.2):
-     * its route `charges`, the free atoms', derived with every load. */
+    /* WHETHER A RESULT'S INFRARED IS ITS CHARGES' -- the free atoms',
+     * derived with every load (web/spectra.md § 3.2) -- is the load door's
+     * answer (`infrared_source`, `infrared.source_of`), never worked out
+     * here. */
     function _irFromCharges(r) {
-        return !!(r && (r.ir_route === "charges" || r.partial_charges));
+        return !!(r && r.infrared_source === "charges");
     }
     /* A FREE MOLECULE -- the result holds no atom -- meets the light
      * tumbling: no direction is asked (the door's `infrared_orientation`). */
@@ -1884,8 +1878,8 @@
                 + r.raman_fd_step_ang + " \u00c5";
             const v = r.raman;
             if (v) return head + "; at " + v.laser_nm + " nm, broadened to "
-                + _widthWords(v.broaden_ev) + " eV (the run's "
-                + _widthWords(v.run_broaden_ev) + " eV)";
+                + v.broaden_words + " eV (the run's "
+                + v.run_broaden_words + " eV)";
             if (r.phase_raman !== "complete" && !r.raman_said)
                 return head + " \u2014 " + r.phase_raman;
             return head + " \u2014 " + _ramanWait(r).words;
@@ -1996,7 +1990,7 @@
             const wait = _ramanWait(results);
             parts.push("Raman: " + (wait ? wait.words
                 : "the run's own broadening: "
-                  + _widthWords(results.raman.run_broaden_ev) + " eV"));
+                  + results.raman.run_broaden_words + " eV"));
             if (wait && wait.kind === "warn") kind = "warn";
         }
         setStatus(els.viewStatus, parts.join(" · "), kind);
@@ -2105,11 +2099,9 @@
             _renderStrengths(held);
             _renderMethods(held);
         };
-        const fence = root.molbuilder && root.molbuilder.pageBusy;
         try {
-            if (fence) await fence.run("Updating the spectrum…",
-                                       [() => asked.abort()], ask);
-            else await ask();
+            await root.molbuilder.pageBusy.run("Updating the spectrum…",
+                                               [() => asked.abort()], ask);
         } finally {
             if (state.lifecycle.viewsAbort === asked)
                 state.lifecycle.viewsAbort = null;
@@ -2349,7 +2341,7 @@
             els.modesTable.classList.toggle("route-no-ir",
                                             !_irAsked(results));
             els.modesTable.classList.toggle("route-no-charge",
-                                            !results.partial_charges);
+                                            !_irFromCharges(results));
             els.modesTable.classList.toggle("route-no-es",
                                             !_routeHas(results, "es_mode_selection"));
         }
@@ -2818,7 +2810,7 @@
         const ramanView = state.results.raman;
         const hasIr = _irAsked(state.results);
         const view = state.results.infrared;
-        const hasCharge = !!state.results.partial_charges;
+        const hasCharge = _irFromCharges(state.results);
         const hasEs = _routeHas(state.results, "es_mode_selection");
         // THE HEADER NAMES WHAT A VIEW IS (web/spectra.md § 3.2): the
         // direction and the partition the infrared was asked for -- the
@@ -3320,22 +3312,6 @@
             m => m.index_1based === state.selectedMode);
         if (!mode || !Array.isArray(mode.eigenvector_display)) return nothing;
 
-        // The eigenvector is indexed by FREE-atom row, so its length is the size
-        // of the free set -- not of the structure.  Disagreement here means the
-        // result is internally inconsistent; the viewer would refuse it anyway
-        // (§ 6.3), and refusing it here says so before anything is drawn.
-        const free = Array.isArray(r.free_atom_idxs) ? r.free_atom_idxs : null;
-        if (free && free.length !== mode.eigenvector_display.length) {
-            return { ready: false,
-                     why: "this mode does not match the structure it is stored "
-                        + "with, so it cannot be animated" };
-        }
-        if (!free && mode.eigenvector_display.length !== eq.elements.length) {
-            return { ready: false,
-                     why: "this mode does not match the structure it is stored "
-                        + "with, so it cannot be animated" };
-        }
-
         const hz = Number(mode.frequency_cm1);
 
         /* WHICH PAIRING (§ 12.2). The array and the amplitude go together: a
@@ -3348,6 +3324,9 @@
             : null;
         const usePhysical = physical !== null
             && Array.isArray(mode.eigenvector_canonical);
+        /* THE ATOMS THE DISPLACEMENTS BELONG TO: the free set a file lists
+         * (`free_atom_idxs`), else every atom of the structure. */
+        const free = Array.isArray(r.free_atom_idxs) ? r.free_atom_idxs : null;
 
         return {
             ready:     true,
@@ -3631,7 +3610,9 @@
         // chosen -- said at the temperature the door computed them at, the
         // run's own thermochemistry temperature until another is typed.
         const held = state.fileState.results || {};
-        const RULES = ["3", "5", "7"];
+        // THE RULES THE GENERATOR WRITES, served with the load, its default
+        // first (`mode_frames.NODES`, web/spectra.md § 4.3).
+        const RULES = (K.frameset_nodes || []).map(String);
         // WHAT THE DOOR SAID OF THIS MODE: ``{t, f}``, the temperature it
         // computed at and the mode's ``frameset`` there.
         const saidOf = (answer) => {
@@ -3670,7 +3651,7 @@
         const { chooseSavePath } = await import(
             "/static/lib/projects/dialogs.js");
         const { toDisplay } = await import("/static/lib/molview/index.js");
-        let timer = null, inBox = startAt, nodesNow = "3";
+        let timer = null, inBox = startAt, nodesNow = RULES[0];
         const asked = await askFields({
             title: "Mode " + mode.index_1based + " as a frame set",
             hint: "The temperature of the motion the frames sample: the "
@@ -3681,7 +3662,7 @@
                 { name: "temperature", label: "Temperature (K)",
                   type: "number", attrs: { min: "0", step: "any" },
                   value: startAt == null ? "" : startAt },
-                { name: "nodes", label: "Frames", value: "3",
+                { name: "nodes", label: "Frames", value: RULES[0],
                   options: RULES.map(n => [n, n]) },
             ],
             note: said && said.t === startAt ? meaning(said, nodesNow) : "",
@@ -3689,7 +3670,7 @@
                                && Number(v.temperature) >= 0)
                 ? "the temperature is a number of kelvin, 0 or more"
                 : !RULES.includes(v.nodes)
-                ? "three, five or seven frames" : null,
+                ? "the frames are " + RULES.join(", ") : null,
             // THE NOTE SPEAKS ONLY OF THE TEMPERATURE IN THE BOX: another
             // rule is said from what the door already answered there; a
             // temperature typed asks the door again once the typing pauses,
@@ -3739,7 +3720,7 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    run: String(path).replace(/\/[^/]*$/, ""),
+                    path: String(path),
                     mode: mode.index_1based,
                     temperature_k: Number(asked.temperature),
                     nodes: Number(asked.nodes), out: out }),

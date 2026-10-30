@@ -673,9 +673,10 @@ build it in the one vocabulary — a field a text or number box, or a choice
 among a few values (`options`, a `<select>`); `askFields` is the form dialog —
 labelled fields checked as typed, the answer's button enabled only while the
 answer can stand, its refusal on a line that is reserved so nothing moves
-under the pointer; a caller whose hint follows a field is told every change
-(`onInput(values, {setHint})`) and may rewrite the hint — the *Write frame
-set…* dialog's reference at the temperature typed (`web/spectra.md` § 4.3). Buttons run cancel first and the answer last, which wears `.primary`
+under the pointer; a caller whose hint or note follows a field is told every
+change (`onInput(values, {setHint, setNote})`) and may rewrite either — the
+*Write frame set…* dialog's note, what the temperature typed means for the
+mode (`web/spectra.md` § 4.3). Buttons run cancel first and the answer last, which wears `.primary`
 or, when it costs something, `.danger` — both in `page-shell.css`, because a
 dialog opens on every page. The sidebar's questions (`lib/projects/dialogs.js`)
 and the tree picker (`lib/tree-picker.js`) are built on it.

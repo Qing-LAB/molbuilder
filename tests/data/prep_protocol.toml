@@ -121,6 +121,43 @@ template = { compute_raman = true, raman_modes = "range" }
 refused = ["Raman for is \"Modes in a frequency range\" and neither Raman from nor Raman up to is given"]
 
 [[case]]
+name = "...and its benchmark is prepared as any stage's: each trial's deck and run script in the trial's own run, no phase folder of the stage's run asked of a trial (engines/vibration.md 5.5)"
+calculation = "vibration"
+stage = "freq"
+bench = { mpi_np = [2], omp_threads = [1] }
+made = ["01_freq/bench/bench-G0N2C1/run-0/H2-G0N2C1_01_freq.fdf", "01_freq/bench/bench-G0N2C1/run-0/H2-G0N2C1_01_freq.run.sh"]
+made_lacks = ["01_freq/relax", "01_freq/fc"]
+
+[[case]]
+name = "...and with Raman on, its progress log seeded only where the run opens a call -- the relaxation's and the force constants' in its first run -- and none left in the optical calls' container, below which the job plans each call (project-layout.md 1.6.2)"
+calculation = "vibration"
+stage = "freq"
+template = { compute_raman = true }
+made = ["01_freq/run-0/relax/H2_01_freq.molwatch.log", "01_freq/run-0/fc/H2_01_freq.molwatch.log"]
+made_lacks = ["01_freq/optical/H2_01_freq.molwatch.log", "01_freq/relax/H2_01_freq.molwatch.log", "01_freq/fc/H2_01_freq.molwatch.log"]
+
+[[case]]
+name = "...and a charged one has the Makov-Payne correction script beside each deck it writes -- each phase's, and each call's of its first run -- as a charged single run has it beside its deck (siesta.md, the correction script)"
+calculation = "vibration"
+stage = "freq"
+structure = { elements = ["O", "O", "C"], positions = [[5.0, 5.0, 6.20], [5.0, 5.0, 3.84], [5.0, 5.0, 5.0]], regions = { frozen_atoms = [2] }, cell = [10.0, 10.0, 10.0] }
+template = { net_charge = 2 }
+made = ["01_freq/relax/makov_payne_correction.py", "01_freq/fc/makov_payne_correction.py", "01_freq/run-0/relax/makov_payne_correction.py", "01_freq/run-0/fc/makov_payne_correction.py"]
+
+[[case]]
+name = "...its job carries the relaxation's warm files -- what a launch again continues the run's relaxation from (engines/vibration.md 5.11 6)"
+calculation = "vibration"
+stage = "freq"
+plan_carries = { freq = ["H2.XV", "H2.DM", "H2.CG"] }
+
+[[case]]
+name = "...and a structure already relaxed, which runs no relaxation, carries none"
+calculation = "vibration"
+stage = "freq"
+template = { already_relaxed = true }
+plan_carries = { freq = [] }
+
+[[case]]
 name = "...and one whose description changed since is prepared again whole -- its first run reused, and what differed named"
 before = [["prep", "task", "--group", "1"]]
 changed = { overrides = { coarse = { max_scf_iter = 200 } } }

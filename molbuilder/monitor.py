@@ -579,8 +579,10 @@ class WatchedRun:
         st.unit_words = reader.unit_words(me)
         st.units_done = sum(1 for r in same
                             if r["done"] and not r.get("started_from"))
-        # LEFT: what the walk will still run, by the kind's reader.
-        st.units_left = reader.left(same)
+        # LEFT: what the walk will still run of this phase, by the kind's
+        # own rule.
+        st.units_left = sum(1 for r in reader.left(index, rows)
+                            if r["phase"] == me["phase"])
         if took:
             st.unit_s = sum(took) / len(took)
             st.left_at_pace_s = st.unit_s * st.units_left
@@ -675,11 +677,13 @@ class RunIndex:
     read: Callable
     rows: Callable
     summary: Callable
-    #: what one point of the run is called -- *call*, *point*
+    #: what one point of the run is called -- *call*, *point* -- its
+    #: index module's own word (``UNIT``)
     unit: str
     #: ``row -> words``: a unit of the pace, for a point's row
     unit_words: Callable
-    #: ``rows -> int``: how many of ``rows`` the run will still run
+    #: ``(index, rows) -> rows``: the points the walk will still run, by
+    #: the kind's own rule (its index module's ``still_to_run``)
     left: Callable
 
 
@@ -692,17 +696,19 @@ RUN_INDEXES: Tuple[RunIndex, ...] = (
     RunIndex(path=_vp.index_path, read=_vp.read_index, rows=_vp.rows_of,
              summary=lambda rows, index: _vp.summary(
                  rows, index.get("phases") or ()),
-             unit="call", unit_words=lambda row: f"{row['phase']} call",
-             # A CALL NOT YET ENDED -- one that ended without being done is
-             # not walked again (`engines/vibration.md` § 5.11 § 3).
-             left=lambda rows: sum(1 for r in rows if not r["ended"])),
+             unit=_vp.UNIT,
+             unit_words=lambda row: f"{row['phase']} {_vp.UNIT}",
+             # A CALL THE WALK WILL STILL RUN -- never one whose phase needs
+             # a call that did not end done (`engines/vibration.md` § 5.11
+             # § 5).
+             left=_vp.still_to_run),
     RunIndex(path=_pi.index_path, read=_pi.read_index,
              rows=lambda index, run_dir, label: _pi.rows_of(index, run_dir),
              summary=lambda rows, index: _pi.summary(rows),
-             unit="point", unit_words=lambda row: "point",
+             unit=_pi.UNIT, unit_words=lambda row: _pi.UNIT,
              # A POINT THE WALK WILL STILL RUN -- never one after a point of
              # its frame that ended without being done (§ 2a.9).
-             left=lambda rows: len(_pi.still_to_run(rows))),
+             left=lambda index, rows: _pi.still_to_run(rows)),
 )
 
 

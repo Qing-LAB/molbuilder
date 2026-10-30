@@ -178,9 +178,18 @@ def test_fixture_pair_opens_through_the_read_door():
 
 
 def _struct_with_sidecar():
-    """The committed pair, its labels applied -- through the one read door."""
+    """The committed pair, its labels applied -- through the one read door
+    -- in the cell a transport calculation runs it in, which the junction
+    states and the calculation never derives (`engines/transport.md`
+    § 2a.9), built as `support.junction` builds its own: the gold chain a
+    wire, isolated across in an 8 A box; along transport the atoms' length
+    and one Au-Au spacing of room, so each lead continues into the image."""
     from molbuilder.workingcopy_structure import StructureCodec
-    return StructureCodec().load(_FIX_XYZ)
+    s = StructureCodec().load(_FIX_XYZ)
+    z = s.positions[:, 2]
+    return s.replace(
+        cell=np.diag([8.0, 8.0, float(z.max() - z.min()) + BL.au_au_fcc]),
+        axis_kind=("isolated", "isolated", "transport"))
 
 
 def _live_device_deck(label="au_bdt_au_test", rung="device", point=None,
@@ -194,7 +203,8 @@ def _live_device_deck(label="au_bdt_au_test", rung="device", point=None,
     import dataclasses
     from molbuilder import script_emit as _sc
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.transport_rung import at_point
+    from molbuilder.jobset.transport_rung import at_point, scratch_dir_of
+    from molbuilder.electronic_state import electronic_state
     from molbuilder.siesta.input import spec_for
     from molbuilder.template import role_answers
     struct = _struct_with_sidecar()
@@ -205,9 +215,15 @@ def _live_device_deck(label="au_bdt_au_test", rung="device", point=None,
         SiestaConfig(system_label=label),
         **role_answers("siesta", "transport", rung), **over), point)
     token = {"device": "04_device", "transmission": "05_transmission"}[rung]
+    # ...and the device's leads' folder, as prep hands it
+    # (`transport_rung.scratch_dir_of`; no calculation folder here, so the
+    # engine's own list says it).
     spec = spec_for(struct, cfg, calculation="transport",
+                    state=electronic_state(struct, cfg, kind="transport"),
                     names=RunNames(label, token),
-                    point=point)
+                    point=point,
+                    scratch_dir=(scratch_dir_of(None) if rung == "device"
+                                 else None))
     return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
 
@@ -257,6 +273,7 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
     from molbuilder.structure import Structure
     from molbuilder.parse.fdf import read_fdf
     from molbuilder import script_emit as _sc
+    from molbuilder.electronic_state import electronic_state
     from molbuilder.siesta.input import spec_for
 
     # [L x2][bridge x2][R x4] along z, contiguous and ordered as the engine
@@ -269,9 +286,14 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
         regions={"L-electrode": list(range(n_l)),
                  "bridge":      list(range(n_l, n_l + n_b)),
                  "R-electrode": list(range(n_l + n_b, n))},
+        # Its cell, as every junction states one (§ 2a.9): one spacing of
+        # room at the transport boundary.
+        cell=np.diag([8.0, 8.0, 2.0 * n]),
+        axis_kind=("isolated", "isolated", "transport"),
     )
     cfg = SiestaConfig(system_label="asym")
     spec = spec_for(struct, cfg, calculation="transport",
+                    state=electronic_state(struct, cfg, kind="transport"),
                     names=RunNames("asym", "04_device"))
     deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 

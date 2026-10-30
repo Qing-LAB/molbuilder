@@ -1,10 +1,10 @@
 """Prep — THE CONDUCTOR of `docs/execution/script-preparation.md`.
 
 It walks floors 1 -> 4 in order and owns no decision of its own: the five
-steps, and the eleven sub-steps inside step 3, are that document's (§ 4);
-what each engine supplies at each step is its § 5.  **It may call, but it
+steps, and the thirteen sub-steps inside step 3, are that document's (§ 3);
+what each engine supplies at each step is its § 4.  **It may call, but it
 may never decide** -- a value settled here is a value no floor owns, which
-is the shape of the "stomp" bugs (§ 3.3).
+is the shape of the "stomp" bugs (W1, § 2.3).
 
 :func:`prep_task` (a task's groups) and :func:`prep_bench` (one stage's
 benchmark) are the verb's two entries, and both doors call them with the
@@ -336,7 +336,6 @@ def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
         force_criterion_ev_ang=criterion,
         force_criterion_from=criterion_from,
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
-        relaxation=None,
         temperature_K=float(cfg.temperature_K),
         masses_amu=[atomic_mass(el) for el in struct.elements],
         molbuilder_version=str(_mb_version),
@@ -670,15 +669,26 @@ def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
     from ..template import engine_name
     from ..validation.spectra import modes_of
     n_free, _n_rigid, n_modes = modes_of(struct, engine_name(type(cfg0)))
+
+    def job_facts(job):
+        # THE RUN'S PHASES, on its job (`Job.phases`): what launch opens and
+        # walks, what the run's own python follows.  AND WHAT A LAUNCH AGAIN
+        # CARRIES (§ 5.11 § 6): the relaxation call's files, by its row's
+        # section (`warm_kind`) -- none without a relaxation, nor where the
+        # stage starts clean (`_job_for` gave it none).
+        from .model import warm_declaration
+        relaxes = any(p.name == RELAX for p in on)
+        return dataclasses.replace(
+            job, phases=[p.name for p in on],
+            warm=(warm_declaration("siesta", task.label,
+                                   phase(RELAX).warm_kind, base)
+                  if relaxes and job.warm else []))
     return Rung(struct=struct, render_kind="vibration",
                 said=(run_size_words(cfg0, n_free, n_modes),),
                 spec_extra=spec_extra, points=points, wrapper_at=wrapper_at,
                 beside=beside, sources_at=sources_at,
                 relaxes_at=lambda pt: pt is not None and pt.phase == RELAX,
-                # THE RUN'S PHASES, on its job (`Job.phases`): what launch
-                # opens and walks, what the run's own python follows.
-                job_facts=lambda job: dataclasses.replace(
-                    job, phases=[p.name for p in on]))
+                job_facts=job_facts)
 
 
 def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
@@ -1211,14 +1221,18 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                                      findings=findings, plan=plan,
                                      sources=rung.sources_at(_sources,
                                                              _point))
+                    # WHAT THIS DECK'S OWN TEXT PROMISES, beside it -- each
+                    # point's deck its own, so every run folder a launch
+                    # brings it into holds it (`materialize.bring_files`).
+                    if seam.sibling_artifacts is not None:
+                        with _calling("sibling_artifacts",
+                                      engine=task.engine, where=script):
+                            seam.sibling_artifacts(
+                                _struct, _at, _out / script,
+                                kind=rung.render_kind, names=_names,
+                                plan=plan)
                 spec = spec or _spec
                 spec_at[_out] = _spec
-            if seam.sibling_artifacts is not None:
-                with _calling("sibling_artifacts", engine=task.engine,
-                              where=script):
-                    seam.sibling_artifacts(rung.struct, cfg, _jdir / script,
-                                           kind=rung.render_kind,
-                                           names=_names, plan=plan)
             # THE PROGRESS LOG IS SEEDED BESIDE THE DECK IT FOLLOWS -- the
             # element's own, or for a sweep each point's -- and moved into the
             # run that writes it (`_move_progress_channel_into`), never left
@@ -1347,7 +1361,11 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                        machine_record=environment,
                        render=(None if kind == KIND_SWEEP
                                else {j.name for j in jobs}),
-                       points={j.name: _points for j in jobs}, plan=plan,
+                       # A BENCHMARK TRIAL IS ONE DECK in its own run,
+                       # never a run of points (as its deck was written).
+                       points=({} if kind == KIND_SWEEP
+                               else {j.name: _points for j in jobs}),
+                       plan=plan,
                        provenance=resolved.provenance, notes=notes)
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
@@ -1604,7 +1622,13 @@ def _open_attempts(calc, stage: str, *, plan, copied: bool = False,
         # the run's point.
         seeded = {pt.rel: d for d, pt in points}
         for pdir, point in sweep.points:
-            _move_progress_channel_into(pdir, plan, seeded=seeded[point.rel])
+            _move_progress_channel_into(pdir, plan,
+                                        seeded=seeded.pop(point.rel))
+        # A PREPARED FOLDER THE RUN OPENS NO POINT FOR -- a vibration's
+        # optical phase, whose calls its job plans (`PointsOf.containers`)
+        # -- has no run of its own to write a log: its seed is taken out.
+        for folder in seeded.values():
+            _drop_progress_channel(Path(folder), plan)
         return [sweep]
     rep = prepare_attempt(calc, stage, plan=plan)
     _move_progress_channel_into(rep.dir, plan)
@@ -2285,17 +2309,12 @@ def checked(base, described: Described, *, target) -> Described:
     return described
 
 
-#: What :func:`plan_stage` decides on the calculation as it is when its
-#: caller hands it nothing (``contours``).
-DECIDE = object()
-
-
 def plan_stage(base, described: Described, kind: str, stage: str, *,
                target: Optional[str] = None, allocation=None,
                env: Optional[str] = None,
                emit_sbatch: bool = True, plan, notes: Optional[list] = None,
                on_inputs=None, copied: bool = False,
-               contours=DECIDE) -> PrepAnswer:
+               contours: Optional[dict] = None) -> PrepAnswer:
     """**THE MEMBER PLANNER** -- one stage, planned into ``plan``, nothing
     written, saved or recorded (`job-system.md` § 5.0, checkpoints 4–4b):
     its inputs, assembled (`prep_inputs`, A12) -- a benchmark's grid
@@ -2315,9 +2334,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     so a terminal says a benchmark's grid ahead of what its decks say.
     ``copied`` plans a member of a group copied in (:func:`prep_calculation`):
     its answer is a launched stage's.  ``contours`` -- what each transmission
-    point computes where it is not its window whole -- is the prep's
-    decision; :data:`DECIDE`, decided on the calculation as it is
-    (:func:`_contours_now`)."""
+    point computes where it is not its window whole -- is the caller's: the
+    prep's reuse decision, or a launched stage's decks
+    (`reuse.launched_contours`)."""
     from .prep_inputs import bench_inputs, prep_run_inputs
     from .placement import launch_refusal, one_process, placed
     from ..runtime_config import routing_of
@@ -2435,8 +2454,6 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     pcalc = described.calc.as_planned(plan)
     if on_inputs is not None:
         on_inputs()
-    if contours is DECIDE:
-        contours = _contours_now(pcalc, stage) if kind == "task" else None
 
     # 4b · THE STEPS, PLANNED -- every deck, wrapper and data file, the
     #      plan's row, the run and what it receives, decided with nothing
@@ -2501,6 +2518,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     from .ladder import independent
     from .materialize import SweepRun
     out.linked = not independent(task)
+    _rung_pts: tuple = ()
     if opened and isinstance(opened[0], SweepRun):
         # A SWEPT RUNG'S RUN: each point (`engines/transport.md` § 2a.11).
         # EVERY POINT LAUNCHES THE ONE JOB, with one shape: the first point
@@ -2516,6 +2534,12 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         # next launch's run takes (`execution/job-request.md` § 5).
         out.launched = True
         run_dir = stage_home(base, task, stage).dir
+        # A RUN OF POINTS keeps its run script in each point's folder, every
+        # point launching the one job: the first point says what it is (A13).
+        from .points import rung_points_of
+        _rung_pts = rung_points_of(pcalc, stage)
+        if _rung_pts:
+            run_dir = run_dir / _rung_pts[0].rel
     # WHAT IT WILL LAUNCH WITH -- prep writes a deck and its launch
     # together, once (`architecture.md` A3), and launch sends what it wrote.
     # A13: the end point, as the header and the run script carry it.
@@ -2554,7 +2578,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
             environment.kind)
         # A RUN OF POINTS' ONE JOB, in the words both doors print beside
         # its header (:func:`walk_words`).
-        if out.points:
+        if out.points or (out.launched and _rung_pts):
             out.launch["walk"] = walk_words(pcalc, stage,
                                             read=plan.read_text)
         # ...AND ITS FIT IS THE WALK'S, its points' walls summed: the walk
@@ -2562,35 +2586,6 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         if walked:
             out.fit = walks.get(sends, "")
     return out
-
-
-def _contours_now(calc, stage: str) -> Optional[dict]:
-    """What each point of a transmission of a calculation that reuses a
-    finished one computes, where it is not its window whole
-    (`engines/transport.md` § 2a.16): for a stage launched, as the decks its
-    prep wrote record it -- never decided again; else decided on the
-    calculation as it is (`reuse.decide`).  ``None`` for any other
-    stage."""
-    from .materialize import ever_launched
-    from .reuse import SHARING_RUNG, decide, point_key
-    if stage != SHARING_RUNG or not calc.task.reuses:
-        return None
-    job = calc.job(stage)
-    if job is not None and ever_launched(calc, job):
-        from ..transport.energies import Contours
-        from ..transport.stages import point_folders
-        out = {}
-        # A RUNG THAT RUNS ONCE: its one point, the stage's own folder.
-        for d, pt in (point_folders(calc.base, calc.task, stage)
-                      or [(stage_home(calc.base, calc.task, stage).dir,
-                           None)]):
-            deck = d / job.script
-            c = (Contours.of_deck(read_deck(deck)) if deck.is_file() else None)
-            if c is not None:
-                out[point_key(pt)] = c
-        return out
-    reuse = decide(calc, [calc.request.group_of(stage)])
-    return reuse.contours_for(stage) if reuse is not None else None
 
 
 def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
@@ -3107,7 +3102,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     #     description's notes first (`job-system.md` § 5.0, *The
     #     checkpoints, in order*).
     from .planned import Plan
-    from .reuse import decide
+    from .reuse import decide, launched_contours
     the_plan = Plan()
     previews: Dict[int, List[PrepAnswer]] = {}
     try:
@@ -3144,9 +3139,13 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                     allocation=allocation,
                     env=env, emit_sbatch=emit_sbatch, plan=the_plan,
                     copied=reuse is not None and reuse.copied(n),
-                    contours=(reuse.contours_for(at)
-                              if reuse is not None
-                              and at not in launched_members else DECIDE))
+                    # WHAT EACH TRANSMISSION POINT COMPUTES: the reuse's
+                    # decision for a member it decides, a launched one's as
+                    # its decks record it (`engines/transport.md` § 2a.16).
+                    contours=(launched_contours(description.calc, at)
+                              if at in launched_members
+                              else reuse.contours_for(at)
+                              if reuse is not None else None))
                     for at in members[n]]
         except step_errors() as exc:
             raise as_prep_error(exc) from exc
@@ -3474,5 +3473,5 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
 
 
 __all__ = ["checked", "plan_stage", "Described",
-           "DECIDE", "prep_bench", "prep_task", "group_header", "PrepAnswer",
+           "prep_bench", "prep_task", "group_header", "PrepAnswer",
            "prepared_already"]

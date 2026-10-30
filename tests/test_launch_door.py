@@ -190,3 +190,73 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     assert deck.name in said and "Launch again" in said, said
     assert calls_made(calls) == [] and not (attempt / "run.json").exists()
     assert _ledger(bundle)[-1]["decision"] == "refused"
+
+
+def _steps_run(plan, text: str, cwd):
+    """Every script a walk's steps run, and their walks' in turn -- the
+    folder each step goes to from ``cwd``, where the walk runs, and the
+    script it runs there with bash -- each as the plan leaves it."""
+    import shlex
+    out = []
+    for line in text.splitlines():
+        if 'run_member "' not in line:
+            continue
+        words = shlex.split(line.strip())
+        at = words.index("run_member")
+        assert words[at + 3] == "bash", line
+        folder = cwd / words[at + 2]
+        script = folder / words[at + 4]
+        out.append(script)
+        if plan.writes.is_file(script):
+            out += _steps_run(plan, plan.writes.read_text(script), folder)
+    return out
+
+
+def test_a_groups_run_in_phases_is_walked_by_its_own_walk(tmp_path,
+                                                          monkeypatch):
+    """`job-system.md` § 6.0, step 1 -- a group's one job runs each member's
+    run: "a run of points, its points".  A SIESTA displacement sweep
+    (`engines/vibration.md` § 5.9) -- a vibration with a second stage of
+    its own displacement, added on Task setup and put in the first stage's
+    group -- prepared as group 1 and its launch planned: every step of the
+    group's walk runs a script the launch leaves -- each stage's own walk,
+    written by the plan, whose steps run the run's calls.
+
+    API-LEVEL: the plan is the launch verb's own (`submit.plan_launch`); a
+    send would start the engine.
+
+    THE SILENT FAILURE: the group's job stepping into each stage's run for
+    a run script a run in phases does not have there -- every stage
+    failing at once, its calls never run.  MUTATION THIS MUST FAIL
+    AGAINST: `_plan_group` walking every member as a single run
+    (`_walk_of([m], base)` for a run of points too)."""
+    from molbuilder.jobset.submit import plan_launch
+    from support.road import save_both
+    bundle = describe_calculation(tmp_path, monkeypatch,
+                                  calculation="vibration")
+    task = json.loads((bundle / "task.json").read_text())
+    request = read_request(bundle)
+    task["stages"].append({"name": "fine",
+                           "overrides": {"fc_displacement": 0.02}})
+    task["varies"] = sorted(set(task.get("varies") or [])
+                            | {"fc_displacement"})
+    request["stages"]["fine"] = {"group": 1}
+    r = save_both(bundle, task, request)
+    assert r.status_code == 200, r.get_json()
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
+               "--target", "this")
+    assert r.exit_code == 0, r.output
+
+    plan = plan_launch(open_calculation(bundle), mode="direct", group=1,
+                       record=False,
+                       told=dict(kind="task", stage=None, trial=None,
+                                 mode="direct", flags=[]))
+    (sub,) = plan.submissions
+    walk = sub.cwd / sub.command[-1]
+    ran = _steps_run(plan, plan.writes.read_text(walk), sub.cwd)
+    # Each stage's walk, then its run's two calls: relax, fc.
+    assert len(ran) == 6, ran
+    assert all(plan.writes.is_file(s) for s in ran), [
+        s.relative_to(bundle) for s in ran if not plan.writes.is_file(s)]
+    assert {s.relative_to(bundle).parts[0] for s in ran} == {
+        "01_freq", "02_fine"}, ran

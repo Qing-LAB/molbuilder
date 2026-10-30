@@ -11,9 +11,11 @@ ROLE    :func:`infrared_view` -- the ONE derivation of what a person asks of
         :func:`read_ask` -- the load door's reading of what a person asks
         (direction, partition), by the rules :func:`infrared_view` applies
         to a script's ask too; :func:`no_charges_reason` -- why a result
-        states no charges, in its own facts
+        states no charges, in its own facts; :func:`infrared_view_of` --
+        the one answer to an ask, by where the result's infrared comes from
 USED-BY the spectrum viewer's load door (`web/spectra.md` § 3.2) and a
-        person's script (`molbuilder.postprocess.infrared_view`)
+        person's script (`molbuilder.postprocess.infrared_view`), both
+        through :func:`infrared_view_of`
 
 **The free atoms are the system.**  The atoms the vibration moved are what
 the person declared to be calculated; the held atoms are not in the
@@ -41,7 +43,8 @@ from ..constants import DEBYE_E_ANGSTROM
 from .activity import (CHANNEL_PRESENT_FLOOR_IR_KM_MOL, ir_strength_km_mol,
                        relative_to_strongest)
 from ..structure import Structure
-from .results import PARTITIONS, SpectraResults, mass_of
+from .results import (PARTITIONS, PHASE_EMPTY, PHASE_NOT_REQUESTED,
+                      PHASE_RUNNING, SpectraResults, mass_of)
 
 #: The directions a person names by an axis.
 DIRECTIONS: Dict[str, Tuple[float, float, float]] = {
@@ -160,29 +163,33 @@ def orientation_of(result: SpectraResults) -> str:
 
 
 def source_of(result: SpectraResults) -> Optional[str]:
-    """Where ``result``'s infrared comes from: :data:`SOURCE_CHARGES` where
-    it states the force-constant run's charges; :data:`SOURCE_DIPOLE` where
-    the engine computed the infrared itself, from the whole system's dipole
-    (PySCF); ``None`` where it has neither -- a SIESTA result that keeps no
-    charges, a run that computed no infrared."""
+    """Where ``result``'s infrared comes from, by what it states:
+    :data:`SOURCE_CHARGES` where it states the force-constant run's charges;
+    :data:`SOURCE_DIPOLE` where its modes carry the strength the engine
+    computed itself, from the whole system's dipole (PySCF's column);
+    ``None`` where it has neither -- a result that keeps no charges, a run
+    that computed no infrared."""
     if result.partial_charges is not None:
         return SOURCE_CHARGES
-    if str(result.engine).lower() != "siesta" and any(
-            m.ir_intensity_km_mol is not None for m in result.modes):
+    if any(m.ir_intensity_km_mol is not None for m in result.modes):
         return SOURCE_DIPOLE
     return None
 
 
 def no_charges_reason(result: SpectraResults) -> str:
-    """Why ``result`` states no charges, from its own facts -- its engine
-    and the schema it was written at (`engines/vibration.md` § 5.10 ②):
-    a PySCF result's infrared is its own; a SIESTA result written before
+    """Why ``result`` states no charges, from its own facts -- where its
+    infrared comes from, its `phase_ir`, the schema it was written at
+    (`engines/vibration.md` § 5.10 ②): a result whose infrared is the
+    engine's own (:data:`SOURCE_DIPOLE`) needs none; a run whose infrared is
+    not computed yet has none yet; a result written before
     :data:`CHARGES_KEPT_SINCE` keeps none, whatever its run printed; one
     whose run asked for no infrared -- Compute IR off, its `phase_ir` *not
-    requested* -- asked SIESTA for none; any other printed none."""
-    if str(result.engine).lower() != "siesta":
+    requested* -- computed none; any other printed none."""
+    if source_of(result) == SOURCE_DIPOLE:
         return (f"a {result.engine} result: its infrared is its own -- the "
                 f"IR column, from its dipole derivatives")
+    if result.phase_ir in (PHASE_EMPTY, PHASE_RUNNING):
+        return "the run has not computed its infrared yet"
     if int(result.schema_version) < 11:
         return (f"the result was written before molbuilder "
                 f"{CHARGES_KEPT_SINCE}, which first keeps the force-constant "
@@ -193,22 +200,19 @@ def no_charges_reason(result: SpectraResults) -> str:
                 f"launched, from the state saved before its group's first "
                 f"launch (execution/job-system.md, How the checkpoint "
                 f"supports you)")
-    if result.phase_ir == "not requested":
-        return ("Compute IR was off, so the deck asked SIESTA for no charges "
+    if result.phase_ir == PHASE_NOT_REQUESTED:
+        return ("Compute IR was off, so the run computed no infrared "
                 "(engines/vibration.md 3.1)")
     return "the force-constant run printed no charges"
 
 
 def infrared_absent(result: SpectraResults) -> Optional[str]:
     """What a result that carries no infrared is shown with (`web/spectra.md`
-    § 3.2): a SIESTA result stating no charges says why, once, from its own
-    facts (:func:`no_charges_reason`); ``None`` for a result with an
-    infrared source (:func:`source_of`), or one whose engine computes its
-    infrared itself."""
-    if source_of(result) is not None or str(result.engine).lower() != "siesta":
+    § 3.2): why, once, from its own facts (:func:`no_charges_reason`);
+    ``None`` for a result with an infrared source (:func:`source_of`)."""
+    if source_of(result) is not None:
         return None
-    return (f"This result states no charges, so it carries no infrared: "
-            f"{no_charges_reason(result)}.")
+    return f"This result carries no infrared: {no_charges_reason(result)}."
 
 
 def _unit(direction: Union[str, Sequence[float]]) -> Tuple[Tuple[float, ...],
@@ -438,11 +442,31 @@ def dipole_view(result: SpectraResults, *,
                         modes=_modes_of(rows))
 
 
+def infrared_view_of(result: SpectraResults, *,
+                     direction: Union[str, Sequence[float]] = DEFAULT_DIRECTION,
+                     partition: str = DEFAULT_PARTITION) -> InfraredView:
+    """THE INFRARED A RESULT ANSWERS FOR AN ASK -- the one door the load
+    door and a person's script ask (`engines/vibration.md` § 6.6), by where
+    the result's infrared comes from (:func:`source_of`): the charges' --
+    the free atoms', by ``partition`` (:func:`infrared_view`); the engine's
+    own dipole change -- the whole system's, along ``direction`` where atoms
+    are held, its orientation average where none are, of no partition
+    (:func:`dipole_view`).  Refused, by name, a result that carries
+    neither, saying why in its own facts (:func:`no_charges_reason`)."""
+    source = source_of(result)
+    if source == SOURCE_CHARGES:
+        return infrared_view(result, direction=direction, partition=partition)
+    if source == SOURCE_DIPOLE:
+        return dipole_view(result, direction=direction)
+    raise InfraredError(f"the result carries no infrared: "
+                        f"{no_charges_reason(result)}")
+
+
 __all__ = ["ASK_KEYS", "CHARGES_KEPT_SINCE", "DEFAULT_DIRECTION",
            "DEFAULT_PARTITION", "DIRECTIONS", "FREE_ATOMS_NAME",
            "ORIENTATION_FREE", "ORIENTATION_HELD", "SOURCE_CHARGES",
            "SOURCE_DIPOLE", "WHOLE_SYSTEM_NAME", "InfraredError",
            "InfraredMode", "InfraredView", "dipole_absent_reason",
-           "dipole_view", "direction_name", "infrared_view",
+           "dipole_view", "direction_name", "infrared_view", "infrared_view_of",
            "no_charges_reason", "infrared_absent", "orientation_of",
            "read_ask", "source_of"]

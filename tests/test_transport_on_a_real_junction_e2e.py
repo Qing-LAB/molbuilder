@@ -415,6 +415,16 @@ def junction(tmp_path_factory):
         run.said["describe again"] = Said(b.status_code,
                                           json.dumps(b.get_json()))
         run.described_after = _all_written(run.described_at)
+        # ...AND INTO THE KIND'S TOPIC ITSELF, a folder above a calculation's
+        # (`job-contracts.md` § 2.5).
+        run.topic = tree / "P" / "transport"
+        run.topic_before = _all_written(run.topic)
+        b = client.post("/api/transport/describe", json=dict(
+            engine="siesta", name="T3", junction=cite, bias=[0.0],
+            dest=str(run.topic)))
+        run.said["describe into a topic"] = Said(b.status_code,
+                                                 json.dumps(b.get_json()))
+        run.topic_after = _all_written(run.topic)
         a = client.get(f"/api/transport/describe_attempt?path={cite}")
         run.said["describe_attempt"] = Said(a.status_code,
                                             json.dumps(a.get_json()))
@@ -691,7 +701,8 @@ def junction(tmp_path_factory):
         run.frameset_shown = client.post("/api/spectra/load", json={
             "path": str(on_label_at(tree / vibration, ROLE_SPECTRA)),
             "frameset_temperature_k": _TEMPERATURE_K}).get_json()
-        ask = {"run": str(tree / vibration), "mode": mode,
+        ask = {"path": str(on_label_at(tree / vibration, ROLE_SPECTRA)),
+               "mode": mode,
                "temperature_k": _TEMPERATURE_K, "nodes": 7,
                "out": str(tree / "P" / "structure" / "frames7.xyz")}
         run.frameset_said = [
@@ -1101,6 +1112,23 @@ def test_describe_is_one_act_and_refuses_a_described_folder(junction):
     assert said.exit_code == 409, said.output
     assert "one calculation per folder" in json.loads(said.output)["error"]
     assert junction.described_after == junction.described_before
+
+
+def test_describe_refuses_a_folder_above_a_calculations(junction):
+    """`job-contracts.md` § 2.5, `web/task-setup.md` § 2: a calculation sits
+    at the bottom of project / topic / its folder -- a topic is not a
+    destination.  Describe into the kind's own topic is refused in the
+    words every door that writes a calculation says it in (Build's
+    hand-over too: `files.calculation_folder_refusal`), the topic left as
+    it was.  THE SILENT FAILURE: the description written into the topic,
+    every later transport calculation of the project sitting inside it.
+    MUTATION THIS MUST FAIL AGAINST: the door asking no depth."""
+    from molbuilder.web.blueprints.files import calculation_folder_refusal
+    said = junction.said["describe into a topic"]
+    assert said.exit_code == 400, said.output
+    assert json.loads(said.output)["error"] == calculation_folder_refusal(
+        junction.topic), said.output
+    assert junction.topic_after == junction.topic_before
 
 
 def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
@@ -2124,29 +2152,53 @@ def test_a_points_run_panel_says_how_its_run_was_launched(junction):
     § 5d.1b: a point of a run of points reads its run's launch record -- the
     ``run.json`` of the ``run-<n>`` folder above it -- as the run's state
     does; it is given no ``continued_from``, a walked point starting from
-    the point before it.  THE SILENT FAILURE (the 2.40 review's BE2): every
-    point's Computation section empty -- no mode, no launch time."""
+    the point before it -- and its deck's section lists what its run
+    gathered, at ``run-<n>/`` where the points share it (§ 5d.1), as
+    `status` states the run's gather.  The run's own folder holding the
+    points is their container: no state of its own (`project-layout.md`
+    § 1.4a).  THE SILENT FAILURES (the 2.40 review's BE2): every point's
+    Computation section empty -- no mode, no launch time; a point saying it
+    was given nothing but its own start; the run's folder given a state
+    the status door never states.  MUTATIONS THIS MUST FAIL AGAINST: the
+    deck's gather read in the point's folder alone (`record._deck`); a
+    status asked of the run's folder (`runs.folder_answer`)."""
     from molbuilder import runs
     from molbuilder.calculation import register_readers
+    from support.real_runs import stage_status
     register_readers()
     run = junction.from_pair
+    gathered = set(stage_status(run.bundle, "device").gathered)
+    assert gathered, "the device's run gathered nothing"
     for v in _BIAS:
-        launch = runs.record_of(runs.run_of(
-            _point(run, "device", v, frame=1)))["computation"]["launch"]
+        record = runs.record_of(runs.run_of(_point(run, "device", v,
+                                                   frame=1)))
+        launch = record["computation"]["launch"]
         assert launch["mode"] == "direct" and launch["launched_at"], launch
         assert "continued_from" not in launch, launch
+        given = {f"{g['file']} <- {g['from']}"
+                 for g in record["deck"].get("gathered_from", ())}
+        assert gathered <= given, (v, gathered - given)
+    assert runs.folder_answer(run.attempt("device"))["status"] is None
 
 
 def test_every_prep_log_at_the_root_is_said_as_molbuilders(junction):
     """`web/results.md` § 3b, `job-contracts.md` § 2.2: a file molbuilder
     writes is read back with its run's label -- at the calculation's root a
-    lead's prep log on the lead's own stem.  THE SILENT FAILURE (the 2.40
-    review's BE5): the file card said each lead's log was not molbuilder's."""
-    from molbuilder.runs import about
+    lead's prep log on the lead's own stem -- and the folder's listing, the
+    Results tab's directory door, says each as the file card does.  THE
+    SILENT FAILURE (the 2.40 review's BE5): the file card said each lead's
+    log was not molbuilder's.  MUTATION THIS MUST FAIL AGAINST: the
+    listing's row reading a file with the run's label alone
+    (`runs._file_row`)."""
+    from molbuilder.runs import about, folder_answer
     logs = sorted(junction.single.bundle.glob("*.pipeline.log"))
     assert any("electrode" in p.name for p in logs), logs
     assert all(about(p)["ours"] for p in logs), {
         p.name: about(p) for p in logs}
+    listed = {f["name"]: f["about"] for f in
+              folder_answer(junction.single.bundle)["files"]}
+    assert all(listed[p.name] == about(p) for p in logs), {
+        p.name: (listed[p.name], about(p)) for p in logs}
 
 
 def test_a_frame_sets_record_has_a_point_per_frame_and_voltage(junction):
@@ -2417,6 +2469,51 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
         device.state, device.detail)
 
 
+def test_a_point_the_ended_walk_never_reached_reads_failed_everywhere(
+        junction, tmp_path):
+    """`engines/transport.md` § 2a.11: a point the ended walk never reached
+    is failed (`continuation.never_reached`), never one still to come -- as
+    `status` states it, so the record's point (the Results tab's), the data
+    file's device state, the Results tab's folder answer and the run's
+    state each say it, every one asking the status rows.  The device whose
+    first voltage did not finish: its second, never run.  THE SILENT
+    FAILURE: the page, the data file and the folder calling the point
+    pending while `status` counts it failed.  MUTATIONS THIS MUST FAIL
+    AGAINST: the record's point state the run door's own (`concluded`,
+    `record._rung_points`); a point's folder read without its run's rows
+    (`runs._as_its_point` answering ``st``)."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.continuation import NEVER_REACHED
+    from molbuilder.runs import folder_answer, run_answer
+    from molbuilder.transport.datafile import read_data_file
+    from molbuilder.transport.export import export
+    from molbuilder.transport.record import collect_record
+    from support.real_runs import point_row, stage_status
+    c = junction.aborted
+    device = stage_status(c.bundle, "device")
+    never = point_row(device, _BIAS[1])
+    assert never["state"] == "failed" and not never["done"], device.points
+    folder = c.bundle / device.dir / never["folder"]
+    calc = open_calculation(c.bundle)
+    by = next(s for s in collect_record(calc, partial=True)["stages"]
+              if s["stage"] == "device")["by_point"]
+    at = next(p for p in by if p["bias_v"] == _BIAS[1])
+    assert (at["state"], at["detail"]) == ("failed", NEVER_REACHED), at
+    got = export(calc, "netcdf")
+    (tmp_path / got.name).write_bytes(got.files[got.name])
+    V = {k: v["data"]
+         for k, v in read_data_file(tmp_path / got.name)["variables"].items()}
+    k = list(V["bias_v"]).index(_BIAS[1])
+    assert [str(s) for s in V["device_state"][..., k].ravel()] == [
+        "failed"], V["device_state"]
+    assert [str(s) for s in V["device_detail"][..., k].ravel()] == [
+        NEVER_REACHED], V["device_detail"]
+    status = folder_answer(folder)["status"]
+    assert (status["state"], status["detail"]) == ("failed", NEVER_REACHED), \
+        status
+    assert run_answer(folder)["state"] == "failed", run_answer(folder)
+
+
 def test_a_stopped_walk_says_no_finish_and_its_warm_launch_one(junction):
     """`run-reports.md` § 2.4: a device walk stopped after its first point
     sends its `start`, and no `finish` -- the run door reads it failed; the
@@ -2477,8 +2574,8 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
     avg = _record(run)["average"]
     fs = read_frame_set(_the_set(junction))
     assert avg["frames"] == _N_FRAMES
-    for name, value in fs.structure_rows().items():
-        assert avg[name] == value, (name, avg[name], value)
+    for row in fs.structure:
+        assert avg[row["name"]] == row["value"], (row, avg[row["name"]])
     assert avg["rows"] == list(fs.structure) and avg["warnings"] == []
     assert avg["weights"] == pytest.approx(list(_WEIGHTS), rel=1e-12)
     assert avg["tolerance"] == 1e-6
@@ -4101,6 +4198,14 @@ def reused(junction, tmp_path_factory):
         _taken(wider, "summarize", "summarize", "task")
         out["wider"] = wider
 
+        # VOLTAGES OF BOTH SIGNS, the leads copied in and the device
+        # prepared -- what its first launch walks is asked of its plan.
+        signed = described("signed", "--bias", "0,0.2,0.4,-0.2,-0.4",
+                           "--no-low-bias-approximation")
+        _taken(signed, "prep", "prep", "task", "--group", "1", "--group",
+               "2", "--target", "this")
+        out["signed"] = signed
+
         # ...THAT LIST NARROWED AGAIN, reusing the wider one: a narrower
         # question, answered from the finished results -- every group
         # copied in at prep, nothing runs (§ 2a.16, *A narrower question*).
@@ -4348,6 +4453,7 @@ def test_a_question_the_finished_results_answer_is_copied_in(
     silent failure: a copy whose record of its inputs is lost -- a launch
     again sends the engine without the leads' files, a later calculation
     reusing it takes nothing over."""
+    from molbuilder import calcdirs
     from molbuilder.runs import folder_answer
     from molbuilder.task import of as task_of
     from molbuilder.transport.stages import TRANSPORT_STAGES
@@ -4398,6 +4504,11 @@ def test_a_question_the_finished_results_answer_is_copied_in(
         # WHAT IT WAS GIVEN, each a file of this calculation.
         lines = here.gathered + [t for p in here.points for t in p["took"]]
         assert all(_resolves(made.bundle, ln) for ln in lines), (stage, lines)
+        # ITS STAGE FOLDER IS ONE, as every folder prep makes below the
+        # calculation (`project-layout.md` invariant 6b) -- a member copied
+        # whole that runs once opening no run of its own here.
+        assert calcdirs.where(made.bundle / here.dir).what == \
+            calcdirs.STAGE, stage
     assert mine["device"].gathered, mine["device"].gathered
     # ...AND TASK SETUP NAMES EACH COPY, each by its folder (`web/task-setup.md`
     # § 3, *A group copied in*): every run the Results ladder lists of each
@@ -4562,6 +4673,44 @@ def test_more_voltages_take_the_finished_points_over(reused):
     assert [p["bias_v"] for p in rec["points"]] == [0.0, 0.2, 0.4]
     assert [bool(p.get("copied_from")) for p in rec["points"]] == [
         True, True, False]
+
+
+def test_a_voltage_starts_from_the_closest_one_before_it_in_its_frame(
+        reused, tmp_path):
+    """§ 2a.9 *Both axes*: each walked voltage starts from the closest
+    voltage computed before it in its frame (the SIESTA manual: copy the
+    TSDE "from the closest, previously, calculated bias") -- and the walk
+    runs it only once that point's step succeeded, which the run's index
+    records as the point it needs (§ 2a.11).  Voltages of both signs,
+    `0, 0.2, 0.4, -0.2, -0.4`, the device's first launch planned cold, so
+    every point is walked: -0.2 V needs 0 V, not 0.4 V, the voltage walked
+    before it; -0.4 V needs -0.2 V.  API-LEVEL: the plan is the launch
+    verb's own (`submit.plan_launch`); the index is read through its
+    reader.  THE SILENT FAILURE: the -0.2 V point started from the 0.4 V
+    density, and not run when the 0.4 V point failed.  MUTATION THIS MUST
+    FAIL AGAINST: a point's start the voltage before it in its frame's
+    list (`_before` answering ``earlier[-1]``)."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.jobset.submit import plan_launch
+    from molbuilder.task import of as task_of
+    from molbuilder.transport import points_index as pi
+    from molbuilder.transport.stages import Point
+    signed = reused["signed"]
+    plan = plan_launch(open_calculation(signed.bundle), mode="direct",
+                       only="device", cold=True, record=False,
+                       told=dict(kind="task", stage="device", trial=None,
+                                 mode="direct", flags=["--cold"]))
+    names = stage_home(signed.bundle, task_of(signed.bundle),
+                       "device").names
+    planned = pi.index_path(signed.attempt("device"), names)
+    (tmp_path / planned.name).write_text(plan.writes.read_text(planned))
+    index = pi.read_index(tmp_path / planned.name)
+    needs = {e["bias_v"]: e["needs"] for e in index["points"]}
+    def at(v):
+        return Point(frame=None, volts=v).rel
+    assert needs == {0.0: None, 0.2: at(0.0), 0.4: at(0.2), -0.2: at(0.0),
+                     -0.4: at(-0.2)}, needs
 
 
 def test_a_fitted_window_computes_only_the_energies_the_finished_point_did_not(
@@ -4843,6 +4992,15 @@ def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):
     assert code == 200 and answer["ok"], answer
     task = json.loads((page / "task.json").read_text())
     assert task["reuses"] == "P/transport/T"
+    # ...THE COLUMNS THE FINISHED CALCULATION VARIES kept, as the command
+    # line keeps them (`engines/stages.md` § 6.2: `varies` is the person's
+    # intent) -- T's own mixing weights, promoted on Task setup.  MUTATION
+    # THIS MUST FAIL AGAINST: the reuse branch writing the page's own
+    # columns alone (`fresh_varies`).
+    finished = json.loads((reused["finished"].bundle / "task.json")
+                          .read_text())
+    assert "mixing_weight" in finished["varies"], finished["varies"]
+    assert set(finished["varies"]) <= set(task["varies"]), task["varies"]
     # NOTHING CHANGED ON THE PANEL, nothing changed in the template: each
     # value and whose it is, as the finished calculation's.
     assert ((page / "T.template.toml").read_text()

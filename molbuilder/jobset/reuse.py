@@ -451,6 +451,29 @@ def _decided(calc, numbers: Sequence[int]) -> Reuse:
 SHARING_RUNG = "transmission"
 
 
+def launched_contours(calc, stage: str) -> Optional[dict]:
+    """What each point of a LAUNCHED ``stage`` computes where it is not its
+    window whole, by its key (:func:`point_key`), as the decks its prep
+    wrote record it -- never decided again (`engines/transport.md`
+    § 2a.16); ``None`` for a calculation that reuses nothing or a stage
+    that shares nothing.  A rung that runs once is its one point, the
+    stage's own folder."""
+    if stage != SHARING_RUNG or not calc.task.reuses:
+        return None
+    from ..transport.energies import Contours
+    from ..transport.stages import point_folders
+    from .naming import stage_home
+    job = calc.job(stage)
+    out = {}
+    for d, pt in (point_folders(calc.base, calc.task, stage)
+                  or [(stage_home(calc.base, calc.task, stage).dir, None)]):
+        deck = d / job.script
+        c = (Contours.of_deck(read_deck(deck)) if deck.is_file() else None)
+        if c is not None:
+            out[point_key(pt)] = c
+    return out
+
+
 def _rendered(calc, members, once, *, only=None) -> List[tuple]:
     """The contours each point of ``members``' transmission renders now --
     a point whose grid is the finished point's own renders that point's
@@ -563,9 +586,11 @@ def that_point(calc, pt, cfg):
 
 def _window(cfg) -> Tuple[float, float, int]:
     """A transmission point's window, from its config: its ends and its
-    number of energies."""
-    return (float(cfg.transmission_emin_ev), float(cfg.transmission_emax_ev),
-            int(cfg.transmission_n_points))
+    number of energies, the items the catalogue names
+    (`transport.window.WINDOW_ITEMS`)."""
+    from ..transport.window import WINDOW_ITEMS
+    lo, hi, n = (getattr(cfg, k) for k in WINDOW_ITEMS)
+    return float(lo), float(hi), int(n)
 
 
 #: A TBtrans energy block of a deck -- ``TBT.Contours`` and each
@@ -574,7 +599,6 @@ _ENERGY_BLOCK = re.compile(
     r"^[ \t]*%block[ \t]+(TBT\.Contours?(?:\.\S+)?)[ \t]*\n.*?"
     r"^[ \t]*%endblock[ \t]+\1[ \t]*$\n?", re.M | re.S | re.I)
 
-#: The window line of a deck that computes its window whole.
 def _with_energies(text: str, energies_of: str) -> str:
     """``text`` with its TBtrans energy blocks taken out and those of
     ``energies_of`` put in -- a deck rendered with the finished point's
@@ -1018,7 +1042,7 @@ def copy_in(calc, decision: Decision, plan) -> None:
     from ..runfiles import COPIED_FROM_FILE
     from ..runrecord import launch_record_path, write_copied_from
     from .materialize import empty_run
-    from .naming import stage_home
+    from .naming import stage_home, stamp_containers
     base, task = Path(calc.base), calc.task
     for stage in decision.members:
         home = stage_home(base, task, stage)
@@ -1027,6 +1051,11 @@ def copy_in(calc, decision: Decision, plan) -> None:
             empty_run(opened, plan)
             plan.remove_folder(opened)
     for c in decision.copies:
+        # THE FOLDERS ABOVE THE COPY say what they are, as those above a run
+        # prep opens do (`materialize.open_run`; `project-layout.md`
+        # invariant 6b) -- a member that runs once has no point folder
+        # whose opening stamps its stage's.
+        stamp_containers(base, c.run.parents, plan)
         record = launch_record_path(c.source)
         if c.points:
             _copy_relaid(calc, c, record, plan)
@@ -1255,6 +1284,6 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
 
 __all__ = ["Copy", "Take", "Takes", "Decision", "Reuse", "SHARING_RUNG",
            "finished_of", "finished_window", "origin",
-           "point_key", "decide",
+           "point_key", "decide", "launched_contours",
            "that_point", "copy_in", "takes_over", "take_into",
            "carry_shared", "shared_into"]

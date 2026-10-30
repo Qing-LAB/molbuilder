@@ -320,6 +320,49 @@ def vibrational_thermo_grid(freqs_cm1, temperatures_K, e_ref_eh):
     return grid
 
 
+def vibrational_only_thermo(freqs_cm1, has_imag, temperature_K, *,
+                            e_ref_eh=None, n_rigid, why):
+    """THE VIBRATIONAL-ONLY THERMOCHEMISTRY BLOCK of a result
+    (`engines/vibration.md` § 4.7), the one assembly every route that has
+    such a block calls: the harmonic vibrational contributions of the free
+    atoms over the modes given -- an imaginary one (``has_imag``) left out
+    and counted -- above ``e_ref_eh``, the electronic energy where the route
+    reports one (else none, zero), the headline a row of the grid at
+    ``temperature_K`` (:func:`vibrational_thermo_grid`); no pressure enters.
+    ``n_rigid`` is the count of whole-body motions removed; ``why`` the
+    reason the answer is vibrational-only, said in its note."""
+    kept = [float(f) for f, imag in zip(freqs_cm1, has_imag) if not imag]
+    grid = vibrational_thermo_grid(kept, thermo_temperatures(temperature_K),
+                                   0.0 if e_ref_eh is None else e_ref_eh)
+    k = grid["temperatures_K"].index(float(temperature_K))
+    above = "" if e_ref_eh is None else ", above the electronic energy"
+    return {
+        "regime": "vibrational-only",
+        "temperature_K": float(temperature_K),
+        "pressure_atm": None,
+        "zpe_eh": grid["zpe_eh"][k],
+        "h_eh": grid["h_eh"][k],
+        "s_eh_k": grid["s_eh_k"][k],
+        "g_eh": grid["g_eh"][k],
+        "n_modes": len(list(freqs_cm1)),
+        "n_imag_excluded": sum(1 for imag in has_imag if imag),
+        "n_rigid_removed": int(n_rigid),
+        "note": (f"The harmonic VIBRATIONAL contributions of the free atoms "
+                 f"at this temperature{above} -- ZPE, U_vib, S_vib and F_vib "
+                 f"= ZPE + U_vib - T*S_vib -- the headline and the grid "
+                 f"alike, because {why}.  Good for the zero-point and "
+                 f"vibrational free-energy correction of one structure "
+                 f"against another computed the same way; not the free "
+                 f"energy of the system: no translation or rotation is "
+                 f"added and no pressure enters.  Modes below about 100 "
+                 f"cm-1 are anharmonic in practice and carry most of S_vib, "
+                 f"so the entropy is the least reliable number; the "
+                 f"whole-body motions of the free atoms were removed before "
+                 f"diagonalising"),
+        "grid": grid,
+    }
+
+
 #: The temperatures the viewer's curves run over -- a documented
 #: presentation default, not a scientific knob (the headline temperature
 #: is the knob): 50-1500 K in 30 points, wide enough to show the trend and
@@ -339,14 +382,24 @@ def mode_over_atoms(mode_free, free_idxs, n_atoms):
     return L
 
 
+def largest_move(mode_rows):
+    """How far the atom that moves most moves per unit ``Q``: ``max_k
+    |L_k|``, the largest of the mode's per-atom vector lengths, in Å per
+    amu^1/2 Å -- what a Raman phase's ``±δQ`` and a frame set's outermost
+    move both rest on (`engines/vibration.md` § 5.11 § 3;
+    `science/vibrational-averaging.md` § 4).  ``mode_rows`` is the mode's
+    pattern, a row per atom (the free atoms' or every atom's)."""
+    import numpy as _np
+    return float(_np.linalg.norm(_np.asarray(mode_rows, dtype=float),
+                                 axis=1).max())
+
+
 def q_for_largest_move(mode_over_atoms_, move_ang):
     """The displacement along the mode, ``Q`` in amu^1/2 Å, at which the
-    atom that moves most moves ``move_ang`` Å: ``move / max_k |L_k|`` --
-    a Raman phase's ``±δQ`` (`engines/vibration.md` § 5.11 § 3)."""
-    import numpy as _np
-    largest = float(_np.linalg.norm(_np.asarray(mode_over_atoms_,
-                                                dtype=float), axis=1).max())
-    return float(move_ang) / largest
+    atom that moves most moves ``move_ang`` Å: ``move / max_k |L_k|``
+    (:func:`largest_move`) -- a Raman phase's ``±δQ``
+    (`engines/vibration.md` § 5.11 § 3)."""
+    return float(move_ang) / largest_move(mode_over_atoms_)
 
 
 def displaced(positions, mode_over_atoms_, q):
@@ -359,6 +412,8 @@ def displaced(positions, mode_over_atoms_, q):
 
 
 __all__ = ["rigid_motions", "mode_count", "vibrational_modes", "signed_omega",
-           "mode_over_atoms", "q_for_largest_move", "displaced",
+           "mode_over_atoms", "largest_move", "q_for_largest_move",
+           "displaced",
            "frequencies_cm1", "display_form", "thermo_temperatures",
-           "vibrational_thermo", "vibrational_thermo_grid", "THERMO_GRID_K"]
+           "vibrational_thermo", "vibrational_thermo_grid",
+           "vibrational_only_thermo", "THERMO_GRID_K"]

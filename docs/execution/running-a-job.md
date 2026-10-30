@@ -558,8 +558,14 @@ person's call (`job-contracts.md` § 6.2), as it is for a stage described
 into the run script it renders (`Job.resumes`; a SIESTA vibration's, each
 phase's own), and every wrapper text that speaks of a
 retry — the banner's retry line, the retry's message, a retried run's Mode
-line, the `--continue` help, the line after the budget — says it from one
-description (`runwrap._retry_texts`). *(They called it a resume until
+line, the `--continue` help, the line after the budget, the line at the
+wall (§ 3.6) — says it from one description (`runwrap._retry_texts`), a point
+of a run of points told what its run's launch again does with it: the points
+done taken over, this one run again as its run's rule starts a point not
+done — a vibration's relaxation continues warm from its own last run, its
+other calls and a transport point start over
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6,
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.11). *(They called it a resume until
 2026-09-29 — the M11 review, SS-C3; the K6 review, R4/R5.)* *The divergence
 verdict that tells a diverged SCF from a slow one is built by plan § 5t.3's P4;
 until it lands every `SCF_NOT_CONV … (required)` stop is retried.*
@@ -622,7 +628,7 @@ channel; the engine stops once less than the slack is left:
 
 | engine | the channel | what the engine does |
 |---|---|---|
-| SIESTA, TranSIESTA | `-fdf MaxWalltime=<left>:s -fdf MaxWalltime.Slack=<slack>:s` on the command line, beside the deck — the words the catalogue's `wall_slack` item gives the program (`launch`, `template.md` § 5), never a line in the deck, which prep wrote before the launch stated the wall ([`engines/siesta.md`](?doc=engines/siesta.md) § 8.9) | checks the clock after every SCF iteration and every geometry step (`siesta_forces.F90`, `siesta_move.F`, 5.4.2) and, once less than the slack is left, saves its density and geometry, warns `SCF_NOT_CONV` or `GEOM_NOT_CONV`, and **dies with `OUT_OF_TIME: Time is up.`** — its own word for the stop (`siesta_grammar.OUT_OF_TIME_MARKER`). The run reads `failed`, the wall its cause in SIESTA's words; the wrapper does not warm-retry it (§ 3.5: no time is left); a launch again continues from the files it saved |
+| SIESTA, TranSIESTA | `-fdf MaxWalltime=<left>:s -fdf MaxWalltime.Slack=<slack>:s` on the command line, beside the deck — the words the catalogue's `wall_slack` item gives the program (`launch`, `template.md` § 5), never a line in the deck, which prep wrote before the launch stated the wall ([`engines/siesta.md`](?doc=engines/siesta.md) § 8.9) | checks the clock after every SCF iteration and every geometry step (`siesta_forces.F90`, `siesta_move.F`, 5.4.2) and, once less than the slack is left, saves its density and geometry, warns `SCF_NOT_CONV` or `GEOM_NOT_CONV`, and **dies with `OUT_OF_TIME: Time is up.`** — its own word for the stop (`siesta_grammar.OUT_OF_TIME_MARKER`). The run reads `failed`, the wall its cause in SIESTA's words; the wrapper does not warm-retry it (§ 3.5: no time is left); a launch again continues a single run from the files it saved, and starts a point of a run of points as its run's rule starts a point not done (§ 3.5) |
 | TBtrans | nothing: the item names no words for it, it checks no clock | runs to the wall |
 | PySCF | the deck reads `MB_WALL_S`, `MB_JOB_STARTED` and `MB_WALL_SLACK_S` from its environment and keeps a deadline ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3.9) | a relaxation stops at the first step past the deadline, keeps the geometry it reached (`_optimized.xyz`, as every step does) and ends normally with `# relaxed: no`; a vibration deck past the deadline before its spectrum is written stops with an error naming the wall, so the run reads `failed` with the reason and a launch starts it again |
 
@@ -639,9 +645,9 @@ the default slack:
 | the session log (`<basename>.runwrap-<stamp>.log`, § 4.1), the run script's banner | `Wall          : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` — a transmission's: `TBtrans checks no clock and runs to it (running-a-job.md 3.6)`; told no wall: `Wall          : none stated -- runs until done` | every start of SIESTA or TBtrans |
 | the session log | `wall: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` — what is left when SIESTA starts | a wall told, the program SIESTA |
 | SIESTA's output | `OUT_OF_TIME: Time is up.` | SIESTA stopped itself at its wall |
-| the session log, from the run script | `stopped at its wall (MaxWalltime): the restart state is saved; launch this stage again to continue` | that stop — in place of a warm retry |
+| the session log, from the run script | `stopped at its wall (MaxWalltime): the restart state is saved; launch this stage again to continue` — the last clause says what a launch again does with this run, from the one description of it (§ 3.5, `runwrap._retry_texts`): a single run whose kind resumes, as shown; a point of a run of points — a vibration's call, a transport point — that the points done are taken over and this one is run again as its run's rule starts a point not done: a relaxation continues warm from its own last run, the other calls and a transport point start over ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11); a kind whose runs do not resume, that it re-runs from its first step | that stop — in place of a warm retry |
 | the run's state (`jobset status`, the Results tab) | *failed* — `stopped before its end: OUT_OF_TIME: Time is up.` | that stop |
-| the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped with its restart state saved; a launch again continues from it` (`siesta_grammar.CAUSE_WORDS`) | that stop |
+| the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped and saved its restart state` (`siesta_grammar.CAUSE_WORDS`) — the cause alone; what a launch again does is the session log's line above | that stop |
 | a PySCF relaxation's output | `WARNING: stopped before the wall (the job's wall less its slack): the geometry reached is kept; launch this stage again to continue from it` — the last clause where launching again reads the geometry back (its `restart` is `continue`); then `# relaxed: no` in its trajectory log | the first step past the deadline |
 | a PySCF vibration's output | `RuntimeError: stopped before the wall (the job's wall less its slack) before the spectrum was written: launch this stage again` | a displaced SCF due past the deadline |
 | the monitor log | `[WALL] 21m left; the longest of 3 steps so far took 46m -- the step underway may not finish before the wall` ([`run-reports.md`](?doc=execution/run-reports.md) § 2.1b) | once, in a job sent to a queue |
@@ -864,8 +870,9 @@ at every point not done, the ones the walk never reached too.
 SIESTA vibration's last call's record step runs the finish after SIESTA ends,
 and only then concludes. So an output that states its end speaks for the ENGINE, and
 the job's own evidence decides: a marker naming a failed finish reads
-`failed`; with no marker yet, the run's session log saying the finish began
-(`finish started:`, `wrapper_log.FINISH_STARTED`) reads `running` — *the
+`failed`; with no marker yet, the run's session log saying the step after the
+engine began (`finish started:`, `wrapper_log.FINISH_STARTED` — a call's plan
+step, before its engine, logs `plan step:` and never this) reads `running` — *the
 engine ended; the job's finish is deriving the result* — and `failed` once the
 scheduler's line or the monitor's closing record says the job went: a
 walltime or a kill inside the finish, which leaves no marker. A marker `rc=0` is a finished job.

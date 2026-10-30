@@ -43,6 +43,9 @@
 # run's own result -- "report", its calculation's report at the point the
 # folder is (web/results.md § 0.1).  Its `validator`: its science checks, a
 # part, where it has its own (validation.validate runs them on every deck).
+# Its `export`: the module that exports its results -- `export(calc, fmt,
+# **asks)`, `name_of(calc, fmt)` and `ASKS`, named whole -- where it has one
+# (`kind_table.export_of`; `jobset export`).
 #
 # A part's `relaxation`: what relaxes the structure first, in a person's
 # words, where the pair relaxes before it measures.
@@ -93,6 +96,7 @@ handover = "spectrum-calculation"
 # Its science: the grid, the amplitude, the held atoms, the relaxation
 # record (engines/vibration.md § 3).
 validator = "molbuilder.validation.spectra:validate_vibration_kind"
+export = "molbuilder.spectra.export"
 roles = [
     { name = "relaxation",      computes = "scf" },
     { name = "force_constants", computes = "scf" },
@@ -129,10 +133,6 @@ retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIE
 stage_roles = ["force_constants"]
 ladder = ["freq"]
 relaxation = "The deck's own relaxation (Phase 0)"
-# A vibration's summary is the displacement sweep, which a PySCF vibration
-# never has -- its second derivatives are analytic -- and is refused naming
-# why (engines/vibration.md § 5.9).
-sum = "molbuilder.jobset.vibration_sum:SUM"
 
 
 [transport]
@@ -157,6 +157,7 @@ root_opens = "description"
 # window against the bias, no vacuum where the crystal continues
 # (engines/transport.md § 6.1c).
 validator = "molbuilder.validation.transport:validate_transport_kind"
+export = "molbuilder.transport.export"
 
 [transport.charge]
 value = 0

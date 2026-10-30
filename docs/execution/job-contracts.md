@@ -348,8 +348,8 @@ it — so *"did the engine leave something here"* is answered by **subtraction**
 (§ 4.2): anything named after the label that is not ours came from the run.
 
 That makes an *omission* a real defect, not untidiness. Measured 2026-09-07 by
-rendering both PySCF decks and asking `identity.is_ours` of every name they
-choose: `_initial.xyz`, `.constraints.txt` and `.spectra.json` were on neither
+rendering both PySCF decks and matching every name they choose against what
+molbuilder writes (`identity.OUR_FILE_PATTERNS`): `_initial.xyz`, `.constraints.txt` and `.spectra.json` were on neither
 list, so a run's own spectrum was classified as the engine's restart state and
 `--cold` offered to clobber it. The same sweep found geomeTRIC's opt log listed
 under `{label}_geom_*.log` — the spelling from before § 2.2a fixed the token's
@@ -2264,7 +2264,7 @@ whole list:
 | `WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity` | `--continue` but no warm files — degraded to cold |
 | `COLD (--cold --force; prior state removed)` | `--cold` was confirmed with `--force`; the files it named are removed |
 | `CLEAN (this deck reads no prior state; the files on disk are not read)` | warm files present (with or without `--continue`), but the deck's restart answer is `clean` (`run-identity.md` § 4): nothing is read back |
-| `RE-RUN FROM THE START (--continue; this kind of run does not resume)` | `--continue` + warm files present, on a kind whose runs do not resume (a transport rung, a force-constant run — the engine's own warm-file list says so) |
+| `RE-RUN FROM THE START (--continue; this kind of run does not resume)` | `--continue` + warm files present, on a kind whose runs do not resume (a force-constant run — the engine's own warm-file list says so, `resumes = false`) |
 | `RE-RUN REQUESTED but no prior state found -- starting from the first step with nothing to read back` | `--continue` on a kind that does not resume, and nothing on disk either |
 
 (The flag spellings: `--continue` / `-c`; `--force` / `-f` says yes to

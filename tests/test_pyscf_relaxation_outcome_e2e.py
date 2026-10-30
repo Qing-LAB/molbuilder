@@ -258,7 +258,8 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
 def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
                                                            monkeypatch):
     """A PySCF vibration whose structure is stated relaxed runs no relaxation
-    -- the phase is complete by assertion, no step is taken -- and the gradient
+    -- the phase is `not requested` from the first write, on both engines
+    (`engines/vibration.md` § 4.9), no step is taken -- and the gradient
     check measures the statement: H2 at 0.95 Å is not stationary, so the
     result's verdict is false and its warning carries the one remedy for a
     structure stated relaxed on this engine (`engines/vibration.md` § 4.3,
@@ -269,6 +270,7 @@ def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
     remedy worded apart from the one text.
     """
     from molbuilder.parse.registry import parse
+    from molbuilder.spectra.results import PHASE_NOT_REQUESTED
     from molbuilder.spectra.vibrational_analysis import nonstationary_remedy
 
     run, state, said = _run(
@@ -278,9 +280,10 @@ def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
     doc = parse(run.on_label(".spectra.json")).payload
     rx = doc["relaxation"]
     assert (rx["enabled"], rx["n_steps"]) == (False, 0), rx
-    assert doc["phase_relaxation"] == "complete", doc["phase_relaxation"]
+    assert doc["phase_relaxation"] == PHASE_NOT_REQUESTED, \
+        doc["phase_relaxation"]
     assert rx["converged"] is False, rx
-    assert nonstationary_remedy(None, "pyscf") in (rx.get("warning") or ""), rx
+    assert nonstationary_remedy(None) in (rx.get("warning") or ""), rx
 
 
 def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(tmp_path,

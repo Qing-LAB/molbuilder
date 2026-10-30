@@ -288,13 +288,6 @@ def _held_set_finding(struct: Structure, held: Tuple[int, int, List[int]],
                  f"relaxation -- a partial Hessian over fewer atoms."))
 
 
-def _judged_force(rec: Mapping[str, Any]) -> Optional[float]:
-    """The force a relaxation is judged by: the largest on the atoms it
-    moved, when the record says; on every atom otherwise."""
-    f_free = rec.get("max_force_free_ev_ang")
-    return f_free if f_free is not None else rec.get("max_force_ev_ang")
-
-
 def check_relaxation_record(struct: Structure, *, calculation: str,
                             engine: str, already_relaxed: bool,
                             force_tolerance_ev_ang: Optional[float],
@@ -321,7 +314,7 @@ def check_relaxation_record(struct: Structure, *, calculation: str,
     # here -- the text the finish and the PySCF deck write too
     # (`vibrational_analysis.nonstationary_remedy`).
     from ..spectra.vibrational_analysis import nonstationary_remedy
-    _remedy = nonstationary_remedy(None, engine)
+    _remedy = nonstationary_remedy(None)
     # WHAT RELAXES IT FIRST, the pair's words -- asked only where said.
     def _first() -> str:
         return _first_relaxation(calculation, engine)
@@ -425,7 +418,8 @@ def check_relaxation_record(struct: Structure, *, calculation: str,
                   else f"  {_first()} relaxes this set "
                        f"first.")))
     # -- the largest remaining force against THIS calculation's tolerance --
-    judged = _judged_force(rec)
+    from ..parse.contract import judged_force
+    judged = judged_force(rec)
     rec_tol = rec.get("force_tolerance_ev_ang")
     who = (f"relaxed on {rec_engine or 'an engine the record does not name'}"
            + (f" to {float(rec_tol):g} eV/Å" if rec_tol is not None else "")

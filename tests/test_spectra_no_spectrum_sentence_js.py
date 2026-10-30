@@ -84,8 +84,11 @@ def test_the_sentence_names_the_case_and_the_viewer_waits_for_infrared():
     (siesta_off, charged, off, mid_sweep, before_sweep, none, old,
      kept_none) = _judge([
         _file(_SIESTA),
+        # ...whose infrared source the load door serves (`infrared_source`,
+        # `infrared.source_of`): the page reads that, never the file's
+        # charges.
         _file(_SIESTA, phase_ir="complete", ir_route="charges",
-              partial_charges={"displacement_ang": 0.0212},
+              infrared_source="charges",
               infrared_said="the result states ['hirshfeld'] charges, not "
                             "'voronoi'"),
         _file({**_PYSCF, "compute_ir": False}),

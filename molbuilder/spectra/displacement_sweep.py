@@ -115,15 +115,11 @@ def sweep_stages(task) -> List[str]:
 def why_no_sweep(task) -> Optional[str]:
     """Why ``task`` -- a vibration's description -- has no displacement
     sweep to compare, in the sentence `summarize task` refuses with, or
-    ``None`` when it has one (`engines/vibration.md` § 5.9): a PySCF
-    vibration (its Hessian is analytic) or fewer than two force-constant
-    stages.  THE ONE RULE, asked by the sweep (:func:`collect_sweep`) and,
+    ``None`` when it has one (`engines/vibration.md` § 5.9): fewer than two
+    force-constant stages.  THE ONE RULE, asked by the sweep
+    (:func:`collect_sweep`) and,
     as the vibration's summary's ``why_none`` (`jobset/vibration_sum.py`),
     by the verb and the task's next step."""
-    if str(task.engine) != "siesta":
-        return (f"a {task.engine} vibration's second derivatives are "
-                f"analytic: there is no displacement to sweep "
-                f"(engines/vibration.md 5.9)")
     names = sweep_stages(task)
     if len(names) < 2:
         return (f"this vibration has {len(names)} force-constant stage(s) "
@@ -139,8 +135,7 @@ def collect_sweep(calc, *,
     """The sweep record of the calculation ``calc`` (as the verb opened it,
     A16): every force-constant stage's newest attempt, read where its
     run wrote it, and the comparison.  Raises :class:`SweepError` when there
-    is nothing a sweep can be: a PySCF vibration (its Hessian is analytic),
-    fewer than two force-constant stages, no stage with a result yet, or stages that describe different atoms or were
+    is nothing a sweep can be: fewer than two force-constant stages, no stage with a result yet, or stages that describe different atoms or were
     measured at different geometries."""
     from .. import __version__ as _mb_version
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
@@ -174,7 +169,7 @@ def collect_sweep(calc, *,
     _items = catalogue()
 
     def _unit(item: str) -> Optional[str]:
-        it = one(_items, item, engine="siesta")
+        it = one(_items, item, engine=task.engine)
         return getattr(it, "unit", None) or None
 
     spectrum_name = compose(task.label, ROLE_SPECTRA)

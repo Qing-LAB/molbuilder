@@ -8,10 +8,15 @@ from molbuilder.jobset._cli import describe_cmd
 
 
 def test_a_pyscf_vibration_has_no_displacement_to_sweep(tmp_path, monkeypatch):
-    """`molbuilder describe` a PySCF vibration, then `summarize task`: refused by
-    name, before anything is read -- its second derivatives are analytic,
-    so no stage takes a finite difference whose step could be swept
-    (`engines/vibration.md` § 5.9).  Nothing runs, so no engine is needed."""
+    """`molbuilder describe` a PySCF vibration, then `summarize task`: refused
+    before anything is read or written -- the pair names nothing to add up
+    in the kind table (`engines/vibration.md` § 5.9: the sweep is a SIESTA
+    vibration's), and the refusal lists the pairs that do, from the table.
+    Nothing runs, so no engine is needed.
+
+    THE SILENT FAILURE: the refusal telling the person a PySCF vibration
+    is among the pairs that add something up.  MUTATION THIS MUST FAIL
+    AGAINST: the pair given a `sum` again in the kind table."""
     from click.testing import CliRunner
 
     from molbuilder.jobset._cli import jobset_group
@@ -29,5 +34,10 @@ def test_a_pyscf_vibration_has_no_displacement_to_sweep(tmp_path, monkeypatch):
     assert r.exit_code == 0, r.output
     r = run.invoke(jobset_group, ["summarize", "task", "--bundle",
                                   str(tree / "P" / "frequency" / "V")])
-    assert r.exit_code != 0 and "analytic" in r.output, r.output
+    from molbuilder.engine_table import engine
+    from molbuilder.kind_table import kind
+    asked = f"{kind('vibration').with_article} on {engine('pyscf').words}"
+    assert r.exit_code != 0, r.output
+    # Named once: as the pair asked about, never among those that add up.
+    assert r.output.count(asked) == 1, r.output
     assert not list((tree / "P" / "frequency" / "V").glob("*.fc-sweep.json"))

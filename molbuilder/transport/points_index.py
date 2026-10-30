@@ -36,20 +36,29 @@ from typing import Any, Dict, List, Optional, Sequence
 # TWO WAYS, because this module travels beside a job (`runwrap.
 # MONITOR_COMPANIONS`), where the package is not installed.
 try:                                       # inside molbuilder
-    from ..persist import check_schema, read_json, write_bytes, json_text
-    from ..runfiles import FIRST_TRY, ROLE_POINTS
+    from .. import runrecord as _rr
+    from ..runfiles import ROLE_POINTS
     from ..parse.engines._run_ending import (holds, not_done_why,
                                               points_state)
     from ..parse.dirs.job import FINAL_STATES
 except ImportError:                        # beside a job
-    from persist import (check_schema, read_json,  # type: ignore[no-redef]
-                         write_bytes, json_text)
-    from runfiles import FIRST_TRY, ROLE_POINTS  # type: ignore[no-redef]
+    import runrecord as _rr  # type: ignore[no-redef]
+    from runfiles import ROLE_POINTS  # type: ignore[no-redef]
     from _run_ending import (holds,  # type: ignore[no-redef]
                              not_done_why, points_state)
     from job import FINAL_STATES  # type: ignore[no-redef]
 
 SCHEMA = "molbuilder/transport-points@1"
+
+#: What one point of the run is called (`run-reports.md` § 2.8,
+#: `call_unit`): read by the run of points' declaration and the monitor.
+UNIT = "point"
+
+#: The run's index written whole, and a point not done in the words a
+#: failed part and a failed finish name it by -- every run of points' own
+#: (`runrecord`).
+write_index = _rr.write_index
+not_done_words = _rr.not_done_words
 
 #: WHAT A RUN'S POINTS COMPUTE, the kind table's words for the rung
 #: (``computes``, `transport.stages.STAGE_FACT`): an SCF -- the device's
@@ -64,9 +73,9 @@ SCF, PRODUCT = "scf", "product"
 
 def index_path(run_dir, names) -> Path:
     """Where the run's index lies: at the run's root, named for its first
-    try, ``<label>_<NN>_<stage>-run0.points.json`` (`runfiles.ROLE_POINTS`)
-    -- launch writes it there, and every point's report steps read it."""
-    return Path(run_dir) / names.name(ROLE_POINTS, run=FIRST_TRY)
+    try, ``<label>_<NN>_<stage>-run0.points.json`` (`runfiles.ROLE_POINTS`,
+    `runrecord.index_path`)."""
+    return _rr.index_path(run_dir, names, ROLE_POINTS)
 
 
 def empty_index(*, stage: str, computes: str, pair: str,
@@ -112,22 +121,8 @@ def add_point(index: Dict[str, Any], *, rel: str, words: str,
 
 def read_index(path) -> Dict[str, Any]:
     """The index at ``path``, refused by name when it is not one of this
-    schema."""
-    p = Path(path)
-    try:
-        d = read_json(p)
-        check_schema(d.get("schema") if isinstance(d, dict) else "",
-                     SCHEMA, label=p.name)
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"{p.name}: {exc}") from exc
-    return d
-
-
-def write_index(path, index: Dict[str, Any]) -> Path:
-    """The index written whole, atomically (`persist.write_bytes`)."""
-    p = Path(path)
-    write_bytes(p, json_text(index).encode("utf-8"))
-    return p
+    schema (`runrecord.read_index`)."""
+    return _rr.read_index(path, SCHEMA)
 
 
 def entry_of(index: Dict[str, Any], rel: str) -> Optional[Dict[str, Any]]:
@@ -266,12 +261,6 @@ def round_of(rows, bias_v: float) -> List[Dict[str, Any]]:
     return [r for r in rows if r["bias_v"] == float(bias_v)]
 
 
-def not_done_words(row: Dict[str, Any]) -> str:
-    """A point not done, in the words a failed part and a failed finish name
-    it by (`run-reports.md` § 2.9): its words, and why by the one rule."""
-    return f"{row['words']}: not done -- {row['why'] or row['state']}"
-
-
 def run_state(rows) -> "tuple[str, Optional[str]]":
     """THE RUN'S STATE, once no point is left to run, and its words: by the
     status door's rule (`_run_ending.points_state`, `run-reports.md` § 2.9)
@@ -374,7 +363,7 @@ class _ScfSays:
 
     @staticmethod
     def fact(row, run_dir: Path, names, index) -> Optional[int]:
-        out = _newest_output(run_dir / row["rel"], names)
+        out = _rr.newest_output(run_dir / row["rel"], names)
         if out is None:
             return None
         try:                               # inside molbuilder
@@ -509,21 +498,7 @@ def _on_grid(on: Sequence[float], e: float, tol: float) -> Optional[int]:
 _SAID = {SCF: _ScfSays, PRODUCT: _ProductSays}
 
 
-def _newest_output(folder: Path, names) -> Optional[Path]:
-    """The engine output of the point's newest try (`runrecord.newest_run`),
-    or ``None`` where it printed none."""
-    try:                                   # inside molbuilder
-        from ..runrecord import newest_run
-    except ImportError:                    # beside a job
-        from runrecord import newest_run  # type: ignore[no-redef]
-    n = newest_run(folder, names)
-    if n is None:
-        return None
-    out = folder / names.name(".out", run=n)
-    return out if out.is_file() else None
-
-
-__all__ = ["SCHEMA", "SCF", "PRODUCT", "index_path", "empty_index",
+__all__ = ["SCHEMA", "UNIT", "SCF", "PRODUCT", "index_path", "empty_index",
            "add_point", "read_index", "write_index", "entry_of",
            "stamp_start", "stamp_end", "rows_of", "still_to_run", "summary",
            "round_of", "not_done_words", "run_state", "round_words",

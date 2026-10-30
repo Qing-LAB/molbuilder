@@ -148,7 +148,7 @@ NO_CURVE = ("its files hold no DOS over its whole grid -- TBtrans wrote none "
 
 
 def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
-              spin: str, expected) -> Dict:
+              spin: str, expected, *, av: Optional[Dict] = None) -> Dict:
     """THE DOS BLOCK of a point's folder (`web/results.md` § 2.5):
     ``{energy_ev, total, by_label, lead_spectral, lead_bulk, eigenchannels}``
     -- the averages TBtrans wrote, on the data file's energies; ``by_label``
@@ -157,14 +157,16 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
     channel's own ``total`` and ``eigenchannels`` beside.  A quantity
     TBtrans did not write is absent, never zero.  ``regions`` count by
     engine index; ``expected`` is the composed junction's atom index map,
-    which each kept reading's must be (F7)."""
-    from ..parse.engines.tbtrans_nc import data_files, kept, point_averages
-    from .transiesta import LEAD_NAMES, LEAD_PAIR
-    try:
-        av = point_averages(folder, label, pair=LEAD_PAIR,
-                            leads=tuple(LEAD_NAMES))
-    except (OSError, ValueError) as exc:
-        raise TbtError(str(exc)) from exc
+    which each kept reading's must be (F7).  ``av`` is the point's averages
+    where the caller read them already (`record.point_averages_of`, one read
+    for the transmission and the DOS)."""
+    from ..parse.engines.tbtrans_nc import data_files, kept
+    if av is None:
+        from .record import point_averages_of
+        try:
+            av = point_averages_of(folder, label)
+        except (OSError, ValueError) as exc:
+            raise TbtError(str(exc)) from exc
     channels = _channels(spin)
     missing = [c for c in channels if c not in av]
     if missing:
@@ -300,22 +302,36 @@ def _orbitals_of(firsto: Sequence[int], orb_indx: Path,
 def point_readings(calc) -> List[Dict]:
     """EACH FINISHED TRANSMISSION POINT'S READINGS (`model/parse.md` § 5e):
     the transmission's newest run, as the record reads it
-    (`record.result_folders`) -- per point its run finished, by the one
-    door every reader of a run's state asks (`runs.concluded`), its folder
-    and what is kept of each data file's reading, its own and those in its
-    ``shared/`` (:func:`readings`).  A point still running, or stopped, is
-    none: its data file is TBtrans's while it writes, and a partial one
-    after."""
+    (`record.result_folders`) -- per point its run finished, as the status
+    door's rows say it, read once for the run (`continuation.points_state`,
+    `architecture.md` § 3.2), its folder and what is kept of each data
+    file's reading, its own and those in its ``shared/`` (:func:`readings`).
+    A point still running, or stopped, is none: its data file is TBtrans's
+    while it writes, and a partial one after; a run not launched has no
+    row, and no point finished."""
+    from ..jobset.continuation import points_state
     from ..jobset.naming import stage_home
-    from ..runs import concluded
+    from ..runrecord import LaunchRecordError, launch_record
     from .record import result_folders
     base, task = Path(calc.base), calc.task
     names = stage_home(base, task, "transmission").names
+    folders = result_folders(base, task, "transmission")
+    rows: Dict[str, Dict] = {}
+    for run in {r for _, w, r in folders if w is not None}:
+        try:
+            launch = launch_record(run)
+        except LaunchRecordError:
+            continue
+        if launch is None:
+            continue
+        rows.update({p["folder"]: p for p in points_state(
+            run, names, task, "transmission", launch=launch, base=base)[2]})
     return [{"point": pt, "folder": where,
              "readings": readings(where, task.label)}
-            for pt, where, run in result_folders(base, task, "transmission")
-            if where is not None and concluded(
-                where, names, base=base, launched_in=run).state == "finished"]
+            for pt, where, run in folders
+            if where is not None
+            and (rows.get(f"{run.name}/{pt.rel}") or {}).get("state")
+            == "finished"]
 
 
 def read_points(calc, *, fresh: bool = False, take_over: bool = False,

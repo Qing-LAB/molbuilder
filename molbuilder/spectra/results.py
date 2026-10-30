@@ -1,6 +1,6 @@
-"""L1 result types for the Spectra tab.
+"""L1 result types of a vibration's result, ``<label>.spectra.json``.
 
-Pinned by docs/web/spectra.md  Three dataclasses:
+Pinned by `engines/vibration.md` § 6 (the result file).  Three dataclasses:
 
   * :class:`ModeElectronicStructure` -- the per-mode displaced-SCF
     block: equilibrium / ±A·Q_i MO energies + SCF energies.  Populated
@@ -53,10 +53,12 @@ import numpy as np
 # (`runwrap.VIBRATION_COMPANIONS`).
 try:                                        # inside molbuilder
     from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
+    from .normal_modes import display_form
     from ..atom_permutation import MAP_KEY
     from ..structure import Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
     from derived import DERIVED_MODE_KEYS, disagreements, with_derived
+    from normal_modes import display_form  # type: ignore[no-redef]
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
     from structure import Structure as _Structure
 
@@ -109,10 +111,10 @@ SCHEMA_VERSION = 13  # 13: the OPTICAL CALLS' CITATION, `optical` -- on a
 #                    STRUCTURE whole
 #                    (engines/vibration.md § 6.10): `Structure.to_dict()` of
 #                    the equilibrium structure -- the geometry, the box, the
-#                    labels, the held atoms; `structure_hash`,
-#                    `frozen_atom_idxs` and `equilibrium.elements` /
-#                    `positions_ang` are read from a v4-v8 file, never
-#                    written.  8: the SIESTA route's `engine_metadata` names
+#                    labels, the held atoms; `frozen_atom_idxs` and
+#                    `equilibrium.elements` / `positions_ang` are read from
+#                    a v4-v8 file, never written, and its `structure_hash`
+#                    accepted and kept nowhere.  8: the SIESTA route's `engine_metadata` names
 #                    its force-constant range as SIESTA's numbering,
 #                    `fc_range_engine_1based` (model/overview.md § 2.2a); a
 #                    v4-v7 file reads as before, its range read under v8's
@@ -192,7 +194,7 @@ def _no_equality(self, other):  # noqa: ARG001
 
 #: THE KEYS EACH BLOCK MAY CARRY -- the rows of `engines/vibration.md` § 6.2-6.4, and
 #: nothing else.  The reader refuses a key outside them BY NAME.
-#: A key that starts being written is a row in § 9b first, then here.
+#: A key that starts being written is a row in § 6.2-6.4 first, then here.
 _ES_KEYS = frozenset({
     "amplitude_ang", "mo_energies_eq_eh", "mo_energies_minus_eh",
     "mo_energies_plus_eh", "homo_index_in_window", "scf_energy_eq_eh",
@@ -202,7 +204,6 @@ _MODE_KEYS = frozenset({
     "index_1based", "frequency_cm1", "raman_activity_a4_amu",
     "ir_intensity_km_mol", "eigenvector_canonical", "eigenvector_display",
     "has_imag", "electronic_structure", "dipole_derivative_d_per_ang_amu12",
-    "eigenvector_free",                 # schema v1's single vector, read as both
     # DERIVED (`spectra.derived`, `engines/vibration.md` § 6.6) -- stated by
     # every writer from v7, checked on read.
     *DERIVED_MODE_KEYS,
@@ -647,37 +648,18 @@ class ModeData:
     def from_dict(cls, d: Dict[str, Any]) -> "ModeData":
         _refuse_unknown_keys(d, _MODE_KEYS, "ModeData")
         es = d.get("electronic_structure")
-        # Resolve the eigenvector pair, accepting both schema versions:
-        #
-        #   v2 (current)  -- two explicit fields, used as-is.
-        #   v1 (legacy)   -- single ``eigenvector_free`` field; we treat
-        #                    it as the display form and copy it into the
-        #                    canonical slot too.  This is best-effort
-        #                    only: v1 didn't track the canonical
-        #                    normalisation separately, so a downstream
-        #                    re-projection (e.g. recomputing Raman from
-        #                    scratch) needs to re-run the harmonic
-        #                    analysis to get the correct canonical
-        #                    eigenvectors back.  The raman_activity /
-        #                    ir_intensity values stored in the v1 JSON
-        #                    themselves are unaffected; they were
-        #                    computed at emit time with whatever
-        #                    normalisation that v1 build had.
-        if "eigenvector_canonical" in d:
-            ev_canon = np.asarray(d["eigenvector_canonical"], dtype=float)
-            _disp = d.get("eigenvector_display", d.get("eigenvector_free"))
-            if _disp is None:
-                # DERIVED (`engines/vibration.md` § 6.4): the canonical vector
-                # rescaled per mode so max|L| = 1 -- what the animation
-                # draws.  An engine writes the science form; this is ours.
-                _peak = float(np.max(np.abs(ev_canon))) if ev_canon.size else 0.0
-                ev_disp = ev_canon / _peak if _peak > 0 else ev_canon.copy()
-            else:
-                ev_disp = np.asarray(_disp, dtype=float)
+        # THE EIGENVECTOR PAIR: the canonical form as written; the display
+        # form as written, else derived.
+        ev_canon = np.asarray(d["eigenvector_canonical"], dtype=float)
+        _disp = d.get("eigenvector_display")
+        if _disp is None:
+            # DERIVED (`engines/vibration.md` § 6.4) by the one rule both
+            # writers take it from (`normal_modes.display_form`): the
+            # canonical vector rescaled so its largest absolute Cartesian
+            # component is 1 -- what the animation draws.
+            ev_disp = display_form(ev_canon[None])[0]
         else:
-            ev_free  = np.asarray(d["eigenvector_free"], dtype=float)
-            ev_canon = ev_free
-            ev_disp  = ev_free
+            ev_disp = np.asarray(_disp, dtype=float)
         return cls(
             index_1based          = int(d["index_1based"]),
             frequency_cm1         = float(d["frequency_cm1"]),
@@ -800,7 +782,7 @@ class SpectraResults:
 
     ``structure`` states the geometry the result was taken from, whole
     (`engines/vibration.md` § 6.10); a v4-v8 file's ``structure_hash`` is
-    read, never written;
+    accepted and kept nowhere -- the structure is stated instead;
     ``engine`` +
     ``engine_version`` + ``molbuilder_version`` give the software
     stack used; ``timestamp`` is ISO-8601 UTC.
@@ -813,9 +795,6 @@ class SpectraResults:
     molbuilder_version:   str
     timestamp:            str                    # ISO-8601 UTC
 
-    #: v4-v8's pin of the geometry, read from such a file, never written
-    #: since v9: the structure is stated.
-    structure_hash:       Optional[str]
     n_atoms_total:        int
     free_atom_idxs:       List[int]              # 0-based, complement of frozen
     frozen_atom_idxs:      List[int]              # 0-based
@@ -845,14 +824,6 @@ class SpectraResults:
     methods_text:              str
     bibliography_keys:         List[str]
 
-    # Per-layer status flags: the four-layer linear-chain model needs
-    # per-phase granularity for the stepper UI and the live-watch state
-    # machine.
-    #
-    # Each one of PHASE_EMPTY / PHASE_RUNNING / PHASE_COMPLETE
-    # (validated at __post_init__).  L1 (Setup) has no flag of its
-    # own -- the presence of a valid SpectraResults IS the
-    # Setup-complete signal.
     #: How dmu/dR was obtained, for the run as a whole:
     #:   "analytic"          -- pyscf.prop.infrared, off the Hessian's own
     #:                          CPHF solution, no extra SCFs;
@@ -886,6 +857,9 @@ class SpectraResults:
     raman_route:               str = ""
     #: The step of that difference, in Angstrom, when the route ran.
     raman_fd_step_ang:         Optional[float] = None
+    # EACH PHASE'S STATE -- one of :data:`_VALID_PHASE_STATES`: empty,
+    # running, complete, or not requested, which is terminal
+    # (`engines/vibration.md` § 4.9); checked at ``__post_init__``.
     phase_frequencies:         str = PHASE_EMPTY
     phase_raman:               str = PHASE_EMPTY
     #: The infrared intensities' own flag (`engines/vibration.md` § 4.9):
@@ -897,8 +871,9 @@ class SpectraResults:
     phase_es:                  str = PHASE_EMPTY
     #: v5: the in-deck relaxation is a tracked step (user, 2026-08-20 --
     #: the viewer tracks ALL the steps; a silent gap while geomeTRIC works
-    #: would betray that).  Complete-by-assertion under already_relaxed,
-    #: with the gradient-check number in `relaxation` beside it.
+    #: would betray that).  `not requested` from the first write under
+    #: already_relaxed (`engines/vibration.md` § 4.9), the gradient-check
+    #: number in `relaxation` beside it.
     phase_relaxation:          str = PHASE_EMPTY
     #: v5: relaxation progress/result -- {enabled, already_relaxed,
     #: n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning?}.  Written live so the
@@ -1413,9 +1388,6 @@ class SpectraResults:
             engine_version       = str(d["engine_version"]),
             molbuilder_version   = str(d["molbuilder_version"]),
             timestamp            = str(d["timestamp"]),
-
-            structure_hash       = (None if d.get("structure_hash") is None
-                                    else str(d["structure_hash"])),
             n_atoms_total        = int(d["n_atoms_total"]),
             free_atom_idxs       = [int(i) for i in d["free_atom_idxs"]],
             frozen_atom_idxs      = frozen,

@@ -200,11 +200,14 @@ class Run:
     def prepared(self) -> Path:
         """THE FOLDER PREP WROTE THIS RUN'S FILES IN -- its deck, the
         `.validation.txt` beside it, its run script (`project-layout.md`
-        § 5.2) -- which launch copies into the run: the run's folder with
-        its run level taken out.  A stage's ``run-<n>/`` is the stage's
+        § 5.2) -- which launch copies into the run: the nearest folder of
+        the stage, at the run's place with its run level taken out, that
+        holds the run's deck.  A stage's ``run-<n>/`` is the stage's
         folder, a bias point's ``run-<n>/f001/v0/`` the stage's
-        ``f001/v0/``; a benchmark trial's deck is rendered into its run,
-        ``run-0``, so its run's own folder is it."""
+        ``f001/v0/``; a call the job plans, ``run-<n>/optical/f003/``, runs
+        the deck prep wrote for its phase, ``optical/``
+        (`engines/vibration.md` § 5.11 § 2); a benchmark trial's deck is
+        rendered into its run, ``run-0``, so its run's own folder is it."""
         if self.trial:
             return self.folder
         try:
@@ -212,8 +215,14 @@ class Run:
                 self.place.root.resolve()).parts
         except ValueError:
             return self.folder
-        return self.place.root.joinpath(
+        folder = self.place.root.joinpath(
             *(p for p in parts if attempt_index(p) is None))
+        stage_dir = self.place.root / self.stage
+        deck = self.deck
+        if deck is not None:
+            while folder != stage_dir and not (folder / deck.name).is_file():
+                folder = folder.parent
+        return folder
 
     @property
     def stage_deck(self) -> Optional[Path]:
@@ -226,24 +235,38 @@ class Run:
         return self.prepared / deck.name
 
     @property
+    def current(self) -> Optional[bool]:
+        """WHETHER THIS RUN'S DECK IS STILL ITS STAGE'S -- the one answer
+        the record's ``current`` and :attr:`report` give
+        (`web/results.md` § 3a): the same calculation as the deck prep
+        wrote (:attr:`stage_deck`, `deck_record.same_calculation`).  The
+        stage's deck is read with the files beside THIS run's deck: what a
+        deck reads from a file beside it -- a call's coordinates, which its
+        job writes by design (`engines/vibration.md` § 5.11 § 1, § 4) -- is
+        the run's, so only what prep fixes is compared.  ``None`` with
+        nothing to compare: no deck, none prep wrote, or the run's deck is
+        that one file (a benchmark trial's)."""
+        deck, prepared = self.deck, self.stage_deck
+        if (deck is None or prepared is None or not prepared.is_file()
+                or prepared.resolve() == deck.resolve()):
+            return None
+        from molbuilder.deck_record import same_calculation
+        from molbuilder.parse.fdf import inline_includes, read_deck
+        stage_text = inline_includes(
+            prepared.read_text(encoding="utf-8-sig", errors="replace"),
+            beside=deck.parent)
+        return not same_calculation(self.place.task.engine, read_deck(deck),
+                                    stage_text)
+
+    @property
     def report(self) -> Optional[Path]:
         """What the generator checked before it wrote this run's deck -- the
         `.validation.txt` prep writes beside it, in :attr:`prepared`
         (`runfiles.WRITTEN`) -- or ``None``: also when prep has written
-        another deck there since this run's (a re-prep), whose report the
-        file now is, when that one is another calculation
-        (`deck_record.same_calculation`, as the record's ``current`` asks)."""
-        deck, prepared = self.deck, self.stage_deck
-        if deck is None or prepared is None or not prepared.is_file():
+        another calculation's deck there since this run's (a re-prep,
+        :attr:`current`), whose report the file now is."""
+        if self.deck is None or self.current is False:
             return None
-        if prepared.resolve() != deck.resolve():
-            from molbuilder.deck_record import same_calculation
-            # Read as the record reads a deck (`record._read`): one file
-            # that will not decode costs its own row, never the ladder's.
-            from molbuilder.parse.fdf import read_deck
-            if same_calculation(self.place.task.engine, read_deck(deck),
-                                read_deck(prepared)):
-                return None
         hits = _rf.find(self.prepared, self.label, role=".validation.txt",
                         stage=self.stage)
         return hits[-1][0] if hits else None
@@ -662,22 +685,37 @@ def about(path) -> Dict[str, Any]:
     SLURM's own, a person's -- and every file of a folder no calculation
     claims (`web/results.md` § 3b, `job-contracts.md` § 2.2)."""
     p = Path(path)
-    folder = p.parent
-    place = place_of(folder)
+    place = place_of(p.parent)
+    return _row_about(p, _label_of(p, place), unread=place.problem)
+
+
+def _labels_at(place: Place) -> List[str]:
+    """The labels a folder's files are named on: its run's (:func:`
+    _position`) -- and AT THE ROOT, where each rung's prep log lies
+    (`prep.Resolved.log_path`), every rung's, a lead's on its own stem
+    (`rung_label`, the one rule prep names them by).  None for a folder no
+    calculation claims."""
     if not place.ours:
-        return _row_about(p, None, unread=place.problem)
+        return []
     label, stage, _trial = _position(place)
-    if stage is None:
-        # AT THE ROOT each rung's files lie on the label its deck is named
-        # on (`rung_label`, the one rule prep names them by): a lead's on
-        # its own stem.
-        from molbuilder.kind_table import rung_label
-        for named in dict.fromkeys(rung_label(label, st.name)
-                                   for st in place.task.stages):
-            got = _row_about(p, named)
-            if got["ours"]:
-                return got
-    return _row_about(p, label)
+    if stage is not None:
+        return [label]
+    from molbuilder.kind_table import rung_label
+    return list(dict.fromkeys([rung_label(label, st.name)
+                               for st in place.task.stages] + [label]))
+
+
+def _label_of(path: Path, place: Place) -> Optional[str]:
+    """The label ``path`` is named on, of those its folder's files are
+    (:func:`_labels_at`): the first the catalogue reads it back with
+    (`runfiles.row_for`), else the folder's run's; ``None`` for a folder no
+    calculation claims."""
+    if not place.ours:
+        return None
+    for named in _labels_at(place):
+        if _rf.row_for(path, named) is not None:
+            return named
+    return _position(place)[0]
 
 
 def _copy_of_its_machine(base):
@@ -768,7 +806,7 @@ def record_of(run: "Run", *, status=None, fields=None):
     return run_record(run.folder, names=run.names, run=run.run,
                       status=status if status is not None else state_of(run),
                       engine=task.engine, calculation=task.calculation,
-                      stage_deck=run.stage_deck, fields=fields,
+                      current=run.current, fields=fields,
                       launched_in=run.launched_in)
 
 
@@ -838,9 +876,40 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
             return None
         return {"state": got["state"], "detail": got["detail"],
                 "live": got["state"] in LIVE_STATES}
-    st = state_of(run)
+    st = _as_its_point(run, state_of(run))
     return {"state": st.state, "detail": st.detail,
             "live": st.state in LIVE_STATES}
+
+
+def _as_its_point(run: Run, st):
+    """A POINT OF A RUN OF POINTS IS READ AS ITS RUN'S POINTS ARE
+    (`engines/transport.md` § 2a.11; `engines/vibration.md` § 5.11 § 7):
+    one still to come by its own folder -- ``pending`` or ``queued`` -- is
+    its row of the run's points (`continuation.points_state`), so a point
+    the ended walk never reached reads failed
+    (`continuation.never_reached`), never still to come.
+    ``st``, the run door's own answer, for any other run and any other
+    state."""
+    at = run.place.where
+    if at.what != calcdirs.POINT or st.state not in ("pending", "queued"):
+        return st
+    from molbuilder.jobset.continuation import NEVER_REACHED, points_state
+    from molbuilder.jobset.points import points_of
+    from molbuilder.runrecord import LaunchRecordError, launch_record
+    if points_of(run.place.task) is None:
+        return st
+    try:
+        launch = launch_record(run.launched_in)
+    except LaunchRecordError:
+        return st
+    _state, _detail, rows = points_state(
+        run.launched_in, run.names, run.place.task,
+        parse_token(run.stage)[1], launch=launch, base=run.place.root)
+    rel = f"{run.launched_in.name}/{at.point}"
+    row = next((r for r in rows if r["folder"] == rel), None)
+    if row is None or row["why"] != NEVER_REACHED:
+        return st
+    return replace(st, state="failed", detail=NEVER_REACHED)
 
 
 def points_root_state(place: Place, folder) -> Optional[Dict[str, Any]]:
@@ -1052,16 +1121,17 @@ def _container_product(folder: Path, place: Place, label: str,
     return _openable(folder, label, stage, place.task.calculation, attempts)
 
 
-def _file_row(entry: Path, label: Optional[str], place: Place
-              ) -> Dict[str, Any]:
+def _file_row(entry: Path, place: Place) -> Dict[str, Any]:
     """What one file IS, for a viewer: its role, label and stage read back
-    with the run's label, the parser that claims it and what it opens as,
-    its size and time, and its catalogue line (`web/results.md` § 3b)."""
+    with the label it is named on (:func:`_label_of`), the parser that
+    claims it and what it opens as, its size and time, and its catalogue
+    line (`web/results.md` § 3b) -- what :func:`about` answers."""
     from molbuilder.parse import detect
     from molbuilder.parse.errors import ParseError
-    # READ BACK WITH THE RUN'S LABEL, a declared role or nothing
+    # READ BACK WITH ITS LABEL, a declared role or nothing
     # (`job-contracts.md` § 2.2a): a name read without its label is not taken
     # for one of ours -- SIESTA's `fdf.<stamp>.log` is not PySCF's log.
+    label = _label_of(entry, place)
     rec = _rf.parse(entry.name, label) if label else None
     if rec is not None and rec.role not in set(_rf.roles()):
         rec = None
@@ -1132,8 +1202,9 @@ def folder_answer(directory) -> Dict[str, Any]:
             attempts += trail[1:]
             if run is not None:
                 # A LAUNCH RECORD THAT DOES NOT READ is the state
-                # `unreadable`, its file named (`running-a-job.md` § 4.2).
-                st = state_of(run)
+                # `unreadable`, its file named (`running-a-job.md` § 4.2);
+                # a point is read as its run's points are.
+                st = _as_its_point(run, state_of(run))
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
                           "active_source": st.active_source}
@@ -1173,21 +1244,14 @@ def folder_answer(directory) -> Dict[str, Any]:
             # scratch or a container -- its own record says, the root a
             # container (`Place.role`); one that says nothing is no
             # calculation's (`calcdirs.where`).
+            # A RUN OF POINTS' ROOT among them: no state, no record
+            # (`model/parse.md` § 5.2) -- its points are below it.
             chosen = _container_product(d, place, label, stage, attempts)
-            got = points_root_state(place, d)
-            if got is not None:
-                # A RUN OF POINTS' ROOT: the run's state is its points'
-                # (`engines/vibration.md` § 5.11 § 7; `transport.md` § 2a.11).
-                status = got
-                attempts.append("a run of points: its state is its points', "
-                                "read through the one door "
-                                "(continuation.stage_run_state)")
-            else:
-                attempts.append(
-                    "this directory is a container, not a run -- it has no "
-                    "run state; its runs are the directories below it "
-                    "(project-layout.md § 1.4)")
-    files = [_file_row(entry, label, place)
+            attempts.append(
+                "this directory is a container, not a run -- it has no "
+                "run state; its runs are the directories below it "
+                "(project-layout.md § 1.4)")
+    files = [_file_row(entry, place)
              for entry in sorted(d.iterdir(), key=lambda e: e.name)
              if entry.is_file()]
     # THE FILE IT OPENS, WHEN IT LIES OUTSIDE IT -- a transmission run's
@@ -1195,7 +1259,8 @@ def folder_answer(directory) -> Dict[str, Any]:
     # the menu lists it first.
     report = None
     if chosen is not None and Path(chosen).parent != d:
-        report = dict(_file_row(Path(chosen), label, place), path=chosen)
+        report = dict(_file_row(Path(chosen), place_of(Path(chosen).parent)),
+                      path=chosen)
     # WHERE THE FOLDER IS, whole (`calcdirs.where`): its role, its
     # calculation, what it is, and the stage, run, trial and point it sits in.
     at = place.where

@@ -11,7 +11,8 @@ carries beyond every kind's fields, the charge it fixes, why it takes no
 benchmark, the tab that hands it over or where it describes itself, its
 topic -- the folder a new project lays down for it -- whether its deck
 relaxes the structure, what its root opens and what a rung's folder opens
-where that is not a run's own result, and its science checks (a part);
+where that is not a run's own result, its science checks (a part) and the
+module that exports its results;
 and on each engine it runs on, the
 engine's own name for it, how its stages play
 its roles (its rungs, every one in order, where a stage's role is its
@@ -65,7 +66,7 @@ ROLE_OPENS = ("report",)
 
 _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
               "charge", "no_benchmark", "handover", "relaxes",
-              "root_opens", "validator", "on")
+              "root_opens", "validator", "export", "on")
 _PART_KEYS = ("words", "stage_roles", "points", "rung",
               "inputs", "gather", "sum", "retired", "ladder", "relaxation")
 
@@ -216,6 +217,10 @@ class CalculationKind:
     #: the settings gate on every deck of it (`validation.validate`) -- or
     #: ``None``: its engine's checks are its science.
     validator: Optional[str] = None
+    #: The module that exports its results -- ``export(calc, fmt,
+    #: **asks)``, ``name_of(calc, fmt)``, ``ASKS`` -- or ``None``: it
+    #: exports nothing (:func:`export_of`).
+    export: Optional[str] = None
     #: Its part on each engine it runs on, by the engine's name.
     parts: Mapping[str, KindOnEngine] = None  # type: ignore[assignment]
 
@@ -407,7 +412,7 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
             and not isinstance(charge["value"], bool)):
         _refuse(where, "charge is {value, why} -- the charge it fixes, a "
                        "whole number, and why")
-    for key in ("no_benchmark", "handover", "validator"):
+    for key in ("no_benchmark", "handover", "validator", "export"):
         if key in body and not (isinstance(body[key], str) and body[key]):
             _refuse(where, f"{key} is a sentence")
     if not isinstance(body.get("relaxes", False), bool):
@@ -438,6 +443,7 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
                            relaxes=body.get("relaxes", False),
                            root_opens=body.get("root_opens"),
                            validator=body.get("validator"),
+                           export=body.get("export"),
                            parts=parts)
 
 
@@ -541,6 +547,22 @@ def part_of(calculation: str, engine: str, key: str) -> Any:
     return part(ref, record=f"{calculation} on {engine}", key=key)
 
 
+def export_of(calculation: str) -> Any:
+    """THE MODULE THAT EXPORTS ``calculation``'s results -- its kind's
+    ``export``, imported now by the floor that asks -- or ``None``: the
+    kind exports nothing.  A module that does not import is refused naming
+    the kind."""
+    ref = kind(calculation).export
+    if ref is None:
+        return None
+    try:
+        return importlib.import_module(ref)
+    except ImportError as exc:
+        raise KindTableError(
+            f"{calculation}'s export, {ref!r}, does not import: "
+            f"{exc}") from exc
+
+
 def part(ref: str, *, record: str, key: str) -> Any:
     """THE OBJECT A RECORD NAMES -- ``module:NAME`` -- imported by the floor
     that asks, the one it lives on (`execution/architecture.md` § 3.3); a
@@ -559,4 +581,5 @@ __all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
            "ROLE_OPENS", "PART_REFS",
            "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
-           "pair", "lead_of", "rung_label", "role_set", "part_of", "part"]
+           "pair", "lead_of", "rung_label", "role_set", "part_of", "part",
+           "export_of"]

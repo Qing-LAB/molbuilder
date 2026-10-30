@@ -151,12 +151,12 @@ def outermost_move(mode: Dict[str, Any], temperature_k: float,
     writes, by the same node rule.  ``None`` for a mode with no zero-point
     amplitude (an imaginary one)."""
     from .spectra.derived import thermal_spread_of
+    from .spectra.normal_modes import largest_move
     nodes = _checked_nodes(nodes)
     sigma = thermal_spread_of(mode, temperature_k)
     if sigma is None:
         return None
-    largest = float(np.linalg.norm(
-        np.asarray(mode["eigenvector_canonical"], dtype=float), axis=1).max())
+    largest = largest_move(mode["eigenvector_canonical"])
     x_out = float(np.abs(_ordered_nodes(nodes)[0]).max())
     return math.sqrt(2.0) * x_out * float(sigma) * largest
 
@@ -196,7 +196,7 @@ def _relative(path: Path, root: Optional[Path]) -> str:
 
 
 def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
-                       nodes: int = 3, out,
+                       nodes: int = NODES[0], out,
                        root: Optional[Path] = None) -> ModeFrames:
     """THE ONE GENERATOR (`engines/vibration.md` § 5.10 ③): vibration run
     ``run_folder``'s mode ``mode`` -- counted as its result counts it,
@@ -220,7 +220,6 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     from .spectra.derived import (mean_quanta, thermal_spread_amu12_ang,
                                   zero_point_amplitude_amu12_ang)
     from .structure import AtomChannel, Structure
-    from .transport.sort import ELECTRODE_LABELS
     from .workingcopy_structure import StructureCodec
 
     nodes = _checked_nodes(nodes)
@@ -362,17 +361,16 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
         "run": _relative(Path(run_folder), root),
         "result_sha256": sha256_of(result)})
 
-    # AN ELECTRODE ATOM LEFT FREE MOVES -- written, and said.
-    regions = built.regions or {}
-    moving = sorted(i for label in ELECTRODE_LABELS
-                    for i in regions.get(label, ())
-                    if np.linalg.norm(L[int(i)]) > 0.0)
-    if moving:
-        said.append(
-            f"electrode atoms {', '.join(str(i) for i in moving)} (user "
-            f"index) are free in the vibration and move with the mode: "
-            f"every frame of a transport citation keeps the electrode atoms "
-            f"where frame 0 has them, so transport refuses this set")
+    # AN ELECTRODE ATOM THE FRAMES MOVE -- written, and said in the words
+    # of the one check a transport citation asks of every frame
+    # (`compose._frames_keep_the_leads`, within `wizard.FROZEN_TOL_ANG`;
+    # `engines/transport.md` § 2a.9), so what the person is told is what
+    # the citation does.
+    from .transport.compose import ComposeError, _frames_keep_the_leads
+    try:
+        _frames_keep_the_leads(built, out)
+    except ComposeError as exc:
+        said.append(str(exc))
     StructureCodec().write(built, out)
     return ModeFrames(path=out, mean_quanta=float(n_quanta),
                       sigma_over_zero_point=float(sigma / q_zp),
