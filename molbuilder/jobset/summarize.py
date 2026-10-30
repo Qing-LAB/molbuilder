@@ -217,6 +217,17 @@ def _read_system(calc) -> Dict:
     return {"engine": t.engine, "n_atoms": t.structure.atoms}
 
 
+def _trial_run(calc, jobset, name: str):
+    """THE TRIAL'S RUN, through the run door (`runs.run_of`): its latest
+    run folder (`project-layout.md` § 1.5a) -- ``None`` while none is
+    opened."""
+    from ..runs import run_of
+    from .materialize import latest_attempt
+    from .naming import job_dir_names
+    folder = latest_attempt(Path(calc.base) / job_dir_names(jobset)[name])
+    return run_of(folder) if folder is not None else None
+
+
 def discover_points_from_jobset(calc, jobset) -> List[BenchPoint]:
     """Discovery keyed by the DATA floor 3 wrote — the fold's reader
     (plan step 6 u4).
@@ -230,12 +241,7 @@ def discover_points_from_jobset(calc, jobset) -> List[BenchPoint]:
     its stage's bench container, so the set IS the scope — every job in it
     belongs to the stage that was named at the surface.
     """
-    from ..paths import Shape
-    from .materialize import run_dir
-    from .naming import job_dir_names
     from .model import gpu_request
-    bundle = Path(calc.base)
-    dirs = job_dir_names(jobset, Shape.named(calc.task.shape))
     pts: List[BenchPoint] = []
     for j in jobset.jobs:
         # Knobs speak the EXCHANGE vocabulary -- the job-set's own field
@@ -250,13 +256,9 @@ def discover_points_from_jobset(calc, jobset) -> List[BenchPoint]:
         knobs: Dict = {"mpi_np": j.resources.mpi_np,
                        "cpus_per_task": j.resources.cpus_per_task,
                        "gres": gpus.gres if gpus.uses else None}
-        # THE LATEST ATTEMPT WHERE THERE IS ONE, the container otherwise
-        # (`run_dir`, `project-layout.md` § 1.5a): a re-measured trial's
-        # artifacts sit one level down.
-        _d = bundle / dirs[j.name]
-        from ..runs import run_of
+        # A POINT WITH NO RUN YET has none (:func:`_trial_run`).
         pts.append(parse_point(
-            j.name, run_of(run_dir(_d)),
+            j.name, _trial_run(calc, jobset, j.name),
             "gpu" if gpus.uses else "cpu", knobs,
             point=dict(j.point)))
     return pts
@@ -270,13 +272,7 @@ def _winner_mechanism(calc, jobset, label: str) -> Dict:
     job = next((j for j in jobset.jobs if j.name == label), None)
     if job is None:
         return {}
-    from ..paths import Shape
-    from .materialize import run_dir
-    from .naming import job_dir_names
-    from ..runs import run_of
-    _c = Path(calc.base) / job_dir_names(
-        jobset, Shape.named(calc.task.shape))[label]
-    run = run_of(run_dir(_c))          # the trial's run, the run door's
+    run = _trial_run(calc, jobset, label)
     deck = run.deck if run is not None else None
     text = _read(deck) if deck is not None else ""
     if not text:
@@ -611,13 +607,6 @@ def summary_text(res: BenchResult, out_path: Path, *,
     return "\n".join(lines)
 
 
-#: How far above a sweep's ``job-set.json`` its calculation root can sit.
-#: The deepest documented layout is ``<calc>/<NN>_<stage>/bench/`` -- two --
-#: and the bound keeps a failed search from walking to ``/`` and matching
-#: something it has no business matching.
-_BUNDLE_SEARCH_DEPTH = 4
-
-
 def sweep_view(calc, jobset) -> Dict:
     """The whole sweep, composed for a READER: the record a summarize
     would write, beside where every trial is right now.
@@ -660,21 +649,13 @@ def sweep_view(calc, jobset) -> Dict:
     points = res.points
     status = jobset_status(calc, sweep=jobset)
 
-    # POSITION is the join, and it has to be: a BenchPoint's label is the
-    # JOB's name while a StageStatus's name comes from its StageRef -- the
-    # STAGE -- and for a sweep trial those are different strings.  Both
-    # readers walk ``jobset.jobs`` in order and emit exactly one entry per
-    # job, so the zip is sound; the guard is here so that if either ever
-    # learns to skip one, this raises instead of quietly pairing trial N's
-    # measurement with trial N+1's state.
-    if len(points) != len(status.stages):
-        raise ValueError(
-            f"the sweep's two readers disagree on how many trials it has "
-            f"({len(points)} measured, {len(status.stages)} statuses); "
-            f"refusing to pair them by position")
+    # THE JOIN IS THE JOB'S NAME: a BenchPoint's label and a StageStatus's
+    # name (its StageRef's, `naming.stage_refs`) are both it.
+    status_of = {s.name: s for s in status.stages}
 
     trials = []
-    for p, st in zip(points, status.stages):
+    for p in points:
+        st = status_of[p.label]
         trials.append({
             "label":      p.label,
             "engine":     p.engine,

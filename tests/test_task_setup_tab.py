@@ -1,16 +1,11 @@
-"""Task Setup tab — the page renders, and it renders the design's shape.
+"""Task Setup tab — the page and its doors.
 
-`docs/web/task-setup.md` is the contract. This pins the parts a reader of that
-document would expect to find on the page, plus a property that is easy to
-lose in a later edit:
-
-  * the tab sheet is **layer 5** of `docs/web/ui-contract.md` § 1 — composition
-    only, every value a token. A raw hex colour or a raw px/rem spacing value in
-    `task-setup/style.css` is the drift that made the older tab sheets
-    unmaintainable, and it is checkable by reading the file.
-
-The CSS check is an L2 source-text invariant (`docs/process/testing.md`): no
-browser, no JS runtime, just a read of the stylesheet the page loads.
+`docs/web/task-setup.md` is the contract. This holds the page's parts and
+its stylesheet layers as served, and the doors the page asks: the hand-over
+route (`handover-procedure.md`), the save door (§ 8), the pickers and
+presets (§ 5), the folder door (§ 2.1), the machine choice
+(`preparing-for-another-machine.md` § 4) and the
+chain from a hand-over to a rendered deck.
 """
 from __future__ import annotations
 
@@ -59,18 +54,6 @@ def test_the_page_loads_the_shared_stylesheet_layers(web_client):
         "lib/tokens.css", "lib/page-shell.css",
         "lib/form-components.css", "task-setup/style.css")]
     assert order == sorted(order), "stylesheet layers load out of order"
-
-
-# --------------------------------------------------------------------- #
-#  The controller                                                       #
-# --------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("endpoint", ["/api/files/read", "/api/files/list"])
-def test_the_tab_reuses_the_shipped_files_api(endpoint, web_client):
-    """No new endpoint was added for this tab; both already ship."""
-    r = web_client.get(endpoint, query_string={"path": ""})
-    assert r.status_code != 404, f"{endpoint} is missing"
 
 
 # --------------------------------------------------------------------- #
@@ -136,7 +119,11 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
         h = _json.loads(out["handover_text"])
         assert h["schema"] == "molbuilder/task-handover@1"
         assert "shape" not in h and "stages" not in h
-        assert h["awaiting"] == ["shape", "stages"]
+        # THE ONE LAYOUT the description states, for the page to copy
+        # (`task.LAYOUT`, `web/web-api.md`); the hand-over waits on its
+        # stages alone (`engines/stages.md` § 6.5a).
+        assert h["task_shape"] == "hierarchical"
+        assert h["awaiting"] == ["stages"]
         assert h["_what"], "the file does not say what it is"
     finally:
         pass    # tmp_path removes the tree
@@ -148,25 +135,18 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
 # a phase of its run, not a stage (`engines/vibration.md` § 5.11 § 1) --
 # the ordinary one-stage start otherwise (`engines/stages.md` § 6.5).  Until
 # 2.15.3 the page derived it in JavaScript, a second copy of the rule.
-# ...AND THE SHAPE ITS KIND FIXES, answered for the hand-over by the folder
-# door as for a description (`web/task-setup.md` § 4, `engines/stages.md`
-# § 6.7): until 2.47.6 the shape card of a SIESTA vibration's hand-over
-# offered flat, and Save refused it.
-@pytest.mark.parametrize("engine,calculation,params,ladder,shape", [
-    ("siesta", "vibration", {"system_label": "probe"}, [("freq", 1)],
-     "hierarchical"),
+@pytest.mark.parametrize("engine,calculation,params,ladder", [
+    ("siesta", "vibration", {"system_label": "probe"}, [("freq", 1)]),
     ("siesta", "vibration", {"system_label": "probe", "already_relaxed": True},
-     [("freq", 1)], "hierarchical"),
-    ("pyscf", "vibration", {"job_name": "probe"}, [("freq", 1)], None),
-    ("siesta", "optimization", {"system_label": "probe"}, [("coarse", 1)],
-     None),
+     [("freq", 1)]),
+    ("pyscf", "vibration", {"job_name": "probe"}, [("freq", 1)]),
+    ("siesta", "optimization", {"system_label": "probe"}, [("coarse", 1)]),
 ], ids=["siesta vibration, the box unticked", "siesta vibration, ticked",
         "pyscf vibration", "an optimization"])
 def test_the_handover_carries_the_proposed_ladder(web_client,
                                                   isolated_projects_root,
                                                   engine, calculation,
-                                                  params, ladder, shape):
-    from molbuilder.kind_table import kind
+                                                  params, ladder):
     rendered = web_client.post("/api/task-setup/handover", json=dict(
         _envelope(), engine=engine, name="probe", calculation=calculation,
         params=params)).get_json()
@@ -175,23 +155,10 @@ def test_the_handover_carries_the_proposed_ladder(web_client,
     assert [(s["name"], over["proposed_groups"][s["name"]])
             for s in over["proposed_stages"]] == ladder
     assert all(s["overrides"] == {} for s in over["proposed_stages"])
-    # THE SHAPE: not waited on where the kind fixes it; the card told it,
-    # in the kind's one sentence, before anything is described.
-    assert over["awaiting"] == (["stages"] if shape else ["shape", "stages"])
-    # ...and the file's own words say what it waits on, as `awaiting` does
-    # (`engines/stages.md` § 6.5a): a person reads it in the editor.
-    missing = over["_what"].split("on purpose")[0]
-    assert ("`shape`" in missing) == (shape is None), over["_what"]
-    d = _fresh_calc_dir(isolated_projects_root)
-    (d / rendered["template_name"]).write_text(rendered["template_text"])
-    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
-    said = _folder(web_client, d)["shape_fixed"]
-    assert (said or {}).get("shape") == shape, said
-    assert said == kind(calculation).on(engine).fixed_shape, said
 
 
 # --------------------------------------------------------------------- #
-#  T1 shape · T2 save                                                    #
+#  T2 save                                                               #
 # --------------------------------------------------------------------- #
 
 
@@ -214,7 +181,7 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
 
         proposed = {"schema": over["task_schema"], "engine": over["engine"],
                     "calculation": over["calculation"],
-                    "shape": "flat", "run": over["run"],
+                    "shape": over["task_shape"], "run": over["run"],
                     "structure": over["structure"], "varies": [],
                     "stages": [{"name": "coarse", "overrides": {}}]}
         request = {"schema": over["job_request_schema"],
@@ -254,7 +221,7 @@ def test_save_never_writes_over_a_file_changed_since_it_was_read(
     (d / rendered["handover_name"]).write_text(rendered["handover_text"])
     over = _json.loads(rendered["handover_text"])
     task = {"schema": over["task_schema"], "engine": over["engine"],
-            "calculation": over["calculation"], "shape": "flat",
+            "calculation": over["calculation"], "shape": over["task_shape"],
             "run": over["run"], "structure": over["structure"],
             "varies": [], "stages": [{"name": "coarse", "overrides": {}}]}
     request = {"schema": over["job_request_schema"],
@@ -296,7 +263,7 @@ def test_a_stage_stating_a_default_may_share_the_group_above(
     (d / rendered["handover_name"]).write_text(rendered["handover_text"])
     over = _json.loads(rendered["handover_text"])
     task = {"schema": over["task_schema"], "engine": over["engine"],
-            "calculation": over["calculation"], "shape": "hierarchical",
+            "calculation": over["calculation"], "shape": over["task_shape"],
             "run": over["run"], "structure": over["structure"],
             "varies": ["restart"],
             "stages": [{"name": "coarse", "overrides": {}},
@@ -329,7 +296,7 @@ def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
         from molbuilder.identity import run_id
         no_stages = {"schema": "molbuilder/task@2", "engine": {"name": "siesta"},
                      "calculation": "optimization",
-                     "shape": "flat",
+                     "shape": "hierarchical",
                      "run": {"name": "x", "id": run_id("x", "H2"),
                              "created": "2026-08-16T00:00:00-07:00"},
                      "structure": {"source": "s.xyz", "formula": "H2",
@@ -535,11 +502,10 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     # one, so no column of the stage table shows it.  The calculation's
     # identity is one; a value a stage may set is none of them.  Saved as
     # the page saves the hand-over: its proposed ladder and groups, and the
-    # shape the kind fixes, the one the card starts at (§ 4).
+    # one layout it carries (§ 4).
     over = _json.loads(rendered["handover_text"])
-    fixed = _folder(web_client, d)["shape_fixed"]
     described = {"schema": over["task_schema"], "engine": over["engine"],
-                 "calculation": over["calculation"], "shape": fixed["shape"],
+                 "calculation": over["calculation"], "shape": over["task_shape"],
                  "run": over["run"], "structure": over["structure"],
                  "varies": over["proposed_varies"],
                  "stages": over["proposed_stages"]}
@@ -629,7 +595,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         # (`architecture.md` § 5.2).
         described = {"schema": over["task_schema"], "engine": over["engine"],
                      "calculation": over["calculation"],
-                     "shape": "flat", "run": over["run"],
+                     "shape": over["task_shape"], "run": over["run"],
                      "structure": over["structure"], "varies": [],
                      "stages": [{"name": "coarse", "overrides": {}}]}
         s = save_both(d, described, {
@@ -652,7 +618,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
             "the hand-over's own files are being reported as engine leftovers:\n"
             + p.stdout)
 
-        decks = sorted(d.glob("*_01_coarse.fdf"))
+        decks = sorted((d / "01_coarse").glob("*_01_coarse.fdf"))
         assert decks, sorted(x.name for x in d.iterdir())
         deck = decks[0].read_text()
 
@@ -729,7 +695,7 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
     over = _json.loads(out["handover_text"])
     described = {"schema": over["task_schema"], "engine": over["engine"],
                  "calculation": over["calculation"],
-                 "shape": "flat", "run": over["run"],
+                 "shape": over["task_shape"], "run": over["run"],
                  "structure": over["structure"], "varies": [],
                  "stages": [{"name": "coarse", "overrides": {}}]}
     s = save_both(d, described, {"schema": over["job_request_schema"],
@@ -744,7 +710,7 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
         capture_output=True, text=True, cwd=str(ROOT), timeout=300,
         env=_child_env_with_a_config(tmp_path))
     assert p.returncode == 0, p.stdout + p.stderr
-    decks = sorted(d.glob("*_01_coarse.py"))
+    decks = sorted((d / "01_coarse").glob("*_01_coarse.py"))
     assert decks, sorted(x.name for x in d.iterdir())
     deck = decks[0].read_text()
     assert 'mf.xc = "' in deck, "not a DFT deck -- the check below proves nothing"
@@ -799,7 +765,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
 
         described = {"schema": over["task_schema"], "engine": over["engine"],
                      "calculation": over["calculation"],
-                     "shape": "hierarchical", "run": over["run"],
+                     "shape": over["task_shape"], "run": over["run"],
                      "structure": over["structure"], "varies": [],
                      "stages": [{"name": "coarse", "overrides": {}}]}
         s = save_both(d, described, {"schema": over["job_request_schema"],
@@ -816,9 +782,8 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
         assert p.returncode == 0, (
             "a CPU description cannot be benchmarked:\n" + p.stdout + p.stderr)
 
-        # `prep` LINKS each deck into its attempt directory, so a bare rglob
-        # counts every trial twice.  The rendered deck is the real file.
-        decks = sorted(p for p in d.rglob("*.fdf") if not p.is_symlink())
+        # EACH TRIAL'S RENDERED DECK, one per point of the sweep.
+        decks = sorted(d.rglob("*.fdf"))
         assert len(decks) > 1, (
             "a benchmark is a set of points; got "
             + repr([str(x.relative_to(d)) for x in decks]))
@@ -1006,11 +971,11 @@ class TestTheMachineChoiceIsAskedNotGuessed:
     the two cannot come to different conclusions about what is ambiguous.
     """
 
-    def test_the_card_reuses_the_shape_choosers_component(self, web_client):
-        """No new panel and no new CSS: `.ts-choice`/`.opt` already exists
-        for exactly this shape of question -- a choice with no default --
-        and the stylesheet already carries its pressed/hover states.
-        Inventing a second chooser would be two components for one idea."""
+    def test_the_card_reuses_the_shared_choice_component(self, web_client):
+        """No new panel and no new CSS: `.ts-choice`/`.opt` is the page's one
+        chooser for a choice with no default -- the queue's too -- and the
+        stylesheet carries its pressed/hover states.  A second chooser
+        would be two components for one idea."""
         body = web_client.get("/task-setup").data.decode()
         # `ts-target-*`, not `ts-machine-*`: the bench card below already
         # owns that name for the settings measured ON a machine, and when
@@ -1184,7 +1149,7 @@ class TestTheFolderDoor:
             st, SiestaConfig(system_label="JOB", mesh_cutoff=250.0),
             engine_ladder("siesta", "publishable"),
             engine="siesta",
-            calculation="optimization", shape="hierarchical", name="JOB",
+            calculation="optimization", name="JOB",
             source=str(src)), dest)
         write_pseudos(dest, ["H"])
         from molbuilder.web.app import create_app

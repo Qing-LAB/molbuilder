@@ -130,9 +130,7 @@ def _stage_name(stage: Optional[str]) -> Optional[str]:
 
 def _of_run(p: Path, folder: Path) -> AtomIndexMap:
     """The map of the run that holds ``p`` -- its deck's (F3): the file's
-    own run (a flat calculation's folder holds every stage's files, each
-    named on its stage, `runs.run_of`), a point's ``shared/`` folder the
-    point's.  A lead's file gathered into another rung's run is that lead's
+    own run (`runs.run_of`), a point's ``shared/`` folder the point's.  A lead's file gathered into another rung's run is that lead's
     own (I6), refused naming the electrode run that answers it; an input a
     run of points keeps once, in its attempt, refused naming its points.  A
     file whose catalogue row lists it by user index -- a result written
@@ -210,7 +208,7 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
     """What ``p`` states of itself, by its kind -- ``None`` where it states
     nothing (an engine's file, a file written before the rule, a file in a
     run folder its run's deck answers)."""
-    from .runfiles import deck_roles
+    from .runfiles import ROLE_MOLWATCH, deck_roles, role_of
     from .sidecars import molstruct
     name = p.name
     if molstruct.is_sidecar(p):
@@ -228,7 +226,7 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
             return replace(map_of_block(block, name), stated_by=str(p))
         return _of_older_result(
             p, d.get("n_atoms_total") if isinstance(d, dict) else None)
-    if name.endswith(".molwatch.log"):
+    if role_of(name) == ROLE_MOLWATCH:
         return _of_log(p)
     if p.suffix in deck_roles():
         return _of_deck(p)

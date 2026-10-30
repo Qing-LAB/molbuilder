@@ -1,8 +1,8 @@
 """§ 6.6's preflight — the half that needs a field schema.
 
 Contract: ``docs/engines/stages.md`` § 6.6 (eight checks, *"in order, and all
-of it before anything is written"*, each naming what it refused) · § 6.7
-(`shape` is required and never inferred) · ``docs/science/validation.md`` § 4.1.
+of it before anything is written"*, each naming what it refused) ·
+``docs/science/validation.md`` § 4.1.
 
 The structural rows are ``task.py``'s and are tested in
 ``test_task_description.py``.  That the codec imports no engine config -- the
@@ -23,7 +23,7 @@ from molbuilder.validation.task import preflight, refuse_on_error
 
 def _task(**kw) -> Task:
     # ``derive_run``, not a hand-typed id: ``run.id`` is derived.
-    base = dict(engine="siesta", shape="flat", calculation="optimization",
+    base = dict(engine="siesta", calculation="optimization",
                 run=derive_run("opt"),
                 structure=StructureRef(source="h2.xyz"))
     base.update(kw)
@@ -92,23 +92,6 @@ def test_the_generator_table_is_an_argument_so_a_test_need_not_invent_one():
     assert preflight(_task(engine="siesta"), generators={}) != []
     assert preflight(_task(engine="siesta"),
                      generators={"siesta": SiestaConfig}) == []
-
-
-# --------------------------------------------------------------------- #
-#  § 6.7 — every engine offers both shapes                              #
-# --------------------------------------------------------------------- #
-
-@pytest.mark.parametrize("engine", ("siesta", "pyscf"))
-@pytest.mark.parametrize("shape", ("flat", "hierarchical"))
-def test_both_shapes_are_offered_by_both_engines(engine, shape):
-    """`stages.md` § 6.7: how a calculation's files are kept apart is a question
-    about the CALCULATION, not about the engine -- and the layer that answers it
-    names no engine.
-
-    A PySCF ladder is N decks and N jobs (§ 1.1a), so there is a directory
-    per rung to lay out, exactly as there is for SIESTA.
-    """
-    assert preflight(_task(engine=engine, shape=shape)) == []
 
 
 # --------------------------------------------------------------------- #

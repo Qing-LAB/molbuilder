@@ -395,8 +395,7 @@ structure pair (its sidecar, F4), a deck (its own ATOM-METADATA block — in a
 run, beside it in a stage folder, or the cited deck at a transport
 calculation's root, a relaxation's deck, whose order a relaxation's sort
 rule judges), an engine's file or a run folder (its run's deck — **the
-file's own run**: a flat calculation's folder holds every stage's files,
-each named on its stage). **A file that describes another structure** — a
+file's own run**). **A file that describes another structure** — a
 lead's `.TSHS` or `.TSDE` gathered into a device or transmission run, or
 kept once in a run of points' attempt — is that structure's own (I6):
 refused by name, naming the electrode run that answers it; an electrode

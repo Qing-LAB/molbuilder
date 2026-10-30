@@ -710,6 +710,11 @@
           "subtitle": "The plan's consolidation of 2026-10-28"
         },
         {
+          "path": "archive/2026-10-29-codebase-review.md",
+          "label": "The whole-codebase review of 2026-10-29, verified",
+          "subtitle": "The whole-codebase review of 2026-10-29, verified"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"

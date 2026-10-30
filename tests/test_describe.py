@@ -47,11 +47,10 @@ def cfg() -> SiestaConfig:
 _ONE_STAGE = (Stage(name="coarse", overrides={}),)
 
 
-def _describe(struct, cfg, stages=_ONE_STAGE, *, shape="hierarchical",
-              name="relax", source="structures/bdt.xyz"):
+def _describe(struct, cfg, stages=_ONE_STAGE, *, name="relax", source="structures/bdt.xyz"):
     return D.build_description(struct, cfg, stages, engine="siesta",
                                calculation="optimization",
-                               shape=shape, name=name, source=source)
+                               name=name, source=source)
 
 
 # --------------------------------------------------------------------- #
@@ -145,7 +144,7 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
         "--structure", "P/structure/h2.xyz",
         "--bundle", "P/optimization/calc", "--engine", "siesta",
         "--calculation", "optimization",
-        "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB"])
+        "--vacuum", "8", "--name", "JOB"])
     assert res.exit_code == 0, res.output
     calc = tree / "P" / "optimization" / "calc"
     assert sorted(p.name for p in calc.glob("*.source.*")) == [
@@ -174,7 +173,7 @@ def test_every_description_states_its_kind(struct, cfg, tmp_path):
     # COMPOSITE with required slots and no structure block, guarded in
     # test_transport_task.py.)
     desc = D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
-                               shape="hierarchical", name="relax",
+                               name="relax",
                                source="structures/bdt.xyz",
                                calculation="vibration")
     D.write_description(desc, tmp_path / "calc2")
@@ -184,7 +183,7 @@ def test_every_description_states_its_kind(struct, cfg, tmp_path):
         "vibration"
     with pytest.raises(Exception, match=r"calculation.*A-Za-z0-9_"):
         D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
-                            shape="hierarchical", name="relax",
+                            name="relax",
                             source="structures/bdt.xyz",
                             calculation="no-hyphens!")
 
@@ -315,7 +314,7 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
         "--structure", "P/structure/h2.xyz",
         "--bundle", "P/optimization/calc", "--engine", "siesta",
         "--calculation", "optimization",
-        "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB",
+        "--vacuum", "8", "--name", "JOB",
         "--psml-lib", "pseudopotential"])
     assert res.exit_code == 0, res.output
     assert (tree / "P" / "optimization" / "calc" / "H.psml").exists(), (
@@ -351,8 +350,7 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     res = CliRunner().invoke(describe_cmd, [
         "--structure", "P/structure/h2.xyz", "--bundle", "P/frequency/V",
-        "--engine", engine, "--shape", "hierarchical",
-        "--calculation", "vibration", "--name", "V"])
+        "--engine", engine, "--calculation", "vibration", "--name", "V"])
     assert res.exit_code == 0, res.output
     bundle = tree / "P" / "frequency" / "V"
     assert [s.name for s in task_of(bundle).stages] == ladder
@@ -373,58 +371,6 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     assert written[ident].source == "person", written[ident].source
 
 
-#: `engines/stages.md` § 6.7, the shape a kind fixes, on the command line:
-#: each row the vibration's engine, the ``--shape`` typed (``None`` left
-#: out), the shape the contract says the kind fixes (``None``: none), and
-#: what `molbuilder describe` does.
-_SHAPE_ROWS = [
-    ("siesta", "flat", "hierarchical", "refused in the kind's sentence"),
-    ("siesta", None, "hierarchical", "refused, naming the kind's shape"),
-    ("pyscf", "flat", None, "taken"),
-    ("pyscf", None, None, "refused, asking for --shape"),
-]
-
-
-@pytest.mark.parametrize("engine, shape, kind_shape, outcome", _SHAPE_ROWS,
-                         ids=[f"{e}-{s}" for e, s, _k, _o in _SHAPE_ROWS])
-def test_the_shape_a_kind_fixes_on_the_command_line(
-        tmp_path, monkeypatch, engine, shape, kind_shape, outcome):
-    """`engines/stages.md` § 6.7: a SIESTA vibration is hierarchical, the
-    pair's (its part in the kind table) -- its description's reader refuses
-    another shape in the kind's one sentence, and nothing is written;
-    `describe` still asks for ``--shape``, its refusal naming the kind's
-    shape and why; a PySCF vibration takes either shape.
-
-    THE SILENT FAILURE: a SIESTA vibration described flat, its relaxation,
-    force constants and optical calls run in one directory, each writing
-    over the last one's .DM and .XV -- the description's reader the one
-    door that stops it; and a person on the command line left guessing
-    which shape a kind takes.
-
-    MUTATION THIS MUST FAIL AGAINST: the reader's shape check removed;
-    the table fixing transport's shape alone; the refusal not naming the
-    kind's shape."""
-    from support.road import describe
-    r, bundle = describe(tmp_path, monkeypatch, shape=shape, name="V",
-                         calculation="vibration", engine=engine)
-    said = " ".join(r.output.split())
-    if outcome == "taken":
-        assert r.exit_code == 0, r.output
-        assert task_of(bundle).shape == shape
-        return
-    assert r.exit_code != 0, r.output
-    assert task_of(bundle) is None, "a refused describe wrote a description"
-    if kind_shape:
-        # THE KIND'S SENTENCE: the shape, and why -- its calls each in a
-        # folder of their own (`engines/stages.md` § 6.7).
-        assert f"is {kind_shape}" in said and "folder of its own" in said, (
-            r.output)
-    if shape is None:
-        assert "--shape is required" in said, r.output
-        assert ((f"--shape {kind_shape}" in said) if kind_shape
-                else "Describe it with --shape" not in said), r.output
-
-
 def test_init_refuses_a_folder_that_already_holds_a_calculation(
         tmp_path, monkeypatch):
     """One calculation per folder (user, 2026-10-01): `init` on a described
@@ -435,14 +381,14 @@ def test_init_refuses_a_folder_that_already_holds_a_calculation(
     silently, under whatever had been prepared from it.
 
     MUTATION THIS MUST FAIL AGAINST: the refusal removed (the second `init`
-    rewrites task.json)."""
+    rewrites task.json -- under another name, so its bytes differ)."""
     from support.road import STRUCTURE, describe_calculation
     bundle = describe_calculation(tmp_path, monkeypatch)
     before = (bundle / "task.json").read_bytes()
     r = molbuilder("describe", "--structure", STRUCTURE,
                "--bundle", "P/optimization/H2", "--engine", "siesta",
                "--calculation", "optimization",
-               "--shape", "flat", "--name", "H2",
+               "--name", "H3",
                "--psml-lib", "pseudopotential")
     assert r.exit_code != 0, r.output
     assert "already holds a calculation" in r.output, r.output

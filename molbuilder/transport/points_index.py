@@ -5,8 +5,9 @@ steps saw it (`engines/transport.md` § 2a.11; `execution/run-reports.md`
 
 MODULE  transport.points_index (floor 1 + stdlib; travels in
         ``mb_monitor.pyz``, `runwrap.MONITOR_COMPANIONS`)
-ROLE    the run's index (``<label>_<NN>_<stage>-run<N>.points.json`` at the
-        run's root, :func:`write_index` / :func:`read_index`): launch writes
+ROLE    the run's index -- one per run, at its root, named for its first
+        try (``<label>_<NN>_<stage>-run0.points.json``, :func:`index_path`,
+        :func:`write_index` / :func:`read_index`): launch writes
         every point of the run in the walk's order -- its folder, words,
         frame and voltage, the point it needs, whether it was taken over and
         from where, what it must hold to be done (`continuation.must_hold`)
@@ -36,14 +37,14 @@ from typing import Any, Dict, List, Optional, Sequence
 # MONITOR_COMPANIONS`), where the package is not installed.
 try:                                       # inside molbuilder
     from ..persist import check_schema, read_json, write_bytes, json_text
-    from ..runfiles import ROLE_POINTS
+    from ..runfiles import FIRST_TRY, ROLE_POINTS
     from ..parse.engines._run_ending import (holds, not_done_why,
                                               points_state)
     from ..parse.dirs.job import FINAL_STATES
 except ImportError:                        # beside a job
     from persist import (check_schema, read_json,  # type: ignore[no-redef]
                          write_bytes, json_text)
-    from runfiles import ROLE_POINTS  # type: ignore[no-redef]
+    from runfiles import FIRST_TRY, ROLE_POINTS  # type: ignore[no-redef]
     from _run_ending import (holds,  # type: ignore[no-redef]
                              not_done_why, points_state)
     from job import FINAL_STATES  # type: ignore[no-redef]
@@ -61,11 +62,11 @@ SCF, PRODUCT = "scf", "product"
 #  The index -- written by launch, stamped by each point's report steps  #
 # --------------------------------------------------------------------- #
 
-def index_path(run_dir, names, run: int) -> Path:
-    """Where the run's index lies: ``<label>_<NN>_<stage>-run<N>.points.json``
-    at the run's root (`runfiles.ROLE_POINTS`) -- the run's first attempt's,
-    whichever attempt a point's own run is."""
-    return Path(run_dir) / names.name(ROLE_POINTS, run=run)
+def index_path(run_dir, names) -> Path:
+    """Where the run's index lies: at the run's root, named for its first
+    try, ``<label>_<NN>_<stage>-run0.points.json`` (`runfiles.ROLE_POINTS`)
+    -- launch writes it there, and every point's report steps read it."""
+    return Path(run_dir) / names.name(ROLE_POINTS, run=FIRST_TRY)
 
 
 def empty_index(*, stage: str, computes: str, pair: str,

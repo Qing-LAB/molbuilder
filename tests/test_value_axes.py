@@ -70,8 +70,7 @@ def sol_calc(tree):
                             SiestaConfig(system_label="JOB"),
                             engine_ladder("siesta", "publishable"),
                             engine="siesta",
-                            calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tree / "h2.xyz")),
+                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
@@ -328,7 +327,7 @@ def test_the_shelves_submit_widest_first(sol_calc):
     _prep_on(sol_calc, "htc")
     shelves = shelf_headers(sol_calc, "coarse")
     # The shelf token is the SAME spelling its trials carry
-    # (`G<gpus>K<ranks-per-gpu>C<cores>`), named in full, side and cell
+    # (`G<gpus>N<ranks>C<cores-per-rank>`), named in full, side and cell
     # (`generator.md` § 4.3a).
     assert list(shelves) == ["bench-group-cpu-G0N4C1",
                              "bench-group-cpu-G0N2C1"]
@@ -350,10 +349,10 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     _declare(sol_calc, {"mpi_np": [4], "omp_threads": [1],
                         "use_gpu": [False], "block_size": [64, 128]})
     _prep_on(sol_calc, "htc")
-    # The trial's ARTIFACT directory, not a hardcoded container: the deck
-    # lives in the attempt (`project-layout.md` § 1.5a).
+    # The trial's ARTIFACT directory, not its container: the deck lives in
+    # the trial's run (`project-layout.md` § 1.5a).
     _c = sol_calc / "01_coarse" / "bench" / "bench-G0N4C1block_size64"
-    deck = next((latest_attempt(_c) or _c).glob("*.fdf"))
+    deck = next(latest_attempt(_c).glob("*.fdf"))
     text = deck.read_text()
     assert "DM.UseSaveDM" in text and ".false." in text
 
@@ -489,79 +488,3 @@ def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
         bench_inputs(open_calculation(sol_calc), None)
     assert "repeated point" in str(e.value)
     assert "mpi_np" in str(e.value)
-
-
-@pytest.fixture
-def flat_sol_calc(tree):
-    """The same Sol-shaped machine, FLAT calculation shape — the container
-    form the hierarchical fixtures never exercise (R2-8 gap): in flat
-    there is no stage directory, so the bench container is the
-    root-level ``bench_<NN>_<stage>``."""
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "flatcalc"
-    D.write_description(
-        D.build_description(struct,
-                            SiestaConfig(system_label="JOB"),
-                            engine_ladder("siesta", "publishable"),
-                            engine="siesta",
-                            calculation="optimization", shape="flat",
-                            name="JOB", source=str(tree / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, ["H"])
-    # The queue, wall and memory every job sent to this scheduler states --
-    # the trials share the calculation's (`architecture.md` § 5.2); a
-    # benchmark measures on the one queue it names (`generator.md` § 4.3a).
-    # ...and the solver its run card states, on the CPU.
-    req = read_request(dest)
-    req["allocation"] = {"domain": "general", "time": "0-01:00:00",
-                         "mem": "8G"}
-    req["execution"] = {"use_gpu": False, "diag_algorithm": "ELPA-1STAGE"}
-    write_request(dest, req)
-    env = Environment(
-        machine="this",                  # as a first prep names it
-        scheduler=SLURM,
-        topology=Topology(sockets=2, cores_per_socket=64,
-                          gpus_per_node=None, gpu_type=None),
-        domains=[Domain(name="htc", partition="htc", qos="public",
-                        max_time="0-04:00:00"),
-                 Domain(name="general", partition="general", qos="public",
-                        max_time="7-00:00:00", max_cores=48,
-                        gpu={"a100": 4})],
-        # how a shell enters an environment there -- the record's fact
-        env_init={"activation": "conda activate",
-                           "preamble": "true"})
-    (dest / "environment.json").write_text(env.to_json() + "\n")
-    return dest
-
-
-def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
-    """R2-8's first gap: every grouped-bench test rode the hierarchical
-    shape.  In FLAT the trials and the record live in the root-level
-    ``bench_<NN>_<stage>`` container (job-contracts.md § 6.3's flat
-    arm), and the split submission works the same from there."""
-    from molbuilder.jobset._cli import _stage_bench_dir
-    _declare(flat_sol_calc, _small_matrix())
-    _prep_on(flat_sol_calc, "general")
-    container, token = _stage_bench_dir(open_calculation(flat_sol_calc), "coarse")
-    assert container.name.startswith("bench_"), (
-        f"flat container is {container.name!r}, not the root-level "
-        f"bench_<NN>_<stage> form")
-    assert container.is_dir(), "prep did not lay the flat container down"
-    assert (container / "job-set.json").is_file(), (
-        "the sweep's record is not in the flat container")
-    # ITS TRIALS, beside the shelves' own folder (`launch/`, L3).
-    from molbuilder.runfiles import LAUNCH_DIR
-    trials = [d.name for d in container.iterdir()
-              if d.is_dir() and d.name != LAUNCH_DIR]
-    assert trials and all(t.startswith("bench-") for t in trials), (
-        f"trials misplaced: {trials}")
-    out = _submit_dry(flat_sol_calc)
-    plans = [l for l in out.splitlines() if "WOULD run" in l]
-    assert len(plans) == 4, out    # one CPU shelf + three GPU shelves
-    assert any("bench-group-cpu-G0N4C1 " in l for l in plans)
-    assert sum("bench-group-gpu-" in l for l in plans) == 3

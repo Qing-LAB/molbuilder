@@ -51,12 +51,6 @@ _KIND_ROWS = [
      '[k]\nnoun = "k"\ntopic = "k"\n', "no part on any engine"),
     ("a part on an engine the engine table does not hold",
      '[k]\nnoun = "k"\ntopic = "k"\n[k.on.orca]\n', "a part on orca"),
-    ("a fixed shape with no sentence",
-     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\nshape = "hierarchical"\n',
-     "a fixed shape and its sentence"),
-    ("a shape no layout has",
-     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta]\nshape = "deep"\nwhy = "w"\n',
-     "shape 'deep' is not one of"),
     ("roles with no stage_roles on a part",
      '[k]\nnoun = "k"\ntopic = "k"\nroles = [{name = "a", computes = "scf"}]\n'
      '[k.on.siesta]\n', "no stage_roles"),

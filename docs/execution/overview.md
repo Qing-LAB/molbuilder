@@ -42,7 +42,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | **What language is spoken where, and who translates** — the nine vocabularies and every point one becomes another | **[`architecture.md`](?doc=execution/architecture.md)** § 10 |
 | Where a run's files go, what they are named, what a `.fdf`'s reserved comment blocks are, what warm/cold restart means, or what any persisted file's format is | **[`job-contracts.md`](?doc=execution/job-contracts.md)** |
 | **You are about to write code that names, finds or parses a run file** — which door to call, and what never to do | **[`job-contracts.md`](?doc=execution/job-contracts.md)** § 2.2a, *"Which door to call"* (rule **A14**) |
-| What a whole project directory looks like — the **two shapes** (flat and hierarchical), what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
+| What a whole project directory looks like — **one layout**, a directory per stage and per run — what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
 | Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |
 | What a saved history must always guarantee — the 31 rules behind `molbuilder checkpoint` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
 | How a **finished run** becomes the starting point of the next calculation | **cite it** — the transport composite names the attempt and prep composes ([`engines/transport.md`](?doc=engines/transport.md) § 3.1; the old handoff bundle retired 2026-08-29) |
@@ -73,9 +73,9 @@ writes a description.)*
 what the system *is*.
 
 > **⚠ `staged-runs-architecture.md` was archived 2026-08-11**
-> (`archive/2026-08-11-staged-runs-architecture.md`). It was written against the
-> **flat** shape before the hierarchical one existed, so its design sections are
-> the pre-job-system picture: one tab writing one flat directory. **Two
+> (`archive/2026-08-11-staged-runs-architecture.md`). It was written before
+> the job system, so its design sections are the pre-job-system picture: one
+> tab writing one directory. **Two
 > documents now do its job** — the contract states the design, the plan holds the
 > items, the order and the gates. What is left in the archive is its **dated code
 > audits** (2026-08-07), which are history.
@@ -187,7 +187,7 @@ flowchart TB
 | Watch a run's live trajectory + monitor | ✅ | ✅ | `running-a-job.md § 4` |
 | `molbuilder.json` config (launch, envs, `env_init` — `configuration.md` § 4) | ✅ | — | `running-a-job.md § 5` |
 | Checkpoint / restore a run (`molbuilder checkpoint`) | ✅ | ✅ | `running-a-job.md § 6` |
-| Describe a staged calculation (shape · stages · bench) | ✅ | ✅ | `web/task-setup.md`, `job-system.md § 5.1` |
+| Describe a staged calculation (stages · bench) | ✅ | ✅ | `web/task-setup.md`, `job-system.md § 5.1` |
 | Prep a staged ladder (its groups, launched one at a time) | ✅ | ✅ *(the one prep entry, for a named machine)* | `job-system.md § 5.3` |
 | Launch a stage | ✅ | — *(by design: it spends a queue slot, by hand)* | `job-system.md § 3` |
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
@@ -216,68 +216,14 @@ Two facts keep the picture honest:
   transport producers migrated too (2026-08-21 / 2026-08-29 — the roadmap's
   migration box records both).
 
-### 2.1 The second transition — one folder shape becomes a choice of two
+### 2.1 One folder layout — a directory per stage, a directory per run
 
-The status matrix above is about *which surface* can run a job. There is a second
-change in flight, about *what the folder looks like*, and it is the reason four of
-the eleven documents here were written in August 2026.
-
-**The flat shape** is the simpler of the two. One directory holds everything. Several
-stages live side by side, told apart by a suffix in the filename
-(`job_01_coarse.fdf`, `job_02_medium.fdf`); several attempts at one stage are told apart
-by a number in the output name (`job-run0.out`, `job-run1.out`); and the warm
-files a run continues from — `job.XV`, `job.DM` — carry **no suffix at all** and
-are shared by every stage.
-
-That sharing is the shape's whole design, good and bad at once. It is what lets
-stage 2 pick up stage 1's geometry with nobody instructing it: SIESTA looks for
-`job.XV`, and there it is. It is *also* exactly why stage 2 overwrites stage 1 —
-same filename, same directory.
-
-**The hierarchical shape** — shipped and selectable beside flat, the
-description's required `shape` field choosing between them — gives each stage
-a directory and each attempt a subdirectory inside it, so nothing overwrites
-anything.  *(This paragraph called it "proposed" long after it shipped —
-the wrong side of history for an overview, found by the 2026-08-12 review.)*
-
-```
-FLAT                                  HIERARCHICAL
-bdt_au/                               bdt_au/
-├── bdt_au_01_coarse.fdf                 ├── task.json
-├── bdt_au_02_tight.fdf               ├── bdt_au.psml
-├── bdt_au_01_coarse-run0.out         ├── 01_coarse/
-├── bdt_au_02_tight-run0.out          │   ├── bdt_au.fdf
-├── bdt_au.XV     ← SHARED, and       │   └── run-0/
-├── bdt_au.DM        overwritten      │       ├── bdt_au.out
-└── bdt_au.psml      every stage      │       └── bdt_au.XV
-                                      └── 02_tight/
-                                          ├── bdt_au.fdf
-                                          └── run-0/
-                                              └── bdt_au.out
-```
-
-**The question that decides between them is not which is tidier.** It is: *after
-three stages have run, what do you still have?*
-
-| | Flat | Hierarchical |
-|---|---|---|
-| Stage 1's converged geometry, after stage 3 | **gone from disk** — overwritten | on disk, openable |
-| Where the history lives | **in time** — only in the checkpoint | in space — in the folder |
-| A checkpoint is… | **the mechanism.** The only way back | insurance. Useful, not load-bearing |
-| Continuing to the next stage | free — the engine just finds the file | a deliberate copy you asked for |
-
-So a missed checkpoint means two different things. In the hierarchical shape it
-is a thinner history. **In the flat shape it is a state that no longer exists
-anywhere** — which is why `checkpointing.md` matters far more than a
-convenience feature normally would, and why the checkpoint work was done first.
-
-**Neither shape is wrong, and the choice is a field in the description**
-(`engines/stages.md § 6.7`) — declared when you describe the calculation, read by
-`prep` on the machine
-that will run the job, not in the browser. `project-layout.md` § 1 is the
-contract for both; `checkpointing.md` marks every invariant `[both]` or
-`[hierarchical]`, because a check written for one shape that fails the other is
-worse than no check: it fails a directory that is working correctly.
+The status matrix above is about *which surface* can run a job. *What the
+folder looks like* has one answer, and
+[`project-layout.md`](?doc=execution/project-layout.md) § 1 is its contract:
+each stage a directory and each run a directory inside it, so every state
+stays on disk, continuing to the next stage is a copy you asked for, and the
+saved history is insurance, never the only way back.
 
 ---
 
@@ -290,7 +236,7 @@ worse than no check: it fails a directory that is working correctly.
 thing at different sizes**, so there is one way in and one vocabulary:
 
 ```
-describe it   →  molbuilder describe --structure <structure> --bundle <calculation> --engine siesta|pyscf --calculation <kind> --shape flat|hierarchical [--stage-strategy …]
+describe it   →  molbuilder describe --structure <structure> --bundle <calculation> --engine siesta|pyscf --calculation <kind> [--stage-strategy …]
 set it up     →  molbuilder jobset prep     task [--group N]
 run it        →  molbuilder jobset launch   task [--group N | --stage <stage>] [--mode direct|submit]
 look at it    →  molbuilder jobset status
@@ -331,7 +277,7 @@ When two docs need the same fact, it lives once, in `job-contracts.md`:
   config ↔ scheduler parameter vocabulary** — `job-contracts.md § 6`.
 
 A note on one overloaded word: a **handoff bundle** (one finished run carried
-into the next calculation) is *not* a **JobSet bundle** (a directory of many
-parameterised jobs). Different objects, different documents —
+into the next calculation) is *not* the **calculation folder** (once called
+the JobSet's bundle — a word `project-layout.md` § 1.0 retired for it). Different objects, different documents —
 *(handoff-bundle.md — retired 2026-08-29; citations replaced it)*
 vs `job-system.md`.

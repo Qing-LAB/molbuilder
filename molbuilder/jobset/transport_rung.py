@@ -279,8 +279,7 @@ def written_and_read_back(base, composed, plan, *, root, task):
     RENDER FROM THE RECORD, on this prep as on every later one.  A fresh
     composition is the cited `.XV` at full float precision; the record is
     the codec's text of it, and every later read -- the other rungs, a
-    re-prep, launch's check that a stage prepared is still what prep writes,
-    file for file (`job-system.md` § 6.0) -- reads the record.  Rendering
+    re-prep -- reads the record.  Rendering
     this one from the fresh copy gave two preps of the SAME calculation two
     sets of numbers ~1e-10 apart (measured 2026-09-25 on the ENGINE-OFFSET
     record), and a deck rendered from each differs."""
@@ -314,7 +313,7 @@ def transport_spec(task, stage: str, struct, config, state, point=None, *,
     cfg = at_point(config, point)
     # THE RUNG'S NAMES -- the one composer (`StageHome.names`): a lead's
     # on its own stem, the junction's rungs on the calculation's label.
-    names = stage_home(base, task, stage).names(task.shape)
+    names = stage_home(base, task, stage).names
     with user_error_as_prep():
         try:
             spec = _siesta_spec_for(struct, cfg, names=names,

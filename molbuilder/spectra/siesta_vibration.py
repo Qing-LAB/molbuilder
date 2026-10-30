@@ -90,7 +90,7 @@ try:                                        # inside molbuilder
     from ..jobset.planned import Plan, bring
     from ..persist import sha256_of
     from .optical_data import write_optical_data
-    from ..runfiles import (COORDINATES_FILE, FIRST_ATTEMPT, MONITOR_BUNDLE,
+    from ..runfiles import (COORDINATES_FILE, FIRST_TRY, MONITOR_BUNDLE,
                             PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL, ROLE_SPECTRA,
                             VIBRATION_BUNDLE,
                             RunNames, beside_the_deck, find, fixed_name,
@@ -137,7 +137,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     import calcdirs
     from planned import Plan, bring
     from persist import sha256_of  # type: ignore[no-redef]
-    from runfiles import (COORDINATES_FILE, FIRST_ATTEMPT,  # type: ignore[no-redef]
+    from runfiles import (COORDINATES_FILE, FIRST_TRY,  # type: ignore[no-redef]
                           MONITOR_BUNDLE, PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL,
                           ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck, find,
                           fixed_name, parse)
@@ -611,7 +611,7 @@ class _CallHere:
 
     @property
     def index(self) -> Path:
-        return index_path(self.run_dir, self.names, FIRST_ATTEMPT)
+        return index_path(self.run_dir, self.names)
 
     @property
     def stage_dir(self) -> Path:
@@ -637,7 +637,7 @@ def _here(deck) -> _CallHere:
         raise FinishError(f"{folder} is no call of a run: its place record "
                           f"names no run above it (calcdir.json)")
     return _CallHere(folder=folder, deck=deck, label=label,
-                     names=RunNames.of(label, rec.stage, "hierarchical"),
+                     names=RunNames(label, rec.stage),
                      run_dir=Path(w.run_folder).resolve(),
                      root=Path(w.root).resolve())
 
@@ -650,10 +650,10 @@ def _species_index(deck_text: str) -> Mapping[str, int]:
 
 
 def _newest_output(folder: Path, names: "RunNames") -> Optional[Path]:
-    """The engine output of the call in ``folder``'s NEWEST RUN -- the run
-    door's (`runrecord.newest_run`: the highest index any file of it
-    reached) -- or ``None`` where that run printed none: an engine that
-    died before its first line is never read from the try before it."""
+    """The engine output of the call in ``folder``'s NEWEST TRY --
+    `runrecord.newest_run`'s: the highest try any file of the call reached
+    -- or ``None`` where that try printed none: an engine that died before
+    its first line is never read from the try before it."""
     n = newest_run(folder, names)
     got = [p for p, rf in find(folder, names.label, role=".out",
                                stage=names.stage) if rf.run == n]
@@ -686,7 +686,7 @@ def _notify(here: _CallHere, event: str, **words) -> None:
         return
     cmd = [sys.executable, str(bundle), "notify", event,
            "--label", here.label, "--stage", here.names.stage,
-           "--run", str(FIRST_ATTEMPT), "--dir", str(here.run_dir)]
+           "--dir", str(here.run_dir)]
     for k, v in words.items():
         if v is not None:
             cmd += [f"--{k}", str(v)]
@@ -712,7 +712,7 @@ def plan_call(deck, phase_name: str) -> None:
     came_from = "the structure, as prep wrote it"
     # A RELAXATION CONTINUED from its own last run's warm files, handed
     # over by launch (§ 5.11 § 3, § 6): the run it continues, said.
-    continued = (read_continued_from(here.folder, here.names, FIRST_ATTEMPT)
+    continued = (read_continued_from(here.folder)
                  if phase_name == RELAX else None)
     if continued is not None:
         came_from = f"its own last geometry, continued from {continued}"
@@ -746,7 +746,7 @@ def plan_call(deck, phase_name: str) -> None:
     seeded = seed is not None and seed.is_file()
     # A CALL RETRIED IN PLACE keeps its start: a warm retry runs the run
     # script, and this step, again -- the call began with its first
-    # attempt, and the run's clock and pace count from it
+    # try, and the run's clock and pace count from it
     # (`run-reports.md` § 2.8).
     listed = entry_of(index, call) or {}
     began = listed.get("started") if listed.get("ended") is None else None
@@ -799,7 +799,7 @@ def _relaxation_outcome(record: Optional[Mapping[str, Any]],
     on the free atoms against its tolerance -- its record's own facts;
     ``None`` for a run that relaxed nothing.  The record is of the call's
     newest output, so a call the wrapper ``retried`` in place counts the
-    moves of its last attempt, and a relaxation ``continued`` from an
+    moves of its last try, and a relaxation ``continued`` from an
     earlier run's geometry the moves since -- each said."""
     if not record:
         return None
@@ -808,7 +808,7 @@ def _relaxation_outcome(record: Optional[Mapping[str, Any]],
     if force is None:
         force = record["max_force_ev_ang"]
     said = "converged" if record["converged"] else "did not converge"
-    since = ((" of its last attempt" if retried else "")
+    since = ((" of its last try" if retried else "")
              + (f" continuing {continued}" if continued else ""))
     return (f"the relaxation {said} in {n} move{'' if n == 1 else 's'}"
             f"{since}: the largest force "
@@ -1016,8 +1016,8 @@ def _call_facts(here: _CallHere, folder: Path) -> dict:
     """What a call's own files state of it (§ 5.11 § 8): from its newest
     output, through SIESTA's one reading pass, the geometry it computed at
     (the deck's order), its SCF's iterations, total energy and Fermi level,
-    and the build; from its session log -- its run's -- the engine's wall
-    time (`wrapper_log`, the one source of it)."""
+    and the build; from that try's session log, the engine's wall time
+    (`wrapper_log`, the one source of it)."""
     out = _newest_output(folder, here.names) if folder.is_dir() else None
     if out is None:
         return {}
@@ -1034,10 +1034,8 @@ def _call_facts(here: _CallHere, folder: Path) -> dict:
             scf_iterations=len(scf) if scf else None,
             total_energy_ev=step.get("energy"),
             fermi_level_ev=scf[-1].get("ef") if scf else None)
-    named = parse(out.name, here.label)
-    log = log_of_run(folder, here.label,
-                     named.run if named is not None and named.run is not None
-                     else FIRST_ATTEMPT, here.names.stage)
+    log = log_of_run(folder, here.label, parse(out.name, here.label).run,
+                     here.names.stage)
     if log is not None:
         sections = read_wrapper_log(log.read_text(encoding="utf-8",
                                                   errors="replace"))
@@ -1364,13 +1362,12 @@ def record_call(deck, phase_name: str, output, exit_code: int) -> None:
         if analysed is not None:
             outcome = _force_constants_outcome(*analysed)
         elif relaxation is not None:
-            attempt = parse(output.name, here.label)
-            continued = read_continued_from(here.folder, here.names,
-                                            FIRST_ATTEMPT)
+            named = parse(output.name, here.label)
+            continued = read_continued_from(here.folder)
             outcome = _relaxation_outcome(
-                relaxation, retried=(attempt is not None
-                                     and attempt.run not in (None,
-                                                             FIRST_ATTEMPT)),
+                relaxation, retried=(named is not None
+                                     and named.run not in (None,
+                                                           FIRST_TRY)),
                 continued=str(continued) if continued is not None else None)
     except Exception as exc:                            # noqa: BLE001
         _say("WARN", f"vibration: {call.words()}'s outcome was not put in "

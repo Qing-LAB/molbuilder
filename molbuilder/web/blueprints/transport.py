@@ -622,13 +622,14 @@ def api_transport_pdos() -> Any:
 @bp.route("/api/transport/describe", methods=["POST"])
 def api_transport_describe() -> Any:
     """Write the transport calculation's COMPLETE description -- the
-    template and ``task.json`` -- into the folder the person chose.
+    template, ``task.json`` and its job request -- into the folder the
+    person chose.
 
     There is no hand-over for the composite (user ruling 2026-08-29):
     the other kinds hand to Task setup because that tab owns questions
-    they cannot answer — shape, stages, what varies.  Transport has
-    none open: the ladder and the hierarchical shape are fixed by the
-    kind (the kind table), the identity derives from the citation,
+    they cannot answer — stages, what varies.  Transport has none
+    open: the ladder is fixed by the kind (the kind table), the
+    identity derives from the citation,
     the knobs ride the stages' override bags.  So this door writes the
     finished description in one act, through the writer `molbuilder describe`
     takes (`describe.write_description`), into a folder that holds none
@@ -653,8 +654,7 @@ def api_transport_describe() -> Any:
     person's; its job request.
     """
     from molbuilder.projects import projects_root
-    from molbuilder.kind_table import kind as _kind
-    from molbuilder.task import Task, derive_run
+    from molbuilder.task import Task, derive_run, fresh_varies
     from molbuilder.transport.compose import (ComposeError,
                                              refuse_failed_citation,
                                              resolve_citation)
@@ -708,13 +708,6 @@ def api_transport_describe() -> Any:
         return jsonify({"ok": False,
                         "error": "stages must be an object of "
                                  "rung -> {parameter: value}"}), 400
-    _unknown_rungs = sorted(set(bags) - set(TRANSPORT_STAGES))
-    if _unknown_rungs:
-        return jsonify({"ok": False,
-                        "error": f"no such rung "
-                                 f"{', '.join(map(repr, _unknown_rungs))}: "
-                                 f"a transport ladder's rungs are "
-                                 f"{', '.join(TRANSPORT_STAGES)}"}), 400
     shared_chosen = body.get("shared") or {}
     if not isinstance(shared_chosen, dict):
         return jsonify({"ok": False,
@@ -837,6 +830,11 @@ def api_transport_describe() -> Any:
                                      f"carries the items the catalogue "
                                      f"marks `shared` for transport"}), 400
     try:
+        stages = tuple(stages_for_transport(bags))
+        # THE stages.md 6.2 RULE: an override names a PROMOTED field, and
+        # `varies` is the promotion -- the one rule both describe roads ask
+        # (`task.fresh_varies`).
+        varies = fresh_varies(stages)
         # THE CALCULATION IT REUSES, as the cards change it -- its label
         # and its rename its own, its junction the finished one or a frame
         # set of it, which the writer checks (§ 2a.16, `reuse.citing`); or
@@ -844,21 +842,16 @@ def api_transport_describe() -> Any:
         from molbuilder.transport.reuse import citing
         task = (citing(dataclasses.replace(
             finished.task, reuses=reuses_rel, bias=bias,
-            low_bias_approximation=approx,
-            varies=tuple(sorted({n for b in bags.values() for n in b})),
-            stages=tuple(stages_for_transport(bags))), citation)
+            low_bias_approximation=approx, varies=varies, stages=stages),
+            citation)
             if finished is not None else Task(
-            engine=engine, shape=_kind("transport").on(engine).shape,
+            engine=engine,
             run=derive_run(typed, citation,
                            stage_names=TRANSPORT_STAGES),
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
             low_bias_approximation=approx,
-            swap_electrodes=swap,
-            # the stages.md 6.2 rule holds here too: an override names
-            # a PROMOTED field, and `varies` is the promotion
-            varies=tuple(sorted({n for b in bags.values() for n in b})),
-            stages=tuple(stages_for_transport(bags))))
+            swap_electrodes=swap, varies=varies, stages=stages))
     except ValueError as exc:
         # THE CODEC'S REFUSAL, as a finding BESIDE THE CONTROL that wrote
         # it when the codec names where (`task.DescriptionError`: the

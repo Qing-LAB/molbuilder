@@ -147,14 +147,15 @@ def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
     run = CliRunner()
     r = run.invoke(describe_cmd, [
         "--structure", "P/structure/w.xyz", "--bundle",
-        "P/spectrum/V", "--engine", "pyscf", "--shape", "flat",
+        "P/spectrum/V", "--engine", "pyscf",
         "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "spectrum" / "V"
     # THE RUN CARD STATES THE THREADS, as a described calculation does
     # (`architecture.md` § 5.2); how a shell enters an environment is the
     # machine record's (`configuration.md` § 5 M-1).
-    from support.road import read_request, write_request
+    from molbuilder.task import of as task_of
+    from support.road import read_request, stage_file, write_request
     request = read_request(bundle)
     request["execution"] = {"threads": 1}
     write_request(bundle, request)
@@ -162,9 +163,8 @@ def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
                                   str(bundle)])
     assert r.exit_code == 0, r.output
     assert f"[{WHERE}]" in r.output, r.output
-    decks = list(bundle.rglob("W*.py"))
-    assert decks, r.output
-    deck = decks[0].read_text()
+    deck = stage_file(bundle, task_of(bundle).stages[0].name,
+                      ".py").read_text()
     assert "FROZEN_INDICES_USER        = [0]" in deck
     assert ("AXIS_KIND                  = ('isolated', 'isolated', "
             "'isolated')") in deck

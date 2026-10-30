@@ -144,39 +144,7 @@ def co2_in_engine_order():
                    deck_sort_key("siesta", "vibration")).structure
 
 
-def describe(tmp_path, monkeypatch, *, shape: "str | None" = "hierarchical",
-             name: str = "H2", calculation: str = "optimization",
-             engine: str = "siesta", structure: "dict | None" = None,
-             stage_strategy: "str | None" = None):
-    """`molbuilder describe` as :func:`describe_calculation` types it --
-    ``shape`` ``None`` leaving ``--shape`` out -- and what it said: ``(the
-    verb's result, the bundle it names)``, the bundle written or not."""
-    from conftest import write_pseudos
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.workingcopy_structure import StructureCodec
-    tree = tmp_path / "projects"
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "pseudopotential").mkdir()
-    s = structure or H2
-    write_pseudos(tree / "pseudopotential", sorted(set(s["elements"])))
-    StructureCodec().write(road_structure(s), tree / STRUCTURE)
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    monkeypatch.chdir(tree.parent)
-    siesta = engine == "siesta"
-    strategy = (stage_strategy if stage_strategy is not None
-                else "publishable" if calculation == "optimization" and siesta
-                else "")
-    r = molbuilder("describe", "--structure", STRUCTURE,
-               "--bundle", f"P/{calculation}/{name}", "--engine", engine,
-               *(("--shape", shape) if shape is not None else ()),
-               "--name", name, "--calculation", calculation,
-               *(("--stage-strategy", strategy) if strategy else ()),
-               *(("--psml-lib", "pseudopotential") if siesta else ()))
-    return r, tree / "P" / calculation / name
-
-
-def describe_calculation(tmp_path, monkeypatch, *,
-                         shape: str = "hierarchical", name: str = "H2",
+def describe_calculation(tmp_path, monkeypatch, *, name: str = "H2",
                          calculation: str = "optimization",
                          engine: str = "siesta",
                          structure: "dict | None" = None,
@@ -195,11 +163,28 @@ def describe_calculation(tmp_path, monkeypatch, *,
     calculation does: a run whose shape is stated nowhere is refused at prep
     (`architecture.md` § 5.2).  A test about that refusal takes the card
     away."""
-    r, bundle = describe(tmp_path, monkeypatch, shape=shape, name=name,
-                         calculation=calculation, engine=engine,
-                         structure=structure, stage_strategy=stage_strategy)
-    assert r.exit_code == 0, r.output
+    from conftest import write_pseudos
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.workingcopy_structure import StructureCodec
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "pseudopotential").mkdir()
+    s = structure or H2
+    write_pseudos(tree / "pseudopotential", sorted(set(s["elements"])))
+    StructureCodec().write(road_structure(s), tree / STRUCTURE)
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    monkeypatch.chdir(tree.parent)
     siesta = engine == "siesta"
+    strategy = (stage_strategy if stage_strategy is not None
+                else "publishable" if calculation == "optimization" and siesta
+                else "")
+    r = molbuilder("describe", "--structure", STRUCTURE,
+               "--bundle", f"P/{calculation}/{name}", "--engine", engine,
+               "--name", name, "--calculation", calculation,
+               *(("--stage-strategy", strategy) if strategy else ()),
+               *(("--psml-lib", "pseudopotential") if siesta else ()))
+    assert r.exit_code == 0, r.output
+    bundle = tree / "P" / calculation / name
     request = read_request(bundle)
     request.setdefault("execution", {"mpi_np": 2, "omp_threads": 1} if siesta
                        else {"threads": 1})
@@ -217,6 +202,15 @@ def write_request(bundle: Path, request: dict) -> None:
     """The calculation's ``job-request.json``, written as a person edits it."""
     import json
     (bundle / "job-request.json").write_text(json.dumps(request, indent=2))
+
+
+def one_rank(bundle: Path, **card) -> None:
+    """The calculation's run card: one rank, one thread -- the shape a run
+    states (`architecture.md` § 5.2) -- and what else ``card`` states."""
+    request = read_request(bundle)
+    request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
+                            "omp_threads": 1, **card}
+    write_request(bundle, request)
 
 
 def read_as(bundle: Path, client) -> dict:
@@ -410,8 +404,7 @@ def calls_made(calls: Path):
 # typed as the group each is in; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal);
 # `calculation` -- the kind `molbuilder describe` describes, an optimization unless
-# given; `shape` -- the shape it describes, hierarchical unless given;
-# `structure` -- the structure it describes, H2 unless given
+# given; `structure` -- the structure it describes, H2 unless given
 # (`describe_calculation`: `elements`, `positions`, `regions`, `cell`,
 # `axis_kind`); `stage_strategy` -- the ladder `molbuilder describe` is told,
 # `publishable` for a SIESTA optimization unless given, `""` for the one
@@ -439,9 +432,8 @@ def calls_made(calls: Path):
 # a prep that was not refused says nothing of `said_lacks`.
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
-# `save_refused`'s words, the sentence the folder answer gave the shape card
-# before (`shape_fixed`) -- with `save_status`, 409 unless the row says
-# (400: the description's own reader refused it) -- or taken.
+# `save_refused`'s words, with `save_status`, 409 unless the row says (400:
+# the description's own reader refused it) -- or taken.
 #
 # 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
 # (`probe_said`, lines any of the probes printed) and what the record it
@@ -696,10 +688,9 @@ def _road_launched(case, bundle) -> None:
     calc = open_calculation(bundle)
     for stage in case["launched"]:
         home = stage_home(bundle, calc.task, stage)
-        names = home.names(calc.task.shape)
-        where = (attempt_dir(home.dir, attempts_in(home.dir)[-1])
-                 if calc.shape.keeps_attempts_as_directories else home.dir)
-        write_launch(where, names=names, run=0, mode="direct",
+        names = home.names
+        where = attempt_dir(home.dir, attempts_in(home.dir)[-1])
+        write_launch(where, mode="direct",
                      command=["bash", names.stem + ".run.sh", "--run", "0"])
 
 
@@ -727,38 +718,28 @@ def _road_changed(case, bundle) -> bool:
 def _road_saved(case, bundle) -> None:
     """The description saved through Task setup's Save -- the page's door,
     which no `jobset` verb reaches -- with ``saved``'s fields changed:
-    refused, saying each of ``save_refused`` in the sentence the folder
-    answer gave the shape card (`shape_fixed`), or taken."""
+    refused, saying each of ``save_refused``, or taken."""
     if "saved" not in case:
         return
     import json
     from molbuilder.web.app import create_app
     task = json.loads((bundle / "task.json").read_text())
     request = read_request(bundle)
-    shape = task.get("shape")
     # EACH CHANGED KEY INTO ITS RECORD: how it runs into the job request,
     # what is computed into the description (`execution/job-request.md` § 1).
     for key, value in case["saved"].items():
         (request if key in ("allocation", "execution", "bench", "notify")
          else task)[key] = value
     client = create_app(config={}).test_client()
-    # What the shape card is told before anything is typed: the same answer
-    # the save refuses with (`task-setup.md` § 4).
-    card = client.get("/api/task-setup/folder",
-                      query_string={"dir": str(bundle)}).get_json()
     r = save_both(bundle, task, request, client)
     said = (r.get_json() or {}).get("error") or ""
     if "save_refused" not in case:
         assert r.status_code == 200, said
-        if "shape" in case["saved"]:          # another shape, taken: free
-            assert card["shape_fixed"] is None, card["shape_fixed"]
         return
     assert r.status_code == case.get("save_status", 409), (r.status_code,
                                                           said)
     for words in case["save_refused"]:
         assert words in said, said
-    assert card["shape_fixed"] == {"shape": shape, "why": said}, (
-        card["shape_fixed"])
 
 
 def _road_own_warm_files(case, bundle) -> None:
@@ -879,12 +860,11 @@ def _road_after_prep(case, bundle) -> None:
 
 def _road_card_written(specs, bundle) -> None:
     """Every name the Task setup card gives a stage -- the catalogue's
-    `manifest`, in the calculation's shape, for the moments asked -- is a file
-    in that stage's folder or its attempts (the hierarchy), or in the folder
-    itself (flat); a file the catalogue places at the calculation's level --
-    the stage's pipeline log -- in the calculation's folder, whatever the
-    shape.  A name written only sometimes (`only`) is not promised; a field
-    (`<stamp>`) stands for any value."""
+    `manifest`, for the moments asked -- is a file in that stage's folder or
+    its runs; a file the catalogue places at the calculation's level --
+    the stage's pipeline log -- in the calculation's folder.  A name written
+    only sometimes (`only`) is not promised; a field (`<stamp>`) stands for
+    any value."""
     import fnmatch
     import re
     from molbuilder.jobset.naming import stage_home
@@ -892,11 +872,10 @@ def _road_card_written(specs, bundle) -> None:
     from molbuilder.task import of as task_of
     task = task_of(bundle)
     for spec in specs:
-        token = stage_home(bundle, task, spec["stage"]).token
+        home = stage_home(bundle, task, spec["stage"])
         at_root = [p.name for p in bundle.iterdir() if p.is_file()]
-        held = ([p.name for p in (bundle / token).rglob("*") if p.is_file()]
-                if task.shape == "hierarchical" else at_root)
-        for row in manifest(task.label, token, shape=task.shape,
+        held = [p.name for p in home.dir.rglob("*") if p.is_file()]
+        for row in manifest(task.label, home.token,
                             engine=task.engine, when=tuple(spec["moments"]),
                             calculation=task.calculation):
             if row["only"]:
@@ -985,7 +964,6 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     calculation = case.get("calculation", "optimization")
     bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
                                   calculation=calculation,
-                                  shape=case.get("shape", "hierarchical"),
                                   structure=case.get("structure"),
                                   stage_strategy=case.get("stage_strategy"))
     from molbuilder.template import run_settings
@@ -1125,21 +1103,9 @@ def _road_runs(bundle: Path, pattern: str) -> "list[Path]":
             if "bench" not in p.relative_to(bundle).parts]
 
 
-def _stage_names(bundle: Path, stage: str):
-    """The names of ``stage``'s files -- the one composer's
-    (`runfiles.RunNames`): on the calculation's label, its token, in its
-    shape."""
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import RunNames
-    from molbuilder.task import of as task_of
-    task = task_of(bundle)
-    return RunNames.of(task.label, stage_home(bundle, task, stage).token,
-                       task.shape)
-
-
 def _the_runs(bundle: Path, pattern: str) -> Path:
     """The file of this name the run's prep wrote -- in the stage's
-    folder and its attempt, one text in both."""
+    folder and its first run, one text in both."""
     found = _road_runs(bundle, pattern)
     assert found and len({p.read_text() for p in found}) == 1, found
     return found[-1]
@@ -1155,11 +1121,11 @@ def shelf_headers(bundle: Path, stage: str, *, side=None) -> dict:
     from molbuilder.jobset.naming import stage_home
     from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.submit import plan_launch
-    from molbuilder.paths import Shape, bench_container
+    from molbuilder.paths import bench_container
     from molbuilder.task import of as task_of
     task = task_of(bundle)
-    container = bundle / bench_container(
-        Shape.named(task.shape), stage_home(bundle, task, stage).token)
+    container = bundle / bench_container(stage_home(bundle, task,
+                                                    stage).token)
     plan = plan_launch(open_calculation(bundle),
                        bench=(JobSet.of(container), container),
                        mode="submit", side=side, record=False,
@@ -1170,8 +1136,12 @@ def shelf_headers(bundle: Path, stage: str, *, side=None) -> dict:
 
 def stage_file(bundle: Path, stage: str, role: str) -> Path:
     """The file ``stage``'s prep wrote for ``role`` -- ``.sbatch``,
-    ``.run.sh``, the deck's suffix -- by the one composer's names."""
-    return _the_runs(bundle, _stage_names(bundle, stage).name(role))
+    ``.run.sh``, the deck's suffix -- by the one composer's names
+    (`runfiles.RunNames`): on the calculation's label, its token."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    names = stage_home(bundle, task_of(bundle), stage).names
+    return _the_runs(bundle, names.name(role))
 
 
 def _one_line(text) -> str:

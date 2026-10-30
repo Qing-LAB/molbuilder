@@ -26,9 +26,8 @@ class Continuation:
     the launch that takes it and recorded in the decision ledger."""
     #: The stage the run belongs to.
     stage: str
-    #: Its attempt, from the calculation folder (``01_coarse/run-0``) --
-    #: ``None`` on the flat layout, where the run's files lie in the folder.
-    source: Optional[str]
+    #: Its attempt, from the calculation folder (``01_coarse/run-0``).
+    source: str
     #: The stage before it, newest (the default) -- or named by ``--from``.
     by_default: bool
     #: The line its conclusion said (`runrecord.ending`), or ``None``: the
@@ -40,49 +39,11 @@ class Continuation:
     converged: Optional[bool]
     #: The files it carries into the attempt, by the pair's rule
     #: (`model.warm_carry`) of what the run holds -- counted against the
-    #: stage's job, ``None`` until then.  On the flat layout nothing is
-    #: copied: the files lie in the folder.
+    #: stage's job, ``None`` until then.
     carries: Optional[Tuple[str, ...]] = None
-    #: On the flat layout, the run by the name every file of it carries
-    #: (`runfiles.run_name`, ``H2_01_coarse-run1``) -- what the stage's own
-    #: ``.continued-from`` records -- or ``None``: an attempt names it.
-    run: Optional[str] = None
     #: The stage's OWN latest run: a stage launched again (:func:`relaunch`;
     #: `job-system.md` § 5.4, *A stage launched again*).
     own: bool = False
-    #: On the flat layout, the run whose restart files lie in the folder --
-    #: the last run of any stage there (`runrecord.last_run`) -- when it is
-    #: not :attr:`run`; and how it ended, in words.  What the run reads, and
-    #: so what its record names (`job-system.md` § 5.4; user, 2026-10-12).
-    written_by: Optional[str] = None
-    written_by_is: Optional[str] = None
-
-    @property
-    def ref(self):
-        """The run, as its hand-over records it (`runrecord.RunRef`): its
-        attempt's folder, or on the flat layout the run whose restart files
-        lie in the folder -- the last run there -- by its name; ``None`` for
-        a flat stage never launched, which no hand-over takes from."""
-        from ..runrecord import RunRef
-        if self.source is not None:
-            return RunRef.read(self.source, shared=False)
-        name = self.written_by or self.run
-        return RunRef.named(name) if name else None
-
-    def where(self) -> str:
-        """The run, as a person reads it: its attempt, or -- on the flat
-        layout -- the stage's latest run in the folder, by its name; and when
-        another run was the last here, the restart files that one left,
-        which are what it reads (`job-system.md` § 5.4)."""
-        if self.source is not None:
-            return self.source
-        mine = (f"{self.stage}'s latest run"
-                + (f", {self.run}," if self.run else "") + " in this folder")
-        if not self.written_by:
-            return mine
-        return (f"the restart files {self.written_by} left in this folder "
-                f"({self.written_by_is}) -- the last run here; "
-                f"{self.stage}'s latest run is {self.run}")
 
     def line(self, copied=(), *, would: bool = False, warned=None) -> str:
         """``continues from 01_coarse/run-0 (the stage before it; concluded
@@ -99,14 +60,11 @@ class Continuation:
         if self.converged is not None:
             facts.append("converged" if self.converged else
                          "NOT converged -- taken as it stands")
-        in_place = [n for n in warned if n not in copied]
-        return (f"continues from {self.where()} ({'; '.join(facts)})"
+        return (f"continues from {self.source} ({'; '.join(facts)})"
                 + (f": {'would copy' if would else 'copied'} "
                    + ", ".join(n + (f" -- WARNING: {warned[n]}"
                                     if n in warned else "")
-                               for n in copied) if copied else "")
-                + "".join(f"; {n} in the folder -- WARNING: {warned[n]}"
-                          for n in in_place))
+                               for n in copied) if copied else ""))
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -133,35 +91,6 @@ def _what_it_is(concluded: Optional[str], state: Optional[str]) -> str:
             "unreadable": "its launch record does not read -- whether it "
                           "ran cannot be told"}.get(
         state, "NOT concluded -- stopped without its conclusion marker")
-
-
-def flat_files(base, task, cont: Optional[Continuation]
-               ) -> Optional[Continuation]:
-    """On the flat layout, ``cont`` with the run whose restart files lie in
-    the folder -- the last run of any stage there (`runrecord.last_run`) --
-    when it is not the run the rule took: what the stage reads, and so what
-    its record names, said beside the rule's run (`job-system.md` § 5.4;
-    user, 2026-10-12).  A record there that does not read raises
-    `runrecord.LaunchRecordError`, which each caller says as its refusal."""
-    from ..runfiles import parse_run_name
-    from ..runrecord import last_run
-    if cont is None or cont.source is not None:
-        return cont
-    last = last_run(base, task.label)
-    if last is None or str(last) == cont.run:
-        return cont
-    from .naming import ladder_homes
-    named = parse_run_name(str(last), task.label)
-    home = next((h for h in ladder_homes(base, task)
-                 if h.token == named.stage), None)
-    if home is None:
-        said = "of a stage this description no longer holds"
-    else:
-        concluded, state, _c, _d = read_run(base, task, home.name,
-                                             Path(base), verdict=False,
-                                             run=named.run)
-        said = _what_it_is(concluded, state)
-    return dataclasses.replace(cont, written_by=str(last), written_by_is=said)
 
 
 def usable(state: Optional[str]) -> bool:
@@ -250,7 +179,7 @@ def must_hold(folder, products, *, deck_text: Optional[str] = None
 
 
 def read_run(base: Path, task, stage: str, attempt: Path,
-             *, verdict: bool = True, run: Optional[int] = None
+             *, verdict: bool = True
              ) -> Tuple[Optional[str], Optional[str], Optional[bool],
                         Optional[str]]:
     """``(concluded, state, converged, detail)`` of one run of ``stage``
@@ -258,13 +187,11 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     line its conclusion said, through the one door (`runrecord.ending`;
     ``None`` when it has not ended on its own), its state through the one
     door (`parse.dirs.run_status`) and its relaxation's verdict
-    (`parse.contract.relaxation_of`), read from the run's own files in
-    either shape, the run door's (`runs.run_of`): its engine output at the
-    run's index, then its progress log -- where a PySCF run writes its
-    steps, which its stdout cannot stand in for.  The run is the newest in
-    ``attempt`` by the one rule (`runrecord.newest_run`): where a stage's
-    runs share the folder, its newest launched; in a run's own folder, its
-    newest try -- or ``run``, a run named.  ``verdict=False``
+    (`parse.contract.relaxation_of`), read from the run's own files, the
+    run door's (`runs.run_of`): its engine output at the run's newest try,
+    then its progress log -- where a PySCF run writes its steps, which its
+    stdout cannot stand in for.  The try is the newest in ``attempt`` by
+    the one rule (`runrecord.newest_run`).  ``verdict=False``
     skips the relaxation's parse -- a list of runs needs each one's
     conclusion, not a parse of each output."""
     from ..parse.contract import relaxation_of
@@ -272,34 +199,23 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     from ..runrecord import ending, newest_run
     from .naming import stage_home
     home = stage_home(base, task, stage)
-    token, names = home.token, home.names(task.shape)
-    run = run if run is not None else newest_run(attempt, names)
+    names = home.names
+    run = newest_run(attempt, names)
     concluded = ending(attempt, names.stem, run).line
     # ITS STATE, through the one door, asked with its launch record -- a
     # record that does not read is the state `unreadable`, said, never taken
     # for a run that stopped (`runs.concluded`, which asks the scheduler
     # once where it can, `running-a-job.md` § 4.2).
-    # THE RUN'S OWN FOLDER, where its launch record lies (`calcdirs.where`).
-    from ..calcdirs import where
-    st = _concluded(attempt, names, base=base, run=run,
-                   launched_in=where(attempt).run_folder)
+    st = _concluded(attempt, names, base=base, run=run)
     state, detail = st.state, st.detail
     rec = None
     if verdict:
-        # THIS STAGE'S RUN, the run door's, in either shape -- an attempt's
-        # own, or this stage's among a flat folder's -- read in the order the
-        # run door reads a run (`runfiles.result_roles`): its engine output
-        # at the run's index, then its progress log, which a SIESTA run never
-        # writes into and a PySCF run's output no parser reads.  Where a
-        # stage's runs share the folder, the run
-        # is the newest launched -- the one whose record was read above.
-        _run = run_of(attempt, stage=token)
-        if _run is not None and run is not None:
-            _run = dataclasses.replace(_run, run=run)
-        paths = ([_run.stdout,
-                  _run.file(".molwatch.log",
-                            _run.run if names.numbered(".molwatch.log")
-                            else None)]
+        # THIS STAGE'S RUN, the run door's, read in the order the run door
+        # reads a run (`runfiles.result_roles`): its engine output at its
+        # newest try, then its progress log, which a SIESTA run never
+        # writes into and a PySCF run's output no parser reads.
+        _run = run_of(attempt)
+        paths = ([_run.stdout, _run.file(".molwatch.log")]
                  if _run is not None else [])
         from ..parse.errors import ParseError
         for path in (q for q in paths if q is not None):
@@ -324,18 +240,17 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
 
     First, what cannot be taken at all is refused, before anything is
     written (:func:`cannot_be_named`): a run that is not one of this
-    calculation's, ``--from`` with ``--cold``, ``--from`` for a kind whose
-    stages take their input from the kind (transport, a vibration), and --
-    this door answers a first launch -- either on the flat layout or a bias
-    sweep.  **Named** (``--from``): taken as said -- what
+    calculation's, ``--from`` with ``--cold``, and ``--from`` for a kind
+    whose stages take their input from the kind (transport, a vibration).
+    **Named** (``--from``): taken as said -- what
     the run was is read and reported; `prepare_attempt` refuses only what
     cannot be done (no restart files in it).  **By default**, for a
     continuing stage of an independent ladder (`stage_before`): the NEWEST
     attempt of the stage before it, which must have ended on its own
     with exit code 0 (:func:`usable`) -- an older one never stands in,
-    because a stage re-launched to tighten is the run the person means.  Otherwise the refusal, worded by
-    what the run's state says and naming the commands that work on this
-    layout.  ``(None, None)`` for ``--cold``, a stage that builds on no
+    because a stage re-launched to tighten is the run the person means.
+    Otherwise the refusal, worded by what the run's state says and naming
+    the commands that work.  ``(None, None)`` for ``--cold``, a stage that builds on no
     stage before it, the first stage, a stage that starts clean, and one
     the description does not hold (which prep refuses at its checkpoint 2).
     ``verdict=False`` leaves the relaxation unread -- for a reader that
@@ -397,15 +312,6 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
                 "calculation's structure.")
     from pathlib import PurePosixPath
     from ..identity import command_stage
-    from ..paths import Shape
-    from .materialize import FLAT_HAS_NO_ATTEMPTS
-    if not Shape.named(task.shape).keeps_attempts_as_directories:
-        # A STAGE OF AN INDEPENDENT LADDER starts clean by its `restart`
-        # override; a linked one builds on what its kind says, and is told
-        # no way it does not have.
-        return FLAT_HAS_NO_ATTEMPTS + (
-            "  A stage starts clean by its override `restart: clean`."
-            if independent(task) else "")
     if inputs_of(task) is not None:
         # A LINKED RUNG'S INPUTS ARE ITS KIND'S: gathered from the rungs
         # upstream (the gather its pair names), never named.
@@ -449,8 +355,7 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
         from ..runs import run_of
         r = run_of(base / from_attempt)
         try:
-            ran = (r is not None and r.run is not None
-                   and launch_record(r.folder, r.names, r.run) is not None)
+            ran = r is not None and launch_record(r.folder) is not None
         except LaunchRecordError as exc:
             return f"--from {from_attempt!r}: {exc}"
         if not ran:
@@ -465,17 +370,13 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     """The default for ``stage``, which continues from ``prev``, the stage
     before it: the newest attempt, or the refusal (`continuation_answer`).
     A benchmark is offered no earlier run (it takes no ``--from``)."""
-    from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
     from .materialize import latest_attempt
     from .naming import stage_home
     base, task = Path(calc.base), calc.task
-    sh = Shape.named(task.shape)
-    # THE STAGE BEFORE'S HOME, from the one door: its names and its folder.
-    home = stage_home(base, task, prev)
-    container = home.dir
-    flat = not sh.keeps_attempts_as_directories
+    # THE STAGE BEFORE'S FOLDER, from the one door.
+    container = stage_home(base, task, prev).dir
 
     # THE COMMANDS, from the one composer (`commands`): each names the
     # calculation and states the mode where its config sets none.  A choice
@@ -496,12 +397,8 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
 
     def _taking(*flags) -> List[str]:
         return launch_lines("task", stage, base=base, flags=flags)
-    # THE WAY OUT THAT WORKS HERE (the W37 review's first finding): `--cold`
-    # names an attempt-less start, which the flat layout -- one folder, no
-    # attempts -- refuses; there a stage starts clean by its `restart`.
-    clean = (f"or start `{stage}` clean: set its `restart` override to "
-             f"`clean` (Task setup's stage table, or task.json)\n" if flat else
-             f"or start `{stage}` from the calculation's structure --\n"
+    # THE WAY OUT THAT WORKS HERE (the W37 review's first finding).
+    clean = (f"or start `{stage}` from the calculation's structure --\n"
              + block(_taking("--cold")) + "\n" if alone else
              f"or choose what `{stage}` starts from -- an earlier run of "
              f"`{prev}` (--from) or the calculation's structure (--cold): a "
@@ -512,56 +409,30 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     rule = "(job-system.md § 5.4)"
     lead = f"`{stage}` continues from the stage before it, `{prev}`"
 
-    run = None
-    if flat:
-        # PREPARED, by the one door (`Calculation.job`): its row in the plan.
-        if calc.job(prev) is None:
-            return None, (f"{lead}, which has not run yet.  Run it "
-                          f"first --\n{run_prev}\n{clean}{rule}")
-        attempt, source = base, None
-        # THE RUN BY ITS NAME, which every file of it carries -- the
-        # stage's newest, by the one rule (`runrecord.newest_run`), as its
-        # state is read.
-        from ..runrecord import newest_run
-        names = home.names(task.shape)
-        n = newest_run(base, names)
-        run = names.run_name(n) if n is not None else None
-    else:
-        latest = latest_attempt(container) if container.is_dir() else None
-        if latest is None:
-            return None, (f"{lead}, which has not run yet.  Run it "
-                          f"first --\n{run_prev}\n{clean}{rule}")
-        attempt, source = latest, str(latest.relative_to(base))
+    attempt = latest_attempt(container) if container.is_dir() else None
+    if attempt is None:
+        return None, (f"{lead}, which has not run yet.  Run it "
+                      f"first --\n{run_prev}\n{clean}{rule}")
+    source = str(attempt.relative_to(base))
     concluded, state, converged, detail = read_run(
         base, task, prev, attempt, verdict=verdict)
     if usable(state):
-        # ON THE FLAT LAYOUT, what it reads is the folder's restart files,
-        # as the last run there left them (:func:`flat_files`) -- a record
-        # of another run that does not read is the refusal, in its words.
-        from ..runrecord import LaunchRecordError
-        try:
-            return flat_files(base, task, Continuation(
-                stage=prev, source=source, by_default=True,
-                concluded=concluded, state=state, converged=converged,
-                run=run)), None
-        except LaunchRecordError as exc:
-            return None, str(exc)
+        return Continuation(stage=prev, source=source, by_default=True,
+                            concluded=concluded, state=state,
+                            converged=converged), None
 
     # REFUSED -- worded by what the run's state says, with a command for
     # each way on (§ 5.3: what molbuilder prints, you can type): prep's run
     # not launched goes with its group; a run a refused send opened, and
     # one launched, with the stage alone again (D4).
-    what = (f"the newest attempt of `{prev}`, {source}," if source
-            else f"`{prev}`'s latest run,")
-    launch_prev = block(launch_pending(prev, g_prev,
-                                       attempt.name if source else None,
-                                       base=base)
+    what = f"the newest attempt of `{prev}`, {source},"
+    launch_prev = block(launch_pending(prev, g_prev, attempt.name, base=base)
                         if state == "pending"
                         else launch_lines("task", prev, base=base))
     why, first = state_remedy(concluded, state, launch_prev,
                               detail=detail)
     other = None
-    if not (flat or bench) and alone:
+    if not bench and alone:
         # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one
         # to build on, typed out -- never a placeholder.  Its ending is the
         # question, not its relaxation.
@@ -578,40 +449,26 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
                   f"{alt}{clean}{rule}")
 
 
-def relaunch(calc, job, *, cold: bool = False, ran=None
+def relaunch(calc, job, *, ran, cold: bool = False
              ) -> Optional[Continuation]:
     """What ``job``'s stage, LAUNCHED AGAIN, continues from -- the door
     `launch` asks, as a first launch asks :func:`continuation_answer`
     (`job-system.md` § 5.4, *A stage launched again*).  Any stage is
     launched again, however its last run ended: warm, from its OWN latest
-    run -- ``ran``, its newest attempt launched, as launch found it, or on
-    the flat layout its latest run in the folder, by the name every file of
-    it carries -- when its kind resumes and it takes something from a run
+    run -- ``ran``, its newest attempt launched, as launch found it -- when
+    its kind resumes and it takes something from a run
     (`Job.relaunch_continues`); cold (``cold``), or a stage that takes
     nothing, continues from nothing: ``None``.  How that run ended is read
     in the run door's order (:func:`read_run`) and said, never judged.
     ``calc`` is the calculation as the launch opened it (A16)."""
-    from ..paths import Shape
-    from ..runrecord import newest_run
-    from .naming import stage_home
     base, task = Path(calc.base), calc.task
     stage = job.name
     if cold or not job.relaunch_continues:
         return None
-    home = stage_home(base, task, stage)
-    if Shape.named(task.shape).keeps_attempts_as_directories:
-        concluded, state, converged, _ = read_run(base, task, stage, ran)
-        return Continuation(stage=stage,
-                            source=str(Path(ran).relative_to(base)),
-                            by_default=True, concluded=concluded, state=state,
-                            converged=converged, own=True)
-    names = home.names(task.shape)
-    n = newest_run(base, names)
-    concluded, state, converged, _ = read_run(base, task, stage, base)
-    return flat_files(base, task, Continuation(
-        stage=stage, source=None, by_default=True, concluded=concluded,
-        state=state, converged=converged, own=True,
-        run=names.run_name(n) if n is not None else None))
+    concluded, state, converged, _ = read_run(base, task, stage, ran)
+    return Continuation(stage=stage, source=str(Path(ran).relative_to(base)),
+                        by_default=True, concluded=concluded, state=state,
+                        converged=converged, own=True)
 
 
 def state_remedy(concluded: Optional[str], state: Optional[str],
@@ -652,7 +509,6 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     relaxation's verdict (`continuation_answer` reads it): a folder is
     answered every time it is opened, and parsing
     each stage's output there is the cost of a preview nobody asked for."""
-    from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
     from .naming import stage_home
@@ -661,23 +517,21 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     if prev is None:
         return None
     got, refused = _by_default(calc, stage, prev, verdict=False)
-    sh = Shape.named(task.shape)
     runs = []
-    if sh.keeps_attempts_as_directories:
-        container = stage_home(base, task, prev).dir
-        for n in (reversed(attempts_in(container)) if container.is_dir()
-                  else ()):
-            a = _adir(container, n)
-            c, s, _v, _d = read_run(base, task, prev, a, verdict=False)
-            runs.append({"source": str(a.relative_to(base)),
-                         "what": _what_it_is(c, s)})
+    container = stage_home(base, task, prev).dir
+    for n in (reversed(attempts_in(container)) if container.is_dir()
+              else ()):
+        a = _adir(container, n)
+        c, s, _v, _d = read_run(base, task, prev, a, verdict=False)
+        runs.append({"source": str(a.relative_to(base)),
+                     "what": _what_it_is(c, s)})
     return {"from_stage": prev,
             "default": (dict(got.as_dict(), line=got.line())
                         if got is not None else None),
             "refused": refused, "runs": runs,
-            # THE STRUCTURE, where the layout keeps attempts and the stage
-            # may start from it.
-            "cold": sh.keeps_attempts_as_directories}
+            # THE STRUCTURE, a choice for every stage that continues: a
+            # launch's --cold opens its run with nothing taken.
+            "cold": True}
 
 
 def point_rows(run, names, task, stage: str, *, launch, base):
@@ -721,8 +575,7 @@ def point_rows(run, names, task, stage: str, *, launch, base):
         running = running or state == "running"
         unread = None
         try:
-            src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
-                   else None)
+            src = read_continued_from(pdir) if pdir.is_dir() else None
             src = str(src) if src is not None else None
         except LaunchRecordError as exc:
             # A RECORD THAT DOES NOT READ is said on its point's row, in
@@ -765,7 +618,7 @@ def taken_over(p, here) -> bool:
     § 2a.11), a run outside ``here`` (`runrecord.RunRef`)."""
     from ..runrecord import RunRef
     said = p.get("started_from")
-    return bool(said) and not RunRef.read(said, shared=False).within(here)
+    return bool(said) and not RunRef.read(said).within(here)
 
 
 def _walked_here(pts, run: Path, base: Path) -> list:
@@ -894,22 +747,16 @@ def _ended_before_a_point(base, run, names) -> bool:
     § 4.2) -- a queue job's answer written by this very look, so the run
     reads ended once its address is gone; ``False`` where neither can
     tell."""
-    from ..joblist import Asked, Job, every, is_going
+    from ..joblist import Asked, is_going
     from ..parse.dirs.job import LIVE_STATES
-    from ..paths import run_folder_of
-    from ..runrecord import RunRef
     from ..runs import concluded
-    want = RunRef.at(base, run)
     asked = Asked()
-    for job in every():
-        if (not isinstance(job, Job) or job.how != "here"
-                or Path(job.calculation) != Path(base).resolve()):
+    for job in jobs_holding(base, run):
+        if job.how != "here":
             continue
-        if any(str(run_folder_of(m["run"]) or m["run"]) == str(want)
-               for m in job.members.values()):
-            going = is_going(job, asked)[0]
-            if going is not None:
-                return not going
+        going = is_going(job, asked)[0]
+        if going is not None:
+            return not going
     try:
         return concluded(run, names, base=base,
                          launched_in=run).state not in LIVE_STATES
@@ -926,10 +773,10 @@ def stage_run_state(calc, stage: str, run) -> "Tuple[str, str]":
     from .naming import stage_home
     from .points import points_of
     base, task = calc.base, calc.task
-    names = stage_home(base, task, stage).names(task.shape)
+    names = stage_home(base, task, stage).names
     declared = points_of(task)
     if declared is not None and declared.rung_points(calc, stage):
-        launch = launch_record(run, names)
+        launch = launch_record(run)
         if launch is None:
             return "pending", "prepared, not launched"
         state, detail, _rows = points_state(
@@ -945,17 +792,22 @@ def _walk_going(base, run) -> bool:
     going -- its process, or its scheduler's list (`joblist.is_going`, the
     one answer `molbuilder jobs` asks); ``False`` where none is on file or
     this machine cannot tell, the points' verdict then said."""
-    from ..joblist import Asked, Job, every, is_going
+    from ..joblist import Asked, is_going
+    asked = Asked()
+    return any(is_going(job, asked)[0] is True
+               for job in jobs_holding(base, run))
+
+
+def jobs_holding(base, run):
+    """The jobs launched from this machine (`joblist.every`) that hold
+    ``run`` of the calculation in ``base`` -- a member of each runs in it,
+    or in a point of it (`paths.run_folder_of`)."""
+    from ..joblist import Job, every
     from ..paths import run_folder_of
     from ..runrecord import RunRef
-    want = RunRef.at(base, run)
-    asked = Asked()
+    want, here = str(RunRef.at(base, run)), Path(base).resolve()
     for job in every():
-        if (not isinstance(job, Job)
-                or Path(job.calculation) != Path(base).resolve()):
-            continue
-        holds = any(str(run_folder_of(m["run"]) or m["run"]) == str(want)
-                    for m in job.members.values())
-        if holds and is_going(job, asked)[0] is True:
-            return True
-    return False
+        if (isinstance(job, Job) and Path(job.calculation) == here
+                and any(str(run_folder_of(m["run"])) == want
+                        for m in job.members.values())):
+            yield job

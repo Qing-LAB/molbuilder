@@ -19,6 +19,7 @@ a reader's number.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -44,11 +45,8 @@ def _records(run, source: str) -> None:
     its `.continued-from` and its launch record, read through their doors
     (`checkpointing.md` S3; `job-system.md` § 5.4)."""
     from molbuilder.runrecord import RunRef, launch_record, read_continued_from
-    from molbuilder.runs import run_of
-    names = run_of(run).names
-    assert read_continued_from(run, names, 0) == RunRef.read(
-        source, shared=False)
-    assert launch_record(run, names)["continued_from"] == source
+    assert read_continued_from(run) == RunRef.read(source)
+    assert launch_record(run)["continued_from"] == source
 
 
 def _decided(bundle):
@@ -105,7 +103,7 @@ def test_a_run_here_left_in_the_background_loses_nothing_it_prints(
     _said(real_h2_layered, "launch naming no stage",
           "about to start here, in the background:", "(--yes)",
           "its output: 02_medium/run-0/", "[started in the background]")
-    medium = real_h2_layered.bundle / "02_medium" / "run-0"
+    medium = real_h2_layered.attempt("medium")
     said = run_answer(medium)
     assert (said["state"], said["detail"]) == ("finished",
                                                "job_completed"), said
@@ -199,8 +197,8 @@ def test_a_launch_naming_no_stage_sends_the_one_prepared_and_not_launched(
         real_h2_layered):
     """`medium` prepared and `coarse` launched: the bare launch sends
     `medium`, and its launch record is written as it starts."""
-    assert (real_h2_layered.bundle / "02_medium" / "run-0"
-            / "run.json").is_file()
+    from molbuilder.runrecord import launch_record
+    assert launch_record(real_h2_layered.attempt("medium")) is not None
 
 
 # --------------------------------------------------------------------- #
@@ -212,22 +210,41 @@ def test_launched_again_warm_it_continues_from_its_own_latest_run(
     """Warm, the next run takes the restart file the stage's latest run
     left, recorded as prep's hand-over is -- beside the run and in the
     ledger."""
-    b = real_h2_layered.bundle
     _said(real_h2_layered, "launch coarse again",
           "launched again into run-1: it continues from 01_coarse/run-0 "
           "(its own latest run; concluded rc=0", "copied H2.XV")
-    for name in ("H2.XV", ".continued-from"):
-        assert (b / "01_coarse" / "run-1" / name).is_file(), name
-    _records(b / "01_coarse" / "run-1", "01_coarse/run-0")
-    assert "launch continues" in _decided(b)
+    warm = real_h2_layered.attempt("coarse", 1)
+    assert (warm / "H2.XV").is_file()
+    _records(warm, "01_coarse/run-0")
+    assert "launch continues" in _decided(real_h2_layered.bundle)
 
 
 def test_launched_again_cold_it_takes_nothing_of_its_own(real_h2_layered):
-    b = real_h2_layered.bundle
+    from molbuilder.runrecord import read_continued_from
     _said(real_h2_layered, "launch coarse again cold",
           "launched again into run-2: it starts cold -- from its deck alone")
-    assert (b / "01_coarse" / "run-2").is_dir()
-    assert not (b / "01_coarse" / "run-2" / ".continued-from").exists()
+    cold = real_h2_layered.attempt("coarse", 2)
+    assert cold.is_dir() and read_continued_from(cold) is None
+
+
+def test_a_run_launched_again_is_left_as_it_was(real_h2_layered):
+    """`project-layout.md` § 1.5: a run is immutable -- `coarse` launched
+    again, warm and then cold, opens `run-1` and `run-2` and leaves `run-0`
+    as it was: no file added, none written, none taken away.
+
+    THE SILENT FAILURE: a launch again that writes into the run it
+    continues from -- a try appended there, a record rewritten -- so the
+    run read later is not the run that ran.  MUTATION THIS MUST FAIL
+    AGAINST: launch again sending the stage into its newest run's folder
+    rather than opening the next."""
+    r = real_h2_layered
+    first = r.attempt("coarse").relative_to(r.bundle)
+
+    def in_first(files):
+        return {k: v for k, v in files.items()
+                if first in Path(k).parents}
+    was, now = in_first(r.files_after), in_first(r.relaunched)
+    assert was and now == was, sorted(set(was.items()) ^ set(now.items()))
 
 
 # --------------------------------------------------------------------- #
@@ -253,9 +270,9 @@ def test_the_next_stage_builds_on_the_newest_run_of_the_stage_before_it(
     _said(real_h2_layered, "launch naming no stage",
           "continues from 01_coarse/run-2 (the stage before it; concluded "
           "rc=0", ": copied H2.XV")
-    for name in ("H2.XV", ".continued-from"):
-        assert (b / "02_medium" / "run-0" / name).is_file(), name
-    _records(b / "02_medium" / "run-0", "01_coarse/run-2")
+    medium = real_h2_layered.attempt("medium")
+    assert (medium / "H2.XV").is_file()
+    _records(medium, "01_coarse/run-2")
 
 
 def test_every_run_s_history_is_its_own(real_h2_layered):
@@ -267,27 +284,26 @@ def test_every_run_s_history_is_its_own(real_h2_layered):
     MUTATION THIS MUST FAIL AGAINST: the run script laying no pointer --
     SIESTA writes ``H2.MD.nc`` in each run folder, and no run has a history
     of its own."""
+    from molbuilder.runs import run_of
     from support.road import history_is_the_runs_own
-    b = real_h2_layered.bundle
-    for out in ("01_coarse/run-0/H2_01_coarse-run0.out",
-                "01_coarse/run-1/H2_01_coarse-run0.out",
-                "02_medium/run-0/H2_02_medium-run0.out"):
-        history_is_the_runs_own(b / out, "H2")
+    r = real_h2_layered
+    for run in (r.attempt("coarse", 0), r.attempt("coarse", 1),
+                r.attempt("medium", 0)):
+        out = run_of(run).stdout
+        assert out is not None, sorted(p.name for p in run.iterdir())
+        history_is_the_runs_own(out, "H2")
 
 
 def test_a_run_that_ended_on_its_own_is_not_followed(real_h2_layered):
     """The server's one answer to a viewer about a stage's newest run
     (`runs.run_answer`, `web/results.md` § 4.1): finished, and not live."""
-    from molbuilder.jobset.materialize import run_dir
+    from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import stem
     from molbuilder.runs import run_answer
     from molbuilder.task import of as task_of
     b = real_h2_layered.bundle
-    task = task_of(b)
-    home = stage_home(b, task, "coarse")
-    got = run_answer(str(run_dir(home.dir) / (stem(task.label, home.token)
-                                              + ".fdf")))
+    home = stage_home(b, task_of(b), "coarse")
+    got = run_answer(str(latest_attempt(home.dir) / home.names.name(".fdf")))
     assert (got.get("state"), got.get("live")) == ("finished", False), got
 
 
@@ -297,8 +313,7 @@ def test_a_run_that_ended_on_its_own_is_not_followed(real_h2_layered):
 
 def test_every_name_the_card_gives_a_stage_is_on_disk(real_h2_layered):
     """A launched stage's names for its prep, its launch and its run, and
-    the stage prepared after it -- in the layered folders (the flat ones:
-    `test_siesta_flat_run_e2e.py`)."""
+    the stage prepared after it."""
     from support.road import _road_card_written
     _road_card_written([{"stage": "coarse", "moments": ["prep", "launch", "run"]},
                         {"stage": "medium", "moments": ["prep"]}],

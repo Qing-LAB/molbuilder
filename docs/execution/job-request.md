@@ -35,9 +35,9 @@ change, and when two decks are the same calculation.
 | read by | prep's resolve — every deck; the transport gather; status and the Results tab | prep's assembly — each job's launch values, header and run script, the groups; launch, for its groups — never for a launch value (§ 7); the transport gather, rendering a rung's deck now; the continuation door; status, summarize, `jobset migrate` and the Task setup cards |
 | it must never | say how or where the calculation runs | state anything the calculation computes |
 
-**`shape` stays in the description.** It is how the folder is laid out, fixed
-once the calculation has produced ([`stages.md`](?doc=engines/stages.md)
-§ 6.7) — neither what is computed nor a request that may change.
+**`shape` stays in the description**: it names the one layout,
+`hierarchical` ([`project-layout.md`](?doc=execution/project-layout.md) § 1),
+which no request changes.
 
 **What "nothing in one is read as the other" forbids, and what it does not.**
 A reader of the job request reads the description to know which stages there
@@ -330,12 +330,11 @@ not modelled. A PySCF run's figure is what it held, never scaled; its own cap
 
 **Which runs, and which figure**: the stage's runs and each point of a run
 of points, by the lister the Results tab's every run asks
-(`runstatus.run_folders`), and a flat stage's numbered runs, by their launch
-records (`runrecord.launched_runs`). Every bound of a
+(`runstatus.run_folders`). Every bound of a
 point's finished runs holds, so **a point's need is the smallest of them**;
 **a stage's need is the largest of its points'**, naming the run that gave
 it, as every record of the calculation names a run (`runrecord.RunRef`: its
-folder, or a flat stage's run by its name). **A run that did not finish**
+folder). **A run that did not finish**
 gives no bound — what it held is less than the stage needs — and the one that
 held the most is said beside the figure, with how many give none: one still
 going as what it *holds so far*, one that ended as what it *held before it
@@ -776,8 +775,7 @@ the machine a run takes (§ 2).
 ## 5. A launched stage's request may change *(decided 2026-10-21)*
 
 **What a stage computes is fixed once it is launched; how it runs is not.**
-`prep task --group N`, for a group with launched members on the hierarchical
-layout, prepares it again: every member's deck, run script and header rendered
+`prep task --group N`, for a group with launched members, prepares it again: every member's deck, run script and header rendered
 anew from both records,
 its row in `job-set.json` replaced, and no run opened — the next launch opens
 the next one. Each launched member's deck must be the same calculation as the
@@ -787,11 +785,6 @@ difference and the way back, the state saved before the group's first launch
 job request passes; so does an edit of the description that leaves what the
 engine computes unchanged — the test is the engine's input, never which file
 was edited.
-
-**On the flat layout a launched stage is not prepared again.** Its runs share
-its folder's deck and run script, so a deck rendered anew would rewrite what
-an earlier run's record reads as its own, and what a queued run starts with;
-any change there takes the way back.
 
 **Its runs are untouched.** Each holds its own copy of the deck and scripts it
 ran with ([`project-layout.md`](?doc=execution/project-layout.md) § 1.5). The

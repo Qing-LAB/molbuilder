@@ -55,8 +55,8 @@ def _jobset(*args):
 
 
 def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
-    """An H2 run launched directly -- a flat PySCF optimisation, or a
-    hierarchical SIESTA relaxation -- with ``broken_member`` of the shipped
+    """An H2 run launched directly -- a PySCF optimisation, or a SIESTA
+    relaxation -- with ``broken_member`` of the shipped
     bundle made to fail at import, when named; the folder the run ran in and
     its session log text."""
     from conftest import write_machine_record
@@ -84,7 +84,6 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
     r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                 "--bundle", "P/optimization/H2", "--engine", engine,
                 "--calculation", "optimization",
-                "--shape", "hierarchical" if siesta else "flat",
                 "--name", "H2",
                 *(("--psml-lib", "pseudopotential") if siesta else ()))
     assert r.exit_code == 0, r.output
@@ -98,12 +97,16 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
                 "--target", "this", *(("--np", 1) if siesta else ()),
                 "--cpus-per-task", 1)
     assert r.exit_code == 0, r.output
-    ran_in = bundle / "01_coarse" / "run-0" if siesta else bundle
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.paths import FIRST_ATTEMPT, attempt_dir
+    from molbuilder.task import of as task_of
+    stage = stage_home(bundle, task_of(bundle), "coarse").dir
+    ran_in = attempt_dir(stage, FIRST_ATTEMPT)
 
     if broken_member:
         # BROKEN WHERE PREP WROTE IT: a first launch opens its run from the
         # stage's prepared files (`job-system.md` § 6.0, step 4).
-        shipped = (ran_in.parent if siesta else ran_in) / MONITOR_BUNDLE
+        shipped = stage / MONITOR_BUNDLE
         with zipfile.ZipFile(shipped) as z:
             members = {n: z.read(n) for n in z.namelist()}
         assert broken_member in members, sorted(members)
@@ -115,13 +118,22 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
 
     _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
             "--mode", "direct", "--foreground", "--yes")
-    logs = sorted(ran_in.glob("*.runwrap-*.log"))
-    assert logs, sorted(p.name for p in ran_in.iterdir())
-    said = "\n".join(p.read_text(errors="replace") for p in logs)
+    said = _session_logs(ran_in)
+    assert said, sorted(p.name for p in ran_in.iterdir())
     assert "monitor: pid=" in said, (
         "the wrapper did not start the monitor, so this run shows nothing "
         "about how the monitor's start is kept")
     return ran_in, said
+
+
+def _session_logs(ran_in) -> str:
+    """Every session log of the run in ``ran_in``, each try's, in its order
+    (`wrapper_log.logs_by_run`)."""
+    from molbuilder.runs import run_of
+    from molbuilder.wrapper_log import logs_by_run
+    logs = logs_by_run(ran_in, run_of(ran_in).label)
+    return "\n".join(logs[k].read_text(errors="replace")
+                     for k in sorted(logs, key=lambda k: k[1]))
 
 
 @_needs["molbuilder-pySCF"]
@@ -133,15 +145,15 @@ def test_a_monitor_that_loads_says_so(real_h2_pyscf):
     MUTATION THIS MUST FAIL AGAINST: the bundle's entry importing the
     monitor with nothing said (`runwrap._BUNDLE_MAIN` before 2026-09-27).
     """
+    from molbuilder.runs import run_of
     from molbuilder.runwrap import MONITOR_BUNDLE
-    bundle = real_h2_pyscf.bundle
-    said = "\n".join(p.read_text(errors="replace")
-                     for p in sorted(bundle.glob("*.runwrap-*.log")))
+    ran_in = real_h2_pyscf.attempt("coarse")
+    said = _session_logs(ran_in)
     starting = said.find(f"[INFO ] monitor: starting {MONITOR_BUNDLE} on python ")
     started = said.find(f"[INFO ] monitor: {MONITOR_BUNDLE} started")
     assert starting != -1 and started != -1, said[-3000:]
     assert starting < started, "started was said before starting"
-    assert list(bundle.glob("*.monitor.log")), (
+    assert run_of(ran_in).file(".monitor.log") is not None, (
         "the monitor said it started and never opened its own log")
 
 
@@ -156,8 +168,9 @@ def test_a_monitor_that_dies_loading_says_why(tmp_path, monkeypatch):
     entry saying ``started`` before the import; the ``ERROR`` line or the
     traceback left out.
     """
+    from molbuilder.runs import run_of
     from molbuilder.runwrap import MONITOR_BUNDLE
-    bundle, said = _launched(tmp_path, monkeypatch,
+    ran_in, said = _launched(tmp_path, monkeypatch,
                              broken_member="report_fields.py")
     assert f"[INFO ] monitor: starting {MONITOR_BUNDLE} on python " in said, (
         said[-3000:])
@@ -171,7 +184,7 @@ def test_a_monitor_that_dies_loading_says_why(tmp_path, monkeypatch):
         + said[error:error + 3000])
     assert f"monitor: {MONITOR_BUNDLE} started" not in said, (
         "a monitor that failed to load said it started")
-    assert not list(bundle.glob("*.monitor.log")), (
+    assert run_of(ran_in).file(".monitor.log") is None, (
         "a monitor that failed at import wrote its own log -- the premise "
         "of this test does not hold")
 

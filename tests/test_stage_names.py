@@ -59,7 +59,7 @@ def _described(tmp_path, monkeypatch, engine, calculation):
     monkeypatch.chdir(tree.parent)
     r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                 "--bundle", f"P/{calculation}/H2", "--engine", engine,
-                "--shape", "hierarchical", "--calculation", calculation,
+                "--calculation", calculation,
                 "--name", "H2",
                 *(("--psml-lib", "pseudopotential") if engine == "siesta"
                   else ()))

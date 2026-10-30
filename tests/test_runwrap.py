@@ -1,13 +1,8 @@
 """Blocks of the run script (``molbuilder.runwrap``) that are their own
-programs: run as bash, or read as the sweep they write.
+programs, run as bash.  (The cold sweep's: `test_runwrap_cold_restart.py`.)
 """
 
 from __future__ import annotations
-
-
-# --------------------------------------------------------------------- #
-#  Extension routing                                                    #
-# --------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #
@@ -31,7 +26,6 @@ def test_the_notice_that_replaced_it_is_about_ORBITALS_and_only_advises():
     from molbuilder.runwrap import _orbitals_per_rank_notice
 
     notice = _orbitals_per_rank_notice(10)          # ~100 orbitals
-    assert "_norb_est=100" in notice
 
     def _say(ranks):
         r = subprocess.run(["bash", "-c", f"_mpi_np={ranks}\n" + notice],
@@ -51,20 +45,3 @@ def test_the_notice_that_replaced_it_is_about_ORBITALS_and_only_advises():
         "a deck with no NumberOfAtoms gets no notice -- inventing the number "
         "is what the ruling removed")
 
-
-def test_pyscf_cold_block_sweeps_by_name_not_by_inventory():
-    """U17 (job-contracts § 4.1): the sweep is by NAME (id-keyed globs,
-    molbuilder's own writes excepted), not a per-suffix list -- a file
-    nobody listed is a file --cold walks past.  This pin: the PySCF block
-    carries the id-keyed glob forms (braced for underscore suffixes) and no
-    suffix enumeration."""
-    from molbuilder.runwrap import _cold_restart_block
-    block = _cold_restart_block("myjob", label="myjob")
-    assert '"$_warm_label".*' in block
-    assert '"${_warm_label}"_*' in block
-    assert "myjob.*" in block and "myjob_*" in block
-    # The warm state the engine reads is swept, never kept (geomeTRIC's
-    # trajectory is a declared run file, kept as its run's history).
-    for retired in ("_optimized.xyz", ".chk\""):
-        assert retired not in block, (
-            f"a suffix enumeration crept back in: {retired}")

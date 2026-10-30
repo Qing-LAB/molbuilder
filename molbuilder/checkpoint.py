@@ -3,9 +3,12 @@
 **Module:** L1 + L2 (the data model and ``Repo``, the class every surface goes
 through).  **Callers:** the ``molbuilder checkpoint`` CLI group
 (:mod:`molbuilder.cli`) and the HTTP routes in
-``molbuilder/web/blueprints/checkpoint.py``; nothing else in the codebase
-constructs a ``Repo``, which is what keeps *"nothing is ever saved without you
-saying so"* true.
+``molbuilder/web/blueprints/checkpoint.py``; :func:`save_before`, called by
+the three acts that write a calculation -- every ``prep``, a group's first
+``launch`` and Task setup's Save (`checkpointing.md` § 9); and
+``jobset.commands``, which only READS a history for the state a way back
+restores.  Nothing else saves, which is what keeps *"nothing is ever saved
+without you saying so"* true.
 
 **Contract:** [`execution/checkpointing.md`](?doc=execution/checkpointing.md) —
 the goal, the rules (S/I/A/L) and their status.  The **MANIFEST and archive
@@ -14,8 +17,8 @@ formats** are [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6.
 
 Single user, one repository per calculation, no auto-commit.  Saving and
-initialising are CLI/UI acts, at prep and Save, never a running job's
-(`checkpointing.md` § 9).
+initialising are CLI/UI acts -- a prep, a group's first launch, a Save --
+never a running job's (`checkpointing.md` § 9).
 
 The whole surface is ``Repo``: ``init``, ``save``, ``restore``, ``status``,
 ``states``, ``tag``.  A **state** is a saved snapshot of the folder, a **tag**
@@ -208,23 +211,12 @@ def gitignore_is_current(root: Path, always_large=(), in_neither=()) -> bool:
         always_large, in_neither).rstrip("\n")
 
 
-#: A subdirectory holding one of these is somebody's working directory.  One
-#: repository covers one calculation (L1), so a folder full of these is only
-#: acceptable when the folder itself says they are one calculation's parts.
-#:
-#: **`.py` is here for PySCF, whose deck IS a `.py`**, and it is the entry with
-#: a known false positive: an ordinary `analysis/` or `scripts/` subdirectory
-#: holding any Python file reads as a working directory too.  Narrowing it is
-#: not free -- dropping `.py` would let a folder of PySCF runs be initialised
-#: as one history with nothing declaring them one calculation, which is the
-#: failure L1 exists for, and no extension can tell `<id>.py` from `plot.py`.
-#:
-#: So the breadth is deliberate and the remedy is one file: the refusal names
-#: the directories it found and says to put a description at the root, which is
-#: what a real staged calculation has anyway.  Dot-directories are skipped
-#: before this is consulted, which is what stopped `.venv/` tripping it.
 #: What says "somebody's working directory": what every prepared run carries
 #: (`runfiles.prepared_roles`), looked up through `runfiles.find_by_role`.
+#: One repository covers one calculation (L1), so a folder holding such
+#: directories is only acceptable when the folder itself says they are one
+#: calculation's parts -- the refusal names the directories it found and says
+#: to put a description at the root, which a real staged calculation has.
 from .runfiles import prepared_roles as _prepared_roles  # noqa: E402
 
 
@@ -405,8 +397,7 @@ def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
     ``path``, both as relative POSIX-ish paths.
 
     * ``working_dirs`` -- subdirectories holding a working-dir marker
-      (``.fdf`` / ``.py`` / ``.run.sh``).  Symlinked decks count, because a
-      prepared job directory links its deck in rather than copying it.
+      (``.fdf`` / ``.py`` / ``.run.sh``), asked by the file's name.
     * ``git_repos`` -- subdirectories that are themselves repositories.  The
       walk does **not** descend into one: what is inside another repository is
       that repository's business.
@@ -598,7 +589,7 @@ def walk_symlinks(root: Path):
     """Every symlink outside the two stores, what no copy carries aside.
 
     A save needs these by name: an always-large hint matches on a *name*, and a
-    name says nothing about a link.  A carry link called ``job.DM`` is twenty
+    name says nothing about a link.  A link called ``job.DM`` is twenty
     bytes of path text that `.gitignore` would send to the store that does not
     take links -- so it would land in neither, and a restore would neither
     bring it back nor remove it (S1).
@@ -1555,8 +1546,8 @@ class Repo:
 
         # `-z`, and that matters for correctness rather than parsing taste.
         # In its default form git C-escapes non-ASCII names and wraps anything
-        # containing a space in double quotes, so `01 coarse/job.DM` arrives as
-        # `"01 coarse/job.DM"`: a string that matches no key, slips past the
+        # containing a space in double quotes, so `my runs/job.DM` arrives as
+        # `"my runs/job.DM"`: a string that matches no key, slips past the
         # guard above, and makes a saved big file read unsaved forever.  With
         # -z the records are NUL-separated and never quoted.
         git_says: Dict[str, str] = {}
@@ -1799,8 +1790,8 @@ class Repo:
         # S1b lets a name skip a *measurement* for a family that is always big.
         # A link has no size worth measuring -- it is twenty bytes of path text
         # -- so for a link the hint is simply wrong: `.gitignore` would send
-        # `02_tight/job.DM -> ../01_coarse/job.DM` to the store that does not
-        # take links, and it would be in NEITHER store: `add` skips it as
+        # a person's `02_tight/run-0/job.DM -> /scratch/job.DM` to the store
+        # that does not take links, and it would be in NEITHER store: `add` skips it as
         # ignored, the archive skips it as a link, and a restore neither
         # brings it back (git never had it) nor removes it (`git clean`
         # without `-x` leaves ignored paths alone).
@@ -1895,8 +1886,8 @@ class Repo:
 
         # Everything the target did not hold is removed -- not a loss, and not
         # warned about (A5): those files are still in the state that holds
-        # them, and leaving a stage 2 .DM in a folder claiming to be stage 1 is
-        # exactly the file a later run picks up unasked.
+        # them, and a .DM the target never held, left in a run folder, is
+        # exactly the file a later warm launch takes unasked.
         #
         # What belongs here is decided by TWO RECORDS AND NO CONFIGURATION
         # (I2a): git says which text the target held, the MANIFEST says which
@@ -1919,9 +1910,9 @@ class Repo:
         # `walk_entries`, not `walk_files`: SYMLINKS ARE LEFTOVERS TOO.
         #
         # `git clean` above removes an untracked link, but only when no ignore
-        # pattern matches its name -- so a stray `job.DM -> ../01_coarse/job.DM`
+        # pattern matches its name -- so a stray `job.DM -> /scratch/job.DM`
         # would survive a restore of a state that never held it, pointing a
-        # later run at the wrong stage's output.  A link the target did not hold is a
+        # later run at a file that state never had.  A link the target did not hold is a
         # leftover exactly like a file, and A5 removes leftovers without asking
         # because they are not a loss.  `unlink` on a link removes the LINK; the
         # file it pointed at is somebody else's entry in this same walk.
@@ -2044,8 +2035,8 @@ def _epoch_of(iso: str) -> Optional[float]:
 def _describe(status: "FolderStatus") -> str:
     """A5's three shapes, named -- never a count.
 
-    "3 unsaved files" tells nobody anything; `01_coarse/job.DM` tells them the
-    density matrix is what they are about to walk away from.
+    "3 unsaved files" tells nobody anything; `01_coarse/run-0/job.DM` tells
+    them the density matrix is what they are about to walk away from.
     """
     parts = []
     for label, names in (("changed", status.changed),

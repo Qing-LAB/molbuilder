@@ -67,7 +67,7 @@ def this_machine_is_a_cluster():
         env_init={"preamble": "true", "activation": "conda activate"})
 
 
-def _described_h2(root, name, stages, *, shape="hierarchical"):
+def _described_h2(root, name, stages):
     """An H2 optimization on SIESTA, ``name``, its ``stages``, under
     ``root`` -- described by the production door (`describe.
     write_description`; a hand-built `StructureRef` carries the default
@@ -91,7 +91,7 @@ def _described_h2(root, name, stages, *, shape="hierarchical"):
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label=name),
                             list(stages), engine="siesta",
-                            calculation="optimization", shape=shape,
+                            calculation="optimization",
                             name=name, source=str(src)),
         d, struct=struct)
     write_pseudos(d, ["H"])
@@ -397,8 +397,7 @@ def test_a_description_prep_bench_refuses_offers_no_measure_step(
     D.write_description(
         D.build_description(struct, PySCFConfig(), [Stage(name="coarse")],
                             engine="pyscf",
-                            calculation="optimization", shape="hierarchical",
-                            name="pyscf", source=str(src)),
+                            calculation="optimization", name="pyscf", source=str(src)),
         d, struct=struct)
     _open(page, flask_server, d)
     panel = "[id^=ts-steppanel]"
@@ -901,10 +900,6 @@ def _add_a_bench_point(page):
     page.click("#ts-add-setting-go")
 
 
-def _change_the_shape(page):
-    page.click("#ts-shape-flat")
-
-
 def _add_a_stage(page):
     page.click("#ts-add-stage")
 
@@ -915,16 +910,15 @@ def _ask_another_wall_time(page):
 
 
 #: The card edits beside the run card's value, a row each (`task-setup.md`
-#: § 7a): the stage table's, the bench's and the shape's leave by
-#: `commitEdit`, the queue card's by `applyBlockToDoc` -- both through the
-#: fence, so nothing else on the page can start while one writes.  Made after
+#: § 7a): the stage table's and the bench's leave by `commitEdit`, the queue
+#: card's by `applyBlockToDoc` -- both through the fence, so nothing else on
+#: the page can start while one writes.  Made after
 #: the save and never saved, so the folder on disk stays as that save left it.
 _CARD_EDITS = (
     ("a stage cell", _edit_a_stage_cell),
     ("a stage added", _add_a_stage),
     ("a column added", _add_a_column),
     ("a bench point added", _add_a_bench_point),
-    ("the shape changed", _change_the_shape),
     ("the queue card's wall time", _ask_another_wall_time),
 )
 
@@ -1070,7 +1064,7 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
 # ---------------------------------------------------------------------------
 
 
-def _two_stages(root, *, shape="hierarchical"):
+def _two_stages(root):
     """A described calculation with TWO stages and a declared bench axis,
     on a workstation's record -- this machine's, where `jobset probe
     --write` puts it, written over the module's cluster.
@@ -1087,8 +1081,7 @@ def _two_stages(root, *, shape="hierarchical"):
     from molbuilder.task import Stage
     d = _described_h2(root, "ladder",
                       [Stage(name="coarse", overrides={"mesh_cutoff": 200}),
-                       Stage(name="tight", overrides={"mesh_cutoff": 400})],
-                      shape=shape)
+                       Stage(name="tight", overrides={"mesh_cutoff": 400})])
     # The axes to measure, declared once for the calculation -- which is
     # exactly why every enabled stage can be measured.
     req = read_request(d)
@@ -1240,10 +1233,7 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
     first prep, which does not change (`configuration.md` M-3), so once a
     stage is prepared the card shows that machine chosen, offers no other,
     and says why -- the folder's own answer, `set_to`.  The answer's half
-    is `test_printed_commands_run.py`'s.  The shape is fixed by the same
-    prep (`task-setup.md` § 4): the shape card offers no other and says why
-    and the way back -- the sentence Save refuses with, whose half is
-    `prep_protocol.toml`'s."""
+    is `test_printed_commands_run.py`'s."""
     _open(page, flask_server, two_stage_dir)
     this = page.locator('#ts-target-choice .opt[data-machine="(this machine)"]')
     this.wait_for(state="visible", timeout=20000)
@@ -1265,13 +1255,6 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
     assert page.locator(f'#ts-target-choice .opt[data-machine='
                         f'"{a_named_machine}"]').is_disabled(), (
         "a calculation set to this machine was offered another")
-
-    page.wait_for_selector("#ts-shape-fixed:not([hidden])", timeout=20000)
-    said = page.inner_text("#ts-shape-fixed")
-    assert "fixed once it has produced" in said and "To change it" in said, said
-    assert page.locator("#ts-shape-hier").get_attribute("aria-pressed") == "true"
-    assert page.locator("#ts-shape-flat").is_disabled(), (
-        "a prepared hierarchical calculation was offered the flat shape")
 
 
 def test_the_notify_card_offers_this_machines_channels(
@@ -1422,24 +1405,4 @@ def test_no_rung_is_taught_a_from_by_default(
     assert cmds, "the page taught no commands at all"
     assert not any("--from" in c for c in cmds), (
         "a rung whose card states nothing was taught a --from: "
-        + repr([c for c in cmds if "--from" in c]))
-
-
-def test_a_FLAT_bundle_is_taught_no_from_at_all(
-        page, flask_server, isolated_projects_root):
-    """The other half, so the rule is not "always emit a tail".
-
-    Flat keeps no attempt directories (`project-layout.md` § 1.5a): the warm
-    set is one shared set in the bundle root, continuing is free, and
-    `prepare_attempt` refuses an explicit `--from` there BY NAME.  The page
-    taught `--from 01_coarse/run-0` on every continuing rung regardless of
-    shape until 2026-09-02 -- a command that cannot run, naming a directory a
-    flat bundle does not have.
-    """
-    flat = _two_stages(isolated_projects_root, shape="flat")
-    _open(page, flask_server, flat)
-    cmds = _commands_shown(page)
-    assert cmds, "the page taught no commands at all"
-    assert not any("--from" in c for c in cmds), (
-        "a flat bundle has no attempt directory to continue from: "
         + repr([c for c in cmds if "--from" in c]))

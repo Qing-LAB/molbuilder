@@ -158,26 +158,11 @@ def _emit_header_docstring(struct: Structure,
     out.append(f"Atoms     : {getattr(struct, 'n_atoms', len(struct.elements))}")
     out.append(f"Job name  : {cfg.job_name}")
     out.append("")
-    # The stage by its NAME, through the one printer (`job-system.md` § 5.3).
-    from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE, deck_launch,
-                            hand_run)
-    _launch = deck_launch(names.stage)
-    if _launch:
-        out.append("Run it the way it was prepared (the described route), "
-                   "from the calculation's folder:")
-        out.extend(f"    {line}" for line in _launch)
-        out.append(f"    {LAUNCH_MODE_NOTE}")
-        out.append("    -- the wrapper beside this deck activates the env and "
-                   "logs the run.")
-    from .input import PYSCF_STDOUT_ROLE
-    out.append(f"    {hand_run(names)}    # {HAND_RUN_NOTE}")
-    out.append("or PySCF directly, with the bundles beside this deck -- then")
-    out.append("nothing records the run:")
-    out.append(f"    python {names.name('.py')} --run 0 > "
-               f"{names.name(PYSCF_STDOUT_ROLE, 0)} 2>&1")
+    # HOW TO RUN IT and THE OUTPUTS, the blocks both decks write
+    # (`input.emit_run_with`, `input.emit_outputs_block`).
+    from .input import emit_outputs_block, emit_run_with
+    out += emit_run_with(names)
     out.append("")
-    # THE OUTPUTS, the one list both decks write (`input.emit_outputs_block`).
-    from .input import emit_outputs_block
     _relaxes = not bool(getattr(cfg, "already_relaxed", False))
     out += emit_outputs_block(
         names, spectra=True,
@@ -461,12 +446,8 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView", *,
         out.append(f"    ecp        = {dict(ecp_chosen)!r},")
     if getattr(cfg, "log_file", False):
         # The engine's own verbose log, named like the optimization
-        # deck names its rungs' (stages.md § 1.1a consequence 1) --
-        # the token rides the name, so two rungs in one folder cannot
-        # overwrite each other's log.
-        # THE STAGE'S NAMES NAME IT (`input.run_file_expr`): the run's own
-        # where the stage's runs share a folder, its number filled when the
-        # script runs (plan W57 decision 2).
+        # deck names its rungs' -- THE STAGE'S NAMES NAME IT
+        # (`input.run_file_expr`).
         from .input import ROLE_LOG, run_file_expr
         out.append(f"    output     = str(_mb_outfile("
                    f"{run_file_expr(names, ROLE_LOG)})),")
@@ -599,8 +580,8 @@ def _emit_initial_state() -> List[str]:
     out.append("    'raman_fd_step_ang':         None,")
     out.append("    'phase_es':                  (PHASE_EMPTY if ES_MODE_SELECTION != 'skip' else PHASE_NOT_REQUESTED),")
     out.append("    'engine_metadata':           {},")
-    out.append("    # Runtime facts collected by _emit_threading_setup +")
-    out.append("    # _emit_gpu_setup (n_threads, gpu name, etc.).  Visible")
+    out.append("    # Runtime facts collected by the deck's runtime-facts")
+    out.append("    # and GPU-probe blocks (n_threads, gpu name, etc.).  Visible")
     out.append("    # on the /results page so users can verify the run")
     out.append("    # actually used the resources they expected.")
     out.append("    'runtime_info':              dict(_RUNTIME_INFO),")

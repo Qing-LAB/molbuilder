@@ -33,7 +33,7 @@ unchanged; **`prep` adds stage dirs *and the attempt inside them*; `launch`
 runs what prep set up and records that it ran.**
 
 *(Opening an attempt is design and spends no queue slot, so it is prep's; `launch`
-refuses a hierarchical stage with no attempt open — § 1.6.2.)*
+refuses a stage with no attempt open — § 1.6.2.)*
 
 ```
 <project>/optimization/<Calc>/          <- PORTABLE: travels as-is, names no machine
@@ -41,24 +41,24 @@ refuses a hierarchical stage with no attempt open — § 1.6.2.)*
   job-request.json                      how and where it runs
   <label>.source.xyz (+.molstruct.json) the structure pair
   pseudos/  (H.psml, ...)               travel with the calculation
-  01_coarse/                            <- prep writes the stage (hierarchical shape)
+  01_coarse/                            <- prep writes the stage
     <label>_01_coarse.fdf  *.run.sh     the deck + wrapper, rendered FOR this machine,
     mb_monitor.pyz                         and the monitor beside them
-    run-0/  run-1/                      <- attempts: prep opens the first and copies its
+    run-0/  run-1/                      <- runs: prep opens the first and copies its
                                            inputs in, launch each one after; launch writes run.json
       *-run0.out  *-run0.concluded      the output + the conclusion marker (rc inside)
-    bench/bench-G0N2C1/run-0/           <- a benchmark trial keeps attempts as a stage does (§ 1.5a)
+    bench/bench-G0N2C1/run-0/           <- a benchmark trial: one run, launched once (§ 1.5a)
   (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
 ```
 
-*Every file, in both shapes, with who writes it and the one door that reads it:
+*Every file, with who writes it and the one door that reads it:
 the manifest, § 5.*
 
 | key rule | one line | where |
 |---|---|---|
 | **portable floor** | the calculation folder never names a machine — copy it anywhere | § 1 |
-| **two shapes** | `flat` (everything beside task.json) or `hierarchical` (one dir per stage) — declared at `molbuilder describe`, never inferred | § 1 |
-| **attempt = run-N** | every try is its own numbered dir; warm files are COPIED from the attempt you name | § 1.5, § 1.6 |
+| **one layout** | a folder per stage, a folder per run in it (`run-<n>/`); a description stating any other is refused by name | § 1 |
+| **attempt = run-N** | every run is its own numbered dir — a warm retry is a try inside it, `-run<N>`; warm files are COPIED from the run you name | § 1.5, § 1.6 |
 | **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means still running or force-stopped — the launch gate ASKS, never decides | § 1.6.3 |
 | **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `job-request.json`'s `execution` | § 2.3.2 |
 | **who writes where** | `molbuilder describe` → the portable floor; prep → stage dirs **and the attempt in them**; launch → `run.json`; the run → its output, the monitor's files and the wrapper's conclusion marker; a person → anything, said aloud | § 2, § 1.6.3 |
@@ -66,7 +66,7 @@ the manifest, § 5.*
 
 ---
 
-## 1. Two shapes, and how to choose
+## 1. One layout: a folder per stage, a folder per run
 
 ### 1.0 What the run directory is, and what may be in it
 
@@ -83,15 +83,14 @@ the manifest, § 5.*
 | **copied** — raw data the engine needs, taken as-is | pseudopotentials, the structure, warm files from a run you named |
 
 **So the inventory is not a list anybody maintains** — it follows from those two
-origins and the shape. A list would drift; this cannot.
+origins. A list would drift; this cannot.
 
 > **A product has ONE home, and it is the run** *(2026-09-19)*. The third
 > category — what the engine *produces* — is the run directory's own, and the
 > progress channel is the case that tested it. `prep` seeds that log so a
 > viewer has something to find before the engine starts, and it seeded it
-> beside the deck it renders: already the run directory in the flat shape, the
-> stage CONTAINER in the hierarchy. The run then wrote its own inside the
-> attempt. Measured on a finished Raman run: a 971-byte stub with no
+> beside the deck it renders: the stage CONTAINER. The run then wrote its own
+> inside the attempt. Measured on a finished Raman run: a 971-byte stub with no
 > `# concluded:` footer in `01_raman/`, the real 1763-byte concluded log in
 > `01_raman/run-0/`. An unconcluded log is how every reader tells a run is
 > still going, so the stage directory reported a **finished** calculation as
@@ -138,17 +137,8 @@ from them:
 1. the **parent's** template and sources, and
 2. the **latest results** from the run you name.
 
-**The two shapes are two answers to one question: is that boundary a directory
-wall, or a filename convention?**
-
-| | where the boundary is |
-|---|---|
-| **hierarchical** | **a real wall.** The starting point stays in the parent; each run directory sees only rendered files and copies |
-| **flat** | **no wall is built.** One directory holds both sides at once — the template sits beside the results, and stages and attempts are told apart by **filename** |
-
-**That is also why the flat shape's results overlap on purpose.** With one
-directory there is one set of warm files, so the geometry is simply *the latest*
-— the next stage finds it lying there, and overwrites it in turn.
+**That boundary is a directory wall.** The starting point stays in the parent;
+each run directory sees only rendered files and copies.
 
 > **A note on the word "calculation".** This document calls the whole folder
 > *the calculation* and the directory the engine runs in *the run directory*.
@@ -186,116 +176,49 @@ directory there is one set of warm files, so the geometry is simply *the latest*
 > forbids exactly this collision. What keeps the name legitimately is the
 > **benchmark** bundle, which really is a self-contained package that travels.
 
-> **This is why molbuilder must know its own files by name.** In the flat shape
-> the template sits beside the engine's output. `--cold` and *"has anything run
-> here?"* both work by subtracting **what molbuilder wrote** from what is present
-> ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.1–4.2), so that list
-> is what stops a template being mistaken for engine leftovers.
+> **This is why molbuilder must know its own files by name.** In a run folder
+> molbuilder's copies — the deck, the run script, the monitor, the
+> pseudopotentials — sit beside the engine's output. `--cold` and *"has
+> anything run here?"* both work by subtracting **what molbuilder wrote** from
+> what is present ([`job-contracts.md`](?doc=execution/job-contracts.md)
+> § 4.1–4.2), so that list is what stops a copy being mistaken for engine
+> leftovers.
 
-A project directory is one of exactly two shapes. **Both hold several stages and
-several attempts** — they differ in *how those are kept apart*, and everything
-else follows from that one choice.
+**A calculation holds several stages and several attempts, and keeps them
+apart by directory** — everything else follows from that:
 
-| | **Flat** | **Hierarchical** |
-|---|---|---|
-| **Stages are separated by** | a **filename token** — `<label>_01_coarse.fdf`, `<label>_02_tight.fdf` | a **directory** — `01_coarse/`, `02_tight/` — and the token is kept in the filename too, as a self-check (`run-identity.md § 3.2`) |
-| **Attempts are separated by** | an **output index** — `-run0.out`, `-run1.out` | a **directory** — `run-0/`, `run-1/` |
-| **Warm files** (`.XV` `.DM` `.CG`) | **one shared set**, unsuffixed | one set per attempt |
-| **Continuing** | free — the next stage finds them lying there | you **name** the run, and its files are copied in |
-| **What survives** | the **latest** state only | every stage's, every attempt's |
-| **Depth** | 1 | 3 |
-| **Chosen** | at `prep` | at `prep` |
-| **Wrappers** | one per stage, beside its deck | one per stage, in the stage's directory |
-| **Built by** | `prep` | `prep` |
+| | |
+|---|---|
+| **Stages are separated by** | a **directory** — `01_coarse/`, `02_tight/` — and the token is kept in the filename too, as a self-check (`run-identity.md § 3.2`) |
+| **Attempts are separated by** | a **directory** — `run-0/`, `run-1/` |
+| **Warm files** (`.XV` `.DM` `.CG`) | one set per attempt |
+| **Continuing** | you **name** the run, and its files are copied in |
+| **What survives** | every stage's, every attempt's |
+| **Depth** | 3 |
+| **Wrappers** | one per stage, in the stage's directory |
+| **Built by** | `prep` |
 
-**Both shapes are built by `prep`, and both run today.** You pick one when you
-prepare, and `prep` lays out whichever you asked for — flat puts every stage in
-one directory and tells them apart by filename; hierarchical gives each stage a
-directory and each attempt a directory inside it.
+**This is the one layout.** `task.json` states it — `"shape":
+"hierarchical"`, the one value its reader accepts (`task.of`) — and a
+description stating any other, `"flat"` among them, is refused by name, its
+way out to describe the calculation again. Nothing molbuilder writes keeps a
+calculation's stages or runs side by side in one folder.
 
 **The one real migration LANDED.** The browser writes a **template plus
 `task.json`**, and the job request beside them — the parameter tabs hand over
-to Task setup, which saves the description and the job request — and `prep` renders every deck on the target: into one directory
-for the flat shape, or into stage directories for the hierarchical one. The
+to Task setup, which saves the description and the job request — and `prep` renders every deck on the target, into its stage's directory. The
 UI produces the second-to-last file in the chain, never the last. *(Until
 2026-08-18 the Build tab wrote a finished `.fdf` and its `.run.sh` — a single
 job, not a described calculation — and these two paragraphs described moving
 off that as future work. The deck-rendering web routes were deleted the same
 day the hand-over shipped; proven end to end 2026-08-19.)*
 
-**One package, two layouts, and you choose.** The browser always writes the same
-thing — a template, `task.json`, `job-request.json`, the data files, none of
-it naming a machine. `prep`, on the machine that will run it, translates that into a runnable
-directory **in whichever shape you ask for**.
+**One package, one layout.** The browser always writes the same thing — a
+template, `task.json`, `job-request.json`, the data files, none of it naming a
+machine. `prep`, on the machine that will run it, translates that into a
+runnable directory.
 
-```mermaid
-flowchart LR
-    UI["<b>the browser</b><br/>template.toml · task.json<br/>job-request.json · data files<br/><i>always the same output</i>"]
-    P{"<b>prep</b><br/>on the target machine"}
-    F["<b>flat</b><br/>one directory<br/>suffixes keep stages apart"]
-    H["<b>hierarchical</b><br/>directories keep them apart"]
-    UI --> P
-    P -->|"you want it simple, and<br/>only the latest state matters"| F
-    P -->|"you need to compare, go back,<br/>or benchmark"| H
-```
-
-### 1.1 What each one looks like
-
-**Flat** — this is what ships today, and it already does stages:
-
-```
-au_bdt_relax/
-├── task.json  <label>.template.toml   the description: this root IS the run
-├── job-request.json                   how and where it runs
-├── pseudos/                        the library's copies (§ 2.6) …
-├── Au.psml  S.psml                 … copied again beside the decks: SIESTA
-│                                      opens them only where it runs
-├── <label>_01_coarse.fdf           coarse   ─┐ the decks: one per stage,
-├── <label>_03_tight.fdf            tight     ─┘ told apart by their TOKEN
-│                                               (decision 27 — the ordinal
-│                                               travels WITH the name, and
-│                                               a gap stays a gap)
-├── <label>_01_coarse.run.sh        ─┐ ONE WRAPPER PER STAGE, beside its deck.
-├── <label>_03_tight.run.sh         ─┘ `prep` renders one per distinct deck, so
-│                                      each stage is started on its own — which
-│                                      is what makes "one stage at a time" the
-│                                      same act in both shapes.
-├── mb_monitor.pyz                  the monitor, ONE file, beside the wrappers
-├── <label>_01_coarse-run0.out      stage 1, first attempt   ─┐ told apart
-├── <label>_01_coarse-run1.out      stage 1, a redo           │ by INDEX
-├── <label>_03_tight-run0.out       tight, first attempt     ─┘
-├── <label>_01_coarse-run0.concluded     the run's own records carry the
-├── <label>_01_coarse-run0.monitor.log   index too: the marker (§ 1.6.3), the
-│     (and .util.csv, .scf-timing.log)   monitor's pair, the timing log, the
-├── <label>_01_coarse-run0.run.json      launch record (§ 1.6.3), the
-├── <label>_01_coarse-run0.molwatch.log  progress log -- and .continued-from
-│                                        when the run continues from another
-├── <label>_01_coarse.runwrap-<stamp>.log   the wrapper's session log
-├── <label>_01_coarse-run0.MD.nc         SIESTA's history of that run alone
-│     (and .MD, .MDE, .ANI)              (job-contracts.md § 2.2)
-│
-├── <label>.XV  <label>.DM  <label>.CG  ⚠ ONE shared set, UNSUFFIXED
-├── <label>.STRUCT_OUT              ⚠ one, overwritten by each stage
-└── <label>.EIG                     ⚠ likewise
-```
-
-*Each run of a flat stage has its own launch record,
-`<basename>-run<N>.run.json`, named like every other file of that run: the
-directory is every stage's and every run's (§ 1.6.3). The tree is a picture;
-every file, with its writer and its door, is § 5.*
-
-*`<label>` is the `SystemLabel` — the stem of every file here. It is **not** the
-run id, which carries the formula as well and lives in `task.json`
-(`run-identity.md § 2.0a`).*
-
-**The unsuffixed warm files are the whole design, good and bad.** They are
-unsuffixed *on purpose* — that is exactly what lets stage 2 pick up stage 1's
-geometry with no instruction from anyone (`job-contracts.md § 2.3`:
-`MD.UseSaveXV`, `DM.UseSaveDM` — and `MD.UseSaveCG` on a CG relaxation — just
-find them). And it is
-exactly why stage 2 overwrites them.
-
-**Hierarchical** — the same stages and attempts, kept apart by directory:
+### 1.1 What it looks like
 
 ```
 bdt-relax/                            the CALCULATION — the user typed this name
@@ -317,16 +240,16 @@ bdt-relax/                            the CALCULATION — the user typed this na
 │   │                                    and the framework modules it reads the
 │   │                                    run through (`runwrap.MONITOR_BUNDLE`)
 │   ├── Au.psml  S.psml               real copies, beside the deck
-│   ├── run-0/                        an ATTEMPT — prep opened it and COPIED in
+│   ├── run-0/                        a RUN — prep opened it and COPIED in
 │   │   │                                the deck, wrapper, monitor and pseudos
 │   │   ├── run.json                  written by launch: how, when, from what
 │   │   ├── <label>.XV  <label>.DM    SIESTA named these: bare
 │   │   ├── <label>_01_coarse-run0.out        molbuilder named these: stage +
-│   │   ├── <label>_01_coarse-run0.concluded  run index — the output, the
+│   │   ├── <label>_01_coarse-run0.concluded  try — the output, the
 │   │   └── …-run0.monitor.log  .util.csv  .scf-timing.log   wrapper's marker,
 │   │                                    the monitor's pair, the timing log
 │   ├── run-1/                        a redo — run-0 is untouched; its first
-│   │                                    run is -run0 again (§ 1.6.1)
+│   │                                    try is -run0 again (§ 1.6.1)
 │   └── bench/                        a BENCHMARK — its own little world
 │
 └── 02_tight/
@@ -339,17 +262,20 @@ bdt-relax/                            the CALCULATION — the user typed this na
 start of a wrapper its `<basename>.runwrap-<stamp>.log`. The tree is a picture;
 every file, with its writer and its door, is § 5.*
 
+*`<label>` is the `SystemLabel` — the stem of every file here. It is **not** the
+run id, which carries the formula as well and lives in `task.json`
+(`run-identity.md § 2.0a`).*
+
 **The deck repeats the stage its directory already names, on purpose.** Without
 it every stage directory holds an identically-named deck, and two swapped by a
 bad copy or a resumed `prep` disagree with nothing; with it,
 `01_coarse/<label>_02_tight.fdf` is wrong on sight (`run-identity.md § 3.2`,
 decision 21).
 
-**And the stdout keeps its `-run<N>` counter here too**, because there is one
-wrapper and it writes `<basename>-run${_run_n}.out` with no branch on shape
-(`job-contracts.md` § 6.3). Inside an attempt the counter numbers the
-wrapper's *runs*, not the attempt: it starts at 0 in each attempt and advances
-when the wrapper runs again there — a warm retry (§ 1.6.1).
+**And the stdout carries a `-run<N>` counter**, `<basename>-run${_run_n}.out`
+(`job-contracts.md` § 6.3). It numbers the run's *tries*, not the run: it
+starts at 0 in each run and advances when the wrapper starts again there — a
+warm retry (§ 1.6.1).
 
 ```mermaid
 flowchart TB
@@ -368,77 +294,28 @@ flowchart TB
     ST -.-> BN
 ```
 
-### 1.2 The trade, stated once — and why flat needs checkpoints
+### 1.2 Every state stays on disk
 
-Put the two side by side on the question that actually matters — *what do you
-still have after three stages have run?*
+**History is kept in space, not in time.** After three stages have run, every
+stage's and every attempt's state sits on disk at once: stage 1's relaxed
+geometry is in `01_coarse/run-0/`, going back to it is reading that directory,
+and which run produced a `.XV` is its run's `run.json`, without leaving the
+tree. The saved history (§ 6) is insurance and a place to branch from — never
+the only way back — and a restore is a rewind of the whole calculation, text
+and binaries together (`checkpointing.md`, S6), which nothing here needs in
+order to reach an earlier state.
 
-| After stage 1, 2 and 3 have all run | Flat | Hierarchical |
-|---|---|---|
-| every stage's stdout | on disk — the suffix saved them | on disk |
-| the **current** `.XV` / `.DM` | on disk — stage 3's | on disk, per stage and per attempt |
-| stage 1's relaxed geometry | **in the checkpoint** — not on disk | on disk, always |
-| going back to it | **restore** that checkpoint | open the other directory |
-| having both at once | no — one state at a time | yes |
-| which run produced the current `.XV` | the checkpoint's message and tag | `run.json` says, without leaving the tree |
+### 1.3 The rules, read against the layout
 
-**The two shapes keep history in different dimensions.** Hierarchical spreads it
-across the *filesystem*: every stage and attempt sits there simultaneously, and
-going back is just reading a different directory. Flat keeps one state on disk
-and spreads its history through *time*: earlier states live in the checkpoint,
-and going back means rewinding.
-
-```mermaid
-flowchart LR
-    subgraph FL["<b>flat</b> — history in time"]
-      direction LR
-      F1["checkpoint<br/>after stage 1"] --> F2["checkpoint<br/>after stage 2"] --> F3["the directory<br/><i>now</i>"]
-    end
-    subgraph HI["<b>hierarchical</b> — history in space"]
-      direction LR
-      H1["01_coarse/run-0"]
-      H2["02_tight/run-0"]
-      H3["03_finer/run-0"]
-    end
-```
-
-> **This is why the checkpoint is not optional for the flat shape.** It is the
-> only thing standing between *"stage 2 overwrote stage 1's geometry"* and
-> *"stage 1's geometry is gone."* In the hierarchical shape the checkpoint is
-> insurance; in the flat shape it is **the mechanism** — the sole way to get back
-> to a previous run and continue from there.
-
-**And restore is a rewind, not a fetch.** It returns the whole directory to how
-it was, text and binaries together (`checkpointing.md`, S6). So going back in the
-flat shape means: checkpoint what you have now, restore the earlier one, run from
-there. Skip the first step and the current state is what you lose. Hierarchical
-never poses that question, because nothing had to be overwritten to begin with.
-
-**Neither shape is wrong.** For one relaxation where only the final geometry
-matters, overwriting is the point and flat costs nothing to operate. For a
-mission tuned across parameter sets — compared, benchmarked, revisited — having
-every state at once is worth the directories, and you stop having to think about
-what a restore would cost you.
-
-### 1.3 The same contract, read against both shapes
-
-Every rule in this document holds in both shapes. Where they read differently it
-is because *depth* differs — never because the rule does.
-
-| Rule | Flat | Hierarchical |
-|---|---|---|
-| **A directory is a container or a run, never both** (§ 1.4) | the directory is a **run** — it is a leaf | calculation and stage are **containers**; `run-N/` is a **run** |
-| **A result is never overwritten** | holds for every run's own files — its *stdout* and SIESTA's history among them (`-run0`, `-run1`); **does not hold for warm files**, which are shared by design | holds for everything — an attempt is immutable (§ 1.5) |
-| **Every file shares one basename** — the id | yes; only decks and stdout take a stage suffix | yes, and across stages too |
-| **Where the deck comes from** | `prep` renders it beside the package | `prep` renders it into the stage's directory |
-| | *both from template ⊕ the stage's values ⊕ this machine (§ 2.2)* | |
-| **Where the wrapper runs** | in the directory | in the attempt directory `prep` made |
-| **git tracks / the archive covers** | one directory is both — each file by its **size** (`checkpointing.md` S1b) | containers are git's, runs are the archive's — by **depth** (§ 6.1; not held, § 7 invariant 16) |
-| **`--force`** | says yes to `--cold`'s refusal | says yes to `--cold`'s refusal |
-
-The second row is the one to read twice. *"A result is never overwritten"* is a
-rule the flat shape keeps for the files it can and breaks for the files it must —
-and it is the same break that makes continuing free.
+| Rule | how it holds |
+|---|---|
+| **A directory is a container or a run, never both** (§ 1.4) | calculation and stage are **containers**; `run-N/` is a **run** |
+| **A result is never overwritten** | an attempt is immutable (§ 1.5) |
+| **Every file is named on the label** | the engine's bare (`<label>.XV`), molbuilder's with the stage token (`<label>_<NN>_<stage>`) — § 7, invariant 3 |
+| **Where the deck comes from** | `prep` renders it into the stage's directory, from template ⊕ the stage's values ⊕ this machine (§ 2.2) |
+| **Where the wrapper runs** | in the attempt directory `prep` made |
+| **git tracks / the archive covers** | containers are git's, runs are the archive's — by **depth** (§ 6.1; not held, § 7 invariant 16) |
+| **`--force`** | says yes to `--cold`'s refusal |
 
 ### 1.4 A directory is a container or a run, never both
 
@@ -446,24 +323,17 @@ and it is the same break that makes continuing free.
 Every directory in this tree is one of two things:
 
 - a **container** — it holds setup and other directories. Decks, wrappers, the
-  description, links, the shared package. All text or small.
+  description, the shared package. All text or small.
 - a **run** — one invocation of the engine. It holds what that invocation
   produced, and nothing else holds that.
 
-A hierarchical calculation is a container — a flat one is its own run
-(§ 1.3). A stage is a container. A benchmark bundle is a container. The leaves
-are runs: a stage's `run-N/` — or, where the stage runs
-per point, each point's folder in it — a hierarchical trial's `run-N/`, a flat
-calculation's `bench-<knobs>/`.
+A calculation is a container. A stage is a container. A benchmark bundle is
+a container. The leaves are runs: a stage's `run-N/` — or, where the stage
+runs per point, each point's folder in it — and a trial's `run-N/`.
 
 **This is what makes everything downstream simple.** Setup is text, so git handles
 it entirely. Only a run holds anything big. There is no directory where the two
 are mixed and something has to tell them apart.
-
-> **A simple run stays simple.** A plain run directory does not grow a `run-0/`.
-> It **is** a run — a leaf with no container above it — which is exactly what a
-> hand-made directory with one `.fdf` in it already is. Nothing about the
-> straightforward case changes.
 
 ### 1.4a How a directory says which one it is
 
@@ -473,14 +343,13 @@ Nothing in the tree has to — but **a reader handed a path does**, and until th
 section it could not.*
 
 **The gap, and why no amount of care closed it.** Container-or-run is not
-decidable from the name. § 1.3 and § 1.4 settle that three times over: a
-**flat** calculation root *is* a run; a **hierarchical** stage directory
-is a container; "a hand-made directory with one `.fdf` in it" is a run. Same
-grammar, opposite answers. So every reader that wanted the answer guessed, and
-they did not guess alike — one assumed every directory was a run and reported a
-`pseudos/` folder as *running*; one assumed the description sat in the directory
-it was handed, which is true only in the flat shape; one walked up a fixed
-number of levels hoping to find it.
+decidable from the name: a stage directory is a container, a swept rung's
+`run-<n>/` is a container where a rung that runs once is a run, and a
+hand-made directory with one `.fdf` in it is a run. Same grammar, opposite
+answers. So every reader that wanted the answer guessed, and they did not
+guess alike — one assumed every directory was a run and reported a `pseudos/`
+folder as *running*; one assumed the description sat in the directory it was
+handed; one walked up a fixed number of levels hoping to find it.
 
 > **A directory states its place. Nothing infers it.**
 
@@ -495,14 +364,14 @@ creation and thrown away.
 
 | the directory | what answers | container or run |
 |---|---|---|
-| the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2), read through its one door, `task.of`, by the run door (`architecture.md` § 3.2); `calcdirs` reads no description | from **`shape`**: `flat` ⇒ a run, `hierarchical` ⇒ a container |
+| the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2), read through its one door, `task.of`, by the run door (`architecture.md` § 3.2); `calcdirs` reads no description | a container, always |
 | **everything below it that molbuilder made** | `calcdir.json`, written by the creator | **`role`**, said outright |
 | anything else | nothing | unknown — the directory is read alone, and told so |
 
 **The root needs no record**, and that is the point rather than an omission:
 invariant 2 already makes `task.json` the thing that says a directory is a
-calculation, and `shape` is already a required field of it. A second declaration
-would be a second home for one fact.
+calculation, and a calculation is a container. A second declaration would be a
+second home for one fact.
 
 #### The record — two fields, and the reason it is only two
 
@@ -523,21 +392,18 @@ would be a second home for one fact.
 folder is — a stage's, an attempt, a point's, a benchmark's, a trial, support —
 and the stage, run, trial and point it sits in are read off its path, in the
 names the layout gives its folders: `<NN>_<stage>` (`identity.parse_token`),
-`run-<n>` (`paths.attempt_index`), `bench-<point>` (`paths.trial_point`), the
-flat `bench_<NN>_<stage>` (`paths.flat_bench_token`), and the benchmark's and
-the launch folder's own names — the ground floor's, with no description or plan
+`run-<n>` (`paths.attempt_index`), `bench-<point>` (`paths.trial_point`), and
+the benchmark's and the launch folder's own names — the ground floor's, with no description or plan
 read, so one door answers it for every reader (*Where am I*, below). A **stage
 name, an attempt index, a trial's point and a point's folder are facts the
 tree's names already answer**, and storing them would be a second home for each
 — with the drift that always follows.
 
 **What the names cannot answer, and why `role` is therefore stored.** Container
-or run. A flat root is a run where a hierarchical one is a container; a flat
-trial's `bench-<point>/` is a run where a hierarchical one is a container
-holding its attempts (§ 1.5a); a swept rung's `run-<n>/` is a container holding
-its points' runs where a rung that runs once is a run
+or run. A swept rung's `run-<n>/` is a container holding its points' runs
+where a rung that runs once is a run
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). The same name,
-opposite answers: the shape and whether a rung sweeps decide, and they are the
+opposite answers: whether a rung sweeps decides, and that is the
 description's, which the ground floor does not read — only the code that
 created the directory knew which it was making. That is the whole content of
 this record.
@@ -561,7 +427,7 @@ benchmark is this*, `materialize.bench_owner`, `bench_stage_of`):
 |---|---|
 | `root` | the calculation's folder — the one `task.json` is in, or the one the folder's record names; `None` for a folder no calculation claims |
 | `what` | what the folder is, below — `None` for a folder no calculation claims |
-| `role` | its record's: `container`, `run`, `scratch` or `shared` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — `None` at the root, whose description's `shape` says it (`runs.place_of`: flat a run, hierarchical a container) |
+| `role` | its record's: `container`, `run`, `scratch` or `shared` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) — `None` at the root, which holds no record and is a container |
 | `stage` | the stage it sits in, by its token — `01_coarse` |
 | `run` | the attempt's index — `0` of `run-0` |
 | `trial` | the benchmark trial's point — `G1N4C6` of `bench-G1N4C6` |
@@ -572,14 +438,14 @@ benchmark is this*, `materialize.bench_owner`, `bench_stage_of`):
 
 | the folder | `what` | its role, as its creator stamps it |
 |---|---|---|
-| the root — `task.json` is here | `calculation` | none: the shape says it |
+| the root — `task.json` is here | `calculation` | none: a container |
 | `<NN>_<stage>/` | `stage` | container |
 | `run-<n>/`, below a stage or a trial | `attempt` | run — a container when its stage runs per point |
 | below a run of points — `f001/`, `v0.2/`, `f001/v0.2/` | `point` | run; a frame's folder above its voltages, a container |
 | below a stage, the folder prep renders a point's deck into | `point` | container |
 | a device run's `tsgf/` | `scratch` — read alone, no run asked of it, nothing in it opens | scratch, which says it |
-| `<NN>_<stage>/bench/`, the flat `bench_<NN>_<stage>/` | `benchmark` | container |
-| `bench-<point>/`, in a benchmark | `trial` | container, holding its attempts; flat, a run |
+| `<NN>_<stage>/bench/` | `benchmark` | container |
+| `bench-<point>/`, in a benchmark | `trial` | container, holding its one run |
 | `pseudos/`, a `launch/` | `support` | container |
 
 **A folder states its place, or it has none.** It is read for a folder that
@@ -595,7 +461,7 @@ is one table, the directory door's ([`model/parse.md`](?doc=model/parse.md)
 `run-<n>/` of a rung that runs per point — is read as its run of points: its
 state, its points, and the point it is at
 ([`architecture.md`](?doc=execution/architecture.md) § 3.2); a calculation's
-root, in either shape, its ladder; the engine's scratch, nothing.
+root, its ladder; the engine's scratch, nothing.
 
 #### Absence narrows the answer; it does not refuse the directory
 
@@ -650,18 +516,16 @@ stopped in.
 
 Three things follow:
 
-- **Warm restart becomes explicit.** Today "continue" means *the files happen to
-  be in this directory*. With one directory per run it means *carry from the
-  previous run* — visible on disk rather than implied by what is lying
-  around.
+- **Warm restart is explicit.** "Continue" means *carry from the previous
+  run* — visible on disk, never implied by what is lying around.
 - **The saved history becomes append-only.** No archived file ever changes, so a
   new save point only has to store the runs that appeared since the last one
   (§ 6). The engine's scratch is the one exception, and it is no archived
   file of any state: a save removes it from an archive an older save put it
   in (`checkpointing.md` S1, I1).
 - **`--force` only answers `--cold`.** It says yes to `--cold`'s refusal
-  (`job-contracts.md § 2.6`); with a directory per run a redo is `run-2`,
-  and in flat each run carries its own number, so nothing collides.
+  (`job-contracts.md § 2.6`); with a directory per run a redo is `run-2`, so
+  nothing collides.
 
 Immutability is a contract, not a filesystem permission — but it is **checkable**,
 and § 7 makes it an invariant: a run that has been saved must never differ
@@ -669,68 +533,41 @@ afterwards. Nothing would notice today.
 
 #### 1.5a A trial is a stage, for this purpose — decided 2026-08-27
 
-**A sweep trial keeps runs exactly as a stage does, and the SHAPE decides
-how.** It was a third case until now — neither of the two below — and that is
-what made `launch` refuse a re-run outright and tell you to move the directory
-aside by hand. That is the `--force`-era answer this section retired.
+**A sweep trial keeps runs exactly as a stage does**: its **run**,
+`bench-<point>/run-0/`, opened at the benchmark's prep. It was a third case
+until then, and that is what made `launch` refuse a re-run outright and tell
+you to move the directory aside by hand — the `--force`-era answer this
+section retired.
 
-| shape | where a trial runs |
-|---|---|
-| **hierarchical** | its **run**, `bench-<point>/run-0/`, opened at the benchmark's prep |
-| **flat** | its own **folder**, `bench-<point>/` — the folder is the run (`runfiles.runs_share_folder`) |
-
-**A trial is launched once, in either shape.** `launch` passes over a trial
-launched before, and refuses one named; measuring it again is the state saved
-before the benchmark's prep, restored, and a prep anew
+**A trial is launched once.** `launch` passes over a trial launched before,
+and refuses one named; measuring it again is the state saved before the
+benchmark's prep, restored, and a prep anew
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
-**The SHAPE decides, not the kind — and every reader must ask one function.**
-`materialize.run_dir(container)` answers *where does this stage or trial
-actually run*: the newest run where the shape keeps them, the container
-where it does not. `latest_attempt` stays for the different question — *has an
-run been opened at all* — where `None` is the answer rather than a path.
+**Every reader asks one function** where a stage or trial runs:
+`materialize.latest_attempt(container)` — its newest run, `None` while none
+is opened, which a reader that needs a run says as the stage not prepared.
 
-> **Why that is a rule and not a convenience.** Five call sites each spelled the
-> fallback themselves (`latest_attempt(d) or d`, `attempt or d`, `att if att is
-> not None else container`) across four files. When this section gave trials
-> runs, the spellings were migrated and two places in `submit` that had
-> quietly composed a **container** path instead were not — so the grouped bench
-> `cd`ed one level above its wrapper (every trial `rc=127`; ASU Sol job
-> 62372574) and wrote `run.json` where nothing read it (so every re-launch
-> re-submitted work that had already measured its point). Both were silent:
-> one produced an empty benchmark, the other duplicate jobs.
+> **Why that is a rule and not a convenience.** When trials were given runs,
+> two places in `submit` that composed a **container** path themselves were
+> missed — so the grouped bench `cd`ed one level above its wrapper (every
+> trial `rc=127`; ASU Sol job 62372574) and wrote `run.json` where nothing
+> read it (so every re-launch re-submitted work that had already measured its
+> point). Both were silent: one produced an empty benchmark, the other
+> duplicate jobs.
 
 Neither is new machinery. Both already exist for stages; the sweep simply stops
 opting out. *(User, 2026-08-27: re-running a benchmark must be possible —
 "a new test with new result is trivial".)*
 
-> **Every per-run artifact carries the index — now all five, and it was two.**
-> The wrapper indexed the `.out` and the timing log — *"re-running NEVER
-> overwrites"* — while `<basename>.monitor.log` was **appended** (two runs
-> interleaved with no marker) and `<basename>.util.csv` was written with
-> `write_text`, so a re-run **truncated it**. `util.csv` is what a benchmark is
-> measured from, so a flat re-run destroyed the measurement it existed to
-> repeat, and a flat ladder stage re-run lost its `util.csv` for the same
-> reason. Found 2026-08-27 by reading the write mode.
->
-> **Fixed the same day**: the wrapper now writes `-run${_run_n}.monitor.log`
-> and `-run${_run_n}.util.csv` (`runwrap.py`), and `jobset/summarize.py` read
-> the newest `<basename>-run*.<suffix>` of each (through the run door since
-> 2026-10-04, at the run's one index). *This note stood in the present
-> tense until 2026-09-04 — it told a reader the destruction still happens.*
->
-> **And the last of them, 2026-10-06** *(plan W57, decision 2)*: in the flat
-> shape the progress log, the launch record and `.continued-from` carried no
-> index, so a re-launch truncated run 0's PySCF trajectory and replaced its
-> launch record, while § 1.6.3 named them unindexed beside this note. Each
-> carries `-run<N>` in the flat shape now — `<base>-run1.molwatch.log`,
-> `-run1.run.json`, `-run1.continued-from`, the last named for the run that
-> continues — and so do the PySCF deck's own logs: PySCF's `.log`, which
-> PySCF opens with `'w'`, so a re-run truncated it, and geomeTRIC's files
-> under the prefix the deck hands it, whose log geomeTRIC moved aside as
-> `<prefix>_1.log`, a name nothing declares. The hierarchy names them as before: its run
-> folder is launched once, and a PySCF run is never retried in place
-> (`runfiles.WRITTEN`, the rows marked `attempt="shared"`).
+> **Every file a try writes carries its index, `-run<N>`** — the output, the
+> timing log, the monitor's pair: a warm retry runs the wrapper again in the
+> same run (§ 1.6.1), and a file named without the index would be appended to
+> or truncated by it — `util.csv`, which a benchmark is measured from, was
+> truncated so until 2026-08-27. The files of a run as a whole — its progress
+> log, `run.json`, `.continued-from`, PySCF's own logs — are named without it:
+> a run folder is launched once, and a PySCF run is never retried in place
+> (`runfiles.WRITTEN`).
 
 **No conversion, and no reader for the old layout** (user: *"new dir becomes
 standard. No historical burden."*). A benchmark is a **measurement**, and
@@ -902,36 +739,21 @@ a level for each axis that varies (`transport.md` § 2a.11).*
 | | a run (`attempt` in the code) | a try |
 |---|---|---|
 | is | one launch of a stage or a trial | one start of the wrapper inside the run |
-| named | `run-<n>/` in the hierarchy; in the flat shape, the `-run<N>` index | `-run<N>`, in every file of the run |
-| numbered by | the next unused `n` (§ 4.3): `prep` opens the first, `launch` each next (§ 1.6.2) | `launch`, which hands it to the run script as `--run N` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5): a run's first try is 0; a flat stage's next is one past its newest launch record, else 0 (`runrecord.next_run`); a warm retry's is the next, which the run script hands itself (§ 3.5 there) |
+| named | `run-<n>/` | `-run<N>`, in every file of the try |
+| numbered by | the next unused `n` (§ 4.3): `prep` opens the first, `launch` each next (§ 1.6.2) | `launch`, which hands it to the run script as `--run N` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5): a run's first try is 0; a warm retry's is the next, which the run script hands itself (§ 3.5 there) |
 | a new one when | `launch` sends a stage whose newest run was launched (§ 1.6.2) | `launch` sends it, or the run script warm-retries in place |
 
-In the flat shape a launch is told apart by its index alone, and a warm retry
-is a run of its own, with its own launch record naming the run it retries
-(§ 1.6.3). In the hierarchy a run holds one try, or more when a warm retry
-re-runs it in place (`run-0/` holding `-run0` and `-run1`), and closes when its
-launch ends (§ 1.5). **The launch gate, the run record and the marker
-`run_status` counts read the newest run in their folder, by one rule**
-(`runrecord.newest_run`): in a folder of the run's own, its latest try — the
-highest index its files reached; where a stage's runs share the folder, its
-newest launched run — by its launch records, a warm retry's included. Which
-run folder is a stage's newest, on the hierarchical layout, is the layout's
+A run holds one try, or more when a warm retry re-runs it in place (`run-0/`
+holding `-run0` and `-run1`), and closes when its launch ends (§ 1.5). **The
+launch gate, the run record and the marker `run_status` counts read a run's
+latest try, by one rule** (`runrecord.newest_run`): the highest index its
+files reached. Which run folder is a stage's newest is the layout's
 (`materialize.latest_attempt`).
 
-**The number is decided once, by `launch`.** A run script counting it — the
-highest `-run<N>` beside it, plus one — would number wrongly, since one launch
-can start several runs: a warm retry re-runs the script, which would take the
-next number, so the run that ended would have no launch record of its own.
-And with each flat run's `.continued-from` written by
-`launch` with its launch record (§ 1.6.3), a script counting the files beside
-it would take the number after its own. A run script refuses to start without
-`--run`, naming the launch command. One written before takes no `--run`:
-given one, it stops on the unknown argument, its own explicit error, and
-its stage is prepared anew — its group prepared again when it was never
-launched; a launched one by its way back,
-[`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
-supports you* — `jobset migrate` says so of each stage of a flat calculation
-it numbers (§ 1.6.3).
+**A run's first try is `launch`'s to number** — `--run 0`, given to every run
+script it starts; a warm retry hands itself the next
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). A run script
+refuses to start without `--run`, naming the launch command.
 
 #### 1.6.2 Who makes the run directory
 
@@ -955,8 +777,7 @@ it before committing a week of cluster time.
 **One opener makes every run folder** —
 `jobset/materialize.py::open_run`: a stage's run (prep's `run-0`, and the
 next one a launch opens), a bias point's folder inside a swept rung's run
-(`run-<n>/v<V>/`, `open_sweep_run`), and a benchmark trial's folder in either
-shape. It creates the folder and every container above it that does not exist
+(`run-<n>/v<V>/`, `open_sweep_run`), and a benchmark trial's run. It creates the folder and every container above it that does not exist
 yet — the stage, a benchmark's `bench/`, a swept rung's `run-<n>/` — stamping
 each (§ 1.4a; invariant 6b); a submission's `launch/` is
 made and stamped a container by the prep or the send that first writes in it
@@ -969,7 +790,10 @@ takes from other runs is one hand-over, its files and its record
 § 5.4); a trial's deck is rendered into its folder. The run
 script is told the run's own label — a trial's is the trial's. `prep` seeds a
 stage's first run's progress channel, the preview a viewer finds before the
-run starts; a later run's progress is its engine's own.
+run starts, beside the deck and then moved into the run it opens; a stage it
+opens no run for — one launched, or one copied in — keeps no seed, the stub
+taken out (`prep._open_attempts`, one home for both); a later run's progress
+is its engine's own.
 
 **`prep` opens only a first run** — and, for a transport calculation that
 reuses a finished one, copies in whole the runs of each group it reuses, each
@@ -977,7 +801,7 @@ under its own name, opening none ([`engines/transport.md`](?doc=engines/transpor
 § 2a.16). A stage prepared and **never launched** is
 prepared again, its group whole: its `run-0` emptied and filled anew
 (§ 1.6.3), its files rendered anew. A launched one is prepared again only for
-its job request, on the hierarchical layout, and opens no run
+its job request, and opens no run
 ([`job-request.md`](?doc=execution/job-request.md) § 5); any other change is refused — its way back is
 [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
 supports you*.
@@ -996,14 +820,13 @@ in the queue. Nor does *launched* say *over*: it spans three states that must no
 be treated alike — still running, ran to its own end (converged *or* errored —
 both are conclusions), and force-stopped (walltime kill, node death, `kill -9`).
 Two small files answer the two questions *(the second decided by the user,
-2026-08-28)*, and two more say where a run came from and, on the flat layout, which run last wrote the folder:
+2026-08-28)*, and one more says where a run came from:
 
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
-| `run.json` (`molbuilder/run-launch@1`) — a flat stage's run's own `<basename>-run<N>.run.json` | `launch`, into the run — or, for a flat stage, beside its deck, one per run; a flat run's warm retry, by the run script through the monitor's bundle (`running-a-job.md` § 3.5) | when the launch succeeds: `sbatch` accepted it, or the direct process started; a retry's as it starts | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, **what it continued from**, for a retry **the run it retries**, and for a run a sequence of groups' job sent **the sequence** — its mode, command, job id and placement then the job's ([`job-system.md`](?doc=execution/job-system.md) § 6.0) | not launched: `launch` runs in this run |
+| `run.json` (`molbuilder/run-launch@1`) | `launch`, into the run | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, **what it continued from**, and for a run a sequence of groups' job sent **the sequence** — its mode, command, job id and placement then the job's ([`job-system.md`](?doc=execution/job-system.md) § 6.0) | not launched: `launch` runs in this run |
 | `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle> <verb>)`** (`parse/dirs/job.FINISH_FAILED`); when the job had no python of its env, `no env python (<path>)` (`NO_ENV_PYTHON`) | still running, or force-stopped: the files cannot tell which |
-| `.continued-from` — a flat stage's run's own `<basename>-run<N>.continued-from`, named for the run that continues | `launch`, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) | with the files it takes — a stage's run continuing from another, a run of points continuing, a point's start, a point taken over (the run that computed it, one hop); on the flat layout, whose restart files are the folder's, with the run's launch record | which run, as every record names one (`runrecord.RunRef`): its folder from the calculation's — on the flat layout the run whose restart files lie in the folder, the last run there of any stage (`runrecord.last_run`), by its own name, `<label>_<NN>_<stage>-run<N>`, which every file of it carries (ruled 2026-10-01; the last run's, 2026-10-12) | the run starts from the structure, or from what it gathered; a flat warm retry records the run it retries in its `run.json` alone (`continued_from`, `retry_of`) |
-| `<label>.last-run` — the flat layout only, one for the calculation's folder | the run script | the moment its engine starts — the dry run writes none | *this run is the last one here*: from then on the restart files and the results lying in the folder are its own; read by `runrecord.last_run` — what a launch says it reads, the record a relaunch writes, the run the folder speaks for on the Results page (`runs.speaking`) *(user, 2026-10-12)* | no run has started in the folder |
+| `.continued-from` | `launch`, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) | with the files it takes — a stage's run continuing from another, a run of points continuing, a point's start, a point taken over (the run that computed it, one hop) | which run, as every record names one (`runrecord.RunRef`): its folder from the calculation's | the run starts from the structure, or from what it gathered |
 
 - **`run.json` is written at launch, never at completion** — written when the
   job finished, it would leave a running direct run reading as never
@@ -1014,21 +837,8 @@ Two small files answer the two questions *(the second decided by the user,
   `continued_from` is the run's provenance (`checkpointing.md` **S3**). A
   benchmark trial keeps runs as a stage does (§ 1.5a), and each run
   gets the same file — which is how `launch bench <stage>` passes over the
-  trials already launched (`job-contracts.md` § 6.1).
-  **A flat stage writes one per run**, `<basename>-run<N>.run.json` beside
-  its deck (`runrecord.launch_record_path`): there is no run directory,
-  and every stage and every run shares the calculation's one, so the record
-  is named by its stage and its run like every other file of it *(user,
-  2026-09-26: "unify this behavior")*. Asked about a stage, the door answers with its
-  newest run's record; asked about a flat calculation's directory as a
-  whole, with the newest stage's — by the stage's number, then the run's,
-  never a file's time (`runs.speaking`'s rule). **A warm retry is a run of its own** and, on the flat
-  layout, gets its own record as it starts: the same job — its launch's
-  mode, command, job id and queue — its own start, `continued_from` the
-  run it retries and `retry_of` that run's number, written by the run
-  script through the monitor's bundle (`runrecord.record_retry`,
-  [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). The
-  hierarchy's `run.json` is its run's and answers for every run in it.
+  trials already launched (`job-contracts.md` § 6.1). `run.json` is its
+  run's and answers for every try in it, a warm retry's among them.
   **`ended`** is the scheduler's answer about a sent job, written once by
   the first reader where this machine sent the job (its address on the
   jobs list, [`job-system.md`](?doc=execution/job-system.md) § 6.0a) that
@@ -1039,20 +849,14 @@ Two small files answer the two questions *(the second decided by the user,
   (`runrecord.record_ended`, [`running-a-job.md`](?doc=execution/running-a-job.md)
   § 4.2, *Asked once, written once*); a record written before 2.20.0 holds
   no such key and is read as null.
-  **A flat calculation written before** — any file the catalogue numbers
-  where a stage's runs share a folder (every `attempt="shared"` row,
-  `runfiles.shared_numbered_roles()`) found with no run number — is refused
-  by the door, naming `molbuilder jobset migrate --bundle
-  <calc>`, which gives each the number of its stage's newest run, 0 for a
-  stage never launched. **One that does not
-  read** — not JSON, or not a
+  **One that does not read** — not JSON, or not a
   `molbuilder/run-launch` record — is an error naming the file, never
   *launched* or *not launched*: status says so on its row, and prep and
   launch refuse (`runrecord.launch_record`, the one door,
   [`architecture.md`](?doc=execution/architecture.md) § 3.2). It is written
   through `persist`, whole or absent.
 - **A run opened and never launched is emptied whole, and filled again** — a
-  hierarchical stage's `run-0` that prep opened, or a run a launch opened whose
+  stage's `run-0` that prep opened, or a run a launch opened whose
   send was refused. Whatever fills it next takes out every file and folder put
   there before (`materialize.empty_run`), then fills it as that act says: prep
   again, with the stage's own files; a stage's first launch, with prep's files
@@ -1065,8 +869,7 @@ Two small files answer the two questions *(the second decided by the user,
   construction**: it is never written from the cleanup trap, which does run on
   a walltime SIGTERM. Both engines' wrappers write it, since each runs its
   engine as a child (`running-a-job.md` § 2.2a); it is indexed like the stdout,
-  so a warm-retry chain concludes once, at its last run, and each flat stage
-  keeps its own.
+  so a warm-retry chain concludes once, at its last try.
 - **`.continued-from` carries the provenance because `run.json` cannot exist
   before launch** — its presence marks the run launched — and a point of a
   run of points has none of its own. `run.json`'s field is the launch's own
@@ -1160,9 +963,6 @@ runs; every record they leave names a run of this calculation ([`engines/transpo
 
 #### 1.6.6 What is not touched
 
-**The flat case.** A plain run directory *is* a run (§ 1.4), so `bash job.run.sh`
-runs in it, in place.
-
 **A stage starts because a person prepared it and launched it.** A `JobSet`
 carries no scheduler dependency and no instruction to take a file from another
 job; `jobset` threads none between two jobs.
@@ -1218,13 +1018,9 @@ in. It is said at **launch**, where the run is opened —
 `jobset launch task --stage <stage> --cold`, every launch warm by default or
 cold when you say so ([`job-system.md`](?doc=execution/job-system.md),
 *What molbuilder does for you*, 3; for a bias sweep, cold means every point
-runs) — a first launch too,
-for an ordinary hierarchical rung, when the copy from the stage before is
-skipped ([`job-system.md`](?doc=execution/job-system.md) § 5.3 owns what you
-type). The flat shape reuses one directory and opens no run, so there a stage
-starts clean by its override `restart: clean`, and a first launch's
-`--cold` is refused, saying so ([`job-system.md`](?doc=execution/job-system.md)
-§ 5.4). The run script's
+runs) — a first launch too, when the copy from the stage before is skipped
+([`job-system.md`](?doc=execution/job-system.md) § 5.3 owns what you type). The
+run script's
 own `--cold` names the warm files a clean start would overwrite and refuses
 until `--force` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.4,
 `job-contracts.md` § 4).
@@ -1856,16 +1652,11 @@ new attempt, for real, right then:
 
 **SIESTA's history is not carried: each run's is its own** *(F-MDNC,
 2026-10-13)*. SIESTA appends every step to `.MD.nc`, `.MD`, `.MDE` and `.ANI`
-and reads none of them back, so none warms anything. Each is named for the run
-that wrote it, `<label>_<NN>_<stage>-run<N>.MD.nc`, in either shape — the run
-script points SIESTA's name for it at that file while the engine runs
-([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2) — so **the
-layout cannot change the data**: a run's history holds that run's steps, flat
-or hierarchical, and a stage's steps are read with its own output. *(Until
-2026-10-13 the four carried, so that a hierarchical stage's history held every
-step before it as the one shared file in a flat folder did; read beside a
-run's output, those were another run's rows, and the reader matched the second
-run of a flat stage to the first run's.)*
+and reads none of them back, so none warms anything. Each is named for the try
+that wrote it, `<label>_<NN>_<stage>-run<N>.MD.nc` — the run script points
+SIESTA's name for it at that file while the engine runs
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2) — so a try's
+history holds that try's steps, read with its own output.
 
 ```mermaid
 flowchart LR
@@ -1910,7 +1701,7 @@ right name.
 > that and continuing to the next stage are *"copy this run's warm files into
 > a new attempt"*. Launched again cold, or a stage that takes nothing from its
 > own runs, its next attempt holds no warm file. A launched stage is
-> prepared again only for a change of its job request, on this layout, each
+> prepared again only for a change of its job request, each
 > deck the same calculation as its runs ran
 > ([`job-request.md`](?doc=execution/job-request.md) § 5); to change what it
 > computes, its way back is
@@ -1921,7 +1712,7 @@ right name.
 
 | Input | Where it comes from | What it decides |
 |---|---|---|
-| the description (`task.json`) | the browser, or a terminal | which stages exist, their overrides, the shape |
+| the description (`task.json`) | the browser, or a terminal | which stages exist, their overrides, the layout it states |
 | the job request (`job-request.json`) | the browser, or a terminal | each stage's group, the run cards, the queue, wall and memory asked, a benchmark's plan, the reports ([`job-request.md`](?doc=execution/job-request.md)) |
 | the template | the browser | everything about the system that does not depend on the machine |
 | **which groups** | you, on the command line — `--group N`, repeated for several | which stages are prepared, and so which overrides apply |
@@ -2331,18 +2122,9 @@ assigned by the produce that creates it so a listing sorts in the order the work
 happens. It is read off the directory name and stored nowhere else — the
 description does not carry it, and nothing needs it to identify a stage.
 
-> **`seq` exists in both shapes** — *corrected 2026-08-10 with decision 27.*
-> This read *"a flat calculation has no stage directories, so there is nothing
-> to number and no `seq` at all; the order of the work is the order of the list
-> in the description."* That is exactly backwards about which shape needs it:
-> the hierarchical shape has a directory to carry the order, and **the flat
-> shape is the one with nowhere else to put it**. A `seq` a reader has to
-> reconstruct by opening `task.json` is not carried by the layout at all.
->
-> What stays true is where it is *kept*: nowhere but the artifacts. The produce
-> assigns it by reading what is already there — a directory name in the
-> hierarchy, a deck's filename in the flat shape — so `Stage` keeps the three
-> fields § 2 allows and `seq` is still not a fourth.
+The produce assigns it by reading what is already there — the stage
+directories' names — so `Stage` keeps the fields § 2 allows and `seq` is
+still not a fourth.
 
 That division is why nothing else needs the number, and § 4.1's table below is
 short as a result.
@@ -2351,59 +2133,29 @@ short as a result.
 carries the stage** (`job-contracts.md § 6.3`). molbuilder's own files say which
 stage they belong to; the engine's cannot, because SIESTA gives no choice.
 
-| Where | Flat | Hierarchical |
-|---|---|---|
-| stage directory | — *(there are none)* | `<seq>_<name>` — `01_coarse`, `02_tight` |
-| deck | `<label>_<NN>_<name>.fdf` | `<label>_<NN>_<name>.fdf` **inside `<NN>_<name>/`** — the same name, and the repetition is a self-check |
-| trajectory log | `<label>_<NN>_<name>.molwatch.log` | `<label>_<NN>_<name>.molwatch.log`, in the attempt — seeded beside the deck and moved in (§ 1.0) |
-| warm files | `<label>.XV` `.DM` `.CG` — bare, shared | `<label>.XV` `.DM` `.CG` — bare, inside the attempt |
+| Where | name |
+|---|---|
+| stage directory | `<seq>_<name>` — `01_coarse`, `02_tight` |
+| deck | `<label>_<NN>_<name>.fdf` **inside `<NN>_<name>/`** — the same token, and the repetition is a self-check |
+| trajectory log | `<label>_<NN>_<name>.molwatch.log`, in the attempt — seeded beside the deck and moved in (§ 1.0) |
+| warm files | `<label>.XV` `.DM` `.CG` — bare, inside the attempt |
 
-**The log is named for the deck that produced it, in either shape** — so it
-needs no convention of its own, and it lands wherever the deck's name is already
-correct. That is one rule, not two.
+**The log is named for the deck that produced it** — so it needs no convention
+of its own, and it lands wherever the deck's name is already correct.
 
 *The checkpoint-tag row was removed 2026-08-09.* It gave a derived form,
 `<id>/<name>/<UTC>`, which `checkpointing.md` **L4** retired — *nothing tags a
 state on your behalf*. A tag is typed by a person, so there is no shape for this
 table to specify.
 
-> **Superseded 2026-08-09 — the correction below went the wrong way, and the
-> token was wrong too.**
->
-> **The deck repeats its stage in both shapes** (decision 21, 2026-08-08, user):
-> *"That's precisely a self-checking to make sure no mixing."* Without the
-> repetition every stage directory holds an identically-named deck and a swap
-> disagrees with nothing. `job-contracts.md § 6.3`'s *a name says what its
-> location does not* is a rule about **noise**, and a mix-up check is not noise.
->
-> **And the stem is `<label>`, not `<id>`** (decision 26, 2026-08-09, user): the
-> id carries the formula and lives in `task.json`; the label is the `SystemLabel`
-> and is what `input.py:550` has always written (`run-identity.md § 2.0a`).
->
-> *The original note, 2026-08-07, kept because its second half still stands:*
->
-> > This table used to give the deck as `<id>_<name>.fdf` in both shapes, which
-> > contradicted `stages.md § 7.1`'s tree — where a hierarchical deck is plainly
-> > `01_coarse/<id>.fdf`. The tree was right. *(It was not — see above.)*
-> >
-> > It also shrank a complaint I had built on the wrong row. I had written that
-> > the shipped log name `<id>-stage<N>` "cannot be read back to its stage without
-> > opening the description". In the hierarchy that is simply false — the path
-> > says it. And in the flat shape the **default stage names are `stage1` /
-> > `stage2` / `stage3`** (`job-contracts.md § 2.3`), so the deck is
-> > `<id>_stage1.fdf` and the shipped log is `<id>-stage1.molwatch.log`: **the
-> > same information, differing by one character.** What remains is worth fixing
-> > and is small — a user who names stages `coarse` and `tight` gets a deck saying
-> > `coarse` and a log saying `stage1` — but it is a separator and a default, not
-> > the three-way problem I described.
->
-> > ⚠ *And the premise of that second paragraph was false as well, found
-> > 2026-08-16.* The default stage names are the words `coarse` / `medium` /
-> > `tight` (`config/stages.py::STAGE_NAMES`), not `stage1` / `stage2` /
-> > `stage3` — so the *"same information, differing by one character"* case never
-> > existed, and the mismatch it was minimising was the ordinary one. The
-> > conclusion the note reached is unaffected; the reason it gave for calling it
-> > small was not. `engines/stages.md` § 7 carries the same correction.
+**The deck repeats its stage** (decision 21, 2026-08-08, user): *"That's
+precisely a self-checking to make sure no mixing."* Without the repetition
+every stage directory holds an identically-named deck and a swap disagrees
+with nothing. `job-contracts.md § 6.3`'s *a name says what its location does
+not* is a rule about **noise**, and a mix-up check is not noise. **And the
+stem is `<label>`, not `<id>`** (decision 26, 2026-08-09, user): the id
+carries the formula and lives in `task.json`; the label is the `SystemLabel`
+(`run-identity.md § 2.0a`).
 
 **The deck carries the number too** — *decided 2026-08-10 (user)*: *"we may
 have many stages connected so I'd rather use names with index number."*
@@ -2412,8 +2164,8 @@ This section read *"the deck does not carry the number: names are unique, so it
 would add nothing"* until then, and the flaw is in that "nothing". **Unique is
 not ordered.** With three stages the list order is memorable; with eight,
 `bdt_au_coarse` · `bdt_au_final` · `bdt_au_hires` · `bdt_au_refine` sorts
-alphabetically into an order nothing ran in, and the **flat** shape has no
-directory to say otherwise. The ordinal is safe in a name because § 4.2 assigns
+alphabetically into an order nothing ran in, wherever a file is read away from
+its directory. The ordinal is safe in a name because § 4.2 assigns
 it once and never reassigns it — see `engines/stages.md` R5's table, which draws
 the line between an assigned ordinal and a list position.
 
@@ -2450,8 +2202,8 @@ directories are produced, not when the rows are typed.
 
 **One door reads them, and its rule is this** *(W38 F4, built 2026-10-03 —
 `naming.stage_home`, `execution/architecture.md` § 3.2)*: a stage that
-has files keeps the number they carry — its directory in the hierarchy, the
-token on its files in the flat shape (`paths.stages_in`); a stage that has
+has files keeps the number its directory carries (`paths.stages_in`); a
+stage that has
 none takes its place in the description when no folder holds that number,
 else the next number after every one in use. So with nothing produced the
 numbers are the description's order; a stage removed after its prep leaves
@@ -2485,9 +2237,9 @@ for numbering, which is that the new stage takes the next `seq` like any other.
 seeing:
 
 - a **stage** number orders a sequence somebody designed, so it pads and sorts;
-- an **attempt** number counts invocations that happened, and it inherits the
-  shipped `-run0` / `-run1` output naming (`job-contracts.md § 2.6`) so the
-  connection between a directory and the outputs inside it stays visible.
+- an **attempt** number counts launches that happened; inside it a second
+  counter, the try's `-run<N>` on its outputs, counts the starts of its run
+  script (§ 1.6.1) — each attempt's first try is `-run0`.
 
 Attempts are assigned **in Python, by the one opener** (§ 1.6.2): `prep`
 opens a stage's first, and `launch` the next each time a launched stage is sent
@@ -2617,10 +2369,10 @@ that a running job cannot import is a path module the job works around.
 | what is this file called? | `runfiles.compose` / `parse` / `stem` / `tail` — § 2.2a still owns the grammar |
 | which files here match? | `runfiles.find`, `find_by_role` |
 | which run is this file of, and where are its files? | the run door, `run_of` → `Run` (`architecture.md` § 3.2) |
-| where does this stage live? | `Shape.stage_dir` |
-| which stage directories exist? | `stages_in`; a run's files, by its stem in either shape (`runfiles.stem`) |
-| where does a sweep live? | `bench_container`, `bench_containers_in`; a flat container's stage, `flat_bench_token` |
-| where does a trial run? | `trial_name`, `trial_point`; `naming.trial_dir`, `materialize.trial_work_dir` |
+| where does this stage live? | its token's folder, `<NN>_<stage>/` — `naming.stage_home` |
+| which stage directories exist? | `stages_in`; a run's files, by its stem (`runfiles.stem`) |
+| where does a sweep live? | `bench_container`, `bench_containers_in` |
+| where does a trial run? | `trial_name`, `trial_point`; `naming.trial_dir` — its run, `run-0` in it (§ 1.5a), read by `materialize.latest_attempt` |
 | what is a trial's label? | `trial_label` (§ 2.3.2) |
 | which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt`; the run a path a record names lies in, `run_folder_of` — a folder on disk asks `calcdirs.where` (§ 1.4a) |
 
@@ -2634,16 +2386,8 @@ imported by `paths`, L1 to L1. The JobSet-level names are `jobset/naming.py`'s
 (floor 3), which `materialize` asks as it lays the tree out.
 `identity.stage_token` stays the one speller of `<NN>_<name>`.
 
-#### The shapes' names are `paths`'
-
-`SHAPES = ("flat", "hierarchical")` lives in `paths`, and `task` imports it
-from there: the whole naming-and-layout surface is stdlib-only.
-
 #### What it must never do
 
-- **Never infer the shape from the disk.** `flat` and `hierarchical` are
-  DECLARED (§ 1); a finder that guessed from what it saw would reintroduce
-  the drift the shapes exist to prevent. The shape arrives as a value.
 - **Never read `task.json`.** A door that reads the description is not
   stdlib-only and cannot travel with a job. Callers that have a description
   pass what they read from it.
@@ -2729,7 +2473,7 @@ the grammar.
 ## 5. The manifest — every file in a calculation, who writes it, and the one door that reads it
 
 **The rule.** Every file molbuilder writes into a calculation folder has one
-row here — its name, where it sits in each shape, what it is for, who writes it
+row here — its name, where it sits, what it is for, who writes it
 and when, and **its door: the one function every reader asks for it.** A reader
 that needs one of these files asks its door. Spelling its name again, globbing
 for it or reading it raw is a second reader of one fact (`architecture.md`
@@ -2758,10 +2502,9 @@ again while the stage is never launched, and for a launched one's change of
 its job request, as the same calculation (`job-request.md` § 5); **record**, what a verb
 or a run said about itself; **result**, what a run produced.
 
-### 5.1 The calculation root — both shapes
+### 5.1 The calculation root
 
-In the flat shape the root is also the run folder, so the files of § 5.2 and
-§ 5.3 sit here too. An order record lives in its deck's ATOM-METADATA block
+An order record lives in its deck's ATOM-METADATA block
 and in a remapped pair's sidecar, never a file of its own
 (`model/overview.md` § 2.2a, I5 and I7).
 
@@ -2774,12 +2517,11 @@ and in a remapped pair's sidecar, never a file of its own
 | `<label>.transport.json` *(transport)* | the transport results, summarised by `summarize task` from the transmission points that ran | `jobset summarize task` (`transport.record.write_record`) | `parse.sidecars.transport.TransportRecordFileParser` | result |
 | `<label>.transport.nc` *(transport)* | the transport results as data on their grid -- every point's raw outputs beside what is derived from them, a frame set's definition beside every frame's values (NetCDF-4) | `jobset summarize task` (`transport.datafile.write_data_file`) | `transport.datafile.read_data_file` | result |
 | `<label>.fc-sweep.json` *(SIESTA, vibration)* — only: two or more force-constant stages | the force-constant stages compared, when the ladder has two or more (a displacement sweep), by `summarize task`: each stage and what it varied, every mode's frequency per stage, the force-constant changes, and where each stage's files are | `jobset summarize task` (`spectra.displacement_sweep.write_sweep`) | `parse.sidecars.fc_sweep.FcSweepRecordFileParser` | result |
-| `<label>.last-run` — only: the flat layout, where a calculation's stages share its folder | the last run in this folder -- the run whose restart files and results lie here | the run script, the moment its engine starts (`runwrap`); `jobset migrate`, for runs launched before 2.7.0 | `runrecord.last_run` | record |
-| `<base>.<engine>.<shape>.pipeline.log` | what each step of a prep received, decided and produced | every prep, from either door, beside its `STAGE-PLAN.md` (`pipeline_log.PipelineLog`) | none | record |
-| `task.json` | the description: what varies, the stages, the shape, the structure | `molbuilder describe` and the Transport tab's describe door (`describe.write_description`); Task setup's Save; `jobset migrate` | `task.of` | source |
+| `<base>.<engine>.hierarchical.pipeline.log` | what each step of a prep received, decided and produced | every prep, from either door, beside its `STAGE-PLAN.md` (`pipeline_log.PipelineLog`) | none | record |
+| `task.json` | the description: what varies, the stages, the layout, the structure | `molbuilder describe` and the Transport tab's describe door (`describe.write_description`); Task setup's Save; `jobset migrate` | `task.of` | source |
 | `job-request.json` | the job request: the queue, wall and memory asked, the run cards, each stage's group, a benchmark's plan, the reports | `molbuilder describe` and the Transport tab's describe door (`describe.write_description`); Task setup's Save; `jobset migrate` | `job_request.of` | source |
 | `<kept>.pre-<rule>` — only: a calculation migrated | a record as it was before `jobset migrate` rewrote it | `jobset migrate`, beside the record it rewrote | none | record |
-| `task.1st.json` | a hand-over waiting for its shape and stages; Save removes it | the hand-over route, which the browser writes | `web.blueprints.build.api_task_setup_folder` | record |
+| `task.1st.json` | a hand-over waiting for its stages; Save removes it | the hand-over route, which the browser writes | `web.blueprints.build.api_task_setup_folder` | record |
 | `warm-files.toml` — only: a person writes one | this calculation's own restart-file list | a person, from molbuilder's list for the engine | `warmfiles.warm_list` | source |
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
 | `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.of` | derived |
@@ -2798,30 +2540,28 @@ and in a remapped pair's sidecar, never a file of its own
 
 ### 5.2 A stage
 
-**Hierarchical:** `<NN>_<stage>/`, a container. **Flat:** the same files at the
-root, told apart by `<base>`.
+`<NN>_<stage>/`, a container.
 
 <!-- manifest:stage -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<base>.fdf` *(SIESTA)* | the SIESTA deck — every keyword this rung runs with | prep (`script_emit.prepare_deck`), in the stage's folder; a copy in each attempt | `runfiles.find_by_role` | derived |
-| `<base>.py` *(PySCF)* | the PySCF script this rung runs | prep (`script_emit.prepare_deck`), in the stage's folder; a copy in each attempt | `runfiles.find_by_role` | derived |
+| `<base>.fdf` *(SIESTA)* | the SIESTA deck — every keyword this rung runs with | prep (`script_emit.prepare_deck`), in the stage's folder; a copy in each run | `runfiles.find_by_role` | derived |
+| `<base>.py` *(PySCF)* | the PySCF script this rung runs | prep (`script_emit.prepare_deck`), in the stage's folder; a copy in each run | `runfiles.find_by_role` | derived |
 | `<base>.validation.txt` | what the generator checked before it wrote the deck | prep (`script_emit.write_validation_report`), beside the deck | `runs.Run.report` | record |
-| `<base>.run.sh` | the wrapper — activates the environment, tees the output, catches a kill | prep (`runwrap.write_run_wrapper`), beside its deck; a copy in each attempt | none | derived |
-| `<base>.sbatch` — only: a machine with a queue | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each attempt | none | derived |
+| `<base>.run.sh` | the wrapper — activates the environment, tees the output, catches a kill | prep (`runwrap.write_run_wrapper`), beside its deck; a copy in each run | none | derived |
+| `<base>.sbatch` — only: a machine with a queue | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each run | none | derived |
 | `coordinates.fdf` *(SIESTA, vibration)* | the coordinate rows of one SIESTA call, which the deck beside it reads as its AtomicCoordinatesAndAtomicSpecies block -- the structure's beside each phase's deck, a call's own in its folder | prep, beside each phase's deck (`siesta.deck_lines.coordinates_text`); the run's own python for each call (`spectra.siesta_vibration`, the plan verb) | `parse.fdf.read_deck` | derived |
-| `calcdir.json` | what this folder is in its calculation — a container, a run, or a run's scratch folder — and where the calculation is | the code that makes the folder: prep and launch (`materialize.open_run` -- a stage's attempt, a bias point's, a benchmark trial's, and the containers above each -- `naming.open_container`, a submission's `launch/`, `pseudos/` and a point's folder below its stage, and `materialize.open_scratch`, a device run's `tsgf/`) | `calcdirs.where` | record |
-| `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
+| `calcdir.json` | what this folder is in its calculation — a container, a run, or a run's scratch folder — and where the calculation is | the code that makes the folder: prep and launch (`materialize.open_run` -- a stage's run, a bias point's, a benchmark trial's, and the containers above each -- `naming.open_container`, a submission's `launch/`, `pseudos/` and a point's folder below its stage, and `materialize.open_scratch`, a device run's `tsgf/`) | `calcdirs.where` | record |
+| `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each run | none | derived |
 | `mb_vibration.pyz` *(SIESTA, vibration)* | the run in phases' Python -- each call's `plan` and `record` steps and the finish: the coordinates, the index, the modes from `.FC`, the result and the optical calls' data file (`engines/vibration.md` § 5.11 § 3) | prep, in each phase's folder beside its run script (`runwrap.write_run_wrapper`); a copy in each call | none | derived |
-| `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script runs, which it imports from here -- the core count, the progress-log writer, the structure codec, the relaxation, a vibration's rules | prep, beside the PySCF script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
-| `makov_payne_correction.py` *(SIESTA)* — only: a charged, isolated deck | the energy correction a charged, isolated deck asks a person to run afterwards | prep (`siesta.makov_payne.emit_correction_script`); a copy in each attempt | none | derived |
+| `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script runs, which it imports from here -- the core count, the progress-log writer, the structure codec, the relaxation, a vibration's rules | prep, beside the PySCF script (`runwrap.write_run_wrapper`); a copy in each run | none | derived |
+| `makov_payne_correction.py` *(SIESTA)* — only: a charged, isolated deck | the energy correction a charged, isolated deck asks a person to run afterwards | prep (`siesta.makov_payne.emit_correction_script`); a copy in each run | none | derived |
 <!-- /manifest -->
 
 ### 5.3 A run
 
-**Hierarchical:** `<NN>_<stage>/run-<n>/` — prep opens the first, launch each
-one after it — with a copy of each stage file it reads. **Flat:** the root,
-every stage's files side by side, told apart by `<base>` and `-run<N>`.
+`<NN>_<stage>/run-<n>/` — prep opens the first, launch each one after it —
+with a copy of each stage file it reads.
 
 <!-- manifest:run -->
 | file | what it is for | written by | the door | kind |
@@ -2831,31 +2571,31 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `<label>_optimized.molstruct.json` *(PySCF)* | the relaxed geometry's cell and labels -- the sidecar of the restart file `_optimized.xyz` | the PySCF deck | none | result |
 | `<label>.constraints.txt` *(PySCF)* — only: atoms are held | which atoms are held still, in geomeTRIC's own format | the PySCF deck | none | derived |
 | `<base>-run<N>.phases.json` *(SIESTA, vibration)* | the index of a run in phases: every SIESTA call of the run -- its phase and folder, what it is (the relaxation; the force constants; a mode's side at its displacement), what it was written from and seeded with, how it ended, whether it was taken over -- and the finish's entry | launch, for the calls it opens (`submit`); the run's own python for the rest (`spectra.siesta_vibration`: the plan, record and finish verbs) | `siesta.vibration_phases.read_index` | record |
-| `<base>-run<N>.points.json` *(transport, a sweep)* | the index of a transport run of points: every point of the run in the walk's order -- its folder, frame and voltage, the point it needs, whether it was taken over and from where, the products that make it done -- the cited set's weights, and each point's start, end, exit and verdict as its report steps saw them; what the job saw, never a second record of a point's state (`engines/transport.md` § 2a.11) | launch, for the points it opens (`submit`); each point's report steps (`mb_monitor.pyz point`) for the rest | `transport.points_index.read_index` | record |
+| `<base>-run<N>.points.json` *(SIESTA, transport)* | the index of a transport run of points: every point of the run in the walk's order -- its folder, frame and voltage, the point it needs, whether it was taken over and from where, what it must hold to be done -- the cited set's weights, and each point's start, end, exit and verdict as its report steps saw them | launch, for the points it opens (`submit`); each point's report steps (`mb_monitor.pyz point`) for the rest | `transport.points_index.read_index` | record |
 | `<label>.spectra.json` *(vibration)* | the spectrum this run computed: frequencies, the strengths the engine computes, thermochemistry -- written by the run itself | the run itself: the PySCF deck, or a SIESTA vibration's `fc` record step and its finish (`mb_vibration.pyz`) | `parse.sidecars.spectra.SpectraSidecarFileParser` | result |
 | `<label>.spectra.nc` *(vibration)* | the spectrum as data on its grids -- the structure, the modes, the thermochemistry, every variable stating itself (NetCDF-4); the JSON's sha256 beside | the run itself, with the JSON (`sidecars.spectra.write_spectra_payload`) | `spectra.datafile.read_spectra_data` | result |
 | `<label>.optical.nc` *(SIESTA, vibration)* | the optical calls as data on their grids -- each frame's eps2 over the photon energies, its mode, side and geometry, its SCF facts, and the settings the calls read (NetCDF-4) | the run's own record steps -- the force constants', every frame pending, then each optical call's -- and its finish (`spectra.siesta_vibration`, `spectra.optical_data.write_optical_data`) | `spectra.optical_data.read_optical_data` | result |
-| `<base>.molwatch.log` *(hierarchical)* · `<base>-run<N>.molwatch.log` *(flat)* | the run as it happens — coordinates, energy and forces, one block per step | prep seeds the first run's, in the attempt -- in the flat shape numbered for run 0; PySCF's deck writes each step into its run's own, SIESTA never does | `parse.engines.molwatch.MolwatchLogFileParser` | record |
+| `<base>.molwatch.log` | the run as it happens — coordinates, energy and forces, one block per step | prep seeds the first run's, in its folder; PySCF's deck writes each step into its run's own, SIESTA never does | `parse.engines.molwatch.MolwatchLogFileParser` | record |
 | `<base>-run<N>.out` *(SIESTA)* | the run's output as the engine printed it | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
 | `<base>-run<N>.MD.nc` *(SIESTA)* — only: the deck turns on `WriteMDhistory` -- a relaxation's does, unless set off | every step of the run as SIESTA computed it -- coordinates, cell and energies in full precision (netCDF) | SIESTA, through its own name, which the run script points at this file while the engine runs | `parse.engines.siesta_mdnc.SiestaMdNcFileParser` | result |
 | `<base>-run<N>.MD` *(SIESTA)* — only: the deck turns on `WriteMDhistory` -- a relaxation's does, unless set off | the same steps, unformatted, for SIESTA's own tools | SIESTA, through its own name, which the run script points at this file while the engine runs | none | result |
 | `<base>-run<N>.MDE` *(SIESTA)* — only: the deck turns on `WriteMDhistory` -- a relaxation's does, unless set off | a line per step: its energies, temperature, volume and pressure | SIESTA, through its own name, which the run script points at this file while the engine runs | none | result |
 | `<base>-run<N>.ANI` *(SIESTA)* — only: the deck turns on `WriteMDXmol` -- a relaxation's does, unless set off | every step's coordinates, an animation VMD, xcrysden and OVITO open | SIESTA, through its own name, which the run script points at this file while the engine runs | none | result |
 | `<base>-run<N>.pyscf.log` *(PySCF)* | the same, for PySCF — it writes here and not to .out | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
-| `<base>.log` *(hierarchical)* · `<base>-run<N>.log` *(flat)* *(PySCF)* | PySCF's own log | the PySCF deck | `parse.dirs.record.run_record` | result |
-| `<base>_geom_optim.xyz` *(hierarchical)* · `<base>-run<N>_geom_optim.xyz` *(flat)* *(PySCF)* | geomeTRIC's trajectory: each accepted step's geometry, multi-frame XYZ — the name the deck's prefix for geomeTRIC is derived from; geomeTRIC writes no log file of its own here, PySCF handing it a logging setup that prints to the screen | geomeTRIC, under the prefix the deck hands it | none | result |
-| `<base>.runwrap-<stamp>.log` | the wrapper's own session log — one per launch, stamped with the clock | the run script, at each start | `wrapper_log.log_of_run` | record |
+| `<base>.log` *(PySCF)* | PySCF's own log | the PySCF deck | `parse.dirs.record.run_record` | result |
+| `<base>_geom_optim.xyz` *(PySCF)* | geomeTRIC's trajectory: each accepted step's geometry, multi-frame XYZ — the name the deck's prefix for geomeTRIC is derived from; geomeTRIC writes no log file of its own here, PySCF handing it a logging setup that prints to the screen | geomeTRIC, under the prefix the deck hands it | none | result |
+| `<base>.runwrap-<stamp>.log` | the wrapper's own session log — one per start, stamped with the clock | the run script, at each start | `wrapper_log.log_of_run` | record |
 | `<base>-run<N>.monitor.log` | the monitor's rolling status | the monitor | `parse.instruments.monitor.MonitorLogFileParser` | record |
 | `<base>-run<N>.util.csv` | processor and memory samples taken while it ran | the monitor | `parse.instruments.util_csv.UtilCsvFileParser` | record |
 | `<base>-run<N>.scf-timing.log` *(SIESTA)* — only: the engine printed an SCF iteration | wall time per SCF iteration — on a TranSIESTA device, both its phases | the run script's tee of the output's SCF lines | `parse.instruments.scf_timing_rows.timing_of` | record |
 | `<base>-run<N>.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | molbuilder's log of reading the run's output | molbuilder's parser, reading the output (`parse._log.ParseLogger`) | none | record |
-| `<base>.molwatch.parse.log` *(hierarchical)* · `<base>-run<N>.molwatch.parse.log` *(flat)* — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
+| `<base>.molwatch.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
 | `<label>.<tbt>.digest.nc` *(transport)* — only: its data file read | a transmission point's data file, read once: its device DOS per orbital averaged over the k-points, what the file states of its geometry and electrodes, and TBtrans's own k-averaged quantities -- every variable with its units (NetCDF-4) | the SIESTA family's parser (`parse.engines.tbtrans_nc`), on the person's word: the Results tab's DOS tab, `jobset summarize task` | `parse.engines.tbtrans_nc.kept` | derived |
 | `<base>-run<N>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act | `runrecord.ending` | record |
-| `run.json` *(hierarchical)* · `<base>-run<N>.run.json` *(flat)* | the launch record: how, where and when the run was sent, what it continued from, and the run a warm retry retries | launch (`runrecord.write_launch`); a flat run's warm retry, the run script through the monitor's bundle (`runrecord.record_retry`) | `runrecord.launch_record` | record |
-| `notified.json` *(hierarchical)* · `<base>-run<N>.notified.json` *(flat)* | the run's notification record: every event sent for the run -- start, a step, the periodic report, its wall near, a milestone, a failed part and its reason, finish -- and when | `mb_monitor.pyz notify` (the run's start, milestones, failed parts and finish, sent by its plan and record steps, `runrecord.note_notified`); a member monitor, for every event it sends (`monitor`) | `runrecord.read_notified` | record |
-| `.continued-from` *(hierarchical)* · `<base>-run<N>.continued-from` *(flat)* — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a walked point's start, a taken-over point's computing run (one hop) | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) -- with the files it takes; on the flat layout with the run's launch record | `runrecord.read_continued_from` | record |
 | `<base>-run<N>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
+| `run.json` | the launch record: how, where and when the run was sent, and what it continued from | launch (`runrecord.write_launch`) | `runrecord.launch_record` | record |
+| `notified.json` | the run's notification record: every event sent for the run -- start, a step, the periodic report, its wall near, a milestone, a failed part and its reason, finish -- and when | `mb_monitor.pyz notify` (the run's start, milestones, failed parts and finish, sent by its plan and record steps, `runrecord.note_notified`); a member monitor, for every event it sends (`monitor`) | `runrecord.read_notified` | record |
+| `.continued-from` — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a walked point's start, a taken-over point's computing run (one hop) | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) -- with the files it takes | `runrecord.read_continued_from` | record |
 | `.gathered-from` *(transport)* | what a rung took, from which upstream run | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_gathered_from`) -- a rung's first launch or a `--gather` (`jobset.gather.transport_inputs`), or a launch again keeping what its last run was given | `runrecord.read_gathered_from` | record |
 | `.copied-from` *(transport)* — only: a transport calculation that reuses a finished one | the finished calculation's run, or point, this one is a copy of, tree-relative | prep, copying a group in from the finished calculation it reuses (`jobset.reuse.copy_in`), before the run's launch record; a rung of points' first launch, in each point it takes over (`jobset.reuse.take_into`) and each point's `shared/`, written last (`jobset.reuse.shared_into`) -- through `runrecord.write_copied_from` | `runrecord.read_copied_from` | record |
 | `<scheduler>.<jobid>.out` — only: launched to a queue | the scheduler's own stdout for the job | the scheduler, as the run's header asks (its kind's `stdout`, `scheduler/kinds.toml`) | none | record |
@@ -2866,9 +2606,8 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 ### 5.4 What the engines write
 
 None of these is ours to name. SIESTA names its files by `SystemLabel`, so they
-carry no stage and no run index; in the flat shape there is one set at the root,
-overwritten by each stage that runs — all but its history, which SIESTA appends
-to and the run script names for the run (below). PySCF writes nothing its deck
+carry no stage and no run index — one set in each run, all but its history,
+which the run script names for the run (below). PySCF writes nothing its deck
 does not name (§ 5.3).
 
 | | SIESTA's files | the door |
@@ -2886,8 +2625,7 @@ does not name (§ 5.3).
 
 ### 5.5 Benchmarks and launch groups
 
-A stage's benchmark is a container — `<NN>_<stage>/bench/` in the hierarchy,
-`bench_<NN>_<stage>/` at the flat root — holding the sweep's own `job-set.json`
+A stage's benchmark is a container — `<NN>_<stage>/bench/` — holding the sweep's own `job-set.json`
 and `STAGE-PLAN.md` (§ 5.1's rows) and a folder per trial, `bench-<point>/`,
 whose attempts are kept as a stage's (§ 1.5a). A swept transport rung is the
 other way round: its points are folders inside each run,
@@ -2960,7 +2698,7 @@ optional, and read only for the restart files it lists (§ 5.1).
 |---|---|---|---|
 | `molbuilder.json` | outside the tree — the config directory (`$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder`, else `~/.config/molbuilder` — `configuration.md` § 2.1c) | validated, no version | **what you want**: how a launch is sent, env names, the server's settings — and how a shell enters an environment on this machine, `env_init` ([`configuration.md` § 4](?doc=configuration.md)) |
 | `<label>.template.toml` | ③ calculation | `molbuilder/template@2` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter of the calculation, grouped by `category` and tagged with the `engines` it applies to. It **names** the run settings (the `execution` category) but carries **no value** for them: their values are the job request's run cards, else the catalogue's default ([`job-request.md`](?doc=execution/job-request.md) §§ 2, 4); the target's record checks the machine's answers and supplies none |
-| `task.json` | ③ calculation | `molbuilder/task@2` | **what changes**: which parameters vary, the stages and their overrides, the shape, the structure reference. **No `base` key** — what does not change is in the template, once (`stages.md` § 4) |
+| `task.json` | ③ calculation | `molbuilder/task@2` | **what changes**: which parameters vary, the stages and their overrides, the layout it states (`shape`), the structure reference. **No `base` key** — what does not change is in the template, once (`stages.md` § 4) |
 | `job-request.json` | ③ calculation | `molbuilder/job-request@1` | **how and where it runs**: the scheduler ask (`allocation`), the run cards (`execution`), each stage's group, an optional `bench` plan and `notify` policy ([`job-request.md`](?doc=execution/job-request.md)) |
 | `<label>_<NN>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep` — again while the stage is never launched, and for a launched one's change of its job request, as the same calculation (`job-request.md` § 5) |
 | `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
@@ -3001,20 +2739,10 @@ them "at ⑤, not ③" until 2026-08-12 — see the numbering note at § 2.6.)*
 
 ## 6. Where the saved history sits
 
-**One saved history per calculation** — and in the flat shape the calculation
-*is* the directory, so the same sentence covers both.
-
-| | Flat | Hierarchical |
-|---|---|---|
-| the repository sits at | the run directory | the calculation, level ③ |
-| it covers | that directory | the calculation and every stage beneath it |
-| **what it is for** | **the only way back** to an earlier state (§ 1.2) | insurance, and a place to branch from |
-
-**In the flat shape the checkpoint is not optional.** The warm files are shared
-by design, so each stage overwrites the last, and a state that was not
-checkpointed is simply gone. In the hierarchical shape every state is on disk
-anyway and the history is a safety net. Same machinery, different weight — and
-`checkpointing.md § 8` states the invariants for both.
+**One saved history per calculation**, at the calculation, level ③: it
+covers the calculation and every stage beneath it — insurance, and a place to
+branch from, since every state is on disk anyway (§ 1.2).
+`checkpointing.md § 11` states its rules.
 
 ```
 bdt-relax/
@@ -3025,9 +2753,6 @@ bdt-relax/
 │   ├── 02_tight/run-0/<label>.DM
 │   └── MANIFEST.do_not_edit      ← name, size, checksum for each
 ```
-
-*(A flat directory's archive is the same thing one level shallower —
-`.binsnapshots/<digest>/<label>.DM`.)*
 
 **An engine's scratch is in neither store** — a device run's
 `tsgf/<label>.<v>.TSGFL` and `.TSGFR` in a transport calculation, the
@@ -3041,14 +2766,14 @@ holds its marker (`calcdir.json`), and leaves behind no run folder the target
 never had — a folder the removal empties goes too. Between saves, `jobset
 scratch --empty` removes what a run left.
 
-Three reasons the repository belongs at ③ **when there is a hierarchy**:
+Three reasons the repository belongs at ③:
 
 - **The shared package is above the stages.** A history rooted inside `01_coarse/`
   cannot restore a pseudopotential that lives one level up, so a restored stage
-  would have links pointing at nothing.
+  would have nothing to copy its pseudopotentials from.
 - **Going back to a stage is a whole-calculation act.** Branching at *coarse* to
   try a different *tight* needs a history containing both.
-- **Results are already separated by path**, so each attempt's big files stay its
+- **Results are already separated by path**, so each run's big files stay its
   own without a history of their own.
 
 ### 6.1 What the archive covers, in one rule
@@ -3057,23 +2782,22 @@ Three reasons the repository belongs at ③ **when there is a hierarchy**:
 
 That is the whole classification, and it needs no marker file, no config flag and
 no name matching — because § 1.4 already made every directory one thing or the
-other. A container holds setup: decks, wrappers, the description, links, the
+other. A container holds setup: decks, wrappers, the description, the
 shared package. All text or small, all git's.
 
-**Which runs?** The ones this calculation owns: the calculation root itself when
-it is flat, otherwise each stage's `run-N/`, with its points' folders where the
-stage runs per point. A benchmark's trials are runs of a **nested container**,
+**Which runs?** The ones this calculation owns: each stage's `run-N/`, with
+its points' folders where the stage runs per point. A benchmark's trials are runs of a **nested container**,
 one level deeper, and their `.DM` is a capped-iteration
 throwaway — so the calculation's archive does not reach it. What survives a
 benchmark is `bench-result.json`, text, which git tracks wherever it sits.
 
 So the rule is about **depth, not names**: a run directory is a stage's
-`run-N/` or a point's folder in it, or the root of a flat calculation. Nothing
+`run-N/` or a point's folder in it. Nothing
 in a nested container is this history's binary business.
 
-### 6.2 Append-only — in the hierarchical shape only
+### 6.2 Append-only
 
-**Hierarchical.** An attempt never changes after it is written (§ 1.5), so an
+An attempt never changes after it is written (§ 1.5), so an
 archived file at that path never changes either. A new save point stores the
 attempts that appeared since the last one and references the rest.
 
@@ -3087,34 +2811,16 @@ would have been "correct and hopeful" — describing the design the code had
 already surpassed; `checkpoint.py` and `checkpointing.md` agree against it.)*
 Immutable attempts make *"archive what is new"* obvious on top of that.
 
-**Flat, and this is the honest asymmetry.** There is one `<label>.DM`, and every
-stage overwrites it. The path is stable while its contents are not, so a save
-point genuinely *has* to store a new copy — there is nothing to reference. **The
-optimisation above does not apply, and that is not a defect to fix**: it is what
-you buy with the flat shape's convenience, and it is the same trade as § 1.2, in
-bytes rather than in geometry.
+**Immutability is detectable.** It is a contract, not a permission bit — but
+a run that was archived and then edited *differs from its recorded
+checksum*, which is exactly what I2 checks per file. Nothing notices today;
+§ 7 makes it an invariant.
 
-| | Flat | Hierarchical |
-|---|---|---|
-| the archived path `…/<label>.DM` | one path, new contents each save | a new path per attempt |
-| a second save costs | a full copy of what changed | nothing for what already existed |
-| growth over five stages | five copies | five copies — but each is a *different* result you can still open |
-
-The row that matters is the last one. Both store five density matrices; the
-hierarchical shape can hand you any of them without a restore.
-
-**Immutability is detectable, in both.** It is a contract, not a permission bit —
-but an attempt that was archived and then edited *differs from its recorded
-checksum*, which is exactly what I2 checks per file. In the flat shape the same
-check still catches an edit to an archived file; what it cannot do is call it a
-violation, because there the file is expected to move on. Nothing notices today;
-§ 7 makes it an invariant for the shape where it means something.
-
-### 6.3 Both shapes can be checkpointed — fixed 2026-08-06
+### 6.3 A calculation owns its subdirectories — fixed 2026-08-06
 
 The setup step used to refuse any folder whose subfolders held a calculation
-file, at **any** depth — and this tree has three such levels: a stage's deck, an
-attempt's linked deck, and the benchmark bundle's own. So the folder could not be
+file, at **any** depth — and this tree has three such levels: a stage's deck, a
+run's copy of it, and the benchmark bundle's own. So the folder could not be
 put under a history at all. **Nor could the one the shipped `jobset prep` already
 produces** — a bundle with `point-stage1/` and `point-stage2/` was refused too,
 which meant a staged job-set had never been checkpointable.
@@ -3128,11 +2834,10 @@ writes one, so nothing can own a folder by it.)* The old rule still applies to a
 directory that declares nothing: a topic folder holding two unrelated
 calculations is still refused, and now says why.
 
-Separately and in both shapes, **a subdirectory that is already a repository is
-refused** — a history inside a history cannot be restored consistently.
+Separately, **a subdirectory that is already a repository is refused** — a history inside a history cannot be restored consistently.
 
 `checkpointing.md` L1 holds the invariant and names the tests, including the one
-that matters most: a hierarchical folder round-trips, so a `.DM` two levels down
+that matters most: a calculation round-trips, so a `.DM` two levels down
 is archived, survives a later stage, and comes back on restore. An `init` that
 succeeds and then loses results would be worse than one that refuses.
 
@@ -3142,10 +2847,6 @@ succeeds and then loses results would be worse than one that refuses.
 
 Each is written so a test can assert it. Rules about a single run directory or a
 single history live in their own contracts and are cited, not repeated.
-
-**Which shape each holds in** is marked where it matters: **[both]** unless the
-rule is about the hierarchy. An invariant tested against the wrong shape is worse
-than no invariant, because it fails a directory that is working correctly.
 
 **Naming and identity**
 
@@ -3161,35 +2862,30 @@ than no invariant, because it fails a directory that is working correctly.
 3. **Who names a file decides whether it carries the stage**
    (`job-contracts.md § 6.3`): the files the **engine** names — the warm
    files, `<label>.XV` / `.DM` / `.CG` — are bare and share the label's one
-   basename, which is what makes warm restart work across stages without
-   copying anything; the files **molbuilder** names carry
+   basename, which is why a warm file copied into the next stage's run is the
+   file its engine looks for there (§ 1.6.5); the files **molbuilder** names carry
    `<label>_<NN>_<stage>`, and the repetition is the mix-up check. *(Reversed:
    until 2026-08-12 this read "every file a stage reads or writes shares one
    basename — the id", stale twice over — the stem is the label, decision 26,
    and decision 21 put the stage token into every molbuilder-named file.)*
-4. **[both] A stage's `seq` is assigned once and never reassigned**; stages
-   append (§ 4.2). The hierarchy carries it on the stage directory, and the
-   flat shape carries it in the deck's filename — read back off the artifacts,
-   stored nowhere else (§ 4.1, decision 27). *(Reversed: until 2026-08-12
-   this was marked [hierarchical] and ended "flat has no stage directories
-   and so no `seq` — its order is the description's list order", which
-   decision 27 — 2026-08-10, quoted in § 4.1's box — called exactly
-   backwards: the flat shape is the one with nowhere else to put the order.)*
-4a. **[hierarchical] No directory in this tree points at a file that does not exist yet.**
+4. **A stage's `seq` is assigned once and never reassigned**; stages append
+   (§ 4.2). The stage directory carries it, and every file of the stage in its
+   token — read back off the artifacts, stored nowhere else (§ 4.1).
+4a. **No directory in this tree points at a file that does not exist yet.**
    A stage that builds on another is launched after that one finished, so
    everything a run continues from is a real file copied in before it starts
    (§ 1.6). A dangling link means something was chained that should not have
    been.
-4b. **[both] An attempt's number is the next unused, never reused, and nothing
-   resets it** (§ 1.5) — a directory `run-<n>` in the hierarchy, an output index
-   `-run<n>` when flat, but the same rule: a number that has been used is spent.
+4b. **An attempt's number is the next unused, never reused, and nothing
+   resets it** (§ 1.5) — a directory `run-<n>`: a number that has been used is
+   spent.
 5. **A trial never shares the calculation's identity.** Its deck is relabelled
    and forced cold, so it can neither read nor overwrite a stage's saved state
    (§ 3.2).
 
 **Ownership**
 
-6. **[hierarchical] Generate writes only level ③** (§ 2.5 step 3); **prepare writes only one
+6. **Generate writes only level ③** (§ 2.5 step 3); **prepare writes only one
    attempt at ⑤** (step 4); the run writes only the directory it was launched
    in.
 6a. **Every directory in this tree is made by Python, and every file put in one
@@ -3218,18 +2914,18 @@ than no invariant, because it fails a directory that is working correctly.
    is not refused — it is read alone, and told so (§ 1.4a), which is what a
    tree written before this rule, or a run directory copied out of one, gets.
    A point's folder below its stage, the one prep renders the point's deck
-   into, is a container among them. *Test:* a calculation prepared in each
-   shape, its first stage's benchmark too, and every folder prep made asked
+   into, is a container among them. *Test:* a calculation prepared, its
+   first stage's benchmark too, and every folder prep made asked
    where it is through the Results tab's door — its `what`, its role and the
    stage, run and trial it sits in, one row each
    (`tests/test_results_blueprint.py`); a transport calculation's points, in
    the run and below the stage (`tests/test_transport_on_a_real_junction_e2e.py`).
-7. **[hierarchical] A shared file's source exists once, at ③** (`pseudos/`), and
-   each stage and attempt receives a real copy of it, never a link (§ 1.5).
+7. **A shared file's source exists once, at ③** (`pseudos/`), and
+   each stage and run receives a real copy of it, never a link (§ 1.5).
 8. **Every directory is a container or a run, never both** (§ 1.4) — but the
    engine's scratch of the run above it, which is neither (§ 1.4a). A run's
    output stays inside it; nothing a run writes appears above it.
-8a. **[hierarchical] An attempt is immutable.** Once its launch has ended — warm
+8a. **An attempt is immutable.** Once its launch has ended — warm
    retries included, which run within it (§ 1.6.1) — it never changes, and once archived
    it must never differ from its recorded checksum — which is
    `checkpointing.md`'s I2 applied to a directory instead of a file (§ 11).
@@ -3255,26 +2951,23 @@ than no invariant, because it fails a directory that is working correctly.
     provenance timestamp. *(Named only `task.json` until 2026-08-16 — the
     template is the other source, and a deck cannot be rebuilt without it:
     § 5.)*
-13. **[hierarchical] Warm restart flows down the stage axis only, and never on its own.** A
+13. **Warm restart flows down the stage axis only, and never on its own.** A
     stage continues from an earlier stage's run that the **user named**, never
     from a trial, and never because something finished (§ 1.6).
 
 **History**
 
-14. **[both] One history per calculation** — rooted at ③ where there is a
-    hierarchy, and at the run directory itself when it is flat (§ 6).
-15. **[both] Every big regular file is either in git or in the archive, never both,
+14. **One history per calculation** — rooted at ③ (§ 6).
+15. **Every big regular file is either in git or in the archive, never both,
     never neither — but an engine's scratch, which is in neither, and which a
     restore removes** (`checkpointing.md`, S1; `warmfiles.is_scratch`) — and
     that holds at every depth, so a stage's result is covered.
-16. **[both] The archive covers runs this calculation owns** — a flat root, or a
-    stage's `run-N/` with its points. A nested container's runs (a benchmark's trials) are
+16. **The archive covers runs this calculation owns** — a stage's `run-N/`
+    with its points. A nested container's runs (a benchmark's trials) are
     not its business (§ 6.1). **Not held**: a save classifies every file by its
     size (`checkpointing.md` S1b), wherever it lies, and archives a trial's
     `.DM` like any other.
-17. **[hierarchical] A save stores only what is new** (§ 6.2) — in a flat directory
-    the same path's contents change every stage, so a fresh copy is correct rather
-    than wasteful. Content already archived is hard-linked into the new
+17. **A save stores only what is new** (§ 6.2). Content already archived is hard-linked into the new
     archive where the filesystem allows one, else copied
     (`checkpoint.publish_archive`); every big file is still read for its
     fingerprint at each save.
@@ -3299,39 +2992,18 @@ than no invariant, because it fails a directory that is working correctly.
    answer for the rest. The layout allows both; nothing says which is expected,
    or how a stage records *"resources measured on 02_tight"*.
 3. ~~**Does the deck still need the stage in its filename?**~~ **Answered
-   2026-08-08 (user): yes, in both shapes.** The reasoning here — *the directory
+   2026-08-08 (user): yes.** The reasoning here — *the directory
    already says which stage, so the deck can simply be `<id>.fdf`* — treated the
    repetition as noise. It is a **self-check**: without it every stage directory
    holds an identically-named deck, and two swapped by a bad copy or a resumed
    `prep` disagree with nothing (decision 21; `run-identity.md § 3.2`). The
    decoder's regex still changes, but toward `<label>_<NN>_<name>`, not away from it.
 4. **May one calculation folder hold two ladders?** Nothing forbids two
-   descriptions side by side, and the layout would allow it, but warm files are
-   shared, so a second ladder would continue from the first's state. Probably
-   refuse; not yet stated. *(The premise "the id names the folder" was removed
+   descriptions side by side, and the layout would allow it. Probably refuse;
+   not yet stated. *(The premise "the id names the folder" was removed
    2026-08-07 — the folder is what the user typed, `run-identity.md § 3.0` — which
    makes two ladders in one folder easier to create, not harder.)*
-5. ~~**How does a user ask for the shape?**~~ **Answered 2026-08-07: a
-   required field in the description**, `"shape": "flat" | "hierarchical"`
-   (`engines/stages.md § 6.7`). Not a `prep` flag, because prep is a hub you
-   return to and a shape chosen at the first prep and not written down is one the
-   second prep cannot know — two preps disagreeing would put two layouts in one
-   calculation. Not inferred either: deriving it from the stage count would hand
-   a two-stage description the hierarchy without anyone asking, and the trade in
-   § 1.2 is the user's to make.
-6. ~~**Can a flat directory become hierarchical later?**~~ **Answered
-   2026-08-07: no, and it is not a missing feature.** The flat shape exists for
-   **a simple run on a workstation**, and it stays that way on purpose. It is not
-   a lesser version of the hierarchy that a calculation graduates out of; it is
-   the right shape for work you are doing in one directory, in front of you, and
-   converting it later is not a workflow anybody needs.
-
-   Which also settles what the two shapes *are*. They are not a beginner mode and
-   an advanced one — they are **a small local run** and **a long staged mission**,
-   and you know which you are doing when you describe the calculation. That is why
-   `shape` is a field you set once (`engines/stages.md § 6.7`) rather than a
-   property the folder drifts into.
-7. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
+5. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
    (§ 2.3, § 2.5): preparing and submitting are separate steps, each naming its
    group — `jobset prep task --group <N>` then `jobset launch task --group <N>`, with `--cold` on
    launch (every launch warm or cold, [`job-system.md`](?doc=execution/job-system.md)

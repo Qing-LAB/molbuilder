@@ -26,18 +26,16 @@ nothing.  Nothing here launches an engine.
 """
 from __future__ import annotations
 
-import pytest
-
 from support.road import (describe_calculation, each_is_taken, jobset,
                           printed_commands, read_request, write_request)
 
 
-def _described(tmp_path, monkeypatch, **kw):
+def _described(tmp_path, monkeypatch):
     """`describe_calculation`'s calculation, its job request stating the wall
     and the memory too -- the two values a job handed to a scheduler states
     (`architecture.md` § 5.2) -- so the `--mode submit` line a next step
     prints is one that is taken, as it is for a person who stated them."""
-    bundle = describe_calculation(tmp_path, monkeypatch, **kw)
+    bundle = describe_calculation(tmp_path, monkeypatch)
     request = read_request(bundle)
     request["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
     write_request(bundle, request)
@@ -88,26 +86,20 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     assert all("--cold" in l for l in medium if " launch " in l), medium
 
 
-@pytest.mark.parametrize("shape, container", [
-    ("hierarchical", "02_medium/bench"),
-    ("flat", "bench_02_medium"),
-])
-def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch,
-                                                   shape, container):
+def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch):
     """Medium's benchmark prepared, nothing else: its next steps; `launch
     bench` naming no stage, which offers medium -- the stage with a
     benchmark -- and its launch with the mode; `launch task --stage medium`, refused
     with the prep of the first stage and the benchmark's note apart from
     it; `status` in the bench folder, which reads its trials where they are
-    and names the sweep's own verbs for the calculation.  On both layouts.
-    Each line, typed back from outside the calculation, is taken.
+    and names the sweep's own verbs for the calculation.  Each line, typed
+    back from outside the calculation, is taken.
 
     MUTATIONS THIS MUST FAIL AGAINST: the stage-less bench refusal offering
     every stage (coarse, never benched, first); the note on the command's
     line; a sweep's status read from its bench folder, or worded as a
-    ladder's; a flat sweep's stage not found (its container is
-    `bench_<NN>_<stage>`, not inside a stage folder)."""
-    bundle = _described(tmp_path, monkeypatch, shape=shape)
+    ladder's."""
+    bundle = _described(tmp_path, monkeypatch)
     r = jobset("prep", "bench", "medium", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output
@@ -119,7 +111,7 @@ def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch,
         assert r.exit_code != 0, (verb, r.output)
         assert each_is_taken(r.output), r.output
 
-    r = jobset("status", "--bundle", bundle / container)
+    r = jobset("status", "--bundle", bundle / "02_medium" / "bench")
     assert r.exit_code == 0, r.output
     printed = list(printed_commands(r.output))
     # its trials read where they are -- prepared, not launched -- so its

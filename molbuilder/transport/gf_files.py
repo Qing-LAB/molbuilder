@@ -40,14 +40,13 @@ def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
     files = sorted(p for p in folder.iterdir()
                    if p.is_file() and is_scratch(p.name))
     if not files:
-        deck = _a_device_deck(base, task, stage_dir)
+        decks = _decks_per_voltage(base, task, stage_dir)
         try:
-            in_memory = deck is not None and not _reads(deck).out_of_core
+            said = (_kept_in_memory(_reads(decks[0][1]), scratch_dir)
+                    if decks else None)
         except _Unread as why:
             return f"{scratch_dir}/: empty -- {why}"
-        if in_memory:
-            return f"{scratch_dir}/: none -- the self-energies are kept in memory"
-        return f"{scratch_dir}/: empty"
+        return said or f"{scratch_dir}/: empty"
     size = sum(p.stat().st_size for p in files)
     volts = sorted({_voltage_of(p.name, label) for p in files})
     if len(files) == 2 and len(volts) == 1:
@@ -63,6 +62,15 @@ def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
     return (f"{scratch_dir}/: {len(files)} files, {size_words(size)} -- "
             f"{', '.join(p.name for p in files)}; the walk leaves one "
             f"pair at most, so these are an edit's")
+
+
+def _kept_in_memory(first, scratch_dir: str) -> Optional[str]:
+    """The line for a device whose decks keep the self-energies in memory
+    -- the first voltage's deck (``first``, read) says for all, the decks
+    agreeing -- ``None`` where they are written out of core."""
+    if first.out_of_core:
+        return None
+    return f"{scratch_dir}/: none -- the self-energies are kept in memory"
 
 
 def _voltage_of(name: str, label: str) -> str:
@@ -241,25 +249,12 @@ class _Unread(Exception):
     """A lead's run output that could not be read for its orbital count."""
 
 
-def _a_device_deck(base, task, stage_dir: Path) -> Optional[Path]:
-    """One prepared device deck -- any point's, the first on disk."""
-    from ..transport.stages import point_folders
-    from ..jobset.naming import stage_home
-    names = stage_home(base, task, "device").names(task.shape)
-    folders = [d for d, _pt in point_folders(base, task, "device")] or [stage_dir]
-    for d in folders:
-        p = Path(d) / names.name(".fdf")
-        if p.is_file():
-            return p
-    return None
-
-
 def _decks_per_voltage(base, task, stage_dir: Path) -> List[Tuple[float, Path]]:
     """One prepared device deck per voltage -- any frame's, the decks being
     the same across frames."""
     from ..transport.stages import point_folders
     from ..jobset.naming import stage_home
-    names = stage_home(base, task, "device").names(task.shape)
+    names = stage_home(base, task, "device").names
     seen: Dict[float, Path] = {}
     pts = point_folders(base, task, "device")
     for d, pt in pts:
@@ -281,9 +276,9 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
     try:
         read = [(v, _reads(path)) for v, path in decks]
         first = read[0][1]
-        if not first.out_of_core:
-            return (f"{scratch_dir}/: none -- the self-energies are kept "
-                    f"in memory")
+        said = _kept_in_memory(first, scratch_dir)
+        if said:
+            return said
         orbitals = _lead_orbitals(base, task)
     except _Unread as why:
         return (f"{scratch_dir}/: one pair at a time; the size cannot be "

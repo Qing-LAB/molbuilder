@@ -1312,7 +1312,7 @@ below is read from its files with `sisl`, as the notebook's last cells do.
 ```
 molbuilder describe --calculation optimization … --name J --psml-lib pseudopotential   # basis SZ, 150 Ry
 molbuilder jobset prep task --group 1 --target this;  launch task --stage coarse      # 6 s, geometry converged
-molbuilder describe --calculation transport --engine siesta --shape hierarchical \
+molbuilder describe --calculation transport --engine siesta \
                     --slot junction=claude-transport-by-hand/opt/J/01_coarse/run-0 \
                     --bias 0,0.2 --no-low-bias-approximation --bundle claude-transport-by-hand/transport/T
 molbuilder jobset prep task --group 1; launch task --group 1      # seed, both leads: one job
@@ -2433,8 +2433,9 @@ every frame — **the round** — a failed point said at once, once per reason,
 and one `finish`. Three pieces, the vibration's (`engines/vibration.md`
 § 5.11 § 7a) extended:
 
-- **The run's index**, `<label>_<NN>_<stage>-run<N>.points.json` at the
-  run's root (`transport.points_index`, which travels with the monitor):
+- **The run's index**, `<label>_<NN>_<stage>-run0.points.json` at the
+  run's root — one per run, named for its first try
+  (`transport.points_index`, which travels with the monitor):
   launch writes every point of the run in the walk's order — its folder,
   words, frame and voltage, the point it needs (a device point's, the point
   before it in its frame), whether it was taken over and from where, what
@@ -2676,12 +2677,9 @@ Python's, as every folder of the tree is (invariant 6a), and it is stamped
 with its `calcdir.json`, role **`scratch`** (§ 1.4a, invariant 6b): the run
 door and the Results sidebar read the role and say *the engine's scratch of
 the run above*, and the Results tab opens no file in it. **The checkpoint
-saves the marker and never the files** (`checkpointing.md` S1): a save leaves
-the `*.TSGFL` / `*.TSGFR` files out of both stores, and a restore removes them
-as it removes every file the target does not hold — so a restore brings the
-folder back empty where the target holds its marker, and where the target
-never had the run, the folders its sweep empties go too: no run folder the
-target never had is left. Otherwise they stay where they lie until the walk
+saves the marker and never the files** — what a save and a restore do with an
+engine's scratch is [`checkpointing.md`](?doc=execution/checkpointing.md)
+S1's and I2a's. Between them the files stay where they lie until the walk
 empties the folder (below), `jobset scratch --empty` removes them
 (`job-system.md` § 5.3), or a launch empties a run never launched before it
 fills it (`materialize.empty_run`). TranSIESTA opens the path as the deck
@@ -2825,11 +2823,11 @@ leaves fewer than two points in the narrowest window the description sweeps
 description with no such voltage has no check. The floor of two is ours:
 TranSIESTA itself stops only at none.
 
-#### Attempts, and what is never overwritten
+#### Runs, and what is never overwritten
 
-**A run is never rewritten**: launching a rung again opens its next `run-<n>`
-— warm from its own latest run (a sweep: its done points taken over), or
-`--cold` — and every run before it stays as it was.
+**A run is never rewritten** ([`execution/project-layout.md`](?doc=execution/project-layout.md)
+§ 1.5): launching a rung again opens its next `run-<n>` — a sweep's done
+points taken over, *Launched again* above.
 
 The consequence for the workflow: **a parameter of a rung never launched is
 changed and its group prepared again**; what a launched rung computes is not prepared again
@@ -2855,9 +2853,9 @@ everything it takes — each transmission point its own device point's
 `.TS.HSX` (the bias sweep above). The leads' surface Green's functions are
 never among them: no rung takes them, and the transmission computes its own
 in memory (*What a run's points share*). Three conditions gate every copy —
-the upstream stage must have been prepared, its **newest** attempt must have
+the upstream stage must have been prepared, its **newest** run must have
 **finished** and run the same engine input as the deck that rung renders now
-(§ 6.1), and that attempt must actually hold the file — and each refusal
+(§ 6.1), and that run must actually hold the file — and each refusal
 names what to do first. A record of what was taken from where lands beside
 the copies (`.gathered-from`), so a transmission can always say which lead
 runs and which device run it rests on. A rung launched again takes the
@@ -3723,17 +3721,15 @@ driver, § 3.3).
 rungs write no restart keyword at all, and SIESTA reads `<label>.DM` whenever
 the file is there whatever the deck omits (`DM.UseSaveDM` is true by default,
 the manual's *SCF loop*) — so in principle a lead could warm-start from stale
-state without being asked. In practice every run is opened **fresh** by
-`prep` and given its kind's gather at its first launch, and nothing else (a
-rung takes no `--from`,
-[`job-system.md`](?doc=execution/job-system.md) § 5.4), and what a rung or
-point launched again finds in its folder is its own last density — the state
-to continue from, not a stale one (§ 2a.11). Nothing stale is there to pick
-up. The exposure is a hand-run wrapper inside an already-used run, which is
-outside the ladder. *(Until the sweep is built, `launch` after a stop opens
-the rung's next attempt holding what its own newest run left of the restart
-files it declares — the seed's `.DM`, the device's `.TSDE`; the leads declare
-none.)*
+state without being asked. In practice every run folder is opened **empty**:
+its first run is given the rung's own files and, at its first launch, its
+kind's gather, and nothing else (a rung takes no `--from`,
+[`job-system.md`](?doc=execution/job-system.md) § 5.4); a run launched again,
+warm, is given copies of what its own newest run left of the restart files
+the rung declares — the seed's `.DM`, the device's `.TSDE`; the leads declare
+none — the state to continue from, not a stale one (§ 2a.11). Nothing stale
+is there to pick up. The exposure is a hand-run wrapper inside an
+already-used run, which is outside the ladder.
 
 **Does the lead need `TS.DE.Save`? No — the manual says when a lead's density
 is read** (TranSIESTA's electrode options, `TS.Elec.<>.DM-init` and
@@ -4616,7 +4612,7 @@ The road is the composite, through the ordinary `jobset` verbs:
 
 # 1. describe the transport calculation: one slot, the finished attempt
 molbuilder describe --calculation transport --engine siesta \
-    --shape hierarchical --bundle BDT-Au/transport/BDTTrans \
+    --bundle BDT-Au/transport/BDTTrans \
     --slot junction=BDT-Au/optimization/JunctionRelax/01_coarse/run-2 \
     --bias 0.0,0.2 --no-low-bias-approximation
 
@@ -4682,7 +4678,7 @@ built 2026-10-09, plan § 5z Q17-c)*.
 
 | what you point at | it holds | you get | the settings come from |
 |---|---|---|---|
-| **a finished relaxation run** — its folder, `<calc>/<NN>_<stage>/run-<n>`, or a flat calculation's root | the run the folder speaks for (`runs.run_of`), read as the Results tab reads a run: its result (`runs.openable`) parsed by the registry — every geometry step with its cell — its labels, held atoms and box (`runs.declared`), its record (`run_info`: `info.calculation`, `info.relaxation`), all through `runs.view_of`; its launch record and the wrapper's conclusion (`runrecord.ending`); its pseudopotentials | geometry · labels · **settings** · how it ended and what it converged | the deck that actually ran, its record through `parse.contract.contract_of` |
+| **a finished relaxation run** — its folder, `<calc>/<NN>_<stage>/run-<n>` | the run the folder is (`runs.run_of`), read as the Results tab reads a run: its result (`runs.openable`) parsed by the registry — every geometry step with its cell — its labels, held atoms and box (`runs.declared`), its record (`run_info`: `info.calculation`, `info.relaxation`), all through `runs.view_of`; its launch record and the wrapper's conclusion (`runrecord.ending`); its pseudopotentials | geometry · labels · **settings** · how it ended and what it converged | the deck that actually ran, its record through `parse.contract.contract_of` |
 | **a structure pair** — `<name>.xyz` and its `<name>.molstruct.json` | the frames; the labels; `info.calculation`, the record of the optimization frame 0 came from — its engine, its deck and the deck's `contract` (basis, functional, mesh, k-grid, temperature, spin, charge, and how its SCF converged), written by `contract_of` when the pair was saved (the Results tab, `molbuilder xv2xyz --from-run`) | geometry (every frame) · labels · **settings** | the pair's `info.calculation.contract`; the pseudopotentials from the directory you give that holds them all |
 
 **A cited run in an engine's order, and a run that is not a relaxation**
@@ -4793,11 +4789,9 @@ its `SCF_RECORD_KEYS`), so a pair saved from a run carries them too.
 > refused by name.
 
 **A run's condition is that it is a run of ours, read through the run door**
-*(W56-2, 2026-10-09)*. The folder is the run it speaks for (`runs.run_of`,
-[`execution/architecture.md`](?doc=execution/architecture.md) § 3.2): the
-highest stage launched there and its newest run — in a run's own folder its
-one stage, at a flat calculation's root the stage the root speaks for, the
-other stages' decks beside it being theirs. What it left is read through
+*(W56-2, 2026-10-09)*. The folder is a run's own, `<calc>/<NN>_<stage>/run-<n>`,
+and the run door reads it (`runs.run_of`,
+[`execution/architecture.md`](?doc=execution/architecture.md) § 3.2). What it left is read through
 the run door as the Results tab reads a run (`runs.view_of`): the last
 geometry step of its result, in its cell, with its deck's labels and its
 record; the first step is where the relaxation started, for the lead gate's
@@ -5502,7 +5496,7 @@ correct order".)*
 | **A tab offers** the items the rung owns (`stages` names it) and the items any rung may set (no `stages`) | never another rung's item — that is on its own tab — and never a shared one — that is card 2 |
 | **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count. **Every card is named with the rung** (*seed · Convergence targets*) and one sentence above them says the values are the rung's own over the template's — the schema's `card_prefix` and `stage_words` *(user, 2026-10-09: "make sure the title and text in each panel for these stages are clear ... so the user is not confused by the repetition")* | the rung's own physics is what the eye lands on; the seed, both leads and the device each carry the same SCF settings with their own values, and each tab says whose they are |
 | **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`template.unread_overrides`, the description's check — `validation/task.py`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
-| **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, every one — the seed among them, since the device starts from its density (user, 2026-10-12, withdrawing ruling Q4's skip) — and its shape hierarchical (its part in the kind table, its stages the kind's roles, `execution/architecture.md` § 3.3); the description's reader refuses anything else, naming the five rungs, and Task setup offers no control that would change either (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk; the reader took all three until 2026-10-11, and Task setup's stage table offered them |
+| **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, every one — the seed among them, since the device starts from its density (user, 2026-10-12, withdrawing ruling Q4's skip) — its stages the kind's roles (`execution/architecture.md` § 3.3); the description's reader refuses any other ladder, naming the five rungs, and Task setup offers no control that would change it (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk; the reader took all three until 2026-10-11, and Task setup's stage table offered them |
 | **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one that already holds a `task.json` (one calculation per folder), and one inside the citation (§ 3.1) — the checks `molbuilder describe` asks, through the same two functions (`describe.refuse_described`, `compose.refuse_inside_citation`) — and writes the template, `task.json` and `job-request.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `molbuilder describe`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | the refusal belongs to the door that writes; until 2026-10-11 the browser wrote the server's text through the content-blind layer and the one-folder refusal lived in the page alone |
 
 The numbered cards and the tab strip read as one order: **1 cite the junction

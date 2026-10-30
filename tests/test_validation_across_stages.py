@@ -321,8 +321,7 @@ def test_the_sequence_warnings_reach_the_prep_surface(tree):
             [Stage(name="a", overrides={"mesh_cutoff": 200.0}),
              Stage(name="b", overrides={"mesh_cutoff": 200.0,
                                         "restart": "clean"})],
-            engine="siesta", calculation="optimization", shape="hierarchical",
-            name="JOB", source=str(tree / "h2.xyz")),
+            engine="siesta", calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
         dest)
     # the launch shape, stated as a person's run card states it -- a run
     # with none is refused at prep (`architecture.md` § 5.2)

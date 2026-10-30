@@ -77,7 +77,7 @@ def _prep(bundle: str, *extra):
     r = CliRunner()
     init = r.invoke(describe_cmd, [
         "--structure", "P/structure/h2.xyz", "--bundle", bundle,
-        "--shape", "flat", "--engine", "pyscf",
+        "--engine", "pyscf",
         "--calculation", "optimization",
         "--stage-strategy", "publishable"])
     assert init.exit_code == 0, init.output
@@ -156,7 +156,7 @@ class TestTheUserChoosesTheMachine:
         init = r.invoke(describe_cmd, [
             "--structure", "P/structure/h2.xyz",
             "--bundle", "P/optimization/wb",
-            "--shape", "flat", "--engine", "siesta",
+            "--engine", "siesta",
             "--calculation", "optimization"])
         assert init.exit_code == 0, init.output
         # a bench needs an axis to measure; declare one the way the tab does

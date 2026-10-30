@@ -7,8 +7,8 @@ linear mixing at weight 0.001 against a DM tolerance of 1e-8, set in the
 calculation's template, with ``SCF.MustConverge`` left at SIESTA's default --
 abort.  SIESTA prints
 ``SCF_NOT_CONV: ... (required)`` and ``die``s, and ``die`` writes its own
-cascade after it; the wrapper retries once, warm, as run 1 (`job-contracts.md`
-§ 2.6), and run 1 stops the same way.
+cascade after it; the run script retries once, warm, as try 1
+(`running-a-job.md` § 3.5), and try 1 stops the same way.
 
 What each reader must say (`running-a-job.md` § 4.2, `model/parse.md` § 2b):
 the folder is ``failed``, its detail quoting the line that stopped it -- the
@@ -31,8 +31,7 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available, env_bin
-from support.road import group_words
-from support.road import molbuilder, read_request, write_request
+from support.road import group_words, molbuilder, one_rank
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CONDA_SH = conda_hook()
@@ -115,25 +114,27 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
 
         r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                     "--bundle", "P/opt/R", "--engine", "siesta",
-                    "--shape", "hierarchical", "--calculation", "optimization",
+                    "--calculation", "optimization",
                     "--name", "H2", "--psml-lib", "pseudopotential",
                     "--stage-strategy", "publishable")
         assert r.exit_code == 0, r.output
         bundle = tree / "P" / "opt" / "R"
         task = json.loads((bundle / "task.json").read_text())
         assert [s["name"] for s in task["stages"]] == ["coarse", "medium"], task
-        request = read_request(bundle)
-        request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
-                                "omp_threads": 1}
-        write_request(bundle, request)
+        one_rank(bundle)
         for name, value in _CANNOT_CONVERGE.items():
             _set_item(bundle / "H2.template.toml", name, value)
 
         r = _jobset("prep", "task", *group_words(bundle, "coarse"),
                     "--bundle", str(bundle), "--target", "this")
         assert r.exit_code == 0, r.output
-        attempt = bundle / "01_coarse" / "run-0"
-        deck = (attempt / "H2_01_coarse.fdf").read_text()
+        from molbuilder.jobset.naming import stage_home
+        from molbuilder.paths import FIRST_ATTEMPT, attempt_dir
+        from molbuilder.runs import run_of
+        from molbuilder.task import of as task_of
+        home = stage_home(bundle, task_of(bundle), "coarse")
+        attempt = attempt_dir(home.dir, FIRST_ATTEMPT)
+        deck = (attempt / home.names.name(".fdf")).read_text()
         assert any(ln.split()[:2] == ["MaxSCFIterations", "10"]
                    for ln in deck.splitlines()), deck[-2000:]
         # The run fails -- that is its point -- and the launch says so: its
@@ -141,7 +142,7 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         _LAUNCH["coarse"] = _jobset("launch", "task", "--stage", "coarse",
                                     "--bundle", str(bundle),
                                     "--mode", "direct", "--foreground", "--yes")
-        assert (attempt / "H2_01_coarse-run0.out").is_file(), \
+        assert run_of(attempt).outputs, \
             sorted(p.name for p in attempt.iterdir())
         yield attempt
     finally:
@@ -163,7 +164,7 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
     st = run_status(stopped, "H2_01_coarse")    # the run's stem
     assert st.state == "failed", st
     assert st.detail.startswith("stopped before its end: SCF_NOT_CONV"), st
-    # the latest run speaks -- the warm retry's -- and the one before it
+    # the latest try speaks -- the warm retry's -- and the one before it
     # stopped the same way
     assert st.active_source == "H2_01_coarse-run1.out", st
     for name in ("H2_01_coarse-run0.out", "H2_01_coarse-run1.out"):
@@ -253,7 +254,9 @@ def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
 
     app = create_app(config={})
     diagnostics.set_capabilities(_Root())
-    out = stopped / "H2_01_coarse-run0.out"
+    from molbuilder.runfiles import FIRST_TRY
+    from molbuilder.runs import run_of
+    out = run_of(stopped).file(".out", FIRST_TRY)
     body = app.test_client().post("/api/watch/load",
                                   json={"path": str(out)}).get_json()
     assert body["ok"] is True, body
@@ -261,15 +264,15 @@ def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
     assert body["data"]["stop_reason"] == CAUSE_WORDS[SCF_NOT_CONV_MARKER]
 
 
-def test_each_run_is_paired_with_its_own_session_log(stopped):
-    """Each start of the wrapper writes its own session log, and the warm
-    retry hands back the output it was started with before it starts again,
-    so run 0's log holds run 0 alone and run 1's holds run 1
-    (`running-a-job.md` § 3.5) -- each found as its run's, the pairing the
+def test_each_try_is_paired_with_its_own_session_log(stopped):
+    """Each start of the run script -- each try -- writes its own session
+    log, and the warm retry hands back the output it was started with before
+    it starts again, so try 0's log holds try 0 alone and try 1's holds try 1
+    (`running-a-job.md` § 3.5) -- each found as its try's, the pairing the
     run record and ``run_status`` both use (`wrapper_log.logs_by_run`).
 
     MUTATION THIS MUST FAIL AGAINST: the retry re-execs with its output
-    still going to the first log -- run 0's log holds run 1's section too."""
+    still going to the first log -- try 0's log holds try 1's section too."""
     from molbuilder.wrapper_log import log_of_run, read_wrapper_log
 
     first = log_of_run(stopped, "H2", 0, "01_coarse")
@@ -318,8 +321,9 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
                                                          flask_server,
                                                          monkeypatch):
     """The Results tab's Run panel (`web/results.md` § 3a) reads this run's
-    record: closed, one line -- the engine, the ranks, how the latest run
-    ended; open, the verdict, the setup's three columns, the computation and
+    record: closed, one line -- the engine, the ranks, how its latest try
+    ended (a try: one start of the run script in the run's folder, its files
+    numbered `-run<N>`); open, the verdict, the setup's three columns, the computation and
     the deck, which opens in the sidebar's viewer.  It is hidden for a
     container, and from the moment the panel is bound to another folder --
     a scan that fails announces nothing, so the old record must not stay.
@@ -349,7 +353,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     line = panel.locator(".rp-summary").inner_text()
     engine = record["computation"]["engine"]
     assert f"{engine['program']} {engine['version']}" in line, line
-    assert "1 rank" in line and "run 1 stopped" in line, line
+    assert "1 rank" in line and "try 1 stopped" in line, line
     assert "FAILED" in line.upper(), line
 
     panel.locator(".rp-toggle").click()
@@ -357,7 +361,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
                 for s in panel.locator(".rp-section").all()}
     assert list(sections) == ["Verdict", "Setup", "Computation", "Deck"]
     assert "stopped before its end: SCF_NOT_CONV" in sections["Verdict"]
-    assert "run 0: stopped" in sections["Verdict"]
+    assert "try 0: stopped" in sections["Verdict"]
     assert record["computation"]["host"]["hostname"] in sections["Computation"]
 
     # THE SETUP'S THREE COLUMNS, as the run recorded them: the catalogue

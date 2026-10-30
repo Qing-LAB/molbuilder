@@ -4,8 +4,6 @@ stage-ladder producer."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from molbuilder.jobset.model import Job, JobSet, Resources
@@ -262,7 +260,6 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
     from molbuilder.jobset._cli import describe_cmd
     init = runner.invoke(describe_cmd, ["--structure", "P/structure/h2.xyz",
                                         "--bundle", "P/optimization/h",
-                                        "--shape", "hierarchical",
                                         "--engine", "pyscf",
                                         "--calculation", "optimization"])
     assert init.exit_code == 0, init.output
@@ -413,101 +410,17 @@ def test_plan_prints_the_seq_not_the_row():
 
 
 # --------------------------------------------------------------------- #
-#  Shape — where a stage's files live (§ 9's object, P5)                 #
+#  Where a stage's files live -- its token's folder                       #
 # --------------------------------------------------------------------- #
 
 
-def test_shape_refuses_anything_that_is_not_one_of_the_two():
-    """`engines/stages.md` § 6.7: required, never inferred.  A constructor that
-    accepted a third word would let a typo become a layout."""
-    from molbuilder.paths import Shape
-    assert Shape.named("flat").name == "flat"
-    assert Shape.named("hierarchical").name == "hierarchical"
-    with pytest.raises(ValueError) as e:
-        Shape.named("nested")
-    assert "flat" in str(e.value) and "hierarchical" in str(e.value)
-
-
-def test_hierarchical_tells_stages_apart_by_PATH_and_flat_by_NAME():
-    """`project-layout.md` § 1, the one difference everything else follows
-    from.  Hierarchical gives each stage a directory, so anything inside it
-    belongs to it.  Flat is DEPTH 1 -- one directory holds every stage, and the
-    deck's token in each filename is what selects one.
-
-    A layer that only asks *which directory* is right in the hierarchy and
-    silently wrong in flat: it answers about every stage at once.
-    """
-    from molbuilder.paths import Shape
-    hier, flat = Shape.named("hierarchical"), Shape.named("flat")
-
-    assert hier.stage_dir("03_tight") == "03_tight"
-    assert flat.stage_dir("03_tight") == "."             # a joinable path, not None
-
-
-def test_only_the_hierarchy_keeps_attempts_as_directories():
-    """§ 1: flat separates attempts by an OUTPUT INDEX (`-run0.out`) the
-    wrapper writes, so there is no attempt directory to open and `--from` has
-    nothing to name -- *"continuing: free, the next stage finds them lying
-    there."*"""
-    from molbuilder.paths import Shape
-    assert Shape.named("hierarchical").keeps_attempts_as_directories is True
-    assert Shape.named("flat").keeps_attempts_as_directories is False
-
-
-def test_a_flat_ladder_lays_every_stage_out_in_the_bundle_root():
-    """Depth 1.  This is what makes a flat `job-set.json` safe to emit: without
-    it the bundle's own prep would build `01_coarse/`, `02_medium/` inside a
-    calculation whose description says flat."""
+def test_each_stage_lays_out_in_the_folder_its_deck_token_names():
+    """`project-layout.md` § 1, § 4.2: a stage's folder is the token its deck
+    carries, read back off the deck -- never a position counted here, so a
+    ladder with a gap keeps it (``03_tight``, not ``02_tight``)."""
     from molbuilder.jobset.naming import job_dir_names
-    from molbuilder.paths import Shape
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-
-    assert job_dir_names(js, Shape.named("flat")) == {"coarse": ".",
-                                                      "tight": "."}
-    assert job_dir_names(js, Shape.named("hierarchical")) == {
-        "coarse": "01_coarse", "tight": "03_tight"}
-
-
-def _describe(base, shape, names=("coarse", "tight")):
-    """Write a real `task.json` beside a bundle, through the one codec."""
-    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
-                                 write_task)
-    stages = tuple(Stage(name=n, overrides={"mesh_cutoff": 200})
-                   for n in names)
-    write_task(Path(base), Task(
-        engine="siesta", shape=shape, calculation="optimization",
-        run=derive_run("JOB", "H2", stage_names=names),
-        structure=StructureRef(source="h2.xyz", formula="H2", atoms=2),
-        varies=("mesh_cutoff",), stages=stages))
-
-
-def test_the_surfaces_read_the_shape_from_the_description(tmp_path):
-    """`engines/stages.md` § 6.7: *"`prep` **reads** it; it does not decide
-    it."*  `shape_of` is the one place a surface asks, and the layers below
-    take the answer as an argument rather than going looking a second time.
-
-    Pinned through `job_dir_names` on a REAL bundle, because the object being
-    correct proves nothing if nobody hands it the description's answer -- which
-    is what a mutation found: a shape read as a constant left every test
-    green.  The shape is the description's (`Shape.named(task.shape)`, A16).
-    """
-    from molbuilder.jobset.naming import job_dir_names
-    from molbuilder.paths import Shape
-    from molbuilder.task import of as task_of
-
-    def shape_of(_js, folder):
-        return Shape.named(task_of(folder).shape)
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-
-    _describe(tmp_path, "flat")
-    assert shape_of(js, tmp_path).name == "flat"
-    assert job_dir_names(js, shape_of(js, tmp_path)) == {"coarse": ".",
-                                                          "tight": "."}
-
-    _describe(tmp_path, "hierarchical")
-    assert shape_of(js, tmp_path).name == "hierarchical"
-    assert job_dir_names(js, shape_of(js, tmp_path)) == {
-        "coarse": "01_coarse", "tight": "03_tight"}
+    assert job_dir_names(js) == {"coarse": "01_coarse", "tight": "03_tight"}
 
 
 # --------------------------------------------------------------------- #
@@ -573,7 +486,7 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
             "max_time": "1-00:00:00", "max_cores": 128,
             "node_types": [{"cores": 128, "nodes": 4}]})],
         env_init=enters), named_environment_path("sol"))
-    ws = describe_calculation(tmp_path, monkeypatch, shape="flat")
+    ws = describe_calculation(tmp_path, monkeypatch)
     hpc = ws.parent / "H2-on-sol"
     shutil.copytree(ws, hpc)
     # A RUN ON A CLUSTER STATES ITS QUEUE, WALL AND MEMORY
@@ -585,6 +498,8 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
         r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                    "--target", target)
         assert r.exit_code == 0, r.output
+    # THE STAGE'S FILES LIE IN ITS FOLDER (`project-layout.md` § 5.2).
+    ws, hpc = ws / "01_coarse", hpc / "01_coarse"
     assert (hpc / "H2_01_coarse.sbatch").is_file(), "the cluster has no header"
 
     def _logic(text: str) -> str:

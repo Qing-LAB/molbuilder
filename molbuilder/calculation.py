@@ -65,13 +65,6 @@ class Calculation:
     def template_text(self) -> Optional[str]:
         return self.template.text if self.template is not None else None
 
-    @property
-    def shape(self):
-        """The layout, the description's (`Shape.named(task.shape)`):
-        asked, never inferred from what is on disk."""
-        from .paths import Shape
-        return Shape.named(self.task.shape)
-
     def job(self, stage: str):
         """The job ``stage`` is prepared as -- its row in the plan
         (`JobSet.job`, matched as every reader matches a stage's name), or

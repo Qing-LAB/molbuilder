@@ -62,8 +62,8 @@ Design notes:
   timing instrument's own reader.
 - It stops when ``--watch-pid`` goes away (the job wrapper's PID) or when
   the wrapper stops it: SIGTERM at the job's end -- the scheduler's own
-  SIGTERM at a walltime or a cancel reads the same -- and SIGUSR1 when one
-  attempt is retried in place, which is not an ending.  Output markers are
+  SIGTERM at a walltime or a cancel reads the same -- and SIGUSR1 when the
+  run is retried in place, as its next try, which is not an ending.  Output markers are
   not consulted: they can appear before a run is actually over, which would
   end the sampling early (`job-contracts.md`, the monitor's section).
 - The seconds per iteration are the timing instrument's, one phase at a
@@ -423,8 +423,9 @@ class _Growth:
 @dataclass
 class WatchedRun:
     """The run this monitor watches, as the wrapper names it -- its stage's
-    names (`runfiles.RunNames`) and the run's number launch gave it -- in
-    the directory the job runs in.
+    names (`runfiles.RunNames`) and its try's number (``--run N``: 0 from
+    launch, the next from a warm retry) -- in the directory the job runs
+    in.
 
     Every file is named and found through `runfiles` (`run-reports.md`
     § 2.3), the way `project-layout.md` § 4.5 has every caller ask for our
@@ -465,10 +466,9 @@ class WatchedRun:
         return self.directory / self.names.name(role, self.run)
 
     def files(self) -> Dict[str, Path]:
-        """This run's files by role: its own run index's, and those the
-        folder holds for every run -- a progress log carries the run's
-        number only where the stage's runs share a folder
-        (`runfiles.RunNames`), so in either shape it is one of the two."""
+        """This run's files by role: its own try's, and those the folder
+        holds for every try -- a progress log carries no try's number
+        (`runfiles.RunNames`)."""
         out: Dict[str, Path] = {}
         for p, rf in _rf.find(self.directory, self.label, stage=self.stage):
             if rf.run is None or rf.run == self.run:
@@ -526,9 +526,9 @@ class WatchedRun:
         clock from its first call this run computed, this call's from this
         monitor's start; and the pace of the phase underway's calls, once
         one has finished.  An index that does not read -- being rewritten,
-        or none -- leaves the line without them.  The index is the run's
-        first attempt's, whichever attempt this call's run is -- a call
-        retried in place reads the run it belongs to."""
+        or none -- leaves the line without them.  The index is the run's,
+        in its folder and named for its first try, whichever try this call
+        is in -- a call retried in place reads the run it belongs to."""
         found = _run_index_of(self.launched_in, self.names)
         if found is None:
             return
@@ -628,29 +628,29 @@ class WatchedRun:
         answers, and a job can start first.  One that does not read is
         :class:`LaunchRecordError`.  A member of a run of points reads the
         run's, in the run's folder."""
-        return _rr.launch_record(self.run_folder, self.names, self.run)
+        return _rr.launch_record(self.run_folder)
 
     def notified(self) -> List[Dict[str, Any]]:
         """Every event sent for the run so far (`runrecord.read_notified`)."""
-        return _rr.read_notified(self.run_folder, self.names, self.run)
+        return _rr.read_notified(self.run_folder)
 
     def note(self, event: str, at: float,
              reason: Optional[str] = None) -> None:
         """``event`` sent for the run at ``at`` -- a failed part's
         ``reason`` with it -- into its notification record
         (`runrecord.note_notified`, `run-reports.md` § 2.5)."""
-        _rr.note_notified(self.run_folder, self.names, self.run, event, at,
-                          reason=reason)
+        _rr.note_notified(self.run_folder, event, at, reason=reason)
 
     def conclude(self, st: JobStatus) -> JobStatus:
         """How the run ended, as the Results tab reads it: `run_status` over
-        this rung's own files (`run-reports.md` § 2.3) -- its state and
+        this try's own files (`run-reports.md` § 2.3) -- the try this monitor
+        watches, never one a warm retry started since -- its state and
         detail, each phase's convergence from the ending of the file that
         speaks, and the process's goodbye.  Asked after the closing record
         is written: a forced stop leaves no other word, and `run_status`
         reads it there."""
         try:
-            rs = run_status(self.directory, self.stem)
+            rs = run_status(self.directory, self.stem, run=self.run)
         except Exception:                               # noqa: BLE001
             return st           # an unreadable directory says nothing
         st.state, st.detail = rs.state, rs.detail
@@ -709,10 +709,10 @@ RUN_INDEXES: Tuple[RunIndex, ...] = (
 def _run_index_of(run_dir: Path, names: "_rf.RunNames"
                   ) -> Optional[Tuple[RunIndex, Path]]:
     """THE RUN'S INDEX AND ITS READER (:data:`RUN_INDEXES`): the first
-    whose file the run's folder holds -- the run's first attempt's,
-    whichever attempt a point's own run is -- or ``None``."""
+    whose file the run's folder holds -- named for the run's first try,
+    whichever try a point is in -- or ``None``."""
     for reader in RUN_INDEXES:
-        path = reader.path(run_dir, names, _rf.FIRST_ATTEMPT)
+        path = reader.path(run_dir, names)
         if path.is_file():
             return reader, path
     return None
@@ -2101,9 +2101,8 @@ def run_identity(watched: Optional["WatchedRun"] = None) -> Dict[str, str]:
 
     ``run`` is the rung's **stem** -- the label and the stage token, *"the
     stem of every file"* (`run-identity.md`) -- as `runfiles` composes it
-    for the run the wrapper named (`project-layout.md` § 4.5).  The run
-    index is left out
-    because the stem names the calculation and not the attempt.
+    for the run the wrapper named (`project-layout.md` § 4.5).  The try's
+    number is left out: the stem names the calculation, not the try.
 
     Everything is best-effort: an identity that cannot be gathered must
     never stop a run reporting.  A missing field is simply absent, which a
@@ -2455,7 +2454,7 @@ def run_monitor(watched: "WatchedRun", *,
         ticks += 1
         now = clock()
         # STOPPED IS OVER -- for this process.  The wrapper stops it when the
-        # job ends (its EXIT trap) and when it retries an attempt in place,
+        # job ends (its EXIT trap) and when it retries the run in place,
         # both while the watched pid is still alive.  Asked BEFORE sampling:
         # a sample taken after the stop is not the run's.
         alive = _pid_alive(watch_pid) and _STOPPED_BY is None
@@ -2485,12 +2484,12 @@ def run_monitor(watched: "WatchedRun", *,
             retry = _STOPPED_BY == _STOP_RETRY
             if retry:
                 # NOT AN ENDING: the wrapper re-execs itself in this pid for
-                # the next run, which starts its own monitor
+                # the run's next try, which starts its own monitor
                 # (`run-reports.md` § 2 -- "it ended" is the watched pid
                 # going, and across an exec it does not go).
                 _append(log, f"[{_iso(now)}] [MONITOR] stopped: the wrapper "
-                             f"is retrying this attempt in place; the next "
-                             f"run starts its own monitor")
+                             f"is retrying this run in place; its next "
+                             f"try starts its own monitor")
             else:
                 _append(log, f"[{_iso(now)}] {MONITOR_ENDED} "
                              + (f"(stopped by {_STOPPED_BY}); "
@@ -2710,7 +2709,7 @@ def make_log_notifier(log: Path) -> Notifier:
 
 #: Why this process was stopped, or None: ``"SIGTERM"`` -- the job ended (the
 #: wrapper's EXIT trap, or the scheduler's walltime or cancel) -- or
-#: :data:`_STOP_RETRY`, SIGUSR1, the wrapper retrying one attempt in place.
+#: :data:`_STOP_RETRY`, SIGUSR1, the wrapper retrying the run in place.
 #: Set by PLAIN ASSIGNMENT in the handler: a handler that took a lock could
 #: meet the loop holding it and hang the monitor for good.  Only `main`
 #: installs the handlers: a library call of `run_monitor` gets no
@@ -2742,9 +2741,7 @@ def main(argv=None) -> int:
     """The entry of the SHIPPED bundle, ``mb_monitor.pyz``
     (`runwrap.MONITOR_BUNDLE`): argparse for the monitor, and ``ending ...``
     handed to `_run_ending`'s door, which travels in the same file -- the
-    wrapper asks how a run ended with ``mb_monitor.pyz ending OUTPUT ...``
-    -- and ``retried ...`` to the run records' (`runrecord.retried_main`),
-    with which a warm retry records itself.
+    wrapper asks how a run ended with ``mb_monitor.pyz ending OUTPUT ...``.
 
     ONE command line: ``molbuilder monitor`` hands its arguments here, so
     the monitor a person starts from the package is the one the job runs.
@@ -2755,10 +2752,6 @@ def main(argv=None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] == ["ending"]:
         return _ending.main(args[1:])
-    if args[:1] == ["retried"]:
-        # A WARM RETRY'S OWN LAUNCH RECORD, by the one writer, which travels
-        # in this file (`runrecord.retried_main`; `running-a-job.md` § 3.5).
-        return _rr.retried_main(args[1:])
     if args[:1] == [POINT_VERB]:
         # A TRANSPORT POINT'S REPORT STEPS: its start and end into the run's
         # index, and the run's events (`engines/transport.md` § 2a.11).
@@ -2782,13 +2775,12 @@ def main(argv=None) -> int:
                    help="the run's label -- the stem every file begins with")
     p.add_argument("--stage", required=True,
                    help="the stage token (e.g. 01_coarse)")
-    p.add_argument("--shared", action="store_true",
-                   help="the stage's runs share this folder")
     p.add_argument("--dir", default=".", dest="directory",
                    help="the directory the run is in (default: here, where "
                         "the wrapper starts it)")
-    p.add_argument("--run", type=int, required=True, dest="run_index",
-                   help="the run's number, as launch gave it (-runN)")
+    p.add_argument("--run", type=int, required=True, dest="try_n",
+                   help="the try's number (-runN): 0 from launch, the "
+                        "next from a warm retry")
     p.add_argument("--interval", type=float, default=10.0,
                    help="seconds between wakes (default 10; this is the "
                         "utilization sample rate -- status lines stay "
@@ -2853,8 +2845,8 @@ def main(argv=None) -> int:
                    help="the run's folder, from here -- where its launch "
                         "record and notification record lie")
     a = p.parse_args(args)
-    watched = WatchedRun(names=_rf.RunNames(a.label, a.stage, a.shared),
-                         run=a.run_index, directory=Path(a.directory),
+    watched = WatchedRun(names=_rf.RunNames(a.label, a.stage),
+                         run=a.try_n, directory=Path(a.directory),
                          launched_in=(Path(a.directory) / a.launched_in
                                       if a.launched_in else None))
     signal.signal(signal.SIGTERM, _on_stop_signal)
@@ -2931,7 +2923,7 @@ def _point_main(argv) -> int:
     p.add_argument("verb", choices=(POINT_STARTED, POINT_ENDED))
     p.add_argument("--label", required=True)
     p.add_argument("--stage", required=True)
-    p.add_argument("--run", type=int, required=True, dest="run_index",
+    p.add_argument("--run", type=int, required=True, dest="try_n",
                    help="the point's try, as its run script was given it")
     p.add_argument("--launched-in", required=True, dest="launched_in",
                    help="the run's folder, from the point's")
@@ -2940,9 +2932,9 @@ def _point_main(argv) -> int:
     a = p.parse_args(argv)
     here = Path.cwd().resolve()
     run_dir = (here / a.launched_in).resolve()
-    names = _rf.RunNames(a.label, a.stage, False)
+    names = _rf.RunNames(a.label, a.stage)
     rel = Path(os.path.relpath(here, run_dir)).as_posix()
-    path = _pi.index_path(run_dir, names, _rf.FIRST_ATTEMPT)
+    path = _pi.index_path(run_dir, names)
     try:
         index = _pi.read_index(path)
         if a.verb == POINT_STARTED:
@@ -2951,7 +2943,7 @@ def _point_main(argv) -> int:
             if a.exit_code is None:
                 raise ValueError("point ended is told the engine's exit "
                                  "(--exit)")
-            out = here / names.name(".out", run=a.run_index)
+            out = here / names.name(".out", run=a.try_n)
             verdict = None
             if out.is_file():
                 try:
@@ -2965,8 +2957,7 @@ def _point_main(argv) -> int:
         _point_say("WARN", f"report step: the run's index not stamped -- "
                            f"{exc}")
         return 1
-    said = ["--label", a.label, "--stage", a.stage,
-            "--run", str(_rf.FIRST_ATTEMPT), "--dir", str(run_dir)]
+    said = ["--label", a.label, "--stage", a.stage, "--dir", str(run_dir)]
     if a.verb == POINT_STARTED:
         return _notify_main(["start"] + said)
     rows = _pi.rows_of(index, run_dir)
@@ -3012,8 +3003,8 @@ def _point_main(argv) -> int:
 
 def _notify_main(argv) -> int:
     """``mb_monitor.pyz notify start|milestone|part_failed|finish --label L
-    --stage S --run N --dir RUN [--state S --detail D --reason R]`` -- ONE
-    event for a
+    --stage S --dir RUN [--state S --detail D --reason R]`` -- ONE event for
+    a
     run of points, sent by its Python steps -- a vibration's record steps,
     a transport point's report steps (:func:`_point_main`) -- through the
     channels and card the monitor uses, with the run's identity, and
@@ -3033,7 +3024,6 @@ def _notify_main(argv) -> int:
                    choices=("start", "milestone", "part_failed", "finish"))
     p.add_argument("--label", required=True)
     p.add_argument("--stage", required=True)
-    p.add_argument("--run", type=int, required=True, dest="run_index")
     p.add_argument("--dir", default=".", dest="directory",
                    help="the run's folder")
     p.add_argument("--state", default="running",
@@ -3044,8 +3034,10 @@ def _notify_main(argv) -> int:
                    help="a failed part's why: a part_failed whose reason "
                         "the run has already reported is not sent again")
     a = p.parse_args(argv)
-    watched = WatchedRun(names=_rf.RunNames(a.label, a.stage, False),
-                         run=a.run_index, directory=Path(a.directory))
+    # THE RUN'S FOLDER HOLDS NO TRY OF ITS OWN -- its calls' or points'
+    # folders do -- so its log is named for the first.
+    watched = WatchedRun(names=_rf.RunNames(a.label, a.stage),
+                         run=_rf.FIRST_TRY, directory=Path(a.directory))
     log = watched.path(".monitor.log")
     now = time.time()
     try:

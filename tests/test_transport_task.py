@@ -7,9 +7,9 @@ person meets it, `molbuilder describe`.
   via the citation (--structure / --psml-lib / --vacuum / --stage-strategy);
   and `--slot` on any other kind.  Each refusal is the door's own -- the
   codec's where the codec owns the rule (`task.py`), surfaced by name.  The
-  refusals that come after a citation is read -- a bias list that does not
-  start at 0.0, a flat shape -- need a finished relaxation to cite, so they
-  are asked on the junction the end-to-end pass relaxes
+  refusal that comes after a citation is read -- a bias list that does not
+  start at 0.0 -- needs a finished relaxation to cite, so it is asked on the
+  junction the end-to-end pass relaxes
   (`tests/test_transport_on_a_real_junction_e2e.py`, plan § 5y).
 * the codec round-trips slots + bias and carries NO structure block for the
   kind (its structure IS the citation): API-level, since the file is the one
@@ -37,8 +37,7 @@ def test_round_trip_and_no_structure_block():
     """The codec's own property (`engines/transport.md` § 2a.14): a transport
     description carries its slot and its bias list, and no structure block --
     its structure IS the citation."""
-    t = Task(engine="siesta", shape="hierarchical",
-             run=Run(name="T", id=run_id("T", _CITE, stage_names=_STAGES)),
+    t = Task(engine="siesta", run=Run(name="T", id=run_id("T", _CITE, stage_names=_STAGES)),
              structure=None, calculation="transport",
              slots={"junction": _CITE}, bias=(0.0, 0.2),
              low_bias_approximation=False, varies=(), stages=_stages())
@@ -70,8 +69,7 @@ def test_a_ladder_is_its_five_rungs_every_one(names):
     (ruling Q4's skip, withdrawn)."""
     stages = tuple(Stage(name=n, overrides={}) for n in names)
     with pytest.raises(ValueError) as got:
-        Task(engine="siesta", shape="hierarchical",
-             run=Run(name="T", id=run_id("T", _CITE, stage_names=names)),
+        Task(engine="siesta", run=Run(name="T", id=run_id("T", _CITE, stage_names=names)),
              structure=None, calculation="transport",
              slots={"junction": _CITE}, bias=(0.0, 0.2),
              low_bias_approximation=False, varies=(), stages=stages)
@@ -89,8 +87,7 @@ def test_a_kind_on_an_engine_it_does_not_run_on_is_refused_by_the_reader():
     MUTATION THIS MUST FAIL AGAINST: the reader asking the lenient
     ``kind_table.pair`` (None for the pair) instead of the kind's part."""
     with pytest.raises(ValueError) as got:
-        Task(engine="pyscf", shape="hierarchical",
-             run=Run(name="T", id=run_id("T", _CITE, stage_names=_STAGES)),
+        Task(engine="pyscf", run=Run(name="T", id=run_id("T", _CITE, stage_names=_STAGES)),
              structure=None, calculation="transport",
              slots={"junction": _CITE}, bias=(0.0,), varies=(),
              stages=_stages())
@@ -115,8 +112,7 @@ def _init(args):
                               ["--engine", "siesta"] + args)
 
 
-_TRANSPORT = ["--calculation", "transport", "--shape", "hierarchical",
-              "--bundle", "BDT-Au/transport/T"]
+_TRANSPORT = ["--calculation", "transport", "--bundle", "BDT-Au/transport/T"]
 
 
 class TestInitCLI:
@@ -159,8 +155,7 @@ class TestInitCLI:
         (tree / "BDT-Au" / "structure" / "j.xyz").write_text(
             "1\n\nH 0 0 0\n")
         r = _init([
-            "--calculation", "optimization", "--shape", "hierarchical",
-            "--structure", "BDT-Au/structure/j.xyz",
+            "--calculation", "optimization", "--structure", "BDT-Au/structure/j.xyz",
             "--bundle", "BDT-Au/optimization/X",
             "--slot", f"junction={_CITE}"])
         assert r.exit_code != 0

@@ -5,10 +5,7 @@ science/normal-modes.md § 4a.6 and design § 8: SIESTA nudges the free atoms
 (`MD.TypeOfRun FC`, one contiguous range) and writes `.FC`; everything after
 that is the one path both engines share.  The held-first sort is what makes
 a scattered held set a range (`model/overview.md` § 2.2), and the copy's
-order record is what puts the answer back in the user order.  And the flat
-layout's refusal, which prep makes before any deck is written: a SIESTA
-vibration is one run in phases, each SIESTA call in a folder of its own
-(`engines/vibration.md` § 5.11).
+order record is what puts the answer back in the user order.
 """
 from __future__ import annotations
 
@@ -62,7 +59,7 @@ def test_the_force_constant_deck_nudges_the_free_range_only(tmp_path,
     r = jobset("prep", "task", *group_words(bundle, "freq"),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
-    names = RunNames.of("CO2", "01_freq", "hierarchical")
+    names = RunNames("CO2", "01_freq")
     text = read_deck(bundle / "01_freq" / FC_PART / names.name(".fdf"))
     assert _lines(text, "MD.TypeOfRun") == ["MD.TypeOfRun      FC"]
     assert _lines(text, "FC.First") == ["FC.First          2"]
@@ -118,7 +115,7 @@ def test_compute_ir_and_compute_raman_reach_the_decks(
     r = jobset("prep", "task", *group_words(bundle, "freq"),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
-    names = RunNames.of("CO2", "01_freq", "hierarchical")
+    names = RunNames("CO2", "01_freq")
     text = read_deck(bundle / "01_freq" / FC_PART / names.name(".fdf"))
     scalars, _ = read_fdf(text)
     got = {key: scalars.get(fdf_key(key))

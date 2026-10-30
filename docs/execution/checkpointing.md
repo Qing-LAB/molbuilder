@@ -217,7 +217,7 @@ bdt-relax/                           the folder: the user typed this name
 ├── 01_coarse/                       │
 │   ├── BDT_Au_relax_01_coarse.fdf      │
 │   └── run-0/                       │
-│       ├── BDT_Au_relax_01_coarse.out  ┘
+│       ├── BDT_Au_relax_01_coarse-run0.out  ┘
 │       ├── BDT_Au_relax.XV            small → git
 │       ├── run.json                   small → git
 │       └── BDT_Au_relax.DM            large → the archive
@@ -597,7 +597,8 @@ That is why the archive is verified *before* the text is touched.
 
 **What the sweep removes is decided by two records and one answer** (I2a):
 `git ls-files` and the target's MANIFEST say what the target holds, and
-`warmfiles.is_scratch` says what no state holds. An engine's scratch is removed
+`warmfiles.never_carried` says what no state holds — the engines' scratch and
+molbuilder's temporary files (S1). What no copy carries is removed
 like every file the target does not hold — a copy git restored from a state
 saved before the rule included among them — so a device run's `tsgf/` comes
 back holding only its marker (`calcdir.json`, text the state holds) where the
@@ -762,28 +763,16 @@ never wrong, and never a false alarm that trains people to ignore the real one.
 
 ---
 
-## 8. Why this matters far more in a flat folder
+## 8. What a saved state is for
 
-In the **nested** shape every stage and attempt is on disk at once. Going back to
-stage 1's geometry means opening `01_coarse/run-0/`. A saved state there is
+Every stage and attempt is on disk at once
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.2). Going back to
+stage 1's geometry means opening `01_coarse/run-0/`. A saved state is
 protection against loss and a way to branch — valuable, not load-bearing.
 
-**In the flat shape it is load-bearing.** The restart files are unsuffixed and
-shared *by design* — that is exactly what lets stage 2 continue from stage 1 —
-which means stage 2 **overwrites** them.
-
-> **Without saved states, a flat folder can only move forward.** With them it can
-> return to any state it was saved in and continue from there. That is not a
-> convenience on top of the flat shape; it is what makes the flat shape usable for
-> iterative work at all.
-
-Two consequences worth saying out loud:
-
-- **Saving before each stage is not housekeeping in a flat folder — it is the
-  save point.** Miss one and that state is gone, because nothing else on disk
-  holds it.
-- **Going back costs the present unless you save it first** (§ 7.1). The nested
-  shape never poses that question, because it never had to overwrite anything.
+**Going back costs the present unless you save it first** (§ 7.1): a restore
+rewinds the whole folder, so what the folder holds now and no state holds is
+what it loses.
 
 ---
 
@@ -1004,9 +993,9 @@ path, and a restore would then write a real file where a link belongs.
 piece of path text it is.** That sentence used to read *"recreating the layout
 is what a restore does anyway"*, which assumed the thing it needed to require.
 
-> **The assumption failed for exactly the links this system exists around.** An
+> **The assumption failed for a link a person plants.** An
 > always-large entry matches a **name**, and a name says nothing about a link: a
-> carry link called `job.DM` is twenty bytes of path, and `.gitignore` was
+> link called `job.DM` is twenty bytes of path, and `.gitignore` was
 > sending it to the store that does not take links. It landed in **neither** —
 > `git add` skipped it as ignored, the archive skipped it as a link — so § 3's
 > *exactly one store* quietly did not hold, and a restore neither brought the
@@ -1031,12 +1020,13 @@ is what a restore does anyway"*, which assumed the thing it needed to require.
 
 **S1a — `.gitignore` is generated from the classification, never hand-kept
 beside it.** One *source*, not merely one writer: the archive's patterns and
-the engines' scratch (S1), nothing else.
+what no copy carries — the engines' scratch and molbuilder's temporary files
+(S1, `warmfiles.never_carried_families`) — nothing else.
 
 - **Fails as:** a hand-kept list answers to no rule. That is exactly how `*.MD`
   came to be ignored with nowhere else to go.
 - **Test:** assert the generated `.gitignore` contains **nothing that is not an
-  archive pattern or the engines' scratch**. That check catches the whole
+  archive pattern or what no copy carries**. That check catches the whole
   class, and no fixture can be too short for it.
 
 **S1b — which store a file goes to is decided by measuring the file.** Its size
@@ -1113,9 +1103,10 @@ sha256 matches.
 configuration.** What a restore removes and what it copies back are decided by
 two records — `git ls-files` for the text, and the target's MANIFEST, verified
 and read through `state_entries`, for the big files — and by one answer
-besides, `warmfiles.is_scratch`: an engine's scratch is in no state, and is
-named by the vocabularies molbuilder ships, never by a person's config (S1,
-S1c), so the sweep removes it like every file the target does not hold — a copy
+besides, `warmfiles.never_carried`: what no copy carries — an engine's scratch
+and molbuilder's temporary files — is in no state, and is named by the
+vocabularies and the file catalogue molbuilder ships, never by a person's
+config (S1, S1c), so the sweep removes it like every file the target does not hold — a copy
 git restored from a state saved before the rule included among them. The
 restore reads no classification: no size limit and no always-large family
 decides what is removed or copied back. The question asked before the folder
@@ -1258,10 +1249,13 @@ created since the save is noticed at all. Never the glob list.
   Then, separately, create a big file that no MANIFEST mentions and assert
   `save` still sees it.
 
-**L8 — a saved attempt never differs afterwards.** This is I2 pointed at a
-directory the layout says is frozen. *Hierarchical only* — a flat folder's
-`<label>.DM` is *expected* to change every stage, so there a difference is news
-rather than a violation. Do not let a check written for one shape fail the other.
+**L8 — a run that ended never differs afterwards, but for its `run.json`'s
+`ended`, written once.** This is I2 pointed at a directory the layout says is
+frozen once its launch has ended (`project-layout.md` § 1.5); the scheduler's
+answer about a sent job is the one key written after it (`runrecord.record_ended`,
+§ 1.6.3 there). A run saved while it still runs — another group's prep saves
+the whole folder — is saved mid-run, and its next save records what it then
+wrote.
 
 ### A save or a restore completes, or does not happen
 
@@ -1278,11 +1272,13 @@ one removal from a published archive is not publishing's: I1.)
 - **Test:** corrupt one byte of the target archive and attempt a restore — it
   refuses, and the folder is byte-identical to before.
 
-**A3 — the save precedes the change it protects.** A pre-produce save is
-committed *before* the first new file is written.
+**A3 — the save precedes the change it protects.** The save before a `prep`, a
+group's first launch or a Save (§ 9) is committed *before* the first new file
+is written.
 
-- **Test:** interrupt a produce between the save and the swap: the commit exists
-  and `git status` is clean — no new file reached the folder.
+- **Test:** interrupt a prep between the save and its writing
+  (`Plan.carry_out`): the commit exists and `git status` is clean — no new file
+  reached the folder.
 
 **A4 — a restore returns the whole folder, or it does not happen.** There is no
 partial restore. Text and binaries are one state; returning half of one save and
@@ -1334,8 +1330,9 @@ because that is not a loss.** Restore stage 1 while standing at stage 2 and
 stage 2's outputs leave the folder — they are still in the state that holds
 them, and restoring it brings them back. Warning about a non-loss is how people
 are taught to stop reading warnings. The alternative is also worse than untidy:
-a stage 2 `.DM` left lying in a folder that claims to be stage 1 is exactly the
-file a later run picks up without being asked to.
+a `.DM` the target never held, left in a run folder, is exactly the file a
+later warm launch copies from that run without being asked to
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.5).
 
 **Exactness costs time, so it is spent where being wrong costs data.** A
 *display* is answered from size and timestamp; an *operation* from content.
@@ -1393,9 +1390,9 @@ save` only**, and the tamper rule needs it regenerated every time. Excepting a
 verb hid the two files the rule actually has to allow, and pointed at a verb
 that does not write them.
 
-*What this rule is **not**.* It used to also govern what a **produce** may delete
+*What this rule is **not**.* It used to also govern what a **prep** may delete
 from a run directory, in the run layer's vocabulary — warm files, cold starts.
-That belongs where produce is specified, and stating it here made this document
+That belongs where prep is specified, and stating it here made this document
 appear to know things it has no business knowing (a folder is files; whether a
 deck tells an engine to look for prior state is not a property of a snapshot).
 
@@ -1413,14 +1410,18 @@ every prep, a group's first launch and Task setup's Save, never a running job. U
 git in env ... long time ago".)*
 
 **S2 — shared state lives above; a stage writes only inside its own directory.**
+What lives above is the calculation's own records — its decisions ledger
+(`jobset-decisions.log`), a submission's `launch/` folder — written by the
+verbs, never by a run; a run writes only inside its run folder.
 
 - **Test, and one half alone is worse than useless:** (a) run one stage and read
-  `git status` at the parent — every changed path is under that stage. (b) git
+  `git status` at the parent — every changed path is under that stage, or is
+  one of the calculation's own records above it. (b) git
   **cannot see the big files**, so compare their shas against the last archive
   too. Half (a) alone passes while a stage overwrites another stage's `.DM`.
 
-**S4 — the description is input; everything else is derived.** No produce and no
-run may edit `task.json` or `job-request.json`.
+**S4 — the description is input; everything else is derived.** No prep, no
+launch and no run may edit `task.json` or `job-request.json`.
 
 - **Test:** hash it before and after.
 
@@ -1443,28 +1444,25 @@ quieter.* It has two halves and they are answerable at different times.
 ### A history you can read back
 
 **S3 — a run records what it started from.** `run.json`'s `continued_from` names
-the run directory its files came from — on the flat layout, where every run
-shares the calculation's one folder, the run's own name, `<label>_<NN>_<stage>-run<N>`,
-which each of its files carries — or is `null` when it started from the
+the run directory its files came from, or is `null` when it started from the
 structure: the key is always written *(it was left out until 2026-10-06)*,
 and a `.continued-from` marker that does not read stops the launch rather
 than reading as a start from the structure.
 
-*This survived a design change and its mechanism did not.* When stages chained, an
-inherited file arrived as a symlink and became real when localised — the type
-change *was* the record. Stages no longer chain, so the record is explicit. It is
-also better: a symlink says *something was inherited*, not **which run**, and with
-several attempts per stage that is the question you actually have.
+*The record is explicit because the files are copies*
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.5): a copied file
+says nothing about where it came from, so the run it came from is named — which
+run, among a stage's several, being the question you actually have.
 
 - **Test:** for every run in a finished tree, `continued_from` names a directory
-  that exists — on the flat layout a run whose files exist — or is absent;
-  never something deleted or never there.
+  that exists, or is `null`; never something deleted or never there.
 
 **S6 — a restored folder is internally consistent.** `task.json` is tracked text,
 so a restore brings back the description *together with* the decks it produced.
 
-- **Test:** restore any commit and re-run the produce with `dry_run` — it reports
-  no change. One exclusion only: PROVENANCE stamps `generated-at`, so that key is
+- **Test:** restore any commit and plan a prep again without writing — its
+  preview (`job-system.md` § 5.0) — and compare what it would write — it
+  reports no change. One exclusion only: PROVENANCE stamps `generated-at`, so that key is
   ignored.
 
 **L3 — every state carries a note, and names its calculation.** Two parts, both
@@ -1601,13 +1599,13 @@ serialises its own index already.
   archive present verifies (I2), and neither save reports success over a
   directory the other was still writing.
 
-### Depth, and both folder shapes
+### Depth
 
 **L1 — one repository per calculation**, covering the root and every stage
 beneath it.
 
 **L2 — the archive matches at depth.** A gitignore pattern with no slash matches
-at *every* level, so a nested `01_coarse/job.DM` is ignored by git — and if the
+at *every* level, so a nested `01_coarse/run-0/job.DM` is ignored by git — and if the
 archive walk only looked at the top level it would be ignored **and** unarchived:
 in no snapshot at all. Both sides must resolve depth the same way.
 
@@ -1626,8 +1624,8 @@ conclude there is nothing to do.
 
 | Rule | | |
 |---|---|:--:|
-| **S1** | everything is stored; the two stores and an engine's scratch are the only exclusions | ✅ a walk over a saved folder asserts it; an engine's scratch, asked of the shipped vocabularies in a folder that records no engine, is asserted in neither store, no unsaved work, and removed by a restore with the run folder the target never had. A save untracking scratch an older save tracked is unasserted — § 13.4's waiting table |
-| **S1a** | `.gitignore` generated, one source | ✅ the block holds nothing but the archive's patterns and the engines' scratch; a user's own entries are left alone |
+| **S1** | everything is stored; the two stores and what no copy carries — an engine's scratch, molbuilder's temporary files — are the only exclusions | ✅ a walk over a saved folder asserts it; an engine's scratch, asked of the shipped vocabularies in a folder that records no engine, is asserted in neither store, no unsaved work, and removed by a restore with the run folder the target never had. A save untracking scratch an older save tracked is unasserted — § 13.4's waiting table |
+| **S1a** | `.gitignore` generated, one source | ✅ the block holds nothing but the archive's patterns and what no copy carries; a user's own entries are left alone |
 | **S1b** | the store is chosen by measuring the file | ✅ 10 MB by default; engine entries only let a family skip the measuring, and a big file never reaches `git add` at all |
 | **S1c** | the classification lives outside every calculation folder | ✅ the size limit and the hints in `molbuilder.json`, the one config file, whose accessor takes no directory; the engines' scratch from the vocabularies molbuilder ships, never a calculation's copy |
 | **I1** | archived content is never changed, but for an engine's scratch | ✅ structural — the name is the content digest, so changed content is a different archive. The one removal (`prune_scratch`) takes an archive's scratch and keeps every other file and the MANIFEST |
@@ -1643,11 +1641,11 @@ conclude there is nothing to do.
 | **A4** | a restore is whole or does not happen | ✅ on every surface — the HTTP route refuses `include_binaries` rather than ignoring it |
 | **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; at a terminal you are **asked** and `--force` answers for a script; removes what the target lacks; the warning is answered by content while the display is not (§ 7.2) |
 | **A6** | every saved state stays listed and restorable | ✅ one ref per state, so nothing depends on where HEAD points |
-| **S2** | a stage writes only inside itself | needs the layout |
+| **S2** | a stage writes only inside itself | unasserted — § 13.4's waiting table |
 | **S3** | a run records what it started from | recorded (`run.json`'s `continued_from`, the run's `.continued-from`); unasserted — § 13.4's waiting table |
-| **S4** | the description is never modified | needs the description |
+| **S4** | the description is never modified | unasserted — § 13.4's waiting table |
 | **S5** | nothing about a run changes the id | ✅ **the half this owns** — attempts come and go and every state still names one calculation; the run-layer half is in § 13.4's waiting table |
-| **S6** | a restored folder explains itself | needs the description |
+| **S6** | a restored folder explains itself | unasserted — § 13.4's waiting table |
 | **L1** | one repository per calculation | ✅ |
 | **L2** | the archive matches at depth | ✅ |
 | **L3** | every state carries a note, and names its calculation | ✅ the note is required; a `Calculation:` trailer names it, and a name needing repair is refused — **on the save as well as at `init`**, since a folder somebody `git init`-ed by hand never reached `init`'s gate |
@@ -1656,7 +1654,7 @@ conclude there is nothing to do.
 | **S7** | a file that changes category leaves the store it came from | ✅ tested in both directions — a file that grows leaves git, one that shrinks leaves the archive |
 | **S8** | a folder out of step is never acted on as if whole | ✅ a restore checks content and refuses, naming the files; a save records what is there, which is honest |
 | **S9** | two saves cannot corrupt each other | ✅ unique staging per publisher, one atomic rename, and **every atomic write uses a unique temp name** — a derived one is the same collision one level down; tested with four concurrent publishers and with two concurrent `save`s |
-| **L8** | a saved attempt never differs afterwards | needs the layout |
+| **L8** | a saved attempt never differs afterwards | unasserted — § 13.4's waiting table |
 
 ### A lost archive is a fact now, not a suspicion
 
@@ -1767,7 +1765,8 @@ the config knows about. Two assertions are made about the **rules themselves**,
 so no fixture can be too small for them:
 
 - **Every pattern in the generated `.gitignore` is an archive pattern or a
-  family the engines' vocabularies name scratch.** If git is told to skip
+  family no copy carries** — the engines' scratch, molbuilder's temporary
+  files (`warmfiles.never_carried_families`). If git is told to skip
   anything else the archive does not take, that file is in no store — and this
   catches it without any file existing at all.
 - **The ignore file matches what regenerating it would produce.** `.gitignore`
@@ -1792,7 +1791,7 @@ nobody is maintaining against this document, which is how the two drift.
 
 | Rule | Where |
 |---|---|
-| S1, S1a, L2 | `test_checkpoint_states.py` — walk every file of a **staged tree** (two stages, two attempts each, big files at depth, symlinked pseudopotentials) and assert each is in exactly one store; the generated ignore block holds nothing but the archive's patterns and the engines' scratch; and a big file never reaches git's object database. **The walk is the test's own `os.walk`**, excluding the two stores by literal name — never the module's `walk_files`, which is what the classification itself iterates (S1's bullet). And an engine's scratch (`test_the_engines_scratch_is_in_neither_store_and_a_restore_removes_it`): in a folder initialised with no engine, a file of each family the shipped vocabularies name (`scratch_families`, asked), big by size too, in a run folder the first state never held, is in neither store after a save and reads as nothing unsaved; a forced restore to the first state removes it and leaves no run folder behind |
+| S1, S1a, L2 | `test_checkpoint_states.py` — walk every file of a **staged tree** (two stages, two runs each, big files at depth, and a link to the shared pseudopotential in each stage — a link a person plants, S1) and assert each is in exactly one store; the generated ignore block holds nothing but the archive's patterns and what no copy carries; and a big file never reaches git's object database. **The walk is the test's own `os.walk`**, excluding the two stores by literal name — never the module's `walk_files`, which is what the classification itself iterates (S1's bullet). And what no copy carries (`test_what_no_copy_carries_is_in_neither_store_and_a_restore_removes_it`): in a folder initialised with no engine, a file of each family the shipped vocabularies name (`scratch_families`, asked), big by size too, in a run folder the first state never held, is in neither store after a save and reads as nothing unsaved; a forced restore to the first state removes it and leaves no run folder behind |
 | S1b, the classification end to end | `test_checkpoint_states.py` — a fixture **generated from the config**: every engine, every pattern it names, one file each, all archived on size alone being wrong; plus an unlisted file either side of the limit |
 | S1b, S1c | `test_checkpoint_config.py` — the size gate (10 MB unset, changeable); `generic` names nothing; an engine's entry, a configured one replacing the shipped one, a new one added, an unknown one falling back to `generic`; a malformed section refused; and the config read from one scope only |
 | I1 | `test_checkpoint_states.py` — changed content lands at a different name and the old archive still holds its bytes; and the one removal (`test_a_save_clears_the_scratch_an_older_archive_holds`): an archive published holding the scratch loses it to `prune_scratch`, which keeps every other file and the MANIFEST |
@@ -1809,15 +1808,15 @@ nobody is maintaining against this document, which is how the two drift.
 | A6 | `test_checkpoint_states.py` — restore, save, restore elsewhere, then `git gc --prune=now`: the state saved in between is still listed and still restorable |
 | L1 | `test_checkpoint_states.py` — independent calculations refused, one declared calculation accepted |
 | L3 | `test_checkpoint_states.py` — a save with no note is refused; a state names its calculation without polluting the note; a name needing repair is refused; the note **round-trips through the one parser** (§ 15) over several shapes; and a note that itself looks like a trailer stays a note rather than forging the calculation's name |
-| L4 | `test_checkpoint_states.py` — the tag list stays empty across a **staged** calculation, stages and attempts and all, until somebody types `checkpoint tag` — the retired mechanism was per-stage, so a flat folder could not have caught it |
-| S5 | `test_checkpoint_states.py` — attempts are added to every stage and every state still names one calculation |
+| L4 | `test_checkpoint_states.py` — the tag list stays empty across a **staged** calculation, stages and runs and all, until somebody types `checkpoint tag` — the retired mechanism was per-stage, so only a staged folder catches it |
+| S5 | `test_checkpoint_states.py` — runs are added to every stage and every state still names one calculation |
 | L7 | `test_checkpoint_states.py` — a big-file-only change |
 | S7 | `test_checkpoint_states.py` — a file grows past the limit, and one shrinks below it; **and the round trip**, which the two store-membership tests do not attempt: a file held in git by one state and in the archive by the next comes back correctly from *either*, travelling in both directions, and S1 still holds in every state along the way |
 | S8 | `test_checkpoint_states.py` — `git checkout` an older state by hand, then a restore must refuse and name the big file that differs; and a save of that folder records what is on disk and restores correctly |
 | S9 | `test_checkpoint_states.py` — four threads publish one archive at once; **and two concurrent `save`s of one folder**, which is the rule's own wording: losing a race for git's index is a refusal and is allowed, corruption is not |
 | the five refusals | `test_checkpoint_states.py` — `GitNotInstalledError` is raised where git is absent and says how to fix it, which is what makes it worth separating from the faults (§ 15) |
 | volume | `test_checkpoint_states.py` — 500 large files in one folder: all archived, none in git's object database, and the save does not fail for the length of its own `git add` |
-| A3, S2, S3, S4, S6, L8, S5's run-layer half, and a save untracking the scratch an earlier save tracked (S1) | **not yet written** — the table below says what each waits on: A3's, S3's and the untracking's surfaces exist; the rest wait on a surface that does not |
+| A3, S2, S3, S4, S6, L8, S5's run-layer half, and a save untracking the scratch an earlier save tracked (S1) | **not yet written** — the table below says what each waits on: A3's, S2's, S3's, S4's, L8's and the untracking's surfaces exist; S6 and S5's run-layer half wait on one that does not |
 | the MANIFEST format | `test_checkpoint_manifest.py` — one content has exactly one MANIFEST; every deviation a lenient reader could "understand" is refused and names the archive; no key can steer a restore out of the folder or into a store |
 | the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, the question asked at a terminal, and **that a remedy a refusal names actually works**: the whole round trip, refusal → repair → save, exit codes included, since 2 is *your input* and 1 is *the machine* |
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` — **including which bucket each refusal lands in**: a name the user can repair and a folder of independent calculations are advisories the panel can act on, an unknown state and a bad `limit` are the caller's mistake, and everything else is a fault |
@@ -1842,12 +1841,12 @@ lands.
 | Rule | Waits on |
 |---|---|
 | **A3** the save precedes the change | nothing: `prep`, a group's first launch and Task setup's Save call `checkpoint.save_before` before they write (§ 9) — the test is owed (`plans/plan.md`) |
-| **S2** a stage writes only inside its own directory | a real staged folder to run a stage in (plan § 2, W45) |
+| **S2** a stage writes only inside its own directory | the rule as restated above — a run writes only inside its run folder, the verbs' records live above it: every run is a folder inside its stage's (`project-layout.md` § 1) — the test is owed (plan § 2, W45) |
 | **S3** a run records what it started from | nothing: `run.json`'s `continued_from` and the run's `.continued-from` (`runrecord.write_launch`, `write_continued_from`) — the test is owed (plan § 2, W45) |
-| **S4** the description is never modified | `task.json` reaching a produced folder (plan § 2, W45) |
-| **S6** a restored folder explains itself | the same, plus a `dry_run` produce to compare against (plan § 2, W45) |
-| **L8** a saved attempt never differs afterwards | the hierarchical layout — and it must be marked *hierarchical only*, or it fails a flat folder that is working correctly (plan § 2, W45) |
-| **S5**, its second half — the *run layer* never rewrites the id | a produce and a run. The half checkpointing owns is asserted today (§ 13.4); this is the one that needs something to run |
+| **S4** the description is never modified | nothing: `task.json` is in every described folder — the test is owed (plan § 2, W45) |
+| **S6** a restored folder explains itself | a door that lays a prep's preview beside the folder it would write, to compare against (plan § 2, W45) |
+| **L8** a run that ended never differs afterwards | the rule as restated above — but for `run.json`'s `ended`, written once: a run folder is saved whole — the test is owed (plan § 2, W45) |
+| **S5**, its second half — the *run layer* never rewrites the id | a prep and a run. The half checkpointing owns is asserted today (§ 13.4); this is the one that needs something to run |
 | **S1** — an engine's scratch an earlier save tracked in git leaves git's index at the next save, before anything is added, the file left where it lies | nothing: the save's untracking (`checkpoint._untrack`) exists — unasserted |
 
 *This table lists only rules that are **waiting**. It used to carry a copy of
@@ -1868,7 +1867,7 @@ the rows above it as well, naming three test files that no longer exist —
 | **5** | the commands |
 | **6** | what happens on a save, in order |
 | **7** | what happens on a restore · § 7.1 going back and trying something else with the original intact · § 7.2 how much is checked, and when |
-| **8** | why a flat folder depends on this and a nested one merely benefits |
+| **8** | what a saved state is for: protection, and a place to branch |
 | **9** | who decides to save, and when you are asked |
 | **10** | worked examples — § 10.1 several attempts from one state, § 10.2 calling it from Python |
 | **11** | the rules a change must not break |

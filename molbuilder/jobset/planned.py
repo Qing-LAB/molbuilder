@@ -10,7 +10,7 @@ nothing and refuses nothing.
 A :class:`Plan` is that list: each file's text or bytes, each copy, each
 move and each removal, in the order the steps decided them.  A step that
 reads what an earlier step will write reads it through the plan -- the
-wrapper the deck's text, the attempt the stage's files, the screening the
+wrapper the deck's text, the first run the stage's files, the screening the
 pseudopotentials -- and the plan answers with what it holds, the disk with
 the rest (:meth:`Plan.is_file`, :meth:`Plan.read_bytes`, :meth:`Plan.glob`).
 """
@@ -312,7 +312,7 @@ def bring(plan: "Plan", names, *, into, from_dir, also=()) -> List[str]:
     file's name, or a path under the calculation) found first in
     ``from_dir`` by its basename, else in each folder of ``also`` by the
     name and then by its basename -- the one copy step every run folder is
-    filled by: a stage's attempt and a run of points' point on this machine
+    filled by: a stage's run and a run of points' point on this machine
     (`materialize.bring_files`), and a phase's call folder on the node,
     from the stage's phase folder (`spectra.siesta_vibration`, the ``plan``
     verb; `engines/vibration.md` § 5.11 § 3).  COPIED, never linked
@@ -326,7 +326,7 @@ def bring(plan: "Plan", names, *, into, from_dir, also=()) -> List[str]:
         dst = into / bn
         for src in (from_dir / bn, *(_at(a) / str(fname) for a in also),
                     *(_at(a) / bn for a in also)):
-            if plan.is_file(src) and src.resolve() != dst.resolve():
+            if plan.is_file(src):
                 plan.copy(src, dst)
                 brought.append(bn)
                 break

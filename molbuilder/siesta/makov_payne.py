@@ -159,12 +159,13 @@ def render_correction_script(
     q: int,
     epsilon_r: float = 1.0,
     *,
-    out_template: str,
+    stage: str,
 ) -> str:
     """Generate a self-contained Python post-process script that
-    reads ``<system_label>.out``, extracts the converged total
-    energy, computes the Makov-Payne correction for the actual
-    cell SIESTA used, and prints the corrected value.
+    reads the run's output -- its newest try's, else a hand run's
+    unnumbered one (``stage`` the run's stage token) -- extracts the
+    converged total energy, computes the Makov-Payne correction for the
+    actual cell SIESTA used, and prints the corrected value.
 
     The script takes ``--epsilon`` on the command line so a user
     re-running with implicit solvation can override the default
@@ -179,10 +180,12 @@ def render_correction_script(
         ``makov_payne_correction.py`` next to the ``.fdf``.
     """
     # The script runs where molbuilder may not be installed -- beside a
-    # finished run -- so it imports nothing from the package.  It READS the
-    # output with SIESTA's one reading pass, from the monitor's bundle that
-    # lies beside it in every run (`runfiles.MONITOR_BUNDLE`), so the energy,
-    # the cell and SIESTA's own term are read as every reader of a run reads
+    # finished run -- so it imports nothing from the package.  It FINDS the
+    # output by the one rule every reader of a run asks
+    # (`runrecord.newest_run`, the catalogue's names) and READS it with
+    # SIESTA's one reading pass, both from the monitor's bundle that lies
+    # beside it in every run (`runfiles.MONITOR_BUNDLE`), so the energy, the
+    # cell and SIESTA's own term are read as every reader of a run reads
     # them; the physical constants are inlined.
     #
     # SO THE FORMULA IS WRITTEN TWICE, ON PURPOSE.  `compute_correction`
@@ -257,9 +260,9 @@ import sys
 from pathlib import Path
 
 SYSTEM_LABEL = "{system_label}"
-# THIS STAGE'S OUTPUT, as the file catalogue names it -- {{run}} the run's
-# number (`runfiles.RunNames.template`): the newest run by its number.
-OUT_TEMPLATE = "{out_template}"
+# THE RUN'S STAGE: with the label, the names the file catalogue gives this
+# run's files (`runfiles.RunNames`).
+STAGE        = "{stage}"
 NET_CHARGE   = {q}
 DEFAULT_EPS  = {epsilon_r!r}
 MADELUNG     = {MADELUNG_CUBIC!r}   # cubic; override if non-cubic
@@ -267,19 +270,26 @@ HARTREE_EV   = {HARTREE_EV!r}
 BOHR_ANGSTROM= {BOHR_ANGSTROM!r}
 
 
-def read_siesta_output(path):
-    """``(E_KS in eV, the final cell's rows in Angstrom, SIESTA's own
-    Emadel in eV or None)`` -- the output read by SIESTA's one reading pass,
-    from the monitor's bundle beside this script ({monitor_bundle}, put in
-    every run by its launch): the last step's energy, the last cell the
-    output printed, and SIESTA's monopole term."""
+def _bundle():
+    """The monitor's bundle beside this script ({monitor_bundle}, put in
+    every run by its launch) on the path -- the run's names, its newest try
+    and SIESTA's one reading pass are read from it."""
     bundle = Path(__file__).resolve().with_name("{monitor_bundle}")
     if not bundle.is_file():
         print(f"error: {{bundle.name}} is not beside this script -- run it "
               f"in the run's folder, where the launch put both.",
               file=sys.stderr)
         sys.exit(1)
-    sys.path.insert(0, str(bundle))
+    if str(bundle) not in sys.path:
+        sys.path.insert(0, str(bundle))
+
+
+def read_siesta_output(path):
+    """``(E_KS in eV, the final cell's rows in Angstrom, SIESTA's own
+    Emadel in eV or None)`` -- the output read by SIESTA's one reading pass:
+    the last step's energy, the last cell the output printed, and SIESTA's
+    monopole term."""
+    _bundle()
     from siesta_reader import read_output
     reading = read_output(path).finish()
     steps = [st for st in reading.get("steps") or []
@@ -307,7 +317,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", default=None,
-        help="SIESTA .out file to read (default: this stage's newest run)")
+        help="SIESTA .out file to read (default: this run's newest try, "
+             "else a hand run's)")
     p.add_argument("--epsilon", type=float, default=DEFAULT_EPS,
         help=f"Relative permittivity (default: {{DEFAULT_EPS}}, vacuum)")
     p.add_argument("--madelung", type=float, default=MADELUNG,
@@ -317,22 +328,20 @@ def main():
     if args.out is not None:
         out_path = Path(args.out)
     else:
-        # THIS STAGE'S NEWEST RUN, by its number -- never another stage's
-        # output, and never by a file's time.
-        head, _, tail = OUT_TEMPLATE.partition("{{run}}")
-        runs = []
-        for c in Path(".").glob(head + "*" + tail):
-            n = c.name[len(head):len(c.name) - len(tail)]
-            if n.isdigit():
-                runs.append((int(n), c))
-        if not runs:
-            wanted = OUT_TEMPLATE.replace("{{run}}", "<N>")
-            print(f"error: {{wanted}} not found here.  Run SIESTA first, "
+        # THIS RUN'S NEWEST TRY, by the one rule every reader of a run asks
+        # (`runrecord.newest_run`) -- never another stage's output, never by
+        # a file's time; with no try, a hand run's unnumbered output.
+        _bundle()
+        from runfiles import RunNames
+        from runrecord import newest_run
+        names = RunNames(SYSTEM_LABEL, STAGE)
+        out_path = Path(names.name(".out", newest_run(".", names)))
+        if not out_path.is_file():
+            print(f"error: {{out_path}} not found here.  Run SIESTA first, "
                   "or pass --out to point at the correct file.",
                   file=sys.stderr)
             sys.exit(1)
-        out_path = max(runs)[1]
-        print(f"note: reading {{out_path}}, this stage's newest run.")
+        print(f"note: reading {{out_path}}.")
     if not out_path.is_file():
         print(f"error: {{out_path}} not found.", file=sys.stderr)
         sys.exit(1)
@@ -421,5 +430,5 @@ def emit_correction_script(
                             render_correction_script(
                                 system_label=system_label, q=q,
                                 epsilon_r=epsilon_r,
-                                out_template=names.template(".out")),
+                                stage=names.stage),
                             plan=plan)

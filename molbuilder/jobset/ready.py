@@ -117,11 +117,6 @@ class GroupAnswer:
     number: int
     members: List[str]
     answers: List[Readiness]
-    #: WHY A LAUNCHED GROUP IS NOT PREPARED AGAIN on its layout -- the flat
-    #: one, whose runs share their folder's files -- in the rule's own words
-    #: (:func:`launched_already`); ``None`` where it may be, for its job
-    #: request (`execution/job-request.md` § 5).
-    not_again: Optional[str] = None
     #: A LAUNCHED GROUP WHOSE MEMBERS CHANGED -- a stage put into it, or one
     #: launched with it taken out (:func:`launched_without`) -- in the rule's
     #: own words and way on (:func:`joined_launched`); ``None`` otherwise.
@@ -140,8 +135,11 @@ class GroupAnswer:
 
     @property
     def launched(self) -> bool:
-        """A member was launched: the group's job is fixed."""
-        return any(a.launched for a in self.answers)
+        """A member was launched -- a run of it has a launch record, read
+        or not (`job-system.md`, *The states*): the group's job is fixed.
+        A member whose record does not read is its own row, *unreadable*."""
+        return any(a.launched or a.blocked == "unreadable"
+                   for a in self.answers)
 
     @property
     def prepared(self) -> bool:
@@ -162,12 +160,10 @@ class GroupAnswer:
 
     @property
     def preparable(self) -> bool:
-        """It may be prepared now: every member preparable, no sequence
-        still going holding it, and no member launched, or, on the
-        hierarchical layout, a launched one prepared again for its job
-        request (`execution/job-request.md` § 5)."""
-        return (self.not_again is None
-                and self.members_changed is None
+        """It may be prepared now: every member preparable, and no sequence
+        still going holding it -- a launched member prepared again for its
+        job request (`execution/job-request.md` § 5)."""
+        return (self.members_changed is None
                 and self.held is None
                 and all(a.prepared or a.ready for a in self.answers))
 
@@ -196,10 +192,9 @@ class GroupAnswer:
 
     @property
     def why(self) -> Optional[str]:
-        """What it waits for: a launched group's changed members, or why it
-        is not prepared again, or the sequence holding it, else the first
-        member's refusal."""
-        return (self.members_changed or self.not_again
+        """What it waits for: a launched group's changed members, or the
+        sequence holding it, else the first member's refusal."""
+        return (self.members_changed
                 or (held_why(self.number, self.held) if self.held else None)
                 or next((a.why for a in self.answers if a.why), None))
 
@@ -293,37 +288,6 @@ def _sent_by(calc, stages, job) -> bool:
             if at is not None and went is not None and at >= went:
                 return True
     return False
-
-
-def launched_already(calc, stage: str) -> Optional[str]:
-    """Why ``stage`` is not prepared again -- launched, on the FLAT layout --
-    or ``None`` (`execution/job-request.md` § 5; `job-system.md` § 5.0,
-    checkpoint 2a): there a stage's runs share its folder's deck and run
-    script, so a deck rendered anew would rewrite what an earlier run's
-    record reads as its own.  On the hierarchical layout each run holds its
-    own copy, and a launched stage is prepared again for its job request --
-    its deck the same calculation, which the prep asks of the deck it
-    renders.  The way back is the state saved before its group's first
-    launch, every run it builds on in it (`job-system.md`, *How the
-    checkpoint supports you*).  ``calc`` is the calculation as the verb
-    read it (A16)."""
-    from .commands import redo_launched
-    from .materialize import ever_launched
-    job = calc.job(stage)
-    if job is None:
-        return None
-    from ..runrecord import LaunchRecordError
-    try:
-        launched = ever_launched(calc, job)
-    except LaunchRecordError as exc:
-        return str(exc)
-    if not launched or calc.shape.keeps_attempts_as_directories:
-        return None
-    return (f"stage {stage!r} was launched, and on the flat layout a launched "
-            f"stage is not prepared again: its runs share its folder's deck "
-            f"and run script, which its runs' records read as theirs "
-            f"(execution/job-request.md § 5).  To change it, "
-            + redo_launched(stage, calc=calc))
 
 
 def launched_stage(calc) -> Optional[str]:
@@ -504,7 +468,7 @@ def gather_of(task):
     return part_of(str(task.calculation), str(task.engine), "gather")
 
 
-def first_launch_takes(calc, stage: str, job, *,
+def first_launch_takes(calc, stage: str, *,
                        from_attempt: Optional[str] = None,
                        cold: bool = False, verdict: bool = True):
     """``(continuation, gather, refusal)`` -- what ``stage``'s first launch
@@ -556,10 +520,9 @@ def first_launch_takes(calc, stage: str, job, *,
                                         verdict=verdict)
     if refused:
         return None, None, refused
-    if cont is None or cont.source is None:
-        # FROM NOTHING, or on the flat layout from files lying in the folder.
-        return (dataclasses.replace(cont, carries=()) if cont is not None
-                else None), None, None
+    if cont is None:
+        # FROM NOTHING.
+        return None, None, None
     try:
         names = continuation_files(calc, stage, cont.source,
                                    named=not cont.by_default)
@@ -662,7 +625,7 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
             return Readiness(stage, group, prepared=True, why=why,
                              blocked="regrouped", job_members=members,
                              **since)
-        cont, gather, why = first_launch_takes(calc, stage, job,
+        cont, gather, why = first_launch_takes(calc, stage,
                                                verdict=verdict)
         if why:
             # A REFUSAL WAITS for a run the stage builds on.
@@ -708,8 +671,7 @@ def _prepared_by_another(calc, job) -> Optional[str]:
     from .naming import job_dir_names
     from .points import rung_points_of
     try:
-        folder = (Path(calc.base)
-                  / job_dir_names(calc.jobset, calc.shape)[job.name])
+        folder = Path(calc.base) / job_dir_names(calc.jobset)[job.name]
         points = rung_points_of(calc, job.name)
         text = ((folder / points[0].rel if points else folder) / job.script
                 ).read_text(errors="replace")
@@ -799,18 +761,18 @@ def task_state(calc, *, verdict: bool = False) -> TaskState:
         if all(a.prepared for a in g.answers):
             g.held = held_by_sequence(calc, g.number, asked=asked)
     # A LAUNCHED GROUP'S MEMBERS ARE FIXED: one whose members changed says
-    # so, and one its layout does not prepare again says why -- each rule
-    # asked once here for every reader (`job-system.md`, *The task*).
+    # so -- the rule asked once here for every reader (`job-system.md`,
+    # *The task*).
     from ..runrecord import LaunchRecordError
     for g in gs:
         if not g.launched:
             continue
-        g.not_again = next((w for w in (launched_already(calc, m)
-                                        for m in g.members) if w), None)
         try:
             hit = launched_without(calc, g.number)
-        except LaunchRecordError as exc:
-            g.members_changed = str(exc)
+        except LaunchRecordError:
+            # A RECORD THAT DOES NOT READ is its member's own row,
+            # *unreadable*, in its reader's words -- never a change of
+            # members.
             continue
         if hit:
             g.members_changed = joined_launched(calc, g.number, *hit)
@@ -862,7 +824,7 @@ def groups_text(gs: List[GroupAnswer]) -> str:
 
 
 __all__ = ["Readiness", "GroupAnswer", "TaskState", "task_state",
-           "readiness", "launched_already", "launched_without",
+           "readiness", "launched_without",
            "joined_launched", "why_group_fixed", "regrouped",
            "launched_stage",
            "first_launch_takes",

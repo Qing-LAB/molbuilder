@@ -39,7 +39,6 @@ from typing import (TYPE_CHECKING, Callable, Dict, List, NamedTuple, Set,
 
 from .. import calcdirs
 from .. import script_emit as _sc
-from ..paths import Shape
 from .materialize import materialize
 from .naming import (job_dir_names, ladder_homes, open_container,
                      run_names, stage_home)
@@ -65,7 +64,7 @@ if TYPE_CHECKING:                      # annotations only
     from ..task import Task
 
 
-def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
+def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
                 machine_record, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
                 log=None, render=None, points=None,
@@ -79,8 +78,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
     ``plan`` (`jobset.planned.Plan`) receives what this writes, and is read
     for the decks it already holds (`job-system.md` § 5.0).
 
-    ``shape`` is the layout as the entry read it from the description -- a
-    layer below takes it (`Shape.named(task.shape)`, A16).  ``provenance`` is which config files answered,
+    ``provenance`` is which config files answered,
     as the prep entry read them with the machine's record at its
     checkpoint 4 (:func:`checked`); ``machine_record`` is that record.
 
@@ -107,8 +105,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
          ``runwrap.write_run_wrapper`` (no reinvention).  Every job has a
          deck of its own: prep renders one per element.
       2. ``materialize`` — the shared package, as real copies into each job
-         directory (what a stage continues from is copied when its attempt
-         is opened: ``materialize.prepare_attempt``).
+         directory (what a stage continues from is copied by its first
+         launch: ``materialize.prepare_attempt`` with ``continue_from``).
       3. a benchmark's ``STAGE-PLAN.md``, beside its job-set in its
          stage's ``bench/`` container -- a task's is written once, by the
          group prep (:func:`prep_task`), for every member it prepares.
@@ -137,22 +135,21 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
     # launches.
     if log is not None:
         log.phase("STEP 4 · WRAPPERS — how each deck is launched")
-    _sh = shape
-    _dir_of = job_dir_names(jobset, _sh)
+    _dir_of = job_dir_names(jobset)
     for job in jobset.jobs:
         if render is not None and job.name not in render:
             continue
         # THE SAME QUESTION `prep_calculation` AND `materialize` ASK.  A
-        # trial's files live in its attempt when the shape keeps them
-        # (`project-layout.md` § 1.5a).
+        # trial's files live in its attempt (`project-layout.md` § 1.5a).
         _jd = base / _dir_of[job.name]
         # THE NAMES OF THIS JOB'S FILES (`naming.run_names`) -- what its
         # run script names every file of its runs by.
-        _names = run_names(jobset, job, _sh)
+        _names = run_names(jobset, job)
         if jobset.kind == KIND_SWEEP:
-            # A TRIAL'S FOLDER, opened by the one opener (`open_run`).
-            from .materialize import open_run, trial_work_dir
-            _jd = open_run(base, trial_work_dir(_jd, _sh, _names), plan)
+            # A TRIAL'S RUN, where its deck was born -- opened by
+            # `materialize`, step 2, the one opener of every job's folder.
+            from .materialize import trial_run
+            _jd = trial_run(_jd)
         plan.folder(_jd)
         script_path = _jd / job.script
         # A SWEPT RUNG'S DECKS ARE ITS POINTS' -- none at the stage level
@@ -173,9 +170,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
             write_run_wrapper(
                 script_path,
                 # THE NAMES TRAVEL (`gpu.md` G7): the job's own -- its label
-                # (a trial's carries its point, `paths.trial_label`), its
-                # stage and whether its runs share a folder -- so the wrapper
-                # is TOLD every name it writes, and composes none.
+                # (a trial's carries its point, `paths.trial_label`) and its
+                # stage -- so the wrapper is TOLD every name it writes, and
+                # composes none.
                 names=_names,
                 resources=job.resources,
                 program=job.program,
@@ -247,16 +244,13 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
     # ---- 2. the shared package, copied --------------------------------- #
     # ONLY THE JOBS THIS PREP RENDERS: every other stage in the merged plan
     # was prepared already, and its folder is its own prep's.
-    dirs = materialize(jobset, base, plan, shape=_sh, only=render)
+    dirs = materialize(jobset, base, plan, only=render)
     if log is not None:
         log.phase("STEP 5 · RUN DIRECTORY — where each job will be launched")
-        log.received("shape", str(_sh))
         log.received("shared package",
                      ", ".join(jobset.shared) or "nothing (W5)")
         for _d in dirs:
-            log.produced(_d.name if _d.resolve() != base.resolve() else ".",
-                         "the bundle root — flat runs here, nothing is linked"
-                         if _d.resolve() == base.resolve() else str(_d))
+            log.produced(_d.name, str(_d))
 
     # ---- 3. a BENCHMARK'S STAGE-PLAN.md (§ 5 D3) ------------------------ #
     # BESIDE the job-set it describes, inside its stage's bench/ container,
@@ -524,8 +518,9 @@ class Rung:
     spec_extra: Callable = lambda element, cfg, point: {}
     #: ``((folder, point), ...)``: the folders each holding a deck written at
     #: that point -- a frame and a voltage (`transport.stages.Point`,
-    #: `engines/transport.md` § 2a.9-11) -- each with its own wrapper and
-    #: attempt ladder.  Empty: one deck, in the element's folder.
+    #: `engines/transport.md` § 2a.9-11) -- each with its own wrapper; its
+    #: runs are the stage's, ``run-<n>/<point>``.  Empty: one deck, in the
+    #: element's folder.
     points: tuple = ()
     #: ``(cfg, point) -> cfg``: a deck's config at its point -- the rung
     #: answers the bias, the one value the catalogue does not hold
@@ -810,20 +805,12 @@ class Resolved:
     #: say theirs
     fit: str = ""
 
-    @property
-    def shape(self):
-        """The layout, as the description states it -- handed to every layer
-        that asks (`Shape.named(task.shape)`, the one door)."""
-        from ..paths import Shape
-        return Shape.named(self.task.shape)
-
     def record_dir(self, base) -> Path:
         """Where this prep's record lives -- its job-set, `STAGE-PLAN.md` and
         pipeline log: the calculation's folder for a run, the stage's bench
         container for a benchmark (`job-contracts.md` § 6.3)."""
-        from ..paths import Shape, bench_container
-        return (Path(base) / bench_container(Shape.named(self.task.shape),
-                                             self.token)
+        from ..paths import bench_container
+        return (Path(base) / bench_container(self.token)
                 if self.sweep is not None else Path(base))
 
     def log_path(self, base) -> Path:
@@ -833,7 +820,7 @@ class Resolved:
         from ..pipeline_log import log_name
         t = self.task
         return self.record_dir(base) / log_name(self.label, self.token,
-                                                t.engine, t.shape)
+                                                t.engine)
 
 
 def _resolve_stage(stage, *, task, request, template, template_text,
@@ -1008,12 +995,10 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # It is HELD, and written with the rest of the plan once every step has
     # passed (`script-preparation.md` § 4.5): a refused prep writes no log.
     log = PipelineLog.open(resolved.log_path(base), label=resolved.label,
-                           token=resolved.token, engine=task.engine,
-                           shape=task.shape)
+                           token=resolved.token, engine=task.engine)
     log.phase("STEP 1 · MACHINE — where this job will run")
     log.received("calculation", str(base))
     log.received(TASK_FILENAME, f"{task.label} · {task.engine} · "
-                                f"{task.shape} · "
                                 f"{len(task.stages or ())} stage(s)")
     for _group, _line in _environment_rows(environment):
         log.produced(_group, _line)
@@ -1078,10 +1063,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                               plan=plan)
     token = resolved.token
     jobs: List[Job] = []
-    from .materialize import trial_work_dir
+    from .materialize import trial_run
     from .naming import trial_dir
-    from ..paths import Shape as _Shape
-    _shape = _Shape.named(task.shape)
     # ONE line per unique finding, however many trials repeat it (user,
     # 2026-08-28, O5).  The gate still FIRES per deck -- every trial is
     # validated and its own <deck>.validation.txt carries its findings --
@@ -1127,38 +1110,24 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     try:
         for element in pset:
             # THE NAMES OF THIS ELEMENT'S FILES (`runfiles.RunNames`): its
-            # own label -- a trial's carries its point -- and stage, in the
-            # calculation's shape.  Its deck, its run script and its seed are
-            # all named by them, so none can spell another's name its way.
-            _names = RunNames.of(element.label, token, _shape.name,
-                                 trial=element.is_trial)
+            # own label -- a trial's carries its point -- and stage.  Its
+            # deck, its run script and its seed are all named by them, so
+            # none can spell another's name its way.
+            _names = RunNames(element.label, token)
             script = _names.name(seam.suffix)
-            # WHERE THIS ELEMENT'S FILES GO -- its own directory, never the
-            # bundle root (user, 2026-08-24; `project-layout.md` § 1.0: "only
-            # rendered files and copies go down to where the engine
-            # runs").  The directory is the
-            # same one `job_dir_names` will answer for this job, computed from
-            # the same two facts (token + trial-ness), so the deck is born
-            # where the launch will look for it.
+            # WHERE THIS ELEMENT'S FILES GO (`project-layout.md` § 1.0):
+            # the stage's folder, or a trial's run, `bench-<point>/run-0`
+            # (§ 1.5a) -- by the rule `job_dir_names` answers with
+            # (`naming.trial_dir`), so the deck is born where the launch
+            # looks.  A trial's folder is named by the job's name, its sweep
+            # coordinate, never by its relabelled SystemLabel.
             if element.is_trial:
-                # ONE RULE, asked -- not composed again from the same two
-                # facts.  `naming.trial_dir` is what `job_dir_names`
-                # itself uses, so the deck is born where the launch looks by
-                # CONSTRUCTION rather than by a comment promising it.
-                #
-                # The dir is named by the JOB's name -- the sweep coordinate,
-                # `_job_for`'s own first rule -- never by the element's
-                # RELABELLED SystemLabel (`<calc-label>-<coord>`): the two
-                # differ by the calculation prefix, and every reader asks
-                # `job_dir_names`.
                 from ..resolve import point_token as _pt
                 _trial = _pt(element.point)
-                _jdir = trial_work_dir(
-                    base / trial_dir(_shape, token, _trial), _shape, _names)
+                _jdir = trial_run(base / trial_dir(token, _trial))
             else:
                 _trial = None
-                _sd = _shape.stage_dir(token)
-                _jdir = base if _sd == "." else base / _sd
+                _jdir = base / token
             plan.folder(_jdir)
             # The deck is rendered from values ⊕ THIS element's allocation, so it
             # records the rank count it actually assumed.  Rendering from the
@@ -1379,15 +1348,13 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                        render=(None if kind == KIND_SWEEP
                                else {j.name for j in jobs}),
                        points={j.name: _points for j in jobs}, plan=plan,
-                       shape=resolved.shape,
                        provenance=resolved.provenance, notes=notes)
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
     # Opening the attempt is design, none of it spending a queue slot;
-    # `launch` starts what prep set up, and refuses a hierarchical stage with
-    # no attempt open (C5) because opening one is not its job.  A bench
-    # point's deck is rendered straight into its attempt (`trial_work_dir`
-    # above).
+    # `launch` starts what prep set up, and refuses a stage with no attempt
+    # open (C5) because opening one is not its job.  A bench
+    # point's deck is rendered straight into its run, ``run-0`` (above).
     if kind == KIND_LADDER and stage and _points:
         # A SWEPT RUNG'S RUN (`engines/transport.md` § 2a.11): `run-<n>/`,
         # a folder per point inside it holding copies of the point's
@@ -1395,26 +1362,22 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # plan, whose record may not be on disk yet.
         from ..paths import bench_container
         from ..runfiles import LAUNCH_DIR
-        from .materialize import (empty_old_points, ever_launched,
-                                  open_sweep_run)
+        from .materialize import empty_old_points, ever_launched
         # A POINT THE DESCRIPTION NO LONGER HOLDS leaves no folder below the
         # stage (§ 5.0, 2a: its files rendered again).
         home = stage_home(base, task, stage)
         gone = empty_old_points(
             home.dir, [pt.rel for _d, pt in rung.points], plan,
-            keep=(LAUNCH_DIR, Path(bench_container(
-                resolved.shape, home.token)).name))
+            keep=(LAUNCH_DIR, Path(bench_container(home.token)).name))
         planned = calc.with_plan(js)
-        if copied or ever_launched(planned, planned.job(stage)):
+        if not copied and ever_launched(planned, planned.job(stage)):
             # A LAUNCHED RUNG OF POINTS, prepared again for its job request
-            # (`execution/job-request.md` § 5): no run opened -- its next
-            # launch opens its next one -- and its points the ones its runs
-            # ran, as its last prep left them below the stage: a point added
-            # or taken away is another calculation.  A rung COPIED IN opens
-            # none either: its runs are the copies, of exactly its points.
+            # (`execution/job-request.md` § 5): its points the ones its runs
+            # ran, as its last prep left them below the stage -- a point
+            # added or taken away is another calculation.
             added = [str(pt.rel) for d, pt in rung.points
                      if not Path(d).is_dir()]
-            if not copied and (gone or added):
+            if gone or added:
                 from .commands import redo_launched
                 raise PrepError(
                     f"stage {stage!r} was launched, and its points now are "
@@ -1427,19 +1390,10 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                       "request alone (execution/job-request.md § 5); to "
                       "change what it computes, "
                     + redo_launched(stage, calc=calc))
-            for d, _point in rung.points:
-                _drop_progress_channel(Path(d), plan)
-        else:
-            sweep = open_sweep_run(planned, stage, plan=plan)
-            # EACH POINT'S LOG, from the point's folder below the stage,
-            # where it was seeded beside the point's deck, into the run's
-            # point.
-            seeded = {pt.rel: d for d, pt in rung.points}
-            for pdir, point in sweep.points:
-                _move_progress_channel_into(pdir, plan,
-                                            seeded=seeded[point.rel])
-            if opened is not None:
-                opened.append(sweep)
+        reports = _open_attempts(planned, stage, plan=plan, copied=copied,
+                                 points=rung.points)
+        if opened is not None:
+            opened.extend(reports)
         # THE WALK'S ONE HEADER, written and placed here as a group's is
         # (`job-system.md` § 6.0): one allocation walking every point, their
         # walls summed (`group.envelope`) -- or the stage's one wall, where
@@ -1449,8 +1403,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         from .points import walls_of
         job = js.job(stage)
         walk = walk_header_of(
-            home.dir, GroupNames.of_points(
-                run_names(js, job, resolved.shape).stem),
+            home.dir, GroupNames.of_points(run_names(js, job).stem),
             envelope([job] * walls_of(task, len(_points))), environment,
             engine=task.engine, jobs=[job], emit_sbatch=emit_sbatch,
             what=f"stage {stage!r}, "
@@ -1464,13 +1417,12 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             # NO HEADER THIS TIME, so none an earlier prep wrote is left to
             # be sent as this one's.
             _left = (home.dir / LAUNCH_DIR / GroupNames.of_points(
-                run_names(js, job, resolved.shape).stem).name(".sbatch"))
+                run_names(js, job).stem).name(".sbatch"))
             if _left.is_file():
                 plan.remove(_left)
     elif kind == KIND_LADDER and stage:
-        reports = ([] if copied else
-                   _open_attempts(calc.with_plan(js), stage, plan=plan,
-                                  shape=resolved.shape))
+        reports = _open_attempts(calc.with_plan(js), stage, plan=plan,
+                                 copied=copied)
         if opened is not None:
             opened.extend(reports)
     elif kind == KIND_SWEEP:
@@ -1524,26 +1476,24 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
     every file its run takes, as written (:func:`as_written`) -- by the
     catalogue, an input its run reads or a file derived for the stage or
     its run: its deck, its scripts and headers, the bundles beside them
-    (:func:`_taken_by_its_run`); for a stage never launched, each deck of
-    its first run -- each point's -- the same calculation as the one prep
+    (:func:`_taken_by_its_run`); each deck of its first run -- each
+    point's -- the same calculation as the one prep
     renders now (`deck_record.same_calculation`: a launch that took a
     finished point over put that point's own deck there, and filling a run
     anew is the next launch's, R-L25), and none removed; and its row in
     `job-set.json`, its members aside -- the run settings every script
     states.  Each that differs, named from the calculation; none when the
     plan writes the stage as it stands.  The comparison a prep of a group
-    prepared and never launched asks (`job-system.md`, *The task*, 2);
-    launch compares nothing (§ 6.0).  ``prepared`` is the
-    stage's row on disk, ``planned`` the row the plan holds for it
-    (``None`` when it planned none)."""
+    prepared and never launched asks, and only of such a stage
+    (`job-system.md`, *The task*, 2); launch compares nothing (§ 6.0).
+    ``prepared`` is the stage's row on disk, ``planned`` the row the plan
+    holds for it (``None`` when it planned none)."""
     from ..deck_record import same_calculation
     from ..paths import attempt_index
-    from .materialize import ever_launched
     base, task = Path(calc.base), calc.task
-    names = run_names(calc.jobset, prepared, Shape.named(task.shape))
+    names = run_names(calc.jobset, prepared)
     deck = Path(prepared.script).name
     home = stage_home(base, task, prepared.name).dir
-    runs = ever_launched(calc, prepared)
 
     def in_a_run(path) -> bool:
         return any(attempt_index(part) is not None
@@ -1560,8 +1510,6 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
         if not in_a_run(p):
             if not as_written(p, plan.read_bytes(p)):
                 differ.append(rel)
-        elif runs:
-            continue                  # a launched stage's runs are its own
         elif p.name == deck:
             if not p.is_file() or same_calculation(
                     str(task.engine), read_deck(p),
@@ -1570,7 +1518,7 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
         elif not as_written(p, plan.read_bytes(p)):
             differ.append(rel)
     differ += [f"{p.relative_to(base)} (removed)" for p in plan.removes()
-               if taken(p) and (not in_a_run(p) or not runs)]
+               if taken(p)]
 
     def row(j):
         # ITS JOB'S MEMBERS are the group's to check, by membership (R-L8).
@@ -1582,22 +1530,17 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
 
 def _taken_by_its_run(path, names, home) -> bool:
     """Whether ``path``, a file a plan writes, is one the run of the stage
-    ``names`` names TAKES: in the stage's home, named for it or for no
-    stage, and by the catalogue (`runfiles.WRITTEN`'s ``kind``, what losing
+    ``names`` names TAKES: in the stage's home, and by the catalogue (`runfiles.WRITTEN`'s ``kind``, what losing
     it costs) an input its run reads, or a file derived for the stage or
     its run -- its deck, its scripts and headers, the bundles beside them --
     or the walk header of its points; never a record, nor a file of the
     calculation's own (its plan, its job set), which a prep writes for every
-    stage.  In a calculation whose stages share one folder, the name is what
-    tells one stage's file from another's (`runfiles.parse`)."""
-    from ..runfiles import GroupNames, parse, row_for
+    stage."""
+    from ..runfiles import GroupNames, row_for
     p = Path(path)
     try:
         p.relative_to(home)
     except ValueError:
-        return False
-    rec = parse(p.name, names.label)
-    if rec is not None and rec.stage not in (None, names.stage):
         return False
     if p.name == GroupNames.of_points(names.stem).name(".sbatch"):
         return True
@@ -1628,27 +1571,41 @@ def _computes_else(base, engine: str, plan, answer) -> Optional[str]:
     return " -- ".join(said) or None
 
 
-def _open_attempts(calc, stage: str, *, plan, shape) -> List:
+def _open_attempts(calc, stage: str, *, plan, copied: bool = False,
+                   points=()) -> List:
     """Open this stage's first run -- **step 6** -- with its own files, and
-    return its :class:`~molbuilder.jobset.materialize.Attempt` report in a
-    list, or ``[]`` when the shape keeps no run folders (flat: its container
-    IS the run, § 1.5a).  A swept rung's run is
-    :func:`materialize.open_sweep_run`'s.  A stage prepared again, never
-    launched, reuses its ``run-0``, emptied of anything put there before
-    (`materialize.empty_run`, `job-system.md` § 5.0, 2a); what it takes
-    from another run is its first launch's (§ 6.0)."""
-    from .materialize import ever_launched, prepare_attempt
+    return its report in a list: an
+    :class:`~molbuilder.jobset.materialize.Attempt`, or for a rung of
+    points -- ``points``, its ``(folder, point)`` pairs below the stage
+    (`Rung.points`) -- the run :func:`materialize.open_sweep_run` opens.
+    A stage prepared again, never launched, reuses its ``run-0``, emptied of
+    anything put there before (`materialize.empty_run`, `job-system.md`
+    § 5.0, 2a); what it takes from another run is its first launch's
+    (§ 6.0).
 
-    if shape is None or not shape.keeps_attempts_as_directories:
-        return []
-    # A LAUNCHED STAGE, prepared again for its job request, opens no run:
-    # its next launch opens the next one (`execution/job-request.md` § 5),
-    # and the progress log seeded beside its deck has no run to go to.
+    THE PROGRESS LOG seeded beside each deck goes into the run that writes
+    it (:func:`_move_progress_channel_into`).  A stage that opens no run --
+    one launched, prepared again for its job request, whose next launch
+    opens the next one (`execution/job-request.md` § 5), or one ``copied``
+    in, whose runs are the copies (`engines/transport.md` § 2a.16) -- has
+    none for it to go to: it is taken out (:func:`_drop_progress_channel`),
+    and ``[]`` returned."""
+    from .materialize import ever_launched, open_sweep_run, prepare_attempt
+
     job = calc.job(stage)
-    if job is not None and ever_launched(calc, job):
-        _drop_progress_channel(stage_home(calc.base, calc.task, stage).dir,
-                               plan)
+    if copied or (job is not None and ever_launched(calc, job)):
+        for folder in ([d for d, _pt in points]
+                       or [stage_home(calc.base, calc.task, stage).dir]):
+            _drop_progress_channel(Path(folder), plan)
         return []
+    if points:
+        sweep = open_sweep_run(calc, stage, plan=plan)
+        # EACH POINT'S LOG, from the point's folder below the stage into
+        # the run's point.
+        seeded = {pt.rel: d for d, pt in points}
+        for pdir, point in sweep.points:
+            _move_progress_channel_into(pdir, plan, seeded=seeded[point.rel])
+        return [sweep]
     rep = prepare_attempt(calc, stage, plan=plan)
     _move_progress_channel_into(rep.dir, plan)
     return [rep]
@@ -1716,9 +1673,8 @@ def _move_progress_channel_into(attempt: Path, plan, *,
     **The progress channel is a PRODUCT, so it belongs in the run and nowhere
     else** (`project-layout.md` § 1.0: the run directory "holds everything it
     produces", and § 1.4a's container/run split is what makes "nowhere else"
-    checkable).  `prep` seeds it beside the deck it renders — which in the
-    FLAT shape is already the run directory, and in the hierarchy is the
-    stage CONTAINER, where nothing ever writes to it again.
+    checkable).  `prep` seeds it beside the deck it renders — the stage
+    CONTAINER, where nothing ever writes to it again.
 
     Measured 2026-09-19 on a finished Raman run: a 971-byte stub frozen at
     prep time with no ``# concluded:`` footer sat in ``01_raman/``, beside the
@@ -1737,8 +1693,6 @@ def _move_progress_channel_into(attempt: Path, plan, *,
     this true if a second engine ever seeds one.
     """
     stage_dir = attempt.parent if seeded is None else Path(seeded)
-    if stage_dir == attempt:
-        return
     for log in _seeded_progress_channel(stage_dir, plan):
         plan.move(log, attempt / log.name)
 
@@ -1864,7 +1818,7 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     ``engine`` comes through the caller from the :class:`EngineSeam`.
     ``names`` are the deck's
     stage's (`runfiles.RunNames`): the seed is the FIRST run's log, named as
-    that run names it -- in a shared folder with its number, ``-run0``.
+    that run names it.
     Its header states its atoms' indices (`model/overview.md` § 2.2b): the
     deck's structure listed by engine index, both columns from its order
     record -- the engine column alone for a structure of its own (an
@@ -1872,7 +1826,6 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     """
     if not getattr(cfg, "write_molwatch_log", False):
         return
-    from ..runfiles import FIRST_ATTEMPT
     from ..trajectory_log import write_initial_preview
     # The stage is the names': nothing here re-derives one.
     # The stage's own convergence targets travel with its log, so the Watch
@@ -1898,7 +1851,7 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     targets = {names.stage: leaf} if leaf else {}
     write_initial_preview(
         struct,
-        base / names.name(".molwatch.log", FIRST_ATTEMPT),
+        base / names.name(".molwatch.log"),
         job=names.label, engine=engine,
         convergence_targets=(targets or None),
         frame=frame,
@@ -2009,7 +1962,8 @@ def _with_notify(flags, declared) -> "Resources":
 
 def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
                 plan=None) -> List[str]:
-    """The static package every job links (`project-layout.md` § 2.1).
+    """The static package copied into every job's folder
+    (`project-layout.md` § 2.1).
 
     **Asked of the engine, not guessed from the folder.**  An engine that puts
     no data files in has an empty package, and that is an answer rather than an
@@ -2070,11 +2024,10 @@ class PrepAnswer:
     #: prep, or the one its copy of the record names (`configuration.md`
     #: M-3).
     machine: Optional[str] = None
-    #: A flat run: its wrappers are rendered and there is no attempt to open.
-    flat: bool = False
-    #: A launched stage prepared again for its job request: no attempt is
-    #: opened, its next launch opens its next run
-    #: (`execution/job-request.md` § 5).
+    #: A prep that opened no run of its own: a launched stage prepared again
+    #: for its job request, its next launch opening its next run
+    #: (`execution/job-request.md` § 5), or a stage copied in from a
+    #: finished calculation (`engines/transport.md` § 2a.16).
     launched: bool = False
     #: The attempt opened or reused (`materialize.Attempt`), with the
     #: stage's own files.
@@ -2157,15 +2110,6 @@ class PrepAnswer:
     #: one line (`Directives.said`) and the shelf's fit on the queue.
     shelves: List[dict] = dataclasses.field(default_factory=list)
 
-    @property
-    def copied_whole(self) -> bool:
-        """Every group the prep was asked for copied in, its runs launched
-        already -- the next step the ladder's own (`job-system.md`, *The
-        next step*; `engines/transport.md` § 2a.16): what both doors that
-        say what comes next ask."""
-        return (self.copied is not None and not self.preview
-                and all(d.copied for d in self.copied.groups))
-
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
         what the Task setup tab's prep route returns (`web/web-api.md`)."""
@@ -2191,7 +2135,6 @@ class PrepAnswer:
             "dirs": [rel(d) for d in self.dirs],
             "provenance": self.provenance,
             "machine": self.machine,
-            "flat": self.flat,
             "launched": self.launched,
             "attempt": ({"dir": rel(a.dir), "fresh": a.fresh,
                          "brought": list(a.brought)}
@@ -2232,8 +2175,8 @@ def opened_no_run(answers) -> bool:
     its job request -- it opened no run of its own, so what comes next is
     the ladder's own step (`job-system.md`, *The next step*): what both
     doors that say what comes next ask."""
-    return bool(answers) and all(a.unchanged is not None or a.copied_whole
-                                 or a.launched for a in answers)
+    return bool(answers) and all(a.unchanged is not None or a.launched
+                                 for a in answers)
 
 
 def _record_preflight(base, findings, **said) -> None:
@@ -2260,86 +2203,27 @@ def _record_prepared(base, answer: "PrepAnswer") -> "PrepAnswer":
     return answer
 
 
-def prepared_already(calc, kind: str, stage: str) -> Optional[str]:
-    """That ``stage`` is prepared -- a sentence saying where -- or ``None``
-    (`job-system.md` § 5.0, checkpoint 2a).  A benchmark prepared is not
-    prepared again (user, 2026-10-02: *"refuse it, redo via rollback"*), so
-    its sentence is that refusal; a run prepared and never launched is
-    prepared again (`ready.launched_already` says when it may not be).
+def prepared_already(calc, stage: str) -> Optional[str]:
+    """That ``stage``'s benchmark is prepared -- its refusal, saying where
+    -- or ``None`` (`job-system.md` § 5.0, checkpoint 2a): a benchmark
+    prepared is not prepared again (user, 2026-10-02: *"refuse it, redo via
+    rollback"*).  A run is prepared again -- a launched one for its job
+    request alone (`execution/job-request.md` § 5).
 
-    PREPARED IS WHAT `status` READS: the stage's job in the calculation's
-    plan, ``job-set.json``, matched as `status` matches it
-    (`identity.stage_key`) -- for a bench, the sweep its bench folder holds.
-    A refused prep writes nothing but its ledger line (:func:`prep_task`),
-    so a stage is counted prepared only by a prep that
-    finished."""
-    from ..paths import Shape
+    PREPARED IS WHAT `status` READS: the sweep the stage's bench folder
+    holds.  A refused prep writes nothing but its ledger line
+    (:func:`prep_task`), so a benchmark is counted prepared only by a prep
+    that finished."""
     from .commands import rollback
     from ..paths import bench_container
-    from .naming import job_dir_names
     base, task = Path(calc.base), calc.task
-    if kind == "bench":
-        home = base / bench_container(Shape.named(task.shape),
-                                      stage_home(base, task, stage).token)
-        if JobSet.of(home) is None:
-            return None
-        what, where = (f"the benchmark of stage {stage!r}",
-                       f"{home.relative_to(base)}/")
-    else:
-        job = calc.job(stage)
-        if job is None:
-            return None
-        home = job_dir_names(calc.jobset, Shape.named(task.shape)).get(
-            job.name, "")
-        where = (f"{home}/" if home not in ("", ".")
-                 else "in this calculation's folder")
-        return f"stage {stage!r} is prepared ({where})"
-    return (f"{what} is already prepared ({where}) -- a prepared benchmark "
-            f"is not prepared again (job-system.md § 5.0).  To redo it, "
-            + rollback("its prep", base=base))
-
-
-def prepared_stages(calc) -> List[str]:
-    """The stages of ``task`` prepared in ``base`` -- as a run or as a
-    benchmark -- in the description's order: whether the calculation has
-    PRODUCED, which fixes its shape (`web/task-setup.md` § 4).  Each is
-    :func:`prepared_already`'s answer, so a refused prep -- which writes
-    nothing -- counts for none."""
-    return [st.name for st in calc.task.stages
-            if any(prepared_already(calc, kind, st.name)
-                   for kind in ("task", "bench"))]
-
-
-def shape_fixed(calc) -> Optional[Dict[str, str]]:
-    """The shape ``task`` holds FIXED, and why -- ``{"shape", "why"}`` -- or
-    ``None`` while it may still change (`web/task-setup.md` § 4).
-
-    Two reasons, one answer: the calculation's KIND fixes it
-    (its part in the kind table -- a transport calculation and a SIESTA
-    vibration are hierarchical), or the
-    calculation has PRODUCED (:func:`prepared_stages`) -- a prepared stage
-    lies where the shape put it, and another shape would orphan every deck,
-    output and warm file there; the way back is the state saved before its
-    first prep (`job-system.md` § 5.0).  Asked by the page that draws the
-    shape card and by the save that refuses another shape, so the two say
-    the same thing."""
-    from ..kind_table import pair
-    task = calc.task
-    fixed = pair(task.calculation, task.engine)
-    if fixed is not None and fixed.fixed_shape is not None:
-        return fixed.fixed_shape
-    done = prepared_stages(calc) if task.shape else []
-    if not done:
+    home = base / bench_container(stage_home(base, task, stage).token)
+    if JobSet.of(home) is None:
         return None
-    from .commands import rollback
-    return {"shape": task.shape,
-            "why": f"This calculation is {task.shape}, and its shape is "
-                   f"fixed once it has produced: {', '.join(done)} "
-                   f"{'is' if len(done) == 1 else 'are'} prepared, laid out "
-                   f"{task.shape}, and another shape would orphan every deck, "
-                   f"output and warm file there (task-setup.md § 4).  To "
-                   f"change it: " + rollback("its first prep",
-                                             base=calc.base)}
+    return (f"the benchmark of stage {stage!r} is already prepared "
+            f"({home.relative_to(base)}/) -- a prepared benchmark is not "
+            f"prepared again (job-system.md § 5.0).  To redo it, "
+            + rollback("its prep", base=base))
 
 
 @dataclass
@@ -2565,7 +2449,6 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                             plan=plan,
                             resolved=resolved, walks=walks,
                             notes=notes, copied=copied, contours=contours)
-    flat = not resolved.shape.keeps_attempts_as_directories
 
     # THE ANSWER, from the plan -- what a preview shows and a prep records
     # once it is written.
@@ -2573,9 +2456,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     from ..scheduler.record import LOCAL_TARGET
     out = PrepAnswer(
         kind, stage, findings=described.findings, notes=notes,
-        # ONE ENTRY PER FOLDER: on the flat layout every stage's folder is
-        # the calculation's one (W52).
-        dirs=list(dict.fromkeys(dirs)),
+        dirs=list(dirs),
         # ONE OF EACH: a sweep's trials repeat one finding per deck, and the
         # terminal said each once (`prep_calculation`).
         deck_findings=[i for i in deck_findings
@@ -2616,15 +2497,11 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     pcalc = described.calc.as_planned(plan)
     js = pcalc.jobset
     # THE STAGE'S FIRST RUN -- opened with its own files (`_open_attempts`);
-    # what it takes from another run is its first launch's.  Flat keeps no
-    # attempt directories: the run is the calculation's folder.
+    # what it takes from another run is its first launch's.
     from .ladder import independent
     from .materialize import SweepRun
     out.linked = not independent(task)
-    if flat:
-        out.flat = True
-        run_dir = base
-    elif opened and isinstance(opened[0], SweepRun):
+    if opened and isinstance(opened[0], SweepRun):
         # A SWEPT RUNG'S RUN: each point (`engines/transport.md` § 2a.11).
         # EVERY POINT LAUNCHES THE ONE JOB, with one shape: the first point
         # says what it is (A13).
@@ -2634,9 +2511,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         out.attempt = opened[0]
         run_dir = opened[0].dir
     else:
-        # A LAUNCHED STAGE, prepared again for its job request, opens no
-        # run: its files are the stage's own, which its next launch's run
-        # takes (`execution/job-request.md` § 5).
+        # A STAGE THAT OPENS NO RUN -- launched, prepared again for its job
+        # request, or copied in: its files are the stage's own, which its
+        # next launch's run takes (`execution/job-request.md` § 5).
         out.launched = True
         run_dir = stage_home(base, task, stage).dir
     # WHAT IT WILL LAUNCH WITH -- prep writes a deck and its launch
@@ -2663,7 +2540,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                          "continue_retries": r.continue_retries}
         out.deck = Path(job.script).name
         from ..runfiles import LAUNCH_DIR, GroupNames
-        names = run_names(js, job, Shape.named(task.shape))
+        names = run_names(js, job)
         # THE HEADER ITS LAUNCH SENDS: a run of points', the walk's one
         # (:func:`prep_calculation`); every other run's, its own.
         # A RUNG OF POINTS -- its points opened, or, launched and prepared
@@ -2770,7 +2647,7 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
             from .commands import name_a_stage
             from .naming import described_refs
             takes = [r for r in described_refs(base, task)
-                     if not prepared_already(described.calc, "bench", r.name)]
+                     if not prepared_already(described.calc, r.name)]
             raise PrepError(
                 "`prep bench` names the stage it measures; "
                 + (name_a_stage("prep", "bench", takes, base=base) if takes
@@ -2786,7 +2663,7 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
                                   stage).name
         # 2a · NOT PREPARED AGAIN (user, 2026-10-02: "refuse it, redo via
         #      rollback"), before anything is read of the machine.
-        why = prepared_already(described.calc, "bench", stage)
+        why = prepared_already(described.calc, stage)
         if why:
             raise PrepError(why)
         checked(base, described, target=target)
@@ -3183,7 +3060,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     # a launched group's members are fixed (§ 5.0, 2a) -- before any other.
     from ..runrecord import LaunchRecordError
     from .ready import joined_launched, launched_without
-    from .ready import launched_already
     for n in whole:
         # A STAGE PUT INTO A LAUNCHED GROUP: that stage is the change, and
         # a group of its own the way on beside the restore.
@@ -3193,10 +3069,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             raise _refuse(str(exc)) from None
         if hit:
             raise _refuse(joined_launched(description.calc, n, *hit))
-        for st in request.members(n):
-            why = launched_already(description.calc, st)
-            if why:
-                raise _refuse(why)
         # A GROUP A SEQUENCE STILL GOING HOLDS: its job is about to launch
         # the files it was prepared with, and a prep now would rewrite them
         # under it (R-P23; `project-layout.md` § 1.6.3).
@@ -3216,10 +3088,9 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             f"prep, so pick "
             + ("it" if len(missing) == 1 else "them") + " too:\n"
             + block(again(whole, base=base)))
-    # A LAUNCHED MEMBER, prepared again for its job request on the
-    # hierarchical layout (`execution/job-request.md` § 5): its deck must
-    # stay the calculation its runs ran -- asked of the decks this prep
-    # renders, below.
+    # A LAUNCHED MEMBER, prepared again for its job request
+    # (`execution/job-request.md` § 5): its deck must stay the calculation
+    # its runs ran -- asked of the decks this prep renders, below.
     from .materialize import ever_launched as _ever_launched
     launched_members: Set[str] = set()
     for n in numbers:
@@ -3604,4 +3475,4 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
 
 __all__ = ["checked", "plan_stage", "Described",
            "DECIDE", "prep_bench", "prep_task", "group_header", "PrepAnswer",
-           "prepared_already", "prepared_stages"]
+           "prepared_already"]

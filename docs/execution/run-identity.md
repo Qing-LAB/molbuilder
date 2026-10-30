@@ -42,11 +42,12 @@ parameters say to load them (§ 4). molbuilder's whole contribution is to make t
 label right and put the files where the engine will look. *(The label is the
 half of the id that reaches the engine — § 2.0a.)*
 
-Two failures follow directly from getting it wrong, and both are real today:
+Two failures would follow directly from getting it wrong, and each is refused
+(§ 5):
 
 - **two different calculations given the same label in one directory** — the
-  second silently warm-starts from the first's geometry, and the banner says
-  `WARM-RESTART (silent)` because that is exactly what it is
+  second would warm-start from the first's geometry, and the banner would say
+  `WARM-RESTART (silent)` because that is exactly what it would be
   (`job-contracts.md § 4.4`);
 - **a label edited between runs** — the warm files no longer match, and a run
   that should have resumed starts cold instead.
@@ -139,23 +140,15 @@ two — `derive_run` builds the id and the codec's validation recomputes it
 description landed*). This document used to describe that composite as the
 filename; it never was.
 
-**What the split costs, and it is not nothing.** With the formula in the stem,
+**What the split costs, and what answers it.** With the formula in the stem,
 two calculations of *different molecules* sharing a typed label in one directory
-had different filenames and could not touch each other's warm files. Now they
-have the same stem, so § 1's first failure mode is open to them:
-
-- **a differing atom count the engine still refuses** — a `.DM` of the wrong
-  shape is a loud failure, and that is the common case;
-- **same count, different molecule** — an isomer, a substitution — is the
-  residual, and nothing on disk separates it.
-
-**The formula therefore moves from preventing to reporting.** It is in
-`task.json`, so the surface can compare the state it found against the
-calculation it belongs to and say so — which is § 5's whole doctrine, and its
-third row is the message. That is a real weakening of a name-level guarantee,
-accepted deliberately: it buys one scheme instead of two, and the case it gives
-up was already sharing a directory, which § 3.2's last blockquote calls a mess
-the user is entitled to make.
+had different filenames and could not touch each other's warm files; on the
+label alone they share a stem. **The formula therefore moves from the name to
+the record**: it is in `task.json`'s run id, and a folder holds one
+calculation — a second is refused at the folder, its run id compared (§ 5's
+first row). That is a name-level guarantee given up deliberately: it buys one
+scheme instead of two. Two isomers share a formula, which is § 6a's open
+question 3.
 
 **The label is the `SystemLabel` / `JOB` literal. There is no second name on
 disk** — the formula is recorded, not spelled out in a filename.
@@ -179,11 +172,12 @@ disk** — the formula is recorded, not spelled out in a filename.
 it was written, for tracing; putting it in the id would make every regeneration a
 new identity and therefore a cold start. Two generations of the same calculation
 *should* land on the same id — that is not a collision, it is the same
-calculation, and warm files being found is the right outcome.
+calculation, and its runs continuing one another is the right outcome.
 
-**What tells two invocations apart, then?** The wrapper already does it: each run
-carries an index (`-run0`, `-run1`, …) and never clobbers a prior one
-(`job-contracts.md § 2.6`). That is invocation-level bookkeeping; the id is
+**What tells two invocations apart, then?** The layout does: each launch is a
+run folder of its own, `run-<n>/`, and each try of the wrapper in it carries
+its index (`-run0`, `-run1`, …), never clobbering an earlier one
+(`project-layout.md § 1.6.1`). That is invocation-level bookkeeping; the id is
 calculation-level and does not repeat it.
 
 ### 2.1 What the identity is tied to — as little as possible
@@ -301,9 +295,9 @@ guess.*
 |--:|---|---|---|---|
 | ① | **project** | `BDT-Au` | **the user types it** | `[A-Za-z0-9_-]+` per segment — `job-contracts.md § 2.5` |
 | ② | **topic** | `optimization` | **the user picks** one of the topics | `job-contracts.md § 2.5` |
-| ③ | **calculation** — `job-contracts.md § 2.5`'s innermost segment, renamed from `<structure>/` on 2026-08-11 | `bdt-relax` | **the user types it** *(decided 2026-08-07 — this row is what changed)* | `[A-Za-z0-9_-]+`. This is the level that holds `task.json`, and `task.json` is what makes it a calculation rather than a directory — `checkpointing.md` **L1**. Its *inside* is `project-layout.md § 1`: flat **or** hierarchical |
-| ④ | **stage** *(hierarchical only)* | `01_coarse` | **derived** — `<seq>_<name>`, `seq` assigned once by the produce that creates it | `project-layout.md § 4.1`. A flat calculation has no level ④ at all |
-| ⑤ | **attempt** *(hierarchical only)* | `run-0` | **derived** — a counter | `project-layout.md § 4.3`. Flat separates attempts by an output index instead, `-run0.out` |
+| ③ | **calculation** — `job-contracts.md § 2.5`'s innermost segment, renamed from `<structure>/` on 2026-08-11 | `bdt-relax` | **the user types it** *(decided 2026-08-07 — this row is what changed)* | `[A-Za-z0-9_-]+`. This is the level that holds `task.json`, and `task.json` is what makes it a calculation rather than a directory — `checkpointing.md` **L1**. Its *inside* is `project-layout.md § 1` |
+| ④ | **stage** | `01_coarse` | **derived** — `<seq>_<name>`, `seq` assigned once by the produce that creates it | `project-layout.md § 4.1` |
+| ⑤ | **attempt** | `run-0` | **derived** — a counter | `project-layout.md § 4.3` |
 
 **Levels ④ and ⑤ are derived and this section does not touch them.** A stage
 directory legitimately carries a *number* alongside its name, which is the one
@@ -368,26 +362,25 @@ The id is that label with the formula appended — `BDT_Au_relax` + `Au38C6H4S2`
 
 The point of the rule is that a *single* token is enough to name every file of a
 calculation, on disk and to the engine. For the label `BDT_Au_relax` — whose id
-is `BDT_Au_relax_Au38C6H4S2` — in the flat shape:
+is `BDT_Au_relax_Au38C6H4S2`:
 
 ```text
 projects/BDT-Au/optimization/bdt-relax/   ← the folder is what the user typed
 ├── task.json                             ← and this says the id, formula and all
 ├── BDT_Au_relax.template.toml
-├── BDT_Au_relax_01_coarse.fdf               ┐ what MOLBUILDER named
-├── BDT_Au_relax_02_tight.fdf                │ carries the stage: <label>_<stage>
-├── BDT_Au_relax_01_coarse-run0.out       ┘
-├── BDT_Au_relax.XV                       ┐ what the ENGINE named
-└── BDT_Au_relax.DM                       ┘ carries the label ALONE
+└── 01_coarse/
+    ├── BDT_Au_relax_01_coarse.fdf        ┐ what MOLBUILDER named
+    └── run-0/                            │ carries the stage: <label>_<stage>
+        ├── BDT_Au_relax_01_coarse-run0.out ┘
+        ├── BDT_Au_relax.XV               ┐ what the ENGINE named
+        └── BDT_Au_relax.DM               ┘ carries the label ALONE
 ```
 
 **The formula is in exactly one place, and it is not a filename.** `task.json`
 holds the id; the folder holds the label. That is § 2.0a, seen in a listing.
 
-The **hierarchical** shape gives each stage a directory, and **the filenames do
-not change** — `01_coarse/BDT_Au_relax_01_coarse.fdf`. The repetition between the
-directory and the deck is a self-check, not noise; the rule generating both
-shapes is `job-contracts.md § 6.3`.
+The repetition between the stage directory and the deck is a self-check, not
+noise; the rule generating both is `job-contracts.md § 6.3`.
 
 and in the history, where a state's message is your note plus two trailers:
 
@@ -411,27 +404,21 @@ is what § 3's character set buys.
 
 Note which files carry the stage and which do not: **anything molbuilder named**
 carries `_<stage>`, and **anything the engine named** carries the bare label.
-That asymmetry is not cosmetic — it is exactly what lets the next stage find the
-previous stage's state without being told where it is (§ 4). SIESTA looks for
-`<SystemLabel>.XV`; the file sitting there is the one the last stage left, and no
-instruction passes between them.
+That asymmetry is not cosmetic — it is what lets the next stage find the
+previous stage's state with no renaming (§ 4). SIESTA looks for
+`<SystemLabel>.XV`; the warm files a stage resumes from are the ones its first
+launch copied into its attempt (`project-layout.md § 2.3.4`; prep copies
+nothing from another stage's run, `engines/stages.md` § 7.1), under the name
+the engine wrote them.
 
-**In the hierarchical shape the same separation exists, expressed differently.**
-The warm files a stage resumes from are the ones its first launch copied into
-its attempt (`project-layout.md § 2.3.4`; prep copies nothing from another
-stage's run, `engines/stages.md` § 7.1), rather than the ones the previous stage happened
-to leave in a shared directory. Same outcome, and it is the flat shape that makes
-the label's role visible, which is why the example above is flat.
-
-**Who names a file decides whether it carries the stage, and this holds in both
-shapes:**
+**Who names a file decides whether it carries the stage:**
 
 | Named by | Carries the stage? | Why it is not a choice |
 |---|:--:|---|
-| **the engine** — `<label>.XV`, `.DM`, `.CG` | **no** | SIESTA looks for `<SystemLabel>.XV` and nothing else. molbuilder has no say, in either shape |
+| **the engine** — `<label>.XV`, `.DM`, `.CG` | **no** | SIESTA looks for `<SystemLabel>.XV` and nothing else. molbuilder has no say |
 | **molbuilder** — `<label>_<stage>.fdf`, `<label>_<stage>-run0.out` | **yes** | molbuilder chooses, so what the name says is a design decision — and it spends it on a cross-check |
 
-> **The redundancy in the hierarchical shape is deliberate.** `01_coarse/` already
+> **The redundancy is deliberate.** `01_coarse/` already
 > says which stage it is, and the deck inside it says so again. That is not the
 > naming rule being violated — it is a *self-check*, and it is the same idea as
 > § 6.3's structure witness: write down something you could have derived, so a
@@ -491,15 +478,13 @@ not go looking for one.** Two calculations only interfere when they occupy the
 
 > **molbuilder does not compare one calculation's folder against another's.**
 > *Decided 2026-08-08 (user): this is not a file manager.* Where a calculation
-> goes is the user's to choose, and two of them sharing a folder is a mess the
-> user is entitled to make — one they will notice, and one the checkpoint
-> history is there to recover from. A pre-emptive search for path collisions
+> goes is the user's to choose. A pre-emptive search for path collisions
 > would mean molbuilder holding an opinion about a directory tree it does not
 > own, and getting that opinion wrong is worse than not having it.
 >
-> What molbuilder still owes is a **report about the folder it was actually
-> pointed at**: § 5 says what is there and § 6 says so before writing over it.
-> That is the whole of it.
+> What molbuilder owes is about **the folder it was actually pointed at**: it
+> holds one calculation, a second refused there (§ 5's first row), and § 6
+> says what a second prep into it does. That is the whole of it.
 
 ---
 
@@ -534,18 +519,20 @@ scheduler's business.
    whatever that engine's group is: three declared keys for SIESTA, generated
    control flow for PySCF. Nobody keeps a group in step by hand, and no
    description can carry its members individually and disagree with itself.
-3. **`continue` is the default, and nothing computes it.** A run started in a
-   folder that already holds a result is a run somebody started *after looking
-   at that result*, so it continues from it. Saying `clean` is that person
-   overriding the default, and a clean run **overwrites** what is there as it
-   proceeds.
+3. **`continue` is the default, and nothing computes it.** A stage launched
+   after the one it builds on is launched by somebody who *looked at that
+   run*, so it continues from it: its launch copies in the warm files of the
+   run it names (`project-layout.md` § 1.6.5), and `continue` lets its deck
+   read them. Saying `clean` is that person overriding the default: the stage
+   builds on nothing, its first launch copies nothing from the stage before
+   it, and its deck says `.false.` to every member of the group.
 
    **Nothing has to detect anything.** *Is there prior state?* is answered by
    the engine, at run time, where it is knowable: SIESTA with `MD.UseSaveXV`
    and no `.XV` warns and uses the deck's coordinates; PySCF's script guards
    each read on the file existing and being non-empty. So `continue` means
-   *this deck may read what is there*, and an empty folder needs no special
-   case anywhere.
+   *this deck may read what was handed to it*, and a run handed nothing needs
+   no special case anywhere.
 
    **A rung's POSITION does not answer it, and neither does anything else about
    the ladder.** The shipped ladders set no `restart` at all.
@@ -601,7 +588,7 @@ and the rest are said, before the launch and as the run starts:
 |---|---|---|
 | **two calculations under one label in one folder** — a second molecule's run would warm-start from the first's files | since § 2.0a the formula is not in the stem, so two molecules under one label share warm files | **refused**: one calculation per folder — `molbuilder describe` and the Transport tab's describe door refuse a folder that already holds one (`describe.refuse_described`), and Task setup's Save refuses a description whose run id differs from the folder's. The run id keeps the formula for exactly this; two isomers have one formula, which is § 6a's open question 3 |
 | **a label edited between runs** — the warm files no longer match, and a run that should resume starts cold | the label is the half of the id that reaches the engine (§ 2.0a) | **refused**: the label is half of the run id, so Save refuses the change in a described folder, and a `task.json` edited by hand whose name and id disagree is refused on every read (`Task._check_id`) |
-| **files left in a run's folder** — an `.XV` from an earlier fill that the engine would find | the id names the files; it cannot say which fill wrote them | **closed by the layout** on the hierarchical shape: each run is its own folder, holding prep's files and what its launch hands over, and nothing else; a run opened and never launched is emptied whole before it is filled again (`materialize.empty_run`, `project-layout.md` § 1.6.3). **Said** on the flat shape, where a stage's runs share the folder's restart files by design (`project-layout.md` § 1.2): `launch` names the run that left them — the last run in the folder, of any stage — and the run's record names it; the run script's banner names the files lying there as the run starts, `--cold --force` removes them, and a stage whose override says `restart: clean` has a deck that reads none |
+| **files left in a run's folder** — an `.XV` from an earlier fill that the engine would find | the id names the files; it cannot say which fill wrote them | **closed by the layout**: each run is its own folder, holding prep's files and what its launch hands over, and nothing else; a run opened and never launched is emptied whole before it is filled again (`materialize.empty_run`, `project-layout.md` § 1.6.3) |
 | **the structure moved under a saved description** | the description holds a reference plus a witness (`engines/stages.md § 6.3`), so the mismatch is detectable | **refused at prep** (`job-system.md` R-P16, `prep._structure_for`): the structure put back, or the calculation described anew |
 | **prior state that matches** — the next run continues | nothing is wrong; the person should still know before it starts | **said twice**: `launch` shows which run each stage continues from and every file it copies, asks once, and records it (`.continued-from`, `run.json`; `job-system.md` § 5.4); the run script's banner says it again as the run starts — *WARM-RESTART (silent; engine will load existing* the restart files lying there |
 | **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`model/structure-periodicity.md § 6.2`; design record `archive/2026-08-20-cell-plan.md`), and derived values cannot be in the id (§ 2). And the hazard is not a mismatch — a `.XV` carries its own cell and its own frame, so on a continue it **wins**: widening the vacuum after a stage ran changes the next stage's deck and changes nothing about its run | **nothing says it.** A changed cell is another calculation, so a launched stage is not prepared again for one (`job-request.md` § 5) and its own runs cannot meet it; the case is a stage continuing from the one before it, prepared after the cell changed — its first launch copies the earlier run's `.XV`, and the cell that runs is that run's |
@@ -643,17 +630,12 @@ Its place among prep's checks is
 > had happened, default yes. A redo is a rollback now, so nothing is rendered
 > over a prepped stage, and nothing is left to ask before it.*
 
-**"Never rename" is the part that is not negotiable.** The warm files are what
-the next run continues from, so making a name unique to avoid a clash would
-throw away the geometry the user is trying to keep. Nothing in this document
-ever moves a file to make room.
-
-*(This paragraph cited the handoff writer's own refusal as the contrasting
-case. That writer retired 2026-08-29 with the bundle machinery — citations
-replaced it — so the contrast no longer has a live subject. What survives is the
-distinction it was drawn to make: **replacing one artifact wholesale is not the
-same as working inside a folder**, and only the second is what "never rename"
-governs.)*
+**"Never rename" is the part that is not negotiable.** A run's files keep the
+names its engine and molbuilder gave them, in a folder of its own
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.5), and the next
+run continues from them by copying them in under the same names (§ 1.6.5
+there) — a name made unique to avoid a clash would leave the engine nothing to
+read. Nothing in this document ever moves a file to make room.
 
 ---
 

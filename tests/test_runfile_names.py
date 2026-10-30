@@ -17,7 +17,7 @@ import itertools
 
 import pytest
 
-from molbuilder.runfiles import (QUALIFIERS, ON_THE_LABEL, RunFile, RunFileError,
+from molbuilder.runfiles import (ON_THE_LABEL, RunFile, RunFileError,
                                  find, find_by_role, latest_run,
                                  compose, manifest, parse,
                                  tail)
@@ -83,7 +83,7 @@ def test_the_two_separators_say_which_segment_is_which(stage, run, expected):
     """`job-contracts.md` § 6.3: *"a hyphen announces a counter follows... a
     stage is not a counter — it is a name"*.
 
-    So `_` introduces the stage and `-run` the attempt, which is what lets
+    So `_` introduces the stage and `-run` the try, which is what lets
     `parse` tell them apart without being told which it is looking at.
     """
     assert compose(LABEL, ".chk", stage, run) == expected
@@ -115,7 +115,7 @@ def test_carried_is_the_absence_of_a_stage():
     assert parse(compose(LABEL, "_optimized.xyz"), LABEL).stage is None
     assert parse(compose(LABEL, ".molwatch.log", "01_coarse"),
                  LABEL).stage == "01_coarse"
-    # An ATTEMPT is not a stage: `-run2` still names a carried file.
+    # A TRY'S NUMBER is not a stage: `-run2` still names a carried file.
     assert parse(compose(LABEL, ".chk", None, 2), LABEL).stage is None
 
 
@@ -168,12 +168,6 @@ def test_a_counter_that_is_not_a_count_is_refused(bad):
 #
 #  § 6.3 gives the hyphen ONE meaning: a counter follows, and a counter is a
 #  keyword plus a number.  A second counter is a line in `QUALIFIERS`.
-
-def test_the_only_counter_today_is_the_attempt():
-    """Stated so that adding one is a DECISION.  `stage` is not here and never
-    will be -- it is a NAME and takes `_` -- and neither is a bench point,
-    which is a whole label (`project-layout.md` § 2.3.2)."""
-    assert QUALIFIERS == ("run",)
 
 
 def test_a_keyword_the_grammar_does_not_declare_is_refused():
@@ -258,7 +252,7 @@ def test_a_file_that_carries_no_stage_never_grows_one(art):
 ])
 def test_the_manifest_tells_a_run_about_its_own_engine_only(
         engine, absent, present):
-    rows = manifest(LABEL, "01_coarse", shape="hierarchical", engine=engine)
+    rows = manifest(LABEL, "01_coarse", engine=engine)
     names = [r["name"] for r in rows]
     for suffix in present:
         assert any(n.endswith(suffix) for n in names), f"{engine}: no {suffix}"
@@ -266,8 +260,7 @@ def test_the_manifest_tells_a_run_about_its_own_engine_only(
         assert not any(n.endswith(suffix) for n in names), (
             f"{engine}: named {suffix}, which its engine does not write")
     # No engine named is a question, not a claim: answer for both.
-    both = [r["name"] for r in manifest(LABEL, "01_coarse",
-                                         shape="hierarchical")]
+    both = [r["name"] for r in manifest(LABEL, "01_coarse")]
     assert any(n.endswith(".py") for n in both)
     assert any(n.endswith(".fdf") for n in both)
     assert any(n.endswith("-run0.out") for n in both)
@@ -333,11 +326,9 @@ def test_a_relaxation_is_not_promised_a_spectrum():
     """A list that named a file the run will never write is the same fault as
     one that omits a file it does -- an answer a person cannot check against
     the folder.  `.spectra.json` is the vibration calculation's."""
-    relax = {r["name"] for r in manifest(LABEL, None, shape="hierarchical",
-                                         engine="pyscf",
+    relax = {r["name"] for r in manifest(LABEL, None, engine="pyscf",
                                          calculation="optimization")}
-    vib = {r["name"] for r in manifest(LABEL, None, shape="hierarchical",
-                                       engine="pyscf",
+    vib = {r["name"] for r in manifest(LABEL, None, engine="pyscf",
                                        calculation="vibration")}
     assert compose(LABEL, ".spectra.json") not in relax
     assert compose(LABEL, ".spectra.json") in vib
@@ -346,8 +337,7 @@ def test_a_relaxation_is_not_promised_a_spectrum():
     # And a caller that has not asked which kind is told about both, because
     # None here is "no question asked", not "the default kind".
     assert compose(LABEL, ".spectra.json") in {
-        r["name"] for r in manifest(LABEL, None, shape="hierarchical",
-                                    engine="pyscf")}
+        r["name"] for r in manifest(LABEL, None, engine="pyscf")}
 
 
 # ══ THE READER — find / latest_run ═════════════════════════════════════════
@@ -378,7 +368,7 @@ class TestTheReader:
 
         That reader walks its candidates REVERSED and wants the bare log read
         LAST, so a `-run<N>` always beats it.  Sorted the other way the
-        fallback wins over every real attempt -- the 2026-08-13 bug, which its
+        fallback wins over every real try -- the 2026-08-13 bug, which its
         comment records and no test caught.  The order lives here now, so it
         is stated once and checked once.
         """
@@ -391,15 +381,15 @@ class TestTheReader:
 
     def test_run_10_is_not_run_1(self, tmp_path):
         """NUMERIC, not lexicographic -- the other half of the same 2026-08-13
-        fix, which a string sort gets wrong at exactly ten attempts."""
+        fix, which a string sort gets wrong at exactly ten tries."""
         self._lay(tmp_path, ["JOB-run9.out", "JOB-run10.out"])
         assert latest_run(tmp_path, "JOB") == 10
 
     def test_the_latest_run_is_the_HIGHEST_across_every_role(self, tmp_path):
-        """The run's conclusion door asks this to find the newest run's
+        """The run's conclusion door asks this to find the newest try's
         marker (`runrecord.ending`, through `runfiles.at_run`).
 
-        Lowest instead of highest reads an EARLIER run's goodbye as the latest
+        Lowest instead of highest reads an EARLIER try's goodbye as the latest
         word -- which is what that door's own docstring says must not happen,
         for a warm-retry chain where only the final process concludes.
         And it ranges over roles: an engine that dies before printing leaves a
@@ -460,4 +450,4 @@ def test_find_returns_files_and_not_directories(tmp_path):
     (tmp_path / "JOB-run1.out").mkdir()          # a directory that parses
     got = [p.name for p, _ in find(tmp_path, "JOB")]
     assert got == ["JOB-run0.out"], got
-    assert latest_run(tmp_path, "JOB") == 0, "a directory is not an attempt"
+    assert latest_run(tmp_path, "JOB") == 0, "a directory is not a try"

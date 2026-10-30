@@ -27,9 +27,14 @@ the queue and the handover to the day's end.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-29)*
 
-**Where we are: 2.53.2.** The releases are the changelog's rows; the
+**Where we are: 2.54.0.** The releases are the changelog's rows; the
 handover of 2026-10-27, which listed them from 2.25.0, is in [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2. The
-last: a transport sweep reports as one run — one start, a milestone per
+last: one layout — every stage a folder, every run a folder of its own; a
+description stating another is refused by name, nothing flat is written, and
+the code that served it is gone; a run holds tries, `-run<N>`, only the last
+concluding (2.54.0, § 1am step 1, `execution/project-layout.md` § 1). Before:
+an engine's and a kind's facts asked of their records (2.53.1, 2.53.2); a
+transport sweep reports as one run — one start, a milestone per
 voltage done at every frame, a failed point once per reason, one finish
 (2.53.0, § 1af R-e). Before: a frame set's frames re-averaged after the run
 over another motion —
@@ -60,7 +65,7 @@ user's AuBDTAu run *(the user, 2026-10-28; the "Relax first" advice stays as
 it is, the user's ruling: "the user knows the information … don't do
 extra")*.
 
-**Last checked**: the fast batch on 2.53.2 (6,948 passed), the kind table's new facts each removed and seen to fail (the root's description, both kinds' science checks, a deck that relaxes; a transmission folder's report on the real-junction e2e, 8 failed) -- the relaxation words, read by no test; the fast batch on 2.53.1 (6,947 passed), its new rules broken three ways and seen to fail (the hand-over's describe hook called bare, a PySCF preset menu of two tiers, the keyword-deck check left unasked); the hand-over's browser e2e on 2.53.1 (7 passed); the fast batch on 2.53.0 (6,944 passed); the real-junction e2e on 2.53.0 (201 passed) with the SIESTA CO₂ vibration and the monitor e2e (29), the run-of-points report broken six ways and seen to fail (the walk's own rule asked as done, the conductance without the energy join, the failed count, the finish's state, the NEGF count, the point's word); a spin-polarized transmission's (T↑+T↓)/2 checked against the record on channel files made from a real point; the fast batch on 2.52.0 (6,943 passed); the real-junction e2e on 2.52.0 (190 passed), the re-averaging broken six ways and seen to fail (the swing ignored, the reach refusal, the blind-shape line, the below-zero line, the swing's phase averages, the door's conductance from frame 0 alone); the walled vibration e2e on 2.51.1 (its failed part and finish counting the failed calls; the count's rule broken and seen to fail); the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
+**Last checked**: the fast batch on 2.54.0 (6,909 passed); the e2e batch whole on 2.54.0 (562 passed) — a warm retry on real SIESTA concluding only its last try, a relaunch leaving run-0 as it was; its new checks broken and seen to fail (every try concluding, a retry started without `--continue`, the folder's reset keeping the written card, every run folder counted as launched); the fast batch on 2.53.2 (6,948 passed), the kind table's new facts each removed and seen to fail (the root's description, both kinds' science checks, a deck that relaxes; a transmission folder's report on the real-junction e2e, 8 failed) -- the relaxation words, read by no test; the fast batch on 2.53.1 (6,947 passed), its new rules broken three ways and seen to fail (the hand-over's describe hook called bare, a PySCF preset menu of two tiers, the keyword-deck check left unasked); the hand-over's browser e2e on 2.53.1 (7 passed); the fast batch on 2.53.0 (6,944 passed); the real-junction e2e on 2.53.0 (201 passed) with the SIESTA CO₂ vibration and the monitor e2e (29), the run-of-points report broken six ways and seen to fail (the walk's own rule asked as done, the conductance without the energy join, the failed count, the finish's state, the NEGF count, the point's word); a spin-polarized transmission's (T↑+T↓)/2 checked against the record on channel files made from a real point; the fast batch on 2.52.0 (6,943 passed); the real-junction e2e on 2.52.0 (190 passed), the re-averaging broken six ways and seen to fail (the swing ignored, the reach refusal, the blind-shape line, the below-zero line, the swing's phase averages, the door's conductance from frame 0 alone); the walled vibration e2e on 2.51.1 (its failed part and finish counting the failed calls; the count's rule broken and seen to fail); the real-junction e2e on 2.51.0 (189 passed), its frame-set rules broken nine ways and seen to fail (the rule's node, the mean quanta, a spread without the temperature, the temperature said back, a defaulted temperature, nine frames, the spread ratio, the notebook door's rule, frames at half their step); the dialog walked on the dev server; the fast batch on 2.50.0 (6,922 passed); the SIESTA CO₂ vibration e2e and the monitor's on 2.50.0 (29 passed), its new rules broken eight ways and seen to fail each time (the step gate on SIESTA's and PySCF's readings, the milestone, the finish's outcome, the finish's count, the run's count in a message, the once-per-reason rule, a displacement whose count does not advance); the fast batch on 2.49.0 (6,922 passed); the SIESTA CO₂ vibration e2e's three page and infrared tests on 2.49.0, the new checks broken four ways (the view over the whole molecule, the choices committed before the answer, *Update* outside the fence, a fixed laser exported) and seen to fail each time; the page walked on the dev server (my `claude-r1-raman` run: the infrared on open, a change waiting, *Update* under the fence, the choices back after a reload); the fast batch on 2.48.0 (6,922 passed); the real CO₂ vibration's monitor e2e on 2.48.0, broken five ways and seen to fail each time; its chapters rendered; the fast batch on 2.47.12 (6,921 passed); the fast batch on 2.47.11 (6,919 passed), its camera and topic rows broken one by one and seen to fail; the ladder's e2e on the real CO₂ run on 2.47.5; the SIESTA CO₂ vibration e2e and the real-junction e2e on 2.47.1 (196 passed); the PySCF vibration e2e on 2.47.0; the e2e batch whole on 2026-10-16 (396, all passing).
 
 **What runs next** is § 0a's queue, *NOW* (2026-10-28) — the user's to change.
 
@@ -420,6 +425,66 @@ relaxed should not stop user from relax with a different set of parameter,
 the user's choice for this, no greying")*.
 
 
+## 1am. One framework: one layout, then every fact through its one door *(2026-10-29; the user: "consolidate the plan, do it step by step. I want a clear, well logically designed, well laid out framework with unified API"; "drop the flat directory first and then unify everything else")*
+
+**Why.** A whole-codebase review, then a second pass verifying every finding
+against the documents and the code
+([`archive/2026-10-29-codebase-review.md`](?doc=archive/2026-10-29-codebase-review.md)):
+about 355 places where code answers a fact its existing door already
+answers — an engine or kind named instead of asked of its record, a file's
+name or a record's path composed by hand, a format read or written twice, a
+vocabulary or rule restated, a floor reached across, an object taken apart.
+**The steps go by the door, not by the finding**, and the first removes a
+whole layout so that nothing after it has to carry two.
+
+| # | step | what becomes true | closes | state |
+|---|---|---|---|---|
+| 1 | **One layout** | Every stage is a folder and every run a folder of its own (`run-<n>/`); a description stating `flat` is refused by name, nothing flat is written, and the code that exists only for it goes: the per-run launch records, `.last-run`, warm files read in place, a calculation folder that is a run, the shape question and its vocabulary. No migration *(the user: "simply deny anything that's flat and don't generate anything flat. Remove the code that's flat, and that's it")* | the flat layout; X2 | **built 2.54.0** — four review rounds, the last two in parallel over every touched file whole with its owning chapter |
+| 2 | **The run script names no engine** | `runwrap` writes one skeleton and reads the engine's record — its program, its environment and a GPU run's ([`gpu.md`](?doc=execution/gpu.md) G6, G8; `configuration.md` § 4's categories), one process or ranks, keyword deck — and asks the parse layer by meaning (`_mb_ending scf-stopped`, `out-of-time`, `advice`); the retry budget reaches only a rung that runs an SCF (`stages = "scf"`, as `use_gpu`); the deck echoed and its held atoms counted by the monitor bundle's readers | X4–X9, X10, X11, X13, X50 (the run script's part), R32; § 1ak S2.4's run script | designed; the partial build is set aside until step 1 lands |
+| 3 | **Every engine and kind fact asked of its record** (A18) | the engine's settings checks, its reading of *the same calculation*, its label bound, a pair's sort key, a kind's export, the rung builders in the kind's own modules, the page served the records | the archive's *engine and kind records* list | open |
+| 4 | **Every name and record through its owner** (A14, A11, A16) | a `runfiles` constant for every role named in code, `compose` refusing a role no row has; every record path formed by its owner; nothing climbs to a root | *names and records* | open |
+| 5 | **One reader and one writer per format** | each foreign format read by `parse/`, each of ours spoken by one vocabulary module its writer and reader share; JSON through `persist` | *one reader and one writer* | open |
+| 6 | **One home for each vocabulary, default and rule** | states, words, defaults and choices imported from their home; each rule written once | *one home*, *one implementation* | open |
+| 7 | **The floors and the objects** (A7, A8) | no import reaches up a floor, no object is taken apart, no private name is reached into, no wrapper only renames | *floors, objects whole* — with § 1ak S3 | open |
+| 8 | **Reviewed, and walked in the browser** | two review rounds over steps 1–7 and a browser walk of every page they touched — § 1ak S4, S5 | — | open |
+
+Each step: the owning contracts read end to end, the contract text first,
+then the code; its targeted tests and the e2e its road needs; mutations; two
+review rounds; a release.
+
+**Found while building step 1, older than it — each to the step that owns
+it** (verified in the code; the review rounds of 2026-10-29):
+
+- **Step 2, the run script**: a device run's `--cold` names, and with
+  `--force` removes, its gathered leads — `project-layout.md` § 1.6.7 rules
+  they are inputs, not warm state; geomeTRIC's scratch folder stops
+  `--cold --force` (`rm -f` on a folder, under `set -e`); a PySCF
+  vibration's banner promises a checkpoint its deck never reads;
+  `MB_RETRY_N` and the try number carry one value; two starts in one second
+  share a session log.
+- **Step 5, one reader**: a run's newest output answered by two helpers
+  (`spectra.siesta_vibration._newest_output`, `transport.points_index`'s).
+- **§ 1ak S3, the floors**: `Run.prepared` maps an optical call's folder
+  wrongly, so an optical call has no stage deck and no report; the folder
+  answer gives a run of points' root a status; the `shared/` walk-up lives in
+  `folder_answer`, not `openable`.
+- **§ 1ak S4, tests through the doors**: tests whose input is typed by hand
+  rather than made by the road *(the user, 2026-10-29: "handcrafted tests
+  proves nothing that we want to be working, and it needs maintainance
+  itself")* — launch records planted in `tests/support/road.py` and the
+  sent-run tests, the cold sweep's table of planted files, a stage-folder
+  test's hand-built plan, the transport e2e's relaxation made by hand.
+- **Open, in no step yet**: launch's `_plan_group` walks a run of points or
+  phases member as one run; a vibration's phases' warm files are not
+  checked; a member copied in whole that runs once leaves its stage folder
+  unstamped (invariant 6b; `naming.stamp_containers` in `reuse.copy_in`);
+  the device's size estimate reads a lead's latest run, not its newest
+  launched (`gf_files._lead_orbitals`); the web's reuse describe drops what
+  the finished calculation varied with no override; status names no next
+  step for a group member that is missing (`_steps`; job-system's table has
+  no row); the label cap leaves no room for the try counter
+  (`runfiles.longest_tail`).
+
 ## 1ak. One system for a calculation's files — the code, the page and the folders as one design, driven by declared data *(2026-10-28; S0–S2.3 built 2.47.6–2.47.12; the section as it stood: [`archive/2026-10-28-plan-consolidation.md`](?doc=archive/2026-10-28-plan-consolidation.md) § 2)*
 
 *(The user, 2026-10-28: "did you make sure your work did not [bypass] existing
@@ -530,13 +595,12 @@ then the agreed designs, then § 0a's steps 2–6. The queue it replaces
 
 | # | what | where | why here |
 |---|---|---|---|
-| **1** | **§ 1ak S2.4** — the rest of the branches, the label palette (the user's call on the page change), then S2's done-when: its review and the browser walk of S2.3's and S2.4's pages | § 1ak | the stage under way |
-| **2** | **§ 1ak S3, S4, S5** | § 1ak | the rest of the agreed programme |
-| **3** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** | § 1ai | the last page keeping a lock of its own |
-| **4** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |
-| **5** | **N12 group 4** — each item re-derived and located before it is brought for approval | this table | the six-agent review's last group |
-| **6** | **§ 1ag, § 1ah** — each a design brought with its science | §§ 1ag, 1ah | planned |
-| **7** | **THE ORDER's steps 2–6** | below | as the table says |
+| **1** | **§ 1am — one layout, then every fact through its one door** (steps 1–8; § 1ak S2.4's rest, S3–S5 within it), then the label palette (the user's call on the page change) | § 1am | the user's order, 2026-10-29 |
+| **2** | **§ 1ai — the Structure-optimization tab's two locks into the catalogue** | § 1ai | the last page keeping a lock of its own |
+| **3** | **N11 release 2 — the page split**, contract first | § 1aa | the user's four answers, release 1 built |
+| **4** | **N12 group 4** — each item re-derived and located before it is brought for approval | this table | the six-agent review's last group |
+| **5** | **§ 1ag, § 1ah** — each a design brought with its science | §§ 1ag, 1ah | planned |
+| **6** | **THE ORDER's steps 2–6** | below | as the table says |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 

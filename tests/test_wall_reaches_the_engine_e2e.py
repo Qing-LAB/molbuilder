@@ -5,8 +5,9 @@ said at the next launch (`running-a-job.md` § 3.6; `engines/siesta.md`
 Driven as a person drives it: ``molbuilder describe`` -> the run card's
 wall (``execution.time``) -> ``prep task`` -> ``launch task --mode direct
 --foreground``, a run here told the wall its own job states (`submit._go`,
-§ 3.6's table, *one run, here*), then the next stage launched over a density
-file whose write time is the job's end second.
+§ 3.6's table, *one run, here*), then the stage launched again, asked
+dry, over a restart file -- SIESTA's geometry, ``.XV`` -- whose write time
+is the job's end second.
 
 PREVENTS: a wall the person stated reaching no engine, so a scheduler's kill
 lands mid-write (the Sol relaxation of 2026-10-18 that restarted from mixed
@@ -21,7 +22,7 @@ import pytest
 
 from _road import conda_hook, env_available, live_siesta
 from support.road import H2, group_words, jobset, road_structure
-from support.road import molbuilder, read_request, write_request
+from support.road import molbuilder, one_rank
 
 pytestmark = [
     pytest.mark.engine,
@@ -38,26 +39,23 @@ def _write_h2(tree: Path) -> None:
                            tree / "P" / "structure" / "h2.xyz")
 
 
-def _one_rank(bundle: Path, **card) -> None:
-    request = read_request(bundle)
-    request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
-                            "omp_threads": 1, **card}
-    write_request(bundle, request)
-
-
 @pytest.fixture(scope="module")
 def walled(isolated_projects_root_module, tmp_path_factory):
-    """A flat H2 optimization whose coarse stage ran here under the 20 s
-    wall its run card states -- what that launch said -- and what the
-    launch of the next stage said over its density file, re-dated to the
-    job's end."""
+    """An H2 optimization whose coarse stage ran here under the 20 s wall
+    its run card states -- its run folder and what that launch said -- and
+    what the launch of the stage again said over its restart file, the
+    ``.XV``, re-dated to the job's end."""
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.runs import run_of
+    from molbuilder.task import of as task_of
     tree = isolated_projects_root_module
     with live_siesta(tree, tmp_path_factory):
         _write_h2(tree)
-        flat = tree / "P" / "opt" / "H2wall"
+        bundle = tree / "P" / "opt" / "H2wall"
         r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                    "--bundle", "P/opt/H2wall", "--engine", "siesta",
-                   "--calculation", "optimization", "--shape", "flat",
+                   "--calculation", "optimization",
                    "--name", "H2", "--psml-lib", "pseudopotential",
                    "--stage-strategy", "publishable")
         assert r.exit_code == 0, r.output
@@ -65,30 +63,32 @@ def walled(isolated_projects_root_module, tmp_path_factory):
         # WALL ITS RUN CARD STATES (`running-a-job.md` § 5.3.1's chain), 20
         # s, so the engine, told what is left and the 600 s slack, stops at
         # its first check.
-        _one_rank(flat, continue_retries=1, time="00:00:20")
-        r = jobset("prep", "task", *group_words(flat, "coarse"),
-                   "--bundle", flat, "--target", "this")
+        one_rank(bundle, continue_retries=1, time="00:00:20")
+        r = jobset("prep", "task", *group_words(bundle, "coarse"),
+                   "--bundle", bundle, "--target", "this")
         assert r.exit_code == 0, r.output
         launched = jobset("launch", "task", "--stage", "coarse", "--bundle",
-                          flat, "--mode", "direct", "--foreground", "--yes")
-        out = flat / "H2_01_coarse-run0.out"
-        wrap = sorted(flat.glob("H2_01_coarse.runwrap-*.log"))[-1]
+                          bundle, "--mode", "direct", "--foreground", "--yes")
+        ran_in = latest_attempt(stage_home(bundle, task_of(bundle),
+                                           "coarse").dir)
+        run = run_of(ran_in)
         # THE GEOMETRY SIESTA SAVED, RE-DATED TO THE JOB'S END SECOND, as a kill mid-write
-        # leaves it; the next stage's launch reads the two times.
+        # leaves it; the next launch of the stage reads the two times.
         from molbuilder.parse.registry import parse as _parse
-        mon = sorted(flat.glob("H2_01_coarse-run0.monitor.log"))[-1]
-        ended_at = _parse(mon).metrics["ended_at"]
+        ended_at = _parse(run.file(".monitor.log", 0)).metrics["ended_at"]
         from datetime import datetime
         end_s = datetime.fromisoformat(ended_at).timestamp()
-        dm = flat / "H2.XV"
-        os.utime(dm, (end_s + 1, end_s + 1))
+        xv = run.on_label(".XV")
+        os.utime(xv, (end_s + 1, end_s + 1))
         # THE SAME STAGE LAUNCHED AGAIN continues from its own latest run,
-        # the files in the folder (`job-system.md` § 5.4) -- asked, not sent.
+        # its restart files copied in (`job-system.md` § 5.4) -- asked, not
+        # sent.
         plan = jobset("launch", "task", "--stage", "coarse", "--bundle",
-                      flat, "--mode", "direct", "--foreground", "--yes",
+                      bundle, "--mode", "direct", "--foreground", "--yes",
                       "--dry-run")
-        yield {"flat": flat, "out": out, "wrap": wrap, "launched": launched,
-               "ended_at": ended_at, "next": plan.output}
+        yield {"ran_in": ran_in, "out": run.stdout, "wrap": run.session_log,
+               "launched": launched, "ended_at": ended_at,
+               "next": plan.output}
 
 
 def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
@@ -106,9 +106,8 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
     MUTATION THIS MUST FAIL AGAINST: the card's wall not exported to a run
     here (`submit._go`; SIESTA relaxes H2 to its end, converged); the wall
     read as an SCF failure (the
-    grammar without `OUT_OF_TIME`); a warm retry after it, its run 1."""
+    grammar without `OUT_OF_TIME`); a warm retry after it, its try 1."""
     from molbuilder.parse.dirs.rundir import run_state_of
-    from molbuilder.runfiles import RunNames
     launched = walled["launched"]
     assert launched.exit_code == 1, launched.output
     assert any(ln.lstrip().startswith("FAILED") and "coarse" in ln
@@ -118,16 +117,15 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
     assert "Wall          : 20s from the job's start" in wrap, wrap[:3000]
     assert "wall: " in wrap and "SIESTA stops 600s before it" in wrap, wrap[-2000:]
     assert "stopped at its wall (MaxWalltime)" in wrap, wrap[-2000:]
-    # NO WARM RETRY IN THE JOB: a retry is the stage's next run, and the
-    # run door names the newest (a flat stage's runs are its files).
+    # NO WARM RETRY IN THE JOB: a retry would be the run's next try, in its
+    # folder, and the run door names the newest.
     from molbuilder.runs import run_of
-    from support.real_runs import stage_status
-    coarse = stage_status(walled["flat"], "coarse")
-    assert run_of(walled["flat"], coarse.ref.token).run == 0
+    run = run_of(walled["ran_in"])
+    assert run.run == 0, sorted(p.name for p in walled["ran_in"].iterdir())
     text = walled["out"].read_text(errors="replace")
     assert "OUT_OF_TIME: Time is up." in text, text[-3000:]
     assert ">> End of run" not in text
-    st = run_state_of(walled["flat"], RunNames.of("H2", "01_coarse", "flat"))
+    st = run_state_of(walled["ran_in"], run.names)
     assert st.state == "failed", (st.state, st.detail)
     assert "OUT_OF_TIME" in st.detail, st.detail
 
@@ -141,5 +139,5 @@ def test_a_warm_file_written_as_the_job_ended_is_said_at_the_next_launch(walled)
     or the monitor log's closing time not read (`ended_at` absent)."""
     said = walled["next"]
     assert "continues from" in said, said
-    assert "H2.XV in the folder -- WARNING: written as the job ended" in said, said
+    assert "H2.XV -- WARNING: written as the job ended" in said, said
     assert walled["ended_at"][11:19] in said, said

@@ -7,8 +7,9 @@ Routes (registered with no url_prefix; each carries its own full path):
 
     POST /api/watch/load       JSON {"path": "..."} or multipart upload
                                 ``path`` may be either a single file or
-                                a run directory (job-layout v1; see
-                                ``docs/execution/job-contracts.md``).
+                                a run's folder, which the run door
+                                resolves to one file (``runs.openable``;
+                                ``docs/model/parse.md`` § 5.1).
     GET  /api/watch/data       poll for changes (mtime-based)
 
 Flow on /results: the user picks a trajectory file in the Projects
@@ -166,9 +167,11 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
     `running-a-job.md` § 4.2 owns the resolution order;
     `parse.contract.engine_of` is its one implementation.
 
-    **`source_format` is the fallback, and only an upload reaches it.**
-    A posted file has no run directory, so what the parser found is the
-    best honest answer -- including the bare ``"molwatch"`` of a log
+    **`source_format` is the fallback, reached whenever the engine is not
+    declared** -- an upload, which has no run directory, and a run
+    directory that declares nothing (a hand-made run; `web-api.md`, the
+    watch row) -- so what the parser found is the best honest answer --
+    including the bare ``"molwatch"`` of a log
     with no ``# engine:`` header, which is the neutral case the client
     already branches on.  It is NOT an engine field in general
     (``siesta-mdnc``, ``pyscf-geom`` and ``siesta-xv`` all live in it),
@@ -427,14 +430,11 @@ def api_load():
     # (`runs.openable`); a regular file is loaded as it is.
     resolved_from_dir: Optional[str] = None
     if os.path.isdir(raw_path):
-        # A DIRECTORY RESOLVES TO ONE FILE.  The generated deck tells the
-        # user to point Watch at the run directory and says what happens:
-        # "the loader resolves it to <job>.molwatch.log".  That is this
-        # chain, and it is the whole of it.
+        # A DIRECTORY RESOLVES TO ONE FILE, the run door's answer -- this
+        # chain is the whole of it.
         #
-        # STAGES ARE SEPARATE RUNS.  A ladder is separated by filename in a flat
-        # directory or by directory name in a hierarchical one, and the
-        # person picks one stage and judges it.  Stitching them into one
+        # STAGES ARE SEPARATE RUNS.  A ladder's stages are separate
+        # directories, and the person picks one stage and judges it.  Stitching them into one
         # trajectory is not a view this project offers -- that is what the
         # bench summary is for, where comparison IS the question.
         path, attempts = openable(raw_path)
@@ -611,9 +611,8 @@ def _api_load_multipart(uploaded_file):
         "ok":               True,
         "path":             tmp_path,
         "mtime":            state["mtime"],
-        # An upload has no run directory to declare an engine, so this
-        # is the one caller that reaches the `source_format`
-        # fallback -- deliberately, and it is the only one.
+        # An upload has no run directory to declare an engine: the
+        # `source_format` fallback answers (`_engine_of`).
         "format":           _engine_of(None, state["data"], parser_cls),
         "label":            parser_cls.label,
         "data":             state["data"],

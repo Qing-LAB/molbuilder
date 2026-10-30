@@ -10,9 +10,10 @@ ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         section it reads, which phases it needs -- read by prep (the decks
         and run scripts), launch (the walk, the calls it opens and takes
         over), the run's own python (the plan, record and finish verbs)
-        and every reader of the run's state.  The index
-        (``<label>_<stage>-run<N>.phases.json``, :func:`write_index` /
-        :func:`read_index`) lists every call: what it is, from what, how it
+        and every reader of the run's state.  The index -- one per run, at
+        its root, named for its first try
+        (``<label>_<stage>-run0.phases.json``, :func:`index_path`,
+        :func:`write_index` / :func:`read_index`) -- lists every call: what it is, from what, how it
         ended -- written by launch for the calls it opens and by the run's
         own python for the rest, rewritten whole; its rows by the one
         done rule (:func:`rows_of`) and their count (:func:`summary`) are
@@ -35,11 +36,11 @@ from typing import Any, Dict, List, Optional, Tuple
 # is not installed.
 try:                                       # inside molbuilder
     from ..persist import check_schema, json_text, read_json, write_bytes
-    from ..runfiles import ROLE_PHASES, compose
+    from ..runfiles import FIRST_TRY, ROLE_PHASES, compose
 except ImportError:                        # beside a job
     from persist import (check_schema, json_text,  # type: ignore[no-redef]
                          read_json, write_bytes)
-    from runfiles import ROLE_PHASES, compose
+    from runfiles import FIRST_TRY, ROLE_PHASES, compose
 
 SCHEMA = "molbuilder/vibration-phases@1"
 
@@ -215,10 +216,11 @@ class Call:
 #  The index -- every call of the run, what it is, how it ended           #
 # --------------------------------------------------------------------- #
 
-def index_path(run_dir, names, run: int) -> Path:
-    """Where the run's index lies: ``<label>_<stage>-run<N>.phases.json`` at
-    the run's root (`runfiles.ROLE_PHASES`)."""
-    return Path(run_dir) / names.name(ROLE_PHASES, run=run)
+def index_path(run_dir, names) -> Path:
+    """Where the run's index lies: at the run's root, named for its first
+    try, ``<label>_<stage>-run0.phases.json`` (`runfiles.ROLE_PHASES`) --
+    launch writes it there, and every try of the run reads it."""
+    return Path(run_dir) / names.name(ROLE_PHASES, run=FIRST_TRY)
 
 
 def empty_index(phases) -> Dict[str, Any]:

@@ -80,7 +80,7 @@ def test_the_override_reaches_a_transport_deck_too():
         cfg = SiestaConfig(system_label="t", species_order=order)
         deck = _sc.render_deck(
             spec_for(struct, cfg, calculation="transport",
-                     names=RunNames.of("t", "04_device", "hierarchical")),
+                     names=RunNames("t", "04_device")),
             struct, cfg)
         return [ln.split()[2] for ln in deck.splitlines()
                 if ln.startswith("  ") and len(ln.split()) == 3

@@ -41,9 +41,10 @@ _FORGOTTEN = "999999999"
 
 @pytest.fixture
 def sent(tmp_path, monkeypatch):
-    """A flat H2 stage prepared on this machine, the target, its coarse run
-    recorded as sent to the queue as job :data:`_FORGOTTEN`, and the job's
-    address kept as the one sender keeps it."""
+    """An H2 stage prepared on this machine, the target, its coarse run --
+    the run folder prep opened (`materialize.latest_attempt`) -- recorded as
+    sent to the queue as job :data:`_FORGOTTEN`, and the job's address kept
+    as the one sender keeps it."""
     env = read_environment(RECORD)
     assert env is not None, f"{RECORD} does not read as a machine record"
     if not env.kind.queue:
@@ -58,8 +59,7 @@ def sent(tmp_path, monkeypatch):
     if not env.domains:
         pytest.skip("a record that names no queue sends no job")
     flat = describe_calculation(tmp_path, monkeypatch, engine="siesta",
-                                calculation="optimization", shape="flat",
-                                name="H2sent")
+                                calculation="optimization", name="H2sent")
     # THE QUEUE, WALL AND MEMORY its header carries, stated in its request
     # (`running-a-job.md` § 5.3.1: stated nowhere, prep refuses).
     from support.road import read_request, write_request
@@ -71,36 +71,38 @@ def sent(tmp_path, monkeypatch):
                "--bundle", flat, "--target", "this")
     assert r.exit_code == 0, r.output
     from molbuilder import joblist
-    from molbuilder.runfiles import RunNames
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runrecord import RunRef, launch_record_path, write_launch
     from molbuilder.scheduler.queue import cluster
-    names = RunNames.of("H2sent", "01_coarse", "flat")
-    write_launch(flat, names=names, run=0, mode="submit",
+    from molbuilder.task import of as task_of
+    home = stage_home(flat, task_of(flat), "coarse")
+    run = latest_attempt(home.dir)
+    write_launch(run, mode="submit",
                  command=[env.scheduler.submit or "sbatch", "x.sbatch"],
                  job_id=_FORGOTTEN,
                  placed_on={"domain": None, "partition": None, "qos": None,
                             "time": "0-00:05:00", "mem": None},
                  scheduler={"kind": env.scheduler.kind, "stderr": None})
-    member = {"run": str(RunRef.named(names.run_name(0)) if names.shared
-                         else RunRef.at(flat, flat)),
-              "launch_record": str(launch_record_path(flat, names, 0)
+    member = {"run": str(RunRef.at(flat, run)),
+              "launch_record": str(launch_record_path(run)
                                    .relative_to(flat))}
     joblist.write(joblist.queue_job(
         job_id=_FORGOTTEN, cluster=cluster(env.scheduler),
         calculation=flat, members={"coarse": member}))
-    return flat, names, env
+    return flat, run, home.names, env
 
 
 def test_a_forgotten_job_is_written_down_where_this_machine_sent_it(sent):
     from molbuilder.runrecord import launch_record
     from molbuilder.runs import concluded
     from molbuilder.scheduler.queue import cluster
-    flat, names, env = sent
-    st = concluded(flat, names, base=flat, run=0)
+    flat, run, names, env = sent
+    st = concluded(run, names, base=flat)
     assert st.state == "failed", st
     assert (f"the scheduler no longer listed job {_FORGOTTEN}"
             in st.detail), st.detail
-    rec = launch_record(flat, names, 0)["ended"]
+    rec = launch_record(run)["ended"]
     assert rec["listed"] is False and rec["said"] == "", rec
     assert rec["asked_on"] == cluster(env.scheduler), rec
 
@@ -109,8 +111,8 @@ def test_a_job_no_address_here_names_is_not_asked(sent):
     from molbuilder import joblist
     from molbuilder.runrecord import launch_record
     from molbuilder.runs import concluded
-    flat, names, _env = sent
+    flat, run, names, _env = sent
     joblist.forget(joblist.find(_FORGOTTEN))
-    st = concluded(flat, names, base=flat, run=0)
+    st = concluded(run, names, base=flat)
     assert (st.state, st.detail) == ("queued", f"queued as job {_FORGOTTEN}")
-    assert launch_record(flat, names, 0)["ended"] is None
+    assert launch_record(run)["ended"] is None

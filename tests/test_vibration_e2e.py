@@ -44,8 +44,7 @@ def _bundle_head(folder, *objects) -> str:
     its run settings, its own head and an import of each of ``objects`` from the
     bundle, bound as ``_mb_<its name>`` -- so a probe runs the code a run
     executes, under the env that runs it, where molbuilder is not
-    installed.  It is started as a run script starts a deck, with its run's
-    number (``--run 0``, `runtime_info.run_given`)."""
+    installed.  It is started as a run script starts a deck."""
     from molbuilder.config.pyscf import PySCFConfig
     from molbuilder.pyscf.input import (emit_bundle_imports,
                                         emit_run_settings_block,
@@ -80,8 +79,7 @@ def _describe(tmp_path, monkeypatch, *, frozen=()):
     r = CliRunner().invoke(describe_cmd, [
         "--structure", "P/structure/w.xyz",
         "--bundle", "P/frequency/V",
-        "--engine", "pyscf", "--shape", "hierarchical",
-        "--calculation", "vibration", "--name", "W"])
+        "--engine", "pyscf", "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "frequency" / "V"
     # How a shell enters conda HERE is this machine's record's to say -- and
@@ -458,7 +456,7 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
     out = subprocess.run(
         ["bash", "-lc",
          f"source {CONDA_SH} && conda activate molbuilder-pySCF "
-         f"&& python {script} --run 0"],
+         f"&& python {script}"],
         capture_output=True, text=True, timeout=1800)
     rows = [ln.split() for ln in out.stdout.splitlines()
             if ln.startswith("RESULT")]
@@ -532,7 +530,7 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
     out = subprocess.run(
         ["bash", "-lc",
          f"source {CONDA_SH} && conda activate molbuilder-pySCF "
-         f"&& python {script} --run 0"],
+         f"&& python {script}"],
         capture_output=True, text=True, timeout=1800)
     rows = [json.loads(ln[len("RESULT "):]) for ln in out.stdout.splitlines()
             if ln.startswith("RESULT ")]
@@ -676,7 +674,7 @@ def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
     out = subprocess.run(
         ["bash", "-lc",
          f"source {CONDA_SH} && conda activate molbuilder-pySCF "
-         f"&& python {script} --run 0"],
+         f"&& python {script}"],
         capture_output=True, text=True, timeout=1800)
     rows = [ln.split() for ln in out.stdout.splitlines() if ln.startswith("RESULT")]
     assert len(rows) == 2, f"probe produced {len(rows)} rows:\n{out.stdout}\n{out.stderr[-3000:]}"

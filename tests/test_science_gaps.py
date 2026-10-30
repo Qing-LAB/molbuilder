@@ -52,23 +52,24 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     run = CliRunner()
     r = run.invoke(describe_cmd, [
         "--structure", "P/structure/a.xyz", "--bundle",
-        "P/spectrum/A", "--engine", "pyscf", "--shape", "flat",
+        "P/spectrum/A", "--engine", "pyscf",
         "--calculation", "vibration", "--name", "A"])
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "spectrum" / "A"
     # THE RUN CARD STATES THE THREADS, as a described calculation does
     # (`architecture.md` § 5.2); how a shell enters an environment is the
     # machine record's (`configuration.md` § 5 M-1).
-    from support.road import read_request, write_request
+    from support.road import read_request, stage_file, write_request
     request = read_request(bundle)
     request["execution"] = {"threads": 1}
     write_request(bundle, request)
+    stage = task_of(bundle).stages[0].name
 
     def prep(answers=None):
         r = run.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
                                       str(bundle)], input=answers)
         assert r.exit_code == 0, r.output
-        return r.output, next(bundle.rglob("A*.py")).read_text()
+        return r.output, stage_file(bundle, stage, ".py").read_text()
 
     out, deck = prep("y\n\n")
     assert "[config.ecp]" in out and "ecp = 'def2-SVP'" in out, out

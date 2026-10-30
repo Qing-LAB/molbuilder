@@ -206,7 +206,7 @@ def _live_device_deck(label="au_bdt_au_test", rung="device", point=None,
         **role_answers("siesta", "transport", rung), **over), point)
     token = {"device": "04_device", "transmission": "05_transmission"}[rung]
     spec = spec_for(struct, cfg, calculation="transport",
-                    names=RunNames.of(label, token, "hierarchical"),
+                    names=RunNames(label, token),
                     point=point)
     return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
@@ -272,7 +272,7 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
     )
     cfg = SiestaConfig(system_label="asym")
     spec = spec_for(struct, cfg, calculation="transport",
-                    names=RunNames.of("asym", "04_device", "hierarchical"))
+                    names=RunNames("asym", "04_device"))
     deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
     _scalars, blocks = read_fdf(deck)

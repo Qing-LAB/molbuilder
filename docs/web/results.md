@@ -39,7 +39,7 @@ flowchart LR
 
 | the folder is | the picker opens | shown by | its data |
 |---|---|---|---|
-| **one run** — an attempt directory, or one rung's files in a flat calculation | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`; a PySCF run's stdout no parser claims, so its progress log opens — `parse.md` § 5.5), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
+| **one run** — an attempt directory | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`; a PySCF run's stdout no parser claims, so its progress log opens — `parse.md` § 5.5), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
 | **a run of points' root** — a SIESTA vibration's `run-<n>/`, holding its calls' folders ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2); a bias sweep's `run-<n>/`, holding its points' ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | the run's own result where its root holds one — a vibration's spectrum, its record step's — and until then the result of the point at work (§ 3a); a vibration's index and notification record listed beside it as aspects, never opened first; each point's folder opens as one run | the spectra viewer, or the point's own; the Run panel of the point at work, under the run's count (§ 3a) | as one run's; the run of points' view (§ 0.2) |
 | **a calculation root** | a result file at the root if it holds one, **beside** the **ladder** — each rung's state and **every run of the calculation**, any of which is opened here when picked (§ 2.4) | the ladder card, and the picked run's presenter | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
@@ -60,7 +60,7 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 | part | module | what it does |
 |---|---|---|
 | the folder's answer | `runs.py` — the run door's `folder_answer`, of the one folder ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2, floor 2) | where the folder is (`place`: run · container · scratch · not marked; its calculation, what it is, and the stage, run, trial and point it sits in, the point as its folder — [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.4a, *Where am I*), its engine, the file to open (`openable`) — a transmission run's, its calculation's report, with that report's own row (`report`, § 2); per file, its whole path, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b) |
-| the views | `jobset/runstatus.py`, floor 6 — `views_of`, over the run door and a run of points' rows (`continuation.point_rows`) | at a calculation root, flat or hierarchical, the **ladder** (`jobset_status`, each stage's every run inside it, § 2.4); at a run of points' root and each of its points' folders, the **run of points' view** (`points_view`): its state and count, the point at work with its record and the file it opens, what the run opens (§ 3a); at a folder of a rung with points, **the point it is** (`point_of`, § 2) |
+| the views | `jobset/runstatus.py`, floor 6 — `views_of`, over the run door and a run of points' rows (`continuation.point_rows`) | at a calculation root, the **ladder** (`jobset_status`, each stage's every run inside it, § 2.4); at a run of points' root and each of its points' folders, the **run of points' view** (`points_view`): its state and count, the point at work with its record and the file it opens, what the run opens (§ 3a); at a folder of a rung with points, **the point it is** (`point_of`, § 2) |
 | the route | `web/blueprints/results.py::api_results_dir`, floor 7 | the folder's answer **whole**, and beside it what `views_of` answers — `ladder`, `points`, `point`; it lists no field of either and decides no view, so a field a door adds reaches the page with nothing changed here |
 | the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable` — where `points` is served, the view's `points.opens` — and announces the choice with `place`, `ladder`, `points`, `point`, `record` and the folder's `files` |
 | the file card | `lib/results/file-card.js` (§ 3b) | what the file in hand is — the dropdown's, or one clicked in the sidebar inside the folder whose files the card holds (after a run is picked off the ladder, that run's folder): what it holds and who wrote it, or *not written by molbuilder* |
@@ -334,8 +334,7 @@ Two rules keep this from hiding anything:
 > and geomeTRIC's two per-stage trajectories. The generator was right; the menu
 > was reading it at the wrong granularity.
 >
-> Note the naming: a staged run's master is `<label>_<stage>.molwatch.log` —
-> in the flat shape `<label>_<stage>-run<N>.molwatch.log`, each run's own —
+> Note the naming: a staged run's master is `<label>_<stage>.molwatch.log`
 > while its carried satellites are plain `<label>_*`, so matching a master to
 > its satellites means stripping the stage token first
 > (`execution/job-contracts.md § 2.2a`).
@@ -403,8 +402,7 @@ Two rules keep this from hiding anything:
 
 > **✅ That rename landed on 2026-08-10 and this section was not updated
 > until 2026-09-08.** The trajectory log is named for **the deck that produced
-> it** — `<label>_<stage>.molwatch.log`, and where stages share a directory
-> each run's own, `-run<N>` (since 2026-10-06) — and the `-stage<N>` infix is gone
+> it** — `<label>_<stage>.molwatch.log` — and the `-stage<N>` infix is gone
 > ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a).
 > The consumer has already moved with it: `lib/inspectors/trajectory.js`'s
 > `absorbs()` matches the current grammar. Read the rest of this note as
@@ -429,7 +427,7 @@ Two rules keep this from hiding anything:
 
 ### 2.4 A calculation root shows its LADDER
 
-A **hierarchical** calculation root — the directory holding `task.json` — is a
+A calculation root — the directory holding `task.json` — is a
 container, so it has no run state and no record
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a); what it has
 is a **ladder**: N rungs, each a run directory below it. Each rung's run writes
@@ -448,12 +446,7 @@ CLI's `status` verb reads — consumed, never copied: every stage of the
 description with its group's number (`group`), the ones not prepared yet
 among them (`described`), the prepared ones not launched *ready to launch* or *waits
 for* ([`execution/job-system.md`](?doc=execution/job-system.md), *The task*),
-before anything is prepared too — and `null` for anything else (a rung's directory). A queued rung's row carries its **standing** — the kind's `standing` query through the run door (`runs.standing_of`; [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), asked only where this machine sent the job (its address on the jobs list, asked on the cluster it was sent to — the one rule `molbuilder jobs` asks by, [`execution/job-system.md`](?doc=execution/job-system.md) § 6.0a): `{asked_on, listed: true, state, reason, start, priority, say}` as the scheduler states it, `{asked_on, listed: false, say}` when it no longer lists the id, and `{asked_on: null, say: "ask on <machine>"}` from any other machine. The row shows `say`, the one line. A sent rung still running says how long since its folder was last written; one the scheduler here no longer lists is written down as ended by the look that found it, and reads `failed` on every machine from then on; one whose newest write is older than its wall reads `failed` anywhere ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 4.2, *Asked once, written once* and *Past its wall*). A **flat** calculation
-root is itself the run: it answers a state and a record like any run directory
-(§ 3a) — before any stage has run, its first stage's (*pending*, by ladder
-order; two prepared stages answered nothing until 2026-10-19) — and its
-stages' runs are listed by run number (below), not as a ladder of folders —
-its ladder served beside the run it is (`views_of`). A bias sweep's rung is one run, its state the one rule
+before anything is prepared too — and `null` for anything else (a rung's directory). A queued rung's row carries its **standing** — the kind's `standing` query through the run door (`runs.standing_of`; [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), asked only where this machine sent the job (its address on the jobs list, asked on the cluster it was sent to — the one rule `molbuilder jobs` asks by, [`execution/job-system.md`](?doc=execution/job-system.md) § 6.0a): `{asked_on, listed: true, state, reason, start, priority, say}` as the scheduler states it, `{asked_on, listed: false, say}` when it no longer lists the id, and `{asked_on: null, say: "ask on <machine>"}` from any other machine. The row shows `say`, the one line. A sent rung still running says how long since its folder was last written; one the scheduler here no longer lists is written down as ended by the look that found it, and reads `failed` on every machine from then on; one whose newest write is older than its wall reads `failed` anywhere ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 4.2, *Asked once, written once* and *Past its wall*). A bias sweep's rung is one run, its state the one rule
 `status` asks (`continuation.points_state`): *running* while a point runs, or
 between two points while its job is going (a sequence's group launch reading
 its own job's run by its points instead, [`execution/job-system.md`](?doc=execution/job-system.md) § 6.0); *queued* while nothing it walks
@@ -528,8 +521,7 @@ calculation at its point instead, with no Run panel — that run's record,
 TBtrans's loop among it, is shown in the run's own folder (§ 2). A calculation's
 own product — a transport I–V, a displacement sweep — is shown **with** the
 ladder, never instead of it, and its rows name the attempt and the point each
-fact came from. A flat calculation's root lists its stages' runs the same way,
-by run number.
+fact came from.
 
 **And what each run read, and what was checked before it was written** *(the
 user, 2026-10-11: "this would give the view a logical starting place so the
@@ -930,17 +922,16 @@ times. Read it as a tour, and that table as the count.)*
 **Built** (W35 P2, 2026-09-27): `lib/results/run-panel.js` and its sheet.
 
 **A viewer shows a file; the Run panel shows the run the files came from.**
-When the folder the picker is bound to is a run — a run directory, a flat
-calculation root, or an unmarked folder holding a run's output, read alone
-([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) —
+When the folder the picker is bound to is a run of ours — a run directory
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a; a folder no
+calculation claims holds none, `model/parse.md` § 5.0) —
 `/api/results/dir` carries its `record` (`model/parse.md` § 5d), and
 the panel sits between the picker and the viewer: the same panel for an
 optimization, a vibration, each transport rung and a PySCF run, whichever of
 the run's files is open — or, in a transmission run's folder, its
 calculation's report (§ 2). It is not a presenter — no file picks it — and it is
 hidden where there is no record: a container (a stage directory, or a
-hierarchical calculation root, whose ladder is § 2.4's), and a folder with no
-run in it.
+calculation root, whose ladder is § 2.4's), and a folder with no run in it.
 
 **A run of points' folder shows the point at work** *(the user, 2026-10-28:
 "go with your recommendation")* — a SIESTA vibration's `run-<n>/`, whose
@@ -974,16 +965,16 @@ output's own `>> End of run`. The trajectory viewer did both until
 2026-09-27 ([`trajectory.md`](?doc=web/trajectory.md) § 4).
 
 **Closed, it is one line** — the engine and version, the ranks, the engine's
-wall time, how the latest run ended, whether each phase converged, and how
+wall time, how its latest try ended, whether each phase converged, and how
 many findings — so it never pushes the result off the screen. **Open, it has
 four sections**, in the order a person asks them when a number looks wrong:
 
 | section | what it shows | from |
 |---|---|---|
-| **Verdict** | how the run ended, each phase's convergence, each finding as a sentence with its number; the last step's largest force on its free atoms and, when it is the larger, on the held atoms; the stress in the (x, y) plane, a transport run's electrode plane — its xx, yy and xy components, in kbar, as the engine printed them in the tensor the record keeps raw — or, for a TranSIESTA device, the sentence that it computes no forces or stress (`model/parse.md` § 5d.6); the earlier runs of the attempt and how each ended | `verdict`, `earlier` |
+| **Verdict** | how the run ended, each phase's convergence, each finding as a sentence with its number; the last step's largest force on its free atoms and, when it is the larger, on the held atoms; the stress in the (x, y) plane, a transport run's electrode plane — its xx, yy and xy components, in kbar, as the engine printed them in the tensor the record keeps raw — or, for a TranSIESTA device, the sentence that it computes no forces or stress (`model/parse.md` § 5d.6); the run's earlier tries and how each ended — a try is one start of the run script in the run's folder, its files numbered `-run<N>` ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) | `verdict`, `earlier` |
 | **Setup** | one table — parameter · default · asked · used — the rows where asked ≠ used first and marked; an item the deck does not set reads *engine default*; a key read to several values shows them all, and the engine's own echo beside them; then, folded with its count, the keys the engine read that no catalogue item names; then the pseudopotentials | `setup` |
 | **Computation** | engine, build and solver; host and environment; the launch asked beside the ranks the engine ran on — and, for a run a sequence's group sent, the sequence that sent it, by its name, its job the sequence's (`computation.launch.sequence`); start, end, engine wall time, seconds per iteration by phase; TBtrans's account of its loop and, while its estimate stands, when it was made (a transmission); peak memory against its limit; the exit | `computation` |
-| **Deck** | its path and sha256; whether it is still the stage's current deck; for a gathered rung, what was taken from which attempt; **View**, which opens it in the sidebar's text viewer (`projects.showPreview`) | `deck` |
+| **Deck** | its path and sha256; whether it is still the stage's current deck; for a gathered rung, what was taken from which run; **View**, which opens it in the sidebar's text viewer (`projects.showPreview`) | `deck` |
 
 **Generic, so a new fact is a label.** The panel does not know engines or
 kinds. It walks the record's parts and renders each field through one table
@@ -1080,7 +1071,7 @@ run's process ended (`runrecord.ending` —
 Run panel and `jobset status` give. The server sends it with the file:
 `/api/watch/load`, `/api/watch/data` and `/api/spectra/load` each carry
 `run: {state, detail, live}` for the run the file belongs to — its folder,
-and the run its name reads back to (`runstatus.run_answer`: the run door's
+and the run its name reads back to (`runs.run_answer`: the run door's
 state for a run's file, the run of points' view for a file at a run of
 points' root) — or `null` for
 a file that belongs to no run, an upload. A run whose launch record does not

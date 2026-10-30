@@ -266,7 +266,7 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
 
 The tab writes a transport calculation's description itself — `task.json`,
 its job request and its template, into the folder the sidebar selects (no hand-over to Task setup:
-the five stages and the hierarchical shape are fixed by design). What it is,
+the five stages are fixed by design). What it is,
 rule by rule, lives in [`engines/transport.md`](?doc=engines/transport.md)
 § 3.8; this section is the map of the page as built *(rewritten 2026-10-08,
 B8)*.

@@ -542,8 +542,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     ``names`` are the stage's (`runfiles.RunNames`) -- a RENDER ARGUMENT, as
     the kind is: its stage token, and the names the deck prints, the deck's
-    own among them, are theirs (`job-contracts.md` § 2.2a) -- all but the
-    unnumbered ``.out`` its by-hand ``mpirun`` line writes.
+    own and the unnumbered ``.out`` its by-hand ``mpirun`` line writes among
+    them, are theirs (`job-contracts.md` § 2.2a).
 
     ``trial`` is the benchmark trial this deck is, by its point's name
     (``G1N4C6``), or ``None`` for the run -- a render argument from `prep`,
@@ -978,11 +978,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         """
         out: List[str] = []
 
-        # job-layout v1 hint -- the basename ``cfg.system_label`` is the
-        # protocol's "job name"; every output / restart file shares it.
-        # Suggest the canonical ``mpirun`` invocation so the user redirects
-        # stdout to ``<basename>.out`` (the Watch tab's discovery chain
-        # also looks for that filename).  See docs/execution/job-contracts.md.
+        # HOW TO RUN IT: the managed launch, the run script by hand
+        # (`identity.hand_run`), and SIESTA driven directly, its stdout
+        # redirected to the output's name (docs/execution/job-contracts.md
+        # § 2.2).
         #
         # Stage-aware filenames: the stage's names (`runfiles.RunNames`,
         # their token ``01_coarse`` -- ``identity.stage_token``) arrive as a
@@ -992,36 +991,36 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # ``<label>_01_coarse.fdf``, ``…_01_coarse.out`` and its progress log,
         # and a stage's deck matches its own files.
         #
-        # The SystemLabel itself stays unsuffixed, which is the whole reason the
-        # ladder works: SIESTA writes and reads ``<SystemLabel>.XV`` / ``.DM`` /
-        # ``.CG``, so the next stage finds the last one's geometry with no copying
-        # and no instruction (decision 26 -- engine-named files stay bare).
+        # The SystemLabel itself stays unsuffixed (`stages.md` § 1.1a,
+        # consequence 2; decision 26 -- engine-named files stay bare): SIESTA
+        # writes and reads ``<SystemLabel>.XV`` / ``.DM`` / ``.CG``, so the
+        # files a run is handed from the run it continues from are the ones
+        # this deck reads.
         # THE STAGE'S NAMES NAME THEM (`runfiles.RunNames`): the deck, its
         # wrapper; the output a person's own `mpirun` writes is the
-        # unnumbered spelling the `.out` row keeps for a run no wrapper
-        # numbered (`attempt="maybe"`).
+        # unnumbered spelling the `.out` row keeps for a run no run script
+        # started (`attempt="maybe"`).
         _fdf_name  = names.name(".fdf")
-        _out_name  = _rf(names.label, ".out", names.stage)
+        _out_name  = names.name(".out")
         if cfg.verbose_comments:
-            out.append("# === Run with (job-layout v1) ===")
+            out.append("# === Run with ===")
             # The stage by its NAME, through `command_stage`: the token
             # (`02_freq`) is a legal name of another stage (`job-system.md`
             # § 5.3).  A trial's deck names its own
             # launch -- `launch task` would launch the stage's run.
             from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE,
                                     deck_launch, hand_run)
-            _launch = deck_launch(stage_token, trial)
-            if _launch and trial:
+            if trial:
                 out.append("# The managed way -- this trial alone, from the "
                            "calculation's folder (`launch bench "
                            f"{command_stage(stage_token)}` sends the whole "
                            "sweep):")
-            elif _launch:
+            else:
                 out.append("# The managed way, and the usual one -- from the "
                            "calculation's folder:")
-            if _launch:
-                out.extend(f"#     {line}" for line in _launch)
-                out.append(f"#     {LAUNCH_MODE_NOTE}")
+            out.extend(f"#     {line}"
+                       for line in deck_launch(stage_token, trial))
+            out.append(f"#     {LAUNCH_MODE_NOTE}")
             out.append(f"#     {hand_run(names)}    # {HAND_RUN_NOTE}")
             out.append(
                 "# The wrapper beside this deck is self-contained: it runs "
@@ -1053,46 +1052,45 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append(
                 "# the modules first, and nothing cleans up if the job is "
                 "killed.")
-            if stage_token:
-                out.append(f"# Stage {stage_token} -- "
-                           + (_vib_deck.stage_science(cfg, _derived, part)
-                              if _vibration else _stage_science(cfg)))
-                # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE,
-                # from the same answer as its restart group: the banner is what
-                # a person reads to decide whether the ladder is chaining.
-                # A force-constant call's and an optical call's start state
-                # is the kind's (`vibration_deck.start_state_lines`), not
-                # ``restart``'s.
-                if _vibration and part != _vib_deck.RELAX_PART:
-                    out.append(
-                        "# This call reads the density (.DM) it finds and "
-                        "never the geometry (.XV): it")
-                    out.append(
-                        "# starts from its own coordinates file (its "
-                        "restart keys, below).")
-                elif continues(cfg):
-                    # WHERE THOSE FILES COME FROM (`job-system.md`, *What a
-                    # stage takes, and when*): its group's first launch
-                    # copies in those of the run it continues from -- the
-                    # stage before it, newest, by default -- and the flat
-                    # layout's are where that stage left them.
-                    out.append(
-                        "# This stage CONTINUES: SIESTA reads any .XV / .DM "
-                        "under the same SystemLabel in the")
-                    out.append(
-                        "# folder it runs in -- its first launch copies in "
-                        "those of the run it continues from")
-                    out.append(
-                        "# (job-system.md 5.4), none for a first stage; on "
-                        "the flat layout they lie where the stage")
-                    out.append("# before left them.")
-                else:
-                    out.append(
-                        "# This stage starts CLEAN: the restart group below is "
-                        "'.false.', so any .XV / .DM in this")
-                    out.append(
-                        "# directory is left unread and the run starts from the "
-                        "coordinates in this file.")
+            out.append(f"# Stage {stage_token} -- "
+                       + (_vib_deck.stage_science(cfg, _derived, part)
+                          if _vibration else _stage_science(cfg)))
+            # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE,
+            # from the same answer as its restart group: the banner is what
+            # a person reads to decide whether the ladder is chaining.
+            # A force-constant call's and an optical call's start state
+            # is the kind's (`vibration_deck.start_state_lines`), not
+            # ``restart``'s.
+            if _vibration and part != _vib_deck.RELAX_PART:
+                out.append(
+                    "# This call reads the density (.DM) it finds and "
+                    "never the geometry (.XV): it")
+                out.append(
+                    "# starts from its own coordinates file (its "
+                    "restart keys, below).")
+            elif continues(cfg):
+                # WHERE THOSE FILES COME FROM (`job-system.md`, *What a
+                # stage takes, and when*; `project-layout.md`, *Launching
+                # again, on disk*): its first launch copies in those of the
+                # run it continues from -- the stage before it, newest, by
+                # default -- and a launch again, warm, those of its own latest
+                # run.
+                out.append(
+                    "# This stage CONTINUES: SIESTA reads any .XV / .DM "
+                    "under the same SystemLabel in the")
+                out.append(
+                    "# folder it runs in -- its first launch copies in "
+                    "those of the run it continues from")
+                out.append(
+                    "# (none for a first stage), a launch again, warm, "
+                    "those of its own latest run (job-system.md 5.4).")
+            else:
+                out.append(
+                    "# This stage starts CLEAN: the restart group below is "
+                    "'.false.', so any .XV / .DM in this")
+                out.append(
+                    "# directory is left unread and the run starts from the "
+                    "coordinates in this file.")
             out.append(
                 "# Watch the run live: open the Watch tab and point it "
                 "at this directory")
@@ -1111,9 +1109,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# Note: SIESTA's 'BASIS_ENTHALPY ... deprecated' WARNING "
                 "in the output is harmless")
             out.append(
-                # NO STAGE TOKEN.  SIESTA names this one itself, from
-                # `SystemLabel` -- which § 2.3 keeps UNSUFFIXED so the restart
-                # files transfer between rungs.
+                # NO STAGE TOKEN.  SIESTA names this one itself, from the
+                # unsuffixed `SystemLabel` (above).
                 f"# — read {_rf(cfg.system_label, '.BASIS_ENTHALPY')} "
                 "in any post-processing.")
             out.append("")

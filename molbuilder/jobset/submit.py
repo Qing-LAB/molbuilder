@@ -61,18 +61,14 @@ if TYPE_CHECKING:
 # like on disk?".
 from ..scheduler.quantities import slurm_time as _slurm_time
 
-# NOTE: `job_dir_names` is NOT imported here.  It is the naming
-# authority (materialize.py), and the places THIS module needs it import
-# it locally beside the siblings they use.
 from .agreement import TrialNotCold, check_trial_starts_cold
 from .model import KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources
 from .continuation import Continuation, relaunch
 from .planned import Plan, found
-from ..paths import attempt_dir
-from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
+from ..runfiles import FIRST_TRY, LAUNCH_DIR, GroupNames, RunNames
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
-                          hand_over)
-from .naming import open_container
+                          hand_over, latest_attempt, newest_launched)
+from .naming import job_dir_names, open_container, run_names
 from ..runrecord import LaunchRecordError, RunRef
 from ..scheduler.kinds import LAUNCH_CLAIM, LAUNCH_CLAIM_VAR
 from .commands import block, command as _cmd, launch_lines, rollback
@@ -210,18 +206,13 @@ def _counts_of(r: Resources) -> List[str]:
             + (["-omp", str(r.cpus_per_task)] if r.cpus_per_task else []))
 
 
-def _run_sh_args(r: Resources, run: int, *, cold: bool = False
-                 ) -> List[str]:
-    """What every ``.run.sh`` is started with: its run's number, which
-    launch decides and the script refuses to start without (``--run N``,
-    `project-layout.md` § 1.6.1), its job's ``-np`` / ``-omp``
-    (runwrap.py § arg-parsing), and ``--cold --force`` for a flat stage
-    launched again cold -- the person said so at launch, and was shown the
-    line (`job-system.md` § 5.4)."""
-    args: List[str] = ["--run", str(run)]
-    if cold:
-        args += ["--cold", "--force"]
-    return args + _counts_of(r)
+def _run_sh_args(r: Resources) -> List[str]:
+    """What every ``.run.sh`` is started with: the number of its run's
+    first try, which launch decides and the script refuses to start
+    without (``--run 0``, `project-layout.md` § 1.6.1: a warm retry's is
+    the next, which the run script hands itself), and its job's ``-np`` /
+    ``-omp`` (runwrap.py § arg-parsing)."""
+    return ["--run", str(FIRST_TRY)] + _counts_of(r)
 
 
 # --------------------------------------------------------------------- #
@@ -362,7 +353,7 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
     queue.
 
     ``run_args`` are the run script's arguments (`_run_sh_args`: ``--run
-    N``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards
+    0``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards
     them (``bash <base>.run.sh "$@"``).  A submission whose script walks
     several members hands each member its own inside that script, and passes
     none here.
@@ -471,31 +462,23 @@ def _gathered_from(took: List[dict]) -> str:
 
 @dataclass
 class _Member:
-    """One prepared attempt a submission runs, decided BEFORE anything is
-    written (`job-system.md` § 6.0, step 1) -- a run is one member, a
-    benchmark's shelf its pending trials, a bias sweep its points: where it
-    runs, where its deck and wrappers are read from now, and what it
-    follows."""
+    """One prepared run a submission runs, decided BEFORE anything is
+    written (`job-system.md` § 6.0, step 1) -- a stage's run is one member,
+    a run of points too (its walk sends the points), and a benchmark's
+    shelf its pending trials: where it runs, where its deck and wrappers
+    are read from now, and what it follows."""
     job: Job
-    #: The job's own directory: the stage's, the trial's or the point's.
+    #: The job's own folder: the stage's, or the trial's.
     container: Path
-    #: Where it runs: its attempt -- for a continuation, the one the send
-    #: opens -- or, with no attempt layer, the container.
+    #: Where it runs: its run -- launched again, the one the send opens.
     run_dir: Path
-    #: Whether the run has an attempt of its own (else the container is it).
-    has_attempt: bool
     #: Where its deck and wrappers are read before it is sent -- the files
     #: its run runs from: the stage's own folder its run is filled from
-    #: (`materialize.prepare_attempt`) -- on the flat layout the folder it
-    #: runs in; a run of points, its first walked point's; a benchmark's
-    #: trial, its run.
+    #: (`materialize.prepare_attempt`); a run of points, its first walked
+    #: point's; a benchmark's trial, its run.
     read_from: Path
-    #: The names of its stage's files (`naming.run_names`): what its
-    #: launch record, and what it continues from, are named by.
+    #: The names of its stage's files (`naming.run_names`).
     names: "RunNames"
-    #: Its run's number, decided here (`runrecord.next_run`) and handed to
-    #: its run script (``--run N``; `project-layout.md` § 1.6.1).
-    run: int
     #: What the results and the ledger call it when the job's name does not
     #: -- a bias point's ``<stage>@<point>``.
     label: Optional[str] = None
@@ -514,9 +497,9 @@ class _Member:
     continuation: Optional[Continuation] = None
     #: WHAT ITS RUN TAKES FROM OTHER RUNS, each one hand-over
     #: (`materialize.HandOver`, `job-system.md` § 5.4): the run it continues
-    #: from and what it copies -- a stage's restart files, nothing on the
-    #: flat layout, where they lie in the folder; a run of points continuing
-    #: from the run its points are taken over from -- and a transport rung's
+    #: from and what it copies -- a stage's restart files; a run of points
+    #: continuing from the run its points are taken over from -- and a
+    #: transport rung's
     #: inputs, gathered at its first launch, anew with ``--gather``, or
     #: launched again those its last run was given.  A point's own
     #: hand-overs are its walk's (:func:`_points_walk`).
@@ -530,8 +513,7 @@ class _Member:
     #: run of one.
     points: Optional[list] = None
     #: Launched again: the stage's newest launched run, which it continues
-    #: (:func:`_newest_launched`) -- ``None`` at a first launch, and on the
-    #: flat layout.
+    #: (`materialize.newest_launched`) -- ``None`` at a first launch.
     ran: Optional[Path] = None
     #: A run of points' walk, said whole (:func:`_points_walk`): which
     #: points it takes over from the newest launched run and which it runs,
@@ -564,22 +546,10 @@ class _Member:
     def warned(self) -> Dict[str, str]:
         """The files it takes that were written as their run ended
         (`running-a-job.md` § 3.6): a hand-over's, from the folders it
-        copies from; on the flat layout, the warm files the run reads in
-        place, against the run they were written by."""
-        from .materialize import written_as_ended
+        copies from."""
         h = self.continued
-        if h is not None and h.files:
-            return h.written_as_ended(self.base)
-        # ON THE FLAT LAYOUT the hand-over copies nothing (its record alone
-        # is written): the run reads the warm files in the folder, against
-        # the run they were written by.
-        c = self.continuation
-        if c is None or not c.run:
-            return {}
-        present = [w.name for w in self.job.warm
-                   if (self.run_dir / w.name).is_file()]
-        return written_as_ended(self.run_dir, self.names.label, present,
-                                run=c.written_by or c.run)
+        return (h.written_as_ended(self.base, self.names.label)
+                if h is not None and h.files else {})
 
     @property
     def gathered(self) -> List[str]:
@@ -602,11 +572,8 @@ class _Member:
         return self.again or self.first
 
     def _where(self) -> str:
-        """Where it runs: its attempt, or its folder, as the run its number
-        names."""
-        return (f"into {self.run_dir.name}" if self.has_attempt
-                else f"in the same folder, as its run {self.run}, where its "
-                     f"files are")
+        """Where it runs: its attempt."""
+        return f"into {self.run_dir.name}"
 
     def said(self) -> str:
         """The member as the plan holds it, in one line: where it runs, what
@@ -942,15 +909,26 @@ GATHER_AT_FIRST = ("--gather takes a transport rung's inputs anew when it is "
                    "upstream rung's newest run already (job-system.md § 5.4).")
 
 
-def _launched(where, names: RunNames) -> bool:
-    """Was this run launched -- the one door's answer
-    (`runrecord.launch_record`), asked in the folder it runs in with its
-    stage's names, every gate of launch asking it.  A record that does not
-    read is a refusal naming the file (:func:`plan_launch`): launching over
-    it could send a job twice, and not launching could hide one in the
-    queue."""
-    from ..runrecord import launch_record
-    return launch_record(where, names) is not None
+def _no_run_open(who: str, container: Path, base: Path,
+                 way_on: str) -> SubmitError:
+    """THE REFUSAL OF A STAGE OR A TRIAL WITH NO RUN OPEN (R-L28): it runs
+    in its run, never in its own folder, which would launch it with no
+    `run.json` written and leave it silently launchable again
+    (`project-layout.md` § 1.5, § 1.6.2); ``way_on`` opens one."""
+    return SubmitError(
+        f"{who}: no run is open under {_rel(container, base)}/ -- it runs "
+        f"in run-<n>, never in its own folder (project-layout.md § 1.5, "
+        f"1.6.2).  To open it, " + way_on)
+
+
+def _read_back(folder: Path, base: Path) -> str:
+    """The line that reads what a benchmark's trials measured -- `summarize
+    bench` on the stage its sweep measures (`materialize.bench_stage_of`),
+    asked of a folder of the sweep's."""
+    from .materialize import bench_stage_of
+    stage = bench_stage_of(folder)
+    return (_cmd("summarize", "bench", stage, base=base) if stage
+            else "`summarize bench` on the sweep's stage")
 
 
 def _redo(calc, job) -> str:
@@ -974,7 +952,7 @@ def _prep_files_back(run: Path, writes: Plan) -> None:
             writes.bytes(path, path.read_bytes())
 
 
-def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str, shape,
+def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str,
                 named: bool = False):
     """Where a benchmark's trial runs -- a :class:`_Member` -- or, measured
     before, the result that passes it over by name.  A TRIAL is immutable
@@ -982,34 +960,28 @@ def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str, shape,
     shelves -- and a question to the scheduler pass the measured ones over;
     one the person NAMED (``named``) is refused when it is sent or run here,
     and a question to the scheduler says it already ran."""
-    from .commands import command
-    from ..paths import attempts_in
-    from .materialize import bench_stage_of, run_dir
-    from .naming import job_dir_names, run_names
-    from ..runrecord import launch_record_path, next_run
-    sh = shape
-    names = run_names(jobset, job, sh)
-    container = base / job_dir_names(jobset, sh)[job.name]
-    ns = attempts_in(container)
-    # WHERE A TRIAL'S FILES ARE: its attempt where the shape keeps one, the
-    # trial's own folder on the flat layout (`materialize.run_dir`).
-    where = run_dir(container)
-    if not _launched(where, names):
-        return _Member(job, container, where, bool(ns), where, names=names,
-                       run=next_run(where, names), base=base)
+    from ..runrecord import launch_record_path
+    names = run_names(jobset, job)
+    container = base / job_dir_names(jobset)[job.name]
+    # WHERE A TRIAL'S FILES ARE: its run (`project-layout.md` § 1.5a), the
+    # one answer every reader asks (`materialize.latest_attempt`), opened by
+    # its benchmark's prep.
+    where = latest_attempt(container)
+    if where is None:
+        raise _no_run_open(f"trial {job.name!r}", container, base,
+                           rollback("the benchmark's prep", base=base))
+    if newest_launched(container) != where:
+        return _Member(job, container, where, where, names=names, base=base)
     if mode == "ask" or not named:
         return (JobResult(job.name, [], "already run") if mode == "ask"
                 else JobResult(job.name, [], "skipped",
                                said="skipped -- already launched"))
-    stage = bench_stage_of(container)
-    read_back = (command("summarize", "bench", stage, base=base)
-                 if stage else "`summarize bench` on the sweep's stage")
-    said = launch_record_path(where, names, FIRST_ATTEMPT)
+    said = launch_record_path(where)
     raise SubmitError(
         f"trial {job.name!r}: already launched -- {said} records it.  A "
         f"trial measures its point ONCE (project-layout.md § 1.5: immutable "
         f"once it has run).\n"
-        f"  read what it measured:\n    {read_back}\n"
+        f"  read what it measured:\n    {_read_back(container, base)}\n"
         f"  measure it again -- a prepared benchmark is not prepared again "
         f"(job-system.md § 5.0): "
         + rollback("the benchmark's prep", base=base))
@@ -1025,14 +997,11 @@ def _plan_member(calc, job, *, writes: Plan,
     alone, and each member of a group.
 
     THE RUN'S LAYOUT DECIDES HOW IT IS FILLED, never the kind: one run
-    folder (``run-<n>/``, `materialize.prepare_attempt`); a RUN OF POINTS --
-    a transport rung swept over frames and voltages -- one run folder with a
-    folder per point (`materialize.open_sweep_run`), which the points' walk
-    then sends (:func:`_points_walk`); or, on the flat layout, the
-    calculation's folder, each run by its number.  Whether it was launched
-    is its launch record's answer (`materialize.ever_launched`); its run's
-    number is decided here (`runrecord.next_run`), and handed to its run
-    script.
+    folder (``run-<n>/``, `materialize.prepare_attempt`); or a RUN OF
+    POINTS -- a transport rung swept over frames and voltages -- one run
+    folder with a folder per point (`materialize.open_sweep_run`), which
+    the points' walk then sends (:func:`_points_walk`).  Whether it was
+    launched is its launch record's answer (`materialize.ever_launched`).
 
     Its FIRST LAUNCH takes what it builds on (:func:`_first_launch`); a
     stage LAUNCHED BEFORE goes again, however it ended (user, 2026-10-07:
@@ -1042,28 +1011,17 @@ def _plan_member(calc, job, *, writes: Plan,
     what one launch sends; ``cold``, ``from_attempt`` and ``gather`` what
     was said at the launch."""
     import functools
-    from ..paths import attempts_in
-    from .naming import job_dir_names, run_names
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
-    sh = calc.shape
-    names = run_names(jobset, job, sh)
+    names = run_names(jobset, job)
     member = functools.partial(_Member, base=base, names=names)
-    container = base / job_dir_names(jobset, sh)[job.name]
-    ns = attempts_in(container)
-    flat = not sh.keeps_attempts_as_directories
-    if not ns and not flat:
-        # A HIERARCHICAL stage with no run open would launch in its own
-        # container, write no run.json, and be silently relaunchable --
-        # everything § 1.5/1.6 exist to prevent.
-        raise SubmitError(
-            f"job {job.name!r}: no run is open under {container.name}/ -- a "
-            f"hierarchical stage runs in run-<n>, never in its own container "
-            f"(project-layout.md § 1.5, 1.6).  To open it, "
-            + _redo(calc, job))
+    container = base / job_dir_names(jobset)[job.name]
+    if latest_attempt(container) is None:
+        raise _no_run_open(f"stage {job.name!r}", container, base,
+                           _redo(calc, job))
     first = not ever_launched(calc, job)
     # WHAT THE LAUNCH WAS TOLD, each flag where it is read: `--gather` takes
     # a transport rung's inputs anew, when it is launched again; `--from`
-    # and `--gather` are two answers; the flat layout keeps no run to name.
+    # and `--gather` are two answers.
     from .ladder import inputs_of
     inputs = inputs_of(task)
     if gather and inputs is None:
@@ -1084,31 +1042,19 @@ def _plan_member(calc, job, *, writes: Plan,
             "names the run an independent stage continues from, --gather "
             "takes a transport rung's inputs anew from the rungs upstream "
             "(job-system.md § 5.4).")
-    if not first and flat and (from_attempt or gather):
-        from .materialize import FLAT_HAS_NO_ATTEMPTS
-        raise SubmitError(FLAT_HAS_NO_ATTEMPTS)
     points = _a_sweep(calc, job.name)
     if first:
-        return _first_launch(calc, job, member=member, names=names,
+        return _first_launch(calc, job, member=member,
                              container=container, points=points,
                              writes=writes, cold=cold,
                              from_attempt=from_attempt)
-    return _launch_again(calc, job, member=member, names=names,
-                         container=container, ns=ns, points=points,
+    return _launch_again(calc, job, member=member,
+                         container=container, points=points,
                          writes=writes, cold=cold, from_attempt=from_attempt,
                          gather=gather)
 
 
-def _newest_launched(container: Path, names: RunNames, ns) -> Path:
-    """A stage's newest run that was launched -- what a launch again
-    continues: the newest, or the one before it when the newest was opened
-    by a send that was refused, which this launch fills anew
-    (`materialize.empty_run`)."""
-    last = attempt_dir(container, ns[-1])
-    return last if _launched(last, names) else attempt_dir(container, ns[-2])
-
-
-def _first_launch(calc, job, *, member, names: RunNames, container: Path,
+def _first_launch(calc, job, *, member, container: Path,
                   points: bool, writes: Plan, cold: bool, from_attempt) -> "_Member":
     """``job``'s stage's FIRST LAUNCH (`job-system.md` § 6.0, step 1): what
     it takes, from the ready door -- the one door per kind, every kind's
@@ -1119,28 +1065,16 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
     (R-L11); and its
     first run filled: prep's run, emptied whole, prep's own files put back
     as they lie (:func:`_prep_files_back`), and given what it takes now,
-    with its record (`project-layout.md` § 1.6.3).  On the flat layout
-    nothing is copied: the run's `.continued-from` is written with its
-    launch record."""
-    from ..runrecord import next_run
+    with its record (`project-layout.md` § 1.6.3)."""
     from .gather import gather_into
     from .materialize import open_sweep_run, prepare_attempt
     from .ready import first_launch_takes
-    base, sh = Path(calc.base), calc.shape
+    base = Path(calc.base)
     stage = job.name
-    cont, got, why = first_launch_takes(calc, stage, job,
+    cont, got, why = first_launch_takes(calc, stage,
                                         from_attempt=from_attempt, cold=cold)
     if why:
         raise SubmitError(why)
-    if not sh.keeps_attempts_as_directories:
-        # A FLAT RUN takes what it builds on where its files lie: nothing is
-        # copied, and its hand-over's record is written with its launch
-        # record (`_record_launch`) -- the flat layout opens no run before
-        # its launch.
-        run = next_run(container, names)
-        return member(job, container, container, False, container, run=run,
-                      first=True, cold=cold, continuation=cont,
-                      hands=_flat_hand(container, names, run, cont))
     if points:
         # A RUN OF POINTS: prep's run, each point given its own gather --
         # none for a kind whose run takes nothing (a vibration's calls
@@ -1149,15 +1083,15 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
         sweep = open_sweep_run(calc, stage, plan=writes)
         _prep_files_back(sweep.dir, writes)
         took, gathered = _gather_sweep(base, sweep.dir, sweep.points,
-                                       got or [], writes, names=names)
-        return member(job, container, sweep.dir, True, sweep.dir,
-                      run=FIRST_ATTEMPT, label=stage, first=True, cold=cold,
+                                       got or [], writes)
+        return member(job, container, sweep.dir, sweep.dir,
+                      label=stage, first=True, cold=cold,
                       points=list(sweep.points), took=took, hands=gathered)
     try:
         opened = prepare_attempt(
             calc, stage,
             continue_from=(cont.source if cont is not None else None),
-            cold=cont is None or cont.source is None,
+            cold=cont is None,
             named=cont is not None and not cont.by_default,
             carry=(list(cont.carries) if cont is not None
                    and cont.carries is not None else None),
@@ -1166,50 +1100,35 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
         raise SubmitError(f"{stage}: {exc}") from None
     _prep_files_back(opened.dir, writes)
     inputs = [(src, fn) for _pt, ins in (got or ()) for src, fn in ins]
-    run = next_run(opened.dir, names)
-    gathered = gather_into(base, opened.dir, inputs, writes, names=names,
-                           run=run)
+    gathered = gather_into(base, opened.dir, inputs, writes)
     _shares(calc, job, container, opened.dir, None, None, writes)
     # READ FROM THE STAGE'S OWN FILES, prep's -- what its run is emptied and
     # filled from at the send -- as a launch again reads them.
-    return member(job, container, opened.dir, True, container, run=run,
+    return member(job, container, opened.dir, container,
                   first=True, cold=cold, continuation=cont,
                   hands=_hands(opened.hand, gathered),
                   took=[{"file": fn, "from": src, "frame": None,
                          "volts": None} for src, fn in inputs])
 
 
-def _launch_again(calc, job, *, member, names: RunNames, container: Path,
-                  ns, points: bool, writes: Plan, cold: bool, from_attempt,
+def _launch_again(calc, job, *, member, container: Path,
+                  points: bool, writes: Plan, cold: bool, from_attempt,
                   gather) -> "_Member":
     """A STAGE LAUNCHED BEFORE, launched again (`job-system.md` § 5.4, *A
     stage launched again*): warm by default -- the next run from its newest
-    launched run (:func:`_newest_launched`; the flat layout runs again where
-    its files are), a run of points taking over each point done there --
-    or ``cold``, taking nothing from a run of its own: the next run opened
-    empty but for the stage's files and the inputs its kind gathered, the
-    flat run script told ``--cold --force``.  It takes its inputs anew when
+    launched run (`materialize.newest_launched`; a newest run a refused send
+    opened is filled anew), a run of points taking over
+    each point done there -- or ``cold``, taking nothing from a run of its
+    own: the next run opened empty but for the stage's files and the inputs
+    its kind gathered.  It takes its inputs anew when
     asked -- ``--from`` a run of the stage it builds on, ``--gather`` a
     transport rung's upstream -- checked against the description as a
     first launch is."""
-    from ..runrecord import next_run
     from .gather import gather_into
     from .materialize import open_sweep_run, prepare_attempt
-    base, task, sh = Path(calc.base), calc.task, calc.shape
+    base, task = Path(calc.base), calc.task
     stage = job.name
-    if not sh.keeps_attempts_as_directories:
-        # A FLAT STAGE LAUNCHED AGAIN runs where its files are: warm, from
-        # its own latest run, and its next run's record says so -- or cold,
-        # its run script told to sweep them.  Its `.continued-from` is
-        # written with its launch record, once the run is sent
-        # (`_record_launch`): a refused send leaves no file of a run that
-        # never started.
-        cont = relaunch(calc, job, cold=cold)
-        run = next_run(container, names)
-        return member(job, container, container, False, container, run=run,
-                      again=True, cold=cold, continuation=cont,
-                      hands=_flat_hand(container, names, run, cont))
-    ran = _newest_launched(container, names, ns)
+    ran = newest_launched(container)
     if points:
         # A RUN OF POINTS LAUNCHED AGAIN: its inputs its kind's, never named
         # (`--from` refused); what the newest launched run gathered, or
@@ -1224,22 +1143,22 @@ def _launch_again(calc, job, *, member, names: RunNames, container: Path,
         took: List[dict] = []
         if gather:
             took, hands = _gather_sweep(base, sweep.dir, sweep.points, got,
-                                        writes, names=names)
+                                        writes)
         else:
             hands = _carry_sweep_gather(ran, sweep.dir, sweep.points, writes,
-                                        base=base, stage=stage, names=names)
+                                        base=base, stage=stage)
         if not cold:
             # THE RUN CONTINUES FROM THE STAGE'S NEWEST LAUNCHED RUN (rule 3)
             # -- its points taken over by the walk, each with its own record
             # (:func:`_points_walk`); said once at the run too, a hand-over
             # of no file, so its launch record carries it
             # (`project-layout.md` § 1.6.3) like every other run's.
-            again = HandOver(sweep.dir, names, FIRST_ATTEMPT, CONTINUED,
+            again = HandOver(sweep.dir, CONTINUED,
                              source=RunRef.at(base, ran))
             hand_over(base, again, writes)
             hands += (again,)
-        return member(job, container, sweep.dir, True, ran,
-                      run=FIRST_ATTEMPT, label=stage, again=True, cold=cold,
+        return member(job, container, sweep.dir, ran,
+                      label=stage, again=True, cold=cold,
                       points=list(sweep.points), ran=ran, took=took,
                       hands=hands)
     took = []
@@ -1284,33 +1203,30 @@ def _launch_again(calc, job, *, member, names: RunNames, container: Path,
     # WARM, THE STAGE'S OWN FILES STAND: what it carries from its own run
     # is not taken from the gather too (a device's `.DM`).
     own = set(opened.copied)
-    run = next_run(opened.dir, names)
     if inputs is not None:
         inputs = [(src, fn) for src, fn in inputs if fn not in own]
-        gathered = gather_into(base, opened.dir, inputs, writes, names=names,
-                               run=run)
+        gathered = gather_into(base, opened.dir, inputs, writes)
         took = [{"file": fn, "from": src, "frame": None, "volts": None}
                 for src, fn in inputs]
     else:
         gathered = _carry_the_gather(ran, opened.dir, writes, base=base,
-                                     stage=stage, names=names, run=run,
-                                     keep=own)
+                                     stage=stage, keep=own)
     from ..transport.energies import SHARED_DIR
     _shares(calc, job, container, opened.dir, None, ran / SHARED_DIR, writes)
     # READ FROM THE STAGE'S OWN FILES, prep's -- what the new run is filled
     # from (`materialize.prepare_attempt`), so the deck checked, the header
     # shown and the line sent are one.
-    return member(job, container, opened.dir, True, container, run=run,
+    return member(job, container, opened.dir, container,
                   again=True, cold=cold, continuation=cont, ran=ran,
                   hands=_hands(opened.hand, gathered), took=took)
 
 
 def _carry_the_gather(source: Path, target: Path, writes: Plan, *,
-                      base: Path, stage: str, names: RunNames, run: int,
+                      base: Path, stage: str,
                       keep=()) -> Optional[HandOver]:
     """A transport rung launched again takes the inputs its kind gathered
     for ``source`` -- a run, or a point of one -- one hand-over into
-    ``target``, run ``run`` of the stage ``names`` names: each file from
+    ``target``, a run of ``stage`` or a point of one: each file from
     the run its record names, with that record (`.gathered-from`): what a
     stage builds on is decided at its first launch, and taken anew only
     when asked (``--gather``, `job-system.md` § 5.4).  ``keep`` are the
@@ -1326,7 +1242,7 @@ def _carry_the_gather(source: Path, target: Path, writes: Plan, *,
     launch gathered (`job-system.md` § 5.4, *either way a transport rung
     keeps the inputs its first launch gathered*)."""
     from ..runrecord import carried_gather
-    took = tuple((src, fn) for src, fn in carried_gather(base, source, names)
+    took = tuple((src, fn) for src, fn in carried_gather(base, source)
                  if fn not in keep)
     for src, fn in took:
         # FROM THE RUN THE RECORD NAMES, never from the source run's own
@@ -1345,7 +1261,7 @@ def _carry_the_gather(source: Path, target: Path, writes: Plan, *,
                                      flags=("--gather",))))
     if not took:
         return None
-    h = HandOver(target, names, run, GATHERED, files=took)
+    h = HandOver(target, GATHERED, files=took)
     hand_over(base, h, writes)
     return h
 
@@ -1535,7 +1451,7 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
     """:func:`plan_launch`'s body -- the plan, or the refusal it records;
     ``calc`` the calculation as the verb opened it (A16), ``jobset`` the
     set launched -- its ladder, or a sweep's from its bench container."""
-    base, shape = Path(calc.base), calc.shape
+    base = Path(calc.base)
     if only is not None:
         # Through the ONE resolver, so a name and a #N number reach the same
         # job here as at every other surface, and the refusal carries the
@@ -1580,7 +1496,7 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         from .ready import held_by_sequence
         held = held_by_sequence(calc, number)
         if held is not None and (inside is None or inside.job != held[0].id):
-            raise SubmitError(_held_by(held, number, base))
+            raise SubmitError(_held_by(held, number))
     if members is not None and len(members) == 1:
         only, members = members[0], None
 
@@ -1597,11 +1513,11 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
                            time_s=time_s, told=told, number=number, machine=machine,
                            inside=inside)
     elif jobset.kind == KIND_SWEEP and only is None and mode in ("submit", "ask"):
-        plan = _plan_shelves(jobset, base, shape=shape, mode=mode, side=side,
+        plan = _plan_shelves(jobset, base, mode=mode, side=side,
                              time_s=time_s, trial_timeout_s=trial_timeout_s,
                              told=told, machine=machine)
     elif jobset.kind == KIND_SWEEP and only is None:
-        plan = _plan_bench_here(jobset, base, shape=shape,
+        plan = _plan_bench_here(jobset, base,
                                 trial_timeout_s=trial_timeout_s)
     else:
         plan = _plan_stage(calc, jobset, mode=mode, only=only,
@@ -1662,13 +1578,10 @@ def _the_group(calc, *, group, only,
             f"{', '.join(map(str, request.numbers))}"
             f" (execution/job-request.md § 3.3).")
     # A LAUNCHED GROUP'S MEMBERS ARE FIXED (`job-system.md`, *The task*),
-    # asked of the one rule and said in its words.
-    from ..runrecord import LaunchRecordError
+    # asked of the one rule and said in its words; a record that does not
+    # read is :func:`plan_launch`'s one catch's (R-L21).
     from .ready import joined_launched, launched_without
-    try:
-        hit = launched_without(calc, group)
-    except LaunchRecordError as exc:
-        raise SubmitError(str(exc)) from None
+    hit = launched_without(calc, group)
     if hit:
         raise SubmitError(joined_launched(calc, group, *hit))
     ran = any(j is not None and ever_launched(calc, j)
@@ -1988,9 +1901,8 @@ def _go(s: Submission, record, *, background: bool = False,
         jid, unread = None, (f"{exc} -- the job is queued; the scheduler's "
                              f"own list of your jobs names it")
     for m in s.members:
-        # WHERE IT RUNS, not the container: `_launched` reads the attempt,
-        # so a record in the container would leave every grouped trial
-        # reading *never launched*.
+        # INTO ITS RUN, never the container: the run's `run.json` is what
+        # `materialize.newest_launched` reads (`project-layout.md` § 1.6.3).
         _record_launch(m, mode="submit", command=s.command, job_id=jid,
                        placement=s.placement, sent=s.sent,
                        scheduler=s.scheduler_said(jid, m.run_dir))
@@ -2066,16 +1978,14 @@ def _ride(inside: Inside, s: "Submission") -> Optional[str]:
 
 def _job_members(s: "Submission") -> Dict[str, Dict[str, str]]:
     """Each member's run as a job's address names it (`joblist.Job`): as a
-    record names a run (`runrecord.RunRef`) -- its folder, or where its
-    stage's runs share one, its own name -- and its launch record's path
-    from the calculation's folder, which its state is asked through
-    (`job-system.md` § 6.0a)."""
+    record names a run (`runrecord.RunRef`), its folder -- and its launch
+    record's path from the calculation's folder, which its state is asked
+    through (`job-system.md` § 6.0a)."""
     from ..runrecord import RunRef, launch_record_path
     return {m.name: {
-        "run": str(RunRef.named(m.names.run_name(m.run)) if m.names.shared
-                   else RunRef.at(m.base, m.run_dir)),
-        "launch_record": _rel(launch_record_path(m.run_dir, m.names, m.run),
-                              m.base)} for m in s.members}
+        "run": str(RunRef.at(m.base, m.run_dir)),
+        "launch_record": _rel(launch_record_path(m.run_dir), m.base)}
+        for m in s.members}
 
 
 def _keep(job):
@@ -2092,7 +2002,7 @@ def _keep(job):
     return job, None
 
 
-def _plan_shelves(jobset: JobSet, base: Path, *, machine, shape, mode: str,
+def _plan_shelves(jobset: JobSet, base: Path, *, machine, mode: str,
                   side: Optional[str], time_s: Optional[int],
                   trial_timeout_s: Optional[int], told) -> LaunchPlan:
     """ONE scheduler job per RESOURCE SHELF of the sweep
@@ -2130,7 +2040,10 @@ def _plan_shelves(jobset: JobSet, base: Path, *, machine, shape, mode: str,
                           + rollback("the benchmark's prep", base=base)
                           ) from None
     if side and not sides[side]:
-        raise SubmitError(f"this sweep has no {side} trials to submit")
+        raise SubmitError(
+            f"this sweep has no {side} trials to submit.  next:\n    "
+            + _read_back(base / job_dir_names(jobset)[jobset.jobs[0].name],
+                         base))
     plan = LaunchPlan(base, mode, [], tolerant=True)
     # THE TRIALS STILL TO RUN, the one answer the walk here reads too
     # (:func:`_bench_trials`) -- of the sides this launch sends, in the
@@ -2138,7 +2051,7 @@ def _plan_shelves(jobset: JobSet, base: Path, *, machine, shape, mode: str,
     sent = {j.name for this in ("cpu", "gpu")
             if not (side and this != side) for j in sides[this]}
     trials = {m.job.name: m for m in _bench_trials(
-        jobset, base, plan, shape=shape, mode=mode,
+        jobset, base, plan, mode=mode,
         jobs=[j for j in jobset.jobs if j.name in sent])}
     for this, names, members in shelves:
         if side and this != side:
@@ -2151,7 +2064,7 @@ def _plan_shelves(jobset: JobSet, base: Path, *, machine, shape, mode: str,
                     time_s=time_s, machine=machine)
 
     if not plan.submissions:
-        raise _all_launched(jobset, base, shape=shape, side=side,
+        raise _all_launched(jobset, base, side=side,
                             count=len(sides[side]) if side
                             else len(jobset.jobs))
     return plan
@@ -2171,19 +2084,15 @@ def _one_container(pending: List["_Member"], base: Path) -> Path:
     return next(iter(containers))
 
 
-def _all_launched(jobset: JobSet, base: Path, *, shape, count: int,
+def _all_launched(jobset: JobSet, base: Path, *, count: int,
                   side: Optional[str] = None) -> SubmitError:
     """The refusal of a benchmark's walk with nothing left to run, and the
-    next step: reading what its trials measured."""
-    from .materialize import bench_stage_of
-    from .naming import job_dir_names
-    dirs = job_dir_names(jobset, shape)
-    stage = bench_stage_of(base / dirs[jobset.jobs[0].name])
+    next step: reading what its trials measured (R-L40)."""
     return SubmitError(
         f"all {count} {side + ' ' if side else ''}trials are launched.  "
         f"next:\n    "
-        + (_cmd("summarize", "bench", stage, base=base) if stage else
-           "`summarize bench` on the sweep's stage"))
+        + _read_back(base / job_dir_names(jobset)[jobset.jobs[0].name],
+                     base))
 
 
 def _empty_scratch_fn(when: str) -> List[str]:
@@ -2438,17 +2347,17 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     return "\n".join(lines)
 
 
-def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *, shape,
+def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
                   mode: str, jobs=None) -> List[_Member]:
     """A benchmark's walk: its trials still to run -- of ``jobs``, all of
     them by default -- each through the trial's planner
     (:func:`_plan_trial`: where it runs, and whether it was launched) and
-    its gates: its deck agrees with its launch, it starts cold.  The walk here and a queue's shelves both
+    its gate: it starts cold.  The walk here and a queue's shelves both
     send this answer; a trial launched before is passed over by name
     (``plan.skipped``)."""
     pending: List[_Member] = []
     for job in (jobset.jobs if jobs is None else jobs):
-        m = _plan_trial(jobset, base, job, mode=mode, shape=shape)
+        m = _plan_trial(jobset, base, job, mode=mode)
         if isinstance(m, JobResult):
             plan.skipped.append(m)          # measured before
             continue
@@ -2473,13 +2382,11 @@ def _walk_of(members: List[_Member], container: Path) -> list:
     """Each member as the walk runs it -- its name, the folder it runs in
     from the walk's own (its run: `project-layout.md` § 1.5a), its run
     script, and its own counts, the shield against what an allocation
-    tells each run, and ``--cold`` for a stage launched again cold that
-    has no attempt yet; no start to copy.  One answer for a benchmark's walk
+    tells each run; no start to copy.  One answer for a benchmark's walk
     here, a queue's shelf and a group."""
     return [(m.name, str(m.run_dir.relative_to(container)),
              m.names.name(".run.sh"),
-             " ".join(_run_sh_args(m.job.resources, m.run,
-                                   cold=m.cold and not m.has_attempt)), ())
+             " ".join(_run_sh_args(m.job.resources)), ())
             for m in members]
 
 
@@ -2533,7 +2440,7 @@ def _send_as_one_job(plan: LaunchPlan, *, gn: GroupNames, container: Path,
     return sub
 
 
-def _plan_bench_here(jobset: JobSet, base: Path, *, shape,
+def _plan_bench_here(jobset: JobSet, base: Path, *,
                      trial_timeout_s: Optional[int]) -> LaunchPlan:
     """A benchmark's trials run HERE (``--mode direct``, no trial named):
     one submission walking every trial not yet launched, in the sweep's
@@ -2542,10 +2449,9 @@ def _plan_bench_here(jobset: JobSet, base: Path, *, shape,
     is given, and told its own card's wall; a trial launched before is
     passed over by name (:func:`_bench_trials`)."""
     plan = LaunchPlan(base, "direct", [])
-    pending = _bench_trials(jobset, base, plan, shape=shape, mode="direct")
+    pending = _bench_trials(jobset, base, plan, mode="direct")
     if not pending:
-        raise _all_launched(jobset, base, shape=shape,
-                            count=len(jobset.jobs))
+        raise _all_launched(jobset, base, count=len(jobset.jobs))
     # THE ONE PARENT THAT SEES EVERY TRIAL -- the benchmark's container,
     # as a shelf's walk runs from it on a queue.
     container = _one_container(pending, base)
@@ -2628,7 +2534,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     `prep.prep_calculation`) -- the points done before walk on past.  Run
     here, each point is told its card's wall (`running-a-job.md` § 3.6)."""
     from ..persist import json_text
-    from ..runrecord import launch_record, next_run, read_continued_from
+    from ..runrecord import launch_record, read_continued_from
     from ..transport.energies import SHARED_DIR
     from ..warmfiles import never_carried
     from .continuation import done
@@ -2648,7 +2554,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     # (`hands_on`, the one answer of that).
     hand = declared.hands_on(stage, task.label, base)
     taken, walked = [], []
-    prev_launch = launch_record(prev, names) if prev is not None else None
+    prev_launch = launch_record(prev) if prev is not None else None
     # A FIRST LAUNCH IN A CALCULATION THAT REUSES A FINISHED ONE takes that
     # calculation's points over -- each done there, the same calculation,
     # given what it was given (`engines/transport.md` § 2a.16); --cold takes
@@ -2702,12 +2608,12 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         # of another run (it was taken over itself); a point the source run
         # walked records its START there -- the point before it in that run
         # -- and the run that computed it is the source run.
-        marker = read_continued_from(src, names, FIRST_ATTEMPT)
+        marker = read_continued_from(src)
         origin = (marker if marker is not None
                   and not marker.within(RunRef.at(base, prev)) else at)
         taken_from[_v.rel] = str(origin)
         hand_over(base, HandOver(
-            pdir, names, FIRST_ATTEMPT, CONTINUED, source=origin,
+            pdir, CONTINUED, source=origin,
             files=tuple((at, f.name) for f in sorted(src.iterdir())
                         if f.is_file() and not never_carried(f.name))),
             plan.writes)
@@ -2765,7 +2671,6 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
             seen_rounds.add(pt.volts)
             empties[len(steps)] = scratch_at
         prior = _before(pt)
-        tries = next_run(pdir, names)
         # ITS START, one hand-over decided now: its record written beside
         # it, so the record says what each point started from
         # (`engines/transport.md` § 2a.11) -- and its files copied by the
@@ -2774,7 +2679,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         start = None
         if hand and prior is not None:
             at = RunRef.at(base, run / prior.rel)
-            start = HandOver(pdir, names, tries, CONTINUED, source=at,
+            start = HandOver(pdir, CONTINUED, source=at,
                              files=tuple((at, f) for f in hand), walk=True)
             hand_over(base, start, plan.writes)
         needs.append(last_in_frame.get(pt.frame))
@@ -2783,7 +2688,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         last_in_frame[pt.frame] = len(steps)
         steps.append((f"{stage}@{pt.rel}",
                       f"{run.name}/{pt.rel}", names.name(".run.sh"),
-                      " ".join(_run_sh_args(job.resources, tries)),
+                      " ".join(_run_sh_args(job.resources)),
                       start.walk_copies(base, stage_dir) if start else ()))
         said.append(pt.words() + (f" (from {prior.words()}'s "
                                   f"{', '.join(hand)})" if start else ""))
@@ -2827,12 +2732,12 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         walls=([_wall_s(job.resources)] * len(steps)
                if _own_walls(mode, inside)
                else None))
-    _send_walk(plan, member, calc, script, gn, stage_dir, mode=mode,
+    _send_walk(plan, member, calc, script, gn, stage_dir,
                machine=machine, time_s=time_s, told=told)
 
 
 def _send_walk(plan: LaunchPlan, member: "_Member", calc, script: str,
-               gn: GroupNames, stage_dir: Path, *, mode: str, machine,
+               gn: GroupNames, stage_dir: Path, *, machine,
                time_s: Optional[int], told) -> None:
     """A RUN OF POINTS' WALK, SENT (:func:`_send_as_one_job`): written into
     the stage's ``launch/`` and run here, or sent as one scheduler job
@@ -2870,8 +2775,7 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
     run's own python adds the rest."""
     from ..persist import json_text
     from ..runfiles import COORDINATES_FILE, compose
-    from ..runrecord import (launch_record, newest_run, next_run,
-                             read_continued_from)
+    from ..runrecord import launch_record, read_continued_from
     from ..siesta.vibration_phases import (FC, OPTICAL, RELAX, add_call,
                                            calls_of, empty_index, entry_of,
                                            index_path, phase, read_index)
@@ -2884,12 +2788,11 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
     stage_dir, run, prev = m.container, m.run_dir, m.ran
     declared = points_of(task)
     on = [phase(p) for p in (job.phases or ())]
-    prev_launch = launch_record(prev, names) if prev is not None else None
+    prev_launch = launch_record(prev) if prev is not None else None
     prev_index = None
     if prev is not None:
-        n_prev = newest_run(prev, names)
-        p_idx = index_path(prev, names,
-                           n_prev if n_prev is not None else FIRST_ATTEMPT)
+        # THE INDEX LAUNCH WROTE, named for the run's first try, as below.
+        p_idx = index_path(prev, names)
         if p_idx.is_file():
             prev_index = read_index(p_idx)
     def _done(pt) -> bool:
@@ -2952,13 +2855,13 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
     for pdir, pt in taken:
         src = prev / pt.rel
         at = RunRef.at(base, src)
-        marker = read_continued_from(src, names, FIRST_ATTEMPT)
+        marker = read_continued_from(src)
         origin = (marker if marker is not None
                   and not marker.within(RunRef.at(base, prev)) else at)
         if pt.phase == OPTICAL:
             open_run(base, pdir, plan.writes)
         hand_over(base, HandOver(
-            pdir, names, FIRST_ATTEMPT, CONTINUED, source=origin,
+            pdir, CONTINUED, source=origin,
             files=tuple((at, f.name) for f in sorted(src.iterdir())
                         if f.is_file() and not never_carried(f.name))),
             plan.writes)
@@ -2986,15 +2889,15 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
                                    base).carry_rules
                 if (prev / pt.rel / compose(task.label, r.suffix)).is_file())
             if files:
-                hand_over(base, HandOver(pdir, names, FIRST_ATTEMPT,
-                                         CONTINUED, source=at, files=files),
+                hand_over(base, HandOver(pdir, CONTINUED,
+                                         source=at, files=files),
                           plan.writes)
     # THE CALLS IN THE ORDER THEY WERE PLANNED, taken over or not: the
     # index is the run's list of its calls, and the optical calls' data
     # file numbers its frames by it -- frame 0 the reference (§ 5.11 § 8).
     order = {(pt.phase, pt.name): k for k, (_p, pt) in enumerate(calls)}
     index["calls"].sort(key=lambda r: order[(r["phase"], r.get("name"))])
-    plan.writes.text(index_path(run, names, FIRST_ATTEMPT), json_text(index))
+    plan.writes.text(index_path(run, names), json_text(index))
     # THE WALK: the known calls in the phases' order, each seeded by the
     # walk from the call before it, then the loop over the optical calls
     # there when it runs; each step naming what it needs.
@@ -3011,13 +2914,12 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
 
     for pdir, pt in plain:
         rule = phase(pt.phase)
-        tries = next_run(pdir, names)
         seed = _seed(rule)
         needs.append(next((at[n] for n in rule.needs if n in at), None))
         at[pt.phase] = len(steps)
         steps.append((f"{stage}@{pt.rel}", f"{run.name}/{pt.rel}",
                       names.name(".run.sh"),
-                      " ".join(_run_sh_args(job.resources, tries)),
+                      " ".join(_run_sh_args(job.resources)),
                       ((seed, f"{run.name}/{pt.rel}"),) if seed else ()))
         said.append(pt.words())
         plan.reads += [_as_found(stage_dir / pt.phase / f, base)
@@ -3029,8 +2931,7 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
         needs.append(next((at[n] for n in rule.needs if n in at), None))
         steps.append((f"{stage}@{OPTICAL}", f"{run.name}/{OPTICAL}/*/",
                       WalkLoop(run_sh=names.name(".run.sh"),
-                               args=" ".join(_run_sh_args(job.resources,
-                                                          FIRST_ATTEMPT)),
+                               args=" ".join(_run_sh_args(job.resources)),
                                skip=tuple(pt.name for _p, pt in taken
                                           if pt.phase == OPTICAL),
                                before=((seed,) if seed else ())),
@@ -3052,7 +2953,7 @@ def _phased_walk(plan: LaunchPlan, m: "_Member", calc, *, machine,
         walls=([_wall_s(job.resources)] * len(steps)
                if _own_walls(mode, inside) else None),
         one_start=declared.one_wall)
-    _send_walk(plan, member, calc, script, gn, stage_dir, mode=mode,
+    _send_walk(plan, member, calc, script, gn, stage_dir,
                machine=machine, time_s=time_s, told=told)
 
 
@@ -3110,8 +3011,8 @@ def _gathered_now(calc, stage: str):
         raise SubmitError(str(exc)) from None
 
 
-def _gather_sweep(base: Path, run: Path, points, got, writes, *,
-                  names: RunNames) -> Tuple[List[dict], Tuple[HandOver, ...]]:
+def _gather_sweep(base: Path, run: Path, points, got, writes
+                  ) -> Tuple[List[dict], Tuple[HandOver, ...]]:
     """A swept run given its gather: what every point takes from one run
     into the run once -- the clean source a launch again copies from -- and
     each point's own into its folder (`engines/transport.md` § 2a.11), each
@@ -3124,10 +3025,9 @@ def _gather_sweep(base: Path, run: Path, points, got, writes, *,
                                            for fi in inputs
                                            if all(fi in other for other
                                                   in by_point.values()))),
-                        writes, names=names, run=FIRST_ATTEMPT)
+                        writes)
     for pdir, pt in points:
-        gather_into(base, pdir, by_point.get(pt, []), writes, names=names,
-                    run=FIRST_ATTEMPT)
+        gather_into(base, pdir, by_point.get(pt, []), writes)
     return ([{"file": fn, "from": src,
               "frame": pt.frame if pt is not None else None,
               "volts": pt.volts if pt is not None else None}
@@ -3136,17 +3036,15 @@ def _gather_sweep(base: Path, run: Path, points, got, writes, *,
 
 
 def _carry_sweep_gather(prev_run: Path, run: Path, points, writes, *,
-                        base: Path, stage: str, names: RunNames
-                        ) -> Tuple[HandOver, ...]:
+                        base: Path, stage: str) -> Tuple[HandOver, ...]:
     """A run of points launched again takes what its newest launched run
     gathered -- never gathered again (`job-system.md` § 5.4): the run's own
     record into the new run, and each point's into its point, by the one
     carry (:func:`_carry_the_gather`).  Returns the run's own hand-over."""
-    whole = _carry_the_gather(prev_run, run, writes, base=base, stage=stage,
-                              names=names, run=FIRST_ATTEMPT)
+    whole = _carry_the_gather(prev_run, run, writes, base=base, stage=stage)
     for pdir, pt in points:
         _carry_the_gather(prev_run / pt.rel, pdir, writes, base=base,
-                          stage=stage, names=names, run=FIRST_ATTEMPT)
+                          stage=stage)
     return _hands(whole)
 
 
@@ -3175,17 +3073,6 @@ def _hands(*hands: Optional[HandOver]) -> Tuple[HandOver, ...]:
     return tuple(h for h in hands if h is not None)
 
 
-def _flat_hand(folder: Path, names: RunNames, run: int,
-               cont: Optional[Continuation]) -> Tuple[HandOver, ...]:
-    """A flat run's hand-over -- the run it continues from; nothing is
-    copied, the restart files being the folder's, and its record is written
-    with its launch record (:func:`_record_launch`), since the flat layout
-    opens no run before its launch (`job-system.md` § 5.4)."""
-    ref = cont.ref if cont is not None else None
-    return ((HandOver(folder, names, run, CONTINUED, source=ref),)
-            if ref is not None else ())
-
-
 def _member_facts(s: "Submission") -> Dict[str, object]:
     """What the ledger records of each member beyond its name
     (`feedback_decision_ledger`): the run it goes into, and a walked
@@ -3201,13 +3088,9 @@ def _record_launch(m: "_Member", *, mode: str, command: List[str],
                    job_id: Optional[str] = None, placement=None,
                    sent=None, scheduler: Optional[dict] = None,
                    inside: Optional[Inside] = None) -> None:
-    """Write member ``m``'s launch record in the folder its run runs in,
-    named by its stage's names (`runrecord.write_launch`) -- carrying what
-    it continues from, its own hand-over (`job-system.md` § 5.4).  Where a
-    stage's runs share the folder, that hand-over's record is written now
-    too, with the launch record: the flat layout opens no run before its
-    launch, so a refused send leaves no file of a run that never started.
-    ``placement`` and ``scheduler`` are passed because submission is what
+    """Write member ``m``'s launch record in the folder its run runs in
+    (`runrecord.write_launch`) -- carrying what it continues from, its own
+    hand-over (`job-system.md` § 5.4).  ``placement`` and ``scheduler`` are passed because submission is what
     knows where the job went and where its scheduler writes of it, and
     nothing downstream should have to work either out from a command
     line.  A run a group's launch ``inside`` a sequence's job sends records
@@ -3216,13 +3099,11 @@ def _record_launch(m: "_Member", *, mode: str, command: List[str],
     § 6.0, *A sequence of groups*)."""
     from ..runrecord import write_launch
     cont = m.continued
-    if cont is not None and m.names.shared:
-        hand_over(m.base, cont)
     said = (inside.run_said(m) if inside is not None else
             {"mode": mode, "command": command, "job_id": job_id,
              "placed_on": _placed_on(placement, sent),
              "scheduler": scheduler, "sequence": None})
-    write_launch(m.run_dir, names=m.names, run=m.run, mode=said["mode"],
+    write_launch(m.run_dir, mode=said["mode"],
                  command=said["command"], job_id=said["job_id"],
                  continued_from=cont.source if cont is not None else None,
                  placed_on=said["placed_on"], scheduler=said["scheduler"],
@@ -3236,14 +3117,13 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     ``number``, its members ``names`` in the ladder's order, prepared as one
     job (`project-layout.md` § 1.6.6).  Each is planned as a stage alone is
     (:func:`_plan_member`: at its first launch, what it takes; launched
-    again, warm -- `--cold` speaks for one stage, R-L9), its deck agreeing
-    with its launch; the walk runs each one's own run script in its own
-    attempt, and one that fails does not stop the others -- each told its
-    own card's wall when run here.  The header is the one the group's prep
-    wrote (`launch/<group>.sbatch`), its members' shared request
-    (`group.envelope`, refused at prep, R-P13), sent as prep wrote it
-    (`job-system.md` § 6.0); the walker is written at the send, with each
-    run's number."""
+    again, warm -- `--cold` speaks for one stage, R-L9); the walk runs each
+    one's own run script in its own run, and one that fails does not stop
+    the others -- each told its own card's wall when run here.  The header
+    is the one the group's prep wrote (`launch/<group>.sbatch`), its
+    members' shared request (`group.envelope`, refused at prep, R-P13),
+    sent as prep wrote it (`job-system.md` § 6.0); the walker is written at
+    the send."""
     from .group import names_for
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     jobs = [jobset.job(n) for n in names]
@@ -3275,7 +3155,7 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     return plan
 
 
-def _held_by(held, number: int, base) -> str:
+def _held_by(held, number: int) -> str:
     """The refusal of a group a sequence still going holds (R-L45): its job,
     what it is doing, and the line that stops it."""
     job, after, said = held
@@ -3365,7 +3245,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
         _the_group(calc, group=n, only=None, one=False)
         held = held_by_sequence(calc, n)
         if held is not None:
-            raise SubmitError(_held_by(held, n, base))
+            raise SubmitError(_held_by(held, n))
     groups = [{"number": n, "stages": list(calc.request.members(n))}
               for n in numbers]
     names = sequence_names(base, task, calc.request, numbers)
@@ -3458,8 +3338,8 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
 
     Before anything is written: where it runs and what it takes
     (:func:`_plan_member`; a trial, :func:`_plan_trial`); a run of points
-    sent as the points' walk (:func:`_points_walk`); else the deck/launch
-    agreement and a trial's cold start, the wrapper the line runs -- where
+    sent as the points' walk (:func:`_points_walk`); else a trial's cold
+    start, the wrapper the line runs -- where
     the line is run, or asked about when a scheduler is here to ask -- and,
     for a scheduler, the one line (:func:`_sbatch_request`): the header
     prep wrote, sent to the queue it recorded.
@@ -3471,7 +3351,7 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
     question about another stage is asked of the whole plan
     (``calc``, A16).
     """
-    base, shape = Path(calc.base), calc.shape
+    base = Path(calc.base)
     named = [j for j in jobset.jobs if only is None or j.name == only]
     # The no-chain rule, AT THE SEAM (U5, 2026-08-12): a guard only a
     # surface applies is one the next surface forgets.
@@ -3487,7 +3367,7 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
 
     plan = LaunchPlan(base, mode, [])
     for job in named:
-        m = (_plan_trial(jobset, base, job, mode=mode, shape=shape,
+        m = (_plan_trial(jobset, base, job, mode=mode,
                          named=only is not None)
              if jobset.kind == KIND_SWEEP else
              _plan_member(calc, job, writes=plan.writes,
@@ -3522,9 +3402,7 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
             # TOLD ITS CARD'S WALL, as a sent job is told its header's
             # (`running-a-job.md` § 3.6).
             plan.submissions.append(Submission(
-                m.name, ["bash", run_name] + _run_sh_args(
-                    job.resources, m.run,
-                    cold=m.cold and not m.has_attempt),
+                m.name, ["bash", run_name] + _run_sh_args(job.resources),
                 m.run_dir, True, [m], ask_in=m.read_from,
                 sent=_Sent(time=job.resources.time or None)))
             continue
@@ -3543,8 +3421,7 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
             placement=_placed_by_prep([job]),
             time_s=time_s, job_name=_scheduler_job_name(jobset, job.name),
             script=sbatch_name,
-            run_args=_run_sh_args(job.resources, m.run,
-                                  cold=m.cold and not m.has_attempt),
+            run_args=_run_sh_args(job.resources),
             machine=machine)
         plan.submissions.append(Submission(
             m.name, cmd, m.run_dir, False, [m], placement=placement,

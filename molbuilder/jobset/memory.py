@@ -45,8 +45,7 @@ class Held:
     """What one run of a stage held -- a run, or one point of a run of
     points."""
     #: The run, as every record of this calculation spells it
-    #: (`runrecord.RunRef`): its folder, or -- where a stage's runs share the
-    #: calculation's folder -- its name.
+    #: (`runrecord.RunRef`): its folder.
     run: str
     #: The point's key in its run (`stages.Point.rel`), ``None`` for a run
     #: with no point level.
@@ -178,9 +177,9 @@ def _ranks(asked) -> Optional[int]:
 
 def held_by(calc, stage: str) -> List[Held]:
     """What every run of ``stage`` held -- each run, each point of a run of
-    points, a flat stage's numbered runs -- read through the run door, those
-    whose record states a memory peak."""
-    from ..runrecord import RunRef, launched_runs
+    points -- read through the run door, those whose record states a memory
+    peak."""
+    from ..runrecord import RunRef
     from ..runs import record_of, run_of, state_of
     from .naming import stage_home
     from .runstatus import run_folders
@@ -188,21 +187,11 @@ def held_by(calc, stage: str) -> List[Held]:
     home = stage_home(base, task, stage)
     if home.dir is None or not home.dir.is_dir():
         return []
-    names = home.names(task.shape)
-    if names.shared:
-        # A STAGE WHOSE RUNS SHARE THE CALCULATION'S FOLDER: each launched
-        # run, by its launch record.
-        entries = [(home.dir, k, None) for k in launched_runs(home.dir, names)]
-    else:
-        entries = [(folder, None, pt) for _n, folder, pt
-                   in run_folders(base, task, home.dir, home.name)]
     out: List[Held] = []
-    for folder, k, pt in entries:
-        run = run_of(folder, stage=home.token)
-        if run is None or run.stage is None:
+    for _n, folder, pt in run_folders(base, task, home.dir, home.name):
+        run = run_of(folder)
+        if run is None:
             continue
-        if k is not None:
-            run = dataclasses.replace(run, run=k)
         st = state_of(run)
         rec = record_of(run, status=st, fields=FIELDS) or {}
         comp = rec.get("computation") or {}
@@ -210,8 +199,7 @@ def held_by(calc, stage: str) -> List[Held]:
         if mem.get("mem_peak_gb") is None:
             continue
         launch = comp.get("launch") or {}
-        ref = (RunRef.named(names.run_name(k)) if k is not None
-               else RunRef.at(base, folder))
+        ref = RunRef.at(base, folder)
         out.append(Held(
             run=str(ref), point=(str(pt.rel) if pt is not None else None),
             gb=float(mem["mem_peak_gb"]), read_from=mem.get("mem_peak_from"),

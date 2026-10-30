@@ -60,7 +60,7 @@ from _road import conda_hook, env_available
 from molbuilder.parse.engines import siesta_grammar as _G
 from molbuilder.transport.stages import TRANSPORT_STAGES
 from support.machines import SLURM
-from support.road import molbuilder
+from support.road import _all_written, molbuilder, one_rank
 
 pytestmark = [
     pytest.mark.engine,
@@ -285,20 +285,6 @@ def _family_of(built):
     return bare
 
 
-def _run_card(bundle: Path) -> None:
-    """One rank, one thread: the run states its shape (`architecture.md`
-    § 5.2), on the calculation's run card."""
-    from support.road import read_request, write_request
-    request = read_request(bundle)
-    request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
-                            "omp_threads": 1}
-    write_request(bundle, request)
-
-
-def _files(d: Path) -> dict:
-    return {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
-
-
 #: WHAT THE DEVICE RAN, CHANGED SINCE -- each row a copy of the single
 #: voltage's calculation, its device launched, a template value then changed
 #: as a person changes it; its transmission prepared now and its launch asked
@@ -355,11 +341,10 @@ def junction(tmp_path_factory):
         # THE RELAXATION -- an ordinary optimization, one stage.
         r = molbuilder("describe", "--structure", _write_junction(tree),
                    "--bundle", "P/opt/J", "--engine", "siesta",
-                   "--calculation", "optimization", "--shape", "hierarchical",
-                   "--name", "J", "--psml-lib", "pseudopotential")
+                   "--calculation", "optimization", "--name", "J", "--psml-lib", "pseudopotential")
         assert r.exit_code == 0, r.output
         relax = RealRun(tree=tree, bundle=tree / "P" / "opt" / "J")
-        _run_card(relax.bundle)
+        one_rank(relax.bundle)
         path = template_path(relax.bundle, "J")
         cfg = dataclasses.replace(
             config_from_template(path.read_text(), SiestaConfig),
@@ -370,7 +355,7 @@ def junction(tmp_path_factory):
         _taken(relax, "launch", "launch", "task", "--stage", "coarse",
                "--mode", "direct", "--foreground", "--yes")
         cite = "P/opt/J/01_coarse/run-0"
-        cited_before = _files(tree / cite)
+        cited_before = _all_written(tree / cite)
 
         # THE PAIR -- the finished relaxation saved as a structure pair on
         # the command line, as the Results tab's export saves it: what the
@@ -386,14 +371,14 @@ def junction(tmp_path_factory):
 
         # THE TRANSPORT CALCULATION, described on the CLI.
         r = molbuilder("describe", "--calculation", "transport", "--engine", "siesta",
-                   "--shape", "hierarchical", "--bundle", "P/transport/T",
+                   "--bundle", "P/transport/T",
                    "--slot", f"junction={cite}",
                    "--bias", ",".join(f"{v:g}" for v in _BIAS),
                    "--no-low-bias-approximation")
         assert r.exit_code == 0, r.output
         run = RealRun(tree=tree, bundle=tree / "P" / "transport" / "T")
         run.said["init"] = Said(r.exit_code, r.output)
-        _run_card(run.bundle)
+        one_rank(run.bundle)
         run.template_at_init = (run.bundle / "T.template.toml").read_text()
         # THE PERSON'S CHOICE in the calculation's own template: the spin
         # restricted (the module's head says why).  The mixing weight the
@@ -423,28 +408,23 @@ def junction(tmp_path_factory):
         run.said["describe"] = Said(b.status_code, json.dumps(b.get_json()))
         # ...AND AGAIN, INTO THE FOLDER IT HAS JUST DESCRIBED: Describe is
         # one act, and that folder is now a calculation (§ 3.8.2a).
-        run.described_before = {f.name: f.read_bytes()
-                                for f in run.described_at.iterdir()}
+        run.described_before = _all_written(run.described_at)
         b = client.post("/api/transport/describe", json=dict(
             engine="siesta", name="T2", junction=cite, bias=[0.0, 0.5],
             low_bias_approximation=True, dest=str(run.described_at)))
         run.said["describe again"] = Said(b.status_code,
                                           json.dumps(b.get_json()))
-        run.described_after = {f.name: f.read_bytes()
-                               for f in run.described_at.iterdir()}
+        run.described_after = _all_written(run.described_at)
         a = client.get(f"/api/transport/describe_attempt?path={cite}")
         run.said["describe_attempt"] = Said(a.status_code,
                                             json.dumps(a.get_json()))
 
-        # THE REFUSALS THAT COME AFTER A CITATION IS READ (`task.py`).
-        for step, extra in (("bias not from 0", ("--shape", "hierarchical",
-                                                 "--bias", "0.2,0.4")),
-                            ("flat", ("--shape", "flat"))):
-            r = molbuilder("describe", "--engine", "siesta",
-                       "--calculation", "transport",
-                       "--bundle", "P/transport/X",
-                       "--slot", f"junction={cite}", *extra)
-            run.said[step] = Said(r.exit_code, r.output)
+        # THE REFUSAL THAT COMES AFTER A CITATION IS READ (`task.py`).
+        r = molbuilder("describe", "--engine", "siesta",
+                   "--calculation", "transport",
+                   "--bundle", "P/transport/X",
+                   "--slot", f"junction={cite}", "--bias", "0.2,0.4")
+        run.said["bias not from 0"] = Said(r.exit_code, r.output)
 
         # THE LADDER, a group at a time, each prepared once the one before
         # it has run.
@@ -489,12 +469,11 @@ def junction(tmp_path_factory):
                                         | {_at(_LEAD + _WIRE // 2 - 1)})
         StructureCodec().write(held_more, tree / one_free)
         r = molbuilder("describe", "--structure", one_free, "--bundle", "P/frequency/V",
-                   "--engine", "siesta", "--shape", "hierarchical",
-                   "--calculation", "vibration", "--name", "V",
+                   "--engine", "siesta", "--calculation", "vibration", "--name", "V",
                    "--psml-lib", "pseudopotential")
         assert r.exit_code == 0, r.output
         vib = RealRun(tree=tree, bundle=tree / "P" / "frequency" / "V")
-        _run_card(vib.bundle)
+        one_rank(vib.bundle)
         for name, value in {**RELAXED_WITH,
                             "pulay_history": _VIBRATED_HISTORY,
                             "already_relaxed": True}.items():
@@ -519,14 +498,14 @@ def junction(tmp_path_factory):
         # pseudopotentials from the library, its spin restricted as the
         # first's; the whole ladder, a point per frame and voltage.
         r = molbuilder("describe", "--calculation", "transport", "--engine", "siesta",
-                   "--shape", "hierarchical", "--bundle", "P/transport/F",
+                   "--bundle", "P/transport/F",
                    "--slot", f"junction={frame_set}",
                    "--psml-lib", "pseudopotential",
                    "--bias", ",".join(f"{v:g}" for v in _BIAS),
                    "--no-low-bias-approximation")
         assert r.exit_code == 0, r.output
         from_pair = RealRun(tree=tree, bundle=tree / "P" / "transport" / "F")
-        _run_card(from_pair.bundle)
+        one_rank(from_pair.bundle)
         run.pair_template = (from_pair.bundle / "F.template.toml").read_text()
         _set_by_the_person(from_pair.bundle / "F.template.toml",
                            "spin_treatment", "restricted")
@@ -559,11 +538,11 @@ def junction(tmp_path_factory):
         # again warm (its own density stands), then again --cold, which still
         # takes the inputs its first launch gathered (`job-system.md` § 5.4).
         r = molbuilder("describe", "--calculation", "transport", "--engine", "siesta",
-                   "--shape", "hierarchical", "--bundle", "P/transport/S",
+                   "--bundle", "P/transport/S",
                    "--slot", f"junction={cite}", "--bias", "0.0")
         assert r.exit_code == 0, r.output
         single = RealRun(tree=tree, bundle=tree / "P" / "transport" / "S")
-        _run_card(single.bundle)
+        one_rank(single.bundle)
         _set_by_the_person(single.bundle / "S.template.toml",
                            "spin_treatment", "restricted")
         _taken(single, "prep seed and leads", "prep", "task",
@@ -605,8 +584,9 @@ def junction(tmp_path_factory):
         from support.road import read_request, write_request
 
         def device_runs(c):
-            return " ".join(sorted(p.name for p in
-                                   (c.bundle / "04_device").glob("run-*")))
+            from support.real_runs import stage_status
+            return " ".join(str(n) for n in
+                            stage_status(c.bundle, "device").attempts)
 
         def request_changed(c):
             req = read_request(c.bundle)
@@ -625,7 +605,7 @@ def junction(tmp_path_factory):
         def point_added(c):
             # A VOLTAGE ADDED ON TASK SETUP after the device ran -- its Save,
             # the page's door -- and the calculation's files around it.
-            from support.real_runs import _files as every_file
+            from support.road import _all_written as every_file
             from support.road import save_both
             t = json.loads((c.bundle / "task.json").read_text())
             t["bias"]["voltages_v"] = [*t["bias"]["voltages_v"], 0.4]
@@ -873,7 +853,7 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
     and the walk's header as the second wrote it."""
     import dataclasses as _dc
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import LAUNCH_DIR, GroupNames, RunNames
+    from molbuilder.runfiles import LAUNCH_DIR, GroupNames
     from molbuilder.scheduler import Domain
     from molbuilder.scheduler.record import (machine_scope_path,
                                              named_environment_path,
@@ -895,13 +875,13 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
                node_types=[{"cores": 16, "nodes": 2}])]),
         named_environment_path("cluster"))
     r = molbuilder("describe", "--calculation", "transport", "--engine", "siesta",
-               "--shape", "hierarchical", "--bundle", "P/transport/W",
+               "--bundle", "P/transport/W",
                "--slot", f"junction={cite}",
                "--bias", ",".join(f"{v:g}" for v in _BIAS),
                "--no-low-bias-approximation")
     assert r.exit_code == 0, r.output
     walk = RealRun(tree=tree, bundle=tree / "P" / "transport" / "W")
-    _run_card(walk.bundle)
+    one_rank(walk.bundle)
     # THE SPIN RESTRICTED, as the calculation the module runs has it.
     _set_by_the_person(walk.bundle / "W.template.toml", "spin_treatment",
                        "restricted")
@@ -917,7 +897,7 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
                *group_words(walk.bundle, "device"), "--target", "cluster")
     described = task_of(walk.bundle)
     home = stage_home(walk.bundle, described, "device")
-    names = RunNames.of(described.label, home.token, described.shape)
+    names = home.names
     header = (home.dir / LAUNCH_DIR
               / GroupNames.of_points(names.stem).name(".sbatch"))
     walk.header = header.read_text() if header.is_file() else None
@@ -988,7 +968,8 @@ def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
     assert min(zs[regions[REGION_LEFT_ELECTRODE]]) > max(
         zs[regions[REGION_RIGHT_ELECTRODE]])
     assert out.provenance["swap_electrodes"] is True
-    assert _files(junction.tree / junction.cite) == junction.cited_before
+    assert _all_written(junction.tree / junction.cite) == \
+        junction.cited_before
 
 
 def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
@@ -1246,7 +1227,7 @@ def _prepared_decks(run, stage):
     from molbuilder.transport.stages import point_folders
     task = task_of(run.bundle)
     home = stage_home(run.bundle, task, stage)
-    names = home.names(task.shape)
+    names = home.names
     folders = [f for f, _v in point_folders(run.bundle, task, stage)]
     return [f / names.name(".fdf") for f in (folders or [home.dir])]
 
@@ -1289,13 +1270,13 @@ def _the_decks_a_person_sets(tree, cite: str, client):
     # reads its bias window only under bias (`engines/transport.md` § 6.1),
     # so an item it offers is read in the device's deck under bias.
     r = molbuilder("describe", "--calculation", "transport", "--engine", "siesta",
-               "--shape", "hierarchical", "--bundle", "P/transport/D",
+               "--bundle", "P/transport/D",
                "--slot", f"junction={cite}",
                "--bias", ",".join(f"{v:g}" for v in _BIAS),
                "--no-low-bias-approximation")
     assert r.exit_code == 0, r.output
     probe = RealRun(tree=tree, bundle=tree / "P" / "transport" / "D")
-    _run_card(probe.bundle)
+    one_rank(probe.bundle)
     _set_by_the_person(probe.bundle / "D.template.toml",
                        "spin_treatment", "restricted")
     _taken(probe, "prep", "prep", "task",
@@ -1561,7 +1542,6 @@ def test_a_launched_rung_of_points_is_prepared_again_for_its_job_request(
     c = junction.request_changed
     said = c.said["prep device again"]
     assert said.exit_code == 0, said.output
-    assert "prepared device again: launched" in said.output, said.output
     assert c.said["runs after"].output == c.said["runs before"].output, (
         c.said["runs before"].output, c.said["runs after"].output)
     assert "prepared, not launched" not in c.said["status device"].output, (
@@ -1723,23 +1703,24 @@ def test_each_leads_measurements_reach_the_card_under_its_name(junction):
 
 
 def test_a_bias_list_starts_from_equilibrium(junction):
+    """`engines/transport.md` § 3, *Gotchas*: ``--bias`` must start at
+    ``0.0`` -- a list starts from equilibrium, which each voltage then
+    continues from.  The silent failure: a sweep described from a voltage
+    with no equilibrium point, its first point starting from nothing it
+    can continue."""
     r = junction.said["bias not from 0"]
     assert r.exit_code != 0 and "must start at 0.0" in r.output, r.output
-
-
-def test_a_flat_transport_description_is_refused(junction):
-    """The five stages exchange files through their own runs, which flat has
-    no folders to hold (§ 2a.11)."""
-    r = junction.said["flat"]
-    assert r.exit_code != 0 and "hierarchical" in r.output, r.output
 
 
 # --------------------------------------------------------------------- #
 #  The sweep -- one run, its points inside (§ 2a.11)                     #
 # --------------------------------------------------------------------- #
 
-def _point(run, rung, n, v):
-    return run.bundle / rung / f"run-{n}" / f"v{v:g}"
+def _point(run, stage, v, frame=None):
+    """The point at voltage ``v`` -- of frame ``frame``, a frame set's -- in
+    ``stage``'s first run (`RealRun.attempt`, `transport.stages.Point.rel`)."""
+    from molbuilder.transport.stages import Point
+    return run.attempt(stage) / Point(frame=frame, volts=v).rel
 
 
 def test_a_sweep_is_one_run_its_points_inside(junction):
@@ -1748,16 +1729,20 @@ def test_a_sweep_is_one_run_its_points_inside(junction):
     point's progress log is in the run's point, which writes it, and none
     is left in the point's folder below the stage, where nothing writes to
     it again (`project-layout.md` § 1.0)."""
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import WRITTEN, role_of
     from molbuilder.task import of as task_of
-    label = task_of(junction.bundle).label
+    from molbuilder.transport.stages import Point
+    task = task_of(junction.bundle)
+    label = task.label
+    home = stage_home(junction.bundle, task, "device").dir
     progress = {a.role for a in WRITTEN if a.output == "progress"}
     for v in _BIAS:
-        p = _point(junction, "04_device", 0, v)
+        p = _point(junction, "device", v)
         for suffix in (".TS.HSX", ".TSDE"):
             assert (p / f"{label}{suffix}").is_file(), (p, suffix)
         assert any(role_of(f.name) in progress for f in p.iterdir()), p
-        prepared = junction.bundle / "04_device" / f"v{v:g}"
+        prepared = home / Point(volts=v).rel
         left = [f.name for f in prepared.iterdir()
                 if role_of(f.name) in progress]
         assert left == [], (prepared, left)
@@ -1848,11 +1833,10 @@ def test_a_device_launched_warm_then_cold_keeps_the_seeds_density(junction):
     *either way a transport rung keeps the inputs its first launch
     gathered*)."""
     from molbuilder.runs import folder_answer
-    device = junction.single.bundle / "04_device"
 
     def record(n):
         """Run ``n``'s record, as the Results tab opens its folder."""
-        return folder_answer(device / f"run-{n}")["record"]
+        return folder_answer(junction.single.attempt("device", n))["record"]
 
     def given(n):
         return {g["file"]: g["from"]
@@ -1977,11 +1961,6 @@ def test_the_transmission_takes_the_devices_newest_run_whole(junction):
 #  A frame set -- a point per frame and voltage (§ 2a.9, § 2a.11)        #
 # --------------------------------------------------------------------- #
 
-def _frame_point(run, rung, f, v):
-    from molbuilder.transport.stages import Point
-    return run.bundle / rung / "run-0" / Point(frame=f, volts=v).rel
-
-
 def _the_geometry_it_ran(point):
     """The first geometry step of the run in ``point``, read as the Results
     tab reads a run: the file that holds its result (`runs.openable`),
@@ -2014,7 +1993,7 @@ def test_a_frame_sets_device_runs_a_point_per_frame_and_voltage(junction):
     label = task_of(run.bundle).label
     for f in range(_N_FRAMES):
         for v in _BIAS:
-            p = _frame_point(run, "04_device", f, v)
+            p = _point(run, "device", v, frame=f)
             for suffix in (".TS.HSX", ".TSDE"):
                 assert (p / f"{label}{suffix}").is_file(), (p, suffix)
     # Against frame 0's point at the same voltage, each frame's point moved
@@ -2023,9 +2002,9 @@ def test_a_frame_sets_device_runs_a_point_per_frame_and_voltage(junction):
     composed = np.asarray(recorded_junction(run.bundle).structure.frames,
                           dtype=float)
     for v in _BIAS:
-        at_0 = _the_geometry_it_ran(_frame_point(run, "04_device", 0, v))
+        at_0 = _the_geometry_it_ran(_point(run, "device", v, frame=0))
         for f in range(1, _N_FRAMES):
-            moved = (_the_geometry_it_ran(_frame_point(run, "04_device", f, v))
+            moved = (_the_geometry_it_ran(_point(run, "device", v, frame=f))
                      - at_0)
             assert np.allclose(moved, composed[f] - composed[0],
                                atol=1e-4), (f, v)
@@ -2043,21 +2022,15 @@ def test_each_frame_starts_from_the_seed_and_its_voltages_chain_in_it(
     `.gathered-from`, no `.continued-from`) -- and within a frame each next
     voltage starts from the converged point before it in THAT frame (its
     `.continued-from`)."""
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import RunNames
     from molbuilder.runrecord import read_continued_from, read_gathered_from
-    from molbuilder.task import of as task_of
     run = junction.from_pair
-    task = task_of(run.bundle)
-    names = RunNames.of(task.label, stage_home(run.bundle, task,
-                                               "device").token, task.shape)
     for f in range(_N_FRAMES):
-        first = _frame_point(run, "04_device", f, _BIAS[0])
-        assert read_continued_from(first, names, 0) is None, first
+        first = _point(run, "device", _BIAS[0], frame=f)
+        assert read_continued_from(first) is None, first
         assert any(str(src) == "01_seed/run-0"
                    for src, _fn in read_gathered_from(first)), first
-        nxt = _frame_point(run, "04_device", f, _BIAS[1])
-        assert str(read_continued_from(nxt, names, 0)) == str(
+        nxt = _point(run, "device", _BIAS[1], frame=f)
+        assert str(read_continued_from(nxt)) == str(
             first.relative_to(run.bundle)), nxt
 
 
@@ -2080,20 +2053,20 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     from molbuilder import calcdirs
     from molbuilder.jobset.naming import stage_home
     from molbuilder.parse import detect
+    from molbuilder.runfiles import LAUNCH_DIR
     from molbuilder.runs import openable, run_of
     from molbuilder.task import of as task_of
     from molbuilder.transport.gf_files import status_line
     run = junction.from_pair
     task = task_of(run.bundle)
-    device = run.bundle / "04_device" / "run-0"
-    folder = device / "tsgf"
+    launch = stage_home(run.bundle, task, "device").dir / LAUNCH_DIR
+    folder = run.attempt("device") / "tsgf"
     assert folder.is_dir() and calcdirs.where(folder).what == calcdirs.SCRATCH
     # ...and the walk's machinery beside the runs is the stage's support,
     # never a point (`project-layout.md` § 1.4a, *Where am I*).
-    assert calcdirs.where(run.bundle / "04_device" / "launch").what \
-        == calcdirs.SUPPORT
+    assert calcdirs.where(launch).what == calcdirs.SUPPORT
     assert [p.name for p in folder.iterdir() if ".TSGF" in p.name] == []
-    log = next((run.bundle / "04_device" / "launch").glob("*.log")).read_text()
+    log = next(launch.glob("*.log")).read_text()
     lines = [ln.split("] ", 1)[1] for ln in log.splitlines() if "] [" not in ln
              and "] " in ln]
     starts = [ln.split("-> ", 1)[1].split(" starts")[0]
@@ -2109,7 +2082,7 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     assert all(" emptied -- " in ln and ".TSGF" in ln for ln in emptied[1:]), emptied
     for f in range(_N_FRAMES):
         for v in _BIAS:
-            p = _frame_point(run, "04_device", f, v)
+            p = _point(run, "device", v, frame=f)
             assert not [x.name for x in p.iterdir() if ".TSGF" in x.name], p
             output, trail = openable(p)
             assert output is not None, trail
@@ -2118,8 +2091,7 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     _said(run, "status device", "tsgf/: empty")
     # BEFORE A LAUNCH, THE SIZE: from the leads' run outputs, read through
     # the registry as the line reads them, and the prepared decks.
-    lead_out = run_of(stage_home(run.bundle, task, "electrode_L").dir
-                      / "run-0").stdout
+    lead_out = run_of(run.attempt("electrode_L")).stdout
     n_orb = detect(str(lead_out)).parse(str(lead_out)).runtime_info["n_orbitals"]
     from molbuilder.calculation import open as open_calculation
     device_job = open_calculation(run.bundle).jobset.job("device")
@@ -2141,9 +2113,9 @@ def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
     run = junction.from_pair
     for f in range(_N_FRAMES):
         for v in _BIAS:
-            got = read_gathered_from(_frame_point(run, "05_transmission", f, v))
+            got = read_gathered_from(_point(run, "transmission", v, frame=f))
             hsx = [str(src) for src, fn in got if fn.endswith(".TS.HSX")]
-            assert hsx == [str(_frame_point(run, "04_device", f, v)
+            assert hsx == [str(_point(run, "device", v, frame=f)
                                .relative_to(run.bundle))], (f, v, got)
 
 
@@ -2160,7 +2132,7 @@ def test_a_points_run_panel_says_how_its_run_was_launched(junction):
     run = junction.from_pair
     for v in _BIAS:
         launch = runs.record_of(runs.run_of(
-            _frame_point(run, "04_device", 1, v)))["computation"]["launch"]
+            _point(run, "device", v, frame=1)))["computation"]["launch"]
         assert launch["mode"] == "direct" and launch["launched_at"], launch
         assert "continued_from" not in launch, launch
 
@@ -2223,13 +2195,12 @@ def _run_index(run, stage: str, n: int):
     """The run's index and its rows by the one done rule, as the job read
     them (`transport.points_index`)."""
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import FIRST_ATTEMPT
     from molbuilder.task import of as task_of
     from molbuilder.transport import points_index as pi
     task = task_of(run.bundle)
-    names = stage_home(run.bundle, task, stage).names(task.shape)
+    names = stage_home(run.bundle, task, stage).names
     folder = run.attempt(stage, n)
-    index = pi.read_index(pi.index_path(folder, names, FIRST_ATTEMPT))
+    index = pi.read_index(pi.index_path(folder, names))
     return index, pi.rows_of(index, folder)
 
 
@@ -2314,7 +2285,7 @@ def test_a_frame_sets_point_says_its_run_and_itself(junction):
     from molbuilder.task import of as task_of
     run = junction.from_pair
     task = task_of(run.bundle)
-    names = stage_home(run.bundle, task, "device").names(task.shape)
+    names = stage_home(run.bundle, task, "device").names
     folder = run.attempt("device")
     _index, rows = _run_index(run, "device", 0)
     me = rows[-1]
@@ -2351,11 +2322,13 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
     total = _N_FRAMES * len(_BIAS)
     assert not any(r["done"] for r in rows), rows
     assert len({r["why"] for r in rows}) == 1, rows
-    # THE RUN'S STATE, the status door's: failed where a point's run did
-    # not finish -- its engine's exit, as its report step stamped it.  The
-    # COUNT'S *failed*: every point that ended without being done.
-    state = ("finished" if all(x["exit"] == 0 for x in index["points"])
-             else "failed")
+    # THE PREMISE: TBtrans stops at its start, every point's engine exiting
+    # not 0 as its report step stamped it -- so the run's state, the status
+    # door's rule (finished only when every point's run ended with exit 0),
+    # is *failed*.  The COUNT'S *failed*: every point that ended without
+    # being done.
+    assert all(x["exit"] not in (0, "0") for x in index["points"]), (
+        index["points"])
     failed = total
     assert notified(c, "transmission", n) == [
         "start", "part_failed", "milestone", "finish"]
@@ -2365,21 +2338,19 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
         return (f"{volts:g} V -- G/G0: " + ", ".join(
             f"{frame_words(r['frame'], _N_FRAMES)} not done -- {r['why']}"
             for r in rows if r["bias_v"] == volts))
-    def failed_of(k):
-        return k
     said, = told(c, "part_failed", "transmission", n)
     assert said.startswith(
         f"running ({rows[0]['words']}: not done -- {rows[0]['why']}) | "
-        f"the run: {_count(0, total, _N_FRAMES, failed=failed_of(1))} |"), \
+        f"the run: {_count(0, total, _N_FRAMES, failed=1)} |"), \
         said
     milestone, = told(c, "milestone", "transmission", n)
     assert milestone.startswith(
         f"running ({round_said(_BIAS[0])}) | the run: "
-        f"{_count(0, total, _N_FRAMES, failed=failed_of(_N_FRAMES))} |"), \
+        f"{_count(0, total, _N_FRAMES, failed=_N_FRAMES)} |"), \
         milestone
     finish, = told(c, "finish", "transmission", n)
     assert finish.startswith(
-        f"{state} ({rows[0]['words']}: not done -- {rows[0]['why']}; "
+        f"failed ({rows[0]['words']}: not done -- {rows[0]['why']}; "
         f"{total} of {total} points not done; {round_said(_BIAS[1])}) | "
         f"the run: {_count(0, total, _N_FRAMES, failed=failed)} |"), finish
     status = c.said["status transmission"].output
@@ -2481,7 +2452,7 @@ def _frame_curves(run, label, volts):
     from molbuilder.transport.transiesta import LEAD_NAMES, LEAD_PAIR
     curves = []
     for f in range(_N_FRAMES):
-        point = _frame_point(run, "05_transmission", f, volts)
+        point = _point(run, "transmission", volts, frame=f)
         got = point_averages(point, label, pair=LEAD_PAIR,
                              leads=tuple(LEAD_NAMES))["unpolarized"]
         energies = got["energy_ev"]
@@ -2739,11 +2710,6 @@ def _export(junction, monkeypatch, run, fmt, to):
     return r.output
 
 
-def _listing(folder):
-    return sorted(str(f.relative_to(folder)) for f in folder.rglob("*")
-                  if ".git" not in f.parts and ".binsnapshots" not in f.parts)
-
-
 def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
                                                    tmp_path):
     """§ 2a.12, *Export*: the command's NetCDF is the data file `summarize
@@ -2763,7 +2729,7 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
     from support.road import jobset
     run = junction.from_pair
     label = task_of(run.bundle).label
-    before = _listing(run.bundle)
+    before = _all_written(run.bundle)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
     inside = jobset("export", "--bundle", run.bundle, "--format", "csv",
                     "--to", run.bundle / "out")
@@ -2771,7 +2737,7 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
         inside.output), inside.output
     _export(junction, monkeypatch, run, "netcdf", tmp_path)
     _export(junction, monkeypatch, run, "csv", tmp_path)
-    assert _listing(run.bundle) == before, "nothing written in it"
+    assert _all_written(run.bundle) == before, "nothing written in it"
     want = read_data_file(data_file_path(run.bundle, label))["variables"]
     got = read_data_file(tmp_path / f"{label}.transport.nc")["variables"]
     assert sorted(got) == sorted(want)
@@ -2819,7 +2785,7 @@ def test_an_export_reads_no_data_file_and_says_what_is_missing(
     from molbuilder.transport.datafile import read_data_file
     run = junction
     label = task_of(run.bundle).label
-    data = data_files(_point(run, "05_transmission", 0, _BIAS[0]),
+    data = data_files(_point(run, "transmission", _BIAS[0]),
                       label)["unpolarized"]
     kept = tmp_path / "kept.digest.nc"
     shutil.move(str(digest_of(data)), str(kept))
@@ -2862,7 +2828,7 @@ def test_the_files_say_which_index_their_atoms_are_listed_by(junction):
     data = atom_index_map(data_file_path(run.bundle, label))
     assert (data.listed_by, list(data.user), list(data.engine)) == (
         "user_index", list(range(n)), engine_of_user)
-    point = _point(run, "05_transmission", 0, _BIAS[0])
+    point = _point(run, "transmission", _BIAS[0])
     digest = digest_of(data_files(point, label)["unpolarized"])
     kept = atom_index_map(digest)
     assert (kept.listed_by, list(kept.user), list(kept.engine)) == (
@@ -2877,13 +2843,13 @@ def test_the_files_say_which_index_their_atoms_are_listed_by(junction):
     # (§ 2.2a, I6) -- refused, never answered with the junction's map.
     from molbuilder.kind_table import rung_label
     from molbuilder.atom_index import AtomIndexUnknown
-    lead = (_point(run, "04_device", 0, _BIAS[0])
+    lead = (_point(run, "device", _BIAS[0])
             / f"{rung_label(label, 'electrode_L')}.TSHS")
     with pytest.raises(AtomIndexUnknown, match="electrode_L rung's file"):
         atom_index_map(lead)
     # ...AND IN ITS OWN RUN it is that run's, a structure of its own: the
     # engine column alone.
-    own = atom_index_map(run.bundle / "02_electrode_L" / "run-0"
+    own = atom_index_map(run.attempt("electrode_L")
                          / f"{rung_label(label, 'electrode_L')}.XV")
     assert (own.listed_by, own.user) == ("engine_index", None), own
 
@@ -2903,7 +2869,7 @@ def test_a_scripts_parse_keeps_a_reading_that_states_both_indices(
     from molbuilder.task import of as task_of
     run = junction
     label = task_of(run.bundle).label
-    data = data_files(_point(run, "05_transmission", 0, _BIAS[0]),
+    data = data_files(_point(run, "transmission", _BIAS[0]),
                       label)["unpolarized"]
     kept = tmp_path / "kept.digest.nc"
     shutil.move(str(digest_of(data)), str(kept))
@@ -3211,7 +3177,7 @@ def test_summarize_keeps_each_points_reading_and_its_digest_reads_alone(
     _said(junction, "summarize", "its DOS per orbital, kept beside it")
     label = task_of(junction.bundle).label
     for p in _record(junction)["points"]:
-        folder = _point(junction, "05_transmission", 0, p["bias_v"])
+        folder = _point(junction, "transmission", p["bias_v"])
         data = data_files(folder, label)["unpolarized"]
         assert kept_state(data).state == "kept"
         assert [d["state"] for d in p["digest"]] == ["kept"], p["digest"]
@@ -3317,7 +3283,7 @@ def test_one_reading_of_a_data_file_at_a_time(junction, tmp_path, case):
     from molbuilder.task import of as task_of
     label = task_of(junction.bundle).label
     point = tmp_path / "point"
-    shutil.copytree(_point(junction, "05_transmission", 0, _BIAS[0]), point)
+    shutil.copytree(_point(junction, "transmission", _BIAS[0]), point)
     data = data_files(point, label)["unpolarized"]
     _CLAIMS[case](data, TBTransNcFileParser.parse)
     assert kept_state(data).state == "kept"
@@ -3379,6 +3345,10 @@ def test_the_report_draws_the_junction_in_the_user_order(junction, page,
 # --------------------------------------------------------------------- #
 
 def test_the_record_is_the_sweeps_and_says_its_treatment(junction):
+    """`engines/transport.md` § 2a.10, *The labelling rule*: the record names
+    the treatment and the bias points -- a self-consistent sweep's, every
+    voltage its own point.  The silent failure: a curve read as the stronger
+    claim, its record not saying which it is."""
     rec = _record(junction)
     assert rec["treatment"] == "self-consistent"
     assert [p["bias_v"] for p in rec["points"]] == list(_BIAS)
@@ -3464,10 +3434,10 @@ def _transmission_point(junction, row):
     the point as its wire form names it, ``{frame, of, bias_v}``."""
     name, f, v = row
     if name == "T":
-        return (junction.bundle, _point(junction, "05_transmission", 0, v),
+        return (junction.bundle, _point(junction, "transmission", v),
                 {"frame": None, "of": None, "bias_v": v})
     return (junction.from_pair.bundle,
-            _frame_point(junction.from_pair, "05_transmission", f, v),
+            _point(junction.from_pair, "transmission", v, frame=f),
             {"frame": f, "of": _N_FRAMES, "bias_v": v})
 
 
@@ -3508,13 +3478,17 @@ def test_a_transmission_runs_folder_opens_its_report_at_its_point(
     # WHERE THE FOLDER IS (`project-layout.md` § 1.4a, *Where am I*): a point
     # of the stage's run -- and its twin below the stage, the folder prep
     # rendered the point's deck into, a container that says so (invariant 6b).
-    rel = folder.relative_to(calc / "05_transmission" / "run-0").as_posix()
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.paths import FIRST_ATTEMPT, attempt_dir
+    from molbuilder.task import of as task_of
+    home = stage_home(calc, task_of(calc), "transmission").dir
+    rel = folder.relative_to(attempt_dir(home, FIRST_ATTEMPT)).as_posix()
     where = ("what", "role", "stage", "run", "trial", "point")
     assert {k: said["place"][k] for k in where} == {
         "what": "point", "role": "run", "stage": "05_transmission", "run": 0,
         "trial": None, "point": rel}, said["place"]
     prepared = _results_dir(junction, monkeypatch,
-                            calc / "05_transmission" / rel)["place"]
+                            home / rel)["place"]
     assert {k: prepared[k] for k in where} == {
         "what": "point", "role": "container", "stage": "05_transmission",
         "run": None, "trial": None, "point": rel}, prepared
@@ -3652,7 +3626,7 @@ def test_the_monitor_says_a_transmissions_loop_as_it_grows(junction,
     quoting the last estimate of its loop."""
     from molbuilder import monitor
     from support.replay import output_lines, replay, statuses
-    folder = _point(junction, "05_transmission", 0, _BIAS[0])
+    folder = _point(junction, "transmission", _BIAS[0])
     lines = output_lines(folder)
     s = lines
     names = _passes_planned(s)
@@ -3718,10 +3692,10 @@ def test_a_device_says_where_it_is_before_its_first_negf_row(junction,
     from molbuilder import monitor
     from molbuilder.parse.dirs.rundir import run_state_of
     from molbuilder.parse.engines.transiesta import scf_words
-    from molbuilder.runfiles import RunNames
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
     from support.replay import output_lines, replay, statuses
-    folder = _point(junction, "04_device", 0, _BIAS[0])
+    folder = _point(junction, "device", _BIAS[0])
     s = output_lines(folder)
     begun = [i for i, ln in enumerate(s) if _G.TS_GF_FOR.match(ln)]
     sized = [i for i, ln in enumerate(s) if _G.TS_GF_SIZE.match(ln)]
@@ -3751,8 +3725,8 @@ def test_a_device_says_where_it_is_before_its_first_negf_row(junction,
         (row + 1, scf_words(_G.PHASE_NEGF, 1)),
     ]
     assert rows[-1][1] == "negf SCF iteration 1"
-    label = task_of(junction.bundle).label
-    names = RunNames.of(label, "04_device", "hierarchical")
+    names = stage_home(junction.bundle, task_of(junction.bundle),
+                       "device").names
     there, watched, grow = replay(folder, tmp_path, begun[0])
     for n, (to, words) in enumerate(rows):
         monitor.run_monitor(watched, interval=1, watch_pid=0, max_ticks=1,
@@ -3778,7 +3752,7 @@ def test_a_devices_own_contours_are_no_transmission_loop(junction, tmp_path):
     loop."""
     from molbuilder import monitor
     from support.replay import output_lines, replay
-    folder = _point(junction, "04_device", 0, _BIAS[-1])
+    folder = _point(junction, "device", _BIAS[-1])
     lines = output_lines(folder)
     assert any(_G.TBT_CONTOUR_POINTS.match(ln) for ln in lines), (
         f"{folder}: the device states no contour points -- the row asks "
@@ -3810,7 +3784,7 @@ def test_a_device_says_it_computes_no_forces_where_the_force_would_be(
     says is wrong."""
     from molbuilder import monitor
     from support.replay import output_lines, replay, statuses
-    folder = _point(junction, "04_device", 0, _BIAS[0])
+    folder = _point(junction, "device", _BIAS[0])
     verdict = _results_dir(junction, monkeypatch, folder)["record"]["verdict"]
     assert verdict.get("forces_not_computed") == _NO_FORCES, verdict
     assert not {"max_force_free_ev_ang", "max_force_held_ev_ang",
@@ -3866,8 +3840,8 @@ def test_the_results_tab_says_a_devices_forces_and_a_leads_stress(
     the stress read and shown nowhere."""
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from support.live_server import serve
-    device = _point(junction, "04_device", 0, _BIAS[0])
-    lead = junction.bundle / "02_electrode_L" / "run-0"
+    device = _point(junction, "device", _BIAS[0])
+    lead = junction.attempt("electrode_L")
     verdict = _results_dir(junction, monkeypatch, lead)["record"]["verdict"]
     stress = verdict["stress_voigt_kbar"]
     assert len(stress) == 6 and "max_force_held_ev_ang" not in verdict, (
@@ -3924,7 +3898,7 @@ def test_the_results_tab_opens_a_transmission_folder_at_its_point(
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from support.live_server import serve
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
-    folder = _frame_point(junction.from_pair, "05_transmission", 1, _BIAS[1])
+    folder = _point(junction.from_pair, "transmission", _BIAS[1], frame=1)
     task = (junction.from_pair.bundle / "task.json").resolve()
     with serve() as base:
         _on_the_results_tab(page, base, folder)
@@ -4057,13 +4031,12 @@ def reused(junction, tmp_path_factory):
         # points taken over at the first launch, the other frames walked.
         from support.road import group_words
         r = molbuilder("describe", "--calculation", "transport",
-                       "--engine", "siesta", "--shape", "hierarchical",
-                       "--bundle", "P/transport/O",
+                       "--engine", "siesta", "--bundle", "P/transport/O",
                        "--slot", f"junction={junction.cite}", "--bias", "0.0")
         assert r.exit_code == 0, r.output
         once = RealRun(tree=junction.tree,
                        bundle=junction.tree / "P" / "transport" / "O")
-        _run_card(once.bundle)
+        one_rank(once.bundle)
         _set_by_the_person(once.bundle / "O.template.toml",
                            "spin_treatment", "restricted")
         leads = group_words(once.bundle, "seed", "electrode_L", "electrode_R")
@@ -4659,7 +4632,7 @@ def test_a_sharing_points_round_says_the_records_conductance(reused, which):
     rec = _record(c)
     index, rows = _run_index(c, "transmission", 0)
     task = task_of(c.bundle)
-    names = stage_home(c.bundle, task, "transmission").names(task.shape)
+    names = stage_home(c.bundle, task, "transmission").names
     record_g = {p["bias_v"]: p["conductance_g0"] for p in rec["points"]}
     for r in rows:
         g, why = point_fact(index, r, c.attempt("transmission", 0), names)

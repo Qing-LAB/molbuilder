@@ -236,10 +236,8 @@ def classify_citation(cited: Path) -> "CitedRun | CitedPair":
 
 def _classify_run(cite_dir: Path) -> CitedRun:
     """A cited folder, read through the run door (`runs.run_of`,
-    `execution/architecture.md` § 3.2): the run it speaks for -- in a run's
-    own folder its one stage, at a flat calculation's root the stage the
-    root speaks for; its launch record and how it ended, the run record's
-    doors."""
+    `execution/architecture.md` § 3.2): the run in it, its one stage; its
+    launch record and how it ended, the run record's doors."""
     from molbuilder.runrecord import (LaunchRecordError, ending,
                                       launch_record)
     from .. import calcdirs
@@ -248,40 +246,44 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     if place.problem:
         raise ComposeError(place.problem)
     run = run_of(cite_dir)
-    if run is None or run.stage is None:
+    if run is None:
         where = ("no calculation claims this folder"
                  if not place.ours else
                  "it is a container, not a run -- cite one of the runs below "
                  "it" if place.role == calcdirs.CONTAINER else
-                 "nothing was launched here")
+                 "it says it is a run, but lies in no stage's run-<n>/"
+                 if place.role == calcdirs.RUN else
+                 "it is a run's own scratch or shared folder, not a run -- "
+                 "cite the run above it")
         raise ComposeError(
             f"{cite_dir} holds no run of molbuilder's: {where}.  "
             f"{CITATION_CONDITION}.")
     # ONE RUN, the one the run door settled (`run.run`), asked of each door:
-    # its launch record, how it ended, its state.
+    # its launch record -- in the folder the run door says it lies in
+    # (`Run.launched_in`: a point's is its run's) -- how it ended, its state.
     try:
-        launched = launch_record(cite_dir, run.names, run.run) is not None
+        launched = launch_record(run.launched_in) is not None
     except LaunchRecordError as e:
         raise ComposeError(str(e)) from e
     # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
-    # `execution/architecture.md` § 3.2) about THIS run -- never the
-    # directory's `run_status`, which can answer for a neighbour stage's run.
-    end = ending(cite_dir, run.basename, run.run)
+    # `execution/architecture.md` § 3.2) about THIS run's newest try.
+    end = ending(cite_dir, run.names.stem, run.run)
     if not launched and not end.concluded:
         raise ComposeError(
-            f"{cite_dir} holds the run {run.basename}, but nothing launched "
+            f"{cite_dir} holds the run {run.names.stem}, but nothing launched "
             f"it and nothing recorded how it ended.  {CITATION_CONDITION}.")
     # WHAT IT CONVERGED, the run door's reading of its output (the same the
     # status verb prints): carried into the provenance and said by the tab,
     # so a geometry that did not converge is cited knowingly.
     from ..parse.dirs.rundir import run_state_of
-    st = run_state_of(cite_dir, run.names, run.run)
+    st = run_state_of(cite_dir, run.names, run.run,
+                      launched_in=run.launched_in)
     # A RUN THAT RELAXED NO GEOMETRY is not what transport cites (§ 3.1): a
     # vibration run, whose last geometry is a displacement, or a transport
     # rung -- its output reports an SCF alone.
     if st.verdict is not None and st.verdict[0] != "geometry":
         raise ComposeError(
-            f"{cite_dir} holds the run {run.basename}, which relaxed no "
+            f"{cite_dir} holds the run {run.names.stem}, which relaxed no "
             f"geometry -- its output reports a self-consistent field alone, "
             f"so its last geometry is not a relaxed junction.  "
             f"{CITATION_CONDITION}.")
@@ -496,7 +498,7 @@ def _run_geometry(cited: CitedRun, kinds):
     output, _trail = openable(cited.path)
     if output is None:
         raise ComposeError(
-            f"{cited.path} holds no output of the run {cited.run.basename} "
+            f"{cited.path} holds no output of the run {cited.run.names.stem} "
             f"that a parser reads, so nothing says what geometry the "
             f"relaxation left.  {CITATION_CONDITION}.")
     # THE RUN'S GEOMETRY IN THE USER ORDER, through the run door's one read

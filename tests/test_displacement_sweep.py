@@ -25,8 +25,7 @@ def test_a_pyscf_vibration_has_no_displacement_to_sweep(tmp_path, monkeypatch):
     run = CliRunner()
     r = run.invoke(describe_cmd, [
         "--structure", "P/structure/w.xyz", "--bundle",
-        "P/frequency/V", "--engine", "pyscf", "--shape", "hierarchical",
-        "--calculation", "vibration", "--name", "W"])
+        "P/frequency/V", "--engine", "pyscf", "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output
     r = run.invoke(jobset_group, ["summarize", "task", "--bundle",
                                   str(tree / "P" / "frequency" / "V")])

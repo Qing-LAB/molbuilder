@@ -70,7 +70,6 @@ def calc_dir(isolated_projects_root):
                                        overrides={"mesh_cutoff": 200})],
                                 engine="siesta",
                                 calculation="optimization",
-                                shape="hierarchical",
                                 name="probe", source=str(src)),
             d, struct=struct)
         write_pseudos(d, ["H"])

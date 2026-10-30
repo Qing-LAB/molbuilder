@@ -28,12 +28,6 @@ from typing import List, Optional, Tuple
 from ..identity import BENCH, JOBSET_PROG as PROG, TASK, words_for
 
 
-def stage_group(request, stage: str) -> Optional[int]:
-    """The group ``stage`` is in, as the job request numbers it
-    (`execution/job-request.md` § 3.3), or ``None`` with no request."""
-    return request.group_of(stage) if request is not None else None
-
-
 def prep_group_lines(numbers, *, base) -> List[str]:
     """The prep of the groups ``numbers`` -- one command."""
     return [command("prep", *words_for(TASK, groups=list(numbers)),
@@ -244,8 +238,8 @@ def run_first(stage: str, *, calc) -> List[str]:
     """Run ``stage`` first -- its group's prep, then its group's launch: the
     remedy every refusal that waits on a stage not prepared gives; ``calc``
     the calculation as the verb read it (A16)."""
-    base = calc.base
-    g = stage_group(calc.request, stage)
+    base, request = calc.base, calc.request
+    g = request.group_of(stage) if request is not None else None
     if g is None:
         return launch_lines(TASK, stage, base=base)
     return prep_group_lines([g], base=base) + launch_lines(
@@ -290,9 +284,11 @@ def reason_of(refusal: str) -> str:
 
 def rollback(what: str, *, base) -> str:
     """How ``what`` is redone: the state saved before it, restored, and a
-    prep anew -- a launched stage is not prepared again (user, 2026-10-02:
-    *"refuse it, redo via rollback"*; `job-system.md` § 5.0); its way back
-    is the state saved before its group's first launch.
+    prep anew (user, 2026-10-02: *"refuse it, redo via rollback"*;
+    `job-system.md` § 5.0) -- the way back from what is not done again in
+    place: a prepared benchmark, a prep made for another machine, groups
+    launched.  A launched stage's own way back, the three lines, is
+    :func:`redo_launched`.
 
     WHICH STATE is the person's to pick, so it is asked for in words, never
     a ``<state>``; the list that shows them is a command, and both verbs
@@ -394,17 +390,16 @@ def _state_before(base, matches) -> Optional[str]:
 def way_back(stage: str, *, calc, launched: bool) -> str:
     """How a prepared stage is made as its records give it now
     (`job-system.md`, *The task*) -- the one composer of a stage's way back:
-    never launched, its group prepared again; launched on the hierarchical
-    layout, its group prepared again as long as what it computes is
-    unchanged, else :func:`redo_launched` (`execution/job-request.md` § 5);
-    launched on the flat layout, :func:`redo_launched`.  ``launched`` is the
-    caller's answer from the one rule (`materialize.ever_launched`)."""
+    never launched, its group prepared again; launched, its group prepared
+    again as long as what it computes is unchanged, else
+    :func:`redo_launched` (`execution/job-request.md` § 5).  ``launched`` is
+    the caller's answer from the one rule (`materialize.ever_launched`)."""
     base, request = calc.base, calc.request
     g = request.group_of(stage) if request is not None else None
     if g is not None and not launched:
         return ("prepare its group again -- it was never launched:\n"
                 + block(prep_group_lines([g], base=base)))
-    if g is not None and calc.shape.keeps_attempts_as_directories:
+    if g is not None:
         return ("prepare its group again -- a launched stage is prepared "
                 "again for its job request, each deck the same calculation "
                 "as its runs ran:\n" + block(prep_group_lines([g], base=base))
@@ -427,13 +422,12 @@ def order_recorded(*, base) -> str:
 def launch_pending(stage: str, group: Optional[int], attempt: Optional[str],
                    *, base) -> List[str]:
     """The launch that sends ``stage``'s run that is opened and not launched
-    -- ``attempt``, its folder's name (``None`` on the flat layout, which
-    opens no run before its launch): prep's first run goes with its group,
+    -- ``attempt``, its folder's name: prep's first run goes with its group,
     which goes whole the first time; a run a refused send opened for a stage
-    launched before goes with the stage alone, launched again (D4)."""
-    from ..paths import attempt_index
-    n = attempt_index(attempt) if attempt else None
-    if n or group is None:
+    launched before (`materialize.opened_by_refused_send`) goes with the
+    stage alone, launched again (D4)."""
+    from .materialize import opened_by_refused_send
+    if group is None or (attempt and opened_by_refused_send(attempt)):
         return launch_lines(TASK, stage, base=base)
     return launch_lines(TASK, base=base, groups=[group])
 
@@ -492,7 +486,7 @@ def stage_lines(kind: str, *, base, groups=(), stages=(),
 
 
 __all__ = ["PROG", "TASK", "BENCH", "words_for", "bundle_flag", "command",
-           "configured_mode", "stage_group", "prep_group_lines",
+           "configured_mode", "prep_group_lines",
            "prep_sequence_lines",
            "launch_lines", "lines", "run_first", "name_a_stage",
            "block", "said_lines", "reason_of", "rollback", "redo_launched", "way_back",

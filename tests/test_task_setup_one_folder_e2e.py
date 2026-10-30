@@ -26,8 +26,7 @@ import json
 import pytest
 
 from support.road import read_request, write_request
-from support.task_setup_page import (every_card_text, file_text, unfold,
-                                     wait_for_file)
+from support.task_setup_page import every_card_text, unfold, wait_for_file
 
 pytestmark = pytest.mark.e2e
 
@@ -59,9 +58,29 @@ def _describe(root, name, label, stage):
         struct, PySCFConfig(job_name=label),
         [Stage(name=stage, overrides={})],
         engine="pyscf",
-        calculation="optimization", shape="hierarchical", name=label,
+        calculation="optimization", name=label,
         source=str(src)), dest)
     return dest
+
+
+def _hand_over(dest, label):
+    """A hand-over as the Structure-optimization tab leaves one -- made by
+    the hand-over route, its files written where the browser writes them.
+    The hand-over file's path."""
+    from molbuilder.web.app import create_app
+    from support.envelope import envelope
+    dest.mkdir(parents=True)
+    out = create_app(config={}).test_client().post(
+        "/api/task-setup/handover", json=dict(
+            {"structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])},
+            engine="pyscf", calculation="optimization", name=label,
+            params={"job_name": label}, dest=str(dest))).get_json()
+    assert out["ok"], out
+    for f in out["structure_files"]:
+        (dest / f["name"]).write_text(f["text"])
+    (dest / out["template_name"]).write_text(out["template_text"])
+    (dest / out["handover_name"]).write_text(out["handover_text"])
+    return dest / out["handover_name"]
 
 
 @pytest.fixture(scope="module")
@@ -112,6 +131,10 @@ def test_opening_another_folder_leaves_nothing_of_the_first(
                   str(b))
     page.wait_for_function(
         "() => document.body.innerText.includes('betalabel')", timeout=20000)
+    # ...AND THE READ ENDED, not only its first card painted: the column
+    # says so (`aria-busy`, § 9a).
+    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
+                           timeout=20000)
 
     # THE TASK SETUP SURFACE, not the whole document.  The projects sidebar
     # is a different component with its own contract (`web/projects.md`) and
@@ -144,27 +167,21 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
     the new calculation.
 
     So: open the described one, then move to a folder that can say less.
-    The described one names a queue, which its queue card says -- a card a
-    hand-over does not show (the 2.27.0 review: it stayed, that queue on
-    it, and a click on it wrote into no description).
+    The described one names a queue, which its queue card says; the
+    hand-over's proposal names none (the 2.27.0 review: the last folder's
+    queue stayed on the card, and a click on it wrote into no description).
 
-    MUTATION THIS MUST FAIL AGAINST: the hand-over branch drawing no
-    machine card (`applySetMachine`), so the queue card is never hidden.
+    MUTATION THIS MUST FAIL AGAINST: the read's reset not hiding *What
+    this calculation writes* (`hideWritten` in `_resetPerFolderState`):
+    nothing a hand-over draws repaints that card, so the described folder's
+    file names -- `alphalabel_…` -- stay on the page.
     """
     a, _b = two_calcs
     req = read_request(a)
     req["allocation"] = {"domain": "alphaqueue"}
     write_request(a, req)
     bare = isolated_projects_root / "umbrella" / "optimization" / "bare-run"
-    bare.mkdir(parents=True)
-    (bare / "task.1st.json").write_text(json.dumps({
-        "schema": "molbuilder/task-handover@1",
-        "engine": {"name": "pyscf"},
-        "run": {"name": "barelabel", "id": "barelabel_H2"},
-        "structure": {"source": "bare.xyz", "formula": "H2", "atoms": 2},
-        "awaiting": ["shape", "stages"],
-        "_what": "a hand-over, as the Structure-optimization tab leaves one",
-    }))
+    _hand_over(bare, "barelabel")
 
     _open(page, flask_server, a)
     page.wait_for_function(
@@ -173,20 +190,24 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
         page.click("#ts-target-choice .opt")     # the machine, as a person picks it
     page.wait_for_function(
         "() => document.body.innerText.includes('alphaqueue')", timeout=20000)
+    # ...AND ITS FILES LISTED, so a card the move must clear has something
+    # in it (`task-setup.md` § 7.2).
+    page.wait_for_selector("#ts-written-card:not([hidden])",
+                           state="attached", timeout=20000)
 
     page.evaluate("(d) => window.molbuilder.projects.publishCommit(d, '')",
                   str(bare))
-    # WAIT FOR THE LOAD TO FINISH, not for the first card to paint.  The
-    # editor is filled LAST, after two awaits, while "what came over" paints
-    # before them -- so waiting on the new run's name let the assertions run
-    # mid-load and fail on a buffer that was about to be replaced anyway.
-    # `awaiting` is the hand-over's own key and appears in no description,
-    # so this marks completion without being the thing under test.
+    # WAIT FOR THE LOAD TO FINISH, not for the first card to paint: the
+    # folder's read ends with the hand-over's proposal landed, and the
+    # column says so (`aria-busy`, § 9a) -- the proposal's description
+    # names the new run.
     page.wait_for_function(
         "() => { const n = document.querySelector('.CodeMirror');"
         "  return !!(n && n.CodeMirror"
-        "            && n.CodeMirror.getValue().includes('awaiting')); }",
+        "            && n.CodeMirror.getValue().includes('barelabel')); }",
         timeout=20000)
+    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
+                           timeout=20000)
 
     text = every_card_text(page)
     assert "alphalabel" not in text, (
@@ -199,98 +220,27 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
 
 
 
-def test_a_hand_over_of_a_kind_that_fixes_its_shape_starts_at_it(
-        page, flask_server, isolated_projects_root):
-    """`web/task-setup.md` § 4, `engines/stages.md` § 6.7: a SIESTA
-    vibration's hand-over -- the road from the Spectrum page -- opens with
-    its kind's shape on the card, pressed, the other not offered, the kind's
-    one sentence beside it; the proposal is drawn at that shape, and Save
-    writes it.
-
-    THE SILENT FAILURE, shipped in 2.47.5: the card offered both shapes,
-    flat among them, and Save refused it in a sentence the card never said.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the folder answer asking the shape
-    only of a calculation that opens; the page's hand-over branch not
-    reading the answer."""
-    from molbuilder.kind_table import kind
-    from molbuilder.task import of as task_of
-    from molbuilder.web.app import create_app
-    from support.envelope import envelope
-    from conftest import write_pseudos
-    d = isolated_projects_root / "handover" / "frequency" / "kind_shape"
-    d.mkdir(parents=True)
-    # SIESTA's pseudopotentials beside the calculation, as a person's lie
-    # there (`engines/siesta.md`).
-    write_pseudos(d, ["H"])
-    out = create_app(config={}).test_client().post(
-        "/api/task-setup/handover", json=dict(
-            {"structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])},
-            engine="siesta", calculation="vibration", name="handed",
-            params={"system_label": "handed"}, dest=str(d))).get_json()
-    assert out["ok"], out
-    for f in out["structure_files"]:
-        (d / f["name"]).write_text(f["text"])
-    (d / out["template_name"]).write_text(out["template_text"])
-    (d / out["handover_name"]).write_text(out["handover_text"])
-    fixed = kind("vibration").on("siesta").fixed_shape
-
-    _open(page, flask_server, d)
-    page.wait_for_selector("#ts-shape-fixed:not([hidden])", timeout=20000)
-    assert page.inner_text("#ts-shape-fixed") == fixed["why"]
-    page.wait_for_function(
-        "() => document.getElementById('ts-shape-hier')"
-        "  .getAttribute('aria-pressed') === 'true'", timeout=20000)
-    assert page.locator("#ts-shape-flat").is_disabled(), (
-        "a SIESTA vibration's hand-over was offered the flat shape")
-    wait_for_file(page, "task", '"shape": "hierarchical"')
-
-    page.click("#ts-save")
-    page.wait_for_function(
-        "() => { const n = document.getElementById('ts-save-said');"
-        " return n && !n.hidden && /Saved/.test(n.textContent); }",
-        timeout=20000)
-    assert task_of(d).shape == fixed["shape"]
-
-
 def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
         page, flask_server, isolated_projects_root):
-    """`task-setup.md` § 4, § 7a, § 8: a hand-over becomes a calculation on
-    this page -- a shape picked, the proposal drawn into both records, a run
-    card filled, the shape changed once more, Save -- and the folder then
-    holds the description and its job request, the run card's value in the
-    job request, the save said beside the button after the folder is read
-    again.  The page arrives from another folder, as a hand-over sent while
-    Task setup is open does.
+    """`task-setup.md` § 4, § 7a, § 8, § 9a: a hand-over becomes a
+    calculation on this page -- the proposal drawn into both records as it
+    opens, a run card filled, Save -- and the folder then holds the
+    description, stating the one layout (`engines/stages.md` § 6.7), and its
+    job request, the run card's value in the job request, the save said
+    beside the button after the folder is read again.  The page arrives from
+    another folder, as a hand-over sent while Task setup is open does.
 
-    THE SILENT FAILURES: a shape picked on a hand-over that proposes
-    nothing -- the page editing the hand-over's own text as a description;
-    the save's confirmation wiped by the folder's re-read -- a save that
-    looks like nothing happened; a shape changed after the proposal
-    rebuilding it, every edit made since lost; the run card's value written
-    into no record.
+    THE SILENT FAILURES: a hand-over that proposes nothing -- the page
+    editing the hand-over's own text as a description; the save's
+    confirmation wiped by the folder's re-read -- a save that looks like
+    nothing happened; the run card's value written into no record.
 
-    MUTATIONS THIS MUST FAIL AGAINST: the hand-over's text taken for a
-    description (the shape written into it, no stages proposed); a shape
-    change proposing the records again; the empty job-request text a
-    hand-over loads, written into a document not on show, taken for a hand
-    edit that does not parse -- the shape refused, the hand-over never
-    finished."""
-    from molbuilder.web.app import create_app
-    from support.envelope import envelope
+    MUTATION THIS MUST FAIL AGAINST: the hand-over's text taken for a
+    description (no stages proposed): no run card is drawn, and the
+    description written states no `shape`."""
     d = (isolated_projects_root / "handover" / "optimization"
          / "finished_here")
-    d.mkdir(parents=True)
-    out = create_app(config={}).test_client().post(
-        "/api/task-setup/handover", json=dict(
-            {"structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])},
-            engine="pyscf", calculation="optimization", name="handed",
-            params={"job_name": "handed"}, dest=str(d))).get_json()
-    assert out["ok"], out
-    for f in out["structure_files"]:
-        (d / f["name"]).write_text(f["text"])
-    (d / out["template_name"]).write_text(out["template_text"])
-    (d / out["handover_name"]).write_text(out["handover_text"])
+    _hand_over(d, "handed")
     came_from = _describe(isolated_projects_root / "handover", "came-from",
                           "camefromlabel", "camefromstage")
 
@@ -300,14 +250,18 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
         timeout=20000)
     page.evaluate("(d) => window.molbuilder.projects.publishCommit(d, '')",
                   str(d))
+    # THE NEW FOLDER READ -- its run named in the editor -- and the read
+    # ended with the proposal landed (`aria-busy`, § 9a).
     page.wait_for_function(
         "() => { const n = document.querySelector('.CodeMirror');"
         "  return !!(n && n.CodeMirror"
-        "            && n.CodeMirror.getValue().includes('awaiting')); }",
+        "            && n.CodeMirror.getValue().includes('handed')); }",
         timeout=20000)
     page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
                            timeout=20000)
-    page.click("#ts-shape-card .opt[data-shape='hierarchical']")
+    # THE PROPOSAL, DRAWN AS THE HAND-OVER OPENED (§ 9a): the description
+    # it becomes, stating the one layout.
+    wait_for_file(page, "task", '"shape": "hierarchical"')
     # THE GROUPS CARD APPEARS WITH THE PROPOSAL, folded as every card is:
     # opened as a person opens it.
     unfold(page, "ts-groups-card")
@@ -317,13 +271,6 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
     page.fill(field, "2")
     page.dispatch_event(field, "change")
     wait_for_file(page, "request", '"threads": 2')
-    # ...THE SHAPE CHANGED ONCE MORE: one field of the description, the
-    # edits made since kept.
-    page.click("#ts-shape-card .opt[data-shape='flat']")
-    wait_for_file(page, "task", '"shape": "flat"')
-    assert '"threads": 2' in file_text(page, "request"), (
-        "a shape changed after the proposal rebuilt the records, the run "
-        "card's value lost")
 
     page.click("#ts-save")
     page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
@@ -335,7 +282,13 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
     said = page.evaluate(
         "() => document.getElementById('ts-save-said').textContent")
     assert "task.json" in said and "job-request.json" in said, said
-    assert json.loads((d / "task.json").read_text())["shape"] == "flat"
-    request = json.loads((d / "job-request.json").read_text())
+    # BOTH RECORDS THROUGH THEIR READERS -- the description's refuses any
+    # layout but the one (`task.LAYOUT`), by name.
+    from molbuilder import job_request
+    from molbuilder.task import of as task_of
+    described = task_of(d)
+    assert [st.name for st in described.stages] == ["coarse"], described
+    request = job_request.of(d, described).to_dict()
     assert request["stages"] == {
         "coarse": {"group": 1, "execution": {"threads": 2}}}, request
+

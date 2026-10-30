@@ -12,7 +12,6 @@ from support.road import (group_words, read_request, shelf_headers,
 
 import json
 import pathlib
-import os
 
 import numpy as np
 import pytest
@@ -32,18 +31,15 @@ from support.machines import SLURM, WORKSTATION
 
 
 def _artifacts(calc, point, stage="01_coarse"):
-    """Where a trial's files ARE — the attempt when one exists.
+    """Where a trial's files ARE — its attempt.
 
     A trial keeps attempts (`project-layout.md` § 1.5a), so its deck and
-    wrapper sit in ``run-<n>`` rather than in the trial directory. This is
-    the reader rule `runstatus` and `summarize` both use: *the latest
-    attempt where there is one, the container otherwise* — which also keeps
-    these tests correct for a flat calculation, where there is no attempt
-    layer at all.
+    wrapper sit in ``run-<n>`` rather than in the trial directory -- the
+    one reader rule, `materialize.latest_attempt`.
     """
     from molbuilder.jobset.materialize import latest_attempt
     c = pathlib.Path(calc) / stage / "bench" / f"bench-{point}"
-    return latest_attempt(c) or c
+    return latest_attempt(c)
 
 
 @pytest.fixture(autouse=True)
@@ -108,7 +104,7 @@ def calc(tree):
                             engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization",
-                            shape="hierarchical", name="JOB",
+                            name="JOB",
                             source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
@@ -219,8 +215,9 @@ def test_each_trials_resources_carry_its_own_coordinate(calc):
 
 def test_trials_nest_inside_the_stage_they_measure(calc):
     """`job-contracts.md` § 6.3: ``<NN>_<stage>/bench/bench-<point>/`` — the
-    trial in the stage's ``bench/`` CONTAINER, and its links reach the
-    bundle root through a COMPUTED depth, not a hardcoded hop."""
+    trial in the stage's ``bench/`` CONTAINER, its deck and run script real
+    files in it (`project-layout.md` § 1.5: every file goes in as a real
+    file, never a link)."""
     js = _prep_bench(calc)
     name = js["jobs"][0]["name"]
     d = _artifacts(calc, name)
@@ -229,9 +226,6 @@ def test_trials_nest_inside_the_stage_they_measure(calc):
     assert script.is_file() and not script.is_symlink()   # L2: real files
     wrapper = d / f"JOB-{name}_01_coarse.run.sh"
     assert wrapper.is_file() and not wrapper.is_symlink()
-    # nothing landed at the old flat location
-    assert not (calc / f"bench-{name}").exists()
-    assert not (calc / f"point-{name}").exists()
 
 
 def test_cli_prep_bench_requires_a_stage(calc):
@@ -244,9 +238,10 @@ def test_cli_prep_bench_requires_a_stage(calc):
 
 
 def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
-    """The whole verb through the CLI: trials prepared and listed, and NO
-    attempt machinery -- a sweep's jobs are named by coordinate, so the
-    run-kind's stage/attempt tail must not run."""
+    """The whole verb through the CLI: trials prepared and listed, each
+    named by its path from the calculation's folder -- every trial holds
+    its run, `run-0`, as a stage does (`project-layout.md` § 1.5a), so a
+    bare folder name would name nobody."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner().invoke(jobset_group,
@@ -805,15 +800,14 @@ def test_the_verb_renders_the_trial_decks_it_promises(calc):
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
     from molbuilder.jobset.naming import job_dir_names
     from molbuilder.jobset.model import JobSet
-    from molbuilder.paths import Shape
-    _dirs = job_dir_names(JobSet.from_dict(js), Shape.named(open_calculation(calc).task.shape))
+    _dirs = job_dir_names(JobSet.from_dict(js))
     from molbuilder.jobset.materialize import latest_attempt
     for j in js["jobs"]:
-        # The reader rule: the latest attempt where there is one
-        # (`project-layout.md` § 1.5a). `job_dir_names` answers where a
-        # trial LIVES; its deck is in the attempt.
+        # The reader rule: the latest attempt (`project-layout.md` § 1.5a).
+        # `job_dir_names` answers where a trial LIVES; its deck is in the
+        # attempt.
         _c = calc / _dirs[j["name"]]
-        deck = ((latest_attempt(_c) or _c) / j["script"]).read_text()
+        deck = (latest_attempt(_c) / j["script"]).read_text()
         m = re.search(r"^SystemLabel\s+(\S+)", deck, re.M)
         assert m and m.group(1) == f"JOB-{j['name']}", (
             f"{j['script']}: identity line {m.group(1) if m else None!r} "
@@ -858,8 +852,8 @@ def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
 def test_a_one_stage_calculation_is_one_named_stage(tree):
     """R1 (review-4 keystone): the single-parameter-set calculation is a
     FIRST-CLASS run, one NAMED, tokened stage (§ 6.5): prep, launch's plan
-    and status all reach it, one rung deep, with no dangling link anywhere
-    in the attempt.  What a launch writes as its run starts -- its launch
+    and status all reach it, one rung deep, its run holding real files.
+    What a launch writes as its run starts -- its launch
     record -- is read off a real run (plan § 5y)."""
     from click.testing import CliRunner
     from molbuilder import describe as D
@@ -876,14 +870,11 @@ def test_a_one_stage_calculation_is_one_named_stage(tree):
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             _one_stage(),
                             engine="siesta",
-                            calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tree / "h2.xyz")),
+                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
     _state_the_run(dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, ["H"])
     r = CliRunner()
     # § 6.5: the bare verb does NOT guess the lone stage.  A rule that held
     # only at length one would stop holding the moment a second stage was
@@ -899,21 +890,17 @@ def test_a_one_stage_calculation_is_one_named_stage(tree):
                                   str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
     rung = dest / "01_coarse"                 # the one rung, tokened
-    assert (rung / "run-0").is_dir()          # its attempt
+    assert (rung / "run-0").is_dir()          # its first run
     assert not (dest / "run-0").exists()      # never at the root
-    assert not (dest / "bench-JOB").exists()  # nor named for a benchmark
     # ITS NEXT LINE, the launch with nothing named (`job-system.md`, *The
     # task*): it sends the group that can go.
     assert "launch task --mode" in res.output
-    # Every link in the attempt RESOLVES: existence of a symlink proves
-    # nothing -- resolve it.
-    links = [p for p in (rung / "run-0").iterdir()]
-    assert links, "the attempt is empty -- prep changed shape"
-    assert not any(p.is_symlink() for p in links), (
-        "L2 (roadmap 7.10): an attempt holds real copies, never links")
-    for link in links:
-        assert link.resolve().is_file(), \
-            f"{link.name} -> {os.readlink(link)} dangles"
+    # THE RUN HOLDS REAL FILES (`project-layout.md` § 1.5: every file goes
+    # in as a real file, never a link).
+    entries = sorted((rung / "run-0").iterdir())
+    assert entries, "the run is empty"
+    assert all(p.is_file() and not p.is_symlink() for p in entries), [
+        p.name for p in entries if not p.is_file() or p.is_symlink()]
     js = json.loads((dest / "job-set.json").read_text())
     assert js["kind"] == "ladder" and len(js["jobs"]) == 1
     res = r.invoke(jobset_group, ["launch", "task", "--stage", "coarse", "--bundle",
@@ -940,8 +927,7 @@ def test_a_charged_decks_promised_script_ships_with_it(tree):
         D.build_description(struct, SiestaConfig(system_label="JOB",
                                                  net_charge=1), _one_stage(),
                             engine="siesta",
-                            calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tree / "h2.xyz")),
+                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
         dest, struct=struct)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
@@ -983,8 +969,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             _one_stage(),
                             engine="siesta",
-                            calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tree / "h2.xyz")),
+                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
@@ -1010,14 +995,12 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     for j in js["jobs"]:
         from molbuilder.jobset.naming import job_dir_names as _jdn
         from molbuilder.jobset.model import JobSet as _JS
-        from molbuilder.paths import Shape as _Shape
-        _dmap = _jdn(_JS.from_dict(js),
-                     _Shape.named(open_calculation(dest).task.shape))
+        _dmap = _jdn(_JS.from_dict(js))
         from molbuilder.jobset.materialize import latest_attempt
         # the reader rule (`project-layout.md` 1.5a): a trial's
-        # deck is in its attempt where the shape keeps one.
+        # deck is in its attempt.
         _c = dest / _dmap[j["name"]]
-        assert ((latest_attempt(_c) or _c) / j["script"]).is_file()
+        assert (latest_attempt(_c) / j["script"]).is_file()
         assert "01_coarse" in j["script"], j["script"]
     # A-2 (2026-08-13): the trials live IN their stage's bench container,
     # beside the record just read -- not at the root, where the
@@ -1052,107 +1035,12 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             engine_ladder("siesta", "publishable"),
                             engine="siesta",
-                            calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tree / "h2.xyz")),
+                            calculation="optimization", name="JOB", source=str(tree / "h2.xyz")),
         ladder)
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(ladder),
                                   "--no-sbatch"])
     assert res.exit_code != 0
     assert "name one" in res.output
-
-
-def test_two_flat_stages_benchmarks_do_not_collide(tree):
-    """A5 (redo 2026-08-12): FLAT has no stage directory for `bench/` to
-    nest inside, so unqualified, two stages' benchmarks shared one root
-    container and each prep overwrote the other's job-set, plan and
-    verdict.  The token qualifies the container's own name in flat —
-    ``bench_<NN>_<stage>/`` — underscore-joined so it cannot read as a
-    trial's dash-joined ``bench-<point>``."""
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "calc"
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            engine_ladder("siesta", "publishable"),
-                            engine="siesta",
-                            calculation="optimization",
-                            shape="flat", name="JOB",
-                            source=str(tree / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / "environment.json").write_text(
-        Environment(machine="this", scheduler=WORKSTATION,
-                    topology=Topology(sockets=1, cores_per_socket=4,
-                                      gpus_per_node=1,
-                                      gpu_type="a100"),
-                    env_init=_ENTERS).to_json() + "\n")
-    for stage in ("coarse", "medium"):
-        prep_bench(open_calculation(dest), stage,
-                   allocation=Resources(mpi_np=8, cpus_per_task=8),
-                   emit_sbatch=False)
-    coarse = dest / "bench_01_coarse" / "job-set.json"
-    medium = dest / "bench_02_medium" / "job-set.json"
-    assert coarse.is_file() and medium.is_file()
-    # each record still names ITS stage's decks: no overwrite happened
-    cj = json.loads(coarse.read_text())
-    mj = json.loads(medium.read_text())
-    assert all("01_coarse" in j["script"] for j in cj["jobs"])
-    assert all("02_medium" in j["script"] for j in mj["jobs"])
-    # A-1 (2026-08-13): the TRIALS live in the same qualified container as
-    # the record.  Until job_dir_names and prep shared one spelling
-    # (paths.bench_container), flat trials fell into an unqualified
-    # shared root bench/ -- two stages' same-coordinate trials collided
-    # (run.json cross-contamination read as "all trials launched") while
-    # the underway-ask globbed the qualified container and found nothing.
-    for cont, record in (("bench_01_coarse", cj), ("bench_02_medium", mj)):
-        for j in record["jobs"]:
-            assert (dest / cont / f"bench-{j['name']}").is_dir(), (
-                f"trial {j['name']} not in {cont}/")
-
-
-def test_a_flat_one_stage_calculation_preps_to_completion(tree):
-    """A2 (redo 2026-08-12): FLAT prep is COMPLETE without an attempt --
-    only an explicit ``--from``/``--cold`` (an attempt ask flat cannot
-    serve) reaches prepare_attempt's refusal."""
-    from click.testing import CliRunner
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.structure import Structure
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tree / "h2.xyz").write_text(struct.to_xyz())
-    dest = tree / "calc"
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            _one_stage(),
-                            engine="siesta",
-                            calculation="optimization", shape="flat",
-                            name="JOB", source=str(tree / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    _state_the_run(dest)
-    r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
-                                  str(dest), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    assert "no attempt to open" in res.output
-    assert "launch task" in res.output
-    assert not (dest / "run-0").exists()
-    # an attempt ASK on flat is still the one refusal, with its story --
-    # said where it is asked, at the first launch (`job-system.md` § 5.4)
-    res = r.invoke(jobset_group, ["launch", "task", "--group", "1",
-                                  "--bundle", str(dest), "--mode", "direct",
-                                  "--dry-run", "--cold"])
-    assert res.exit_code != 0
-    assert "flat" in res.output
 
 
 # --------------------------------------------------------------------- #
@@ -1347,7 +1235,7 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tree):
                             [Stage(name="only", overrides={})],
                             engine="pyscf",
                             calculation="optimization",
-                            shape="hierarchical", name="JOB",
+                            name="JOB",
                             source=str(tree / "h2.xyz")),
         dest)
     (dest / "environment.json").write_text(
@@ -1391,7 +1279,7 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tree):
                             [Stage(name="only", overrides={})],
                             engine="pyscf",
                             calculation="optimization",
-                            shape="hierarchical", name="JOB",
+                            name="JOB",
                             source=str(tree / "h2.xyz")),
         dest)
     req = read_request(dest)

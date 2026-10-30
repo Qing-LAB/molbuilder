@@ -253,9 +253,9 @@ not get its own rules: it surfaces the ones above.
   there is more than one — `GET /api/task-setup/machines` answers with the
   records and a `choice_required` flag computed by the same rule the CLI
   refuses on (§ 4, C1), so the two cannot disagree about what is ambiguous.
-- **It reuses the components that exist.** The card is the shape chooser's
-  `.ts-choice`/`.opt`, which the design already uses for exactly this kind
-  of question — a choice with no default — plus `.card`, `.hint`,
+- **It reuses the components that exist.** The card is the machine and queue
+  cards' `.ts-choice`/`.opt`, which the design already uses for exactly
+  this kind of question — a choice with no default — plus `.card`, `.hint`,
   `.ts-needs` and `.ts-state`. No stylesheet was touched: a second chooser
   would be two components for one idea, and the pressed and hover states
   would then be maintained twice.

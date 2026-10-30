@@ -6,9 +6,7 @@ generator, and the writer that drops the script next to the FDF.
 
 from __future__ import annotations
 
-import sys
 import tempfile
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -98,56 +96,22 @@ class TestEffectiveL:
 
 
 #: A stage's names, as prep hands them over -- the script reads that stage's
-#: output by the catalogue's template (`runfiles.RunNames.template`).
-_NAMES = RunNames("job", "01_relax", False)
-_OUT = _NAMES.template(".out")
+#: output through the catalogue's names (`runfiles.RunNames`).
+_NAMES = RunNames("job", "01_relax")
 
 
 class TestScriptGeneration:
     def test_compiles(self):
         s = render_correction_script(system_label="job", q=1,
-                                     out_template=_OUT)
+                                     stage=_NAMES.stage)
         compile(s, "makov_payne_correction.py", "exec")
 
     def test_carries_q_and_label(self):
         s = render_correction_script(
-            system_label="my-job", q=-2, epsilon_r=4.0, out_template=_OUT)
+            system_label="my-job", q=-2, epsilon_r=4.0, stage=_NAMES.stage)
         assert "SYSTEM_LABEL = \"my-job\"" in s
         assert "NET_CHARGE   = -2" in s
         assert "DEFAULT_EPS  = 4.0" in s
-
-
-    def test_script_handles_missing_out(self):
-        s = render_correction_script(system_label="job", q=1,
-                                     out_template=_OUT)
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            (d / "makov_payne_correction.py").write_text(s)
-            result = subprocess.run(
-                [sys.executable, "makov_payne_correction.py"],
-                cwd=str(d),
-                capture_output=True, text=True, timeout=10,
-            )
-            assert result.returncode != 0
-            assert "not found" in result.stderr
-
-    def test_script_reads_its_own_stages_newest_run(self):
-        """The script reads this stage's newest run by its number -- found
-        2026-10-18: it took the newest ``*-run*.out`` of the folder by file
-        time, another stage's when a flat calculation's stages share it."""
-        s = render_correction_script(system_label="job", q=1,
-                                     out_template=_OUT)
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            (d / "makov_payne_correction.py").write_text(s)
-            for name in (_NAMES.name(".out", 0), _NAMES.name(".out", 1),
-                         RunNames("job", "02_other", False).name(".out", 0)):
-                (d / name).write_text("")       # the other stage's, newest
-            result = subprocess.run(
-                [sys.executable, "makov_payne_correction.py"],
-                cwd=str(d), capture_output=True, text=True, timeout=10)
-            assert f"reading {_NAMES.name('.out', 1)}," in result.stdout, (
-                result.stdout, result.stderr)
 
 
 # --------------------------------------------------------------------- #

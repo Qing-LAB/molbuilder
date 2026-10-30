@@ -4,7 +4,7 @@ the job request (`execution/job-request.md` § 3.3, `project-layout.md`
 
 Stages that do not build on one another -- a transport ladder's seed and its
 two leads -- wait in the queue once instead of once each.  Each member is
-prepared as it would be alone and keeps its own attempt, deck, run script
+prepared as it would be alone and keeps its own run, deck, run script
 and records; the group is written on each member's job (`Job.members`) with
 one header for the group's job, and launch sends that job, walking the
 members in the ladder's order.
@@ -333,13 +333,6 @@ def sequence_names(base, task, request, numbers: Sequence[int]
         for g in sorted(numbers) for n in request.members(g)])
 
 
-def number_of(request, stage: str) -> Optional[int]:
-    """The group ``stage`` is in, as the job request numbers it -- a name in
-    any case one name -- or ``None`` for a stage it does not hold.  The one
-    lookup (`JobRequest.group_of`)."""
-    return request.group_of(stage)
-
-
 def named(request, number: int) -> str:
     """Group ``number`` in words, by its members as well as its number --
     ``group 2 (device)`` -- since a group is matched by its members and a
@@ -387,12 +380,6 @@ def formed_again(request, jobs, numbers) -> List[int]:
         out |= more
 
 
-def group_members(request, number: int) -> List[str]:
-    """The stages group ``number`` holds, in ladder order -- the one lookup
-    (`JobRequest.members`)."""
-    return request.members(number)
-
-
 def header_of(calc, job):
     """The header of the job ``job`` is prepared in -- a group of several's,
     in the calculation's `launch/`, named by its members' own files, their
@@ -402,13 +389,13 @@ def header_of(calc, job):
     from pathlib import Path
     from ..runfiles import LAUNCH_DIR
     from .naming import run_names
-    base, jobset, shape = calc.base, calc.jobset, calc.shape
+    base, jobset = calc.base, calc.jobset
     members = members_of(job)
     if len(members) < 2:
         return None
     jobs = [jobset.job(m) for m in members]
     return Path(base) / LAUNCH_DIR / GroupNames.of_stages(jobset.name, [
-        run_names(jobset, j, shape).stage
+        run_names(jobset, j).stage
         for j in jobs if j is not None]).name(".sbatch")
 
 
@@ -425,7 +412,6 @@ def names_for(base, task, members: Sequence[str]) -> GroupNames:
 __all__ = ["GroupError", "SHARED", "card_shares",
            "may_join",
            "default_groups", "fresh_groups",
-           "check_groups", "envelope", "number_of", "named", "members_of",
+           "check_groups", "envelope", "named", "members_of",
            "same_members", "formed_again", "header_of",
-           "group_members",
            "names_for", "own_request", "sequence_names", "sequence_request"]

@@ -2,7 +2,7 @@
 and ONE reader of them.
 
 `runwrap` writes the log: its own lines -- the section banner, the host and
-environment, the run index, the launch -- and, tee'd in, everything the
+environment, the try's number, the launch -- and, tee'd in, everything the
 engine said on stdout and stderr; the monitor adds its start, *starting* and
 then *started* or the error that stopped it (`run-reports.md` § 2.6).  This module is the one spelling of the
 wrapper's lines, which the writer renders and every reader reads with: the
@@ -18,7 +18,7 @@ Results tab does.
 ONE LOG PER START.  Each start of the wrapper opens a log of its own, and a
 warm retry hands back the output it was started with before it starts again
 (`running-a-job.md` § 3.5), so a log holds its start alone.  A log is read as
-sections, each opening with the start banner, and the run a log is FOR is its
+sections, each opening with the start banner, and the try a log is FOR is its
 first section's (:func:`log_of_run`).
 """
 from __future__ import annotations
@@ -100,7 +100,7 @@ _WRAPPER_LOG_LINES = (
                                   + re.escape(VERSION_LABEL)
                                   + r"\s*:\s*(\S+)")),
 )
-#: ``[molbuilder] run index: <N>  ->  <out>`` -- which run the section is,
+#: ``[molbuilder] run index: <N>  ->  <out>`` -- which try the section is,
 #: written by the run script (`runwrap`).
 RUN_INDEX_LINE = "[molbuilder] run index:"
 _WRAP_RUN_INDEX = re.compile("^" + re.escape(RUN_INDEX_LINE) + r"\s*(\d+)")
@@ -169,9 +169,9 @@ def finish_started(path) -> bool:
 
 
 def first_run_index(path) -> Optional[int]:
-    """The run a session log is FOR -- its first section's run index -- read
-    from the head down to that line; ``None`` when it states none (a launch
-    refused before the run index was resolved)."""
+    """The try a session log is FOR -- its first section's run index -- read
+    from the head down to that line; ``None`` when it states none (a start
+    refused before the try's number was checked)."""
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -185,12 +185,11 @@ def first_run_index(path) -> Optional[int]:
 
 def logs_by_run(directory, label: str
                 ) -> Dict[Tuple[Optional[str], int], Path]:
-    """Every session log of ``label`` here, by the run it is FOR --
-    ``(stage, run) -> path``, the run being the log's first section's (the
-    module's note), the newest log where several are that run's.  The stage is the
-    name's: the log and the run's output are named from the same deck, so
-    they carry the same token, and in a flat directory every stage's logs
-    sit side by side."""
+    """Every session log of ``label`` here, by the try it is FOR --
+    ``(stage, run) -> path``, ``run`` the log's first section's try (the
+    module's note), the newest log where several are that try's.  The stage
+    is the name's: the log and the try's output are named from the same
+    deck, so they carry the same token."""
     out: Dict[Tuple[Optional[str], int], Path] = {}
     # `find` orders a counterless name by name, and a stamp's order is the
     # clock's, so the newest of a run's logs is the one kept.
@@ -203,7 +202,7 @@ def logs_by_run(directory, label: str
 
 def log_of_run(directory, label: str, run: int,
                stage: Optional[str] = None) -> Optional[Path]:
-    """The session log of the run ``run`` of ``label`` at ``stage`` (``None``
-    matching only ``None``), or ``None`` when no log is that run's
+    """The session log of try ``run`` of ``label`` at ``stage`` (``None``
+    matching only ``None``), or ``None`` when no log is that try's
     (:func:`logs_by_run`)."""
     return logs_by_run(directory, label).get((stage, run))

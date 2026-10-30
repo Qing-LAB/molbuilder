@@ -46,14 +46,11 @@ copy names its scheduler as a block since 2.10.1 (`configuration.md` § 5
 M-2) -- the word it held becomes its kind, each command its kind's own name,
 run from PATH as before.
 
-**The run files**: a flat calculation's files that carry no run's number
-(W57, :func:`_migrate_run_numbers`), renamed for their stage's newest run;
-a transport lead's files on the calculation's label rather than its own
-stem (:func:`_migrate_lead_names`) -- every file before 2.17.0, its prep's
-log before 2.23.2 -- renamed, and the plan's deck names with them; a flat
-folder's last run (:func:`_migrate_last_run`), recorded for runs launched
-before 2.7.0.  A stage whose run script was written for the old names is
-said with its way on.
+**The run files**: a transport lead's files on the calculation's label
+rather than its own stem (:func:`_migrate_lead_names`) -- every file before
+2.17.0, its prep's log before 2.23.2 -- renamed, and the plan's deck names
+with them.  A stage whose run script was written for the old names is said
+with its way on.
 
 **The template** (:func:`_decide_template`): the electronic state's items
 (M6, ``science/chemistry-correctness.md`` § 2a) -- PySCF's ``spin`` and the
@@ -91,9 +88,9 @@ if TYPE_CHECKING:                      # annotations only
 #: when a migration finds nothing to rewrite (:func:`migrate_state`).
 CURRENT = ("nothing to migrate: it holds nothing an older molbuilder wrote "
            "-- its records are whole, its record of its machine is this "
-           "molbuilder's, its run files carry their run's number and its "
-           "leads' their own stem, and its template carries no item an older "
-           "molbuilder meant otherwise, renamed or a release retired")
+           "molbuilder's, its leads' run files are on their own stem, and "
+           "its template carries no item an older molbuilder meant "
+           "otherwise, renamed or a release retired")
 
 
 class MigrateError(ValueError):
@@ -349,9 +346,10 @@ class _Records:
     older molbuilder wrote, so migrate reads the bytes through the owners'
     paths (`task.path_of`, `JobSet.path_of`) and the template's door, and
     decides every rewrite on these bodies; every step reads them here.  The
-    machine's record and the run records are read once each by the step
-    that rewrites them, and the write keeps each old file, byte for byte,
-    beside its new one."""
+    machine's record is read once by its own step, which rewrites it
+    (:func:`_migrate_machine_record`); a run's launch record is only read,
+    through its owner (`materialize.newest_launched`) -- no step rewrites
+    one.  The write keeps each old file, byte for byte, beside its new one."""
     base: Path
     #: `task.json` as it lies, decided in place by the records step.
     task: dict
@@ -389,6 +387,12 @@ class _Records:
         if not calcdirs.described(base):
             raise MigrateError(refusal(base))
         obj = _read_raw(_task.path_of(base))
+        # ANOTHER LAYOUT, refused before any rule is asked: a layout is
+        # never rewritten (`engines/stages.md` § 6.7).
+        try:
+            _task.refuse_another_layout(obj)
+        except ValueError as exc:
+            raise MigrateError(str(exc)) from None
         jobsets: Dict[Path, dict] = {}
         for folder in [base, *sweep_set_dirs(base)]:
             path = JobSet.path_of(folder)
@@ -985,57 +989,6 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
              f"from PATH, as before)"], writes)
 
 
-def _migrate_run_numbers(calc) -> Tuple[List[str], List[Tuple[Path, Path]]]:
-    """A flat calculation's run files written before each carried its run's
-    number (plan W57 decisions 2 and 6): every file of a stage whose role
-    the catalogue numbers where a stage's runs share a folder, still
-    unnumbered (`runrecord.unnumbered_files`), given the number of its
-    stage's newest run -- 0 for a stage never launched.  A rename keeps
-    every byte, so nothing is kept beside it.  Decided, never done here:
-    returns what it says (a line each) and the moves.
-
-    **What it cannot fix is said too**: such a stage was prepared before
-    launch gave each run its number, so its run script takes no ``--run`` --
-    to launch it, its group is prepared again; launched, from the state
-    saved before its group's first launch (`project-layout.md` § 1.6.1)."""
-    base, task = calc.base, calc.task
-    if task.shape != "flat":
-        return [], []
-    from ..runfiles import FIRST_ATTEMPT, RunNames, latest_run, parse
-    from ..runrecord import unnumbered_files
-    from .commands import way_back
-    from .naming import ladder_homes
-    said: List[str] = []
-    moves: List[Tuple[Path, Path]] = []
-    for home in ladder_homes(base, task):
-        # AN OLDER RELEASE'S FILES, which were on the calculation's label
-        # for every stage -- read as they were written, not as `home.names`
-        # names them now.
-        names = RunNames.of(task.label, home.token, task.shape)
-        old = unnumbered_files(base, names)
-        if not old:
-            continue
-        newest = latest_run(base, task.label, stage=home.token)
-        n = FIRST_ATTEMPT if newest is None else newest
-        stage_moves = [(f, base / names.name(parse(f.name, task.label).role,
-                                              n))
-                       for f in old]
-        moves += stage_moves
-        said += [f"{f.name} -> {new.name} (run {n}, the stage's newest)"
-                 for f, new in stage_moves]
-        # LAUNCHED, whether its launch record is numbered yet or not: one
-        # written before the numbering is among the files moved here.
-        launched = (newest is not None
-                    or any(parse(f.name, task.label).role == ".run.json"
-                           for f in old))
-        said.append(f"{home.name}: its run script was written before launch "
-                    f"gave each run its number (--run N) -- "
-                    + ("to launch it again, " if launched
-                       else "to launch it, ")
-                    + way_back(home.name, calc=calc, launched=launched))
-    return said, moves
-
-
 def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
                                        "_Writes"]:
     """A transport lead's files named on the calculation's label; a lead's
@@ -1054,9 +1007,10 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
     whose leads' files are on their stems, or that has none."""
     from ..paths import attempt_dir, attempts_in, bench_container
     from ..persist import json_text
-    from ..runfiles import RunNames, find
-    from ..runrecord import newest_run
+    from ..runfiles import find
+    from ..runrecord import LaunchRecordError
     from .commands import way_back
+    from .materialize import newest_launched
     from .naming import ladder_homes
     from .model import FILENAME as JOBSET_FILENAME, JobSet
     import dataclasses
@@ -1074,7 +1028,7 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
                if home.dir is not None and home.dir.is_dir() else [])
         # ITS BENCHMARK'S LOG lies in its bench container, on the stem the
         # lead's prep named it (`paths.bench_container`).
-        bench = base / bench_container(calc.shape, home.token)
+        bench = base / bench_container(home.token)
         logs_at = [base] + ([bench] if bench.is_dir() else [])
         stage_moves: List[Tuple[Path, Path]] = []
         for folder in [*logs_at, *own]:
@@ -1092,10 +1046,12 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
         if not any(old.parent in own for old, _new in stage_moves):
             continue
         # PREPARED FOR THE OLD NAMES: its run script and header name them.
-        # LAUNCHED, read off the old names as they were written -- the run
-        # door's own `newest_run`, asked with the names the files carry now.
-        old_names = RunNames.of(task.label, home.token, task.shape)
-        launched = any(newest_run(f, old_names) is not None for f in own)
+        # LAUNCHED, as its runs' launch records say (`materialize.
+        # newest_launched`, the one rule).
+        try:
+            launched = newest_launched(home.dir) is not None
+        except LaunchRecordError as exc:
+            raise MigrateError(f"{exc}; nothing was written") from None
         said.append(f"{home.name}: its run script and header were written "
                     f"for the old names -- "
                     + ("to launch it again, " if launched
@@ -1111,60 +1067,6 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
             said.append(f"{JOBSET_FILENAME}: each lead's deck named on its "
                         f"own stem")
     return said, moves, writes
-
-
-#: When the run script began recording a flat folder's last run -- the
-#: release that brought it, 2.7.0, shipped 2026-10-13 16:41 UTC
-#: (`project-layout.md` § 5, the `<label>.last-run` row: `jobset migrate`
-#: writes it for runs launched before), in a launch record's own spelling.
-_LAST_RUN_RECORDED_FROM = "2026-10-13T16:41:03Z"
-
-
-def _migrate_last_run(base: Path, task, moves
-                      ) -> Tuple[List[str], Optional[Tuple[Path, str]]]:
-    """A flat calculation whose runs were launched before its folder recorded
-    its last run (2.7.0): ``<label>.last-run`` written for the run its
-    readers took as the last until then -- the newest launch record from
-    before that release, by when it was written, then its stage's place in
-    the ladder, then its run's number -- read where each record will lie
-    once ``moves`` (the run numbering) are made.  A run launched since
-    records its own as its engine starts, so one still queued, or stopped
-    before it started, is never named.  Decided, never done here: returns
-    what it says and the write; nothing for a folder that holds the record,
-    or launched no run before it."""
-    if task.shape != "flat":
-        return [], None
-    from ..identity import parse_token
-    from ..persist import read_json
-    from ..runfiles import find_by_role, parse, run_name
-    from ..runrecord import last_run_path
-    target = last_run_path(base, task.label)
-    if target.is_file():
-        return [], None
-    renamed = dict(moves)
-    best, key = None, None
-    for f in find_by_role(base, ".run.json"):
-        rec = parse(renamed.get(f, f).name, task.label)
-        if rec is None or rec.stage is None or rec.run is None:
-            continue
-        try:
-            body = read_json(f)
-        except (OSError, ValueError) as exc:
-            raise MigrateError(
-                f"{f} does not read ({exc}) -- which run last wrote this "
-                f"folder cannot be told; nothing was written.") from None
-        when = str((body or {}).get("launched_at") or "")
-        if when >= _LAST_RUN_RECORDED_FROM:
-            continue
-        token = parse_token(rec.stage)
-        k = (when, token[0] if token else -1, rec.run)
-        if key is None or k > key:
-            best, key = run_name(task.label, rec.stage, rec.run), k
-    if best is None:
-        return [], None
-    return ([f"{target.name}: {best} -- the last run here, by the rule that "
-             f"held before 2.7.0 (its newest launch record)"],
-            (target, best + "\n"))
 
 
 def migrate_state(base) -> List[str]:
@@ -1189,12 +1091,9 @@ def migrate_state(base) -> List[str]:
     for path, (text, rules) in m_writes.items():
         writes.add(path, text, rules)
     calc = rec.calculation(task)
-    n_said, moves = _migrate_run_numbers(calc)
-    lead_said, lead_moves, lead_writes = _migrate_lead_names(calc)
-    moves += lead_moves
+    lead_said, moves, lead_writes = _migrate_lead_names(calc)
     for path, (text, rules) in lead_writes.items():
         writes.add(path, text, rules)
-    l_said, l_write = _migrate_last_run(base, task, moves)
     try:
         decision = _migrate_template(rec, task)
     except MigrateError:
@@ -1216,7 +1115,7 @@ def migrate_state(base) -> List[str]:
             writes.add(path_of(base),
                        json_text(_edited(task, decision).to_dict()),
                        decision.task_rules)
-    if not writes and not moves and l_write is None:
+    if not writes and not moves:
         # NOTHING TO MIGRATE is an answer, not a refusal.
         return []
     taken = [new for _old, new in moves if new.exists()]
@@ -1250,11 +1149,9 @@ def migrate_state(base) -> List[str]:
         write_bytes(path, text.encode("utf-8"))
     for old, new in moves:
         old.rename(new)
-    if l_write is not None:
-        write_bytes(l_write[0], l_write[1].encode("utf-8"))
     said += [f"{path.relative_to(base)} kept as {kept[path].name}"
              for path in writes if path in kept]
-    said += n_said + lead_said + l_said + t_said
+    said += lead_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
                   "wrote, rewritten -- each change with its reason",

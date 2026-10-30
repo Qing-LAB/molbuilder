@@ -208,7 +208,7 @@ def test_a_description_refuses_what_its_kind_does_not_offer():
                    for st in fresh_stages("vibration", "siesta"))
     with pytest.raises(D.DescribeError) as refused:
         D.build_description(WATER(), SiestaConfig(system_label="JOB"), ladder,
-                            engine="siesta", shape="hierarchical", name="JOB",
+                            engine="siesta", name="JOB",
                             calculation="vibration", source="water.xyz")
     said = str(refused.value)
     assert "relax_type = 'none'" in said, said

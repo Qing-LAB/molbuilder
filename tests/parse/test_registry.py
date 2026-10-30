@@ -3,7 +3,7 @@
 
 Pins docs/model/parse.md (registry + dispatch) and
 § 3 (ParseResult discriminators).  A SIESTA output's detection and parse are
-read off a run made on the road, `tests/test_siesta_flat_run_e2e.py`.
+read off a run made on the road, `tests/test_siesta_optimization_run_e2e.py`.
 """
 
 from __future__ import annotations

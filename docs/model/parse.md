@@ -844,16 +844,10 @@ So a directory whose run has written only its seeded log has an `openable` and
 no `active_source`; that is correct in both directions.
 
 **`active_source` is the run the folder speaks for** — the run door's one rule
-(`execution/architecture.md` § 3.2): the highest stage launched, by its
-launch records — none launched, the folder's one stage with a deck — then
-that stage's newest run, by one rule (`runrecord.newest_run`): where a
-stage's runs share the folder, its newest launched run; in a folder of the
-run's own, its newest try, the highest index its files reached. *(The stage first is the user's ruling of
-2026-09-04: within one directory a re-run of an earlier rung must not hijack the
-run's reported state, and only the stage ordinal can say so. The run index
-within a stage replaced the file's time on 2026-10-04, plan B11: a copied or
-restored folder reorders times, never runs, and four readers already took the
-newest run index while `openable_in` took the newest file.)*
+(`execution/architecture.md` § 3.2): its own, at its newest try
+(`runrecord.newest_run`), the highest index its files reached — never the
+newest file: a copied or restored folder reorders times, never runs (plan B11,
+2026-10-04).
 
 > **What this paragraph used to claim, and why it was withdrawn.** It named
 > `summarize._latest_run_file`'s highest-`-runN` rule as a *competing* rule
@@ -867,9 +861,8 @@ newest run index while `openable_in` took the newest file.)*
 >
 > A third spelling existed until 2026-10-03: `transport/record.py` picked
 > the newest `.out` by **mtime alone**, twice. It agreed with this rule in
-> practice — a transport calculation is refused unless its shape is
-> hierarchical (`task.py`), so each rung has its own directory and there is
-> only one stage to order — but it was a third place the question was
+> practice — each rung has its own directory, so there is only one stage to
+> order — but it was a third place the question was
 > answered, and a copied or restored folder reorders file times and not
 > runs. It reads the newest RUN by its number now, the run door's
 > (`runs.Run.outputs`; plan W38 M4, B11).
@@ -903,9 +896,8 @@ is read with beside it are floor 6's (`views_of`,
 
 | the folder (`calcdirs.where`) | its own answer — the run door | the views it is read with — floor 6 | what a reader opens |
 |---|---|---|---|
-| **a run** — an attempt, a flat benchmark's trial, a point of a run of points | everything: its state, its record | a point's folder, the run of points' view of its run and the point it is | its run's result (the catalogue's result roles); where its kind's record declares its rung's folder opens otherwise, that — a transmission run's folder, its calculation's report, at the point the folder is (a rung that runs once: its one point) |
-| **a flat calculation's root** — its stages' runs share it | everything, of the run it speaks for: its state, its record | its ladder — its stages, each stage's runs by run number | the result of the run it speaks for |
-| **a hierarchical calculation's root** | no state, no record | its ladder — its stages, each stage's every run | what its kind's record says its root opens — a transport calculation's description, through which its report is opened; else a result at the root, where one is |
+| **a run** — an attempt, a point of a run of points | everything: its state, its record | a point's folder, the run of points' view of its run and the point it is | its run's result (the catalogue's result roles); where its kind's record declares its rung's folder opens otherwise, that — a transmission run's folder, its calculation's report, at the point the folder is (a rung that runs once: its one point) |
+| **a calculation's root** | no state, no record | its ladder — its stages, each stage's every run | what its kind's record says its root opens — a transport calculation's description, through which its report is opened; else a result at the root, where one is |
 | **a run of points' root** — a stage's attempt whose rung runs per point | no state, no record; its own result, or nothing (`openable`) | the run of points' view: its state and count, the point at work and that point's record | the view's: the run's own result once its root holds one, until then the point at work's |
 | **a benchmark's folder** | no state, no record | — (its trials compared, the bench summary) | its sweep's `job-set.json` |
 | **any other container** — a stage's folder, a trial holding its attempts | no state, no record: its runs are the folders below it | — | a result in it, where one is |
@@ -917,10 +909,9 @@ is read with beside it are floor 6's (`views_of`,
 > *(2026-09-19)*. This table had three rows and the first read *"what
 > calculation is this? — the **directory** — `task.json`"*. The code took that
 > at its word and read `task.json` from the handed directory, which is the
-> right place only in the FLAT shape: `project-layout.md` § 1.0 puts the
-> description above the run-directory wall, so in the hierarchical shape it is
-> two levels up. Every hierarchical spectrum run therefore opened its molwatch
-> stub. The first repair walked up to the nearest ancestor holding `task.json`,
+> wrong place: `project-layout.md` § 1.0 puts the description above the
+> run-directory wall, two levels up. Every spectrum run therefore opened its
+> molwatch stub. The first repair walked up to the nearest ancestor holding `task.json`,
 > fenced by the `projects/` tree and a depth cap — a search with a tuned
 > number, standing in for a fact the tree could simply state. **`project-layout.md`
 > § 1.4a now has the directory state it**, and the walk and its
@@ -1033,8 +1024,8 @@ reader waiting for a header 5.4.2 prints only above several.)*
 > a lone file of that kind in the folder — `_sidecar.read_frozen_atoms`,
 > `_siesta_fdf_path_for`, `siesta_mdnc.sibling_md_nc`. Measured on two real H₂
 > calculations of ours, it answered nothing: the structure pair sits at the
-> calculation root, named for its structure file, never beside a run's output,
-> and a flat folder holds two decks, so the lone-deck guess declined. The
+> calculation root, named for its structure file, never beside a run's
+> output. The
 > guards that made it safe — a label prefix on a `_` boundary, *two candidates
 > decline* — were guards on a guess, and `xv2xyz --from-run` wrote an isolated
 > molecule's held atom away and its axes periodic (plan D19).
@@ -1235,12 +1226,10 @@ those), the deck's name, and its `sha256`.
 
 **The run's own deck, handed by its caller** — the run door's
 (`runs.declared(run).deck`, `execution/architecture.md` § 3.2), as the labels
-and the box are (§ 5.3): a flat calculation's stages share one folder and each
-run reads its own deck, never another stage's. A deck that states nothing, a
-PySCF deck (no extractor yet) or no run of ours is `None` — a missing contract
-block is an ordinary state, never a guess. *(Until 2026-10-04 this took the
-one `.fdf` in a directory, or nothing, so a flat calculation with two stages
-recorded none — plan W56, the review's ruling 1.)* Transport's citation asks
+and the box are (§ 5.3): each run reads its own deck, never another
+stage's. A deck that states nothing, a PySCF deck (no extractor yet) or no run
+of ours is `None` — a missing contract block is an ordinary state, never a
+guess. Transport's citation asks
 the run door too: a cited folder is the run it speaks for, its deck that run's
 ([`transport.md` § 3.1](?doc=engines/transport.md); W56-2, 2026-10-09).
 
@@ -1411,8 +1400,8 @@ host's for the data files; `molbuilder-pySCF` since its result's data file,
 
 `parse/engines/` reads what the *engine* produced. The **wrapper** measures the
 run too, and writes files of its own beside the deck (`running-a-job.md` § 4.1),
-each indexed by run so a re-run neither appends to nor truncates the previous
-one: the monitor's `<base>-runN.monitor.log` and `<base>-runN.util.csv` for
+each indexed by try so a warm retry neither appends to nor truncates the
+previous try's: the monitor's `<base>-runN.monitor.log` and `<base>-runN.util.csv` for
 every engine, and — for the SIESTA family, whose rows it reads — the SCF-timing
 tee's `<base>-runN.scf-timing.log` (`runfiles.WRITTEN` says so per row). Being
 the wrapper's output rather than the engine's is no reason to read them a
@@ -1559,17 +1548,18 @@ the endings `run_status` already scanned
 (§ 2b), SIESTA's `fdf` log, the wrapper log, the instruments (§ 5c), the deck,
 `run.json`, `.gathered-from` and `.concluded`.
 
-**Which run.** An attempt directory can hold several runs: a warm retry re-runs
-in place, so one `run-0/` holds `-run0` and `-run1`. The record describes the
-latest `-runN` of the stage the directory's status speaks for (§ 5.1), and
-lists each earlier run with its ending. Its files are that run's `-runN`
-artifacts; SIESTA's `fdf.<stamp>.log` whose stamp is the `.out`'s `>> Start of
-run` to the second — SIESTA opens the log in that second; and the wrapper log
-whose first section is run N — each start of the wrapper writes its own, a warm
-retry handing back the output it was started with before it starts again
-(`execution/running-a-job.md` § 3.5). `run.json`,
-`.gathered-from`, the deck and the pseudopotential files belong to the attempt,
-not to one run.
+**Which try.** A run folder can hold several tries
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a
+warm retry re-runs in place, so one `run-0/` holds `-run0` and `-run1`. The
+record describes the folder's newest try (§ 5.1), and lists each earlier try
+with its ending. Its files are that try's `-runN` artifacts; SIESTA's
+`fdf.<stamp>.log` whose stamp is the `.out`'s `>> Start of run` to the
+second — SIESTA opens the log in that second; and the wrapper log whose first
+section is try N — each start of the wrapper writes its own, a warm retry
+handing back the output it was started with before it starts again
+(`execution/running-a-job.md` § 3.5). `run.json`, `.continued-from`,
+`.gathered-from`, the deck and the pseudopotential files belong to the run,
+not to one try: what the run continued from is said for every try in it.
 
 **A run's files are found by molbuilder's names, so the run is ours or it is
 not one.** A SIESTA run made by hand — `input.fdf`, `siesta.out` — or an output
@@ -1600,15 +1590,16 @@ them *(they were dropped until 2026-10-06)*.
 
 ```text
 record
-├── run                  the latest -runN
-├── earlier              [{run, ended}]  each earlier run, with its ending when its file states one
+├── run                  the newest try's N
+├── earlier              [{run, ended}]  each earlier try, with its ending when its file states one
 ├── computation
 │   ├── engine           program · version · build{…} · binary · python
 │   ├── solver           algorithm · elpa_gpu · diag_blocksize · distribution · parallel_over_k
 │   ├── host             hostname · user · cwd · conda_env · python · node_phys_cores ·
 │   │                    node_sockets · node_cores_per_socket · machine{node, cores, mem_gb, gpu}
 │   ├── launch           mode · command · job_id · launched_at · placed_on ·
-│   │                    continued_from · ranks_asked · threads · ranks · threads_engine
+│   │                    continued_from · sequence · ranks_asked · threads · ranks ·
+│   │                    threads_engine
 │   ├── time             run_start_local · run_end_local · engine_elapsed_s · s_per_iter ·
 │   │                    iters_measured · s_per_iter_<phase> · iters_measured_<phase> · rows_<phase> ·
 │   │                    progress · estimated_at
@@ -1626,8 +1617,8 @@ record
 ```
 
 `verdict.state` and `detail` are `run_status`'s words for the directory
-(§ 2b's map); `verdict.ended` is the latest run's `run_state` and `converged`
-its phases'; `earlier[].ended` is the same for each earlier run. **`deck.path`
+(§ 2b's map); `verdict.ended` is the newest try's `run_state` and `converged`
+its phases'; `earlier[].ended` is the same for each earlier try. **`deck.path`
 is whole** — the absolute path the Run panel's **View** opens, joined to
 nothing (`web/results.md` § 0.3); what the run continued from and what its
 deck was gathered from are as the run's records state them, said as words.
@@ -1657,7 +1648,7 @@ wrapper launched and its node, never its output
 | `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
-| `run-json` | `run.json` — a flat stage's run's own `<basename>-run<N>.run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — retry_of, the run a warm retry retries, `execution/running-a-job.md` § 3.5 — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
+| `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
 | `concluded` | `<base>-runN.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `deck_record.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
@@ -1790,8 +1781,7 @@ keeping it so (`deck_record.same_calculation`, [`job-request.md`](?doc=execution
 the run's was copied from — the stage's, or a bias point's within it
 (`runs.Run.prepared`, since 2026-10-11; the stage's folder alone until then,
 which a bias point's run never matched), where the run door places it —
-`runs.Run.stage_deck`; a flat
-run's deck IS its stage's, one file, so a flat record states none, nor does a benchmark trial's, whose deck is rendered into its run) · for a gathered rung, what was taken from which attempt, read
+`runs.Run.stage_deck`; a benchmark trial's record states none, its deck rendered into its run) · for a gathered rung, what was taken from which attempt, read
 from `.gathered-from` (`runrecord.read_gathered_from`, beside its writer
 `write_gathered_from`) — the provenance a transport record cites, never a newest-file guess.
 
@@ -1912,8 +1902,8 @@ mixing — and its couplings are negative: two symptoms of § 5d.6 at once.
 ### 5d.6 Verdict — how it ended, whether each phase converged, what was not used
 
 * **How it ended** — `verdict.state` and `detail` for the directory, and
-  `verdict.ended` for the latest run's own file (§ 2b); each earlier run's
-  `ended` when its file states one — a run with a later run after it and no
+  `verdict.ended` for the newest try's own file (§ 2b); each earlier try's
+  `ended` when its file states one — a try with a later try after it and no
   ending was cut off, which its own file cannot say.
 * **Converged** — `verdict.converged`, per phase (§ 2b, § 4b). A TranSIESTA
   device's convergence is its NEGF phase's.

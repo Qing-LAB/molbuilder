@@ -40,7 +40,8 @@ from ..structure import Structure
 #: role cannot be respelled in the emitted lines while the header, the
 #: warm-file declaration and the reader all say something else.
 from ..runfiles import (ROLE_CHK, ROLE_CONSTRAINTS, ROLE_GEOM_TRAJ,  # noqa: E402
-                        ROLE_INITIAL, ROLE_OPTIMIZED, ROLE_SPECTRA)
+                        ROLE_INITIAL, ROLE_MOLWATCH, ROLE_OPTIMIZED,
+                        ROLE_SPECTRA)
 from ..runfiles import ROLE_PYSCF_LOG as ROLE_LOG  # noqa: E402
 
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
@@ -63,11 +64,9 @@ GEOMETRIC_APPENDS = "_optim.xyz"
 def run_file_expr(names, role: str) -> str:
     """THE PYTHON EXPRESSION A DECK NAMES ONE OF ITS RUN'S FILES WITH: its
     ``JOB`` and the tail the stage's names give the role
-    (`runfiles.RunNames.tail`) -- a template, its ``{run}`` filled with the
-    number the run script gave the script (``_MB_RUN``,
-    `runtime_info.run_given`).  The same expression in both shapes: where
-    the stage's runs have folders of their own the template has nothing to
-    fill (plan W57 decision 2, `engines/pyscf.md` § 2).
+    (`runfiles.RunNames.tail`) -- a file of the run, the same for every try
+    in it; a role the try numbers is refused there, since only the run
+    script knows the try's number.
 
     PySCF's own restart files (``.chk``, ``_optimized.xyz`` --
     `pyscf/warm-files.toml`, the one vocabulary) are no row of the
@@ -77,23 +76,17 @@ def run_file_expr(names, role: str) -> str:
     from ..warmfiles import warm_list
     if role in warm_list("pyscf").suffixes:
         return f"JOB + {_rf_tail(role)!r}"
-    return f"JOB + {names.tail(role)!r}.format(run=_MB_RUN)"
+    return f"JOB + {names.tail(role)!r}"
 
 
 def geometric_prefix_expr(names) -> str:
     """The expression for geomeTRIC's PREFIX -- its trajectory's name, as
-    the stage's names give it (numbered where the stage's runs share a
-    folder), less the tail geomeTRIC appends: the trajectory then lands
-    under the run's own name."""
+    the stage's names give it, less the tail geomeTRIC appends: the
+    trajectory then lands under the run's own name."""
     tail = names.tail(ROLE_GEOM_TRAJ)[:-len(GEOMETRIC_APPENDS)]
-    return f"JOB + {tail!r}.format(run=_MB_RUN)"
+    return f"JOB + {tail!r}"
 
 
-def _shown(names, role: str) -> str:
-    """``role``'s name as a deck's header shows it -- the run's number as
-    ``<N>`` where the name carries it (`runfiles.RunNames.template`)."""
-    from ..runfiles import RUN_FIELD
-    return names.template(role).replace(RUN_FIELD, "<N>")
 # ONE name for each of the two doors this writer opens, imported once at
 # module scope -- as `siesta/input.py` does.
 from .. import script_emit as _sc
@@ -181,27 +174,22 @@ def spec_for(struct: Structure,
 
     ``names`` are the stage's (`runfiles.RunNames`): **which rung of the
     ladder this deck is**, and every name it chooses.  `stages.md` § 1.1a: a
-    PySCF ladder is N decks and N jobs, so two rungs are two processes
-    writing into the same calculation -- and anything they both name would
-    collide.  So the stage's token is in every name the script itself
-    chooses: PySCF's own log (``<JOB>_<NN>_<stage>.log``), geomeTRIC's
-    trajectory (``<JOB>_<NN>_<stage>_geom_optim.xyz``) and the molwatch
-    trajectory log
+    PySCF ladder is N decks and N jobs, and the stage's token is in every
+    name the script itself chooses (consequence 1): PySCF's own log
+    (``<JOB>_<NN>_<stage>.log``), geomeTRIC's trajectory
+    (``<JOB>_<NN>_<stage>_geom_optim.xyz``) and the molwatch trajectory log
     (``<JOB>_<NN>_<stage>.molwatch.log``) -- the same three names SIESTA
-    suffixes (§ 1.1a, consequence 1) -- and, where the stage's runs share a
-    folder, the run's number after it, filled when the script runs
-    (:func:`run_file_expr`; plan W57 decision 2).
+    suffixes (:func:`run_file_expr`).
 
     **The ``JOB`` literal stays unsuffixed**, exactly as SIESTA's ``SystemLabel``
     does and for the same reason (§ 1.1a, consequence 2): the engine finds the
     previous rung's checkpoint and optimized geometry by that name, so a name
     that changed per rung would hide them.
 
-    The DECK's filename still carries a token when `prep` gives it one: the
-    caller builds that name, not this function.
+    The deck's own filename carries the token too; the caller names it, not
+    this function.
     """
     cfg = config or PySCFConfig()
-    stage_token = names.stage
     # THE ONE PLACEMENT, computed once: the atom literal writes these
     # positions and the deck's ENGINE-OFFSET record states the same frame.
     from ..cell import to_engine as _to_engine
@@ -268,8 +256,7 @@ def spec_for(struct: Structure,
             # ONE rung's targets, because one deck IS one rung: a ladder is N
             # decks and N jobs (`stages.md` § 1.1a).  A summary of the whole
             # ladder would be this deck describing runs it cannot see.
-            out.append("Optimizer : geomeTRIC"
-                       + (f"   (rung {stage_token})" if stage_token else ""))
+            out.append(f"Optimizer : geomeTRIC   (rung {names.stage})")
             out.append(f"            maxsteps={cfg.geom_max_steps}, "
                        f"grms={cfg.geom_grms:.1e} Ha/Bohr, "
                        f"gmax={cfg.geom_gmax:.1e}, "
@@ -278,38 +265,7 @@ def spec_for(struct: Structure,
             out.append(f"Solvent   : {cfg.solvent} ({cfg.solvent_method}, "
                        f"eps={_SOLVENTS.get(cfg.solvent, '?')})")
         out.append("")
-        # The stage by its NAME, through the one printer (`job-system.md`
-        # § 5.3): the token is a legal name of another stage.
-        from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE,
-                                deck_launch, hand_run)
-        _launch = deck_launch(stage_token)
-        if _launch:
-            out.append("Run with -- the managed way, and the usual one, from "
-                       "the calculation's folder:")
-            out.extend(f"    {line}" for line in _launch)
-            out.append(f"    {LAUNCH_MODE_NOTE}")
-        else:
-            out.append("Run with:")
-        out.append(f"    {hand_run(names)}    # {HAND_RUN_NOTE}")
-        out.append("")
-        out.append("    The wrapper beside this file is self-contained: it runs")
-        out.append("    unattended in a shell that inherits nothing, so it bakes")
-        out.append("    in the environment activation, sizes the threads, tees")
-        out.append("    the output, traps the scheduler's SIGTERM, and records")
-        out.append("    where and when it ran (`running-a-job.md` section 2).")
-        out.append("")
-        out.append("Or drive PySCF yourself:")
-        # THE ROLE PySCF'S OWN STDOUT HAS, not SIESTA's: every reader
-        # dispatches on the role (`model/parse.md` § 5.5).
-        out.append(f"    python {names.name('.py')} --run 0 > "
-                   f"{names.name(PYSCF_STDOUT_ROLE, 0)} 2>&1")
-        out.append("")
-        out.append("    Perfectly good, and the reason the plain invocation is")
-        out.append("    still written here -- but then the environment, the")
-        out.append("    redirection and the signal handling are yours: activate")
-        out.append("    the env first, and nothing cleans up if the job is")
-        out.append("    killed.  (The .molwatch.log is written by this script")
-        out.append("    either way, so a run started by hand is still watchable.)")
+        out += emit_run_with(names)
         out.append("")
         out += emit_outputs_block(
             names, log=cfg.log_file, chk=cfg.chkfile,
@@ -481,11 +437,10 @@ def spec_for(struct: Structure,
         out.append(f"    symmetry   = {cfg.symmetry},")
         out.append(f"    verbose    = {cfg.verbose},")
         if cfg.log_file:
-            # § 1.1a consequence 1: the token reaches the engine's log, exactly as
-            # it reaches SIESTA's ``.out``.  Two rungs are two processes in one
-            # folder, and an unsuffixed name would have the second overwrite the
-            # first.  ``JOB`` itself stays unsuffixed (consequence 2) -- what the
-            # engine finds the previous rung's state by must not move.
+            # The token reaches the engine's log, exactly as it reaches
+            # SIESTA's ``.out`` (`stages.md` § 1.1a, consequence 1).  ``JOB``
+            # itself stays unsuffixed (consequence 2) -- what the engine finds
+            # the previous rung's state by must not move.
             # THE TAIL, CUT FROM THE GRAMMAR (`runfiles.tail`): the script
             # supplies its own `JOB` at run time, so only what follows the
             # label can be emitted here -- and it is the end of the name
@@ -1157,9 +1112,9 @@ def _emit_optimization(cfg: PySCFConfig,
     if emit_constraints:
         out.append("        constraints           = _FROZEN_CONSTRAINTS_PATH,")
     if cfg.write_trajectory:
-        # The rung's own trajectory name.  Two rungs are two processes writing
-        # into one calculation, so the one name this script chooses for itself
-        # has to say which rung it is (`stages.md` § 1.1a, consequence 1).
+        # The rung's own trajectory name: the one name this script chooses
+        # for itself says which rung it is (`stages.md` § 1.1a, consequence
+        # 1).
         # THE PREFIX IS DERIVED FROM THE ROLE, not assembled beside it
         # (`job-contracts.md` § 2.2a).  Compose the name the file will HAVE,
         # then take off the tail geomeTRIC is going to add: what is left is the
@@ -1204,11 +1159,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     write the log's end lines at exit.
 
     ``names`` are the rung's (`runfiles.RunNames`), and they reach two
-    things: the log's own filename (:func:`run_file_expr` -- a run's own
-    where the stage's runs share a folder) and, by their stage token, the one
-    entry of its convergence-target map.  § 1.1a consequence 1 -- a ladder
-    is N decks and N jobs, so two rungs are two processes in one folder and
-    an unsuffixed log would have the second overwrite the first.
+    things: the log's own filename (:func:`run_file_expr`) and, by their
+    stage token, the one entry of its convergence-target map.
 
     The emitter is instantiated **early** -- before the relaxation -- so the
     log file (header + initial-preview block) exists from the moment the
@@ -1235,7 +1187,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
         out.append("# script, writes one self-contained, marker-delimited")
         out.append("# record per accepted opt step to the molwatch log named in")
         out.append("# the manifest above (the rung's own")
-        out.append("# <JOB>[_<NN>_<stage>].molwatch.log).  molwatch reads this")
+        out.append("# <JOB>_<NN>_<stage>.molwatch.log).  molwatch reads this")
         out.append("# file directly (no sibling-file discovery needed) and shows")
         out.append("# trajectory + energy + force + per-cycle SCF residual plots.")
         out.append("#")
@@ -1250,8 +1202,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     # finishes.  The SCF callback is wired on the production mf below.
     # This rung's log takes the basename of the deck that produced it, and
     # that is ONE rule rather than two (`stages.md` § 7) -- so the name comes
-    # from the stage's names rather than being spelled again here: decided
-    # here, at render, as a template whose run's number the run fills.
+    # from the stage's names rather than being spelled again here, decided
+    # at render (:func:`run_file_expr`).
     # Convergence targets for the molwatch header.  ONE entry, because one
     # deck is one rung (§ 1.1a): the values are this config's own, already
     # resolved by `prep` from the description ⊕ this stage's overrides.  The
@@ -1299,7 +1251,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     # THE ATOMS THIS RUN HOLDS go into its log's header (`model/parse.md`
     # § 5.3): the run states them, as a SIESTA run's `.out` does.
     out.append(f'_molwatch = _mb_MolwatchEmitter('
-               f'_mb_outfile({run_file_expr(names, ".molwatch.log")}), '
+               f'_mb_outfile({run_file_expr(names, ROLE_MOLWATCH)}), '
                f'JOB, mol, '
                f'runtime_info=_RUNTIME_INFO, '
                f'convergence_targets=_CONVERGENCE_TARGETS, '
@@ -1367,17 +1319,14 @@ def emit_outfile_helper() -> List[str]:
     optimisation (geomeTRIC builds scratch in a temp dir; PySCF's
     ``mol.build()`` writes the ``.log`` relative to the cwd at ``gto.M()``
     time), and a person may run ``python myjob.py`` from another folder.  The
-    wrapper runs a deck from its attempt directory, but the deck must be
-    robust when invoked directly too, so it lands all of its outputs next to
+    wrapper runs a deck from its run folder, but the deck must be robust
+    when invoked directly too, so it lands all of its outputs next to
     itself.
 
-    ``absolute()``, never ``resolve()``: a hierarchical attempt may address
-    the deck through a link (``run-0/<job>.py -> ../../<job>.py``), and the
-    attempt owns everything the run produces (project-layout.md "attempt"
-    row).  ``absolute()`` anchors beside the path that was INVOKED, so the
-    outputs stay in the attempt; ``resolve()`` walks out of it into the stage
-    root, where the next attempt overwrites them (found by the 2026-08-19
-    E2E run).
+    ``absolute()``, never ``resolve()``: the run folder owns everything the
+    run produces (`project-layout.md` § 1), and ``absolute()`` anchors beside
+    the path that was INVOKED -- the run's own copy of the deck -- where
+    ``resolve()`` would follow a link a person made to it out of the run.
     """
     return ["from pathlib import Path as _MB_Path",
             "_MB_SCRIPT_DIR = _MB_Path(__file__).absolute().parent",
@@ -1427,8 +1376,7 @@ def emit_run_settings_block(cfg) -> List[str]:
 def emit_script_head() -> List[str]:
     """Every PySCF deck's first lines after its run settings: the deck's
     anchor (:func:`emit_outfile_helper`), ``mb_pyscf.pyz`` on its import
-    path (:func:`emit_bundle_path`), the run's number its run script gave it
-    (``_MB_RUN``, `runtime_info.run_given`), and the run's threads --
+    path (:func:`emit_bundle_path`), and the run's threads --
     ``THREADS``, the run's own count, or ``None`` to take the allocation's
     -- sized, with
     BLAS capped, before numpy is imported (`runtime_info.cap_threads`), from
@@ -1438,16 +1386,10 @@ def emit_script_head() -> List[str]:
     Everything else the deck imports from the bundle comes after numpy's own
     import (:func:`emit_bundle_imports`): a member importing numpy ahead of
     the caps would start its BLAS on every core (`engines/pyscf.md` § 3)."""
-    from ..runtime_info import (cap_threads, probe_gpu, run_given,
-                                runtime_facts)
+    from ..runtime_info import cap_threads, probe_gpu, runtime_facts
     return (emit_outfile_helper() + emit_bundle_path()
-            + emit_bundle_imports(cap_threads, runtime_facts, probe_gpu,
-                                  run_given)
-            + ["# This run's number, as its run script gave it (--run N): "
-               "the names below",
-               "# fill it in where they carry it (engines/pyscf.md § 2).",
-               "_MB_RUN = _mb_run_given()",
-               "# This run's threads, and every BLAS capped at one -- before "
+            + emit_bundle_imports(cap_threads, runtime_facts, probe_gpu)
+            + ["# This run's threads, and every BLAS capped at one -- before "
                "numpy loads",
                "_MB_REQUESTED_THREADS, _MB_PHYS_CORES = "
                "_mb_cap_threads(THREADS)",
@@ -1540,6 +1482,43 @@ def emit_bundle_imports(*objects) -> List[str]:
     return out + [""]
 
 
+def emit_run_with(names) -> List[str]:
+    """How a PySCF deck's header says to run it -- one block for both decks:
+    the managed launch from the calculation's folder, the stage by its name
+    through the one printer (`identity.deck_launch`, `job-system.md`
+    § 5.3); its run script by hand (`identity.hand_run`); and PySCF driven
+    directly, its stdout under the unnumbered name the stdout row keeps for
+    a run no run script started (`runfiles.RunNames.name`)."""
+    from ..identity import (HAND_RUN_NOTE, LAUNCH_MODE_NOTE, deck_launch,
+                            hand_run)
+    out = ["Run with -- the managed way, and the usual one, from the "
+           "calculation's folder:"]
+    out.extend(f"    {line}" for line in deck_launch(names.stage))
+    out.append(f"    {LAUNCH_MODE_NOTE}")
+    out.append(f"    {hand_run(names)}    # {HAND_RUN_NOTE}")
+    out.append("")
+    out.append("    The wrapper beside this file is self-contained: it runs")
+    out.append("    unattended in a shell that inherits nothing, so it bakes")
+    out.append("    in the environment activation, sizes the threads, tees")
+    out.append("    the output, traps the scheduler's SIGTERM, and records")
+    out.append("    where and when it ran (`running-a-job.md` section 2).")
+    out.append("")
+    out.append("Or drive PySCF yourself, with the bundles beside this deck:")
+    # THE ROLE PySCF'S OWN STDOUT HAS, not SIESTA's: every reader
+    # dispatches on the role (`model/parse.md` § 5.5).
+    out.append(f"    python {names.name('.py')} > "
+               f"{names.name(PYSCF_STDOUT_ROLE)} 2>&1")
+    out.append("")
+    out.append("    Perfectly good, and the reason the plain invocation is")
+    out.append("    still written here -- but then the environment, the")
+    out.append("    redirection and the signal handling are yours: activate")
+    out.append("    the env first, nothing records the run, and nothing")
+    out.append("    cleans up if the job is killed.  (A progress log this")
+    out.append("    script writes is written either way, so a run started")
+    out.append("    by hand is still watchable.)")
+    return out
+
+
 def emit_outputs_block(names, *,
                        log: bool, chk: bool, initial: bool, optimized: bool,
                        trajectory: bool, progress_log: bool, held: bool,
@@ -1547,33 +1526,33 @@ def emit_outputs_block(names, *,
     """The ``Outputs:`` block of a PySCF deck's header: exactly the files
     this run writes for its settings (`engines/pyscf.md` § 2), named as the
     deck names them -- by the stage's names (`runfiles.RunNames`), the run's
-    number shown as ``<N>`` where a name carries it -- one list for both
-    decks, each saying which of its settings is on.  The engine's own
+    for every try in it -- one list for both decks, each saying which of its
+    settings is on.  The engine's own
     restart files (``.chk``, ``_optimized.xyz``) are the grammar's carried
     names: they cross rungs, so they carry no stage and no run."""
     label = names.label
     out = ["Outputs:"]
     if spectra:
-        out.append(f"    {_shown(names, ROLE_SPECTRA)}   -- the result, "
+        out.append(f"    {names.name(ROLE_SPECTRA)}   -- the result, "
                    f"replaced atomically at each phase")
     if log:
-        out.append(f"    {_shown(names, ROLE_LOG)}   -- pyscf verbose log")
+        out.append(f"    {names.name(ROLE_LOG)}   -- pyscf verbose log")
     if chk:
         out.append(f"    {_rf(label, ROLE_CHK)}   -- checkpoint (DM, mol)")
     if initial:
-        out.append(f"    {_shown(names, ROLE_INITIAL)} + .molstruct.json   -- "
+        out.append(f"    {names.name(ROLE_INITIAL)} + .molstruct.json   -- "
                    f"the input coordinates, as a pair")
     if optimized:
         out.append(f"    {_rf(label, ROLE_OPTIMIZED)} + .molstruct.json   -- the "
                    f"relaxed coordinates, as a pair")
     if trajectory:
-        out.append(f"    {_shown(names, ROLE_GEOM_TRAJ)}   -- this rung's "
+        out.append(f"    {names.name(ROLE_GEOM_TRAJ)}   -- this rung's "
                    f"trajectory (multi-frame XYZ)")
     if held:
-        out.append(f"    {_shown(names, ROLE_CONSTRAINTS)}   -- the held atoms, "
+        out.append(f"    {names.name(ROLE_CONSTRAINTS)}   -- the held atoms, "
                    f"in geomeTRIC's format")
     if progress_log:
-        out.append(f"    {_shown(names, '.molwatch.log')}   -- the "
+        out.append(f"    {names.name(ROLE_MOLWATCH)}   -- the "
                    f"progress log: each step's coordinates, energy (eV), "
                    f"forces (eV/Ang) and SCF cycles, read by the Results tab")
     return out

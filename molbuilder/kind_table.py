@@ -13,7 +13,7 @@ topic -- the folder a new project lays down for it -- whether its deck
 relaxes the structure, what its root opens and what a rung's folder opens
 where that is not a run's own result, and its science checks (a part);
 and on each engine it runs on, the
-engine's own name for it, the shape it fixes and why, how its stages play
+engine's own name for it, how its stages play
 its roles (its rungs, every one in order, where a stage's role is its
 name), the ladder a new description starts from, what relaxes the
 structure first, a stage older versions wrote that it no longer holds, and
@@ -36,7 +36,6 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .identity import electrode_hs_stem
-from .paths import SHAPES
 
 #: The file, beside the parameter catalogue.
 TABLE_FILE = Path(__file__).resolve().parent / "data" / "kind_table.toml"
@@ -67,7 +66,7 @@ ROLE_OPENS = ("report",)
 _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
               "charge", "no_benchmark", "handover", "relaxes",
               "root_opens", "validator", "on")
-_PART_KEYS = ("words", "shape", "why", "stage_roles", "points", "rung",
+_PART_KEYS = ("words", "stage_roles", "points", "rung",
               "inputs", "gather", "sum", "retired", "ladder", "relaxation")
 
 #: The parts a pair may name, each ``module:NAME`` (:func:`part_of`).
@@ -143,10 +142,6 @@ class KindOnEngine:
     engine: str
     #: The engine's own name for the kind, where it has one -- *TranSIESTA*.
     words: Optional[str] = None
-    #: The shape it fixes, or ``None`` where it fixes none.
-    shape: Optional[str] = None
-    #: The one sentence every surface says the fixed shape in.
-    why: Optional[str] = None
     #: How its stages play the kind's roles: ``"own"``, its stages its rungs
     #: -- every role, in order, a stage's role its name; ``"every"``, each
     #: stage every role; or the roles each stage plays -- ``None`` for a
@@ -182,14 +177,6 @@ class KindOnEngine:
     #: What relaxes the structure first, in a person's words, where the
     #: pair relaxes before it measures -- a vibration's -- or ``None``.
     relaxation: Optional[str] = None
-
-    @property
-    def fixed_shape(self) -> Optional[Dict[str, str]]:
-        """``{"shape", "why"}`` -- the shape the pair fixes and why -- or
-        ``None`` (`web/task-setup.md` § 4)."""
-        if self.shape is None:
-            return None
-        return {"shape": self.shape, "why": self.why}
 
 
 @dataclass(frozen=True)
@@ -293,11 +280,6 @@ def _part(kind: str, engine: str, body: object,
     if unknown:
         _refuse(where, f"unknown key(s) {', '.join(unknown)} -- a part "
                        f"states {', '.join(_PART_KEYS)}")
-    shape, why = body.get("shape"), body.get("why")
-    if (shape is None) != (why is None):
-        _refuse(where, "a fixed shape and its sentence, `why`, come together")
-    if shape is not None and shape not in SHAPES:
-        _refuse(where, f"shape {shape!r} is not one of {', '.join(SHAPES)}")
     sr = body.get("stage_roles")
     if roles and sr is None:
         _refuse(where, "no stage_roles -- how its stages play the kind's "
@@ -354,7 +336,7 @@ def _part(kind: str, engine: str, body: object,
         _refuse(where, "relaxation is a sentence -- what relaxes the "
                        "structure first")
     return KindOnEngine(kind=kind, engine=engine, words=body.get("words"),
-                        shape=shape, why=why, stage_roles=sr,
+                        stage_roles=sr,
                         stages=stages, ladder=ladder,
                         points=body.get("points"), rung=body.get("rung"),
                         inputs=body.get("inputs"), gather=body.get("gather"),

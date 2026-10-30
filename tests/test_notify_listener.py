@@ -167,7 +167,7 @@ def test_a_stored_line_stands_on_its_own(store):
     from molbuilder import monitor as M
     from molbuilder.runfiles import RunNames
     ident = M.run_identity(M.WatchedRun(
-        names=RunNames.of("BDT_Au", "01_relax", "hierarchical"), run=0))
+        names=RunNames("BDT_Au", "01_relax"), run=0))
     body = {**ident, "sent_at": 1756000000.5, "event": "scf_converged",
             "state": "running", "n_iters": 7, "energy": "-1740.21",
             "geom_step": 3, "elapsed_s": 1234.5}

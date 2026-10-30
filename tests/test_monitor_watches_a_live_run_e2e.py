@@ -155,7 +155,7 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(run, tmp_path):
     final = monitor.run_monitor(
         watched, interval=1, watch_pid=999_999_999,
         sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
-    rs = run_status(there, _ran(run).basename)
+    rs = run_status(there, _ran(run).names.stem)
     assert (final.state, final.detail) == (rs.state, rs.detail) == (
         "finished", "job_completed")
     assert final.converged == {"periodic": True}
@@ -492,8 +492,8 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
         "                      ('grammar', P._G), ('rules', P.compile_rules),\n"
         "                      ('names', M._rf))}\n"
         "where['from'] = os.path.basename(os.path.dirname(M.__file__))\n"
-        f"w = M.WatchedRun(names=M._rf.RunNames.of({ran.label!r}, "
-        f"{ran.stage!r}, {ran.place.task.shape!r}), run={ran.run})\n"
+        f"w = M.WatchedRun(names=M._rf.RunNames({ran.label!r}, "
+        f"{ran.stage!r}), run={ran.run})\n"
         "st = w.conclude(w.read(0.0, 1.0))\n"
         "print(json.dumps({'where': where, 'state': st.state,\n"
         "                  'detail': st.detail, 'converged': st.converged,\n"
@@ -508,7 +508,7 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
                             "rules": "_section_rules",
                             "names": "runfiles",
                             "from": MONITOR_BUNDLE}, got["where"]
-    here = run_status(run, ran.basename)
+    here = run_status(run, ran.names.stem)
     assert (got["state"], got["detail"]) == (here.state, here.detail), got
     speaker = here.endings[here.active_source]
     assert got["converged"] == dict(speaker.phases.items()), got

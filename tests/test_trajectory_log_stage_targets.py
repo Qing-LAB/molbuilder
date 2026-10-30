@@ -74,7 +74,7 @@ def _staged(xyz, tmp_path, strategy):
         D.build_description(struct, SiestaConfig(system_label="JOB"), stages,
                             engine="siesta",
                             calculation="optimization",
-                            shape="hierarchical", name="JOB",
+                            name="JOB",
                             source=str(xyz)),
         tmp_path)
     from conftest import write_pseudos

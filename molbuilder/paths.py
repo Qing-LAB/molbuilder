@@ -11,106 +11,37 @@ around.
 *for every name it composes, the framework owns the search.*  The run-file
 GRAMMAR stays in `runfiles` (§ 2.2a); this owns the TREE and the finders.
 
-Also [`engines/stages.md`](?doc=engines/stages.md) § 6.7 (*required, never
-inferred*; *"`prep` **reads** it; it does not decide it"*) and
-[`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 (the names, in
-both shapes).
+Also [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 (the
+names).
 
-WHAT IS HERE.  `Shape` — the two layouts and the questions a layout answers —
-and the ATTEMPT, `run-<n>`, with its composer, its reader and its finder.  The
-run-file GRAMMAR is next door in `runfiles`; this is the tree those names sit
-in.
+WHAT IS HERE.  The one layout (`project-layout.md` § 1: a folder per stage,
+`<NN>_<stage>/`, a folder per run in it, `run-<n>/`): the stage finder, the
+benchmark's container, the trial, and the ATTEMPT, `run-<n>`, with its
+composer, its reader and its finder.  The run-file GRAMMAR is next door in
+`runfiles`; this is the tree those names sit in.
 
-WHY SHAPE IS AN OBJECT AND NOT AN ``if shape ==`` IN FOUR MODULES.  The two
-layouts do not differ by one branch — they differ in **what a stage is told
-apart BY**:
-
-    hierarchical   a PATH      01_coarse/run-0/…      every stage its own tree
-    flat           a FILENAME  bdt_01_coarse-run0.out  one directory, all of them
-
-Every layer built for the hierarchy assumes the distinction lives in the path,
-because for the hierarchy it does. Handed a flat calculation those layers do not
-fail — they answer about **the wrong stage**, or about all of them at once, and
-say nothing. That asymmetry is the whole reason this is a type: a caller asks
-*where does this stage's state live* and gets an answer that is correct in both,
-instead of asking *which directory* and being right in one.
-
-WHAT IT DELIBERATELY DOES NOT DO.  It does not read a description, and it does
-not guess: `engines/stages.md` § 6.7 makes the shape a required field, and a
-default here would be the inference that section refuses. The **surfaces**
-resolve it — they are the ones holding a bundle directory — and hand it down.
+WHAT IT DELIBERATELY DOES NOT DO.  It does not read a description: the
+**surfaces** hold a calculation's folder and hand down what they read.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-
-#: The two layouts, and the vocabulary both the description and the tree
-#: check against.  It lives HERE, not in ``task``, so this module imports
-#: nothing above floor 1 -- ``task`` imports it back for its own validation.
-#: A description DECLARES the shape and nothing infers it
-#: (`engines/stages.md` § 6.7).
-SHAPES = ("flat", "hierarchical")
-
-@dataclass(frozen=True)
-class Shape:
-    """One of the two layouts, and the questions a layout can answer.
-
-    Construct with :meth:`named`, which refuses anything that is not one of
-    ``project-layout.md § 1``'s two.
-    """
-
-    name: str
-
-    @classmethod
-    def named(cls, name: str) -> "Shape":
-        """The shape called ``name``, or ``ValueError`` naming both."""
-        if name not in SHAPES:
-            raise ValueError(
-                f"shape {name!r} is not one of {' / '.join(SHAPES)}. It is a "
-                f"required field of the description and is never inferred "
-                f"(engines/stages.md § 6.7)")
-        return cls(name)
-
-    # -- the two questions a layout answers ---------------------------- #
-
-    def stage_dir(self, token: str) -> str:
-        """Where this stage's work happens, **relative to the bundle root**.
-
-        Hierarchical gives it a directory of its own (``01_coarse``); flat is
-        **depth 1** (`project-layout.md` § 1) and everything happens in the
-        bundle root, which is ``"."`` — a real path a caller can join, so no
-        caller needs an ``if`` to handle "no directory".
-        """
-        return token if self.name == "hierarchical" else "."
-
-    @property
-    def keeps_attempts_as_directories(self) -> bool:
-        """Whether a re-run makes a **directory** (``run-1``) or an index.
-
-        `project-layout.md` § 1: hierarchical separates attempts by directory,
-        flat by the run's number launch gives it (``-run0.out``).  So the
-        attempt layer — ``prepare_attempt``, ``latest_attempt`` — is
-        hierarchical's, and in flat there is nothing to open:
-        *"continuing: free — the next stage finds them lying there."*
-        """
-        return self.name == "hierarchical"
-
-    def __str__(self) -> str:
-        return self.name
-
 
 
 # ══ THE ATTEMPT ════════════════════════════════════════════════════════════
 #
-# ``run-<n>``, the directory one try of a stage or a trial runs in
-# (`project-layout.md` § 1.5 — immutable once it has run, which is why a
-# re-run opens the next rather than landing on top of one).
+# ``run-<n>``, the directory one run of a stage or a trial is -- its tries
+# among it (`project-layout.md` § 1.5, § 1.6.1 — immutable once it has run,
+# which is why a launch again opens the next rather than landing on top of
+# one).
 
 #: What an attempt directory starts with.  One home, so the composer and the
 #: reader below cannot drift, and neither can a caller.
 ATTEMPT_PREFIX = "run-"
+#: A stage's first run folder, ``run-0``, which its prep opens
+#: (`project-layout.md` § 1.6.2).
+FIRST_ATTEMPT = 0
 
 
 def attempt_name(n: int) -> str:
@@ -187,14 +118,14 @@ def attempts_in(container) -> "list[int]":
 # `project-layout.md` § 2.6: the benchmark rows carry NO circled number --
 # they are "nested containers inside a stage (④), not levels of the tree."
 # So a trial is a QUALIFIER on ④, and both names below are layout, which is
-# why they live here beside `stage_dir` rather than in the module that
+# why they live here beside `stages_in` rather than in the module that
 # happened to need them first: the address layer is floor 1, and a rule the
 # framework cannot reach is a rule its callers re-spell, which is § 4.5's
 # whole subject.
 
-#: What a TRIAL directory starts with.  Dash-joined, where the container is
-#: underscore-joined -- § 6.3's separator rule, and what keeps
-#: ``bench-G1N4C6`` (a trial) apart from ``bench_01_coarse`` (a container).
+#: What a TRIAL directory starts with: ``bench-`` and the point, one
+#: qualifier (§ 6.3's separator rule) -- ``01_coarse/bench/bench-G1N4C6``, in
+#: its stage's container (:func:`bench_container`).
 TRIAL_PREFIX = "bench-"
 
 
@@ -234,160 +165,74 @@ def trial_label(label: str, point: str) -> str:
     return f"{label}-{point}"
 
 
-def stages_in(root, shape: "Shape", label: str = ""
-              ) -> "list[tuple[int, str]]":
-    """Every stage a calculation's folder holds files of, as ``(seq, name)``
-    -- the finder half of :meth:`Shape.stage_dir` (§ 4.5: for every name the
-    framework composes, it owns the search).
+def stages_in(root) -> "list[tuple[int, str]]":
+    """Every stage a calculation's folder holds, as ``(seq, name)`` -- the
+    finder half of a stage's folder, ``<NN>_<stage>/`` (§ 4.5: for every
+    name the framework composes, it owns the search).
 
     A stage's number is READ OFF WHAT IS THERE, never off the description
-    (`project-layout.md` § 4.1, § 4.2): its directory in the hierarchy; in
-    the flat shape, the token every file of it carries (its deck, its run
-    script, its outputs) and its bench container's.  A stage the description
-    no longer names still holds its number here -- gaps are honest.
+    (`project-layout.md` § 4.1, § 4.2): its directory.  A stage the
+    description no longer names still holds its number here -- gaps are
+    honest.
     """
     try:                                    # inside molbuilder
         from .identity import parse_token
-        from .runfiles import parse as _rf_parse
     except ImportError:                     # beside a job (mb_vibration.pyz)
         from identity import parse_token
-        from runfiles import parse as _rf_parse
-    root = Path(root)
     try:
-        entries = list(root.iterdir())
+        entries = list(Path(root).iterdir())
     except OSError:
         return []
     found = set()
     for e in entries:
-        if shape.keeps_attempts_as_directories:
-            if e.is_dir():
-                got = parse_token(e.name)
-                if got:
-                    found.add(got)
-        elif e.is_file():
-            # READ BACK WITH ITS LABEL, through the one grammar (§ 4.5).
-            rec = _rf_parse(e.name, label) if label else None
-            got = parse_token(rec.stage) if rec and rec.stage else None
+        if e.is_dir():
+            got = parse_token(e.name)
             if got:
                 found.add(got)
-    for _rel, token in bench_containers_in(root, shape):
-        got = parse_token(token)
-        if got:
-            found.add(got)
     return sorted(found)
 
 
-#: A flat calculation's benchmark container is its stage's token after this
-#: (`bench_01_coarse`): composed by :func:`bench_container`, read back by
-#: :func:`flat_bench_token`.
-FLAT_BENCH_PREFIX = "bench_"
-#: A hierarchical stage's benchmark container, inside the stage's folder
+#: A stage's benchmark container, inside the stage's folder
 #: (`<NN>_<stage>/bench`).
 BENCH_DIRNAME = "bench"
 
 
-def bench_container(shape: "Shape", token: str) -> str:
-    """Where a stage's bench state lives, **relative to the calculation root**.
-
-    ``<NN>_<stage>/bench`` in the hierarchy; ``bench_<NN>_<stage>`` at the root
-    of a FLAT calculation.  An empty token is refused: every description has
-    a stage (`engines/stages.md` § 6.5).
-    `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
-    measures"* -- in flat there IS no stage directory to sit inside, so the
-    token qualifies the container's own name instead.
-
-    **The token qualifies it in flat**: without it two flat stages'
-    benchmarks would share one root ``bench/``, each prep overwriting the
-    other's job-set, plan and verdict.
-
-    This is the ONE spelling of that rule.
-    """
+def bench_container(token: str) -> str:
+    """Where a stage's bench state lives, **relative to the calculation
+    root**: ``<NN>_<stage>/bench`` -- `job-contracts.md` § 6.3, *"benchmark |
+    bench/ inside the stage it measures"*.  An empty token is refused: every
+    description has a stage (`engines/stages.md` § 6.5).  This is the ONE
+    spelling of that rule."""
     if not token:
         raise ValueError("a benchmark's container is its stage's -- no stage "
                          "token was given")
-    sd = shape.stage_dir(token)
-    if sd == ".":
-        return f"{FLAT_BENCH_PREFIX}{token}"
-    return f"{sd}/{BENCH_DIRNAME}"
+    return f"{token}/{BENCH_DIRNAME}"
 
 
-def flat_bench_token(name: str) -> Optional[str]:
-    """The stage token a flat calculation's benchmark container is named
-    for -- ``01_coarse`` of ``bench_01_coarse`` -- or ``None`` when ``name``
-    is not one: the reader for :func:`bench_container`'s flat spelling, per
-    § 4.5.  Takes a bare folder NAME."""
-    if not name.startswith(FLAT_BENCH_PREFIX):
-        return None
-    token = name[len(FLAT_BENCH_PREFIX):]
+def bench_containers_in(root) -> "list[tuple[str, str]]":
+    """Every bench container under *root*, as ``(relative name, stage token)``
+    -- the containers :func:`bench_container` names, each its stage's: the
+    SEARCH half § 4.5 requires, the stage token the container's parent."""
     try:                                    # inside molbuilder
         from .identity import parse_token
     except ImportError:                     # beside a job
         from identity import parse_token
-    return token if parse_token(token) else None
-
-
-def bench_containers_in(root, shape: "Optional[Shape]" = None
-                        ) -> "list[tuple[str, str]]":
-    """Every bench container under *root*, as ``(relative name, stage token)``
-    -- the containers :func:`bench_container` names, each its stage's.
-
-    ``shape=None`` means **either layout** -- for a caller that has no
-    description to read one from.  That is not the inference
-    `engines/stages.md` § 6.7 forbids: that rule is about a description
-    DECLARING its shape, and this is a search saying it does not know which
-    tree it is walking.  The declared containers of the two layouts cannot
-    collide (``<NN>_<stage>/bench`` is one level down; ``bench_<NN>_<stage>``
-    is at the root), so the union is exact rather than a guess.
-
-    The SEARCH half of :func:`bench_container`, which § 4.5 requires: the
-    hierarchy hides the benchmarks one level down inside each rung while flat
-    qualifies their own name.
-
-    The stage token is returned rather than re-derived: in flat it is IN the
-    container's name (``bench_01_coarse``) and in the hierarchy it is the
-    PARENT directory, so a caller reading either spelling itself would be
-    writing this function again with one of the two arms missing.
-    """
-    r = Path(root)
-    out: "list[tuple[str, str]]" = []
-    if shape is None:
-        seen: set = set()
-        for name in SHAPES:
-            for row in bench_containers_in(r, Shape.named(name)):
-                if row[0] not in seen:
-                    seen.add(row[0])
-                    out.append(row)
-        return sorted(out)
     try:
-        entries = sorted(r.iterdir())
+        entries = sorted(Path(root).iterdir())
     except OSError:
-        return out
-    if shape.keeps_attempts_as_directories:
-        try:                                # inside molbuilder
-            from .identity import parse_token
-        except ImportError:                 # beside a job
-            from identity import parse_token
-        for d in entries:
-            if (d.is_dir() and parse_token(d.name)
-                    and (d / BENCH_DIRNAME).is_dir()):
-                out.append((f"{d.name}/{BENCH_DIRNAME}", d.name))
-        return out
-    for d in entries:
-        token = flat_bench_token(d.name)
-        if d.is_dir() and token:
-            out.append((d.name, token))
-    return out
+        return []
+    return [(f"{d.name}/{BENCH_DIRNAME}", d.name) for d in entries
+            if d.is_dir() and parse_token(d.name)
+            and (d / BENCH_DIRNAME).is_dir()]
 
 
 __all__ = [
-    # the layout
-    "SHAPES", "Shape",
+    "stages_in",
     # the bench container and the trial -- ④'s qualifier, not a level
     "TRIAL_PREFIX", "trial_name", "trial_point", "bench_container",
-    "FLAT_BENCH_PREFIX", "BENCH_DIRNAME", "flat_bench_token",
-    "bench_containers_in",
+    "BENCH_DIRNAME", "bench_containers_in",
     # the attempt -- composer, reader, finder (§ 4.5's pairing)
-    "run_folder_of", "ATTEMPT_PREFIX", "attempt_name", "attempt_dir",
+    "run_folder_of", "ATTEMPT_PREFIX", "FIRST_ATTEMPT", "attempt_name", "attempt_dir",
     "attempt_index", "attempts_in",
     # a frame's folder
     "frame_token",

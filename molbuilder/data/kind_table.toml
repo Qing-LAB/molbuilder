@@ -116,8 +116,6 @@ stage_roles = "every"
 # ...in one stage, `freq`, the harmonic analysis -- a new description's.
 ladder = ["freq"]
 relaxation = "The run's own relaxation (its `relax` phase)"
-shape = "hierarchical"
-why = "A SIESTA vibration is hierarchical, and no other shape is taken -- its one run's SIESTA calls, the relaxation, the force constants and the optical calls, each run in a folder of its own: in one directory they would write over each other's .DM and .XV (engines/vibration.md § 5.11 § 1)."
 points = "molbuilder.jobset.vibration_points:POINTS"
 rung = "molbuilder.jobset.prep:siesta_vibration_rung_of"
 # Its stages' force constants compared, where it has two or more
@@ -140,7 +138,7 @@ sum = "molbuilder.jobset.vibration_sum:SUM"
 [transport]
 noun = "transport calculation"
 topic = "transport"
-# No `handover`: its stages, shape and identity are fixed, so it describes
+# No `handover`: its stages and identity are fixed, so it describes
 # on its own tab (POST /api/transport/describe), nothing awaiting.
 no_benchmark = "its parameters come from its own template and each rung's run card, and its one axis is the bias list in task.json (engines/transport.md 2a.10)"
 roles = [
@@ -176,8 +174,6 @@ words = "TranSIESTA"
 # Its stages are its rungs, every one, in order (the seed among them: the
 # device starts from its density, user 2026-10-12).
 stage_roles = "own"
-shape = "hierarchical"
-why = "A transport calculation is hierarchical, and no other shape is taken -- its five stages exchange files through their own attempts, which the flat shape has no directories to hold (engines/transport.md § 2a.11)."
 points = "molbuilder.jobset.transport_points:POINTS"
 rung = "molbuilder.jobset.prep:transport_rung_of"
 # Which rung hands which file to which (the ladder's DAG), and the gather

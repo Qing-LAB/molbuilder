@@ -294,7 +294,7 @@
 }
 .ts-dirty[hidden] { display: none; }
 
-/* ---- Shape: asked, never guessed ---- */
+/* ---- A choice with no default: the machine, the queue ---- */
 
 .ts-choice { display: flex; gap: var(--space-md); flex-wrap: wrap; }
 .ts-choice .opt {
@@ -317,8 +317,8 @@
     background: var(--accent-bg);
 }
 /* A tick on the chosen one.  The border tint alone reads as "hovered" as
- * easily as "chosen", and this is a decision the page refuses to guess
- * (`stages.md` § 6.7) -- so which one you picked has to be unmistakable.
+ * easily as "chosen", and the machine and the queue are choices the page
+ * never makes for you -- so which one you picked has to be unmistakable.
  * `aria-pressed` already carries it to assistive tech; this is the visual. */
 .ts-choice .opt b::before {
     content: "\2713";
@@ -624,9 +624,8 @@
     margin-top: var(--space-xs);
 }
 /* A SENTENCE THAT NAMES COMMANDS KEEPS ITS LINES -- each command is one to
-   type (`job-system.md` § 5.3): prep's refusal, the Continue-from note, the
-   shape card's way back, Save's refusal, the folder's state box.  One rule,
-   worn by each. */
+   type (`job-system.md` § 5.3): prep's refusal, the Continue-from note,
+   Save's refusal, the folder's state box.  One rule, worn by each. */
 .ts-keeps-lines { white-space: pre-wrap; }
 
 .ts-prep-say {
@@ -795,7 +794,7 @@
 }
 
 /* ---------- what the RUN uses (stages.md 6.8d) ---------- */
-/* PER RUNG, inside that rung's tab and immediately above `prep run` -- the
+/* PER RUNG, inside that rung's tab and immediately above `prep task` -- the
    card is separated from the measure card by a rule so that "this is the
    run's" is visible without reading a word. */
 .ts-runcard {

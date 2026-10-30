@@ -28,7 +28,7 @@ def _sandbox(tmp_path, monkeypatch):
 
 
 def _wrapper(tmp_path):
-    names = RunNames.of("JOB", "01_coarse", "hierarchical")
+    names = RunNames("JOB", "01_coarse")
     deck = tmp_path / names.name(".fdf")
     deck.write_text("SystemLabel JOB\n")
     # A PROBED MACHINE, its record saying how a shell enters an environment

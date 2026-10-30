@@ -76,7 +76,7 @@ def calc(tmp_path):
         engine_ladder("siesta", "publishable"),
         engine="siesta",
         calculation="optimization",
-        shape="hierarchical", name="calc", source=str(src))
+        name="calc", source=str(src))
     D.write_description(desc, dest)
     _pseudos_for(dest, ["S", "C", "H"])
     return dest
@@ -131,7 +131,7 @@ def test_the_folder_wins_over_a_library_that_lacks_a_species(
         engine_ladder("siesta", "publishable"),
         engine="siesta",
         calculation="optimization",
-        shape="hierarchical", name="calc", source=str(src)),
+        name="calc", source=str(src)),
         dest)
     _pseudos_for(dest, ["S", "C", "H"])            # the folder: all three
     _prep(dest)

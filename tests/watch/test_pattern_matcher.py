@@ -4,7 +4,7 @@ both pattern-backed matchers and plain callables; ``compile_rules`` builds
 a :class:`CompiledRules` dispatch table.
 
 What the parser reads from a real output is asked of runs made on the road
-with the real SIESTA (`tests/test_siesta_flat_run_e2e.py`).
+with the real SIESTA (`tests/test_siesta_optimization_run_e2e.py`).
 """
 from __future__ import annotations
 

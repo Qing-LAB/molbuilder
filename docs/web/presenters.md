@@ -73,10 +73,7 @@ config files and READMEs.
 >
 > **What that row does NOT fix:** the rungs are still separate folders you
 > navigate into one at a time — the presenter summarises them, it does not
-> merge them. *(An earlier revision said the five `.out` files list "as five
-> unrelated entries beside its result". They do not: the picker lists ONE
-> directory and transport runs hierarchical, so each rung is a folder below the
-> record. That is true of the flat shape only.)* And the picker no longer guesses: `GET /api/results/dir`
+> merge them. And the picker no longer guesses: `GET /api/results/dir`
 > answers *what is in this directory* over `parse.dirs`, and the picker is its
 > browser consumer (`results.md` § 2.3). What reaches a presenter as `meta` is
 > that answer. *(This said "no server door answers what is in this directory:

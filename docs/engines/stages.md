@@ -139,7 +139,7 @@ week refining a geometry you would have rejected in a minute"*
 ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)). Looking between
 rungs requires a rung to have *ended*, and a single process running every rung
 ends once, at the end. Everything the workflow offers between stages — open the
-next attempt, say which run it continues from, read what happened, redo one rung
+next run, say which run it continues from, read what happened, redo one rung
 with different numbers — is per-job machinery, and an engine whose whole ladder is
 one job can reach none of it.
 
@@ -184,8 +184,7 @@ place; each names the file that holds it, so the claim is checkable.**
    2026-10-01; the M11 review's PO-C16)*: geomeTRIC rewrites it from the first
    step of every run (geomeTRIC 1.1.1 `optimize.py`, `progress.write(xyzout)`
    at each step; `Molecule.write(append=False)`), so a copied one is overwritten
-   before anything reads it — in either shape, so the shape changes nothing —
-   and each rung's carries the rung's token, which by `job-contracts.md`
+   before anything reads it — and each rung's carries the rung's token, which by `job-contracts.md`
    § 2.2a's rule never crosses rungs. **Nor is its scratch folder**, `<prefix>.tmp`: geomeTRIC
    makes it and PySCF's engine never writes into it — it computes in memory
    and has no `read_result` — and nothing reads it back, because the decks
@@ -578,7 +577,7 @@ written twice: every tab already has a schema, so every tab gets this.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1N4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch task --stage TIGHT` is `tight`) and the role rule (a transport rung named `Device` is the `device` rung); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
+| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: a run is `run-0`, a trial is `bench-G1N4C6`, and a try's stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch task --stage TIGHT` is `tight`) and the role rule (a transport rung named `Device` is the `device` rung); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
 | `overrides` | map | schema field name → that stage's value |
 
 **There is no `enabled`** *(W38 F5, agreed 2026-09-27 — user: "remove on/off
@@ -913,8 +912,8 @@ because each of its trials is rendered at its own point.
   "calculation": "optimization",        // or "vibration", "transport"
 
   // How the calculation's files are kept apart on disk (§ 6.7).
-  // Required, and never inferred.
-  "shape": "hierarchical",              // or "flat"
+  // Required; "hierarchical" is its one value.
+  "shape": "hierarchical",
 
   // What identifies this calculation, and what the user called it.
   // The rules are execution/run-identity.md.
@@ -961,8 +960,7 @@ because each of its trials is rendered at its own point.
 **`vibration`** — the described vibrational-spectroscopy job, whose template
 the catalogue narrows by the `calculations` key (`template.md` § 6.3) and whose
 warm files `pyscf/warm-files.toml` declares; and **`transport`**, the composite
-with its own codec rules (`task.py`): the hierarchical shape, exactly one
-`junction` slot, cited as a tree-relative directory path whose files satisfy
+with its own codec rules (`task.py`): exactly one `junction` slot, cited as a tree-relative directory path whose files satisfy
 [`transport.md`](?doc=engines/transport.md) § 3.1, no `structure`, a `bias`
 list — `siesta/warm-files.toml`'s `[transport]` section declares its warm
 vocabulary.
@@ -1158,10 +1156,8 @@ artifacts with *no* token — `<label>.fdf`, `<label>.XV`, `<label>.out`, all at
 folder root. That is fine while it stays stage-less. The moment a second stage is
 added, the ladder needs `01_` / `02_` tokens and **the existing run belongs to no
 token at all**: nothing says whether it *is* stage one or is simply orphaned.
-In `flat` the hazard is worse than cosmetic, because `.XV` and `.DM` are
-unsuffixed and shared by design — so a newly added `01_coarse` would warm-start
-from the stage-less run's geometry with nothing recording that it had. The fix
-for a transition nobody had specified is to make the transition impossible.
+The fix for a transition nobody had specified is to make the transition
+impossible.
 
 **A description with no `stages` is refused, not repaired.** There is no
 migration and no tolerated older form — accepting one would reintroduce the
@@ -1187,14 +1183,13 @@ tenth.
 ### 6.5a The hand-over — a partial description, and why it is a different file
 
 *Added 2026-08-16 (user).* A parameter surface can collect the physics but
-cannot answer `shape`, which is **required with no default** (§ 6.7) — so what
-it produces is not yet a description. (A kind that fixes the shape answers it
-itself: Task setup writes it at the save, and the hand-over does not wait on
-it.) It writes **`task.1st.json`**
+does not settle the ladder — the stages a description requires (§ 6.5) — so
+what it produces is not yet a description. It writes **`task.1st.json`**
 (`molbuilder/task-handover@1`) beside the template **and beside the structure
 the calculation is of** — the `.xyz` + `.molstruct.json` pair its
-`structure.source` names, folder-relative — and the surface that asks for the
-shape finishes the job.
+`structure.source` names, folder-relative — and Task setup, which asks for the
+stages, finishes the job: its Save writes the description whole, its `shape`
+the one layout's (§ 6.7).
 
 A hand-over carrying only a formula and an atom count is not one: the receiving
 folder has to be readable on its own, and a k-grid without the lattice it
@@ -1207,18 +1202,18 @@ claim, not a convenience: `checkpoint.py::_BUNDLE_DESCRIPTORS` treats a
 `task.json` as the marker that a folder **declares itself the root of one
 multi-directory unit of work** (`checkpointing.md` L1). A premature one makes a
 folder claim to be a calculation root before it is one. The same shape as
-`run.json`, which "cannot be the carrier — its presence is what marks an attempt
-as launched, so it must not exist beforehand"
-([`project-layout.md § 1.6`](?doc=execution/project-layout.md)), and which
+`run.json`, which "cannot exist before launch — its presence marks the run
+launched"
+([`project-layout.md § 1.6.3`](?doc=execution/project-layout.md)), and which
 answers with the same device: a private carrier between two steps of one act.
 
 **Three rules, and each one is doing work:**
 
 | | |
 |---|---|
-| **its own schema** | `molbuilder/task-handover@1`, never `molbuilder/task@2`. It has no `shape`, so it would fail that schema's reader — and a file claiming a schema it does not satisfy is worse than one that says what it is. `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident (`job-contracts.md § 6.1`) |
+| **its own schema** | `molbuilder/task-handover@1`, never `molbuilder/task@2`. It has no `shape` and no settled `stages`, so it would fail that schema's reader — and a file claiming a schema it does not satisfy is worse than one that says what it is. `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident (`job-contracts.md § 6.1`) |
 | **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is chosen by suffix, so the second spelling renders as plain text in the editor a person is meant to read it in; and nothing that looks for `task.json` matches it |
-| **it says what it is** | JSON carries no comments, so the file opens with a `_what` line and an `awaiting` list naming the keys Task setup still asks — a shape the kind fixes is not among them, though the file holds no `shape` until the save writes it; the `_what` line says the same, from the same list. It is read by a **person**, in an editor, and should not need a document open beside it |
+| **it says what it is** | JSON carries no comments, so the file opens with a `_what` line and an `awaiting` list naming the keys Task setup still asks — `stages`; the `_what` line says the same, from the same list. It is read by a **person**, in an editor, and should not need a document open beside it |
 
 **It resolves in one direction only.** On a successful save the real `task.json`
 is written and the hand-over is **deleted**, so the next visit to that folder
@@ -1328,74 +1323,23 @@ that result away — always a mistake, and an expensive one.
 
 ---
 
-### 6.7 `shape` — which layout the calculation uses
+### 6.7 `shape` — the layout the calculation uses
 
-**`shape` is `"flat"` or `"hierarchical"`, it is required, and it is never
-inferred.** It says how this calculation's files are kept apart on disk:
-`"flat"` puts every stage in one directory, told apart by the filename suffix,
-with the warm files shared; `"hierarchical"` gives each stage a directory and
-each attempt a subdirectory. Neither is wrong, and the difference is not
-cosmetic — it decides whether an earlier stage's state still exists on disk after
-a later one has run ([`project-layout.md`](?doc=execution/project-layout.md) § 1).
+**`shape` is required, and its one legal value is `"hierarchical"`**: each
+stage a directory, each run a directory in it
+([`project-layout.md`](?doc=execution/project-layout.md) § 1). Every writer of
+a description writes it — `molbuilder describe`, Task setup's Save, the
+Transport tab's describe door — and nothing asks for it, since there is
+nothing to choose. **The description's reader refuses any other value by
+name** (`task.of`) — `"flat"` among them — its way out to describe the
+calculation again; no description is rewritten.
 
-**Why it lives here rather than being a `prep` flag.** `prep` is a hub you return
-to — to measure, to run, to redo, to start the next stage
-(`project-layout.md` § 2.3). A shape chosen at the first prep and not written
-down is a shape the second prep cannot know, and two preps disagreeing would put
-two layouts inside one calculation, which no invariant below could then hold.
-**A field is what makes every prep agree**, and it is the only place that can:
-the description is the one artifact all of them read.
-
-**And it is portable, which is why it does not break § 7.1's rule.** The
-description names no machine — but the shape is not a fact about a machine. It is
-a fact about *how you want your results kept*, and it travels with the
-calculation exactly like the stage list does. `prep` **reads** it; it does not
-decide it.
-
-**Required, with no default, on purpose.** Inferring the shape — from the stage
-count, or from what is already on disk — would hand somebody a directory tree
-they never asked for, which `project-layout.md § 8` had already rejected. A
-*surface* may propose a value (and should, so nobody faces an empty choice), but
-the file itself carries what was chosen. That is the same rule as `varies`
-(§ 6.2): intent is recorded, never reconstructed.
-
-**A kind may fix it** — its part on the engine in the kind table
-([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3): a
-transport calculation and a SIESTA vibration are hierarchical — their rungs,
-or their run's calls, each need a folder of their own — and the description's
-reader refuses another, in the part's one sentence (its `why`), on every
-road. **The web
-surface starts at that shape**, its card saying why ([`web/task-setup.md`](?doc=web/task-setup.md)
-§ 4); **`molbuilder describe` still asks for `--shape`** — on the command line
-no card shows the outcome, so the choice is written in the command, and its
-refusal names the kind's shape and why *(user, 2026-10-28: "cli shall be more
-explicit because on web user typically has visual guidance and know the final
-outcome")*.
-
-**Every engine offers both shapes** *(decided 2026-08-18, user)*, save where a
-kind fixes it (above). How a
-calculation's files are kept apart on disk is a question about the calculation,
-not about the engine, and the layer that answers it — the one that names stage
-directories, attempt directories and benchmark containers — contains no mention
-of any engine and never has. Sharing it across engines therefore costs nothing
-and removes the one place a layout question had an engine's name in it.
-
-> **This paragraph refused `hierarchical` for PySCF until 2026-08-18**, on the
-> grounds that its ladder ran inside one process and so wrote one directory. That
-> was true of how PySCF executed, and it was allowed to decide how PySCF's files
-> were *kept*, which are different questions. § 1 had already left the first one
-> open — *"whether its stages become a loop inside one script or genuinely
-> separate files, that decision is not made here"* — and it is now made: **one
-> deck per stage, for both engines** (§ 1.1a). With that, there is nothing left
-> for the refusal to protect.
-
-**It is fixed once the calculation has produced.** The shape decides where every
-deck, output and warm file lives, so changing it after a stage has run orphans
-all of them. Before the first produce it is free to change; after, it is a
-different calculation. An existing folder is never *converted* from one shape
-to the other — answered 2026-08-07 (`project-layout.md § 8`, item 6): the flat
-shape is a small local run, the hierarchy a staged mission, and you choose one
-when you describe the calculation.
+**Why it is written down.** The description is the one artifact every `prep`,
+and every reader of the folder, reads; it states how its files are kept, so a
+description written for a layout molbuilder does not lay out is refused by
+name rather than read as this one. The layer that names stage directories,
+run directories and benchmark containers is the same for every engine and
+kind, and names none of them.
 
 ### 6.8 What is not here — the job request
 
@@ -1462,16 +1406,10 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   a user can run.
 - **a distinct trajectory-log basename per deck.** Two decks resolving to one
   basename would interleave their frames into a single file, and no reader
-  could separate them again. The filename IS how a ladder's stages are kept
-  apart in a flat directory (`job-contracts.md § 2.3`), so the person can pick
-  one and inspect it. *(This bullet justified itself by a viewer-side merge of
-  the directory's logs until 2026-09-05. That merge is deleted — stages are
-  separate runs and nothing joins them — but the naming rule stands on its own
-  and stands harder: separation is now the only thing keeping them readable.)*
+  could separate them again; and the name says which stage a log belongs to
+  wherever it is read.
   **The rule: a run's log is named for the deck that produced it** —
-  `<label>_<NN>_<name>.molwatch.log` beside `<label>_<NN>_<name>.fdf`, and in
-  the flat shape, where a stage's runs share its folder, the run's number
-  after it (`-run<N>`, `job-contracts.md` § 2.2). One
+  `<label>_<NN>_<name>.molwatch.log` beside `<label>_<NN>_<name>.fdf`. One
   naming, derived rather than declared, so there is nothing to keep in step.
   **Landed 2026-08-10**: the stage's names (`runfiles.RunNames`; the helper
   `molwatch_log_basename` until 2026-10-06) take the stage's artifact token, the same one the deck carries, and every reader reads it back
@@ -1479,30 +1417,8 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   than keeping a second regex *(through `identity.parse_stage_token` until
   2026-10-04)*.
 
-  That was one rule instead of two, and it was a **small** correction — smaller
-  than an earlier draft of this section claimed. *Until it landed*, the log
-  basename was `<label>-stage<N>` while the deck was `<label>_<name>`: two
-  spellings of one idea, one too many. They were closer than that sounds, and
-  the three rows below are why the fix was worth doing anyway rather than
-  urgent:
-
-  | | |
-  |---|---|
-  | **In the hierarchical shape it does not bite at all** | the log sits in `01_coarse/run-0/`, so the path says which stage it is. Nothing needs to be looked up |
-  | **In the flat shape it bites, and on the default names already** | the defaults are the words `coarse` / `medium` / `tight` (`config/stages.py::STAGE_NAMES`), so the deck said `<label>_01_coarse.fdf` while the log said `<label>-stage1.molwatch.log`. Nothing in either name says they are the same run |
-  | **A user naming their own stages only widens it** | `warmup` and `production` against `stage1` and `stage2` — the same mismatch, with no ordinal left to guess from |
-
-  So the rule is worth adopting for consistency and for the flat shape, where
-  the filename is the only thing that says which stage a log belongs to.
-
-  *(Corrected 2026-08-16. The middle row used to read "with default stage names
-  it barely bites", on the premise that the defaults were `stage1` / `stage2` /
-  `stage3` and so differed from the log name by one character. They are words
-  and have been for as long as the presets have existed, so the mismatch was
-  never the mild case this table filed it under.)*
-
   **Cost, stated rather than hidden:** the run decoder's stage regex keyed on
-  the `-stage<N>` form, so it changed with this. That is code following a
+  the `-stage<N>` form the log carried before, so it changed with this. That is code following a
   contract, which is the direction that is allowed. What it did **not** cost is
   the decoder's ordering: decision 27 keeps the ordinal in the token, so
   `_anchor_sort_key` still has a number to sort on and the Results tab keeps its
@@ -1516,22 +1432,18 @@ be: they are baked for a target (§ 8).
 
 ### 7.1 The layout: portable above, machine-specific below
 
-**What this contract requires of a layout, in either shape:** what every stage
+**What this contract requires of the layout:** what every stage
 shares *and any machine can read* is written once and kept apart from what one
 stage produced **for one machine**. That separation is what makes the description
 portable and the deck disposable.
 
 **How that separation is realised is not this contract's to say** — it is
-[`project-layout.md`](?doc=execution/project-layout.md) § 1, which defines two
-shapes; which one a calculation uses is the `shape` field of its description
-(§ 6.7). In the **flat** shape stages do
-share a directory and are told apart by a filename suffix; in the
-**hierarchical** shape each gets a subdirectory. Both satisfy the requirement
-above; they differ in where the history lives, not in what a stage is.
+[`project-layout.md`](?doc=execution/project-layout.md) § 1: each stage gets a
+directory, each run a directory in it.
 
-The tree below is the **hierarchical** case, drawn here only because § 7.2–7.4
-refer to it. `project-layout.md` § 1 is the authority for both, and if the two
-ever disagree that one wins.
+The tree below is drawn here only because § 7.2–7.4 refer to it.
+`project-layout.md` § 1 is the authority, and if the two ever disagree that
+one wins.
 
 ```
 projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
@@ -1544,7 +1456,7 @@ projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
 │   ├── <label>_01_coarse.run.sh          ← its wrapper, for this machine
 │   ├── mb_monitor.pyz                 ← the monitor's one file, beside it
 │   ├── Au.psml  …                     ← a real copy of the shared pseudopotential
-│   └── run-0/  run-1/                 ← what each attempt produced
+│   └── run-0/  run-1/                 ← what each run produced
 └── 02_tight/
     ├── <label>_02_tight.fdf
     └── run-0/
@@ -1616,15 +1528,11 @@ one. Two of its properties are the reason:
   files — the deck, the wrapper, the monitor, the pseudopotentials — are real
   copies too: **every file in a stage is a real file, never a link.**
 
-**Why not one flat directory.** A flat folder was the earlier answer here, on the
-grounds that a shared basename makes continuing free (`job-contracts.md § 2.1`
-Rule 2). It does — and it also means every stage writes over the last one. The
-restart files are the obvious casualty, but they are not the worst:
-`.STRUCT_OUT`, `.EIG` and every other engine output is keyed by `SystemLabel`,
-which is *identical* across stages by design. Run three stages flat and you keep
-one set of results — the last — plus three `.out` logs. For a framework whose
-purpose is managing a mission across several parameter sets, losing every
-intermediate result is not a trade, it is a defect.
+**Why a directory per stage.** `.XV`, `.STRUCT_OUT`, `.EIG` and every other
+engine output is keyed by `SystemLabel`, which is *identical* across stages by
+design. Stages sharing one folder would keep one set of results — the last.
+For a framework whose purpose is managing a mission across several parameter
+sets, losing every intermediate result is a defect.
 
 **Stages are not chained**, and what that means on disk —
 no `depends_on`, no queued follow-on, nothing pointing at a file that does not
@@ -1659,7 +1567,7 @@ it declares.** `.XV` always, `.DM` when the config saves it, and `.CG` **only
 when the run it continues from used the same relaxation method** — *"a CG state
 is meaningless to a Broyden stage"*. The stage declares that as its `warm` list
 with `requires_same: "optimizer"`, and the comparison is made at the launch
-that takes the files, against the attempt it continues from (`job-system.md
+that takes the files, against the run it continues from (`job-system.md
 § 4.1`).
 
 **And `restart` gets sharper.** In one directory, *continue* could only mean
@@ -1745,10 +1653,8 @@ Two rules make growth safe, and both follow from one observation.
 > stdout and its trajectory log (`job-contracts.md § 2.6`). That is a fact on
 > disk, not a flag anybody maintains.
 >
-> *Keyed to* is the load-bearing part, and it is deliberately not a filename.
-> The two shapes key it differently — flat by a suffix in the name, hierarchical
-> by the directory the output sits in (`project-layout.md § 1`) — so a rule
-> written around either spelling would be false in the other half of the design.
+> *Keyed to* is the load-bearing part: the output sits in the stage's run
+> folder (`project-layout.md § 1`), and that is what ties it to the deck.
 
 **R4 — a stage that has run is a record, and the record is a checkpoint.** The
 outputs beside a deck were made by that deck as it was, so replacing it without
@@ -1824,7 +1730,7 @@ stages that did not produce them. **Names are stable; positions are not.**
 > is not an insertion — it is a new stage that happens to be coarser, and
 > numbering it `03` is the truth."* A number that cannot shift cannot cause the
 > failure this rule exists to prevent. So the artifact token is `<NN>_<name>`
-> (`identity.stage_token`), carrying **both** halves: the ordinal so a flat
+> (`identity.stage_token`), carrying **both** halves: the ordinal so a
 > listing of eight decks sorts into the order they ran, the name so every
 > artifact of a stage can still be read back to it.
 
@@ -1846,7 +1752,7 @@ two were made and one came free. It is kept as a pointer rather than a proposal.
 **The general rule this leaves behind**, which is what belongs in *this* contract:
 a layout decision is not finished when the folder is right. It has to be carried
 to whatever reads the folder — here the checkpoint system, whose glob defaults
-were written for a flat directory and would silently have lost data in a tree.
+were written for files at one level and would silently have lost data in a tree.
 
 ---
 
@@ -1880,11 +1786,11 @@ were written for a flat directory and would silently have lost data in a tree.
   until 2026-08-11; all three were deleted on 2026-08-10 — § 3.)*
 - **Carrying a finished run into the next calculation** — **it is CITED, never
   bundled** (retired 2026-08-29; `job-contracts.md` § 5 holds the closure).  A
-  calculation that builds on a finished result names the attempt explicitly
+  calculation that builds on a finished result names the run explicitly
   (a directory whose files satisfy [`transport.md`](?doc=engines/transport.md) § 3.1) and `prep` composes from it —
   [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1 is the
   shipped instance.  The which-script tie-break question the old handoff carried
-  died with it: a citation names ONE attempt, so there is nothing to guess.
+  died with it: a citation names ONE run, so there is nothing to guess.
 - **What a checkpoint history must always hold** —
   [`execution/checkpointing.md`](?doc=execution/checkpointing.md). This contract
   says *when* a checkpoint is taken and *what it is called*; that one says what

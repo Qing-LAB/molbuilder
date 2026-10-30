@@ -206,7 +206,7 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
     cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
     deck = sc.render_deck(
         spec_for(struct, cfg, calculation="transport",
-                 names=RunNames.of("kwcheck", token, "hierarchical")),
+                 names=RunNames("kwcheck", token)),
         struct, cfg)
     assert "PAO.BasisSize" in deck, (
         "this rung carries none of the engine's section set -- the test "
@@ -236,7 +236,7 @@ def test_the_device_deck_holds_no_label_siesta_cannot_read():
     cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
     deck = sc.render_deck(
         spec_for(struct, cfg, calculation="transport",
-                 names=RunNames.of("kwcheck", "04_device", "hierarchical")),
+                 names=RunNames("kwcheck", "04_device")),
         struct, cfg)
     _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")
 
@@ -310,7 +310,7 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
     # converges while doing it).
     cfg = SiestaConfig(system_label="J")
     spec = spec_for(struct, cfg, calculation="transport",
-                    names=RunNames.of("J", "04_device", "hierarchical"))
+                    names=RunNames("J", "04_device"))
     deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
     blocks = re.findall(r"%block TS\.Elec\.(\w+)(.*?)%endblock", deck, re.S)

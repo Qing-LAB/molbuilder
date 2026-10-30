@@ -180,10 +180,6 @@ const FIELDS = {
     launched_at:    { label: "Launched at", fmt: utc },
     continued_from: { label: "Continued from", style: MONO,
                       none: "nothing -- it started from the structure" },
-    // A WARM RETRY'S OWN RECORD names the run it retries -- the same job,
-    // a run of its own (`running-a-job.md` § 3.5); null for a launch.
-    retry_of:       { label: "Retry of run",
-                      none: "none -- launched, not a retry" },
     // time
     run_start_local:  { label: "Started (the node's clock)", fmt: local },
     run_end_local:    { label: "Ended (the node's clock)", fmt: local },
@@ -318,7 +314,7 @@ function summary(rec) {
     }
     if (time.engine_elapsed_s !== undefined) parts.push(duration(time.engine_elapsed_s));
     if (verdict.ended) {
-        parts.push(rec.run !== undefined ? `run ${rec.run} ${verdict.ended}` : verdict.ended);
+        parts.push(rec.run !== undefined ? `try ${rec.run} ${verdict.ended}` : verdict.ended);
     }
     Object.keys(verdict.converged || {}).forEach((p) => {
         parts.push(phaseWords(p, verdict.converged[p]));
@@ -348,7 +344,7 @@ function verdictSection(rec) {
         r.appendChild(el("span", "rp-val" + (cls ? " " + cls : ""), text));
         box.appendChild(r);
     };
-    if (v.ended) line("Latest run", rec.run !== undefined ? `run ${rec.run}: ${v.ended}` : v.ended);
+    if (v.ended) line("Latest try", rec.run !== undefined ? `try ${rec.run}: ${v.ended}` : v.ended);
     Object.keys(v.converged || {}).forEach((p) => line("Converged", phaseWords(p, v.converged[p])));
     // THE LAST STEP'S FORCES AND STRESS, or why a TranSIESTA device has
     // none (`model/parse.md` § 5d.6).
@@ -362,8 +358,8 @@ function verdictSection(rec) {
     if (Array.isArray(v.stress_voigt_kbar)) line("Stress in the (x, y) plane", inPlane(v.stress_voigt_kbar));
     (v.findings || []).forEach((f) => line("Finding", f.text || words(f), "rp-finding"));
     (rec.earlier || []).forEach((e) => line(
-        "Earlier run",
-        `run ${e.run}: ` + (e.ended || "its output states no ending")));
+        "Earlier try",
+        `try ${e.run}: ` + (e.ended || "its output states no ending")));
     if (box.childNodes.length) s.appendChild(box);
     return s;
 }

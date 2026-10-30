@@ -2,7 +2,7 @@
 the one before has finished (`execution/job-system.md` § 6.0, *A sequence of
 groups*) -- down the road with the real SIESTA.
 
-``molbuilder describe`` (hierarchical, the shipped `publishable` ladder: three
+``molbuilder describe`` (the shipped `publishable` ladder: three
 stages, each building on the one before, groups 1 2 3) -> ``prep task
 --group 1 --group 2 --group 3 --one-job`` -> ``launch task --group 1
 --group 2 --group 3 --mode direct``: ONE walk, run here, launching each
@@ -47,8 +47,7 @@ def _calculation(tree: Path, name: str) -> Path:
         StructureCodec().write(road_structure(H2), pair)
     r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                "--bundle", f"P/opt/{name}", "--engine", "siesta",
-               "--calculation", "optimization", "--shape", "hierarchical",
-               "--name", "H2", "--psml-lib", "pseudopotential",
+               "--calculation", "optimization", "--name", "H2", "--psml-lib", "pseudopotential",
                "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "opt" / name
@@ -144,12 +143,10 @@ def test_the_sequence_runs_every_group_in_turn(road):
     stages = [st for _n, sts in road["groups"] for st in sts]
     assert [rows[s].state for s in stages] == ["finished"] * len(stages), \
         {s: (rows[s].state, rows[s].detail) for s in stages}
-    from molbuilder.jobset.naming import run_names, stage_home
+    from molbuilder.jobset.naming import stage_home
     for before, after in zip(stages, stages[1:]):
         home = stage_home(road["whole"], calc.task, after)
-        rec = launch_record(home.dir / "run-0",
-                            run_names(calc.jobset, calc.jobset.job(after),
-                                      calc.shape))
+        rec = launch_record(home.dir / "run-0")
         assert rec["continued_from"].startswith(
             stage_home(road["whole"], calc.task, before).token + "/run-0"), \
             (after, rec)
@@ -161,7 +158,7 @@ def test_each_run_records_the_sequence_it_rode(road):
     Results tab reads (`computation.launch.sequence`)."""
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.group import sequence_names
-    from molbuilder.jobset.naming import run_names, stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runrecord import launch_record
     calc = open_calculation(road["whole"])
     numbers = [n for n, _ in road["groups"]]
@@ -170,8 +167,7 @@ def test_each_run_records_the_sequence_it_rode(road):
     for _n, stages in road["groups"]:
         for st in stages:
             home = stage_home(road["whole"], calc.task, st)
-            rec = launch_record(home.dir / "run-0", run_names(
-                calc.jobset, calc.jobset.job(st), calc.shape))
+            rec = launch_record(home.dir / "run-0")
             assert rec["sequence"] == name, (st, rec)
             assert rec["mode"] == "direct" and rec["job_id"] is None, rec
             assert rec["command"] == ["bash", f"launch/{name}.run.sh"], rec

@@ -10,24 +10,22 @@ Contract: `execution/project-layout.md` § 1.4a, invariant 6b.
 *container* or a *run*, and then said the quiet part: *"there is no directory
 where the two are mixed and something has to tell them apart."*  Nothing in the
 TREE has to.  **A reader handed a path does**, and could not — the answer is not
-decidable from the name, and § 1.3 and § 1.4 settle that three times over: a
-flat calculation root IS a run, a hierarchical stage directory is
-a container, and a hand-made folder with one ``.fdf`` in it is a run.
+decidable from the name: a stage directory is a container, a swept rung's
+``run-<n>/`` holds its points' runs, and a hand-made folder with one ``.fdf``
+in it is a run.
 
 **Two fields, and each earns its place** (§ 1.4a).  Everything else a reader
 might want — what the folder is (a stage's, a run's, a point's, a benchmark's),
 its stage, its run, its trial and its point — is READ OFF ITS PLACE in the names
 the layout gives its folders (`identity.parse_token`, `paths.attempt_index`,
-`trial_point`, `flat_bench_token`, the benchmark's and the launch folder's
-names): :func:`where`, the one answer.  A fact the tree's names already answer
+`trial_point`, the benchmark's and the launch folder's names): :func:`where`,
+the one answer.  A fact the tree's names already answer
 does not get a second home.
 
 **What the names cannot answer, and so is stored here.**  Container or run: a
-flat root is a run where a hierarchical one is a container; a flat trial's
-``bench-<point>/`` is a run where a hierarchical one holds its attempts; a swept
-rung's ``run-<n>/`` holds its points' runs where a rung that runs once is a run.
-The shape and whether a rung sweeps are the description's, which this floor does
-not read, and only the code that created the directory knew which it was making.
+swept rung's ``run-<n>/`` holds its points' runs where a rung that runs once is
+a run.  Whether a rung sweeps is the description's, which this floor does not
+read, and only the code that created the directory knew which it was making.
 That is the whole content of this record.
 
 **Absence is not a refusal** (§ 1.4a).  A directory with no record is read
@@ -47,14 +45,12 @@ from typing import Optional, Tuple
 # package is not installed.
 try:                                       # inside molbuilder
     from .identity import parse_token
-    from .paths import (BENCH_DIRNAME, attempt_index, flat_bench_token,
-                        trial_point)
+    from .paths import BENCH_DIRNAME, attempt_index, trial_point
     from .persist import json_text, read_json
     from .runfiles import LAUNCH_DIR
 except ImportError:                        # beside a job
     from identity import parse_token
-    from paths import (BENCH_DIRNAME, attempt_index, flat_bench_token,
-                       trial_point)
+    from paths import BENCH_DIRNAME, attempt_index, trial_point
     from persist import json_text, read_json
     from runfiles import LAUNCH_DIR
 
@@ -89,11 +85,11 @@ ROLES = (CONTAINER, RUN, SCRATCH, SHARED)
 #: WHAT A FOLDER IS in its calculation (§ 1.4a, *Where am I*), read off its
 #: place in the layout's names: the calculation's root -- its description is
 #: there; a stage's folder, ``<NN>_<stage>/``; an attempt, ``run-<n>/`` -- a
-#: stage's or a hierarchical trial's; a point's folder -- below a run of
-#: points, or the one prep renders a point's deck into below its stage; the
-#: engine's scratch of the run above (the role's own word); a stage's
-#: benchmark, ``<NN>_<stage>/bench/`` or the flat ``bench_<NN>_<stage>/``; a
-#: trial, ``bench-<point>/``; support -- ``pseudos/``, a ``launch/``.
+#: stage's or a trial's; a point's folder -- below a run of points, or the one
+#: prep renders a point's deck into below its stage; the engine's scratch of
+#: the run above (the role's own word); a stage's benchmark,
+#: ``<NN>_<stage>/bench/``; a trial, ``bench-<point>/``; support --
+#: ``pseudos/``, a ``launch/``.
 CALCULATION = "calculation"
 STAGE = "stage"
 ATTEMPT = "attempt"
@@ -196,7 +192,7 @@ class Where:
     calculation's ``root``; ``what`` the folder is -- :data:`CALCULATION`,
     :data:`STAGE`, :data:`ATTEMPT`, :data:`POINT`, :data:`SCRATCH`,
     :data:`BENCHMARK`, :data:`TRIAL` or :data:`SUPPORT`; ``role``, its
-    record's (``None`` at the root, whose description's shape says it); and
+    record's (``None`` at the root, a container, which holds no record); and
     where it sits -- the ``stage`` token (``01_coarse``), the ``run`` index,
     the benchmark ``trial``'s point, and for a point's folder the ``point``,
     its path below the run or the stage (``f001/v0.2``); ``run_folder``, the
@@ -218,9 +214,8 @@ class Where:
 def where(directory) -> Where:
     """WHERE ``directory`` IS in its calculation -- the one answer (§ 1.4a,
     *Where am I*).  The root, as :func:`root_of` says it; what the folder
-    is, its record's role read at its place in the layout's names: below the root a
-    stage's ``<NN>_<stage>/``, a flat benchmark's ``bench_<NN>_<stage>/`` or
-    support; below a stage its attempts ``run-<n>/``, its benchmark
+    is, its record's role read at its place in the layout's names: below the
+    root a stage's ``<NN>_<stage>/`` or support; below a stage its attempts ``run-<n>/``, its benchmark
     ``bench/``, its ``launch/``, else a point prep renders into; below a
     benchmark its trials ``bench-<point>/`` and its ``launch/``; below a
     trial its attempts; below an attempt its points, or its scratch, as its
@@ -250,10 +245,7 @@ def where(directory) -> Where:
     at: Optional[str] = CALCULATION
     for i, name in enumerate(parts, start=1):
         if at == CALCULATION:
-            bench_of = flat_bench_token(name)
-            if bench_of:
-                stage, at = bench_of, BENCHMARK
-            elif parse_token(name):
+            if parse_token(name):
                 stage, at = name, STAGE
             else:
                 at = SUPPORT

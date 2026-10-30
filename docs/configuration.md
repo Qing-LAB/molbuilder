@@ -472,7 +472,7 @@ door for the kind of file it has, and the door knows:
 | `molbuilder.json` | `runtime_config.write_config_scope(patch)` | merge over what is there, validate the merge, then `write_bytes` at `0600` — the mode set as the file is written, never after — and the auth wizard's writer since 2026-09-13; it had one of its own |
 | anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
 | a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
-| the monitor's two files on a compute node — its `.util.csv` and its `.monitor.log` | `pathlib`, deliberately | appended to as the run goes — see below; its notification record and a retry's launch record go through `persist` |
+| the monitor's two files on a compute node — its `.util.csv` and its `.monitor.log` | `pathlib`, deliberately | appended to as the run goes — see below; its notification record goes through `persist` |
 
 **The shapes that are not `write_bytes` calls, and why each one is not.**
 *(The list was two long and said "nothing else may"; three more existed, which is
@@ -511,9 +511,7 @@ itself pure stdlib — so is `config_dir.py`; the property is *depends only on
 stdlib*, never *imports nothing of ours* (`config_dir.py`'s own header says so,
 and `scheduler/record.py` imports `persist` on the strength of it). What
 travels is exactly the modules `runwrap.MONITOR_COMPANIONS` names, in one file
-(`execution/run-reports.md` § 2.3) — `persist.py` among them, the writer a
-flat run's warm retry writes its own launch record through beside the job
-(`runrecord.record_retry`, `execution/running-a-job.md` § 3.5) — and each of
+(`execution/run-reports.md` § 2.3) — `persist.py` among them — and each of
 those modules imports the next two ways — from the package, or from the
 bundle.
 

@@ -87,7 +87,7 @@ def _decks():
                 cfg = dataclasses.replace(PySCFConfig(job_name="w"), **over)
                 deck = str(_sc.render_deck(
                     spec_for(_STRUCT, cfg, calculation=calculation,
-                             names=RunNames.of("w", "01_coarse", "flat")),
+                             names=RunNames("w", "01_coarse")),
                     _STRUCT, cfg, verbose=cfg.verbose_comments))
             except ValueError:       # a refused combination is not this
                 continue             # test's subject; the gate owns that

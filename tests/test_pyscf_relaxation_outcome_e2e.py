@@ -51,8 +51,9 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     ``execution`` (`stages.md` § 6.8d: a run setting lives there alone) and
     its template ``template``'s values -- written by the hand-over's own writer
     (`template_with_values`), since the electronic state binds every rung
-    and is the template's -- prepared and launched directly: the bundle, the
-    stage's state as the ladder reads it, and what the run itself printed."""
+    and is the template's -- prepared and launched directly: the stage's run
+    (`runs.run_of`), the stage's state as the ladder reads it, and what the
+    run itself printed."""
     from conftest import write_machine_record
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import jobset_status
@@ -71,7 +72,7 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     monkeypatch.chdir(tree.parent)
     r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                 "--bundle", f"P/{calculation}/H2", "--engine", "pyscf",
-                "--shape", "flat", "--name", "H2",
+                "--name", "H2",
                 "--calculation", calculation)
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / calculation / "H2"
@@ -108,10 +109,16 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     _jobset("launch", "task", "--stage", stage.name, "--bundle", bundle,
             "--mode", "direct", "--foreground", "--yes")
     row = next(iter(jobset_status(open_calculation(bundle)).stages))
-    said = "\n".join(p.read_text(errors="replace")
-                     for p in sorted(bundle.glob("*-run0.pyscf.log")))
-    assert said, sorted(p.name for p in bundle.iterdir())
-    return bundle, row.state, said
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.runfiles import FIRST_TRY
+    from molbuilder.runs import run_of
+    ran_in = latest_attempt(stage_home(bundle, task, stage.name).dir)
+    assert ran_in is not None, sorted(p.name for p in bundle.rglob("*"))
+    run = run_of(ran_in)
+    log = run.file(".pyscf.log", FIRST_TRY)
+    assert log is not None, sorted(p.name for p in ran_in.iterdir())
+    return run, row.state, log.read_text(errors="replace")
 
 
 def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
@@ -133,11 +140,9 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
     ``SystemExit``, which no ``excepthook`` sees, so the log closed as a
     clean end (the K6 review, R1).
     """
-    from pathlib import Path
-
     from molbuilder.parse.registry import parse
 
-    bundle, state, said = _run(
+    run, state, said = _run(
         tmp_path, monkeypatch, calculation="optimization",
         overrides={"geom_max_steps": 1, "on_nonconvergence": "halt"})
     assert state == "failed", said[-3000:]
@@ -145,9 +150,9 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
             "(on_nonconvergence = halt)") in said, said[-3000:]
     assert "launch this stage again to continue from it" in said, (
         said[-3000:])
-    assert list(bundle.glob("*_optimized.xyz")), (
+    assert run.on_label("_optimized.xyz") is not None, (
         "a halted rung kept no geometry to continue from")
-    log = parse(Path(next(bundle.glob("*.molwatch.log"))))
+    log = parse(run.file(".molwatch.log"))
     assert log.run_state == "stopped", log.run_state
 
 
@@ -166,11 +171,9 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
     ``continue`` that never re-enters (the old loop retried only a failed
     SCF); and a rung that takes the geometry without asking.
     """
-    from pathlib import Path
-
     from molbuilder.parse.registry import parse
 
-    bundle, state, said = _run(
+    run, state, said = _run(
         tmp_path, monkeypatch, calculation="optimization",
         molecule=(["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.6]]),
         overrides={"geom_max_steps": 1, "on_nonconvergence": "continue",
@@ -180,14 +183,14 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
         said[-3000:])
     assert ("did not meet geomeTRIC's criteria in 3 steps "
             "(on_nonconvergence = continue)") in said, said[-3000:]
-    kept = next(bundle.glob("*_optimized.xyz")).read_text().split("\n")
+    kept = run.on_label("_optimized.xyz").read_text().split("\n")
     z = [float(ln.split()[3]) for ln in kept[2:4]]
     assert round(abs(z[1] - z[0]), 4) != 1.6, (
         f"the geometry kept is the input's, not the one reached: {kept}")
     # The live log keeps every step of every batch.  A re-entry evaluates
     # the geometry it starts from, so it shows as a frame repeating the one
     # before it; after the first move nothing is back at the input's bond.
-    frames = [fr for fr in parse(Path(next(bundle.glob("*.molwatch.log"))))
+    frames = [fr for fr in parse(run.file(".molwatch.log"))
               .frames if fr.energy is not None]
     bonds = [round(float(np.linalg.norm(
         np.asarray(fr.structure.positions)[0]
@@ -212,11 +215,11 @@ def test_proceed_keeps_the_geometry_and_the_result_says_so(tmp_path,
     """
     from molbuilder.parse.registry import parse
 
-    bundle, state, said = _run(
+    run, state, said = _run(
         tmp_path, monkeypatch, calculation="vibration",
         overrides={"geom_max_steps": 1, "on_nonconvergence": "proceed"})
     assert state == "finished", said[-3000:]
-    rx = parse(next(bundle.glob("*.spectra.json"))).payload["relaxation"]
+    rx = parse(run.on_label(".spectra.json")).payload["relaxation"]
     assert "did not meet geomeTRIC's criteria in 1 steps" in (
         rx.get("warning") or ""), rx
     assert rx["converged"] is False, rx
@@ -238,7 +241,7 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
     from _road import gpu_visible
     if not gpu_visible():
         pytest.skip("no NVIDIA GPU visible here")
-    bundle, state, said = _run(
+    run, state, said = _run(
         tmp_path, monkeypatch, calculation="optimization",
         molecule=(["O", "O"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.21]]),
         template={"method": "HF", "basis": "sto-3g",
@@ -268,11 +271,11 @@ def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
     from molbuilder.parse.registry import parse
     from molbuilder.spectra.vibrational_analysis import nonstationary_remedy
 
-    bundle, state, said = _run(
+    run, state, said = _run(
         tmp_path, monkeypatch, calculation="vibration",
         template={"already_relaxed": True}, overrides={})
     assert state == "finished", said[-3000:]
-    doc = parse(next(bundle.glob("*.spectra.json"))).payload
+    doc = parse(run.on_label(".spectra.json")).payload
     rx = doc["relaxation"]
     assert (rx["enabled"], rx["n_steps"]) == (False, 0), rx
     assert doc["phase_relaxation"] == "complete", doc["phase_relaxation"]
@@ -298,22 +301,22 @@ def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(tmp_path,
     relaxation running to its step budget (H2 from 0.95 Å converges in a few
     steps, and the run would read converged)."""
     from molbuilder.parse.engines._run_ending import ending_of
-    bundle, state, said = _run(
+    run, state, said = _run(
         tmp_path, monkeypatch, calculation="optimization",
         overrides={"geom_max_steps": 50, "on_nonconvergence": "proceed"},
         execution={"time": "00:00:01"})
     assert state == "finished", said[-3000:]
     assert "stopped before the wall" in said, said[-3000:]
-    assert list(bundle.glob("*_optimized.xyz")), sorted(
-        p.name for p in bundle.iterdir())
+    assert run.on_label("_optimized.xyz") is not None, sorted(
+        p.name for p in run.folder.iterdir())
     # THE LOG'S FOOTER, read by the ending reader: the geometry verdict is
     # the deck's own word (`# relaxed: no`) -- and the run's, through the
     # status door every surface asks (`model/parse.md` § 2b).
-    log = next(bundle.glob("*.molwatch.log"))
+    log = run.file(".molwatch.log")
     assert ending_of(log).relaxed is False, log.read_text()[-600:]
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import jobset_status
-    row = next(iter(jobset_status(open_calculation(bundle)).stages))
+    row = next(iter(jobset_status(open_calculation(run.place.root)).stages))
     assert row.converged == "geometry NO", row
     # ...AND NO SCF PAST THE WALL: the run ends with the geometry reached.
     assert "Final energy" not in said, said[-3000:]
@@ -335,7 +338,7 @@ def test_the_wall_stops_a_vibration_before_its_spectrum(tmp_path,
 
     MUTATION THIS MUST FAIL AGAINST: the vibration deck asking the wall
     nowhere (`stop_if_past_wall` answering nothing)."""
-    bundle, state, said = _run(
+    run, state, said = _run(
         tmp_path, monkeypatch, calculation="vibration",
         overrides={"geom_max_steps": 50, "on_nonconvergence": "halt"},
         template={"compute_raman": False, "compute_ir": False},

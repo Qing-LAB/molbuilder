@@ -18,8 +18,8 @@ environment.
 
 Each is the session fixture of its name in `tests/conftest.py`:
 
-* :func:`layered` (``real_h2_layered``) -- an H2 optimization, layered
-  folders, the `publishable` ladder: `coarse` launched, a dry run of
+* :func:`layered` (``real_h2_layered``) -- an H2 optimization on the
+  `publishable` ladder: `coarse` launched, a dry run of
   launching it again, launched again warm and then cold, `medium` prepared
   on it and sent by a launch that names no stage, left in the background,
   and the jobs launched from here asked twice once it ended; and the run
@@ -34,7 +34,7 @@ Each is the session fixture of its name in `tests/conftest.py`:
   optical calls (`engines/vibration.md` § 5.11), waited on;
 * :func:`gpu` (``real_h2_gpu``) -- the same H2 asking this machine's GPU,
   one rank: its run script's dry runs, then the run, waited on;
-* :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF, flat,
+* :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF,
   stretched so it moves: `coarse` launched and waited on.
 
 A run with one thing changed is a copy of it beside it (:func:`copy_of`).
@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
-from support.road import molbuilder
+from support.road import _all_written, molbuilder
 
 
 @dataclass
@@ -66,7 +66,8 @@ class RealRun:
     """A calculation made on the road with the engine, and what every
     command typed on it answered, in the order typed (``said``, by a name
     the fixture gives each step).  ``files_before`` / ``files_after`` hold
-    the calculation's files around the one step that must write nothing;
+    the calculation's files around the one step that must write nothing,
+    ``relaunched`` them once a stage was launched again, warm and cold;
     ``jobs`` what `molbuilder jobs status` answered, by when it was asked
     (`job-system.md` § 6.0a)."""
     tree: Path
@@ -75,9 +76,10 @@ class RealRun:
     jobs: Dict[str, object] = field(default_factory=dict)
     files_before: Dict[str, tuple] = field(default_factory=dict)
     files_after: Dict[str, tuple] = field(default_factory=dict)
+    relaunched: Dict[str, tuple] = field(default_factory=dict)
 
     def attempt(self, stage: str, n: int = 0) -> Path:
-        """Attempt ``n`` of ``stage`` -- its folder, by molbuilder's own
+        """Run ``n`` of ``stage`` -- its folder, by molbuilder's own
         doors (`jobset.naming.stage_home`, `paths.attempt_dir`): the
         handle every reader of the run takes, asking the run door for the
         rest (`runs.run_of`)."""
@@ -88,7 +90,7 @@ class RealRun:
         return attempt_dir(stage_home(self.bundle, task, stage).dir, n)
 
     def call(self, stage: str, phase: str, n: int = 0) -> Path:
-        """The SIESTA call of ``phase`` in attempt ``n`` of ``stage`` -- a
+        """The SIESTA call of ``phase`` in run ``n`` of ``stage`` -- a
         run in phases' point, its folder below the run as the kind names it
         (`siesta.vibration_phases.Call.rel`): the relaxation's, the force
         constants'."""
@@ -179,19 +181,11 @@ def _taken(run: RealRun, step: str, *words) -> Said:
 
 
 def notified(run: RealRun, stage: str, n: int = 0) -> list:
-    """The events run ``n`` of ``stage`` sent, by its record
-    (`runrecord.read_notified`), named as its stage's files are
-    (`jobset.naming.stage_home`) -- a run of points is one run in its
-    folder, its records named as its first (`runfiles.FIRST_ATTEMPT`, as
-    its index is; `run-reports.md` § 2.4)."""
-    from molbuilder.jobset.naming import stage_home
-    from molbuilder.runfiles import FIRST_ATTEMPT
+    """The events run ``n`` of ``stage`` sent, by its record in the run's
+    folder (`runrecord.read_notified`) -- a run of points is one run in its
+    folder, one record for its points (`run-reports.md` § 2.4)."""
     from molbuilder.runrecord import read_notified
-    from molbuilder.task import of as task_of
-    task = task_of(run.bundle)
-    names = stage_home(run.bundle, task, stage).names(task.shape)
-    return [e["event"] for e in read_notified(run.attempt(stage, n), names,
-                                              FIRST_ATTEMPT)]
+    return [e["event"] for e in read_notified(run.attempt(stage, n))]
 
 
 def told(run: RealRun, event: str, stage: str, n: int = 0) -> list:
@@ -203,11 +197,11 @@ def told(run: RealRun, event: str, stage: str, n: int = 0) -> list:
     import re
     from molbuilder.jobset.naming import stage_home
     from molbuilder.monitor import WatchedRun
-    from molbuilder.runfiles import FIRST_ATTEMPT
+    from molbuilder.runfiles import FIRST_TRY
     from molbuilder.task import of as task_of
     task = task_of(run.bundle)
-    names = stage_home(run.bundle, task, stage).names(task.shape)
-    log = WatchedRun(names=names, run=FIRST_ATTEMPT,
+    names = stage_home(run.bundle, task, stage).names
+    log = WatchedRun(names=names, run=FIRST_TRY,
                      directory=run.attempt(stage, n)).path(".monitor.log")
     said = re.compile(r"\[NOTIFY\] \(stub\) (\w+): (.*)$")
     return [m.group(2) for m in map(said.search,
@@ -316,10 +310,9 @@ def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
 
 def _described(tree: Path, where: str, *, structure: dict, name: str,
                calculation: str, stage_strategy: str = "",
-               engine: str = "siesta", shape: str = "hierarchical",
-               **blocks) -> Path:
+               engine: str = "siesta", **blocks) -> Path:
     """`molbuilder describe` of the road's ``structure`` (`support.road`,
-    written where `describe` takes it), on ``engine`` in ``shape``, the
+    written where `describe` takes it), on ``engine``, the
     ``calculation``'s own ladder or ``stage_strategy``; then the job
     request's blocks as given -- its run card, its allocation, its
     benchmark: each stated, or left out.  THE ONE MAKER of a calculation on
@@ -331,7 +324,7 @@ def _described(tree: Path, where: str, *, structure: dict, name: str,
     StructureCodec().write(road_structure(structure), tree / source)
     r = molbuilder("describe", "--structure", source, "--bundle", where,
                "--engine", engine, "--calculation", calculation,
-               "--shape", shape, "--name", name,
+               "--name", name,
                *(("--psml-lib", "pseudopotential") if engine == "siesta"
                  else ()),
                *(("--stage-strategy", stage_strategy) if stage_strategy
@@ -347,13 +340,6 @@ def _described(tree: Path, where: str, *, structure: dict, name: str,
             request[block] = value
     write_request(bundle, request)
     return bundle
-
-
-def _files(bundle: Path) -> Dict[str, tuple]:
-    """Every file under the calculation, by its size and write time."""
-    return {str(p.relative_to(bundle)): (p.stat().st_size,
-                                         p.stat().st_mtime_ns)
-            for p in sorted(bundle.rglob("*")) if p.is_file()}
 
 
 def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path,
@@ -431,7 +417,7 @@ def _header_under_a_slurm_grant(run: RealRun, tree: Path,
     finally:
         sol.unlink()
     there = scratch / "on-sol"
-    shutil.copytree(bundle / "01_coarse" / "run-0", there)
+    shutil.copytree(on_sol.attempt("coarse"), there)
     header = next(there.glob("*.sbatch"))
     done = subprocess.run(["bash", header.name, "--run", "0", "--dry-run"],
                           cwd=there, capture_output=True, text=True,
@@ -457,21 +443,22 @@ def layered(tmp_path_factory) -> RealRun:
         run = RealRun(tree=tree, bundle=bundle)
         _taken(run, "prep coarse", "prep", "task", "--group", "1",
                "--target", "this")
-        _script_dry_runs(run, bundle / "01_coarse" / "run-0",
+        _script_dry_runs(run, run.attempt("coarse"),
                          tmp_path_factory.mktemp("dry-run"))
         _header_under_a_slurm_grant(run, tree,
                                     tmp_path_factory.mktemp("header-dry-run"))
         _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
                "--mode", "direct", "--foreground", "--yes")
-        run.files_before = _files(bundle)
+        run.files_before = _all_written(bundle)
         _taken(run, "dry run of launching coarse again", "launch", "task",
                "--stage", "coarse", "--mode", "direct", "--dry-run", "--yes")
-        run.files_after = _files(bundle)
+        run.files_after = _all_written(bundle)
         _taken(run, "launch coarse again", "launch", "task", "--stage",
                "coarse", "--mode", "direct", "--foreground", "--yes")
         # ASKED AT A TERMINAL, AND ANSWERED THE OTHER WAY: the foreground.
         _answered(run, "launch coarse again cold", "f", "launch", "task",
                   "--stage", "coarse", "--mode", "direct", "--cold")
+        run.relaunched = _all_written(bundle)
         _taken(run, "prep medium", "prep", "task", "--group", "2",
                "--target", "this")
         # A RUN HERE, LEFT IN THE BACKGROUND -- a launch's default
@@ -507,7 +494,7 @@ def gpu(tmp_path_factory) -> RealRun:
         run = RealRun(tree=tree, bundle=bundle)
         _taken(run, "prep coarse", "prep", "task", "--group", "1",
                "--target", "this")
-        _script_dry_runs(run, bundle / "01_coarse" / "run-0",
+        _script_dry_runs(run, run.attempt("coarse"),
                          tmp_path_factory.mktemp("gpu-dry-run"),
                          CUDA_VISIBLE_DEVICES="0")
         _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
@@ -576,9 +563,10 @@ def co2_vibration(tree: Path, where: str = "P/freq/CO2", *,
 def vibration(tmp_path_factory) -> RealRun:
     """The vibration kind's one run in phases of the road's CO2
     (`engines/vibration.md` § 5.11): the one stage `freq`, one rank, one
-    thread, its optical phase asked for one mode (:data:`CO2_OPTICAL`),
-    prepared and launched here, waited on -- its `relax` call, its `fc`
-    call and the mode's three optical calls, each a point of the run."""
+    thread, its optical phase asked for the two stretches
+    (:data:`CO2_OPTICAL`), prepared and launched here, waited on -- its
+    `relax` call, its `fc` call and the five optical calls, the equilibrium
+    and each stretch's two sides, each a point of the run."""
     with _on_the_road(tmp_path_factory, "vibration") as tree:
         run = RealRun(tree=tree, bundle=co2_vibration(tree, optical=True))
         _taken(run, "prep freq", "prep", "task", "--group", "1",
@@ -615,8 +603,8 @@ def copy_of(run: RealRun, name: str, alter) -> RealRun:
 
 
 def pyscf(tmp_path_factory) -> RealRun:
-    """An H2 optimization on PySCF, flat -- the run is the calculation's own
-    folder -- one thread, the bond stretched to 0.80 A so the optimization
+    """An H2 optimization on PySCF -- its run `01_coarse/run-0/`
+    (:meth:`RealRun.attempt`) -- one thread, the bond stretched to 0.80 A so the optimization
     takes steps: `coarse` prepared, launched and waited on.  Each module that
     reads a finished PySCF run reads this one (`process/testing.md` tier 3)."""
     from support.road import H2
@@ -624,7 +612,7 @@ def pyscf(tmp_path_factory) -> RealRun:
     with _on_the_road(tmp_path_factory, "pyscf", engine="pyscf") as tree:
         bundle = _described(tree, "P/opt/H2", structure=stretched, name="H2",
                             calculation="optimization", engine="pyscf",
-                            shape="flat", execution={"threads": 1})
+                            execution={"threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
         _taken(run, "prep coarse", "prep", "task", "--group", "1",
                "--target", "this")

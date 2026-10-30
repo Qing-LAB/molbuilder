@@ -50,7 +50,7 @@ def _wrapper(tmp_path, ext, body, warm=None, **kw):
     settings every job carries, its wall's slack and its retries
     (`engines/template.md` § 5.4), handed ``warm``, the restart files in
     effect, as prep hands it."""
-    names = RunNames.of("job", "01_coarse", "hierarchical")
+    names = RunNames("job", "01_coarse")
     p = tmp_path / names.name(ext)
     p.write_text(body)
     return runwrap.render_run_wrapper(

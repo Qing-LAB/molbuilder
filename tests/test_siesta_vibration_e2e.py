@@ -44,9 +44,8 @@ constants and its first optical call ended, then launched again warm
 under a wall already passed, each optical call it runs failing alike
 (`run-reports.md` § 2.9).
 The optical calls' data file is read beside the index and the result
-(§ 5.11 § 8).  A flat calculation's refusal needs no engine:
-`test_siesta_vibration_deck`.  The ticked road's result is then opened on the
-Results tab, in a browser.
+(§ 5.11 § 8).  The ticked road's result is then opened on the Results tab,
+in a browser.
 
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
 cleanly anywhere else.  Each force-constant call is thirteen single points of
@@ -65,7 +64,8 @@ import pytest
 
 from _road import conda_hook, env_available, set_template_value
 from support.real_runs import notified, told
-from support.road import CO2, CO2_HELD_FIRST, group_words, ladder_edited
+from support.road import (CO2, CO2_HELD_FIRST, _all_written, group_words,
+                          ladder_edited)
 
 pytestmark = [
     pytest.mark.engine,
@@ -168,14 +168,18 @@ def _deck_coordinates(deck):
 
 
 def _the_run(run, stage: str = "freq", n: int = 0):
-    """The run of ``stage`` as `jobset status` reads it -- the one status
-    door (`support.real_runs.stage_status`): finished, every call done and
-    its finish ended; and its folder."""
+    """Run ``n`` of ``stage`` as `jobset status` reads it -- the one status
+    door (`support.real_runs.stage_status`), which reads the stage's newest
+    run, so ``n`` must be it: finished, every call done and its finish
+    ended; and its folder."""
     from support.real_runs import stage_status
     status = stage_status(run.bundle, stage)
+    folder = run.attempt(stage, n)
+    assert status.attempt == folder.name, (
+        f"the status door read {status.attempt}, not {folder.name}")
     assert status.state == "finished", (status.state, status.detail)
     assert all(p["done"] for p in status.points), status.points
-    return status, run.attempt(stage, n)
+    return status, folder
 
 
 def _the_result(run, stage: str = "freq", n: int = 0):
@@ -553,12 +557,12 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     said = unticked.said["summarize"]
     assert said.exit_code != 0 and "a sweep compares two or more" in \
         said.output, said.output
-    # LAUNCHED AGAIN with every call done and the finish written: nothing to
-    # run, the cold launch named (§ 5.11 § 6).
+    # LAUNCHED AGAIN with every call done and the finish written: refused,
+    # the cold launch named, and no run opened (§ 5.11 § 6).
     said = unticked.said["launch freq again"]
-    assert said.exit_code != 0, said.output
-    assert ("every call of 01_freq/run-0 is done and its finish wrote the "
-            "result") in said.output and "--cold" in said.output, said.output
+    assert said.exit_code != 0 and "--cold" in said.output, said.output
+    assert not unticked.attempt("freq", 1).exists(), (
+        "a refused launch opened a run")
 
 
 def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
@@ -580,14 +584,17 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     from molbuilder.monitor import WatchedRun
     from molbuilder.parse.engines.siesta_grammar import output_part
     from molbuilder.parse.engines.siesta_reader import SiestaReader
-    from molbuilder.runfiles import FIRST_ATTEMPT, find
+    from molbuilder.runfiles import FIRST_TRY, find
     from molbuilder.siesta import vibration_phases as vp
     from molbuilder.task import of as task_of
     from molbuilder.runrecord import stamp_time
     run = real_co2_vibration
     task = task_of(run.bundle)
-    folder = run.attempt("freq", 0)
-    call = folder / "optical" / _OPTICAL_CALLS[1]
+    folder = run.attempt("freq")
+    # THE RUN'S OWN CALLS, from its index; the second optical call.
+    index = _index_of(run)
+    optical = [c for c in vp.calls_of(index) if c.phase == vp.OPTICAL]
+    call = folder / optical[1].rel
     (out, _rf), = find(call, task.label, role=".out")
     # THE READING PASS, fed the output as the monitor's wakes feed it: the
     # SCF speaks until the part's opening line -- found by the grammar's
@@ -611,8 +618,8 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     assert reader.now().get("part") is None, reader.now().get("part")
     # THE MEMBER MONITOR, as the call's run script starts it -- the run's
     # folder its `--launched-in` -- read once the call has ended.
-    names = stage_home(run.bundle, task, "freq").names(task.shape)
-    watched = WatchedRun(names=names, run=0, directory=call,
+    names = stage_home(run.bundle, task, "freq").names
+    watched = WatchedRun(names=names, run=FIRST_TRY, directory=call,
                          launched_in=folder)
     now = time.time()
     st = watched.read(now - 1.0, now)
@@ -627,9 +634,7 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     assert "each optical call takes " in text, text
     assert st.call_elapsed_s is not None and "this call" in text, text
     # THE RUN'S CLOCK, from its first call's start in its index.
-    rows = vp.rows_of(vp.read_index(vp.index_path(folder, names,
-                                                  FIRST_ATTEMPT)),
-                      folder, task.label)
+    rows = vp.rows_of(index, folder, task.label)
     first = min(stamp_time(r["started"]).timestamp() for r in rows
                 if r.get("started"))
     assert abs(st.elapsed_s - (now - first)) < 1.0, (st.elapsed_s, now - first)
@@ -718,11 +723,6 @@ def _stretches(d):
     return by["apart"], by["together"]
 
 
-def _listing(folder):
-    return sorted(str(f.relative_to(folder)) for f in Path(folder).rglob("*")
-                  if ".git" not in f.parts and ".binsnapshots" not in f.parts)
-
-
 def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
         real_co2_vibration, monkeypatch, tmp_path):
     """THE RAMAN AT A LASER (`engines/vibration.md` § 5.11 § 10, § 14): the
@@ -784,12 +784,12 @@ def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
     assert script_view(result, laser_nm=_LASER_NM).to_wire() == view
 
     # THE EXPORT AT THAT LASER, both forms, outside the calculation.
-    before = _listing(run.bundle)
+    before = _all_written(run.bundle)
     for fmt in ("netcdf", "csv"):
         said = jobset("export", "--bundle", run.bundle, "--format", fmt,
                       "--to", tmp_path, "--laser-nm", _LASER_NM)
         assert said.exit_code == 0, said.output
-    assert _listing(run.bundle) == before, "nothing written in it"
+    assert _all_written(run.bundle) == before, "nothing written in it"
     spectra_nc = result.with_name(f"{label}.spectra.nc")
     out = tmp_path / f"{label}.vibration-netcdf"
     assert sorted(f.name for f in out.iterdir()) == sorted(

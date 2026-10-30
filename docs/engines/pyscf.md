@@ -92,7 +92,7 @@ flowchart LR
 
   ```bash
   molbuilder describe --structure P/structure/water.xyz --bundle P/optimization/water \
-      --engine pyscf --calculation optimization --shape flat
+      --engine pyscf --calculation optimization
   molbuilder jobset prep task --group 1 --bundle P/optimization/water --target this \
       --cpus-per-task 4
   ```
@@ -126,16 +126,16 @@ flowchart LR
 
 ## 2. Output files
 
-A successful run produces exactly these, in the launch directory (presence gated
+A successful run produces exactly these, in its run folder (presence gated
 by the config flag in column 2):
 
 | file | enabled when | contents |
 |---|---|---|
-| `<job>_<NN>_<stage>.log` | `log_file` (default on) | the verbose PySCF log, one per rung (the token keeps two rungs in one folder from overwriting each other's) |
+| `<job>_<NN>_<stage>.log` | `log_file` (default on) | the verbose PySCF log, one per rung, named on the rung's token as every file molbuilder names is ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.3) |
 | `<job>.chk` | `chkfile` (default on) | PySCF checkpoint (density matrix, mol, energies) |
 | `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization — in the engine's frame, as a pair carrying no run record of the input's either: its coordinates are the engine's, so the input's record's fingerprint does not describe them |
 | `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry, as a pair — its `.molstruct.json` carries the structure's own facts (cell, kinds, regions, the engine's origin 0) and **no run record of the input's**: `info.relaxation` and `info.calculation` describe the run the input came out of, not this one, so they stay behind; this run's relaxation record (`info.relaxation`) is read from its own output by the one reader when the run is exported from the Results tab ([`model/parse.md`](?doc=model/parse.md) § 5b) — the deck writes no copy of it (V1.31, closed 2026-09-29: one reader, one record). **Its level of theory is recorded by no door yet**: `info.calculation` (the charge, spin, basis and functional a run carried) is read from a SIESTA deck only (`parse.contract.contract_of`), so neither this pair nor the Results tab's export of a PySCF run carries one, and a later calculation with a blank charge or spin works them out from the structure (`science/chemistry-correctness.md` § 2a) — state them when the molecule is charged or open-shell. The PySCF half of that reader is planned ([`plan.md`](?doc=plans/plan.md) § 5w K18). *(They were copied onto every pair until 2026-09-29, so a PySCF-relaxed geometry carried a SIESTA run's tolerance, force and level of theory — the M11 review, PS-C10.)* |
-| `<job>_<NN>_<stage>-run<N>_geom_optim.xyz` | `optimize` + `write_trajectory` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
+| `<job>_<NN>_<stage>_geom_optim.xyz` | `optimize` + `write_trajectory` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
 | `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
 
 > **The stage token sits immediately after the label, never inside the role**
@@ -147,20 +147,14 @@ by the config flag in column 2):
 > it writes the placeholder as `<stage>` rather than the `*` that sweep
 > searched for. Build the name with `runfiles.compose`, never by hand.
 
-**In the flat shape the three per-run files carry the run's number** after the
-stage token — `<job>_<NN>_<stage>-run<N>.log`, `…-run<N>_geom_optim.xyz`,
-`…-run<N>.molwatch.log`. geomeTRIC writes no log file of its own: PySCF hands
-it a logging setup that prints to the screen (`pyscf/geomopt/log.ini`, used
-when geomeTRIC's own is absent), and the deck's prefix for it is derived from
-the trajectory's name. Prep renders each name from the
-stage's names (`runfiles.RunNames`) as a template, `{run}` where the number
-goes, and the script fills it with the number its run script gives it,
-`"$_mb_py" <script>.py --run N` — every PySCF script takes `--run N`, and in the
-hierarchy its templates have nothing to fill. A flat stage launched again is
-a second run in the same folder, and PySCF opens its log with `'w'` — the
-next run truncated the last's *(until 2026-10-06, plan W57 decision 2;
-`execution/job-contracts.md` § 2.2)*. The hierarchy's run folder is its run,
-and names them as the table does.
+**The three per-run files carry no try's number**: a run folder is its run,
+launched once, and a PySCF run is never retried in place
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.5a), so
+nothing else writes these names there. geomeTRIC writes no log file of its
+own: PySCF hands it a logging setup that prints to the screen
+(`pyscf/geomopt/log.ini`, used when geomeTRIC's own is absent), and the deck's
+prefix for it is derived from the trajectory's name. Prep renders each name
+from the stage's names (`runfiles.RunNames`).
 
 The script's header `Outputs:` block lists **exactly** this set for the active
 config — no under- or over-promising. `job_name` stays unsuffixed so
@@ -301,8 +295,7 @@ end lines at exit; the structure codec — every geometry the run saves is a
 pair written by it (`StructureCodec.write_moved`,
 [`model/structure.md`](?doc=model/structure.md) § 2.4), and a run that continues
 reads the last one back through molbuilder's one XYZ reader
-(`Structure.from_xyz`); the relaxation (`relax_policy.relax`, below); and the
-run's number its run script gives it (`runtime_info.run_given`, § 2). A
+(`Structure.from_xyz`); and the relaxation (`relax_policy.relax`, below). A
 vibration script imports, besides ([`vibration.md`](?doc=engines/vibration.md)
 § 4): the HOMO rule and its orbital window, the Hessian with $d\mu/dR$ and the GPU
 array bridge (`spectra/pyscf_vibration.py`); the harmonic path, the
@@ -314,7 +307,7 @@ every mode and the activity rule they ask (`spectra/derived.py`,
 `spectra/activity.py`, [`vibration.md`](?doc=engines/vibration.md) § 6.6);
 the mode selector (§ 4.8); and the `constants` module,
 for the one factor its Raman block converts with. Prep writes the file beside
-every PySCF script and copies it into every attempt with the script. Its first
+every PySCF script and copies it into every run with the script. Its first
 lines, right after its docstring, put that file on the import path — when the
 file is not there, the script stops on that line and says so — and size its
 threads (`runtime_info.cap_threads`), from a member that imports only the
@@ -670,7 +663,7 @@ in-script loop over stages, and no stage list in the engine config.
 
 **Why not keep the in-script loop.** A ladder exists so somebody looks between
 the rungs, and looking requires a rung to have *ended*. Everything the workflow
-offers between stages — open the next attempt, name the run it continues from,
+offers between stages — open the next run, name the run it continues from,
 read what happened, redo one rung with different numbers — is per-job machinery
 that a single process running every rung can reach none of.
 

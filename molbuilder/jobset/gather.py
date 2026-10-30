@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .. import script_emit as _sc
-from ..runfiles import RunNames
 from ..deck_record import same_calculation
 from ..runrecord import RunRef
 from .errors import PrepError, user_error_as_prep
@@ -90,7 +89,7 @@ def transport_inputs(calc, stage: str, *, point=None,
     gathered: List[tuple] = []
     for upstream, filename in inputs:
         home = stage_home(base, task, upstream)
-        token, up_dir = home.token, home.dir
+        up_dir = home.dir
         # AN UPSTREAM THAT RUNS PER POINT -- the device, for the
         # transmission -- is ONE RUN taken whole: its newest run, every point
         # done, the point this attempt is for read -- the same frame and the
@@ -123,9 +122,9 @@ def transport_inputs(calc, stage: str, *, point=None,
         if up_points and newest is not None:
             from ..runrecord import LaunchRecordError, launch_record
             from .continuation import points_state
-            _names = home.names(task.shape)
+            _names = home.names
             try:
-                _launch = launch_record(newest, _names)
+                _launch = launch_record(newest)
             except LaunchRecordError as exc:
                 # A RECORD THAT DOES NOT READ is said in its reader's
                 # words, as the refusal it is (`job-system.md` R-L21).
@@ -200,7 +199,7 @@ def transport_inputs(calc, stage: str, *, point=None,
         # which molbuilder wrote it (`siesta.engine_input`).
         # THE UPSTREAM'S OWN POINTS (`rung_points`): a rung that runs once
         # ran at 0 V, on frame 0 -- one render for every point asking.
-        differs = ran_otherwise(once, upstream, where, token=token,
+        differs = ran_otherwise(once, upstream, where,
                                 point=point if up_points else None)
         if differs:
             raise PrepError(
@@ -219,7 +218,7 @@ def transport_inputs(calc, stage: str, *, point=None,
     return gathered
 
 
-def ran_otherwise(once: ReadOnce, stage: str, where: Path, *, token: str,
+def ran_otherwise(once: ReadOnce, stage: str, where: Path, *,
                   point=None) -> List[str]:
     """§ 6.1'S QUESTION, OF A RUN OF EITHER CALCULATION (`engines/
     transport.md` § 6.1, § 2a.16): every difference between what the run in
@@ -227,15 +226,14 @@ def ran_otherwise(once: ReadOnce, stage: str, where: Path, *, token: str,
     ``stage`` renders now in ``once``'s calculation at ``point``, through the
     one door of the same calculation (`deck_record.same_calculation`: the
     engine's reading, comments, molbuilder's records and the run settings
-    aside); ``[]`` when it is the same calculation.  ``token`` is the
-    stage's folder token, by which the run door reads the run.  Asked by the
+    aside); ``[]`` when it is the same calculation.  Asked by the
     gather of the runs upstream, and by a calculation that reuses a finished
     one of that calculation's runs (`jobset.reuse`)."""
     from ..runs import run_of
     now = once.deck_now(stage, point)
     # THE DECK THAT RAN, asked of its run's folder through the run door
     # (`runs.run_of`): a reader of a run takes the folder.
-    run = run_of(where, stage=token)
+    run = run_of(where)
     ran = run.deck if run is not None else None
     if ran is None:
         return ["it holds no deck"]
@@ -268,16 +266,15 @@ def gather_sources(calc, stage: str
                        or (None,))]
 
 
-def gather_into(base: Path, attempt_dir, inputs, plan, *, names: RunNames,
-                run: int) -> Optional[HandOver]:
+def gather_into(base: Path, run, inputs, plan) -> Optional[HandOver]:
     """``inputs`` -- :func:`transport_inputs`' decision -- handed over into
-    ``attempt_dir``, run ``run`` of the stage ``names`` names: the copies
-    with the record of what came from where (`.gathered-from`), into
-    ``plan`` (`materialize.hand_over`).  The hand-over, or ``None`` for a
-    run that takes nothing."""
+    ``run``, a run or a point of one: the copies with the record of what
+    came from where (`.gathered-from`), into ``plan``
+    (`materialize.hand_over`).  The hand-over, or ``None`` for a run that
+    takes nothing."""
     if not inputs:
         return None
-    h = HandOver(Path(attempt_dir), names, run, GATHERED, files=tuple(inputs))
+    h = HandOver(Path(run), GATHERED, files=tuple(inputs))
     hand_over(base, h, plan)
     return h
 

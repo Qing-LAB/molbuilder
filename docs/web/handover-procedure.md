@@ -131,7 +131,7 @@ doing work (`stages.md` § 6.5a is the contract):
 
 | | |
 |---|---|
-| **its own schema** | never `molbuilder/task@2`. It has no `shape`, so it would fail that reader — and `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident |
+| **its own schema** | never `molbuilder/task@2`. It has no `shape` and no settled `stages`, so it would fail that reader — and `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident |
 | **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is by suffix, so the second spelling is plain text in the editor a person reads it in — and nothing looking for `task.json` matches it, which matters because `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder **declares itself a calculation root** |
 | **it says what it is** | JSON has no comments, so it opens with a `_what` line and an `awaiting` list naming the keys it lacks. A person reads it, in an editor, and should not need a document open beside it |
 
@@ -181,12 +181,11 @@ The split is `projects.md`'s, not this document's invention:
 | no `task.json`, a `task.1st.json` | **a hand-over** — say what is still needed, and show it |
 | neither | nothing described yet |
 
-**Ask only what the sender could not know.** For a ladder that is `shape` —
-required with no default, because inferring it *"would hand somebody a directory
-tree they never asked for"* (`stages.md` § 6.7) — and the stages.
+**Ask only what the sender could not know.** For a ladder that is the
+stages.
 
-**Show what will be written, not what arrived.** Once the missing answers are
-given, the editor shows the **proposed `task.json`**, not the hand-over file. A
+**Show what will be written, not what arrived.** Once the hand-over is opened,
+the editor shows the **proposed `task.json`**, not the hand-over file. A
 person checking a description before a week of compute should be reading the
 thing that lands.
 
@@ -246,9 +245,8 @@ and two copies of a contract drift.
 
 **Transport does not use this procedure — resolved 2026-08-29, and not the
 way this section once predicted.**  A hand-over exists because Task setup
-owns questions the sending tab leaves open (shape, stages, what varies).
-The composite leaves NONE open: its rungs and the hierarchical shape are
-fixed by the kind (its part in the kind table, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3: all five, the seed among them), the
+owns questions the sending tab leaves open (stages, what varies).
+The composite leaves NONE open: its rungs are fixed by the kind (its part in the kind table, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3: all five, the seed among them), the
 electronic contract — its spin included — is
 defaulted into the template from the cited run at `molbuilder describe`, where the shared
 panel edits it for every rung, and the knobs ride the stages' override bags.
@@ -292,18 +290,18 @@ and the browser wrote the server's text.)*
 **The bar is a round trip, not a shape check.** A check that reads what was
 written proves the hand-over carried something; only opening it proves *what*.
 
-End to end, in `tests/test_task_setup_tab.py`:
+Each check, and the test that holds it:
 
-| what it asks | how it fails |
-|---|---|
-| **open what `structure.source` names** and count its atoms | the reference points at nothing, or at a different structure |
-| **the cell survived** — read the geometry back through `StructureCodec` and compare the lattice | a periodic calculation silently becomes a molecule in a box it never had |
-| **the labels survived** — regions and frozen atoms, through the same read | region labels are how a device knows its electrodes; losing them is silent |
-| **the sidecar carries its `schema_version`** | the load door refuses the pair on the next open and drops every label — this has happened, in this codebase |
-| the render endpoint returns the texts and **leaves the folder untouched** | a render that writes is not a render |
-| neither surface calls `/api/files/write` directly | a second writer, and `projects.md` § 1's guard is bypassed |
-| the hand-over declares its own schema, lacks `shape`/`stages`, and says what it is | it could be read as a description |
-| save writes `task.json` and `job-request.json`, reports the hand-over rather than deleting it, and refuses bad JSON, a missing stage list, and a destination outside the roots | the browser becomes a second, drifting writer |
+| what it asks | how it fails | held by |
+|---|---|---|
+| **open what `structure.source` names** and count its atoms | the reference points at nothing, or at a different structure | `tests/test_task_setup_tab.py`, the whole chain (below) |
+| **the cell survived** — read the geometry back through `StructureCodec` and compare the lattice | a periodic calculation silently becomes a molecule in a box it never had | the same |
+| **the labels survived** — regions and frozen atoms, through the same read | region labels are how a device knows its electrodes; losing them is silent | the hand-over's pair is written by the server's one codec, whose round trip holds it — `tests/test_junction_sidecar_roundtrip.py` |
+| **the sidecar carries its `schema_version`** | the load door refuses the pair on the next open and drops every label — this has happened, in this codebase | the same |
+| the render endpoint returns the texts and **leaves the folder untouched** | a render that writes is not a render | `test_handover_renders_and_writes_nothing` |
+| neither surface calls `/api/files/write` directly | a second writer, and `projects.md` § 1's guard is bypassed | no test holds it |
+| the hand-over declares its own schema, lacks `shape`/`stages`, and says what it is | it could be read as a description | `tests/test_task_setup_tab.py`, the hand-over's tests |
+| save writes `task.json` and `job-request.json`, reports the hand-over rather than deleting it, and refuses bad JSON, a missing stage list, and a destination outside the roots | the browser becomes a second, drifting writer | `tests/test_task_setup_tab.py`, the save's tests |
 
 **And the whole chain runs, in a test and not in somebody's memory of driving
 it** — `test_the_whole_chain_from_structure_to_rendered_deck`. Hand-over →

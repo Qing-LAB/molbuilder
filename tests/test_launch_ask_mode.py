@@ -19,7 +19,6 @@ creates no job**, which is what makes it safe to run in a loop while tuning.
 from __future__ import annotations
 
 from molbuilder.jobset.ask import Prediction, prediction_table
-from molbuilder.runfiles import RunNames
 from support.road import molbuilder
 
 
@@ -131,7 +130,7 @@ def _a_prepped_stage(tree, monkeypatch, *stated):
     r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                 "--bundle", "P/optimization/H2", "--engine", "pyscf",
                 "--calculation", "optimization",
-                "--shape", "hierarchical", "--name", "H2")
+                "--name", "H2")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
     r = _jobset("prep", "task", "--group", "1", "--bundle", bundle,
@@ -187,8 +186,7 @@ def test_ask_on_a_machine_with_no_scheduler_launches_nothing(tmp_path,
     assert r.exit_code == 0, r.output
     out = r.output
 
-    assert launch_record(
-            attempt, RunNames.of("H2", "01_coarse", "hierarchical")) is None, (
+    assert launch_record(attempt) is None, (
         f"asking recorded a launch in {attempt.name}: `status` would now "
         f"report a job nobody submitted\n{out}")
     assert "no scheduler on this machine" in out, out

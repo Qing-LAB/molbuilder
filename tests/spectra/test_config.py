@@ -99,7 +99,7 @@ class TestSpectraFieldMetadata:
 
         (tmp_path / "task.json").write_text(json.dumps({
             "schema": "molbuilder/task@2", "engine": {"name": "pyscf"},
-            "shape": "flat", "calculation": "vibration",
+            "shape": "hierarchical", "calculation": "vibration",
             "run": {"name": "v", "id": run_id("v", "H2O"),
                     "created": "2026-08-22T00:00:00-07:00"},
             "structure": {"source": "w.xyz", "formula": "H2O", "atoms": 3},

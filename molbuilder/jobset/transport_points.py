@@ -54,7 +54,6 @@ def _run_index(calc, stage: str, run, names, points):
     from pathlib import Path
     from ..frameset import read as read_frame_set
     from ..parse.fdf import parse_fdf_params, read_deck
-    from ..runfiles import FIRST_ATTEMPT
     from ..structure import frame_words
     from ..transport.compose import recorded_junction
     from ..transport.energies import deck_window
@@ -86,7 +85,7 @@ def _run_index(calc, stage: str, run, names, points):
                   must_hold=must_hold(rp.prepared, products, deck_text=deck),
                   verdict_counts=POINTS.verdict_counts(stage, pt),
                   window=deck_window(deck), taken_from=rp.taken_from)
-    return index_path(run, names, FIRST_ATTEMPT), index
+    return index_path(run, names), index
 
 
 #: THE DECLARATION, named by the kind table (the pair's ``points``): a

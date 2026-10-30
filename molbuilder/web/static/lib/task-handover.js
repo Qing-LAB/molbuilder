@@ -169,8 +169,8 @@
             req.dest      = dest;
         }
         /* NO HAND-OVER FOR THE COMPOSITE (user ruling 2026-08-29):
-         * nothing is awaiting -- stages, shape and identity are fixed
-         * by the kind -- so the transport door WRITES the finished
+         * nothing is awaiting -- stages and identity are fixed by the
+         * kind -- so the transport door WRITES the finished
          * description itself, into the folder named here (transport.md
          * § 3.8.2a).  Every other kind still hands to Task setup, which
          * owns the questions those kinds leave open. */
@@ -334,8 +334,8 @@
             + (out.handover_here
                ? " — replacing the hand-over that was there" : "")
             + ".  Next: open Task setup and pick this folder — it asks for "
-            + "the shape and the stages, which this hand-over leaves out on "
-            + "purpose, and writes task.json when you save.");
+            + "the stages, which this hand-over leaves out on purpose, and "
+            + "writes task.json when you save.");
     }
 
     window.molbuilder = window.molbuilder || {};

@@ -29,7 +29,7 @@ def _names(cfg):
     """The names prep gives this stage's deck (`runfiles.RunNames`),
     under the config's own label."""
     label = getattr(cfg, "system_label", None) or cfg.job_name
-    return RunNames.of(label, '01_freq', "hierarchical")
+    return RunNames(label, '01_freq')
 
 
 def _water() -> Structure:

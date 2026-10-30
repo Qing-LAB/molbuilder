@@ -24,7 +24,6 @@ from ..runfiles import parse as _rf_parse
 from .model import KIND_SWEEP, JobSet
 
 if TYPE_CHECKING:
-    from ..paths import Shape
     from ..runfiles import RunNames
 
 
@@ -34,8 +33,7 @@ class StageHome:
     § 3's ``StageHome``, answered by :func:`stage_home` alone (§ 3.2)."""
     name: str
     seq: int
-    #: ``<NN>_<name>`` -- the stage's directory in the hierarchy, its decks'
-    #: token in either shape.
+    #: ``<NN>_<name>`` -- the stage's directory, and its files' token.
     token: str
     #: The stage's folder, or ``None`` when no calculation folder was given.
     dir: Optional[Path]
@@ -43,20 +41,21 @@ class StageHome:
     #: transport lead's own stem (`kind_table.rung_label`).
     label: str = ""
 
-    def names(self, shape: str) -> "RunNames":
-        """The names of this stage's files in ``shape`` (`runfiles.RunNames`)
-        -- THE ONE COMPOSER every reader of a stage's runs asks, so a lead's
-        stem is spelt nowhere else."""
+    @property
+    def names(self) -> "RunNames":
+        """The names of this stage's files (`runfiles.RunNames`) -- THE ONE
+        COMPOSER every reader of a stage's runs asks, so a lead's stem is
+        spelt nowhere else."""
         from ..runfiles import RunNames
-        return RunNames.of(self.label, self.token, shape)
+        return RunNames(self.label, self.token)
 
 
 def ladder_homes(base, task) -> Tuple[StageHome, ...]:
     """Every described stage's home, numbered by the ONE rule
     (`project-layout.md` § 4.2; W38 F4, W55 B8):
 
-    * a stage that has files keeps the number they carry -- its directory in
-      the hierarchy, its files' token in the flat shape (`paths.stages_in`);
+    * a stage that has files keeps the number its directory carries
+      (`paths.stages_in`);
     * a stage that has none takes its place in the description when no
       folder holds that number, else the next number after every one in use.
 
@@ -67,11 +66,9 @@ def ladder_homes(base, task) -> Tuple[StageHome, ...]:
     ``base`` ``None`` -- a description with no folder -- numbers by place."""
     from ..identity import stage_key, stage_token
     from ..kind_table import rung_label
-    from ..paths import Shape, stages_in
-    shape = Shape.named(task.shape)
+    from ..paths import stages_in
     folder = Path(base) if base is not None else None
-    on_disk = (stages_in(folder, shape, task.label)
-               if folder is not None else [])
+    on_disk = stages_in(folder) if folder is not None else []
     held: Dict[str, int] = {}
     for seq, name in on_disk:
         # Two folders of one name (one left by a removal, one added since):
@@ -88,8 +85,7 @@ def ladder_homes(base, task) -> Tuple[StageHome, ...]:
         token = stage_token(seq, st.name)
         homes.append(StageHome(
             name=st.name, seq=seq, token=token,
-            dir=(folder / shape.stage_dir(token)
-                 if folder is not None else None),
+            dir=folder / token if folder is not None else None,
             label=rung_label(task.label, st.name)))
     return tuple(homes)
 
@@ -121,19 +117,18 @@ def stage_home(base, task, stage: Optional[str]) -> StageHome:
                     f"ladder: {', '.join(s.name for s in task.stages)}.")
 
 
-def trial_dir(shape, stage_token: str, job_name: str) -> str:
+def trial_dir(stage_token: str, job_name: str) -> str:
     """The path from the bundle to ONE trial's directory — **the rule**.
 
-    ``<container>/bench-<point>``, where the container is the stage's bench
-    folder in hierarchical and the flat one otherwise
-    (:func:`bench_container`).
+    ``<container>/bench-<point>``, the container the stage's bench folder
+    (:func:`~molbuilder.paths.bench_container`).
 
     `prep` cannot call :func:`job_dir_names` instead — it is *building* the
     JobSet in the loop that needs the directory, so there is nothing to ask
     yet.  That is what makes a shared RULE the fix rather than a shared
     lookup.
     """
-    return f"{_paths_bench_container(shape, stage_token)}/{_paths_trial_name(job_name)}"
+    return f"{_paths_bench_container(stage_token)}/{_paths_trial_name(job_name)}"
 
 
 class NamingError(ValueError):
@@ -142,17 +137,17 @@ class NamingError(ValueError):
     (:func:`job_dir_names`, :func:`run_names`), said by every door."""
 
 
-def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
+def job_dir_names(jobset: JobSet) -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
     One question, not two kinds (`generator.md` § 5): *does this job have a
     stage, a point, or both?*
 
-    | the deck says | the set says | directory |
-    |---|---|---|
-    | a stage token, job named for the stage | — | ``<NN>_<name>`` — the rung itself |
-    | a stage token, job named by coordinate | — | a trial, in the stage's bench CONTAINER (:func:`bench_container`): ``<NN>_<name>/bench/bench-<point>`` hierarchical, ``bench_<NN>_<name>/bench-<point>`` flat |
-    | no token | — | **refused**: not a job prep wrote |
+    | the deck says | directory |
+    |---|---|
+    | a stage token, job named for the stage | ``<NN>_<name>`` — the rung itself |
+    | a stage token, job named by coordinate | a trial, in the stage's bench CONTAINER (:func:`bench_container`): ``<NN>_<name>/bench/bench-<point>`` |
+    | no token | **refused**: not a job prep wrote |
 
     **A job whose deck carries no stage token is refused**: every
     description has a stage, and every deck prep writes carries its token.
@@ -165,20 +160,13 @@ def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
     repetition (§ 4.1). Counting positions here instead would reintroduce
     exactly what `engines/stages.md` R5 forbids: a number that shifts when the
     ladder changes, silently handing one stage's directory to another.
-
-    ``shape`` decides where a **stage** sits: hierarchical gives each one a
-    directory, flat is depth 1 and they all sit in the bundle root
-    (:class:`~molbuilder.paths.Shape`).  A described trial nests
-    under its stage's directory, so the shape reaches it through the stage.
-    It is required: the description's, `Shape.named(task.shape)` (A16).
     """
-    sh = shape
     refs = stage_refs(jobset)
     out: Dict[str, str] = {}
     for j in jobset.jobs:
         if refs[j.name].token:
             # A rung of the ladder: the stage directory itself.
-            out[j.name] = sh.stage_dir(refs[j.name].token)
+            out[j.name] = refs[j.name].token
             continue
         trial_token = _trial_stage_token(jobset, j)
         if trial_token:
@@ -188,7 +176,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
             # container is what gives the stage's bench state ONE home --
             # its trials, its own job-set.json, its verdict -- so two
             # stages' benchmarks can never collide.
-            out[j.name] = trial_dir(sh, trial_token, j.name)
+            out[j.name] = trial_dir(trial_token, j.name)
             continue
         raise NamingError(
             f"job {j.name!r} ({j.script}): its deck names no stage -- not a "
@@ -251,16 +239,15 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     return out
 
 
-def run_names(jobset: JobSet, job, shape: "Shape") -> "RunNames":
-    """THE NAMES OF ``job``'S FILES -- its stage's, in the calculation's
-    shape (`runfiles.RunNames`, `job-contracts.md` § 2.2a): a benchmark
-    trial's on its own label (`paths.trial_label`) and in its own folder, a
-    ladder stage's on the calculation's -- a transport lead's on the lead's
-    own stem (`kind_table.rung_label`; a transport calculation has no
-    sweep) -- sharing the calculation's folder in the flat shape.  The
-    stage is the one its deck's name carries, read back through the
-    grammar.  ONE answer, asked by prep, launch and status alike: a run's
-    record lies in its folder, and its name is the names'."""
+def run_names(jobset: JobSet, job) -> "RunNames":
+    """THE NAMES OF ``job``'S FILES -- its stage's (`runfiles.RunNames`,
+    `job-contracts.md` § 2.2a): a benchmark trial's on its own label
+    (`paths.trial_label`), a ladder stage's on the calculation's -- a
+    transport lead's on the lead's own stem (`kind_table.rung_label`; a
+    transport calculation has no sweep).  The stage is the one its deck's
+    name carries, read back through the grammar.  ONE answer, asked by
+    prep, launch and status alike: what a run script names every file of
+    its runs by."""
     from ..paths import trial_label
     from ..runfiles import RunNames, parse
     from ..kind_table import rung_label
@@ -272,7 +259,7 @@ def run_names(jobset: JobSet, job, shape: "Shape") -> "RunNames":
         raise NamingError(
             f"job {job.name!r}: its deck {job.script!r} is not named on "
             f"{label!r} with a stage (`runfiles.compose`)")
-    return RunNames.of(label, rec.stage, shape.name, trial=trial)
+    return RunNames(label, rec.stage)
 
 
 def open_container(base, folder, plan) -> Path:

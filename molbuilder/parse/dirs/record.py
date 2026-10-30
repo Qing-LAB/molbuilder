@@ -25,8 +25,9 @@ builds a trajectory.  The Results tab's Run panel shows it
 (`web/results.md` § 3a).
 
 **Which run** (§ 5d.1): the one its caller names (:func:`run_files`), at
-its latest ``-runN``, with each earlier one and how it ended; the `fdf` log paired with
-the ``.out`` by its stamp; the wrapper log whose FIRST section is run N.
+its latest try ``-runN``, with each earlier try and how it ended; the `fdf`
+log paired with the ``.out`` by its stamp; the wrapper log whose FIRST
+section is try N.
 """
 from __future__ import annotations
 
@@ -57,19 +58,23 @@ class RunFiles:
     A file the attempt does not hold is ``None``."""
     directory: Path
     engine: str
+    #: The folder the run's launch record lies in, the run door's
+    #: (`runs.Run.launched_in`): the run's own ``run-<n>`` folder -- for a
+    #: point of a run of points, the one above it.
+    launched_in: Path
     status: Any = None                     # the directory's `RunStatus`
     deck: Optional[Path] = None
     #: The names of the run's stage's files (`runfiles.RunNames`), the
     #: caller's -- the run door's.
     names: Any = None
     run: Optional[int] = None
-    out: Optional[Path] = None             # SIESTA family's stdout, run N
-    pyscf_log: Optional[Path] = None       # PySCF's stdout, run N
+    out: Optional[Path] = None             # SIESTA family's stdout, try N
+    pyscf_log: Optional[Path] = None       # PySCF's stdout, try N
     engine_log: Optional[Path] = None      # PySCF's own logger's file
     fdf_log: Optional[Path] = None         # SIESTA's, paired by stamp
     wrapper_section: Dict[str, Any] = field(default_factory=dict)
-    wrapper_text: str = ""                 # run N's section, for the fence
-    timing: Optional[Path] = None          # the SIESTA family's tee, run N
+    wrapper_text: str = ""                 # try N's section, for the fence
+    timing: Optional[Path] = None          # the SIESTA family's tee, try N
     progress_log: Optional[Path] = None    # the stage's progress log
     monitor_log: Optional[Path] = None
     util_csv: Optional[Path] = None
@@ -80,12 +85,8 @@ class RunFiles:
     #: (`runs.run_of`), never read here: this floor knows no calculation.
     calculation: Optional[str] = None
     #: The stage's own deck, as the run door places it -- the copy in the
-    #: stage's folder in the hierarchy, the run's own in the flat shape.
+    #: stage's folder, a trial's run's own.
     stage_deck: Optional[Path] = None
-    #: The folder the run's launch record lies in, the run door's
-    #: (`runs.Run.launched_in`) -- for a point of a run of points, the
-    #: ``run-<n>`` folder above it; ``None`` where it lies in the run's own.
-    launched_in: Optional[Path] = None
 
 
 def _read(path: Optional[Path], *, head: Optional[int] = None,
@@ -105,21 +106,20 @@ def _read(path: Optional[Path], *, head: Optional[int] = None,
         return ""
 
 
-def run_files(directory, *, names, run: Optional[int] = None, status=None,
-              engine: Optional[str] = None,
+def run_files(directory, *, names, launched_in, run: Optional[int] = None,
+              status=None, engine: Optional[str] = None,
               calculation: Optional[str] = None,
-              stage_deck: Optional[Path] = None,
-              launched_in: Optional[Path] = None) -> Optional[RunFiles]:
+              stage_deck: Optional[Path] = None) -> Optional[RunFiles]:
     """What the run of the stage ``names`` names (`runfiles.RunNames`) left
     in ``directory``, found through the doors that own each name -- or
     ``None`` when no deck of it is here.
 
     **The caller says which run** -- the run door (`runs.run_of`,
     `execution/architecture.md` § 3.2), which reads the label from the
-    description and decides the run a folder speaks for: the highest stage
-    launched, then its newest run (`model/parse.md` § 5.1) -- ``run``;
-    with none, the stage's newest by the one rule (`runrecord.newest_run`).
-    This floor knows no calculation (§ 2.1).
+    description and the stage from where the folder is -- and which try,
+    ``run``; with none, the run's newest by the one rule
+    (`runrecord.newest_run`, `model/parse.md` § 5.1).  This floor knows no
+    calculation (§ 2.1).
 
     ``status`` and ``engine`` are the run's `run_status` and engine, passed
     by a caller that already has them; asked here otherwise.
@@ -133,7 +133,7 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
     from ...runrecord import newest_run
     d = Path(directory)
     label, stage = names.label, names.stage
-    # THE RUN IT READS, one for every part: the caller's, else the stage's
+    # THE TRY IT READS, one for every part: the caller's, else the run's
     # newest by the one rule (`runrecord.newest_run`).
     n = run if run is not None else newest_run(d, names)
     if status is None:
@@ -142,8 +142,7 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
         status = run_state_of(d, names, n, launched_in=launched_in)
     engine = engine or engine_of(str(d))
     # ONE LISTING of this run's files, filtered below -- `find` lists and
-    # reads every name in the directory on each call, and a flat directory
-    # holds hundreds.
+    # reads every name in the directory on each call.
     listing = find(d, label, stage=stage)
     decks = [p for p, rf in listing if rf.role in deck_roles(engine)]
     if not decks:
@@ -170,7 +169,7 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
     out_head = _read(out, head=_HEAD)
     fdf_log = _fdf_log_of(d, out_head) if out is not None else None
 
-    # THE WRAPPER LOG WHOSE FIRST SECTION IS RUN N: each start writes its
+    # THE WRAPPER LOG WHOSE FIRST SECTION IS TRY N: each start writes its
     # own -- the pairing `run_status` reads SIESTA's stderr by
     # (`wrapper_log.log_of_run`).
     from ...wrapper_log import log_of_run, read_wrapper_log
@@ -196,7 +195,7 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
         monitor_log=this_run(".monitor.log"),
         util_csv=this_run(".util.csv"),
         earlier=earlier, calculation=calculation, stage_deck=stage_deck,
-        launched_in=Path(launched_in) if launched_in is not None else None)
+        launched_in=Path(launched_in))
 
 
 def _fdf_log_of(d: Path, out_head: str) -> Optional[Path]:
@@ -352,9 +351,9 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
 
 
 def _ending(f: RunFiles) -> Dict[str, Any]:
-    """How the latest run is doing, whether each of its phases converged, and
-    how each earlier run ended -- all from the ONE scan `run_status` made to
-    judge the state (``RunStatus.endings``).  Nothing is read a second
+    """How the newest try is doing, whether each of its phases converged,
+    and how each earlier try ended -- all from the ONE scan `run_status` made
+    to judge the state (``RunStatus.endings``).  Nothing is read a second
     time."""
     from ..engines._run_ending import CONCLUDED
     st = f.status
@@ -371,7 +370,7 @@ def _ending(f: RunFiles) -> Dict[str, Any]:
         if end.phases:
             verdict["converged"] = dict(end.phases)
         verdict.update(_forces_of(end))
-    # AN EARLIER RUN STATES AN ENDING OR NOTHING.  A later run exists, so
+    # AN EARLIER TRY STATES AN ENDING OR NOTHING.  A later try exists, so
     # one with no ending marker is not running -- it was cut off, which its
     # own file cannot say (§ 2b) -- and "running" is what the scan answers
     # for a file with no marker.  Stated only when the file states it
@@ -408,7 +407,7 @@ def _forces_of(end) -> Dict[str, Any]:
 
 
 def _wrapper(f: RunFiles) -> Dict[str, Any]:
-    """Run N's section of the wrapper log, through `runwrap`'s own reader."""
+    """Try N's section of the wrapper log, through `runwrap`'s own reader."""
     sec = f.wrapper_section
     if not sec:
         return {}
@@ -479,10 +478,10 @@ def _timing_figures(path: Optional[Path]) -> Dict[str, Any]:
 
 def scf_timing_of(output, timing_log: Optional[Path] = None
                   ) -> Dict[str, Any]:
-    """The SCF-timing figures of the run ``output`` is an output of: a PySCF
+    """The SCF-timing figures of the try ``output`` is an output of: a PySCF
     progress log stamps its own rows; a SIESTA-family ``<base>-runN.out``'s
-    are its run's tee, ``timing_log`` -- the run's `.scf-timing.log` at its
-    run index, which the caller finds through the run door (`runs.run_of`).
+    are its try's tee, ``timing_log`` -- the run's `.scf-timing.log` at that
+    try, which the caller finds through the run door (`runs.run_of`).
     Read as the record reads them.  ``{}`` when the run has none."""
     from ...runfiles import role_of
     p = Path(output)
@@ -508,14 +507,12 @@ def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:
 
 
 def _launch_record(f: RunFiles) -> Dict[str, Any]:
-    """``run.json`` -- how the run was launched: its own record, named by
-    its stage's names (`runrecord.launch_record`), read where it lies -- a
-    point's in its run's folder above it (``launched_in``), as the run's
-    state reads it (`runs.concluded`)."""
+    """``run.json`` -- how the run was launched: its own record
+    (`runrecord.launch_record`), read where it lies -- a point's in its
+    run's folder above it (``launched_in``), as the run's state reads it
+    (`runs.concluded`)."""
     from ...runrecord import launch_record
-    point = f.launched_in is not None and f.launched_in != f.directory
-    rec = (launch_record(f.launched_in, f.names) if point
-           else launch_record(f.directory, f.names, f.run)) or {}
+    rec = launch_record(f.launched_in) or {}
     # `continued_from`: the run this one continued from, as its launch took it
     # (`job-system.md` § 5.4, plan W37) -- the launch's own hand-over,
     # written with the record.  EVERY KEY AS THE RECORD STATES IT: its
@@ -528,18 +525,18 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
     # before sequences states none, and its launch sent it.
     keys = ["mode", "command", "job_id", "launched_at", "placed_on",
             "sequence"]
-    # A folder of the run's own has one record, its launch's: where to
-    # continue from and which run is retried are run 0's, so a later run
-    # in it -- a warm retry -- is not given them; nor is a point, which
-    # starts from the point before it (its own `.continued-from`).
-    if not point and (f.names.numbered(".run.json") or not f.run):
-        keys += ["continued_from", "retry_of"]
+    # `run.json` is its run's and answers for every try in it, a warm
+    # retry's among them (`project-layout.md` § 1.6.3): where the run
+    # continued from is said of each.  Not of a point, which starts from
+    # the point before it (its own `.continued-from`).
+    if f.launched_in.resolve() == f.directory.resolve():
+        keys.append("continued_from")
     return {"computation": {"launch": {k: rec.get(k) for k in keys}}}
 
 
 def _concluded(f: RunFiles) -> Dict[str, Any]:
     """What the run's process said on its way out: the marker `run_status`
-    already found at the latest run (``RunStatus.concluded``), read by its one
+    already found at the newest try (``RunStatus.concluded``), read by its one
     parser, `runrecord.read_concluded` -- never the file a second time."""
     from ...runrecord import read_concluded
     said = getattr(f.status, "concluded", None)
@@ -565,8 +562,8 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
         "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
     # THE STAGE'S OWN DECK, where the run door places it (`runs.Run.
     # stage_deck`): in the folder prep wrote it in -- the stage's, or a bias
-    # point's within it, in the hierarchy; in the flat shape, and for a
-    # benchmark trial, it is the run's own, one file, with nothing to compare.
+    # point's within it; for a benchmark trial it is the run's own, one
+    # file, with nothing to compare.
     stage_deck = f.stage_deck
     if (stage_deck is not None and stage_deck.is_file()
             and stage_deck.resolve() != f.deck.resolve()):
@@ -645,8 +642,7 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                  "computation.launch.job_id", "computation.launch.launched_at",
                  "computation.launch.placed_on",
                  "computation.launch.sequence",
-                 "computation.launch.continued_from",
-                 "computation.launch.retry_of"),
+                 "computation.launch.continued_from"),
                 (), _launch_record),
     Contributor("concluded", ("computation.exit",), (), _concluded),
     Contributor("deck", ("deck",), (), _deck),
@@ -705,12 +701,11 @@ def _merge(into: Dict[str, Any], part: Dict[str, Any]) -> None:
             into[key] = val
 
 
-def run_record(directory, *, names, run: Optional[int] = None, status=None,
-               engine: Optional[str] = None,
+def run_record(directory, *, names, launched_in, run: Optional[int] = None,
+               status=None, engine: Optional[str] = None,
                calculation: Optional[str] = None,
                stage_deck: Optional[Path] = None,
-               fields: Optional[Tuple[str, ...]] = None,
-               launched_in: Optional[Path] = None
+               fields: Optional[Tuple[str, ...]] = None
                ) -> Optional[Dict[str, Any]]:
     """The record of the run of the stage ``names`` names in ``directory``
     -- the one its caller names, through the run door -- or ``None`` when

@@ -336,8 +336,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
         # THE PREFIX IS DERIVED FROM THE STAGE'S NAMES, exactly as the
         # optimization deck's is (`pyscf/input.py`, `geometric_prefix_expr`;
         # `job-contracts.md` § 2.2a): geomeTRIC's trajectory's name, less the
-        # tail geomeTRIC appends -- the run's own where the stage's runs share a
-        # folder.
+        # tail geomeTRIC appends.
         from .input import geometric_prefix_expr
         _opt_kw += f", prefix=str(_mb_outfile({geometric_prefix_expr(names)}))"
     # THE ONE RELAXATION FUNCTION (`relax_policy.relax`, imported above):

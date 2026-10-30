@@ -46,10 +46,10 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 try:                                   # inside molbuilder
-    from .runfiles import FIRST_ATTEMPT
+    from .runfiles import FIRST_TRY
     from .runfiles import patterns as _runfile_patterns
 except ImportError:                    # beside a job -- it travels with the
-    from runfiles import FIRST_ATTEMPT  # monitor and the vibration finish
+    from runfiles import FIRST_TRY  # monitor and the vibration finish
     from runfiles import patterns as _runfile_patterns   # (runwrap.MONITOR_COMPANIONS, VIBRATION_COMPANIONS)
 
 
@@ -192,13 +192,13 @@ MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 #: these files IS, which is what the Task-setup card shows a person; `runfiles`
 #: holds the notes on why each row is there.
 #:
-#: ⚠ **THIS LIST HAS A SECOND READER.** `runwrap._cold_restart_block`
+#: ⚠ **ITS READER IS THE COLD SWEEP.** `runwrap._cold_restart_block`
 #: derives `--cold`'s *"except what molbuilder wrote"* exception from these
-#: same patterns, and it runs where an engine's output IS present.  That
-#: exception is anchored on the run's id, never widened to a star: read as
+#: patterns, and it runs where an engine's output IS present.  That
+#: exception is anchored on the label, never widened to a star: read as
 #: `*`, a `{label}.xyz` row would make PySCF's `<JOB>_optimized.xyz` — warm
 #: state — look like ours, and `--cold` would walk past the file it exists to
-#: move (`test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`).
+#: move (`test_the_exception_is_anchored_on_the_label_not_widened_to_a_star`).
 OUR_FILE_PATTERNS: Sequence[str] = _runfile_patterns()
 
 
@@ -213,8 +213,8 @@ def stage_token(seq: int, name: str) -> str:
 
     Decision 27 (2026-08-10, user): *"we may have many stages connected so I'd
     rather use names with index number."*  The ordinal travels **with** the
-    name, in both layouts, so a flat listing of eight decks sorts into the
-    order the stages ran rather than alphabetically.
+    name, so a listing of eight decks sorts into the order the stages ran
+    rather than alphabetically.
 
     This is the same token a stage *directory* uses (``01_coarse``), which is
     the point: one token, one meaning, whether it is a path segment or part of
@@ -373,27 +373,26 @@ def checkpoint_words(folder=None) -> str:
 
 
 #: What a deck's hand-run line says beside itself (:func:`hand_run`).
-HAND_RUN_NOTE = "the same wrapper, by hand: its run's number, 0 for the first"
+HAND_RUN_NOTE = ("the same wrapper, by hand, in its run's folder: its "
+                 "try's number, 0 for the run's first")
 
 
 def hand_run(names) -> str:
-    """A deck's run script started by hand -- ``bash <stage>.run.sh --run
-    0``, the first run's number (`runfiles.FIRST_ATTEMPT`): one spelling for
-    every engine's deck header, ``names`` the stage's (`runfiles.RunNames`)."""
-    return f"bash {names.name('.run.sh')} --run {FIRST_ATTEMPT}"
+    """A deck's run script started by hand in its run's folder -- ``bash
+    <stage>.run.sh --run 0``, the first try's number (`runfiles.FIRST_TRY`):
+    one spelling for every engine's deck header and the run script's own,
+    ``names`` the stage's (`runfiles.RunNames`)."""
+    return f"bash {names.name('.run.sh')} --run {FIRST_TRY}"
 
 
-def deck_launch(stage_token: Optional[str],
+def deck_launch(stage_token: str,
                 trial: Optional[str] = None) -> List[str]:
     """How a deck names its own managed launch, the lines its header prints
     (:func:`launch_as_typed`, each with what it does after ``#``): a
     trial's, its own; a stage's, its group's first launch -- ``launch
     task``, which offers the group once what it builds on has finished, a
     group going whole the first time (`job-system.md`, *The task*) -- and
-    the stage alone, launched again or a group of one.  ``[]`` for a deck
-    written outside a ladder: it has no stage to name."""
-    if not stage_token:
-        return []
+    the stage alone, launched again or a group of one."""
     stage = command_stage(stage_token)
     if trial:
         return [launch_as_typed(stage, trial)]
@@ -563,39 +562,6 @@ def render_stage_choices(refs: Sequence["StageRef"]) -> str:
                      for r in refs)
 
 
-def is_ours(name: str, label: str) -> bool:
-    """Did **molbuilder** write this file, rather than an engine?
-
-    The inversion `job-contracts.md § 4.2` rests on: we cannot enumerate what
-    SIESTA produces, but we always know what we produced.
-
-    ``label``, not the id: every pattern below is a **filename**, and since
-    § 2.0a the stem of a filename is the label. Handing this the composite id
-    would match nothing and report every warm file as the engine's.
-
-    **A TRIAL'S LABEL IS A LABEL TOO**, and that is why the patterns are tried
-    against two prefixes rather than being written out twice. A benchmark
-    relabels each point ``<label>-<coordinate>`` so its warm files can never
-    meet the run's (`project-layout.md` § 2.3.2), and everything molbuilder
-    writes for that point is stemmed on the new label: ``bdt-G1N4C6_01_coarse.fdf``,
-    its wrapper, its trajectory log -- matched against ``{label}`` alone, the
-    whole trial set would read as engine restart state at the
-    `run-identity.md` § 6 prompt, the one moment a person is asked to stop
-    and read.
-
-    Trying ``{label}-*`` as well as ``{label}`` is the rule
-    `job-contracts.md` § 6.3 already states — ``-`` announces ONE qualifier,
-    and ``resolve.point_token`` keeps the coordinate inside ``[A-Za-z0-9_]``
-    so it cannot contain another. Deriving it costs one line; writing the
-    qualified forms out would double a list whose failure mode is a pattern
-    that silently stops matching.
-    """
-    import fnmatch
-    return any(fnmatch.fnmatchcase(name, p.format(label=stem))
-               for stem in (label, f"{label}-*")
-               for p in OUR_FILE_PATTERNS)
-
-
 def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
                  what: str = "name", label_tail: int = 0) -> str:
     """§ 3's normalisation, and its three rules. Refuses rather than guessing.
@@ -729,7 +695,7 @@ __all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
            "OUR_FILE_PATTERNS",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",
-           "deck_launch", "electrode_hs_stem", "is_ours", "launch_as_typed",
+           "deck_launch", "electrode_hs_stem", "launch_as_typed",
            "normalise_id",
            "render_stage_choices",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",

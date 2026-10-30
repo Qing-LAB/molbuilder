@@ -22,26 +22,30 @@ from support.road import describe_calculation, group_words, jobset
 
 @pytest.fixture
 def sent(tmp_path, monkeypatch):
-    """A flat H2 stage prepared (`support.road.describe_calculation`), its
-    coarse run recorded as sent to a queue (job 4242, a five-second wall)
-    and not yet written to."""
-    from molbuilder.runfiles import RunNames
+    """An H2 stage prepared (`support.road.describe_calculation`), its coarse
+    run -- the run folder prep opened, asked of the layout's one door
+    (`materialize.latest_attempt`) -- recorded as sent to a queue (job 4242,
+    a five-second wall) and not yet written to: ``(the calculation, the
+    run's folder, the stage's names)``."""
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runrecord import write_launch
-    flat = describe_calculation(tmp_path, monkeypatch, engine="siesta",
-                                calculation="optimization", shape="flat",
-                                name="H2sent")
-    r = jobset("prep", "task", *group_words(flat, "coarse"),
-               "--bundle", flat, "--target", "this")
+    from molbuilder.task import of as task_of
+    bundle = describe_calculation(tmp_path, monkeypatch, engine="siesta",
+                                  calculation="optimization", name="H2sent")
+    r = jobset("prep", "task", *group_words(bundle, "coarse"),
+               "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
-    names = RunNames.of("H2sent", "01_coarse", "flat")
-    write_launch(flat, names=names, run=0, mode="submit",
+    home = stage_home(bundle, task_of(bundle), "coarse")
+    run = latest_attempt(home.dir)
+    write_launch(run, mode="submit",
                  command=["sbatch", "-J", "H2/coarse", "x.sbatch"],
                  job_id="4242",
                  placed_on={"domain": "public", "partition": "public",
                             "qos": "public", "time": "0-00:00:05",
                             "mem": None},
                  scheduler={"kind": "slurm", "stderr": None})
-    return flat, names
+    return bundle, run, home.names
 
 
 def test_the_schedulers_answer_is_written_once_and_read_everywhere(sent):
@@ -56,24 +60,23 @@ def test_the_schedulers_answer_is_written_once_and_read_everywhere(sent):
     or the machine asked."""
     from molbuilder.parse.dirs.rundir import run_state_of
     from molbuilder.runrecord import launch_record, record_ended
-    flat, names = sent
-    assert launch_record(flat, names, 0)["ended"] is None
-    st = run_state_of(flat, names, 0)
+    _bundle, run, names = sent
+    assert launch_record(run)["ended"] is None
+    st = run_state_of(run, names)
     assert (st.state, st.detail) == ("queued", "queued as job 4242"), st
 
-    record_ended(flat, names, 0, asked_on="sol", said="")
-    rec = launch_record(flat, names, 0)["ended"]
+    record_ended(run, asked_on="sol", said="")
+    rec = launch_record(run)["ended"]
     assert rec["asked_on"] == "sol" and rec["listed"] is False, rec
     assert rec["said"] == "" and rec["asked_at"].endswith("Z"), rec
-    st = run_state_of(flat, names, 0)
+    st = run_state_of(run, names)
     assert st.state == "failed", st
     assert st.detail == (
         f"stopped before its end: the scheduler no longer listed job 4242 "
         f"(asked on sol at {rec['asked_at']}); no exit recorded"), st.detail
 
-    record_ended(flat, names, 0, asked_on="sol",
-                 said="FAILED (NonZeroExitCode)")
-    st = run_state_of(flat, names, 0)
+    record_ended(run, asked_on="sol", said="FAILED (NonZeroExitCode)")
+    st = run_state_of(run, names)
     assert st.state == "failed" and st.detail.startswith(
         "the scheduler listed job 4242 ended: FAILED (NonZeroExitCode) "
         "(asked on sol at "), st.detail
@@ -86,7 +89,7 @@ def test_the_door_asks_nothing_where_the_scheduler_cannot_be_asked(sent):
     tier's."""
     from molbuilder.runrecord import launch_record
     from molbuilder.runs import concluded
-    flat, names = sent
-    st = concluded(flat, names, base=flat, run=0)
+    bundle, run, names = sent
+    st = concluded(run, names, base=bundle)
     assert (st.state, st.detail) == ("queued", "queued as job 4242"), st
-    assert launch_record(flat, names, 0)["ended"] is None
+    assert launch_record(run)["ended"] is None

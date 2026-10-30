@@ -13,8 +13,6 @@ cell look fine in one place and be refused in another.
 """
 from __future__ import annotations
 
-import json
-
 import numpy as np
 import pytest
 
@@ -83,7 +81,7 @@ def bundle(tmp_path):
                             engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization",
-                            shape="hierarchical", name="JOB",
+                            name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos
@@ -476,24 +474,14 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
 
 
 class TestThePlanComesFromTheProducer:
-    """§ 7.1: a confirmation, not a second answer.  Flat and hierarchical
-    name directories differently, and a list the page composed would be free
-    to disagree with the thing it describes."""
+    """§ 7.1: a confirmation, not a second answer.  A list of directories
+    the page composed would be free to disagree with the thing it
+    describes."""
 
     def test_each_stage_names_its_directory_from_the_one_namer(self, client):
         d = _plan(client, _PLAN_TASK)
         assert d["ok"] is True, d
         assert [r["dir"] for r in d["stages"]] == ["01_coarse", "02_tight"]
-
-    def test_flat_puts_every_stage_in_the_bundle_root(self, client):
-        """The layout question, and the reason the page may not answer it:
-        `Shape.stage_dir` gives flat a real path (`.`) so no caller needs an
-        `if` for "no directory"."""
-        t = dict(_PLAN_TASK, shape="flat",
-                 stages=[_PLAN_TASK["stages"][0]])
-        d = _plan(client, t, dict(_PLAN_REQUEST,
-                                  stages={"coarse": {"group": 1}}))
-        assert [r["dir"] for r in d["stages"]] == ["."]
 
     def test_every_stage_shows_the_ONE_allocation(self, client):
         """§ 6.8a: the calculation asks the scheduler for one queue, one
@@ -526,8 +514,8 @@ class TestThePlanComesFromTheProducer:
         assert d["bench"]["allocation"]["domain"] == "htc"
 
     def test_the_bench_rungs_name_the_container_the_sweep_LANDS_in(self, client):
-        """The container is `<NN>_<stage>/bench` in the hierarchy; the dash
-        form (`bench-<point>`) is a TRIAL's name, which lives INSIDE one.  ONE ENTRY PER RUNG,
+        """The container is `<NN>_<stage>/bench`; the dash form
+        (`bench-<point>`) is a TRIAL's name, which lives INSIDE one.  ONE ENTRY PER RUNG,
         because `prep bench` takes a stage and the container lives inside
         the stage it measures.
         """
@@ -535,15 +523,6 @@ class TestThePlanComesFromTheProducer:
         assert d["bench"]["rungs"] == [
             {"stage": "coarse", "dir": "01_coarse/bench"},
             {"stage": "tight", "dir": "02_tight/bench"}]
-
-    def test_flat_qualifies_the_container_instead_of_nesting_it(self, client):
-        """The other layout, and the reason the browser may not guess: flat
-        has no stage directory to sit inside, so the token qualifies the
-        container's own name (`bench_<NN>_<stage>`).  Two flat stages sharing
-        one root `bench/` is the bug that rule was written for."""
-        t = dict(_PLAN_TASK, shape="flat")
-        assert [r["dir"] for r in _plan(client, t)["bench"]["rungs"]] == [
-            "bench_01_coarse", "bench_02_tight"]
 
     def test_a_description_mid_edit_is_refused_in_its_own_words(self, client):
         """Unreadable is ordinary while someone types, and the card hides the
@@ -554,30 +533,38 @@ class TestThePlanComesFromTheProducer:
 
 
 # --------------------------------------------------------------------- #
-#  How many attempts each stage has — asked, not worked out in the page  #
+#  How many runs of each stage were launched — asked, not worked out     #
 # --------------------------------------------------------------------- #
 
 def _attempts(client, dest):
-    """The folder answer's attempts -- the one door (`/api/task-setup/folder`)."""
+    """The folder answer's run counts -- the one door (`/api/task-setup/folder`)."""
     return client.get("/api/task-setup/folder?dir=" + str(dest)).get_json()[
         "attempts"]
 
 
-def test_the_attempts_door_answers_from_the_DECLARED_shape(client, bundle):
-    """Worked out in the browser this needs four of our rules — the stage
-    token, the `run-<n>` pattern, the flat `_<token>-run` form, and a branch
-    between the last two chosen **by looking at what was on disk**.
+def test_the_folder_answer_counts_each_stage_s_launched_runs(client, bundle):
+    """A run is one launch (`project-layout.md` § 1.6.1), and prep opens a
+    stage's first run for the launch to come (§ 1.6.2): after a Prep,
+    nothing has run, and the count beside the stage says so -- worked out
+    in the browser this would need our rules, the `run-<n>` pattern and the
+    launch record.
 
-    `project-layout.md` § 4.5 forbids that by name: the shape is DECLARED.
-    A hierarchical calculation whose stage directory does not exist yet is
-    still hierarchical.
-    """
-    body = _attempts(client, bundle)
-    assert body["ok"] is True, body
-    assert body["shape"] == "hierarchical"
-    first = json.loads((bundle / "task.json").read_text())["stages"][0]["name"]
-    row = body["stages"][first]
-    assert row["token"] == "01_" + first
-    assert row["dir"] == "01_" + first
-    assert row["attempts"] == 0, "nothing is prepared in this fixture"
+    MUTATION THIS MUST FAIL AGAINST: the run folders on disk counted --
+    prep's `run-0` read as a run of the stage."""
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    first = task_of(bundle).stages[0].name
+    assert _attempts(client, bundle)["stages"][first] == {"attempts": 0}
+    _runnable(bundle)
+    ask = {"dest": str(bundle), "kind": "task", "groups": [1]}
+    preview = client.post("/api/task-setup/prep", json={**ask, "plan": True})
+    assert preview.status_code == 200, preview.get_data(as_text=True)
+    done = client.post("/api/task-setup/prep", json={
+        **ask, "plan_id": preview.get_json()["plan_id"]})
+    assert done.status_code == 200, done.get_data(as_text=True)
+    assert latest_attempt(stage_home(bundle, task_of(bundle), first).dir), (
+        "the Prep opened no run: the case this test is for did not arise")
+    assert _attempts(client, bundle)["stages"][first] == {"attempts": 0}, (
+        "a stage nothing has run counts a run")
 

@@ -18,8 +18,7 @@ groups, a benchmark's plan and the reports are its job request's,
 written here is refused, saying where it belongs.
 
 LAYER.  L1: at load it imports only stdlib-only L1 modules (``persist``,
-``identity``, ``paths``, ``runfiles``, ``config_dir``, ``report_fields``,
-``scheduler.quantities``) and the standard library, so this stays a leaf.
+``identity``, ``runfiles``) and the standard library, so this stays a leaf.
 That is deliberate rather than incidental — see *the split preflight* below.
 ``identity`` is here because ``run.id`` is something this module DERIVES and
 checks; it is the same normaliser the CLI and the browser call, which is what
@@ -32,7 +31,7 @@ engine into an L1 codec is the upward import the layer rule forbids
 (`architecture.md` § 3, kept by review).
 Those belong to resolution (P2 below), which already has the schema in hand:
 
-  here    the schema string's major · ``shape`` present and legal · stage names
+  here    the schema string's major · ``shape`` the one layout · stage names
           in ``[A-Za-z0-9_]+`` and unique case-insensitively · no ``overrides``
           key naming a stage field · ``overrides`` a SUBSET of ``varies`` ·
           unknown keys refused by name · ``run.id`` is what ``run.name`` and
@@ -74,10 +73,11 @@ SCHEMA = "molbuilder/task@2"
 #: Its name is the catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2).
 from .runfiles import TASK_FILE as FILENAME  # noqa: E402
 
-#: § 6.7 — required, no default, never inferred.
-# The layout vocabulary lives with the layout (`paths`), which is floor 1
-# and stdlib-only; this module validates a DECLARED shape against it.
-from .paths import SHAPES
+#: § 6.7 — THE ONE LAYOUT, which every description states as its ``shape``
+#: (`project-layout.md` § 1): a folder per stage, a folder per run in it --
+#: the catalogue's word (`runfiles.LAYOUT`).  Every writer writes it; the
+#: reader refuses any other by name.
+from .runfiles import LAYOUT  # noqa: E402
 
 #: § 2 — "two fields, and no others".  An ``overrides`` map naming one of
 #: these would be a stage redefining what a stage is.
@@ -214,7 +214,6 @@ class Task:
     their name, which § 6.6a allows (they are the honest way to say *keep
     going* when each continues from the last)."""
     engine: str
-    shape: str
     run: Run
     #: ``None`` for exactly one calculation kind: transport, whose
     #: structure IS its junction citation (enforced in __post_init__).
@@ -308,17 +307,15 @@ class Task:
                 "meaningful without the other (engines/stages.md 6.5)")
         # A KIND THE KIND TABLE HOLDS, ON AN ENGINE IT RUNS ON
         # (`execution/architecture.md` § 3.3), each refused in the table's
-        # sentence; and what its part on this engine fixes -- the shape,
-        # and the stages, every one, in order -- held by no description of
-        # it otherwise (`web/task-setup.md` § 4, § 5.3).  An engine the
+        # sentence; and what its part on this engine fixes -- the stages,
+        # every one, in order -- held by no description of it otherwise
+        # (`web/task-setup.md` § 5.3).  An engine the
         # engine table does not hold is the preflight's to refuse, naming
         # the engines there are (`validation.task.preflight`, row 1).
         from .engine_table import engines as _engines
         from .kind_table import kind as _kind
         fixed = (_kind(self.calculation).on(self.engine)
                  if str(self.engine) in _engines() else None)
-        if fixed is not None and fixed.shape and self.shape != fixed.shape:
-            raise ValueError(fixed.why)
         if fixed is not None and fixed.stages:
             names = tuple(st.name for st in (self.stages or ()))
             if names != fixed.stages:
@@ -569,6 +566,22 @@ def _refuse(msg: str, *, where: str = "") -> NoReturn:
         f"{_SOURCE.get()}{': ' + where if where else ''}: {msg}")
 
 
+def refuse_another_layout(obj) -> None:
+    """A description stating a layout other than the one, refused by name
+    with its way out (`engines/stages.md` § 6.7) -- asked first of every
+    description read, ``obj`` as it lies, before any rule a rewrite would
+    settle: by this module's reader and by `jobset migrate`'s, since a layout
+    is never rewritten.  One that states none is its reader's to refuse."""
+    if not (isinstance(obj, Mapping) and "shape" in obj):
+        return
+    shape = obj["shape"]
+    if shape != LAYOUT:
+        _refuse(f"shape {shape!r} is not a layout molbuilder lays out: every "
+                f"calculation is {LAYOUT!r} -- a folder per stage, a folder "
+                f"per run in it (execution/project-layout.md 1). Describe the "
+                f"calculation again, in a folder of its own.")
+
+
 def _as_object(value: Any, *, where: str) -> Mapping[str, Any]:
     """Refuse a non-object where § 6 specifies one, *saying* so.
 
@@ -637,12 +650,8 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     _check_keys(engine_obj, ("name",), where="engine")
     engine = str(_require(engine_obj, "name", where="engine"))
 
-    shape = _require(obj, "shape", where="")
-    if shape not in SHAPES:
-        _refuse(f"shape {shape!r} is not one of {' / '.join(SHAPES)}. "
-                "It is required and never inferred -- inferring it would "
-                "hand you a directory tree you did not ask for "
-                "(engines/stages.md 6.7)")
+    _require(obj, "shape", where="")
+    refuse_another_layout(obj)
 
     run_obj = _as_object(_require(obj, "run", where=""), where="run")
     _check_keys(run_obj, _RUN_KEYS, where="run")
@@ -728,9 +737,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         # The rule replaced one that let ``stages`` be absent, and the reason
         # is a transition nobody had specified: a stage-less run wrote
         # artifacts with NO token, and adding a second stage then left that
-        # run belonging to no token at all -- with `.XV` / `.DM` unsuffixed
-        # and shared in `flat`, so the new stage would warm-start from it
-        # silently.
+        # run belonging to no token at all.
         _refuse("no 'stages'. A job has at least one stage -- one is the "
                 "ordinary case, not a special shape (engines/stages.md 6.5). "
                 "Give it a single entry: "
@@ -753,7 +760,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # ``stages``, and an empty one is a real state -- several stages that
     # differ in nothing but their name.  (``None`` is reserved for the
     # no-stages case above, which § 6.5 spells by omitting both keys.)
-    return Task(engine=engine, shape=shape, run=run, structure=structure,
+    return Task(engine=engine, run=run, structure=structure,
                 varies=varies, stages=stages, calculation=calc,
                 slots=slots, bias=bias,
                 low_bias_approximation=low_bias_approximation,
@@ -905,6 +912,7 @@ def from_text(text: str, said_as: str = FILENAME) -> Task:
 
 
 def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:
+    refuse_another_layout(obj)
     before = _written_before(obj) if isinstance(obj, Mapping) else []
     if before:
         from .identity import migrate_as_typed
@@ -979,7 +987,7 @@ def _task_to_dict(task: Task) -> dict:
     out: dict[str, Any] = {
         "schema": SCHEMA,
         "engine": {"name": task.engine},
-        "shape": task.shape,
+        "shape": LAYOUT,
         "run": {"name": task.run.name, "id": task.run.id},
     }
     if task.run.created:
@@ -1024,7 +1032,7 @@ def write_task(base, task: Task):
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Run", "StructureRef", "Stage", "Task",
            "derive_run", "of", "from_text", "path_of",
-           "varies_for", "write_task"]
+           "refuse_another_layout", "varies_for", "write_task"]
 
 
 #: See the note beside § 2 above.  Derived here, where `Stage` is in scope.

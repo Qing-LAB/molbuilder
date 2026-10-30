@@ -279,7 +279,7 @@
     --ts-page-max:      1240px;
     --ts-editor-min-h:  30rem;   /* the CodeMirror pane's floor */
     --ts-label-w:       11.5rem; /* the settings-row name column */
-    --ts-opt-min:       16rem;   /* a shape option's flex basis */
+    --ts-opt-min:       16rem;   /* a choice option's flex basis */
     --ts-ask-label-w:   7.5rem;  /* the time/memory field's label column */
     --ts-cell-min:      5.5rem;  /* a stage-table cell */
     --ts-note-min:      24ch;    /* a stage-table sentence: a few words a line */
@@ -287,7 +287,7 @@
     --ts-ptadd-w:       5rem;    /* the add-a-point input */
     --ts-cmd-rule:      3px;     /* the command block's accent rule */
     --ts-pick-max:      22rem;   /* an add-a-parameter picker */
-    --ts-tick-w:        1em;     /* the chosen-shape tick's gutter */
+    --ts-tick-w:        1em;     /* the chosen option's tick gutter */
     --ts-label-track:   0.07em;  /* uppercase label tracking */
 
     /* The destination path + folder-state rows. */

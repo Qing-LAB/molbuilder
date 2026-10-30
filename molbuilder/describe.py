@@ -145,7 +145,6 @@ def build_description(
     stages: Sequence[Stage],
     *,
     engine: str,
-    shape: str,
     name: str,
     source: str,
     calculation: str,
@@ -181,7 +180,6 @@ def build_description(
 
     task = Task(
         engine=engine,
-        shape=shape,
         run=derive_run(name, struct.formula, created=created,
                        stage_names=stage_names),
         structure=StructureRef(source=source,

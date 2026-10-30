@@ -32,11 +32,10 @@ class NotifiedFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        from molbuilder.runfiles import (NOTIFIED_RECORD_FILE, ROLE_NOTIFIED,
-                                         role_of)
+        from molbuilder.runfiles import NOTIFIED_RECORD_FILE
         from molbuilder.runrecord import LaunchRecordError, read_notified_file
         p = Path(path)
-        if p.name != NOTIFIED_RECORD_FILE and role_of(p.name) != ROLE_NOTIFIED:
+        if p.name != NOTIFIED_RECORD_FILE:
             return False
         try:
             read_notified_file(p)

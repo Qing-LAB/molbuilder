@@ -955,12 +955,11 @@ def api_build_preflight():
 #  Hand-over to Task setup                                              #
 # --------------------------------------------------------------------- #
 
-#: The hand-over file's own schema.  **Not** ``molbuilder/task@1``, and the
-#: difference is the point: this file is deliberately INCOMPLETE -- it carries
-#: what the parameter tab knows and cannot carry ``shape``, which is required
-#: with no default because inferring it "would hand somebody a directory tree
-#: they never asked for" (`engines/stages.md` § 6.7).  A file claiming
-#: ``molbuilder/task@1`` while failing its own reader is worse than one that
+#: The hand-over file's own schema.  **Not** the description's
+#: (``task.SCHEMA``), and the difference is the point: this file is
+#: deliberately INCOMPLETE -- it carries what the parameter tab knows, and the
+#: stages are Task setup's to settle (`engines/stages.md` § 6.5a).  A file
+#: claiming the description's schema while failing its reader is worse than one that
 #: says what it is; ``check_schema`` refuses a wrong artifact BY NAME, so this
 #: cannot be mistaken for a description anywhere.
 TASK_HANDOVER_SCHEMA = "molbuilder/task-handover@1"
@@ -977,6 +976,32 @@ from molbuilder.runfiles import TASK_HANDOVER_FILE as TASK_HANDOVER_NAME  # noqa
 from molbuilder.job_request import FILENAME as _JOB_REQUEST_FILENAME  # noqa: E402
 from molbuilder.task import FILENAME as _TASK_FILENAME  # noqa: E402
 from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA_NOW  # noqa: E402
+
+#: WHAT A HAND-OVER'S PROPOSAL IS BUILT FROM -- the keys the hand-over route
+#: writes beside the parameters, each with its type, which Task setup reads
+#: to draw the description and its job request (`task-setup.md` § 9a).  A
+#: file without one is one an older molbuilder wrote: its reader says so.
+_PROPOSAL_KEYS = (("task_schema", str), ("task_shape", str),
+                  ("job_request_schema", str), ("calculation", str),
+                  ("engine", dict), ("proposed_stages", list),
+                  ("proposed_varies", list), ("proposed_groups", dict))
+
+
+def _proposal_refused(over) -> None:
+    """Refuse a hand-over the page cannot finish, in its reader's words
+    (`task-setup.md` § 9a): a key its proposal is built from missing
+    (:data:`_PROPOSAL_KEYS`), or a kind on an engine the kind table does not
+    hold (`kind_table.kind(...).on`, the description reader's own
+    refusal)."""
+    from molbuilder.kind_table import kind
+    missing = [k for k, typ in _PROPOSAL_KEYS
+               if not isinstance(over.get(k), typ)]
+    if not missing and not over["engine"].get("name"):
+        missing = ["engine.name"]
+    if missing:
+        raise ValueError(f"it carries no {', '.join(missing)} -- an older "
+                         f"molbuilder wrote it: send it again from its tab.")
+    kind(over["calculation"]).on(over["engine"]["name"])
 
 
 @bp.route("/api/task-setup/handover", methods=["POST"])
@@ -1009,10 +1034,10 @@ def api_task_setup_handover():
     **This is a hand-over, not a description.**  `tabs.md` forbids an in-memory
     "send to tab" hand-off, and this obeys it -- the transfer goes through disk,
     so the receiving tab reads files like every other reader and nothing depends
-    on state you cannot see in the folder.  Task setup finishes the job: it asks
-    for the shape -- or starts at the one the kind fixes (the kind table,
-    `web/task-setup.md` § 4) -- takes the stages, and on a successful save
-    writes the real ``task.json`` and removes this file.
+    on state you cannot see in the folder.  Task setup finishes the job: it
+    takes the stages, and on a successful save writes the real ``task.json``
+    -- the one layout stated in it (`web/task-setup.md` § 4) -- and removes
+    this file.
     """
     body = request.get_json(silent=True) or {}
     engine = str(body.get("engine") or "").lower()
@@ -1030,8 +1055,8 @@ def api_task_setup_handover():
     if _sender is None:
         # NO HAND-OVER FOR A KIND THAT DESCRIBES ON ITS OWN TAB (the kind
         # table's ``handover``, absent; user ruling 2026-08-29 for the
-        # composite): nothing is awaiting -- its stages, shape and identity
-        # are fixed by design -- so this door refuses by name.
+        # composite): nothing is awaiting -- its stages and identity are
+        # fixed by design -- so this door refuses by name.
         return jsonify({"ok": False,
                         "error": f"{_kind(calculation).with_article} "
                                  f"describes on its own tab -- nothing is "
@@ -1179,9 +1204,8 @@ def api_task_setup_handover():
         # ``<label>.source.xyz`` -- the dotted segment is the reservation
         # (`job-contracts.md` § 6.3): every identity is validated
         # dot-free, so no engine output, which stems its files on an
-        # identity, can ever take this name -- else a flat SIESTA run
-        # whose label matched the structure's stem would overwrite its own
-        # input via WriteCoorXmol.  The one call both
+        # identity, can ever take this name -- `<label>.xyz` is SIESTA's own
+        # (WriteCoorXmol).  The one call both
         # writers make -- `molbuilder describe` too (`StructureCodec.source_files`).
         made = StructureCodec().source_files(struct, label)
     except ValueError as exc:
@@ -1197,25 +1221,26 @@ def api_task_setup_handover():
 
     from molbuilder.jobset.group import fresh_groups
     from molbuilder.jobset.ladder import fresh_stages
-    from molbuilder.kind_table import pair
     from molbuilder.task import derive_run, fresh_varies
     proposed = fresh_stages(calculation, engine)
-    # WHAT THE HAND-OVER WAITS ON -- the keys Task setup still asks; a shape
-    # the kind fixes is not asked (its part in the kind table,
-    # `web/task-setup.md` § 4), and the file's own words say the same.
-    _pair = pair(calculation, engine)
-    fixed = _pair.fixed_shape if _pair is not None else None
-    awaiting = ["stages"] if fixed else ["shape", "stages"]
+    # WHAT THE HAND-OVER WAITS ON -- the key Task setup still asks: the
+    # stages.  The layout is never asked: there is one, and Save writes it
+    # (`web/task-setup.md` § 4).
+    awaiting = "stages"
     groups = fresh_groups(proposed, engine=engine, calculation=calculation,
                           template_text=template_text)
     from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA
+    from molbuilder.task import LAYOUT as _TASK_LAYOUT
     from molbuilder.task import SCHEMA as _TASK_SCHEMA
     handover = {
         "schema":    TASK_HANDOVER_SCHEMA,
         # THE DESCRIPTION'S OWN SCHEMA STRING, for the page to write -- the
-        # page spells none (`task.SCHEMA`, one home; 2026-10-19) -- and its
-        # job request's (`job_request.SCHEMA`).
+        # page spells none (`task.SCHEMA`, one home; 2026-10-19) -- its job
+        # request's (`job_request.SCHEMA`), and the one layout the
+        # description states as its `shape` (`task.LAYOUT`, `web/task-setup.md`
+        # § 4).
         "task_schema": _TASK_SCHEMA,
+        "task_shape": _TASK_LAYOUT,
         "job_request_schema": _JOB_REQUEST_SCHEMA,
         # JSON has no comments, so the file carries a line that says what it
         # is.  It IS read by a person -- Task setup shows it in the editor --
@@ -1226,12 +1251,8 @@ def api_task_setup_handover():
         "_what":     f"A hand-over from the {_sender} tab, not a "
                      "description. It carries the parameters (in the .template.toml "
                      "beside it) plus what this calculation is OF. It is missing "
-                     + " and ".join(f"`{k}`" for k in awaiting)
-                     + " on purpose -- Task setup asks for "
-                     + ("it" if len(awaiting) == 1 else "those")
-                     + (f"; its shape is its kind's, {fixed['shape']}, which "
-                        f"Task setup writes" if fixed else "")
-                     + ", and on a successful save writes the real task.json "
+                     f"`{awaiting}` on purpose -- Task setup asks for it, and "
+                     "on a successful save writes the real task.json "
                      "and deletes this file. Nothing runs from it. The structure it is OF is the "
                      "file `structure.source` names in this same folder, written "
                      "by the server's one codec: the .xyz, "
@@ -1256,7 +1277,7 @@ def api_task_setup_handover():
                       "fingerprint": StructureCodec.fingerprint(made)},
         # Stated rather than omitted so a reader of the file knows what it
         # is waiting on (above).
-        "awaiting":  awaiting,
+        "awaiting":  [awaiting],
     }
     # THE KIND RIDES THE HAND-OVER, every kind -- the receiving tab writes
     # it into task.json.
@@ -1592,7 +1613,7 @@ def api_task_setup_save():
         prior = task_of(dest)
     except (OSError, ValueError) as exc:
         # A CALCULATION ITS READERS REFUSE is not written over: their words,
-        # as the folder answer gave them (`web/task-setup.md` § 4).
+        # as the folder answer gives them (`refused`).
         return jsonify({"ok": False, "error": str(exc)}), 409
     if prior is not None and prior.run.id != task.run.id:
         return jsonify({
@@ -1602,24 +1623,6 @@ def api_task_setup_save():
                      f"here would orphan its results. One calculation per folder — "
                      f"pick or make another.",
         }), 409
-    # THE SHAPE, WHEN IT IS FIXED (`web/task-setup.md` § 4): the one its
-    # kind fixes is the reader's, refused above (`task.from_text`); here,
-    # once the calculation has produced -- a prepared stage lies where the
-    # shape put it.  The one answer the shape card draws
-    # (`prep.shape_fixed`), so the refusal says what the page said.
-    if prior is not None and prior.shape and task.shape != prior.shape:
-        from molbuilder.jobset.errors import PrepError
-        from molbuilder.jobset.prep import shape_fixed
-        try:
-            # no template yet (no calculation opened): nothing has produced
-            fixed = (shape_fixed(prior_calc) if prior_calc is not None
-                     else None)
-        except (OSError, ValueError, PrepError) as exc:
-            # WHAT ITS READERS REFUSE -- a plan in a format they no longer
-            # read -- is said, and nothing is written over it.
-            return jsonify({"ok": False, "error": str(exc)}), 409
-        if fixed is not None:
-            return jsonify({"ok": False, "error": fixed["why"]}), 409
     # A LAUNCHED GROUP'S MEMBERS ARE FIXED (`web/task-setup.md` § 5): a
     # stage put into one, or a member launched with it given another group,
     # is refused in the one rule's words (`ready.launched_without`,
@@ -2176,11 +2179,10 @@ def api_task_setup_bench_grid():
 def api_task_setup_prep_plan():
     """What a `prep` would write, stage by stage — `task-setup.md` § 7.1.
 
-    **The names come from the producer, never from the page.**  Flat and
-    hierarchical name directories differently (§ 4), so a list composed in
-    the browser would be a second answer free to disagree with the thing it
-    describes.  `naming.stage_home` is the one namer (decision 27) and
-    `Shape.stage_dir` the one layout, and this asks both.
+    **The names come from the producer, never from the page.**  A list
+    composed in the browser would be a second answer free to disagree with
+    the thing it describes.  `naming.stage_home` is the one namer (decision
+    27): a stage's folder is its token.
 
     The allocation each stage would carry is the job request's, folded by
     the same function the prep itself resolves through -- so the row cannot
@@ -2206,13 +2208,11 @@ def api_task_setup_prep_plan():
                         }), 400
     from molbuilder import job_request as _job_request
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.paths import Shape
     from molbuilder.runfiles import manifest
     from molbuilder.task import Task
     try:
         task = Task.from_dict(raw)
         job_req = _job_request.from_dict(raw_request, task)
-        shape = Shape.named(task.shape)
     except Exception as exc:                      # noqa: BLE001
         # A description mid-edit is often unreadable, and that is ordinary.
         # Its own words, so the card can say why rather than going blank.
@@ -2267,10 +2267,8 @@ def api_task_setup_prep_plan():
     rows = []
     for st in task.stages:
         home = stage_home(folder, task, st.name)
-        token = home.token
-        rows.append({"stage": st.name, "token": token,
+        rows.append({"stage": st.name, "dir": home.token,
                      **({"need": needs[st.name].to_wire()} if needs else {}),
-                     "dir": shape.stage_dir(token),
                      "ask": _ask_of(st.name),
                      # PER STAGE, because the condition is (§ 3.2): the
                      # calculation's card with this rung's laid over it.
@@ -2283,14 +2281,11 @@ def api_task_setup_prep_plan():
                      # show a spelling the writers do not use -- which is
                      # the failure that module exists for.  The engine
                      # filters it: a SIESTA run is not told about `.py`.
-                     # ...spelled as THIS shape spells them: an attempt's
-                     # `run.json`, a flat stage's first run's
-                     # `<base>-run0.run.json` (plan D22, W57 decision 2).
                      # ...ON THE LABEL ITS FILES CARRY: a transport lead's
                      # own stem (`StageHome.label`, `job-contracts.md` § 2.1
                      # rule 2).
-                     "files": manifest(home.label, token,
-                                       shape=shape.name, engine=task.engine,
+                     "files": manifest(home.label, home.token,
+                                       engine=task.engine,
                                        calculation=task.calculation)})
     bench = None
     if job_req.bench:
@@ -2298,8 +2293,7 @@ def api_task_setup_prep_plan():
         # measures one cell; the card says which is which (§ 6.2b).
         #
         # AND WHERE THE SWEEP LANDS, asked of `bench_container`, which is the
-        # ONE spelling of that rule: the container is `bench_<NN>_<stage>`
-        # flat, `<NN>_<stage>/bench` hierarchical.
+        # ONE spelling of that rule: `<NN>_<stage>/bench`.
         #
         # ONE ENTRY PER RUNG, because that is what a sweep is: `prep bench`
         # takes a stage, the container lives inside the stage it measures,
@@ -2320,7 +2314,7 @@ def api_task_setup_prep_plan():
                                 "time": job_req.allocation.time,
                                 "mem": job_req.allocation.mem},
                  "rungs": [{"stage": r["stage"],
-                            "dir": bench_container(shape, r["token"])}
+                            "dir": bench_container(r["dir"])}
                            for r in rows]}
     # WHAT PREP WRITES FOR THE WHOLE RUN, beside the per-stage rows above
     # (user, 2026-09-07: *"we should add a card that list all the generated
@@ -2340,10 +2334,10 @@ def api_task_setup_prep_plan():
     # thing this cannot say: whether they are there yet.
     # And what `summarize task` writes there from results that exist -- the
     # transport record, a sweep's comparison -- whose own line says so.
-    once = manifest(task.label, None, shape=shape.name, engine=task.engine,
+    once = manifest(task.label, None, engine=task.engine,
                     when=("prep", "run", "summarize"),
                     calculation=task.calculation)
-    out = {"ok": True, "shape": shape.name, "stages": rows,
+    out = {"ok": True, "stages": rows,
            "bench": bench, "bundle": bundle, "once": once,
            "warm": _warm_in_effect(task, folder)}
     if needs:
@@ -2387,35 +2381,30 @@ def _folder_continue_from(calc) -> dict:
 
 
 def _folder_attempts(calc) -> dict:
-    """How many attempts each stage has on disk -- the payload."""
+    """How many runs of each stage were launched -- the payload.  A RUN IS
+    ONE LAUNCH of the stage, `run-<n>/` -- a swept rung's too, its points
+    inside it (`engines/transport.md` § 2a.11) -- and only the newest can be
+    unlaunched, prep's or one a refused send opened
+    (`materialize.newest_launched`), so it is not counted.  A stage whose
+    newest launch record does not read is left out: its count is not
+    known."""
+    from molbuilder.jobset.materialize import newest_launched
     from molbuilder.jobset.naming import stage_home
-    from molbuilder.paths import Shape, attempts_in
-    from molbuilder.runrecord import newest_run
+    from molbuilder.paths import attempt_dir, attempts_in
+    from molbuilder.runrecord import LaunchRecordError
     dest, task = calc.base, calc.task
-    try:
-        shape = Shape.named(task.shape)
-    except Exception as exc:                      # noqa: BLE001
-        return {"ok": False, "error": str(exc)}
-
     stages = {}
     for st in task.stages:
         home = stage_home(dest, task, st.name)
-        token = home.token
-        sd = shape.stage_dir(token)
-        where = dest if sd == "." else dest / sd
-        if shape.keeps_attempts_as_directories:
-            # A RUN IS ONE LAUNCH of the stage, `run-<n>/` -- a swept
-            # rung's too, its points inside it (`engines/transport.md`
-            # § 2a.11).
-            n = len(attempts_in(where))
-        else:
-            # FLAT: the runs LAUNCHED, by their launch records -- the one
-            # rule (`runrecord.newest_run`); a run index on a file is not a
-            # launch: prep seeds the first run's progress log before any.
-            newest = newest_run(where, home.names(task.shape))
-            n = 0 if newest is None else newest + 1
-        stages[st.name] = {"token": token, "dir": sd, "attempts": n}
-    return {"ok": True, "shape": task.shape, "stages": stages}
+        ns = attempts_in(home.dir)
+        try:
+            newest = newest_launched(home.dir)
+        except LaunchRecordError:
+            continue
+        stages[st.name] = {"attempts": (
+            len(ns) - (newest != attempt_dir(home.dir, ns[-1])) if ns
+            else 0)}
+    return {"stages": stages}
 
 
 @bp.route("/api/task-setup/folder", methods=["GET"])
@@ -2460,9 +2449,11 @@ def api_task_setup_folder():
 
     def _read_handover():
         """The hand-over file through its one reader: `persist.read_json`,
-        and the schema this module writes it with (`TASK_HANDOVER_SCHEMA`)
-        checked -- a file of another major is said, never read as this
-        one's; one that does not read is said too, the page shows it."""
+        the schema this module writes it with (`TASK_HANDOVER_SCHEMA`) and
+        what its proposal is built from (:func:`_proposal_refused`) checked
+        -- a file of another major, one that does not read, or one the page
+        cannot finish is said in the reader's words, never read as this
+        one's; the page refuses it as it opens."""
         from molbuilder.persist import check_schema, read_json
         f = folder / TASK_HANDOVER_NAME
         if not f.is_file():
@@ -2471,6 +2462,7 @@ def api_task_setup_folder():
             obj = read_json(f)
             check_schema(obj.get("schema") if isinstance(obj, dict) else None,
                          TASK_HANDOVER_SCHEMA, label=f.name)
+            _proposal_refused(obj)
             return obj
         except Exception as exc:                  # noqa: BLE001
             return {"error": f"{TASK_HANDOVER_NAME}: {exc}"}
@@ -2581,11 +2573,10 @@ def api_task_setup_folder():
             engine=getattr(_task, "engine", None),
             kind=getattr(_task, "calculation", None)),
         "provenance": _folder_provenance(folder),
-        # Only a described folder has stages, so only then is there anything
-        # to count -- and `_folder_attempts` says so itself rather than this
-        # door deciding for it.
+        # Only a calculation has stages, so only then is there anything to
+        # count.
         "attempts": (_folder_attempts(_calc) if _calc is not None
-                     else {"ok": True, "shape": None, "stages": {}}),
+                     else {"stages": {}}),
         # WHAT EACH STAGE CAN CONTINUE FROM -- its default, the runs of the
         # stage before it with what each was, and `--cold` where it is a
         # choice (`job-system.md` § 5.4, plan W37): the Continue-from choice
@@ -2626,12 +2617,6 @@ def api_task_setup_folder():
         # page shows it fixed rather than offering a choice that can only be
         # refused (W55 B4, D12).
         "set_to": _folder_set_to(folder),
-        # ...AND THE SHAPE, WHEN IT IS FIXED -- by the kind, or once the
-        # calculation has produced -- with why and the way back
-        # (`prep.shape_fixed`, the answer the save refuses with); null while
-        # it may change, `{error}` when its readers refuse the folder's plan
-        # (`web/task-setup.md` § 4).
-        "shape_fixed": _folder_shape_fixed(_calc, _task, handover),
         # WHICH STAGES ARE PREPARED AS A BENCHMARK -- each with the prep
         # entry's own sentence (`prep.prepared_already`), which the page
         # shows in place of a Prep it would refuse; a task's stages are the
@@ -2668,9 +2653,7 @@ def _default_groups_of(folder, task) -> dict:
 def _folder_fixed(task) -> Optional[dict]:
     """The stages a kind's part on its engine fixes (the kind table),
     ``{"stages"}``, as the stage table reads them; ``None`` for a pair that
-    fixes none -- a SIESTA vibration fixes its shape alone -- or no
-    description.  The shape it fixes reaches the page as ``shape_fixed``,
-    with why (`prep.shape_fixed`)."""
+    fixes none, or no description."""
     from molbuilder.kind_table import pair
     fixed = pair(getattr(task, "calculation", ""),
                  getattr(task, "engine", ""))
@@ -2802,28 +2785,6 @@ def _folder_frame_set(task, folder):
         cited.structure if isinstance(cited, CitedPair) else None)
 
 
-def _folder_shape_fixed(calc, task, handover) -> Optional[dict]:
-    """The shape card's answer (`web/task-setup.md` § 4): ``prep.shape_fixed``
-    of a calculation that opens -- by its kind, or once it has produced --
-    and before one opens, the shape its kind fixes (the kind table): a
-    description's, or a hand-over's from the engine and kind it carries, as
-    `_folder_bench_refusal` asks them; ``None`` while it may change.
-    Fail-soft, like the folder's other parts: what its readers refuse -- a
-    plan written before the reader's format -- is ``{"error"}``, said on
-    the shape card."""
-    if calc is None:
-        from molbuilder.kind_table import pair
-        kind = _folder_kind(task, handover)
-        fixed = pair(*kind) if kind is not None else None
-        return fixed.fixed_shape if fixed is not None else None
-    from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.prep import shape_fixed
-    try:
-        return shape_fixed(calc)
-    except (OSError, ValueError, PrepError) as exc:
-        return {"error": str(exc)}
-
-
 def _folder_set_to(folder):
     """The machine the calculation is set to, or ``None`` before its first
     prep -- the name its copy of the record carries, in the tab's words:
@@ -2842,7 +2803,7 @@ def _folder_prepared(calc) -> dict:
     try:
         said = {}
         for st in calc.task.stages:
-            why = prepared_already(calc, "bench", st.name)
+            why = prepared_already(calc, st.name)
             if why:
                 said[st.name] = why
         return {"bench": said}
@@ -2949,28 +2910,15 @@ def _read_as(folder) -> dict:
 def _folder_bench_refusal(task, handover):
     """The folder answer's ``bench_refusal``: the entry's reason this
     calculation takes no bench -- a description's, or a hand-over's from
-    the engine and kind it carries (`web/task-setup.md` § 11.1) -- or
-    ``None`` when there is neither to ask."""
+    the engine and kind it carries (`web/task-setup.md` § 11.1), whose
+    reader has checked the pair (:func:`_proposal_refused`) -- or ``None``
+    when there is neither to ask."""
     from molbuilder.jobset.prep_inputs import bench_refusal
-    kind = _folder_kind(task, handover)
-    return bench_refusal(kind[1], kind[0]) if kind is not None else None
-
-
-def _folder_kind(task, handover):
-    """``(calculation, engine)`` of the folder's description, or of the
-    hand-over it holds before one -- the kind and engine the folder answer's
-    kind-decided parts ask with (`web/task-setup.md` § 4, § 11.1); ``None``
-    when there is neither to read, or the hand-over names a kind on an
-    engine the kind table does not hold."""
     if hasattr(task, "stages"):
-        return str(task.calculation), str(task.engine)
+        return bench_refusal(str(task.engine), str(task.calculation))
     if isinstance(handover, dict) and "error" not in handover:
-        # A HAND-OVER NAMING A PAIR THE KIND TABLE DOES NOT HOLD answers
-        # none of the kind-decided parts: its own reader refuses it.
-        from molbuilder.kind_table import pair
-        got = (str(handover.get("calculation", "")),
-               str((handover.get("engine") or {}).get("name", "")))
-        return got if pair(*got) is not None else None
+        return bench_refusal(handover["engine"]["name"],
+                             handover["calculation"])
     return None
 
 

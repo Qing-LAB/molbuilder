@@ -697,8 +697,8 @@
                      * the result and looks like one: measured 2026-09-19,
                      * the transmission rung -- holding `.TBT.nc` and both
                      * transmission curves -- opened `…util.csv`, the CPU
-                     * utilisation samples; and a hierarchical calculation
-                     * root opened its own INPUT structure's sidecar as raw
+                     * utilisation samples; and a calculation root opened
+                     * its own INPUT structure's sidecar as raw
                      * JSON.  The menu still lists every readable file; only
                      * the guess is gone.
                      *

@@ -133,7 +133,8 @@ def test_the_task_setup_save_findings_carry_their_card(
     h = _json.loads(over["handover_text"])
     proposed = {"schema": h["task_schema"], "engine": h["engine"],
                 "calculation": h["calculation"],
-                "shape": "flat", "run": h["run"], "structure": h["structure"],
+                "shape": h["task_shape"], "run": h["run"],
+                "structure": h["structure"],
                 "varies": [key],
                 "stages": [{"name": "coarse",
                             "overrides": {key: "not-an-int"}}]}

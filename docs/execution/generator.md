@@ -5,7 +5,8 @@
 
 **Companions:**
 [`execution/architecture.md`](?doc=execution/architecture.md) — the floors, the
-routes, and the axes this adds the fifth to;
+routes, and the five axes (§ 0), the job kind among them, which this makes a
+value;
 [`engines/template.md`](?doc=engines/template.md) — the item model this reads;
 [`execution/project-layout.md`](?doc=execution/project-layout.md) — `prep`'s five
 steps, and § 2.3.1a's *framework vs specialisation* split, which this makes
@@ -69,22 +70,14 @@ render identically.
 
 ## 2. The one idea: a run is a sweep of length one
 
-[`architecture.md`](?doc=execution/architecture.md) § 0 names the axes and one
-property that makes them work:
+[`architecture.md`](?doc=execution/architecture.md) § 0 names the five axes
+and one property that makes them work:
 
 > *every axis is a **value read at one point**, never a branch that grows a
 > second code path.*
 
-**The fifth is the one this document adds, and today it is the only one that is
-a branch rather than a value.**
-
-| axis | the value | where it is read |
-|---|---|---|
-| surface | — | you |
-| environment | `Environment` | `prep` step 1 |
-| shape | `task.json`'s `shape` | floor 4, once |
-| engine | an item's `kind` | the deck writer |
-| **kind** — run · bench · study | **`ParameterSet`'s length** | **`prep` step 2** |
+**The job kind — run · bench · study — is the one this document makes a
+value: `ParameterSet`'s length, read at `prep` step 2.**
 
 `project-layout.md` § 2.3.1a already states the resolution in words —
 *"benchmarking is `prep` whose parameters are a set rather than a point"* — and
@@ -117,7 +110,7 @@ flowchart TB
     S -.->|"<b>checked against</b>, not generated from"| BM["<b>BENCH-MARKS</b> block in a deck<br/><i>a hand-written subset — <code>SIESTA_BENCH_FIELDS</code></i>"]
 
     T --> D
-    TK["<b>task.json</b><br/>floor 2 · the mission:<br/>ladder · shape · structure ref"] --> D
+    TK["<b>task.json</b><br/>floor 2 · the mission:<br/>ladder · structure ref"] --> D
 
     D["<b>THE DESCRIPTION</b> — floor 2, portable, <b>names no machine</b>"]
 
@@ -769,14 +762,13 @@ renderable on its own, and no downstream reader ever re-derives a value or asks
 | `provenance` | which source set each value — template · stage override · sweep point · pin · the rung's role. This is what makes `M3`'s *"the numbers were wrong"* answerable |
 
 > **`point` is why a trial directory needs no naming rule of its own.**
-> `bench-G<g>K<k>C<c>` (`job-contracts.md` § 6.3) is `point` rendered — one
+> `bench-G<g>N<n>C<c>` (`job-contracts.md` § 6.3) is `point` rendered — one
 > function, fed by data, rather than a format string in the benchmark module.
 
-> **And it settles an asymmetry the code carries today.**
-> the shape, read from the description (`Shape.named(task.shape)`), is the sweep's calculation's, on the stated grounds that
-> *"a benchmark bundle carries no description and needs none"* — true now,
-> because a benchmark is a separate lifecycle. **Under this design it stops being
-> true:** a sweep is a `ParameterSet` inside a described calculation, so it has a
+> **And it settles an asymmetry.** A benchmark once carried no description, on
+> the stated grounds that *"a benchmark bundle carries no description and needs
+> none"* — true while a benchmark was a separate lifecycle. **Under this design
+> it stops being true:** a sweep is a `ParameterSet` inside a described calculation, so it has a
 > description like anything else, and its trials nest inside the stage they
 > measure — in its `bench/` **container**: `<seq>_<name>/bench/bench-<point>/`
 > (`job-contracts.md` § 6.3's Directories table, the cross-layer authority).
@@ -807,7 +799,7 @@ flowchart TB
     F4["<b>4 · layout</b><br/><code>jobset/materialize</code> · <code>jobset/gather</code>"]
     F3["<b>3 · plan &amp; render</b><br/><code>resolve</code> → <b>ParameterSet</b><br/><code>jobset/model</code> → <b>JobSet</b><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
     F2["<b>2 · description</b><br/><code>task</code> · <code>job_request</code> · <code>template_file</code>"]
-    F1["<b>1 · names & machine</b><br/><code>identity</code> · <code>runfiles</code> · <code>paths</code> (<code>Shape</code>) · <code>scheduler/</code> · <code>parse</code> · <code>template</code> (the catalogue)"]
+    F1["<b>1 · names & machine</b><br/><code>identity</code> · <code>runfiles</code> · <code>paths</code> · <code>scheduler/</code> · <code>parse</code> · <code>template</code> (the catalogue)"]
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
 ```
 
@@ -845,7 +837,7 @@ composes nothing. Its contract — including that the ask handed in is never
 | 2 · `template_file` · `task` | its own files | know a machine exists |
 | 3 · `resolve` | template · task · `Environment` · the allocation · the sweep · the pins | write a file |
 | 3 · `model` | a `ParameterSet` | re-read the template |
-| 4 · `materialize` | a `JobSet` · `Shape` | re-resolve a parameter |
+| 4 · `materialize` | a `JobSet` | re-resolve a parameter |
 | 3 · the script writers · `runwrap` | a resolved config · the rendered script · `read_by` items | **re-decide a value it was handed** |
 | 5 · `launch` | the built directory | decide anything (M5) |
 
@@ -931,8 +923,10 @@ that an absent `engines` key means every engine.)*
 | the seam's form-builder (`spec_for`) | `(structure, config, names=)` -- the stage's names, `runfiles.RunNames` | **matches** |
 
 **The stage's names (`runfiles.RunNames`) are what make one writer serve a
-ladder.** They suffix a script, an engine stdout and a trajectory log so that two stages never
-write to one file, and a PySCF ladder is N scripts and N jobs
+ladder.** They put the stage's token in a script's, an engine stdout's and a
+trajectory log's name — the self-check that a file sits in its own stage's
+folder ([`run-identity.md`](?doc=execution/run-identity.md) § 3.2) — and a
+PySCF ladder is N scripts and N jobs
 ([`stages.md` § 1.1a](?doc=engines/stages.md)) — so its writer uses the token
 exactly as SIESTA's does.
 

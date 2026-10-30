@@ -85,7 +85,7 @@ different input file. You never edit the program.**
 
 ## 2. The vocabulary, defined once
 
-Six words are used throughout. Each is ordinary once you know what it points at.
+Seven words are used throughout. Each is ordinary once you know what it points at.
 
 | word | in plain terms |
 |---|---|
@@ -97,9 +97,11 @@ Six words are used throughout. Each is ordinary once you know what it points at.
 | **wrapper** | The shell script that activates the right environment, works out how many processors to use, launches the engine, and watches it. Named `<label>.run.sh` |
 | **stage** | One step of a multi-step calculation — *coarse*, then *tight*. molbuilder's idea, not the engine's |
 
-Two more you will meet in file names: an **attempt** is one try at running a
-stage (`run-0`, `run-1`), and a **trial** is one point of a benchmark
-(`bench-G0N16C1`).
+Three more you will meet in file names: a **run** — the code says
+**attempt** — is one launch of a stage, a folder of its own (`run-0`, `run-1`);
+a **try** is one start of its wrapper inside that folder, its files marked
+`-run0`, `-run1` (a warm retry is the next try); and a **trial** is one point
+of a benchmark (`bench-G0N16C1`).
 
 ---
 
@@ -242,7 +244,7 @@ flowchart LR
       G["<code>resolve.resolve(...)</code><br/><i>answers + machine + your ask<br/>→ the settled configuration(s)</i>"]
       K["<code>script_emit.prepare_deck(spec, …)</code><br/><i>the engine's input file — validate,<br/>render, write, then check what the writer made</i>"]
       H["<code>runwrap.write_run_wrapper(script, names=, resources=)</code><br/><i>the wrapper AND the submission</i>"]
-      I["<code>materialize.materialize(jobset, base, plan, shape=)</code><br/><i>makes the directories</i>"]
+      I["<code>materialize.materialize(jobset, base, plan)</code><br/><i>makes the directories</i>"]
       J["<code>submit.plan_launch(calc, mode=)</code> → <code>send_launch</code><br/><i>the plan, shown and asked, then sent as shown</i>"]
     end
     READ --> MAKE
@@ -427,8 +429,7 @@ one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 > ```
 > molbuilder describe --structure P/structure/water.xyz \
 >                        --bundle   P/spectrum/water-vib \
->                        --shape hierarchical --engine pyscf \
->                        --calculation vibration
+>                        --engine pyscf --calculation vibration
 > ```
 >
 > It is the one verb whose `--bundle` may not exist yet — that is what it
@@ -521,7 +522,7 @@ flowchart TB
         FORM["<b>the calculation's form</b> — Build tab (optimization) ·<br/>Spectrum tab (vibration)<br/><code>/api/build/schema/&lt;engine&gt;?calculation=…</code>,<br/>one shared renderer (web/form-schema.md)"]
         DETECT["charge and spin — <code>/api/structure/analyze</code><br/>the one electronic state, for exactly what the form says,<br/>shown on the card; fills nothing (chemistry-correctness.md § 2a)"]
         SEND["<b>Send to Task setup</b> — <code>lib/task-handover.js</code>,<br/>ONE door for every tab (web/handover-procedure.md)<br/>writes template + structure pair + <code>task.1st.json</code>"]
-        TS["<b>Task setup</b> — shape, stages, bench axes<br/>(web/task-setup.md); saving writes <code>task.json</code><br/>— the described calculation — and <code>job-request.json</code>,<br/>how it runs (execution/job-request.md)"]
+        TS["<b>Task setup</b> — stages, bench axes<br/>(web/task-setup.md); saving writes <code>task.json</code><br/>— the described calculation — and <code>job-request.json</code>,<br/>how it runs (execution/job-request.md)"]
     end
     subgraph MACHINE["run it — the machine that will compute"]
         PREP["<b>prep</b> — the conductor renders the deck<br/>(execution/script-preparation.md § 5’s five steps,<br/>workflow.md § 5), wrapper + dirs follow the deck —<br/>planned whole, the folder's state saved, then written"]

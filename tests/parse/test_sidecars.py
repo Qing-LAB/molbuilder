@@ -127,8 +127,7 @@ def _task(tmp_path, calculation):
     dest = tmp_path / calculation
     dest.mkdir(exist_ok=True)
     write_task(dest, Task(
-        engine="siesta", shape="hierarchical",
-        run=derive_run("T", "J/structure/junc" if transport else "H2",
+        engine="siesta", run=derive_run("T", "J/structure/junc" if transport else "H2",
                        stage_names=stages),
         structure=None if transport
         else StructureRef(source="J/structure/h2.xyz", formula="H2", atoms=2),

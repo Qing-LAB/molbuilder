@@ -50,15 +50,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Mapping
 
-from .runfiles import compose as _compose
-
-#: How a log file is named.  The STEM is the deck's own -- ``<label>_<token>``
-#: -- because that is what tells two rungs apart **in a flat calculation**,
-#: where every stage preps into one directory and a per-calculation name would
-#: have `tight` overwrite `coarse` (`job-contracts.md` § 6.3: in flat the name
-#: does the selecting).  Engine and shape follow so the file still says what it
-#: is once it has been copied off the machine.
-LOG_SUFFIX = "pipeline.log"
+from .runfiles import ROLE_PIPELINE_LOG, compose as _compose
 
 _MAJOR = "═" * 71
 _MINOR = "─" * 71
@@ -68,23 +60,24 @@ _MINOR = "─" * 71
 _W_KIND, _W_NAME, _W_VALUE = 5, 22, 24
 
 
-def log_name(label: str, token: str, engine: str, shape: str) -> str:
+def log_name(label: str, token: str, engine: str) -> str:
     """This prep's log file name.
 
     ``token`` is the stage's ``<NN>_<name>`` -- every description has a
     stage, so an empty one is refused.
 
     THE NAME IS THE CATALOGUE'S (`runfiles.WRITTEN`, job-contracts.md
-    § 2.2): the role ``.{engine}.{shape}.pipeline.log`` on the
-    ``<label>_<token>`` every run file is named from, its two facts about
-    the prep declared fields -- so the file is a row like every other file
-    molbuilder writes, and `--cold` and the cards know it.
+    § 2.2): the role `runfiles.ROLE_PIPELINE_LOG` on the
+    ``<label>_<token>`` every run file is named from, the engine a declared
+    field -- so the file is a row like every other file molbuilder writes,
+    and `--cold` and the cards know it.  A log lies in its prep's record
+    folder (`prep.Resolved.log_path`) -- a stage's run at the calculation's
+    root, so the stage's token is what tells them apart there.
     """
     if not token:
         raise ValueError("a prep's log is its stage's -- no stage token was "
                          "given")
-    return _compose(label, "." + "{engine}.{shape}." + LOG_SUFFIX,
-                    token, engine=engine, shape=shape)
+    return _compose(label, ROLE_PIPELINE_LOG, token, engine=engine)
 
 
 class PipelineLog:
@@ -102,8 +95,8 @@ class PipelineLog:
     # -- opening ------------------------------------------------------- #
 
     @classmethod
-    def open(cls, path, *, label: str, token: str, engine: str,
-             shape: str) -> "PipelineLog":
+    def open(cls, path, *, label: str, token: str,
+             engine: str) -> "PipelineLog":
         """A log for one prep, at ``path`` -- composed by its prep's one
         door (`prep.Resolved.log_path`: :func:`log_name` in the prep's
         record folder, the bundle root for a run and the stage's ``bench/``
@@ -113,18 +106,17 @@ class PipelineLog:
         (``jobset/ledger``'s stated reason for the same choice).  ``label``
         and the rest are the banner's."""
         self = cls(Path(path))
-        self._banner(label, token, engine, shape)
+        self._banner(label, token, engine)
         return self
 
     def held_text(self) -> str:
         """What the log has been told, as the text its file gets."""
         return "".join(line + "\n" for line in self._held)
 
-    def _banner(self, label, token, engine, shape) -> None:
+    def _banner(self, label, token, engine) -> None:
         at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        rung = f"stage {token}" if token else "no ladder"
         self._write("\n" + _MAJOR)
-        self._write(f"  PREP  {label} · {rung} · {engine} · {shape} · {at}")
+        self._write(f"  PREP  {label} · stage {token} · {engine} · {at}")
         self._write(_MAJOR)
 
     # -- the seven verbs ------------------------------------------------ #
@@ -222,4 +214,4 @@ def config_rows(values: Any, provenance: Mapping[str, str]
     return sorted(rows, key=lambda r: (rank.get(r[2], 9), r[0]))
 
 
-__all__ = ["PipelineLog", "log_name", "config_rows", "LOG_SUFFIX"]
+__all__ = ["PipelineLog", "log_name", "config_rows"]

@@ -66,8 +66,8 @@ does not restate them; it explains how to *operate* them.
 
 > **The wrapper's own files are named by `runfiles` too** — its stdout, its
 > session log, the monitor's pair, the SCF timing log, the conclusion marker.
-> They are the ones that carry the attempt counter, and `-run<N>` is not a
-> literal anywhere: it is the one keyword `runfiles.QUALIFIERS` declares, so a
+> All but the session log, which carries its start's stamp, carry the try's
+> number, and `-run<N>` is not a literal anywhere: it is the one keyword `runfiles.QUALIFIERS` declares, so a
 > second counter is a line there rather than an edit to whatever reads names.
 > See [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a, *"Which
 > door to call"* (rule **A14**).
@@ -255,7 +255,7 @@ place for logic:
   site's activation can leave ahead of the env's (`source activate` under a
   mamba 2.x module, Sol) — and logs it (`job python:`). Every python the job
   runs is that one: the monitor, the ending reader, a finish, a PySCF deck.
-  Once the run index is known, every job checks, before anything starts,
+  Once the try's number is known, every job checks, before anything starts,
   that `CONDA_PREFIX` names its env and that python is there; otherwise it
   stops, saying which, its conclusion `no env python (<path>)`
   (`parse.dirs.job.NO_ENV_PYTHON`). The activation forms are conda's
@@ -487,10 +487,10 @@ sources recommend, and how to design a benchmark matrix around it — is
 
 | Flag | Engines | Effect |
 |---|---|---|
-| `--run N` | both | **the run's number**, which `launch` decides and gives every run script it starts ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1, § 5.5 below); every file of the run carries it as `-run<N>`. Without one the script refuses to start, naming the launch command — `-h` answers without one |
-| `--continue` / `-c` | both | this start continues the run before it — a warm retry's (§ 3.5) — and the banner says so; whether the engine reads the warm files (`.DM`/`.CG`/`.XV`, `.chk`) is the deck's to say. It advanced the run index too until 2026-10-06: the number is `launch`'s |
-| `--force` / `-f` | both | what says *yes, overwrite* to `--cold`'s refusal. It reset the run index to `-run0` until 2026-10-06 |
-| `--cold` / `--from-scratch` | both | start the engine from the deck alone, **removing** the prior state it names first (§ `job-contracts § 4`). Names the files and **refuses**; `--force` removes them |
+| `--run N` | both | **the try's number** — `0` from `launch`, which gives every run script it starts one, the next from a warm retry (§ 3.5; [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1, § 5.5 below); every file the try writes carries it as `-run<N>`. Without one — missing, or `--run` given no whole number — the script refuses to start, exit 2, naming the launch command; `-h` answers without one |
+| `--continue` / `-c` | both | this start continues the try before it — a warm retry's (§ 3.5) — and the banner says so; whether the engine reads the warm files (`.DM`/`.CG`/`.XV`, `.chk`) is the deck's to say. The try's number is `--run`'s |
+| `--force` / `-f` | both | what says *yes, overwrite* to `--cold`'s refusal |
+| `--cold` / `--from-scratch` | both | start the engine from the deck alone, **removing** the prior state it names first (§ `job-contracts § 4`). Names the files and **refuses**; `--force` removes them — but under `--dry-run`, which changes nothing: it names them and says nothing was removed |
 | `-np` / `--np N` | both | SIESTA: override MPI ranks. PySCF: accepted, and anything but 1 is said to be ignored — PySCF is OpenMP-only |
 | `-omp` / `--omp N` | both | override OMP threads (SIESTA also takes `-t` / `--threads N`) |
 | `--mps` / `--no-mps` | SIESTA (GPU) | allow / forbid MPS; it starts only where the ranks outnumber the GPUs (§ 3.3) |
@@ -515,19 +515,19 @@ its own comment prints — still reaches the inner wrapper.
 
 ### 3.5 SIESTA auto-retry on non-convergence
 
-A SIESTA wrapper **re-runs itself warm**, with `--continue` and the next
-run's number (`--run N+1`), when its run ended in one of two ways a warm
-restart can fix. The budget is the run card's
+A SIESTA wrapper **re-runs itself warm**, in the same run folder, with
+`--continue` and the next try's number (`--run N+1`), when its try ended in
+one of two ways a warm restart can fix. The budget is the run card's
 `continue_retries` (*Warm-retry budget*, 0–5, default 1; a run setting, in
 `job-request.json`, never the template's — `engines/stages.md` § 3), carried on
 `Resources` (`job-contracts.md` § 6.2) and bounded by the exported
-`MB_RETRY_N`; a benchmark trial's is `0`, one run whatever happens. **A
+`MB_RETRY_N`; a benchmark trial's is `0`, one try whatever happens. **A
 TBtrans run is never retried**: it runs no SCF and no relaxation, so neither
 ending below can occur, and its script carries no retry and says so on its
 banner's retry line whatever the budget *(F19b: it promised retries on
 non-convergence)*.
 
-| the run ended | SIESTA shows it by | the wrapper asks | the retry resumes from |
+| the try ended | SIESTA shows it by | the wrapper asks | the retry resumes from |
 |---|---|---|---|
 | its SCF did not converge, and SIESTA stopped on it | `SCF_NOT_CONV: … (required)`, then a nonzero exit (`SCF.MustConverge`: SIESTA's default, false in a benchmark trial's deck) | `_mb_ending stopped-by scf_not_conv` | the banked `.DM`, with a fresh SCF budget |
 | it stopped at its wall (§ 3.6) | `OUT_OF_TIME: Time is up.`, after saving `.DM`/`.XV` | `_mb_ending stopped-by out_of_time:` — **never retried**: no time is left, and the next launch continues from the saved files | — |
@@ -575,31 +575,24 @@ flowchart LR
     Q -->|"a clean exit"| F{"a finish to run?<br/>(Job.finish)"}
     F -->|"no"| C
     F -->|"yes: its exit status is the job's"| C
-    B -->|"yes"| R["re-exec with --continue --run N+1<br/>(flat: its launch record first)"]
+    B -->|"yes"| R["re-exec with --continue --run N+1"]
     B -->|"no: say so"| S
 ```
 
-**A retry stays in its attempt**: the wrapper re-execs itself in the same
-process and directory, with the same `-np`/`--omp` and the next run's number,
-so the run index advances in place (`-run0` → `-run1`,
-[`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) and only the
-last run writes the conclusion marker. The monitor is stopped with SIGUSR1,
+**A retry stays in its run**: the wrapper re-execs itself in the same
+process and run folder, with the same `-np`/`--omp` and the next try's
+number (`-run0` → `-run1`,
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1), and only the
+last try writes the conclusion marker. The monitor is stopped with SIGUSR1,
 not an ending (§ 4.1). **Each try keeps its own session log**: the wrapper
 hands back the stdout and stderr it was started with before it re-execs, so
 the retry's output goes to its own log and to where the job's output goes,
 never into the try before it *(F19b, 2026-10-13: a retry's output went on
 into the first try's log, which held both)*.
 
-**In the flat shape the retry is a run with its own launch record.** Before
-it re-execs, the wrapper writes `<base>-run<N+1>.run.json` through the
-monitor's bundle — `mb_monitor.pyz retried`, whose writer is the one writer
-(`runrecord.record_retry` → `write_launch`): the same job, so the launch's
-mode, command, job id and queue; its own start; `continued_from` the run it
-retries, and `retry_of` that run's number (`project-layout.md` § 1.6.3,
-plan W57 decision 6). A record it cannot write is said in its log, and the
-run concludes without the retry: a run with no launch record is one no reader
-could place. In the hierarchy the attempt's `run.json` answers for every run
-in it, and nothing is written.
+**A retry writes no record of its own**: the run's `run.json` answers
+for every try in it (`project-layout.md` § 1.6.3). Its line in the log reads
+*… (retry 1/1) as try 1, with --continue*.
 
 ---
 
@@ -666,10 +659,7 @@ run already had.
 it** (`materialize.written_as_ended`). Every launch that continues a stage
 from a run's files compares each file with the second that run ended — a
 stage launched again from its own last run, a first launch from the stage
-before it, a run named with `--from`;
-on the flat layout, where nothing is copied, the warm files the run reads in
-place, against the run that wrote them (`<label>.last-run`,
-[`job-system.md`](?doc=execution/job-system.md) § 5.4). The run's end is
+before it, a run named with `--from`. The run's end is
 its monitor log's closing record, the `[MONITOR] job ended` line
 ([`run-reports.md`](?doc=execution/run-reports.md) § 2.5;
 `parse/instruments/monitor.py`, `ended_at`): the monitor writes it on the
@@ -693,9 +683,7 @@ job was killed at the wall:
   coarse: WOULD launch it again into run-1: it continues from 01_coarse/run-0 (its own latest run; …): would copy H2.XV, H2.DM -- WARNING: written as the job ended (13:58:12; the job ended 13:58:11), it may be incomplete; a start from it may need more iterations or fail; `--cold` starts without it
 ```
 
-— once sent, *copied* in place of *would copy*; on the flat layout the file
-follows the run it continues from: `…; H2.XV in the folder -- WARNING:
-written as the job ended (…)`. A fact shown, never a veto: the launch goes
+— once sent, *copied* in place of *would copy*. A fact shown, never a veto: the launch goes
 as asked, and the person decides.
 
 ---
@@ -752,10 +740,10 @@ run_status(run_dir, basename, *, launch=<not asked>, run=None, launched_in=None)
 
 | argument | meaning |
 |---|---|
-| `run_dir` | the attempt (`run-<n>/`), or the calculation itself in the flat shape |
-| `basename` | the run's stem, `<label>[_<token>]` (`runfiles.stem`), in either shape: the flat shape keeps every stage in one directory, and an attempt's may hold several run indexes |
+| `run_dir` | the attempt (`run-<n>/`) |
+| `basename` | the run's stem, `<label>_<token>` (`runfiles.stem`): a run folder may hold several tries' files |
 | `launch` | `launch_record(dir)` (`runrecord.py`) — the `run.json` dict, or `None`; one that does not read is an error naming the file, never an answer; left out, *not asked* |
-| `run` | the run index asked about; left out, the stage's newest (`runrecord.newest_run`) |
+| `run` | the try asked about; left out, the run's newest (`runrecord.newest_run`) |
 | `launched_in` | the folder the launch record lies in when it is not `run_dir` — a run of points' one record, in the run's folder, answering for each point (`rundir.run_state_of` passes it; the scheduler's file is named from there) |
 
 | field | holds |
@@ -771,8 +759,8 @@ run_status(run_dir, basename, *, launch=<not asked>, run=None, launched_in=None)
 
 | caller | `launch` | `match` |
 |---|---|---|
-| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `runs.concluded` (`state_of`: the run door, and the scheduler asked once where it can — § 4.2, *Asked once, written once*) — an attempt's, each point's for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), a trial's, or a flat stage's newest run's own `<basename>-run<N>.run.json` | the stage's stem |
-| the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runstatus.run_answer` — the viewers | the run's, through the same door | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
+| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `runs.concluded` (`state_of`: the run door, and the scheduler asked once where it can — § 4.2, *Asked once, written once*) — an attempt's, each point's for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), or a trial's | the stage's stem |
+| the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runs.run_answer` — the viewers | the run's, through the same door | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
 | the monitor's closing line | not asked | its run's stem |
 
 `run_status` has no answer *there is no run here*: asked without `launch`, a
@@ -787,12 +775,10 @@ only once the process started; a progress log (`.molwatch.log`) speaks once its
 footer concludes, because prep seeds it before the engine starts. Each is read
 by its role's scan for ending markers, `_run_ending.ending_of`
 ([`model/parse.md`](?doc=model/parse.md) § 5.4) — not parsed through the
-registry. Of several, the newest run index speaks ([`model/parse.md`](?doc=model/parse.md)
-§ 5.1) — the run is asked about by its stem, so its stage is never in
-question *(user ruling, 2026-09-04: a re-run of an earlier rung must not
-take over the state)*; a file's time decides nothing, because a copied or
-restored folder reorders times, never runs *(the newest mtime picked the
-file until 2026-10-04, plan B11)*. The run index picks *which* file, never
+registry. Of several, the newest try's speaks ([`model/parse.md`](?doc=model/parse.md)
+§ 5.1); a file's time decides nothing, because a copied or
+restored folder reorders times, never tries *(the newest mtime picked the
+file until 2026-10-04, plan B11)*. The try's number picks *which* file, never
 *whether* the run is alive — with the one bound a sent job's own wall gives
 (*Past its wall*, below): its own files' newest write older than that wall
 says the job is over, and nothing else about a time is judged.
@@ -836,9 +822,9 @@ the line.
 **Whether the run ended on its own is one door's answer**, `runrecord.ending`
 ([`architecture.md`](?doc=execution/architecture.md) § 3.2), the same for
 status, every hand-over and launch: molbuilder's conclusion marker, counted
-only at the highest run index the run's files reached
+only at the run's newest try, the highest index its files reached
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) — an earlier
-one, beside a newer output, is a previous run's goodbye. Nothing else
+one, beside a newer output, is an earlier try's goodbye. Nothing else
 answers: SIESTA's own `0_NORMAL_EXIT` says the engine ended, not the job
 *(it answered for a run started by hand until 2026-10-03)*. **Finished is a run that ended on its own with exit code 0;
 failed, one that ended with any other** — or whose output states a stop.
@@ -949,8 +935,7 @@ does not have to be repeated; if not, just check time stamp")*:
   The job's own writes are its outputs, the engine's files, its wrapper's
   and monitor's logs — the files of this run's label and stage
   (`runfiles.parse`, `split_stem`); never molbuilder's own records of it
-  (`run.json`, `.continued-from`, `.gathered-from`), the ledger, or another
-  stage's files in a folder the flat shape shares. The bound is the
+  (`run.json`, `.continued-from`, `.gathered-from`) or the ledger. The bound is the
   scheduler's own, so this never calls a running job over — with one case
   the folder cannot tell: a job the scheduler **requeued** (a node lost;
   SLURM's `JobRequeue`) keeps its id and waits again with its first start's
@@ -975,8 +960,7 @@ member the job never reached too, its job's line naming it — or `queued`
 when nothing says so; an engine that merely died still reaches the wrapper's marker and reads
 `failed`; a job with no python of its env, or one that cannot run its
 finish, stops before its engine and says so in its marker (`no env python`,
-`finish cannot load`), which reads `failed`; a flat stage
-reads `queued` the same way, from its own `<basename>-run<N>.run.json`.
+`finish cannot load`), which reads `failed`.
 
 ```mermaid
 stateDiagram-v2
@@ -997,7 +981,7 @@ stateDiagram-v2
 | a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
 | a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
-| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unknown` (unreadable); for a prepared stage not launched, the ready door's *ready to launch* — *(prepared by molbuilder X.Y.Z)* when another molbuilder prepared it — / *waits for*; *changed since prepared* and each value that differs ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*); for one not prepared, `described` — or *waits before it can be prepared*, with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
+| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unreadable` (its launch record is there and does not read); for a prepared stage not launched, the ready door's *ready to launch* — *(prepared by molbuilder X.Y.Z)* when another molbuilder prepared it — / *waits for*; *changed since prepared* and each value that differs ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*); for one not prepared, `described` — or *waits before it can be prepared*, with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
 | the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`'s, asked after it writes its closing record |
 
@@ -1199,8 +1183,8 @@ header it sends, and asks** ([`submission.md`](?doc=execution/submission.md) S4;
 the question, never the output), records the attempt, and launches **one job
 per invocation** — a grouped bench one per resource shelf
 ([`job-system.md`](?doc=execution/job-system.md) § 7). **It hands each run
-script its run's number**, `--run N`, decided in the plan with everything
-else ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a run
+script its first try's number**, `--run 0`
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a run
 script refuses to start without one, naming this door. The single-stage door
 asks too: `--time` may restate a submitted job's wall after `prep`'s
 printout, so the line as sent is seen only here. **A run here starts in the background**, its question offering the
@@ -1268,7 +1252,7 @@ flowchart TD
 ```
 
 **The verdict is in the job's own output log AND the runwrap log**: the
-wrapper opens its per-run log (tee) *before* the gate, so every outcome —
+wrapper opens its per-start log (tee) *before* the gate, so every outcome —
 proceed, manual yes, refusal — is a fact on disk even when nothing ran;
 under sbatch the `launched-by:` line also lands in the job's `.out`. Either
 log alone answers *"was this launched properly, run by hand on purpose, or
@@ -1281,8 +1265,9 @@ instead of dying under `set -e` with no verdict; `-h`/`--help` is scanned
 **before** the gate and runs none of the bootstrap — asking what a script
 does needs neither a claim nor a working activation; and the refusal
 reaches the runwrap log as above. The deliberate manual form
-is `MB_LAUNCHED_BY=manual bash JOB.run.sh --run N` (backgroundable) — the
-script needs its run's number by hand as well — and the value is logged so
+is `MB_LAUNCHED_BY=manual bash JOB.run.sh --run 0` (backgroundable), started
+in the run's own folder, `run-<n>/`, where launch copied it — the script
+needs its try's number by hand as well — and the value is logged so
 the choice is on record. *(`bench-runner` was the transitional
 claim of the old bench launchers; they died at step 6 u5, 2026-08-12, and no
 shipped script emits it any more.)*

@@ -33,7 +33,7 @@ pytestmark = pytest.mark.engine
 
 @pytest.fixture(scope="module")
 def siesta_run(real_h2_layered):
-    """The attempt directory of a finished SIESTA H2 relaxation -- the
+    """The run folder of a finished SIESTA H2 relaxation -- the
     shared one's first `coarse` run (`support.real_runs.layered`), made once
     a pass (`process/testing.md` tier 3)."""
     return real_h2_layered.attempt("coarse")
@@ -41,9 +41,9 @@ def siesta_run(real_h2_layered):
 
 @pytest.fixture(scope="module")
 def pyscf_run(real_h2_pyscf):
-    """The folder of a finished PySCF H2 optimisation -- flat, so the run is
-    the calculation's own folder (`support.real_runs.pyscf`)."""
-    return real_h2_pyscf.bundle
+    """The run folder of a finished PySCF H2 optimisation -- its `coarse`
+    stage's first run (`support.real_runs.pyscf`)."""
+    return real_h2_pyscf.attempt("coarse")
 
 
 @pytest.fixture(scope="module")
@@ -84,15 +84,14 @@ def _as_the_door_reads(output):
 
 
 def _the_decks_cell(run_dir):
-    """The cell the deck in ``run_dir`` recorded placing the atoms in."""
-    from molbuilder.runfiles import find_by_role
+    """The cell the run's deck (`runs.Run.deck`) recorded placing the atoms
+    in."""
     from molbuilder.deck_record import extract_engine_offset
-    decks = find_by_role(Path(run_dir), ".py") + find_by_role(Path(run_dir),
-                                                              ".fdf")
-    records = [extract_engine_offset(d.read_text()) for d in decks]
-    records = [r for r in records if r]
-    assert records, f"no deck in {run_dir} records its placement"
-    return records[0]["cell"]
+    from molbuilder.runs import run_of
+    deck = run_of(run_dir).deck
+    record = extract_engine_offset(deck.read_text()) if deck else None
+    assert record, f"no deck in {run_dir} records its placement"
+    return record["cell"]
 
 
 def _holds_the_engines_frame(saved, cell, positions):
@@ -120,7 +119,8 @@ def test_a_siesta_trajectory_saves_the_box_its_output_states(
     the viewer naming its install after the parser's label, which offered
     " .log_frame6" and saved a hidden ``.log_frame6.xyz`` until 2026-09-27.
     """
-    out = siesta_run / "H2_01_coarse-run0.out"
+    from molbuilder.runs import run_of
+    out = run_of(siesta_run).stdout
     frames, cell = _as_the_door_reads(out)
     assert len(frames) > 1, "a relaxation with one frame asks no frame range"
     root = _open(page, flask_server, monkeypatch, siesta_run, out)
@@ -141,9 +141,11 @@ def test_the_engines_own_geometry_file_saves_the_box_the_run_had(
     with no frame (the no-sidecar branch of `StructureCodec.load`), which
     saved it with no cell and no origin until 2026-09-27.
     """
+    from molbuilder.runs import run_of
     from molbuilder.structure import Structure
-    own = siesta_run / "H2.xyz"
-    _frames, cell = _as_the_door_reads(siesta_run / "H2_01_coarse-run0.out")
+    run = run_of(siesta_run)
+    own = run.on_label(".xyz")
+    _frames, cell = _as_the_door_reads(run.stdout)
     positions = Structure.from_xyz(own.read_text()).positions
     root = _open(page, flask_server, monkeypatch, siesta_run, own)
     wait_for_viewer(page, atoms=2, frames=1)
@@ -159,7 +161,9 @@ def test_a_pyscf_trajectory_saves_the_box_its_deck_recorded(
     MUTATION THIS MUST FAIL AGAINST: the one composer ignoring the deck
     record's cell when the output carries none.
     """
-    log = next(pyscf_run.glob("*.molwatch.log"))
+    from molbuilder.runs import run_of
+    log = run_of(pyscf_run).file(".molwatch.log")
+    assert log is not None, sorted(p.name for p in pyscf_run.iterdir())
     frames, _no_cell = _as_the_door_reads(log)
     assert len(frames) > 1, "an optimisation with one frame asks no range"
     cell = _the_decks_cell(pyscf_run)

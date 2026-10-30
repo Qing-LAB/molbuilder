@@ -9,7 +9,7 @@ on the target (R5, 2026-08-12), and the Task-setup save door (gate ③,
 
 **Contract:** [`engines/stages.md`](?doc=engines/stages.md) § 6.6 (the eight
 checks, *"in order, and all of it before anything is written"*) · § 6.7 (`shape`
-is required and never inferred) · [`science/validation.md`](?doc=science/validation.md)
+states the one layout) · [`science/validation.md`](?doc=science/validation.md)
 § 4.1 (one result type; ``where`` is the stable id; severity means the same
 everywhere).
 

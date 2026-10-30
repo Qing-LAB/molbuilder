@@ -310,7 +310,7 @@ def point_readings(calc) -> List[Dict]:
     from ..runs import concluded
     from .record import result_folders
     base, task = Path(calc.base), calc.task
-    names = stage_home(base, task, "transmission").names(task.shape)
+    names = stage_home(base, task, "transmission").names
     return [{"point": pt, "folder": where,
              "readings": readings(where, task.label)}
             for pt, where, run in result_folders(base, task, "transmission")

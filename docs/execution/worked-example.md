@@ -66,7 +66,7 @@ Two tabs share the work, and the split is the design (*the browser
 describes*): the **Structure-optimization tab** collects the physics —
 every parameter, stated once — and **Send to Task setup** writes the
 hand-over into the calculation folder you picked; the **Task setup tab**
-then asks what only it may ask — the shape, the stages, what varies — and
+then asks what only it may ask — the stages, what varies — and
 its save writes the real `task.json` and its `job-request.json`.
 
 |  | **base** | **01 coarse** | **02 tight** |
@@ -144,31 +144,9 @@ deck finished on a laptop is guessing at both (`project-layout.md § 2.2`).
 label, not the id. That is not cosmetic: it is why a later stage can pick up an
 earlier one's `.XV`, and it is why the formula stays out of the filename (§ 3).
 
-> ### Which shape this walkthrough follows
->
-> **From here on this walk uses the hierarchical shape** — a directory per stage,
-> a subdirectory per attempt. It is the clearer one to read, because every state
-> the calculation passed through stays visible on disk.
->
-> **Both ship, and the page ASKS — there is no default** (it decides where
-> results land, so it is never guessed). Which one is a field in the
-> description you wrote in § 3
-> ([`project-layout.md`](?doc=execution/project-layout.md) § 1). The same two
-> stages, flat:
->
-> ```text
-> bdt-relax/
-> ├── BDT_Au_relax_01_coarse.fdf        stages told apart by the suffix
-> ├── BDT_Au_relax_02_tight.fdf
-> ├── BDT_Au_relax_01_coarse-run0.out  attempts by an output index
-> ├── BDT_Au_relax.XV             ← SHARED and unsuffixed: this is what lets
-> ├── BDT_Au_relax.DM                tight find coarse's geometry — and what
-> └── Au.psml  S.psml  C.psml  H.psml   overwrites it
-> ```
->
-> **Everything this walkthrough says still happens** — the same stages, the same
-> measuring, the same continuing, the same checkpoints. What changes is what is
-> left on disk afterwards, and § 7 is where that difference stops being cosmetic.
+**The folder keeps a directory per stage, and a subdirectory per run**
+([`project-layout.md`](?doc=execution/project-layout.md) § 1), so every state
+the calculation passed through stays visible on disk.
 
 **`prep` prepares the groups you name, each group one job** — `jobset prep
 task --group <N>` — and renders each deck on the target, allocation in hand
@@ -348,34 +326,15 @@ scratch: the files under the size limit — decks, wrappers, `task.json`,
 and its siblings — in the archive beside it, by path, with checksums
 (`checkpointing.md` § 3, S1).
 
-> ### The same checkpoint means two different things
+> ### What a checkpoint is here
 >
-> This is the one place the shape choice (§ 4) stops being cosmetic, and it is
-> worth stopping on because it changes what a mistake costs.
->
-> In the **hierarchical** walk above, `01_coarse/run-0/` is still sitting on
-> disk. The checkpoint is a convenience — somewhere to branch from, a way to see
-> what changed. Skip one and you have a thinner history beside a folder that
-> still holds everything.
->
-> In the **flat** shape there is one `<label>.XV` and one `<label>.DM`, and the tight
-> stage **overwrote** them. The coarse geometry is not on disk anywhere. So:
->
-> | | hierarchical | flat |
-> |---|---|---|
-> | after tight runs, coarse's geometry is | on disk, openable | **only in the checkpoint** |
-> | a checkpoint is | insurance | **the mechanism** |
-> | a missed checkpoint is | a thinner history | **a state that no longer exists anywhere** |
->
-> That is why `checkpointing.md` is a contract with invariants rather than a
-> description of a feature, and why the save before each act that changes the
-> folder is not housekeeping in the flat shape — it is **the save point**
+> After tight runs, `01_coarse/run-0/` is still sitting on disk. The checkpoint
+> is insurance — somewhere to branch from, a way to see what changed. Skip one
+> and you have a thinner history beside a folder that still holds everything.
+> You can open an old attempt and copy something out of it; **restore is a
+> rewind** — it puts the whole folder back to an earlier moment, and anything
+> newer that was not checkpointed goes with it
 > ([`checkpointing.md`](?doc=execution/checkpointing.md) § 8).
->
-> It also changes what *restore* means to you. In the hierarchy you can open an
-> old attempt and copy something out of it. In flat there is nothing to open:
-> **restore is a rewind, not a fetch** — it puts the whole folder back to an
-> earlier moment, and anything newer that was not checkpointed goes with it.
 
 Two weeks later you want a third stage — finer k-grid, from tight's result.
 
@@ -393,8 +352,8 @@ truth. That also means an attempt's outputs stay attached to the stage that
 produced them, forever.
 
 **A branch is restore, then save.** The history of a calculation folder is one
-history however many levels its runs sit at — its root carries `task.json`,
-which says its subdirectories are one calculation — so trying a different idea
+history — its root carries `task.json`, which says its subdirectories are one
+calculation (`checkpointing.md` L1) — so trying a different idea
 from tight is restoring tight's state and saving what you change from there.
 
 ---

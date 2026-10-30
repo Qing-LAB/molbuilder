@@ -4,8 +4,8 @@
 # prepared and never launched is prepared again, whole (user, 2026-10-11),
 # where what it would write differs, and has nothing to write where it does
 # not (user, 2026-10-23); a
-# launched one is prepared again for its job request alone, its runs kept,
-# on the hierarchical layout -- what it computes takes the way back, the
+# launched one is prepared again for its job request alone, its runs kept
+# -- what it computes takes the way back, the
 # state saved before its group's first launch (user, 2026-10-21).  What a stage takes from another stage's run is its
 # first launch's: launch refuses, before anything is sent, a stage whose
 # upstream has not finished.  Before prep writes, it saves the folder's
@@ -191,35 +191,15 @@ launch_refused = ["refused coarse", "the folder's state was saved first:", "· b
 after_launch = { made = ["01_coarse/run-0/H2_01_coarse.molwatch.log", "01_coarse/run-0/H2_01_coarse.fdf"], saved_states = ["{stamp} · before launch task group 1 (coarse)", "{stamp} · before prep task group 1 (coarse)"], ledger_holds = ["launch saved", { decision = "launch starts-cold", asked = false }] }
 
 # ===================================================================== #
-#  A CALCULATION THAT HAS PRODUCED KEEPS ITS SHAPE                      #
-#  (`web/task-setup.md` § 4; § 5.0's "changing it later")               #
+#  ONE LAYOUT: A DESCRIPTION STATING ANOTHER IS REFUSED BY NAME          #
+#  (`project-layout.md` § 1; `engines/stages.md` § 6.7)                 #
 # ===================================================================== #
 
 [[case]]
-name = "a calculation with a prepared stage keeps its shape -- Task setup's Save refuses another, naming the way back"
+name = "a description stating the flat layout is refused by the description's own reader, naming the one layout and the way out -- Task setup's Save answers as for every description its reader refuses"
 saved = { shape = "flat" }
-save_refused = ["shape is fixed once it has produced", "coarse is prepared", "molbuilder checkpoint list"]
-
-[[case]]
-name = "...a prepared benchmark is a prep too"
-bench = { mpi_np = [2], omp_threads = [1] }
-saved = { shape = "flat" }
-save_refused = ["shape is fixed once it has produced", "coarse is prepared"]
-
-# ===================================================================== #
-#  A KIND THAT FIXES THE SHAPE SHOWS IT FIXED                           #
-#  (`web/task-setup.md` § 4; its part in the kind table)              #
-# ===================================================================== #
-
-[[case]]
-name = "a SIESTA vibration is hierarchical, the kind's -- its one run's calls each in a folder of its own -- so Task setup's shape card shows it fixed and Save refuses flat in the card's words (engines/vibration.md 5.11 1)"
-calculation = "vibration"
-stage = "freq"
-saved = { shape = "flat" }
-# The description's own reader refuses it -- the description cannot be --
-# so Save answers as for every description its reader refuses.
 save_status = 400
-save_refused = ["A SIESTA vibration is hierarchical, and no other shape is taken", "each run in a folder of its own"]
+save_refused = ["'flat'", "'hierarchical'", "the calculation again"]
 
 # ===================================================================== #
 #  THE SAVE, BEFORE PREP WRITES -- ALWAYS, AND SAID                     #
@@ -484,14 +464,6 @@ launched = ["coarse"]
 changed = { overrides = { coarse = { mesh_cutoff = 400.0 } } }
 change_refused = ["start group 1 (coarse) from the beginning", "molbuilder checkpoint save -p", "molbuilder jobset prep task --group 1"]
 restores_state = "before launch task group 1 (coarse)"
-
-[[case]]
-name = "...and on the flat layout, where its runs share its folder, a launched stage is not prepared again"
-shape = "flat"
-before = [["prep", "task", "--group", "1"]]
-launched = ["coarse"]
-changed = { execution = { mpi_np = 4, omp_threads = 1 } }
-refused = ["stage 'coarse' was launched, and on the flat layout a launched stage is not prepared again"]
 
 [[case]]
 name = "...and a launched member given another group is refused at Save, naming it and the way back -- the group's members are fixed (task-setup.md 5)"

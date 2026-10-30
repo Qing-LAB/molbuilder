@@ -31,7 +31,8 @@ three:
 
 Two things that look like layers are not, and naming them keeps them out of the
 way. **The five axes** ([`architecture.md`](?doc=execution/architecture.md) § 0)
-answer *what varies* — surface, environment, shape, engine, kind. **The nine
+answer *what varies* — surface, environment, engine, calculation kind, job
+kind. **The nine
 vocabularies** (§ 10 there) answer *what things are called*, and where one naming
 becomes another. Neither says where code lives. **The four routes** — `describe`,
 `prep`, `launch`, `status` — are the ways in, not a layer either.
@@ -203,11 +204,11 @@ conductor:
 |---|---|---|
 | **1 · machine** | the record read once (`machine_for`), its activation checked, which config files answered (`config_provenance`) | — |
 | **2 · parameters** | each element resolved (`resolve`): a run is one, a benchmark's grid is N — and a run's placement on the queue it names, with the request it resolved to (`placement.placed`), recorded on its job, its fit said | a benchmark — **grid**: its points, from the declared axes or the machine's proposal |
-| **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**: the junction and its leads, every rung's structure, composed and round-tripped through the record's codec in a scratch folder outside the calculation, removed at once — so this prep renders from the record every later one reads — and the record's text kept in the plan; transport — **electronic state**: decided once on the junction, carried into every rung; a SIESTA vibration's frequency stage — **relaxed geometry**: the relax run it builds on (a `Continuation`), its coordinates and the atom order |
+| **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**: the junction and its leads, every rung's structure, composed and round-tripped through the record's codec in a scratch folder outside the calculation, removed at once — so this prep renders from the record every later one reads — and the record's text kept in the plan; transport — **electronic state**: decided once on the junction, carried into every rung |
 | **3 · decks** (*data files* … *declare*) | the data files listed and screened; each deck rendered, validated, merged with the reader's own section as it stands on disk, and checked — the very text that will be written | transport — **points**: one deck per bias point |
 | **4 · wrappers** | `.run.sh` and `.sbatch` rendered from the deck's text and the job's placement | — |
-| **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the attempt to open and what it receives — the stage's own files; what its first launch will take, said (the `Continuation`'s files and a transport rung's gather are copied by that launch, [`job-system.md`](?doc=execution/job-system.md) § 6.0) | a SIESTA vibration — one folder per phase with its deck, and the stage's first run opened with the calls it always holds ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2) |
-| ***the writing*** | every file of the plan written, the attempt opened, `job-set.json` last | — |
+| **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the run to open and what it receives — the stage's own files; what its first launch will take, said (the `Continuation`'s files and a transport rung's gather are copied by that launch, [`job-system.md`](?doc=execution/job-system.md) § 6.0) | a SIESTA vibration — one folder per phase with its deck, and the stage's first run opened with the calls it always holds ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2) |
+| ***the writing*** | every file of the plan written, the run opened, `job-set.json` last | — |
 
 **Transport is not a second conductor.** Its five rungs are prepared by these
 steps, with its four optional ones; until 2026-10-05 it had its own arm, a copy
@@ -222,8 +223,8 @@ describe and which program each deck is; the config each element renders from
 (a lead's own label, the junction's electronic state folded in); what else the
 engine's `spec_for` is told (a vibration's block and its phase's part, the
 cell; the junction's state); the folders that hold a deck beside the
-stage's own — a scan's points — each of which gets its wrapper and its own
-attempt ladder; where the data files come from when the engine's library is
+stage's own — a scan's points — each with its own wrapper, its runs the
+stage's `run-<n>/<point>`; where the data files come from when the engine's library is
 not their source (the citation); and what its job carries forward and runs (a
 transport rung's restart files, the transmission's program). A kind with no
 entry is a calculation of its described structure, one deck per element. The
@@ -248,7 +249,7 @@ Every adjacent pair is a data dependency, not a convention.
 | **write → promises** | the promise is made by the text that was just written |
 | **write → step 4** | the wrapper is written beside the finished deck, the environment and the counts handed to it — a deck's comment never stands in for a launch value (A17) |
 | **declare → step 4** | the wrapper's header carries the job's own resources |
-| 4 → 5 | the tree links to what was rendered |
+| 4 → 5 | the tree copies what was rendered |
 
 **load → data files is the pair that reads backwards until you see why.** *Which*
 pseudopotentials to copy is answered by the structure's
@@ -349,7 +350,7 @@ a gap visible:
 | **describe** | what must be settled before a calculation is written — the findings the hand-over shows beside their fields, and the sentence it refuses in while one is an error: SIESTA's pseudopotentials, the files already in the folder counted as at step 3.2 ([`web/handover-procedure.md`](?doc=web/handover-procedure.md) § 2.2) | `describe_findings` | **yes** |
 | **2** | the class the values rebuild into | `config_cls` | no |
 | **3.2** data files | what the engine cannot start without | `provide_data` | **yes** |
-| **3.2** data files | which of those are the shared package every job links | `shared_package` | **yes** |
+| **3.2** data files | which of those are the shared package every job copies | `shared_package` | **yes** |
 | **3.3** validate | whether this resolved config is sound | *shared* — `validation.validate` | no |
 | **3.4** identity | the deck's type suffix | `suffix` | no |
 | **3.4** identity | how the label is written in | `relabel` | no |
@@ -407,7 +408,7 @@ written together.
 **Three rows a reader should look at hardest**, because each names a way a deck
 can be wrong that no other step can see:
 
-- **The shared package.** Which data files every job links is the engine's
+- **The shared package.** Which data files every job copies is the engine's
   answer, not a glob. It was `*.psml` in shared code — a SIESTA fact stated a
   floor below where SIESTA may speak, so a second engine with data files of its
   own would have shipped none of them.
@@ -908,13 +909,14 @@ was a flag, and the Task setup tab never wrote one)*.
 run, the stage's `bench/` container for a sweep. Inside the bundle, because the
 bundle is what is still there when a job misbehaves on a cluster hours later.
 
-**What it is called.** `<stem>.<engine>.<flat|hierarchical>.pipeline.log`.
-The stem is the deck's own (`<label>_<token>`; a transport lead's on its own
-label, `job-contracts.md` § 2.1 rule 2, composed once by `prep.Resolved.log_path`), and the **token is load-bearing in a flat
-calculation**: flat is depth 1, every rung preps into one directory, and a name
-per calculation would have `tight` overwrite `coarse` — destroying exactly the
-run whose provenance was wanted. Engine and shape follow so the file still says
-what it is once copied off the machine.
+**What it is called.** `<stem>.<engine>.hierarchical.pipeline.log`, the
+layout's name in it as every prep log on disk carries it. The stem is the deck's own (`<label>_<token>`; a transport
+lead's on its own label, `job-contracts.md` § 2.1 rule 2, composed once by
+`prep.Resolved.log_path`), and the **token is load-bearing**: every rung's
+prep writes its log at the bundle root, and a name per calculation would have
+`tight` overwrite `coarse` — destroying exactly the run whose provenance was
+wanted. The engine follows so the file still says what it is once copied off
+the machine.
 
 **What it contains.** A banner per step, events indented under it, and every
 line saying what it is in its first column — `in` received, `⊕` decided, `out`
@@ -1011,14 +1013,14 @@ Two rules make that table readable.
 
 ## 6. A worked example
 
-A real calculation in this tree: **BDT, 14 atoms, hierarchical, two stages.**
+A real calculation in this tree: **BDT, 14 atoms, two stages.**
 
 **Step 1** reads the workstation's record — `jobset probe --write` made it — and,
 at the calculation's first prep, copies it in as `environment.json`, naming the
 machine. It is not overwritten, so every stage resolves against one answer
 ([`configuration.md`](?doc=configuration.md) M-3).
 
-**Step 2** reads `task.json` — engine `siesta`, shape `hierarchical`, stages
+**Step 2** reads `task.json` — engine `siesta`, stages
 `coarse` then `tight` — and resolves the template against each stage. Two sets of
 values, in memory, differing where the ladder says they differ:
 

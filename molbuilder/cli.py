@@ -8,7 +8,7 @@ Subcommands:
     molbuilder name "1,4-benzenedithiol" --out bdt.xyz
     molbuilder describe --structure P/structure/in.xyz \
         --bundle P/optimization/calc --engine siesta \
-        --calculation optimization --shape flat --stage-strategy publishable
+        --calculation optimization --stage-strategy publishable
     molbuilder serve start --port 8000
     molbuilder watch parse run.molwatch.log
     molbuilder watch tail run.molwatch.log
@@ -383,7 +383,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         molbuilder dna ATGC | molbuilder validate -
 
         molbuilder validate run.xyz --engine siesta --exit-on-error \\
-            && molbuilder describe --structure P/structure/run.xyz --bundle P/optimization/calc --engine siesta --calculation optimization --shape flat
+            && molbuilder describe --structure P/structure/run.xyz --bundle P/optimization/calc --engine siesta --calculation optimization
     """
     from .validation import structure_findings, validate
 

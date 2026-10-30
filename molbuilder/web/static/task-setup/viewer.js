@@ -14,7 +14,7 @@
  *      and `job-request.json` into it.
  *   6. Read what the page cannot derive: the folder's own answer
  *      (`/api/task-setup/folder` -- its template values, provenance and
- *      attempts among it), the sweepable set (`…/sweepable`), the picker
+ *      the runs launched among it), the sweepable set (`…/sweepable`), the picker
  *      columns (`…/columns`) and the tier presets (`…/presets`); write
  *      through the save door and the prep door (`…/save`, `…/prep`).
  *
@@ -112,8 +112,7 @@ let _docs = null;
  * text put into the editor, which the cards change all the time. */
 let _disk = { task: "", request: "" };
 let _dir        = "";     // the folder currently open
-let _shape      = "";     // "" until chosen — never defaulted (§ 4)
-let _mode       = "";     // "description" | "handover" | "empty"
+let _mode       = "";     // "description" | "handover" | "empty" | "refused"; "" while a folder is read
 let _handover   = null;   // the parsed task.1st.json, in handover mode
 /* The parsed description the table is a VIEW of.
  *
@@ -416,13 +415,13 @@ function renderStages(task) {
     }
 }
 
-/** How many attempts a stage has on disk, beside its name -- every row's
- *  one marker, with its words. */
+/** How many runs of a stage were launched, beside its name -- every row's
+ *  one marker, with its words (the folder answer's `attempts`). */
 function ranMark(name) {
     const ran = _fs.runs[name];
     return ran === undefined ? null
         : el("span", { class: "ts-ran",
-                       title: ran ? ran + " attempt(s) on disk"
+                       title: ran ? ran + " run(s) launched"
                                   : "nothing has run for this stage yet" },
              ran ? ran + "\u00d7" : "\u2014");
 }
@@ -584,7 +583,7 @@ let _fitSeq   = 0;
  * ===================================================================== */
 function freshFolderState() {
     return {
-        runs:         {},         // stage name -> attempts on disk (T5)
+        runs:         {},         // stage name -> its runs launched (T5)
         extraRunRows: new Map(),  // rows added to a run card, per stage
         fitBench:     {},         // the bench card's last posted axes
         pendingDrop:  "",         // the armed column drop
@@ -595,20 +594,20 @@ function freshFolderState() {
         continueChoice: {},       // stage -> the person's choice: "", a run, "--cold"
         answers:      {},         // "task" / "bench:<stage>" -> the last prep answer shown
         setTo:        null,       // the machine its first prep set, or null (M-3)
-        shapeFixed:   null,       // {shape, why} once fixed, or null (§ 4)
         prepared:      { bench: {} },  // stage -> prep's own sentence, a benchmark's
         ladder:       { stages: [], offer: [] },  // the ready door's answer per stage
         steps:        [],         // each group's next step, `jobset status`'s
         extension:    null,       // an extension's limits, or null (§ 3)
         groups:       { stages: [], groups: [] },  // each stage's group, each group's state
         prepPick:     null,       // the groups picked for the task's Prep; null = the offer
-        fixed:        null,       // the stages the kind fixes (§ 5.3); its shape is shapeFixed
+        fixed:        null,       // the stages the kind fixes (§ 5.3)
         writtenOpen:  new Set(),  // the file groups opened in *What this calculation writes*
         readAs:       null,       // each record as the folder answer read it -- Save's compare (§ 8)
         plan:         null,       // the last prep-plan answer painted -- repainted when the need comes
         need:         null,       // the memory door's last answer: {key, stages, largest} (job-request.md § 3.1a)
         needAsking:   null,       // the key a need ask is in flight for
         needSeq:      0,          // the newest need ask; an older answer is dropped
+        proposing:    false,      // a hand-over opened, its proposal not landed: Save held (§ 9a)
     };
 }
 
@@ -1134,7 +1133,7 @@ function renderMachine(task) {
     const host = $("ts-machine-rows");
     host.textContent = "";
     /* NO JOB REQUEST, NO CARD: the plan to measure is the request's, and a
-     * hand-over has none until its shape is picked (§ 6.2b). */
+     * hand-over has none until its proposal (§ 6.2b, § 9a). */
     if (!_request) { card.hidden = true; return; }
 
     /* NO MEASURE STEP WHERE `prep bench` REFUSES ONE (`task-setup.md`
@@ -1390,7 +1389,6 @@ function _bufferChanged(which, change) {
          * and each group's run card.  A card's own write is not read back
          * under the control being typed in. */
         if (byHand && _task && _mode !== "empty") {
-            setShape(String(_task.shape || ""));
             if (_request) {
                 readAsksFromRequest(_request);
                 readNotifyFromRequest(_request, _task);
@@ -1540,7 +1538,7 @@ let _loadSeq = 0;
  *  the page to be read or written here (§ 2.1). */
 function hideDescriptionCards() {
     renderCameOver(null);
-    for (const id of ["ts-shape-card", "ts-target-card", "ts-queue-card",
+    for (const id of ["ts-target-card", "ts-queue-card",
                       "ts-stages-card", "ts-machine-card", "ts-groups-card",
                       "ts-prep-card", "ts-notify-card"]) {
         const card = $(id);
@@ -1559,18 +1557,19 @@ async function readFolder(projects, dir, opts) {
         ? ((opts && opts.retire) ? "view" : "all") : null;
     _dir = dir;
     /* EVERY per-folder fact resets before the branch, so no branch can
-     * act on the previous folder's. */
+     * act on the previous folder's -- THE MODE TOO: until this folder's
+     * branch says what it holds, Save is held, so nothing on the page is
+     * written into a folder whose answer has not landed (§ 2.1). */
+    _mode = "";
     _task = null;
     _request = null;
     /* ...THE BUFFERS' TOO: every branch below writes the editor from what
-     * is on disk, so no hand edit survives a load -- and the text it
-     * replaces (the empty one a folder with no description leaves) must
-     * not make a card the load itself moves (`setShape`) refused over it. */
+     * is on disk, so no hand edit survives a load. */
     _parses = { task: true, request: true };
     _parsedText = { task: "", request: "" };
-    _shape = "";
     _handover = null;
     _resetPerFolderState(keep);
+    refreshSave();
     showPath(dir);
     if (!dir) {
         _mode = "empty";
@@ -1632,9 +1631,9 @@ async function readFolder(projects, dir, opts) {
         ? JSON.stringify(said.request, null, 2) + "\n" : "";
     /* THE BASELINE IS SET THE MOMENT IT IS KNOWN, not when the editor is
      * finally filled at the end of this function.  Loading paints cards, and
-     * a card that paints can push the model into the buffer (`setShape` ->
-     * `syncFromModel`) -- against the PREVIOUS folder's baseline, which reads
-     * as "unsaved" in the save bar. */
+     * a card that paints can push the model into the buffer
+     * (`syncFromModel`) -- against the PREVIOUS folder's baseline, which
+     * reads as "unsaved" in the save bar. */
     _disk = { task: taskText, request: requestText };
     const overText = said.handover === null
         ? null : JSON.stringify(said.handover, null, 2) + "\n";
@@ -1711,27 +1710,31 @@ async function readFolder(projects, dir, opts) {
     // WHICH OF THE THREE IS THE FOLDER ANSWER'S (`mode`), never worked out
     // again here.
     if (said.mode === "handover") {
-        let over = null;
-        try { over = JSON.parse(overText); } catch (_) { /* shown raw below */ }
-        const awaiting = "Still needed: "
-            + ((over && Array.isArray(over.awaiting) && over.awaiting.length)
-               ? over.awaiting.join(" and ") : "shape and stages") + ".";
-        _mode = "handover"; _handover = over;
+        const over = JSON.parse(overText);
+        /* A HAND-OVER ITS READER REFUSES -- one that does not read, or of
+         * another schema -- is the folder answer's `{error}`, said in the
+         * reader's words; the page finishes nothing it cannot read. */
+        if (readerRefused(over)) {
+            await refuseFolder(`${said.handover_name} is here and its `
+                               + "reader refuses it", over.error);
+            return;
+        }
+        // WHAT IT WAITS ON, as the file states it (`awaiting`).
+        const awaiting = (Array.isArray(over.awaiting) && over.awaiting.length)
+            ? `Still needed: ${over.awaiting.join(" and ")}. ` : "";
+        // SAVE IS HELD FROM HERE until the proposal lands: what a Save
+        // would write is the proposal, not the hand-over as handed.
+        _mode = "handover"; _handover = over; _fs.proposing = true;
         // WHETHER IT TAKES A MEASURE STEP is the folder answer's for a
         // hand-over too: its engine and kind decide (§ 11.1).
         _fs.benchRefusal = said.bench_refusal || null;
-        // ...AND THE SHAPE ITS KIND FIXES (§ 4), the answer Save and the
-        // description's reader refuse another with.
-        _fs.shapeFixed = said.shape_fixed || null;
         // THE MACHINE CARD AND THE QUEUE CARD, drawn for this folder (§ 2.1).
         applySetMachine();
         renderCameOver(over);
-        $("ts-shape-card").hidden = false;
-        setShape(_shape);                       // re-assert / repaint the choice
         setState("handover",
                  "Handed over — not a description yet",
                  `${said.handover_name} is here, carrying the parameters. `
-                 + `${awaiting} Saving writes ${said.task_name} and `
+                 + `${awaiting}Saving writes ${said.task_name} and `
                  + `${said.request_name} and removes this file.`);
         /* EVERY CARD THE DESCRIPTION BRANCH PAINTS IS PAINTED HERE TOO,
          * with nothing to paint.
@@ -1741,24 +1744,19 @@ async function readFolder(projects, dir, opts) {
          * any of them is covered here without anyone remembering. */
         renderStages(null);
         renderNext(null);
+        renderMachine(null);
         refreshPickers();
         { const c = $("ts-notify-card"); if (c) c.hidden = true; }
-        // The machine rows are labelled from the SERVER's answer, so it has to
-        // be here before they paint.  `loadSweepChoices` is memoised, so this
-        // costs one fetch per engine per page-load, and nothing on repeat.
-        await loadSweepChoices(_handoverEngine(over));
-        if (said.dir !== _dir) return;          // moved on while it loaded
-        renderMachine(over || {});
         // THE HAND-OVER IS THE MODEL until its proposal (§ 9a) -- set here,
         // since an editor already holding the same text is not written
         // again, and so not read back.
         _task = over;
         await setBuffers({ task: overText, request: "" }, { fromDisk: true });
-        // A SHAPE THE KIND FIXES IS NOT A CHOICE (§ 4): the card starts at
-        // it, the proposal drawn as choosing it draws one.
-        const fixedShape = _fs.shapeFixed && _fs.shapeFixed.shape;
-        if (fixedShape && !_shape) setShape(fixedShape);
-        refreshSave();
+        if (said.dir !== _dir) return;          // moved on while it loaded
+        // OPENING THE HAND-OVER PROPOSES THE RECORDS (§ 9a): its stages,
+        // its job request, and the cards that write it -- awaited, so the
+        // folder's read ends with the proposal landed (`aria-busy`).
+        await proposeHandover();
         return;
     }
 
@@ -1805,7 +1803,7 @@ async function readFolder(projects, dir, opts) {
     /* ...AND A CALCULATION ITS READERS REFUSE -- a template holding a run
      * setting, a plan written before a rule, each naming `jobset migrate`
      * -- in their words: never shown as one not yet prepared, and Save
-     * refuses it with the same words (§ 4). */
+     * refuses it with the same words (§ 8). */
     if (said.refused) {
         await refuseFolder("This calculation's files are refused by their "
                            + "readers", said.refused);
@@ -1848,9 +1846,6 @@ async function readFolder(projects, dir, opts) {
      * answer (W55 B4): a calculation's machine is its first prep's and does
      * not change (`configuration.md` M-3), so the card shows it fixed. */
     _fs.setTo = said.set_to || null;
-    /* ...AND ITS SHAPE, WHEN FIXED (§ 4): by the kind, or once it has
-     * produced -- the answer Save refuses another shape with. */
-    _fs.shapeFixed = said.shape_fixed || null;
     /* WHAT THE KIND FIXES of the stage table (§ 5.3), the reader's own
      * answer: the rungs, numbered and never renamed. */
     _fs.fixed = said.fixed || null;
@@ -1863,9 +1858,6 @@ async function readFolder(projects, dir, opts) {
     _fs.groups = said.groups || { stages: [], groups: [] };
     _fs.prepPick = null;
     applySetMachine();
-    _shape = String(task.shape || "");
-    $("ts-shape-card").hidden = false;
-    setShape(_shape);                            // shows which one it carries
     // THE CATALOGUE META COMES FIRST, and it is AWAITED: `renderStages`
     // asks `legalValues()` per cell to decide whether the column edits
     // through a DROPDOWN of its legal values or a free input.
@@ -1947,13 +1939,12 @@ async function syncFromModel() {
         // THE CARD'S CHANGE IS REFUSED WHOLE: each model goes back to its
         // last text that parsed, so the change does not wait in a model to
         // be written by the next edit, unseen; the cards are drawn again
-        // from those texts, the shape's buttons too.
+        // from those texts.
         for (const w of RECORDS) {
             const back = _parsedText[w] ? JSON.parse(_parsedText[w]) : null;
             if (w === "task") _task = back; else _request = back;
         }
         refuseUnparsed();
-        if (_task) setShape(String(_task.shape || ""));
         renderStages(_task);
         renderMachine(_task);
         renderNext(_task);
@@ -2421,7 +2412,6 @@ function sayLoaded(task) {
     const name = run.name || run.id || "(unnamed)";
     setState("loaded", `Loaded — ${name}`,
              `engine ${(task.engine && task.engine.name) || "?"}`
-             + ` · shape ${task.shape || "?"}`
              + ` · ${(task.stages || []).length} stage(s)`);
 }
 
@@ -2643,9 +2633,9 @@ function removeColumn(name) {
 
 /* ---------- what a prep will write, per stage (§ 7.1) ---------- */
 /*
- * SERVED, NEVER COMPOSED.  Flat and hierarchical name directories
- * differently, so the names come from the door that asks the producers.  A
- * list built here would be a second account of the same facts.
+ * SERVED, NEVER COMPOSED.  The names come from the door that asks the
+ * producers.  A list built here would be a second account of the same
+ * facts.
  */
 
 let _planTimer = null;
@@ -2840,14 +2830,11 @@ function paintWritten(body) {
         host.appendChild(writtenGroup("Once, for the calculation",
             "in the folder itself", body.once));
     }
-    /* Then each rung, with the directory it lands in -- flat and
-     * hierarchical put them in different places (task-setup.md 4), and the
-     * answer comes from `Shape.stage_dir` rather than from here. */
+    /* Then each rung, with the directory it lands in -- the answer's
+     * (`naming.stage_home`), never composed here. */
     for (const row of stages) {
         host.appendChild(writtenGroup(
-            row.stage,
-            row.dir === "." ? "in the folder itself" : row.dir + "/",
-            row.files || []));
+            row.stage, row.dir + "/", row.files || []));
     }
     /* AND WHICH RESTART-FILE LIST THIS CALCULATION FOLLOWS -- its own copy,
      * or molbuilder's for its engine, and where a custom copy goes
@@ -2900,8 +2887,7 @@ function paintPlan(box, host, body) {
     for (const row of body.stages || []) {
         host.appendChild(el("li", { class: "ts-planrow" },
             el("span", { class: "ts-plan-stage" }, row.stage),
-            el("code", { class: "ts-plan-dir" },
-               row.dir === "." ? "(the bundle root)" : row.dir + "/"),
+            el("code", { class: "ts-plan-dir" }, row.dir + "/"),
             el("span", { class: "ts-plan-ask" },
                askLine(row.ask, row.chosen)),
             // WHAT A RUN OF IT NEEDED, the memory door's line -- or that
@@ -3153,8 +3139,8 @@ function taskPrepCard(task) {
     const said = {};
     for (const r of (lad.stages || [])) said[r.stage] = r;
     /* PICKABLE: a group that can be prepared, as the folder's answer says
-     * -- a launched one on the hierarchical layout among them, for a change
-     * of its job request (`job-request.md` § 5). */
+     * -- a launched one among them, for a change of its job request
+     * (`job-request.md` § 5). */
     const pickable = (g) => g.preparable;
     /* TICKED WHEN THE FOLDER OPENS: the groups `prep task` offers -- every
      * one not prepared as described, a prepared one whose members changed
@@ -3166,7 +3152,7 @@ function taskPrepCard(task) {
         "Prepare the task \u2014 pick the groups. Each group is one job; a "
         + "group prepared and never launched is prepared again whole where "
         + "what it would write differs, and has nothing to write where it "
-        + "does not; a launched one, on the hierarchical layout, is prepared "
+        + "does not; a launched one is prepared "
         + "again for a change of its job request, its runs kept. What a stage "
         + "takes from another stage's run is taken when it is launched."));
     // THE PLAN LIST'S OWN ROWS (`ts-planlist`), a box column added.
@@ -3507,8 +3493,8 @@ function prepButton(kind, picks) {
                  * in its own words.  SHOWN AS PREP'S ANSWER IS, through the
                  * one renderer, worded as a preview: what it found (the
                  * deck's own checks among it), what the stage builds on,
-                 * what the attempt would receive, whether the deck agrees
-                 * with its launch -- or the refusal with what it pointed at.
+                 * what its run would receive -- or the refusal with what it
+                 * pointed at.
                  * Prep is not offered for a plan prep refuses. */
                 const r = await _prepCall(kind, picks, true);
                 _showPrepAnswers(wrap, say, r);
@@ -3855,7 +3841,7 @@ function _showPrepAnswer(wrap, say, r, head) {
     }
     const a = r.attempt;
     if (a) {
-        line((would ? "would open attempt " : "Attempt ") + a.dir
+        line((would ? "would open run " : "Run ") + a.dir
              + (a.fresh ? "" : " (reused — not launched yet)"));
         line((would ? "would bring in: " : "brought in: ")
              + (a.brought || []).join(", "));
@@ -3864,7 +3850,7 @@ function _showPrepAnswer(wrap, say, r, head) {
         /* THE POINT IT IS, named as everywhere in the UI (point-words.js):
          * its frame and its voltage. */
         const at = pointWords(p.frame, p.of, p.bias_v);
-        line((would ? "would open attempt " : "Attempt ") + p.attempt
+        line((would ? "would open run " : "Run ") + p.attempt
              + (at ? " @ " + at : ""));
     }
     /* A FORCE-CONSTANT STAGE'S `relax` RUN, its deck written at it -- the
@@ -4033,10 +4019,10 @@ function removeSetting(name) {
     return commitEdit("Removing " + name + " from the benchmark\u2026");
 }
 
-/* ---------- the shape, and what a hand-over becomes ---------- */
+/* ---------- what a hand-over becomes ---------- */
 
-/** A description and its job request built from a hand-over plus the
- *  chosen shape -- ``{task, request}``, each the text Save writes.
+/** A description and its job request built from a hand-over --
+ *  ``{task, request}``, each the text Save writes.
  *
  * The editor shows WHAT WILL BE WRITTEN, not the hand-over file — a person
  * checking a description before a week of compute should be reading the thing
@@ -4045,35 +4031,23 @@ function removeSetting(name) {
  * shape, and empty `varies` is a real state.  Each stage's group is the
  * hand-over's proposal (`proposed_groups`), the job request's.
  */
-function proposedFromHandover(over, shape) {
+function proposedFromHandover(over) {
     const run = (over && over.run) || {};
     // THE KIND rides the hand-over, every kind, as task.json states it --
     // and so does THE PROPOSED LADDER, its groups beside it, made by the
     // server's one rule (`jobset.ladder.fresh_stages`,
     // `jobset.group.fresh_groups`; `engines/vibration.md` § 2.2, § 5.2a;
-    // `engines/stages.md` § 6.5).  The page shows it and derives nothing.
+    // `engines/stages.md` § 6.5).  The page shows it and derives nothing:
+    // what it is built from, its reader has checked (`_read_handover`, the
+    // folder answer's `{error}` else) -- the one layout the description
+    // states among it (`task_shape`, `task.LAYOUT`, `task-setup.md` § 4).
     const kind = over.calculation;
-    if (!Array.isArray(over.proposed_stages)
-            || !Array.isArray(over.proposed_varies)
-            || !over.proposed_groups
-            || typeof over.job_request_schema !== "string") {
-        throw new Error("this hand-over carries no proposed ladder, no "
-                        + "proposed columns or no proposed groups -- it was "
-                        + "written before 2.27.0: send it again from its "
-                        + "tab.");
-    }
     const stages = over.proposed_stages.map((s) => ({
         name: s.name, overrides: s.overrides || {} }));
-    if (typeof over.task_schema !== "string" || !over.engine
-            || !over.engine.name) {
-        throw new Error("this hand-over names no task schema or no engine "
-                        + "-- it was written before 2.16.3: send it again "
-                        + "from its tab.");
-    }
     const out = {
         schema:    over.task_schema,
         engine:    over.engine,
-        shape:     shape,
+        shape:     over.task_shape,
         run:       { name: run.name || "", id: run.id || "",
                      created: run.created || "" },
         structure: (over && over.structure) || {},
@@ -4094,8 +4068,7 @@ function proposedFromHandover(over, shape) {
 }
 
 /* ---------- which machine this is prepared for ---------- */
-/* The SAME component and the same rule as the shape chooser below: a
- * choice with no default when several answers are possible.  It is the
+/* A choice with no default when several answers are possible.  It is the
  * user's because only they know it -- `preparing-for-another-machine.md`
  * § 4 -- and the CLI refuses without it, so the tab asks rather than
  * inventing a second rule. */
@@ -4210,8 +4183,8 @@ function renderQueues() {
     if (!card || !host) return;
     const qs = _queuesOf(_machine);
     /* SHOWN ONCE THERE IS A JOB REQUEST, as the notify card is: the card
-     * writes its `allocation` -- on a hand-over, once the shape's proposal
-     * has made one (§ 6.2b). */
+     * writes its `allocation` -- on a hand-over, once its proposal has made
+     * one (§ 6.2b, § 9a). */
     card.hidden = !_request;
     if (card.hidden) return;
     host.innerHTML = "";
@@ -4745,106 +4718,39 @@ async function loadMachines() {
     }
 }
 
-function setShape(shape) {
-    /* A FIXED SHAPE (`task-setup.md` § 4) takes no other -- its kind fixes
-     * it, or the calculation has produced: the save refuses another, so the
-     * card neither offers nor writes it, and says why and the way back in
-     * the server's words (`shape_fixed`, the answer the save refuses with).
-     * When the folder's plan could not be read, that is said instead, and
-     * both shapes stay offered: the save asks again. */
-    const fixedShape = (_fs.shapeFixed && _fs.shapeFixed.shape) || "";
-    const unread = (_fs.shapeFixed && _fs.shapeFixed.error) || "";
-    if (fixedShape && shape && shape !== fixedShape) return;
-    /* THE CONDITION THAT MATTERS is whether there is a DESCRIPTION to edit
-     * -- a described folder's, or a hand-over's once proposed, told from
-     * the hand-over's own text (which the editor shows, and `_task` holds,
-     * until then) by the description's schema the hand-over names
-     * (`task_schema`); a hand-over not yet proposed is BUILT from its text
-     * as it stands (§ 9a), and text that does not parse is never written
-     * over -- refused before the buttons move. */
-    const described = !!_task && (_mode === "description"
-        || (_mode === "handover" && !!_handover
-            && _task.schema === _handover.task_schema));
-    if (_mode === "handover" && shape && !described
-            && _cm && RECORDS.some((w) => !_parses[w])) {
-        refuseUnparsed();
-        return;
-    }
-    _shape = shape;
-    for (const b of document.querySelectorAll("#ts-shape-card .opt")) {
-        b.setAttribute("aria-pressed",
-                       b.getAttribute("data-shape") === shape ? "true" : "false");
-        b.disabled = !!fixedShape && b.getAttribute("data-shape") !== fixedShape;
-    }
-    const fixedSaid = $("ts-shape-fixed");
-    if (fixedSaid) {
-        fixedSaid.hidden = !fixedShape && !unread;
-        fixedSaid.textContent = fixedShape ? _fs.shapeFixed.why
-            : unread ? "Whether the shape is fixed could not be read: "
-                       + unread : "";
-        fixedSaid.toggleAttribute("data-attention", !!unread);
-    }
-    const needs = $("ts-shape-needs");
-    if (needs) needs.hidden = !!shape;
-    /* A SHAPE CHANGE IS NOT A RESET.  Below, a hand-over is turned into a
-     * proposal -- stages, varies and a seeded bench.  That has to happen ONCE.
-     * Shape is one field of the description; changing it edits that field. */
-    /* WRITING IT THROUGH IS NOT THE HAND-OVER'S PRIVILEGE: `task-setup.md`
-     * § 4 says the shape is free to change before the first produce; the
-     * hand-over branch below is about BUILDING a description, and only that
-     * has to happen once. */
-    if (shape && described) {
-        // ...AND ONLY A CHANGE IS WRITTEN: the load repaints the shape the
-        // description already carries, and writing that through would mark
-        // a file nobody edited as edited.
-        if (_task.shape !== shape) {
-            _task.shape = shape;
-            commitEdit("Changing the shape\u2026");
-        }
-        refreshSave();
-        return;
-    }
-    if (_mode === "handover" && shape) {
-        /* THE STARTING MATRIX.  `stages.md` § 1.3: *"`varies` defaults to the
-         * engine's `stage` group, and the user adds to or removes from it"* —
-         * the settings that typically vary across a sequence.  A description
-         * that arrived with an empty `varies` would open on a table with no
-         * columns and nothing to edit, which is not a neutral starting point,
-         * it is a dead end.  The group is a DEFAULT, never a restriction: any
-         * parameter can be added and any of these removed (§ 1.2). */
-        const engine = _handoverEngine(null);
-        // NO BENCH IS PROPOSED (`task-setup.md` § 6.2a-b): a run needs no
-        // benchmark, and a grid is the target machine's to enumerate at
-        // `prep bench`, never the page's.  The sweep vocabulary is loaded
-        // for the pickers.
-        //
-        // UNDER THE FENCE, as every write is (§ 7a): the proposal lands
-        // after two fetches, and another folder taken meanwhile would have it
-        // written over that folder's description.
-        pageBusy.run("Proposing the stages\u2026", [], () =>
+/** WHAT A HAND-OVER BECOMES, proposed once, when it is opened (§ 9a): the
+ *  stages, what varies and the job request, from the hand-over as the page
+ *  holds it.  Save is held from the hand-over's open until it lands
+ *  (`_fs.proposing`, set by the folder read) -- cleared on the folder it
+ *  was opened for, never on one taken since. */
+async function proposeHandover() {
+    const fs = _fs;
+    const engine = _handoverEngine(null);
+    // NO BENCH IS PROPOSED (`task-setup.md` § 6.2a-b): a run needs no
+    // benchmark, and a grid is the target machine's to enumerate at
+    // `prep bench`, never the page's.  The sweep vocabulary is loaded
+    // for the pickers.
+    //
+    // UNDER THE FENCE, as every write is (§ 7a): the proposal lands
+    // after two fetches, and another folder taken meanwhile would have it
+    // written over that folder's description.
+    try {
+        await pageBusy.run("Proposing the stages\u2026", [], () =>
             Promise.all([loadColumnChoices(engine),
-                         loadSweepChoices(engine)])
-                .then(() => true, () => false).then((vocabulary) => {
+                         loadSweepChoices(engine)]).then(() => {
                     let texts;
                     try {
-                        texts = proposedFromHandover(_task, shape);
+                        texts = proposedFromHandover(_task);
                     } catch (e) {
-                        // A HAND-OVER THIS PAGE CANNOT FINISH -- one written
-                        // before a rule its proposal carries -- says so, in
-                        // the reader's words, and holds Save: nothing is
-                        // written from half of it.
-                        _mode = "refused";
-                        setState("refuse", "This hand-over cannot be "
-                                 + "finished here",
-                                 String((e && e.message) || e));
-                        refreshSave();
-                        return null;
+                        // A PROPOSAL THAT THROWS is refused the one way a
+                        // folder is (`refuseFolder`): nothing is written
+                        // from half of it.
+                        return refuseFolder("This hand-over cannot be "
+                                            + "finished here",
+                                            String((e && e.message) || e));
                     }
                     _task = JSON.parse(texts.task);
-                    // A JOB REQUEST TYPED BEFORE THE PICK is the person's,
-                    // kept as typed.
-                    if (_request) delete texts.request;
-                    else _request = JSON.parse(texts.request);
+                    _request = JSON.parse(texts.request);
                     return setBuffers(texts).then(() => {
                         renderStages(_task);
                         // THE CARDS THAT WRITE THE JOB REQUEST, drawn now
@@ -4853,12 +4759,13 @@ function setShape(shape) {
                         readNotifyFromRequest(_request, _task);
                         { const c = $("ts-notify-card"); if (c) c.hidden = false; }
                         renderQueues();
-                        if (!vocabulary) return;
                         renderNext(_task);
                         renderMachine(_task);
                         refreshPickers();
                     });
                 }));
+    } finally {
+        fs.proposing = false;
     }
     refreshSave();
 }
@@ -4907,9 +4814,10 @@ function refreshSave() {
     if (!btn) return;
     let blocked = "";
     if (!_dir)                                    blocked = "Pick a folder first.";
+    else if (!_mode)                              blocked = "Reading the folder\u2026";
     else if (_mode === "empty")                   blocked = "Nothing to save — this folder carries no description and no hand-over.";
     else if (_mode === "refused")                 blocked = "Nothing to save — this folder could not be described; the reason is above.";
-    else if (_mode === "handover" && !_shape)     blocked = "Choose how the files are kept apart, above.";
+    else if (_fs.proposing)                       blocked = "Not a description yet \u2014 its stages are being proposed.";
     /* EDITED, the bar's own words say so (`_setDirty`); SAVED, what the
      * save did (`saidSave`).  This line says why Save is held, and else,
      * with neither said, that there is nothing to save -- and a
@@ -4954,9 +4862,6 @@ function paintHeads() {
     const run = doc.run || {};
     _sum("ts-came-card", [doc.calculation, _handoverEngine(doc),
                           run.name || run.id].filter(Boolean).join(" \u00b7 "));
-    const fixed = _fs.shapeFixed && _fs.shapeFixed.shape;
-    _sum("ts-shape-card", !_shape ? "not chosen \u2014 needed before Save"
-        : _shape + (fixed ? " \u2014 fixed" : ""));
     const chosen = _machines.find((m) => m.name === _machine);
     _sum("ts-target-card", !_machine ? "not chosen \u2014 needed before Prep"
         : chosen && !chosen.readable ? "cannot prepare for " + _machine
@@ -5211,10 +5116,6 @@ function start(projects) {
     if (typeof projects.onChange === "function") projects.onChange(moved);
     if (typeof projects.onCommit === "function") projects.onCommit(moved);
 
-    for (const b of document.querySelectorAll("#ts-shape-card .opt")) {
-        b.addEventListener("click",
-            () => setShape(b.getAttribute("data-shape") || ""));
-    }
     // The machine options are built from the server's records, so the
     // buttons (and their listeners) are wired inside loadMachines, asked
     // above.

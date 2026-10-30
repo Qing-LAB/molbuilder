@@ -14,8 +14,8 @@ record's one door, ``runrecord.ending``, and the state is built on it
 Four things a parser cannot know are settled here, because they are not
 in the file:
 
-* **which file speaks for the directory** -- a folder holds one ``.out``
-  per run index and one molwatch log per stage;
+* **which file speaks for the run** -- its folder holds one ``.out`` per
+  try and one molwatch log;
 * **whether it was launched**, before anything is written -- the
   attempt's launch record answers (``launch``);
 * **whether its process went without a word** -- a forced stop, which the
@@ -87,8 +87,8 @@ def _of_run(paths, basename: str) -> List[Path]:
 
 
 def _run_index(path: Path, basename: str) -> int:
-    """The run index ``path``'s name carries under the run's stem, ``-1``
-    for a file of the stage itself (its progress log)."""
+    """The try ``path``'s name carries under the run's stem (``-run<N>``),
+    ``-1`` for a file of the stage itself (its progress log)."""
     got = _rf.parse(path.name, basename)
     return got.run if got is not None and got.run is not None else -1
 
@@ -100,12 +100,10 @@ def _enumerate_files(run_dir: Path, basename: str) -> Dict[str, List[Path]]:
     catalogue's question (`runfiles.run_output_roles`, `model/parse.md`
     § 5.5, R-RO1).
 
-    ``basename`` NARROWS THE DIRECTORY TO ONE RUN -- its stem, in either
-    shape: every stage of a flat calculation shares one directory and is
-    told apart by FILENAME (`project-layout.md` § 1), and an attempt's
-    folder may hold several run indexes -- a warm retry re-runs the run
-    script with ``--continue``, which advances the index in place
-    (`runwrap`).
+    ``basename`` is the run's stem: its files are those that read back
+    under it.  A run's folder may hold several tries -- a warm retry starts
+    the run script again with the next try's number, in the same folder
+    (`running-a-job.md` § 3.5) -- each file carrying its own.
     """
     return {role: _of_run(_rf.find_by_role(run_dir, role), basename)
             for role in _rf.run_output_roles()}
@@ -122,7 +120,7 @@ def _enumerate_files(run_dir: Path, basename: str) -> Dict[str, List[Path]]:
 FINISH_FAILED = "finish failed"
 #: What a conclusion marker says when the job STOPPED BEFORE ITS ENGINE because
 #: its finish cannot run on the job's python -- the check the wrapper makes
-#: once the run index is known, before the engine starts
+#: once the try's number is known, before the engine starts
 #: (`runwrap._finish_check_block`, `engines/vibration.md` § 5.5).  Written as
 #: ``rc=1 at <date>; finish cannot load (<bundle>)`` with no output beside
 #: it, which the marker's own rule already reads as failed; the words say
@@ -130,7 +128,7 @@ FINISH_FAILED = "finish failed"
 FINISH_CANNOT_LOAD = "finish cannot load"
 #: What a conclusion marker says when the job STOPPED BEFORE ITS ENGINE because
 #: the activation did not give it its environment's own python -- the one
-#: check every job makes once the run index is known (`runwrap.
+#: check every job makes once the try's number is known (`runwrap.
 #: _run_index_block`, `execution/running-a-job.md` § 2): the activation left
 #: no ``CONDA_PREFIX`` naming the job's env, or that env holds no
 #: ``bin/python3``.  Written as ``rc=1 at <date>; no env python (<path>)``;
@@ -142,14 +140,14 @@ NO_ENV_PYTHON = "no env python"
 #: The monitor log's closing record of a run whose process has gone
 #: (`execution/run-reports.md` § 2.5) -- written by the monitor, which
 #: imports it from here, and read by :func:`_monitor_ended`.  A warm retry's
-#: ``[MONITOR] stopped`` is not one: the job goes on in the next run.
+#: ``[MONITOR] stopped`` is not one: the job goes on in the next try.
 MONITOR_ENDED = "[MONITOR] job ended"
 
 
 def _monitor_ended(run_dir: Path, basename: str,
                    run: Optional[int] = None) -> bool:
-    """Did the latest run's monitor see its process go -- its log's closing
-    record, :data:`MONITOR_ENDED`?
+    """Did the try's monitor -- ``run``'s, by default the newest's -- see
+    its process go: its log's closing record, :data:`MONITOR_ENDED`?
 
     What a FORCED STOP leaves when the monitor outlives it: a walltime,
     ``scancel`` or a kill never reaches the wrapper's main line, so no
@@ -217,23 +215,16 @@ def _scheduler_ended(launched_in: Path, launch: Any) -> Optional[str]:
     return None
 
 
-#: Molbuilder's own records of a run, written after its launch -- never
-#: the job's writes (`running-a-job.md` § 4.2, *Past its wall*).
-_OUR_RECORDS = (".run.json", ".continued-from", ".gathered-from")
-
-
 def _the_jobs_own(name: str, basename: str, run: Optional[int]) -> bool:
     """Whether ``name`` is a file THE JOB writes -- its outputs, the
     engine's files, its wrapper's and monitor's logs: a file of this run's
-    label (`runfiles.parse`) carrying no stage or this run's, this run's
-    number or none, and not one of molbuilder's own records.  A flat
-    folder holds other stages' decks and records and the ledger beside
-    the run; none of those says the job is alive."""
-    label, stage = _rf.split_stem(basename)
-    got = _rf.parse(name, label)
-    if got is None or got.role in _OUR_RECORDS:
-        return False
-    if got.stage is not None and got.stage != stage:
+    label (`runfiles.parse`; a run's folder holds its one stage's files),
+    this try's number or none.  Molbuilder's own records of a run, written
+    after its launch -- ``run.json``, ``.continued-from``,
+    ``.gathered-from`` -- are fixed names on no label, never the job's
+    writes (`running-a-job.md` § 4.2, *Past its wall*)."""
+    got = _rf.parse(name, _rf.split_stem(basename)[0])
+    if got is None:
         return False
     return got.run is None or run is None or got.run == run
 
@@ -405,7 +396,7 @@ class RunStatus:
     single file can answer.
 
     `state` is one of :data:`RUN_STATES`; `active_source` names the file that
-    spoke for the directory (the newest run index) and is `None` when
+    spoke for the directory (the newest try's) and is `None` when
     no result file exists yet.
     """
     state:          str
@@ -428,7 +419,7 @@ class RunStatus:
     #: Every run-output file's ending (`_run_ending.RunEnding`: how it ended,
     #: whether each SCF phase converged, the error), by filename -- the ONE
     #: scan the state above was judged from.  Readers: the run record's
-    #: verdict and its earlier runs (`model/parse.md` § 5d.6), and the
+    #: verdict and its earlier tries (`model/parse.md` § 5d.6), and the
     #: monitor's closing report -- so none of them scans the files again.
     endings:        "Dict[str, Any]" = field(default_factory=dict)
     #: THE RUN'S OWN OUTPUTS that may speak, by filename -- its stdout, and
@@ -498,13 +489,13 @@ def run_status(run_dir, basename: str, *,
     role's reader (``_run_ending.ending_of``).  This settles what neither
     can alone:
 
-    * **which file speaks for the run.**  A folder holds one ``.out`` per
-      run index and one molwatch log per stage; a parser sees one file and
-      cannot pick.  The newest run index (`model/parse.md` § 5.1) -- never a
-      file's time, which a copied or restored folder reorders.
+    * **which file speaks for the run.**  Its folder holds one ``.out`` per
+      try and one molwatch log; a parser sees one file and cannot pick.
+      The newest try (`model/parse.md` § 5.1) -- never a file's time,
+      which a copied or restored folder reorders.
 
-      ``basename`` says WHICH RUN is being asked about -- its stem, in
-      either shape.
+      ``basename`` says WHICH RUN is being asked about -- its stem
+      (`runfiles.RunNames.stem`).
     """
     run_dir = Path(run_dir)
     files = _enumerate_files(run_dir, basename)
@@ -520,10 +511,10 @@ def run_status(run_dir, basename: str, *,
     # it counts only once its footer concludes -- otherwise a stage's seed
     # outvotes its own result (`model/parse.md` § 5.5, § 5.1).
     speaks = set(_rf.stdout_roles())
-    # ONE RUN SPEAKS: run ``run``, by default the newest index any file of
-    # the stage reached -- an earlier run's output beside a newer run's
-    # launch record is that earlier run's, and says nothing of the one now
-    # queued (`running-a-job.md` § 4.2).
+    # ONE TRY SPEAKS: try ``run``, by default the newest any file of the
+    # run reached -- an earlier try's output, beside a newer try's, is that
+    # earlier try's goodbye and says nothing of the one now going
+    # (`running-a-job.md` § 4.2).
     speakers = _rf.at_run(
         run_dir, [p for role in _rf.run_output_roles() for p in files[role]
                   if role in speaks or states.get(p.name) in _re.CONCLUDED],
@@ -593,7 +584,7 @@ def _build_status(out_paths: List[Path],
     `RunEnding.doing`),
     and a sent one how long since the job last wrote (``quiet_for``).
 
-    ``out_paths`` are the files that may SPEAK, the run's newest run index
+    ``out_paths`` are the files that may SPEAK, the run's newest try
     speaking (``run_index``); ``last_change_at`` is the speaker's mtime,
     paired with ``active_source`` beside it.
     """
@@ -626,8 +617,8 @@ def _build_status(out_paths: List[Path],
                 f"queued as job {jid}" if jid else
                 f"launched ({launch.get('mode') or '?'}), no output yet"))
         return RunStatus(state="running", detail="no result file yet")
-    # THE ACTIVE SOURCE: the run's newest run index (`model/parse.md`
-    # § 5.1); within one index the catalogue's order, the input's.
+    # THE ACTIVE SOURCE: the run's newest try (`model/parse.md` § 5.1);
+    # within one try the catalogue's order, the input's.
     active = sorted(out_paths, key=run_index)[-1]
     active_state = out_run_states.get(active.name, "unknown")
     ended = active_state == "ended"

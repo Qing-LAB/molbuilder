@@ -16,8 +16,7 @@ import pytest
 def _transport():
     from molbuilder.task import Stage, Task, derive_run
     rungs = ("seed", "electrode_L", "electrode_R", "device", "transmission")
-    return Task(engine="siesta", shape="hierarchical",
-                run=derive_run("T", "J/x", stage_names=rungs),
+    return Task(engine="siesta", run=derive_run("T", "J/x", stage_names=rungs),
                 structure=None, calculation="transport",
                 slots={"junction": "J/x"}, bias=(0.0,), varies=(),
                 stages=tuple(Stage(name=n, overrides={}) for n in rungs))
@@ -25,8 +24,7 @@ def _transport():
 
 def _vibration():
     from molbuilder.task import Stage, StructureRef, Task, derive_run
-    return Task(engine="siesta", shape="hierarchical",
-                run=derive_run("V", stage_names=("freq",)),
+    return Task(engine="siesta", run=derive_run("V", stage_names=("freq",)),
                 structure=StructureRef(source="v.xyz"),
                 calculation="vibration", varies=(),
                 stages=(Stage(name="freq", overrides={}),))

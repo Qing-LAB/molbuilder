@@ -8,7 +8,7 @@ line by review, and the tests read the file.
 WHAT THIS FILE OWNS: the rows of § 6.6's preflight that are purely
 structural, answerable from the file alone:
     * the schema string's major (through ``persist.check_schema``)
-    * ``shape`` present and one of the two legal values
+    * ``shape`` present and the one layout, ``hierarchical``
     * stage names match ``[A-Za-z0-9_]+`` and are unique case-insensitively
     * no ``overrides`` key names a stage field (§ 2)
     * every stage's ``overrides`` holds only keys in ``varies``
@@ -161,12 +161,29 @@ def test_missing_shape_is_refused_saying_so(example):
     assert "shape" in str(e.value)
 
 
-def test_shape_must_be_one_of_the_two(example):
-    example["shape"] = "nested"
-    with pytest.raises(ValueError) as e:
-        Task.from_dict(example)
-    assert "nested" in str(e.value)
-    assert "flat" in str(e.value) and "hierarchical" in str(e.value)
+def test_a_flat_description_is_refused_by_name(example, tmp_path):
+    """`project-layout.md` § 1, `stages.md` § 6.7: one layout, and a
+    description an older molbuilder wrote stating ``flat`` is refused BY
+    NAME, its way out said -- through the folder's door (`task.of`) and the
+    text Task setup's Save sends (`task.from_text`) alike; no migration,
+    nothing read as the one layout.
+
+    THE SILENT FAILURE: an old flat description read as if it were laid
+    out by stage, its runs then looked for in folders that were never
+    made.  MUTATION THIS MUST FAIL AGAINST: the reader accepting any
+    `shape`."""
+    from molbuilder.task import from_text
+    shape = "flat"
+    example["shape"] = shape
+    (tmp_path / "task.json").write_text(json.dumps(example))
+    for read in (lambda: task_of(tmp_path),
+                 lambda: from_text(json.dumps(example))):
+        with pytest.raises(ValueError) as e:
+            read()
+        # BY NAME: the value stated, the one legal value, the way out.
+        said = str(e.value)
+        assert repr(shape) in said and "'hierarchical'" in said, said
+        assert "describe the calculation again" in said.lower(), said
 
 
 def test_a_different_schema_major_is_refused(example):
@@ -428,7 +445,6 @@ def test_a_task_whose_stages_are_long_still_derives_the_same_id(example):
 def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
     task = Task(
         engine="siesta",
-        shape="flat",
         calculation="optimization",
         # Derived, not retyped.
         run=derive_run("H2 relax", "H2",
@@ -472,7 +488,7 @@ def test_a_task_cannot_hold_varies_without_stages():
     check ``to_dict`` drops the varies silently, losing the one thing
     varies exists to carry (§ 6.2)."""
     with pytest.raises(ValueError) as e:
-        Task(engine="siesta", shape="flat", calculation="optimization",
+        Task(engine="siesta", calculation="optimization",
              run=Run(name="x", id="x"), structure=StructureRef(source="x.xyz"),
              varies=("mesh_cutoff",), stages=None)
     assert "varies" in str(e.value) and "stages" in str(e.value)
@@ -480,7 +496,7 @@ def test_a_task_cannot_hold_varies_without_stages():
 
 def test_a_task_cannot_hold_an_empty_stage_tuple():
     with pytest.raises(ValueError) as e:
-        Task(engine="siesta", shape="flat", calculation="optimization",
+        Task(engine="siesta", calculation="optimization",
              run=Run(name="x", id="x"), structure=StructureRef(source="x.xyz"),
              varies=(), stages=())
     assert "empty" in str(e.value)
@@ -508,8 +524,7 @@ def _ladder_task(stages):
     from molbuilder.identity import run_id
     from molbuilder.task import Run, StructureRef, Task
     rid = run_id("x", "H2", stage_names=tuple(s.name for s in stages))
-    return Task(engine="siesta", shape="hierarchical",
-                calculation="optimization",
+    return Task(engine="siesta", calculation="optimization",
                 run=Run(name="x", id=rid),
                 structure=StructureRef(source="h2.xyz", formula="H2",
                                        atoms=2),

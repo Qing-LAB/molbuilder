@@ -41,7 +41,6 @@ from .model import FILENAME as _JOBSET_FILE
 # EVERY ENGINE MOLBUILDER KNOWS, the catalogue's (`runfiles.engines`) -- the
 # one list `--engine` offers, never restated here.
 from ..engine_table import engines as _engines
-from ..paths import SHAPES as _SHAPES
 
 
 def _sweeps_in(base: Path) -> list:
@@ -358,7 +357,8 @@ def _junction_slot(slots_opt, root):
         if not sep or not name_ or not cite:
             raise click.ClickException(
                 f"--slot {entry!r}: spell it NAME=PATH, e.g. "
-                f"--slot junction=<project>/<topic>/<calc>/<stage>/run-N "
+                f"--slot junction=<project>/<topic>/<calc>/<NN>_<stage>/"
+                f"run-<n> "
                 f"-- a finished relaxation run's folder, or a structure "
                 f"pair's .xyz (engines/transport.md § 3.1).")
         slots[name_] = cite
@@ -387,12 +387,13 @@ def _junction_slot(slots_opt, root):
     return str(resolved.relative_to(root)), resolved, cited
 
 
-def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
+def _init_transport(*, out_dir, run_name, engine, slots_opt,
                     bias_opt, structure, psml_lib, vacuum,
                     low_bias_approximation=None,
                     stage_strategy) -> None:
-    """`init --calculation transport` -- task.json and the calculation's
-    template, from the junction citation (engines/transport.md § 3.1): a
+    """`describe --calculation transport` -- task.json and the
+    calculation's template, from the junction citation
+    (engines/transport.md § 3.1): a
     finished relaxation run, or a structure pair recording its optimization.
 
     The structure and the cell arrive at prep from the citation, so every
@@ -404,10 +405,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     from pathlib import Path as _P
 
     from ..describe import DescribeError
-    from ..task import Stage, Task, derive_run, fresh_varies
-    # The ladder is the kind's: its five rungs in dependency order, every
-    # one (the kind table's roles, its part's `stages`).
-    from ..transport.stages import TRANSPORT_STAGES
+    from ..task import Task, derive_run, fresh_varies
 
     for given, flag, why in (
             (structure, "--structure", "its structure IS the junction "
@@ -426,8 +424,6 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     no = why_no_transport(engine)
     if no:
         raise click.ClickException(f"engine {engine!r}: {no}.")
-    # shape: the codec owns the transport==hierarchical pairing (task.py
-    # __post_init__); the Task construction below surfaces it by name.
 
     # THE CITATION DOOR prep composes through (`_junction_slot`).
     from ..projects import projects_root
@@ -435,12 +431,9 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     root = _P(projects_root()).expanduser().resolve()
     citation, resolved, cited = _junction_slot(slots_opt, root)
     pair = isinstance(cited, CitedPair)
-    dest = (out_dir if out_dir.is_absolute()
-            else _P(_resolve_bundle(None, None, str(out_dir),
-                                    must_exist=False)))
     from ..transport.compose import refuse_inside_citation
     try:
-        refuse_inside_citation(dest, cited.path)
+        refuse_inside_citation(out_dir, cited.path)
     except ComposeError as exc:
         raise click.ClickException(str(exc))
 
@@ -449,13 +442,16 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # an empty list a reader has to fill in (2026-10-18).
     bias = _bias_of(bias_opt) if bias_opt else (0.0,)
 
-    stages = tuple(Stage(name=n, overrides={})
-                   for n in TRANSPORT_STAGES)
+    # THE LADDER IS THE KIND'S: its five rungs in dependency order, every
+    # one, through the one door both describe roads take
+    # (`transport.stages.stages_for_transport`).
+    from ..transport.stages import stages_for_transport
+    stages = tuple(stages_for_transport())
     try:
         task = Task(
-            engine=engine, shape=shape,
+            engine=engine,
             run=derive_run(run_name, citation,
-                           stage_names=TRANSPORT_STAGES),
+                           stage_names=tuple(s.name for s in stages)),
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
             low_bias_approximation=low_bias_approximation,
@@ -503,11 +499,11 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # transport_template_text`): a `citation` row the cited directory does
     # not answer stays VALUELESS (§ 3.8.3).
     try:
-        written = write_description(desc, dest)
+        written = write_description(desc, out_dir)
     except (DescribeError, OSError) as exc:
         raise click.ClickException(str(exc))
 
-    click.echo(f"Described transport '{task.run.name}' in {dest} -- "
+    click.echo(f"Described transport '{task.run.name}' in {out_dir} -- "
                f"composes {citation}.")
     for path in written:
         click.echo(f"  {path.name}")
@@ -526,8 +522,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # every one, before anything has run.
     from .commands import prep_group_lines
     from .ready import task_state
-    click.echo("  " + prep_group_lines(task_state(_calc_of(dest)).prep_offer,
-                                       base=dest)[0])
+    click.echo("  " + prep_group_lines(task_state(_calc_of(out_dir)).prep_offer,
+                                       base=out_dir)[0])
 
 
 def _bias_of(bias_opt: str) -> tuple:
@@ -540,7 +536,7 @@ def _bias_of(bias_opt: str) -> tuple:
             f"e.g. --bias 0.0,0.2,0.4.")
 
 
-def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
+def _init_reusing(*, out_dir, reuses, engine, bias_opt,
                   low_bias_approximation, window_opt, finer, slots_opt,
                   refused) -> None:
     """`describe --calculation transport --reuses <finished>` -- the new
@@ -598,8 +594,7 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
     junction = _junction_slot(slots_opt, root)[0] if slots_opt else None
     try:
         task = dataclasses.replace(
-            finished.task, reuses=citation, engine=engine,
-            shape=shape or finished.task.shape, **said)
+            finished.task, reuses=citation, engine=engine, **said)
         if junction is not None:
             from ..transport.reuse import citing
             task = citing(task, junction)
@@ -639,16 +634,13 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
             click.echo(f"note: {issue.message}", err=True)
     except ValidationError as exc:
         raise click.ClickException(str(exc))
-    dest = (out_dir if out_dir.is_absolute()
-            else Path(_resolve_bundle(None, None, str(out_dir),
-                                      must_exist=False)))
     try:
-        written, notes = write_reusing(desc, dest, finished, tree_root=root)
+        written, notes = write_reusing(desc, out_dir, finished, tree_root=root)
     except (ReuseError, DescribeError, OSError) as exc:
         raise click.ClickException(str(exc))
     for note in notes:
         click.echo(f"note: {note.message}", err=True)
-    click.echo(f"Described transport '{task.run.name}' in {dest} -- reuses "
+    click.echo(f"Described transport '{task.run.name}' in {out_dir} -- reuses "
                f"{citation}.")
     for path in written:
         click.echo(f"  {path.name}")
@@ -657,7 +649,7 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
     # § 2a.16, *Extending it*): every group, nothing written.
     from .reuse import decide
     try:
-        calc_now = _calc_of(dest)
+        calc_now = _calc_of(out_dir)
         manifest = decide(calc_now, calc_now.request.numbers)
     except PrepError as exc:
         click.echo(f"note: what it will reuse is not known yet -- {exc}",
@@ -665,15 +657,15 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
     else:
         if manifest is not None:
             click.echo("")
-            click.echo("\n".join(manifest.lines(dest)))
+            click.echo("\n".join(manifest.lines(out_dir)))
     from .commands import prep_group_lines
     from .ready import task_state
     click.echo("")
     click.echo("Change what the new question asks -- on Task setup, or in "
                "its task.json and template -- then, on the machine that "
                "will run it:")
-    click.echo("  " + prep_group_lines(task_state(_calc_of(dest)).prep_offer,
-                                       base=dest)[0])
+    click.echo("  " + prep_group_lines(task_state(_calc_of(out_dir)).prep_offer,
+                                       base=out_dir)[0])
 
 
 @click.command("describe",
@@ -688,12 +680,6 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
                    "cites (job-contracts.md 2.5b).  Required for every "
                    "calculation EXCEPT transport, whose structure IS its "
                    "junction citation (--slot).")
-@click.option("--shape", default=None,
-              type=click.Choice(_SHAPES),
-              help="how the stages sit on disk. REQUIRED and never inferred -- "
-                   "inferring it would hand you a directory tree you did not "
-                   "ask for (engines/stages.md 6.7) -- but beside --reuses, "
-                   "which describes the finished calculation's.")
 @click.option("--stage-strategy", default=None,
               help="which shipped ladder to describe (e.g. publishable). Omit "
                    "for a calculation with a SINGLE parameter set, which is "
@@ -761,7 +747,7 @@ def _init_reusing(*, out_dir, reuses, engine, shape, bias_opt,
                    "starts as its description and its composed junction, "
                    "whole; its prep copies in every group the finished one "
                    "already computed (engines/transport.md 2a.16).")
-def describe_cmd(structure, bundle: str, shape: str,
+def describe_cmd(structure, bundle: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
                  calculation: str, slots_opt, bias_opt,
                  low_bias_approximation, window_opt, finer, reuses) -> None:
@@ -813,7 +799,7 @@ def describe_cmd(structure, bundle: str, shape: str,
                 f"{' or '.join(carrying('reuses'))} alone "
                 f"(engines/transport.md § 2a.16).")
         _init_reusing(
-            out_dir=out_dir, reuses=reuses, engine=engine, shape=shape,
+            out_dir=out_dir, reuses=reuses, engine=engine,
             bias_opt=bias_opt, low_bias_approximation=low_bias_approximation,
             window_opt=window_opt, finer=finer, slots_opt=slots_opt,
             refused={flag: why for flag, given, why in (
@@ -836,21 +822,10 @@ def describe_cmd(structure, bundle: str, shape: str,
     if engine is None:
         raise click.ClickException(
             "--engine is required -- never assumed or inferred.")
-    if shape is None:
-        # EXPLICIT ON THE COMMAND LINE, where no card shows the outcome
-        # (user, 2026-10-28) -- and a kind that fixes the shape says which,
-        # in its own sentence (the kind table, `web/task-setup.md` § 4).
-        from ..kind_table import pair
-        _pair = pair(calculation, engine)
-        fixed = _pair.fixed_shape if _pair is not None else None
-        raise click.ClickException(
-            "--shape is required -- never assumed or inferred."
-            + (f"  {fixed['why']}  Describe it with --shape "
-               f"{fixed['shape']}." if fixed else ""))
     # A KIND THAT CITES its structure (the kind table's
     # ``description.cites``) is described from the citation.
     if _rec.description.cites:
-        _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,
+        _init_transport(out_dir=out_dir, run_name=run_name,
                         engine=engine, slots_opt=slots_opt,
                         bias_opt=bias_opt,
                         low_bias_approximation=low_bias_approximation,
@@ -897,9 +872,9 @@ def describe_cmd(structure, bundle: str, shape: str,
 
         # § 6.5 (2026-08-16): a job always has at least one stage.  Without
         # ``--stage-strategy`` the ladder is ONE stage carrying no overrides
-        # -- the calculation that is just the template.  One shape, so
-        # the artifact names, the tokens and the directories are the same
-        # whether a job has one rung or three.
+        # -- the calculation that is just the template.  One ladder form,
+        # so the artifact names, the tokens and the directories are the
+        # same whether a job has one rung or three.
         # THE LADDER: the pair's own, else the fresh start
         # (`ladder.fresh_stages`, the one owner) -- or, a --stage-strategy
         # named, the engine's ladder by the one rule over its presets
@@ -908,15 +883,14 @@ def describe_cmd(structure, bundle: str, shape: str,
         # settings the template's own, recommended by the kind
         # (`template.md` § 6.3a) -- a vibration's one stage, `freq`
         # (`engines/vibration.md` § 2.2, § 5.11 § 1).
-        from ..kind_table import KindTableError, kind as _kind
         try:
-            own = _kind(calculation).on(engine).ladder
+            own = _rec.on(engine).ladder
         except KindTableError as exc:
             raise click.ClickException(str(exc))
         if own and stage_strategy:
             raise click.ClickException(
                 f"--stage-strategy names an engine ladder's tiers; a "
-                f"{_kind(calculation).noun} starts from its own -- "
+                f"{_rec.noun} starts from its own -- "
                 f"{', '.join(own)} -- and its convergence settings are "
                 f"the template's own.")
         stages = (tuple(engine_ladder(engine, stage_strategy))
@@ -950,7 +924,7 @@ def describe_cmd(structure, bundle: str, shape: str,
         _said = {name: "person" for name in _own}
         desc = build_description(
             struct, cfg, stages,
-            engine=engine, shape=shape, name=run_name,
+            engine=engine, name=run_name,
             source=str(structure), calculation=calculation,
             pseudo_species=species_order(struct.elements),
             value_sources=_said,
@@ -967,8 +941,8 @@ def describe_cmd(structure, bundle: str, shape: str,
     # Always a ladder (§ 6.5), so one stage and several share one phrasing.
     ladder = (f"{len(desc.task.stages)} stage(s): "
               f"{', '.join(s.name for s in desc.task.stages)}")
-    click.echo(f"Described {desc.label!r} in {out_dir} -- {ladder}, "
-               f"shape {shape}.", err=True)
+    click.echo(f"Described {desc.label!r} in {out_dir} -- {ladder}.",
+               err=True)
     click.echo("  " + "\n  ".join(p.name for p in written), err=True)
     # THE FIRST COMMAND A PERSON COPIES, real: the groups `prep task`
     # offers.
@@ -998,9 +972,9 @@ def status_cmd(stage, bundle: str) -> None:
     With a STAGE -- its name, or '#N' its number (quoted: bash reads a bare
     # as a comment), like every other verb -- it
     answers the other question instead: *what this one is and what happened
-    to it* -- its deck, what it carries, its resources, its attempts, its
+    to it* -- its deck, what it carries, its resources, its runs, its
     launch record and what it continued from.  That form is only answerable
-    because a try is a directory and a launch is a record
+    because a run is a folder of its own and a launch is a record
     (project-layout.md § 1.5, § 1.6).
     """
     from ..calcdirs import described as _described
@@ -1133,16 +1107,15 @@ def _refuse_unprepared(calc, stage) -> None:
 def _stage_bench_dir(calc, stage, verb: str = "launch"):
     """The stage's bench container (job-contracts.md § 6.3), resolved
     through the description — where its trials, its job-set and its verdict
-    all live.  Returns ``(container_path, token)``.  ``stage`` is the
+    all live.  ``stage`` is the
     description's own spelling -- the verb resolved it first
     (:func:`_described_stage`); a bare invocation is refused with the ladder
     listed — § 6.5 gives every description a ladder, so there is always a
-    stage to name and never a bare form to fall back to."""
+    stage to name and never a bare form to fall back to.  Returns the
+    container's path."""
     from ..paths import bench_container
     from .naming import stage_home
-    from ..paths import Shape
     base, task = calc.base, calc.task
-    sh = Shape.named(task.shape)
     # A CALCULATION THAT HAS NO BENCHMARK says so first -- `prep bench`'s own
     # answer (`bench_refusal`) -- or the command offered next is refused in
     # turn.
@@ -1157,7 +1130,7 @@ def _stage_bench_dir(calc, stage, verb: str = "launch"):
         from .naming import described_refs
         refs = described_refs(base, task)
         benched = [r for r in refs if JobSet.of(Path(base) / bench_container(
-            sh, stage_home(base, task, r.name).token)) is not None]
+            stage_home(base, task, r.name).token)) is not None]
         if not benched:
             raise click.ClickException(
                 "no stage has a prepared benchmark yet -- prep one first:\n"
@@ -1165,8 +1138,7 @@ def _stage_bench_dir(calc, stage, verb: str = "launch"):
         raise click.ClickException(
             "which stage's benchmark? "
             + name_a_stage(verb, "bench", benched, base=base))
-    token = stage_home(base, task, stage).token
-    return Path(base) / bench_container(sh, token), token
+    return Path(base) / bench_container(stage_home(base, task, stage).token)
 
 
 def _pick_trial(js, trial):
@@ -1187,7 +1159,7 @@ def _load_bench_set(calc, stage, verb: str = "launch"):
     """``(the stage's OWN sweep record, its container)`` -- the plan's door
     asked with the container (A16)."""
     base = calc.base
-    container, _ = _stage_bench_dir(calc, stage, verb)
+    container = _stage_bench_dir(calc, stage, verb)
     try:
         js = JobSet.of(container)
     except ValueError as e:
@@ -1614,8 +1586,8 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         click.echo(f"prepared {len(ans.dirs)} trial dir(s){where} under "
                    f"{base}:")
         for d in ans.dirs:
-            # the path from the bundle, not the bare attempt name -- with the
-            # attempt layer every trial's dir ENDS in run-<n> (user,
+            # the path from the calculation's folder, not the bare run
+            # name -- every trial's dir ends in its run-<n> (user,
             # 2026-08-28)
             click.echo(f"  {_rel(base, d)}")
         if ans.placement:
@@ -1640,13 +1612,11 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                  + block([command("summarize", "bench", stage,
                                   base=base)]))
         return
-    # THE LAYOUT'S OWN LINES first -- the folder, the attempt or the points
-    # -- then what every layout says alike: what its first launch will take,
-    # the resources, the pipeline log, what to do next.
-    if ans.flat:
-        click.echo(f"prepared {stage}: under {base}  (flat: no attempt to "
-                   f"open; each run carries the number launch gives it)")
-    elif ans.points:
+    # WHAT THIS PREP OPENED first -- the points, the copies, a launched
+    # stage's runs kept, or its run -- then what every stage says alike:
+    # what its first launch will take, the resources, the pipeline log, what
+    # to do next.
+    if ans.points:
         for att, pt in ans.points:
             click.echo(f"prepared {stage} @ {pt.rel}: "
                        f"{Path(att).relative_to(base)}")
@@ -1823,9 +1793,10 @@ def summarize_cmd(kind: str, words, bundle: str,
       whose spread exceeds it.
 
     **Asynchronous by design** (user, 2026-08-12): each reads what has
-    landed.  A trial that has produced nothing yet reports ``state=unknown``
-    and one started but unfinished ``incomplete`` -- never a failure of the
-    set; a transmission point or a force-constant stage without its result
+    landed.  A trial reports its run's state, the run door's
+    (`runs.state_of`): ``pending`` before it is launched, ``queued`` or
+    ``running`` until it ends -- never a failure of the set; a transmission
+    point or a force-constant stage without its result
     reads as pending, and one whose run failed says so.  Discovery is keyed
     by the description and ``job-set.json``'s own data, never by parsing
     directory names back (`job-contracts.md` § 6.3).
@@ -2040,9 +2011,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 @click.option("--cold", is_flag=True,
               help="ONE stage: at its first launch, it takes nothing from "
                    "the stage before it -- it starts from the calculation's "
-                   "structure; launched again, nothing from a run of its own "
-                   "(on the flat layout its run script removes the restart "
-                   "files lying in the folder).  Without it, a first launch "
+                   "structure; launched again, nothing from a run of its "
+                   "own.  Without it, a first launch "
                    "takes the stage "
                    "before it's newest run, which must have finished, and a "
                    "launch again continues from its own latest run, however "
@@ -2052,8 +2022,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
               help="ONE stage: the run it continues from, by its folder -- "
                    "e.g. '01_coarse/run-0' -- at its first launch, or "
                    "launched again, taken as said; its restart files are "
-                   "COPIED in.  The flat layout and a transport rung have "
-                   "no run to name (job-system.md 5.4).")
+                   "COPIED in.  A transport rung has no run to name "
+                   "(job-system.md 5.4).")
 @click.option("--gather", is_flag=True,
               help="ONE transport rung launched again: take its inputs anew "
                    "-- the newest run of each rung upstream, under the "
@@ -2064,7 +2034,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
               help="a benchmark's walk (`launch bench <stage>`, here or "
                    "sent to its queue): kill any single trial after this many "
                    "minutes so the rest of the walk still runs; the killed "
-                   "trial reads incomplete.  Unstated, no per-trial bound "
+                   "trial reads failed.  Unstated, no per-trial bound "
                    "exists -- each trial runs until it ends, or the job's "
                    "wall.")
 @click.option("--foreground", is_flag=True,
@@ -2742,8 +2712,8 @@ def _probe_consent_merge(before, probed, *, yes: bool):
 def migrate_cmd(bundle: str) -> None:
     """Rewrite what an older molbuilder wrote in a calculation -- the road
     every reader names when it refuses such a file: the description and the
-    plans, the copy of the machine's record, a flat calculation's run files
-    and last run, a transport lead's files on its own stem, and the
+    plans, the copy of the machine's record, a transport lead's files on
+    its own stem, and the
     template's older, renamed and retired items and the run settings it
     held, a value moved onto the run card.
 

@@ -537,34 +537,25 @@ class TestTheContractEndpoint:
 
     #: WHERE EACH FOLDER PREP MAKES IS (`project-layout.md` § 1.4a, *Where am
     #: I*; invariant 6b; `web/results.md` § 2.3, `place`) -- an H2
-    #: relaxation's first group and its first stage's benchmark, prepared in
-    #: each shape: ``(shape, folder, what, role, stage, run, trial)``, the
-    #: folder relative to the calculation, ``bench-*`` a trial and ``*`` its
-    #: point.  Every folder prep made answers one row, and every row a folder.
+    #: relaxation's first group and its first stage's benchmark, prepared:
+    #: ``(folder, what, role, stage, run, trial)``, the folder relative to
+    #: the calculation, ``bench-*`` a trial and ``*`` its point.  Every
+    #: folder prep made answers one row, and every row a folder.
     EVERY_FOLDER = [
-        ("hierarchical", "", "calculation", "container", None, None, None),
-        ("hierarchical", "pseudos", "support", "container", None, None, None),
-        ("hierarchical", "01_coarse", "stage", "container", "01_coarse",
-         None, None),
-        ("hierarchical", "01_coarse/run-0", "attempt", "run", "01_coarse",
-         0, None),
-        ("hierarchical", "01_coarse/bench", "benchmark", "container",
-         "01_coarse", None, None),
-        ("hierarchical", "01_coarse/bench/bench-*", "trial", "container",
-         "01_coarse", None, "*"),
-        ("hierarchical", "01_coarse/bench/bench-*/run-0", "attempt", "run",
-         "01_coarse", 0, "*"),
-        ("flat", "", "calculation", "run", None, None, None),
-        ("flat", "pseudos", "support", "container", None, None, None),
-        ("flat", "bench_01_coarse", "benchmark", "container", "01_coarse",
-         None, None),
-        ("flat", "bench_01_coarse/bench-*", "trial", "run", "01_coarse",
-         None, "*"),
+        ("", "calculation", "container", None, None, None),
+        ("pseudos", "support", "container", None, None, None),
+        ("01_coarse", "stage", "container", "01_coarse", None, None),
+        ("01_coarse/run-0", "attempt", "run", "01_coarse", 0, None),
+        ("01_coarse/bench", "benchmark", "container", "01_coarse", None,
+         None),
+        ("01_coarse/bench/bench-*", "trial", "container", "01_coarse", None,
+         "*"),
+        ("01_coarse/bench/bench-*/run-0", "attempt", "run", "01_coarse", 0,
+         "*"),
     ]
 
-    @pytest.mark.parametrize("shape", ["hierarchical", "flat"])
     def test_every_folder_prep_makes_says_where_it_is(
-            self, isolated, tmp_path, monkeypatch, shape):
+            self, isolated, tmp_path, monkeypatch):
         """Through the road -- `molbuilder describe`, `prep task` and `prep bench`
         of an H2 relaxation, no engine run -- every folder prep made answers
         the Results tab's door with where it is: its calculation, what it
@@ -577,19 +568,19 @@ class TestTheContractEndpoint:
         marked*, its run never asked.
 
         MUTATION THIS MUST FAIL AGAINST: a trial read as support (the
-        benchmark's child rule), an attempt's index not read, the flat
-        benchmark not read at the root, a folder an opener left unstamped."""
+        benchmark's child rule), an attempt's index not read, a folder an
+        opener left unstamped."""
         from fnmatch import fnmatch
         from pathlib import Path
         from conftest import write_machine_record
         from support.road import describe_calculation, jobset
         _root, client = isolated
         write_machine_record()
-        bundle = describe_calculation(tmp_path, monkeypatch, shape=shape)
+        bundle = describe_calculation(tmp_path, monkeypatch)
         for verb in (("task", "--group", "1"), ("bench", "coarse")):
             got = jobset("prep", *verb, "--bundle", bundle, "--target", "this")
             assert got.exit_code == 0, got.output
-        rows = [row[1:] for row in self.EVERY_FOLDER if row[0] == shape]
+        rows = self.EVERY_FOLDER
         # The folders prep made -- not the saved history's own.
         folders = [bundle] + sorted(
             p for p in bundle.rglob("*") if p.is_dir() and not any(

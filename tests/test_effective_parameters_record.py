@@ -24,9 +24,9 @@ from molbuilder.script_emit import parameter
 from molbuilder.structure import Structure
 from molbuilder.runfiles import RunNames
 
-#: The names prep gives this stage's deck: its label, its rung, its layout
+#: The names prep gives this stage's deck: its label and its rung
 #: (`runfiles.RunNames`).
-NAMES = RunNames.of('t', "01_coarse", "hierarchical")
+NAMES = RunNames("t", "01_coarse")
 
 
 @pytest.fixture
@@ -37,33 +37,16 @@ def deck(tmp_path) -> Path:
     return p
 
 
-def test_siesta_records_the_deck_as_the_engine_parses_it(deck):
-    """Comments and blanks stripped — exactly the lines libfdf reads."""
-    block = _effective_parameters_block(deck)
-    assert 'grep -v "^[[:space:]]*#"' in block
-    assert 'grep -v "^[[:space:]]*$"' in block
-    assert deck.name in block
-
-
-def test_siesta_reads_the_deck_at_launch_not_at_generation(deck):
-    """A deck edited after `prep` must record what the engine will really see.
-
-    So the wrapper greps the file at run time rather than baking its contents.
-    """
-    block = _effective_parameters_block(deck)
-    assert "MeshCutoff 200.0" not in block, (
-        "the deck's own values must not be baked into the wrapper; the run "
-        "reads the file, so an edit after prep is still recorded")
-
-
 def test_siesta_s_fence_states_every_item_s_default_and_the_deck_as_launched(
         deck, tmp_path):
     """The wrapper's block, RUN as the wrapper runs it, read back through the
     one reader both engines' blocks are read by (`model/parse.md` § 5d.3a):
     a row for every keyword-writing catalogue item with its catalogue default
     -- generated, so a new item joins with no edit -- and the deck the engine
-    is given, echoed at launch.  SIESTA has not started, so ``asked`` is the
-    deck's and ``used`` the fdf log's: this block leaves both empty.
+    is given, echoed at launch -- the lines libfdf reads, no comment and no
+    blank, and read when the block runs, so a deck edited after prep is
+    echoed as edited.  SIESTA has not started, so ``asked`` is the deck's
+    and ``used`` the fdf log's: this block leaves both empty.
 
     It listed only the items the deck left out until 2026-09-26, so a run
     recorded no default for any item it set -- the record's first column for
@@ -72,9 +55,14 @@ def test_siesta_s_fence_states_every_item_s_default_and_the_deck_as_launched(
     import molbuilder.template as T
     from molbuilder.script_emit import _catalogue, read_parameters_fence
 
-    out = subprocess.run(["bash", "-c", _effective_parameters_block(deck)],
-                         cwd=deck.parent, capture_output=True, text=True,
-                         check=True).stdout
+    block = _effective_parameters_block(deck)
+
+    def run():
+        return subprocess.run(["bash", "-c", block], cwd=deck.parent,
+                              capture_output=True, text=True,
+                              check=True).stdout
+
+    out = run()
     rows = {r["item"]: r for r in read_parameters_fence(out)}
     writing = {i.name for i in T.select(_catalogue(), engine="siesta")
                if parameter(i.name, "siesta").writes}
@@ -83,6 +71,10 @@ def test_siesta_s_fence_states_every_item_s_default_and_the_deck_as_launched(
                                                        "siesta").default
     assert {(r["asked"], r["used"]) for r in rows.values()} == {(None, None)}
     assert "#   MeshCutoff 200.0 Ry" in out
+    assert "a comment" not in out and "#   \n" not in out, out
+    # AN EDIT AFTER PREP is what the engine reads, so it is what is echoed.
+    deck.write_text(deck.read_text().replace("200.0", "350.0"))
+    assert "#   MeshCutoff 350.0 Ry" in run()
 
 
 # ------------------------------------------------- SIESTA's own check rules

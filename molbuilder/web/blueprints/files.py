@@ -1018,10 +1018,9 @@ def _validate_subdir_name(parent_abs: Path, name: str) -> None:
         ``validate_topic`` enforces this.
       * Under ``projects/<project>/<topic>/`` -> the name is a
         *structure*; same regex as project.
-      * Deeper than that -- inside a structure dir, which is supposed
-        to be flat per job-layout v1 -- the name is allowed as an
-        ad-hoc subdir (the same name regex), but the design.md
-        2026-05-14 row warns against this convention-wise.
+      * Deeper than that -- inside a calculation's folder, whose stages
+        and runs are molbuilder's (`execution/project-layout.md` § 1) --
+        the name is allowed as an ad-hoc subdir (the same name regex).
 
     "Depth inside projects/" is computed relative to whichever root
     surfaced the parent path -- the picker's single root from

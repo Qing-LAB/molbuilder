@@ -977,11 +977,11 @@ def _read_relaxed_result(path):
     from molbuilder.runs import (OrderUnstated, RunStepsError, openable,
                                  run_of, steps_of)
     run = run_of(path)
-    if run is not None and run.stage is not None:
+    if run is not None:
         output, _trail = openable(run.folder)
         if output is None:
             raise ValueError(f"{run.folder} holds no output of the run "
-                             f"{run.basename} that a parser reads")
+                             f"{run.names.stem} that a parser reads")
         from molbuilder.atom_permutation import PermutationError
         from molbuilder.deck_record import DeckRecordUnreadable
         try:

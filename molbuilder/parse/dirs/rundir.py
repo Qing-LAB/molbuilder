@@ -10,6 +10,7 @@ run door's (`molbuilder.runs`, floor 2), which asks these with what it read.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 
@@ -52,7 +53,7 @@ def openable_in(directory: str, calculation: Optional[str] = None
     ``calculation`` is the kind, when the caller knows it from the
     description (`runs.place_of`); the roles a calculation produces come
     first then (`runfiles.result_roles`).  A run of OURS is opened by the
-    run door instead (`runs.folder_answer`): its speaking run's own file,
+    run door instead (`runs.folder_answer`): its run's own file,
     read back with its label -- this floor knows no label, so it can only
     ask by a dotted role, and among one role's files it can only take the
     newest.
@@ -96,28 +97,39 @@ def openable_in(directory: str, calculation: Optional[str] = None
 def run_state_of(directory, names, run=None, launched_in=None):
     """The run's state through the one door (`job.run_status`), asked with
     its launch record (`runrecord.launch_record`) as every reader asks it --
-    the stage's newest run's, named by its stage's names
+    the run's newest try's, named by its stage's names
     (`runfiles.RunNames`).  A launch record that does not read is the state
     ``unreadable``, the file named in its detail -- never read as launched
     or not launched, and never followed.
     The run door (`runs`) asks it, with the run's names; ``run`` asks about
-    that run, by default the stage's newest.  ``launched_in`` is the folder
-    the launch record lies in when it is not ``directory``: a run of points'
-    one record, in the run's folder, answers for each point in it
+    that try, by default the run's newest.  ``launched_in`` is the folder
+    the launch record lies in, ``directory`` itself by default: a run of
+    points' one record, in the run's folder, answers for each point in it
     (`engines/transport.md` § 2a.11), and the scheduler's file it names is
-    named from there (`running-a-job.md` § 4.2)."""
+    named from there (`running-a-job.md` § 4.2) -- settled once here, and
+    handed to `run_status` as it is."""
     from molbuilder.runrecord import LaunchRecordError, launch_record, newest_run
     from .job import RunStatus, run_status
+    if launched_in is None:
+        launched_in = directory
     try:
         # ONE RUN, by the one rule (`runrecord.newest_run`), asked of its
         # launch record and of its files alike.
         run = run if run is not None else newest_run(directory, names)
-        launch = (launch_record(launched_in, names) if launched_in is not None
-                  else launch_record(directory, names, run))
+        launch = launch_record(launched_in)
     except LaunchRecordError as e:
         return RunStatus(state="unreadable", detail=str(e))
-    return run_status(directory, names.stem, launch=launch, run=run,
-                      launched_in=launched_in)
+    try:
+        return run_status(directory, names.stem, launch=launch, run=run,
+                          launched_in=launched_in)
+    except LaunchRecordError as e:
+        # A RECORD THAT READS, ONE OF WHOSE VALUES DOES NOT -- the wall it
+        # was sent with (`runrecord.sent_wall_s`): the same state, the file
+        # named (`project-layout.md` § 1.6.3).
+        from molbuilder.runfiles import LAUNCH_RECORD_FILE
+        return RunStatus(state="unreadable",
+                         detail=f"{Path(launched_in) / LAUNCH_RECORD_FILE}: "
+                                f"{e}")
 
 
 __all__ = ["claimed", "openable_in", "run_state_of"]

@@ -71,7 +71,7 @@ def calc_dir(isolated_projects_root_module):
                                  calculation="optimization"),
             encoding="utf-8")
         write_task(d, Task(
-            engine="siesta", shape="flat", calculation="optimization",
+            engine="siesta", calculation="optimization",
             run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
             varies=("kgrid",),
@@ -231,7 +231,7 @@ def bool_column_dir(isolated_projects_root_module):
                                  calculation="optimization"),
             encoding="utf-8")
         write_task(d, Task(
-            engine="siesta", shape="flat", calculation="optimization",
+            engine="siesta", calculation="optimization",
             run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
             varies=("write_coor_xmol",),
@@ -295,8 +295,7 @@ def out_of_set_dir(isolated_projects_root_module):
                              engine="siesta", calculation="vibration"),
         encoding="utf-8")
     write_task(d, Task(
-        engine="siesta", shape="hierarchical",
-        run=derive_run("probe", stage_names=("freq",)),
+        engine="siesta", run=derive_run("probe", stage_names=("freq",)),
         structure=StructureRef(source="probe.source.xyz"),
         calculation="vibration", varies=("relax_type",),
         stages=(Stage(name="freq", overrides={"relax_type": "none"}),)))

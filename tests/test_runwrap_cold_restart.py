@@ -27,78 +27,101 @@ known clean state without having to manually ``rm`` the files.
 """
 from __future__ import annotations
 
+import pytest
+
 
 # The engine/conda stubs this suite needs are `conftest.py`'s
 # `product_toolchain_is_the_suites_own` -- ONE home.
 
 
-def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
+def test_the_exception_is_anchored_on_the_label_not_widened_to_a_star():
     """§ 4.1's exception must name OUR files, not every file of that shape.
 
     ``--cold``'s "except what molbuilder wrote" list is derived from the one
     enumeration, ``identity.OUR_FILE_PATTERNS`` (E-1, 2026-08-13).  How it is
-    READ is the thing this pins: each pattern's ``{label}`` becomes the run's
-    actual id, never ``*``.
+    READ is the thing this pins: each pattern's ``{label}`` becomes the
+    run's label, never ``*``.
 
     **The widening was defended as harmless and was not.**  It read
     ``{label}`` -> ``*`` until 2026-08-17, on the argument that the sweep's own
-    globs already anchor on the id — which says the widening cannot make the
-    sweep visit MORE files, and says nothing about the exception matching more
-    of them.  It held only while every pattern ended in a suffix nobody but
-    molbuilder writes.  ``{label}.xyz`` joined the list on 2026-08-16 (so
-    ``prep`` would stop calling a hand-over's input structure an engine
-    leftover) and widened to ``*.xyz``, which claimed PySCF's
-    ``<JOB>_optimized.xyz`` — warm state, and the whole reason ``--cold``
-    exists.
+    globs already anchor on the label -- which says the widening cannot make
+    the sweep visit MORE files, and says nothing about the exception matching
+    more of them.  It held only while every pattern ended in a suffix nobody
+    but molbuilder writes.  ``{label}.xyz`` joined the list on 2026-08-16 and
+    widened to ``*.xyz``, which claimed PySCF's ``<JOB>_optimized.xyz`` --
+    warm state, and the whole reason ``--cold`` exists.
 
     So this guards the CLASS rather than that one file: the next shared suffix
-    added to ``OUR_FILE_PATTERNS`` for the other reader's sake must not quietly
-    re-open it.  One glob is exempt by design and named here — ``*.psml`` is
+    added to ``OUR_FILE_PATTERNS`` for another reader's sake must not quietly
+    re-open it -- no engine file of today's shows it, so the rendered arm is
+    read.  One glob is exempt by design and named here -- ``*.psml`` is
     element-named, not run-named.
     """
     from molbuilder.runwrap import _cold_restart_block
 
-    block = _cold_restart_block("myjob", label="myjob")
+    block = _cold_restart_block("myjob")
     # THE EXCEPTION ARM: the one holding molbuilder's own names, `*.psml`
-    # among them -- the sweep's other arms keep a run's and another
-    # stage's files, and are not exceptions by name shape.
+    # among them.
     line = [l for l in block.splitlines()
             if l.strip().endswith(") continue ;;") and "*.psml" in l]
     assert len(line) == 1, "the exception case arm moved or multiplied"
     pats = line[0].strip()[:-len(") continue ;;")].split("|")
-
-    bare = sorted(p for p in pats if p.startswith("*"))
-    assert bare == ["*.psml"], (
-        f"an exception is anchored on nothing but a suffix: {bare}.\n"
-        f"A pattern that starts with `*` protects every file of that shape "
-        f"from --cold, including the engine output the sweep exists to move. "
-        f"Anchor it on the run's id -- `\"$_warm_label\"` and the basename.")
-
-    # ...and both spellings are present, because the sweep visits both.
-    assert any("_warm_label" in p for p in pats)
-    assert any(p.startswith("myjob") for p in pats)
+    loose = sorted(p for p in pats
+                   if p != "*.psml" and not p.startswith('"$_warm_label"'))
+    assert loose == [], (
+        f"an exception is not anchored on the label: {loose}.\n"
+        f"A pattern that does not start with the label protects every file "
+        f"of that shape from --cold, including the engine output the sweep "
+        f"exists to remove.")
 
 
-def test_a_flat_cold_launch_again_keeps_every_run_and_every_other_stage(
-        tmp_path):
-    """`job-system.md`, *What molbuilder does for you*, 2 -- every run is
-    kept: on the flat layout every stage and run shares one folder, and a
-    stage launched again ``--cold`` (launch passes ``--force``) sweeps the
-    warm state its deck would read -- the label's own files -- and nothing
-    a run or another stage owns: a run's numbered files, another stage's
-    token-named ones.  Run as bash, since which names a ``case`` arm takes
-    is the shell's answer, not the text's.
+#: `job-contracts.md` § 4.1, `project-layout.md` § 1.6.7 -- the run script's
+#: own ``--cold`` in a run's folder (``--force`` saying yes), each row the
+#: label, what the folder holds that the sweep removes, and what it keeps.
+#: The sweep visits the label's names (``<label>.*``, ``<label>_*``) and
+#: removes all of them but the files molbuilder wrote -- a try's numbered
+#: files among them -- whatever the engine.
+_SWEEPS = [
+    pytest.param(
+        "H2",
+        ["H2_optimized.xyz", "H2.chk", "H2.XV", "H2.never-listed"],
+        ["H2_01_coarse.py", "H2_01_coarse-run0.out",
+         "H2_01_coarse-run0.monitor.log", "H2_01_coarse-run17.monitor.log",
+         "H2_01_coarse-run0.util.csv"],
+        id="the label's warm state removed, a file nobody listed among it; "
+           "molbuilder's deck and every try's files kept"),
+    pytest.param(
+        "Au-run2",
+        ["Au-run2.DM", "Au-run2.XV"],
+        ["Au-run2_01_coarse.fdf", "Au-run2_01_coarse-run0.out"],
+        id="a label ending in -run<N> has its warm files removed, never "
+           "taken for a try's"),
+    pytest.param(
+        "H",
+        ["H.DM"],
+        ["H.psml", "H_01_coarse.fdf"],
+        id="a label that is an element's symbol keeps its pseudopotential"),
+]
 
-    API-LEVEL: the generated sweep, run on files a flat folder holds."""
+
+@pytest.mark.parametrize("label,removed,kept", _SWEEPS)
+def test_a_cold_start_sweeps_the_warm_state_and_keeps_every_try(
+        tmp_path, label, removed, kept):
+    """The rendered sweep, run as bash on the files a run's folder holds,
+    since which names a ``case`` arm takes is the shell's answer, not the
+    text's.
+
+    API-LEVEL: the generated sweep, run on files a run's folder holds.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the exception arm (molbuilder's own
+    names, `identity.OUR_FILE_PATTERNS`) gone -- the deck removed; a
+    `-run*` row dropped from that enumeration -- a try's monitor file
+    removed; an arm keeping every name holding ``-run<N>`` -- ``Au-run2``'s
+    warm state kept; ``*.psml`` dropped from the arm."""
     import subprocess
     from molbuilder.runwrap import _cold_restart_block
-    block = _cold_restart_block("H2_01_coarse", label="H2")
-    warm = ["H2_optimized.xyz", "H2.chk"]
-    kept = ["H2_01_coarse-run0_geom_optim.xyz",      # an earlier run's own
-            "H2_02_medium-run0_geom_optim.xyz",       # another stage's run
-            "H2_02_medium_scratch.dat",               # another stage's file
-            "H2_01_coarse.py", "H2_01_coarse-run0.out"]   # molbuilder's
-    for name in warm + kept:
+    block = _cold_restart_block(label)
+    for name in removed + kept:
         (tmp_path / name).write_text("x")
     r = subprocess.run(["bash", "-c", "_cold=1\n_force=1\n" + block],
                        cwd=tmp_path, capture_output=True, text=True)

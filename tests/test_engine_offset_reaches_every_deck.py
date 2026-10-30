@@ -84,7 +84,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
         dest = root / "t" / f"calc{n}"
     D.write_description(
         D.build_description(struct, cfg, stages, engine=engine,
-                            shape="hierarchical", name=name,
+                            name=name,
                             calculation=calculation,
                             source=str(root / "in.xyz")),
         dest, struct=struct)       # as `molbuilder describe` does: the pair travels

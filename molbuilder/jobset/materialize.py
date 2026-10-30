@@ -2,20 +2,16 @@
 directories (docs/execution/job-system.md; naming: job-contracts § 6.3).
 
 Filesystem ONLY: it knows nothing about schedulers or engines.  For each
-job it creates the directory :func:`job_dir_names` assigns (a stage's
-``<NN>_<name>/``, a trial's ``<NN>_<name>/bench/bench-<point>/``) and
-copies in, as real files, the static ``shared`` package plus the job's own
-``script`` (`project-layout.md` § 1.0: a run directory holds everything it
-runs from).
+job it creates the folder `naming.job_dir_names` assigns -- a stage's
+``<NN>_<name>/``; a trial's run, ``<NN>_<name>/bench/bench-<point>/run-0/``,
+by the one opener (:func:`open_run`) -- and copies in, as real files, the
+static ``shared`` package (`project-layout.md` § 1.0: a run directory holds
+everything it runs from); a deck is rendered into its folder by prep.
 """
 
 from __future__ import annotations
 
 from .model import KIND_SWEEP
-
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:                      # annotations only
-    from ..runfiles import RunNames
 
 import os
 from dataclasses import dataclass
@@ -23,57 +19,18 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .. import calcdirs, runrecord
-from ..pseudos import PSEUDO_DIRNAME
 from ..identity import resolve_stage_ref
-from ..runfiles import FIRST_ATTEMPT
 from .model import JobSet, warm_carry
 from .naming import (job_dir_names, ladder_homes, open_container, run_names,
                      stage_refs, stamp_containers)
-from ..paths import (attempt_dir, attempt_index, attempts_in,
+from ..paths import (FIRST_ATTEMPT, attempt_dir, attempt_index, attempts_in,
                      bench_containers_in as _bench_containers_in)
 
-def trial_work_dir(container, shape, names: "RunNames") -> Path:
-    """Where a trial's files GO, given the directory it lives in.
-
-    `naming.trial_dir` (via `naming.job_dir_names`) answers *where does this
-    trial live*; this answers *where does prep put its deck and package*,
-    and the two differ the moment a trial keeps attempts
-    (`project-layout.md` § 1.5a):
-
-    * **hierarchical** — the attempt, ``bench-<point>/run-<n>``;
-    * **flat** — the container itself, because flat has no directory layer
-      to open.
-
-    **It takes the container rather than recomputing it**, so it cannot
-    diverge from :func:`job_dir_names`.
-
-    `resolve_attempt` is the rule, not restated: reuse the last attempt
-    until it has been launched, then open the next -- a benchmark's sweep is
-    prepared once (`job-system.md` § 5.0), so its prep finds ``run-0``.
-
-    **The read-side twin is :func:`run_dir`** — *where does this trial
-    actually run*, which needs no shape because by then the directory is
-    there to be found.  Both resolve to the newest attempt, and that is the
-    invariant: if they ever disagree, prep writes where nothing reads.
-    """
-    d = Path(container)
-    if shape is None or not shape.keeps_attempts_as_directories:
-        return d
-    # NOTHING IS MADE HERE: a container not there yet holds no attempt
-    # (`paths.attempts_in`), and the plan makes the folder when it is
-    # written.
-    attempt, _fresh = resolve_attempt(d, names)
-    return attempt
-
-
 def sweep_set_dirs(bundle) -> "List[Path]":
-    """Every folder a SWEEP's plan can lie in, in this bundle -- the bench
-    containers the layout declares (`paths.bench_containers_in`), in order.
-
-    The search counterpart of :func:`bench_container`, and it lives beside it
-    for that reason: the namer says where a sweep's state GOES and this says
-    where to look for it, so a layout change moves one file instead of two
-    that must be kept in step by hand.  Whether a folder holds a plan, and
+    """Every folder a SWEEP's plan can lie in, in this calculation -- the
+    bench containers the layout declares (`paths.bench_containers_in`, the
+    search counterpart of `paths.bench_container`, which names where a
+    sweep's state goes), in order.  Whether a folder holds a plan, and
     whether it is a sweep's, is the plan's door's answer (`JobSet.of`,
     `architecture.md` A16); nothing is read here.
     """
@@ -84,7 +41,7 @@ def sweep_set_dirs(bundle) -> "List[Path]":
 def bench_stage_of(folder) -> "Optional[str]":
     """The stage a sweep measures, by its name -- read off where the sweep
     lives (`calcdirs.where`): the benchmark ``folder`` is, or the one its
-    trial is in, in either layout.  A refusal or a status names the stage's
+    trial is in.  A refusal or a status names the stage's
     own verbs with it, never a ``<stage>``.  ``None`` for a sweep in no
     stage's benchmark -- a hand-built one."""
     from ..identity import command_stage
@@ -97,8 +54,8 @@ def bench_stage_of(folder) -> "Optional[str]":
 
 def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
     """``(calculation folder, stage name)`` when ``folder`` IS a stage's
-    benchmark -- the flat ``bench_<NN>_<stage>`` or the hierarchy's
-    ``<NN>_<stage>/bench``, by where it is (`calcdirs.where`) -- else
+    benchmark -- ``<NN>_<stage>/bench``, by where it is (`calcdirs.where`) --
+    else
     ``None``.  A sweep's own job-set names its trials from the calculation,
     so a reader standing in its container reads them from there."""
     from ..identity import command_stage
@@ -111,11 +68,10 @@ def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
 @dataclass(frozen=True)
 class ScratchFile:
     """One file of an engine's scratch a calculation's runs hold -- its
-    stage (``None`` on the flat layout, where the stages share one folder),
-    where it lies, its size in bytes, and the run it lies in
-    (`paths.run_folder_of`; ``None`` on the flat layout, where the runs
-    share the folder)."""
-    stage: Optional[str]
+    stage, where it lies, its size in bytes, and the run it lies in
+    (`paths.run_folder_of`; ``None`` for a file in a stage's folder, outside
+    its runs)."""
+    stage: str
     path: Path
     size: int
     run: Optional[Path] = None
@@ -125,8 +81,7 @@ def scratch_in(calc) -> List[ScratchFile]:
     """AN ENGINE'S SCRATCH a calculation's runs hold (`job-system.md`
     § 5.3, *scratch*): every file the one answer names scratch
     (`warmfiles.is_scratch`, which the checkpoint asks too) below each
-    stage's folder -- on the flat layout the calculation's own -- the
-    stores and every dot-folder left out.  What `jobset scratch` lists and
+    stage's folder, the stores and every dot-folder left out.  What `jobset scratch` lists and
     empties; it reads names and sizes, never a file, and a file gone while
     it looks is passed over."""
     from ..paths import run_folder_of
@@ -143,8 +98,6 @@ def scratch_in(calc) -> List[ScratchFile]:
                         yield path, path.stat().st_size
                     except FileNotFoundError:
                         continue
-    if not calc.shape.keeps_attempts_as_directories:
-        return [ScratchFile(None, p, size) for p, size in under(base)]
     found = []
     for home in ladder_homes(base, calc.task):
         if home.dir is None or not home.dir.is_dir():
@@ -157,7 +110,7 @@ def scratch_in(calc) -> List[ScratchFile]:
 
 
 def materialize(jobset: JobSet, base_dir, plan=None, *,
-                shape, only=None) -> List[Path]:
+                only=None) -> List[Path]:
     """Create each job's directory under ``base_dir`` with its copies --
     the jobs named in ``only`` (a set of job names), or every job.
 
@@ -169,8 +122,7 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
     ``plan`` (`jobset.planned.Plan`) receives the folders and copies instead
     of the disk, and is read for the files it already holds -- `prep`
     decides everything before it writes (`job-system.md` § 5.0); without one
-    they are written now.  ``shape`` is the layout as the caller read it
-    (`Shape.named(task.shape)`, the one door; A16).
+    they are written now.
     """
     errors = jobset.validate()
     if errors:
@@ -182,36 +134,19 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
     plan = Plan() if own else plan
     base = Path(base_dir)
     created: List[Path] = []
-    sh = shape
-    dirs = job_dir_names(jobset, sh)
+    dirs = job_dir_names(jobset)
     for job in jobset.jobs:
         if only is not None and job.name not in only:
             continue
-        # A TRIAL KEEPS ATTEMPTS EXACTLY AS A STAGE DOES, and the shape
-        # decides (`project-layout.md` § 1.5a).  `trial_work_dir` is the
-        # one answer to *where do this trial's files go*, and `prep` asks
-        # the same one.
+        # A TRIAL RUNS IN ITS RUN, ``bench-<point>/run-0`` -- a benchmark
+        # is prepared once and each trial launched once (`project-layout.md`
+        # § 1.5a), opened by the one opener.
         d = base / dirs[job.name]
         if jobset.kind == KIND_SWEEP:
-            # A TRIAL'S FOLDER IS A RUN's, opened by the one opener.
-            d = open_run(base, trial_work_dir(d, sh,
-                                              run_names(jobset, job, sh)),
-                         plan)
+            d = open_run(base, trial_run(d), plan)
         else:
             plan.folder(d)
         created.append(d)
-        if d.resolve() == base.resolve():
-            # FLAT: depth 1 (`project-layout.md` § 1) -- the job runs in the
-            # bundle root, where every file it needs ALREADY SITS, and flat's
-            # warm files are ONE SHARED SET there (§ 1) -- except the
-            # pseudopotentials: they live in `pseudos/`, and SIESTA
-            # opens `<element>.psml` in the directory it runs from and has no
-            # search path.
-            for _ps in plan.glob(base / PSEUDO_DIRNAME, "*.psml"):
-                _dst = d / _ps.name
-                if not plan.is_file(_dst):
-                    plan.copy(_ps, _dst)
-            continue
         # The static package arrives as REAL COPIES (user, 2026-08-24;
         # `project-layout.md` § 1.0: the run directory "holds everything",
         # and a symlink holds nothing).  The deck is not in this list: it is
@@ -232,19 +167,20 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
 
 
 # --------------------------------------------------------------------- #
-#  Attempts — one directory per try at a stage (project-layout.md § 1.6)  #
+#  Runs -- a folder per launch of a stage or a trial, ``run-<n>/``        #
+#  (``attempt`` in the code; project-layout.md § 1.6.1)                  #
 # --------------------------------------------------------------------- #
 
 
 def latest_attempt(stage_dir: Path) -> Optional[Path]:
-    """The newest attempt under ``stage_dir``, or ``None`` if there are none.
+    """The newest run under ``stage_dir``, or ``None`` if there are none.
 
-    **Where a stage's state actually is.** `project-layout.md` § 1.5 is flat
-    about it — *"Where a run happens: inside the attempt directory"* — and
-    *"everything the run writes"* is *"created in place"*, because the wrapper
-    is invoked there. So anything asking *what happened to this stage?* asks
-    here first, and only falls back to the container for a flat run, which
-    § 1.5 says is untouched and *"is a run"* in its own right.
+    **Where a stage's or a trial's state actually is.**
+    `project-layout.md` § 1.5, *Where a run happens*: inside the run
+    directory, where everything the run writes is created in place, because
+    the wrapper is invoked there.  So anything asking *what happened to this
+    stage?* asks here (§ 1.5a: every reader asks this one function), and
+    ``None`` -- no run opened -- is said as the stage not prepared.
 
     This is a layout question, so it is answered in the layout layer rather
     than by each observer working out where to look.
@@ -266,93 +202,82 @@ def newest_on_label(stage_dir: Path, role: str
     return attempt, on_label_at(attempt, role)
 
 
-def run_dir(container: Path) -> Path:
-    """**The directory a stage or trial actually uses** — its newest attempt
-    when the shape keeps them, the container itself when it does not.
+def newest_launched(container: Path) -> Optional[Path]:
+    """THE NEWEST LAUNCHED RUN of the stage or the trial in ``container`` --
+    the newest ``run-<n>`` when its launch record is there, else the one
+    before it -- or ``None`` before its first launch.  THE ONE RULE every
+    question of *launched* asks (whether it ever was, which run a launch
+    again continues, whether its newest run is still open to fill): only
+    the newest run can be unlaunched -- prep's, or one a refused send opened
+    -- since a run is opened only when the one before it was launched
+    (`project-layout.md` § 1.6.2).  A record that does not read raises, as
+    the one door does (`runrecord.launch_record`)."""
+    ns = attempts_in(container)
+    if not ns:
+        return None
+    last = attempt_dir(container, ns[-1])
+    if runrecord.launch_record(last) is not None:
+        return last
+    return attempt_dir(container, ns[-2]) if len(ns) > 1 else None
 
-    THE OTHER HALF OF :func:`latest_attempt`, which answers *is there an
-    attempt* and is right to return ``None`` for flat.  Almost every caller
-    wants *where do I look*, and this answers it in the layout layer.
 
-    Keep using `latest_attempt` where ``None`` is the ANSWER (has this been
-    prepared at all?); use this where a path is wanted.
+def trial_run(trial: Path) -> Path:
+    """A TRIAL'S ONE RUN, ``bench-<point>/run-0``, of its folder ``trial``
+    -- a trial is prepared once and launched once (`project-layout.md`
+    § 1.5a)."""
+    return attempt_dir(Path(trial), FIRST_ATTEMPT)
 
-    **The write-side twin is :func:`trial_work_dir`** — *where does prep PUT
-    this trial's files*, which takes the shape because it runs before the
-    directory exists and may have to open one.  The two agree by
-    construction and must keep agreeing: prep uses (or opens) the newest
-    attempt, and this finds the newest.  If either ever picks a different
-    one, prep writes where nothing reads.
+
+def opened_by_refused_send(run) -> bool:
+    """Whether ``run`` -- a run not launched, a folder or its name -- was
+    opened by a launch whose send was refused: any run but a stage's first,
+    which prep opens; a later one is opened only by a launch
+    (:func:`newest_launched`; `project-layout.md` § 1.6.2)."""
+    return bool(attempt_index(Path(run).name))
+
+
+def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
+    """The run to prepare into, and whether it is a fresh one.
+
+    The newest run is REUSED when it has not been launched -- the one prep
+    opened, which `launch` then runs -- and the next is opened only when it
+    has (:func:`newest_launched`): what a launch of a stage again opens
+    (`job-system.md` § 5.4).  A record that does not read raises, as the
+    one door does.
     """
-    return latest_attempt(container) or Path(container)
-
-
-def resolve_attempt(stage_dir: Path, names: "RunNames") -> Tuple[Path, bool]:
-    """The attempt directory to prepare into, and whether it is a fresh one.
-
-    The last attempt is REUSED when it has not been launched -- the one prep
-    opened, which `launch` then runs -- and a new one is opened only when the
-    last has: what a launch of a stage again opens (`job-system.md` § 5.4).
-    That makes the numbering mean something: every ``run-<n>`` on disk but
-    the newest was actually started.  ``names`` are the stage's
-    (:func:`run_names`), which name its launch record.
-    """
-    existing = attempts_in(stage_dir)
-    if existing:
-        last = attempt_dir(stage_dir, existing[-1])
-        try:
-            launched = runrecord.launch_record(last, names) is not None
-        except runrecord.LaunchRecordError as e:
-            from .errors import PrepError
-            raise PrepError(str(e)) from e
-        if not launched:
-            return last, False
-        return attempt_dir(stage_dir, existing[-1] + 1), True
-    return attempt_dir(stage_dir, FIRST_ATTEMPT), True
+    last = latest_attempt(stage_dir)
+    if last is None:
+        return attempt_dir(stage_dir, FIRST_ATTEMPT), True
+    if newest_launched(stage_dir) != last:
+        return last, False
+    return attempt_dir(stage_dir, attempt_index(last.name) + 1), True
 
 
 def ever_launched(calc, job) -> bool:
-    """Whether ``job``'s stage has been launched -- any run of it
-    (`project-layout.md` § 1.6.1): where its runs are folders, every
-    ``run-<n>`` but the newest was, and the newest when its launch record
-    says so (:func:`resolve_attempt`'s rule); where its runs share a
-    folder, its newest launched run's record.  ``calc`` is the calculation
-    as the verb read it (A16): its plan and its shape.  A record that does
-    not read raises, as the one door does (`runrecord.launch_record`)."""
-    jobset, base, sh = calc.jobset, Path(calc.base), calc.shape
-    names = run_names(jobset, job, sh)
-    container = base / job_dir_names(jobset, sh)[job.name]
-    if not sh.keeps_attempts_as_directories:
-        return runrecord.launch_record(container, names) is not None
-    ns = attempts_in(container)
-    return len(ns) > 1 or (bool(ns) and runrecord.launch_record(
-        attempt_dir(container, ns[-1]), names) is not None)
+    """Whether ``job``'s stage has been launched -- a run of it was
+    (:func:`newest_launched`).  ``calc`` is the calculation as the verb read
+    it (A16): its plan.  A record that does not read raises, as the one
+    door does (`runrecord.launch_record`)."""
+    return newest_launched(
+        Path(calc.base) / job_dir_names(calc.jobset)[job.name]) is not None
 
 
 def newest_launch(calc, job) -> Optional[dict]:
-    """The launch record of ``job``'s newest LAUNCHED run -- where its runs
-    are folders, the newest ``run-<n>`` whose record is there; where they
-    share a folder, its newest launched run's -- or ``None`` before its
-    first launch.  A record that does not read raises, as the one door does
+    """The launch record of ``job``'s newest launched run
+    (:func:`newest_launched`), or ``None`` before its first launch.  A
+    record that does not read raises, as the one door does
     (`runrecord.launch_record`)."""
-    jobset, base, sh = calc.jobset, Path(calc.base), calc.shape
-    names = run_names(jobset, job, sh)
-    container = base / job_dir_names(jobset, sh)[job.name]
-    if not sh.keeps_attempts_as_directories:
-        return runrecord.launch_record(container, names)
-    for n in reversed(attempts_in(container)):
-        rec = runrecord.launch_record(attempt_dir(container, n), names)
-        if rec is not None:
-            return rec
-    return None
+    run = newest_launched(
+        Path(calc.base) / job_dir_names(calc.jobset)[job.name])
+    return runrecord.launch_record(run) if run is not None else None
 
 
 @dataclass(frozen=True)
 class Attempt:
-    """One try at a stage: the directory, and what was put in it -- the
-    stage's own files (``brought``) and what it continues from, one
-    hand-over (``hand``, ``None`` when it takes nothing).  ``fresh`` is
-    False when an unlaunched attempt was **reused** rather than opened
+    """One run of a stage (``run-<n>/``): its folder, and what was put in
+    it -- the stage's own files (``brought``) and what it continues from,
+    one hand-over (``hand``, ``None`` when it takes nothing).  ``fresh`` is
+    False when a run never launched was **reused** rather than opened
     (:func:`resolve_attempt`)."""
     stage:          str
     dir:            Path
@@ -366,21 +291,10 @@ class Attempt:
         return self.hand.names_taken if self.hand is not None else []
 
 
-#: Why ``--from`` and ``--cold`` mean nothing on the flat layout -- said by
-#: `continuation` before prep writes anything, and by `prepare_attempt`
-#: to a caller that asks it anyway.
-FLAT_HAS_NO_ATTEMPTS = (
-    "this calculation's shape is 'flat', which has no attempt directories "
-    "to open: each run carries the number launch gives it "
-    "(<label>_<NN>_<name>-run<N>.out) and every stage reads the files the "
-    "stage before it left in the one folder (project-layout.md § 1) -- so "
-    "there is no run to name with --from, and none to skip with --cold.")
-
-
 def open_run(base, run_dir, plan) -> Path:
     """THE ONE OPENER OF A RUN FOLDER (`project-layout.md` § 1.6.2): a
     stage's attempt (:func:`prepare_attempt`, a bias point's included) and a
-    benchmark trial's folder, in either shape.  It makes the folder and every
+    benchmark trial's run.  It makes the folder and every
     directory above it down from the calculation root, and says what each is
     (§ 1.4a, invariant 6b): each above a container, the run a run.  The root
     says itself, through its description, and gets no record.
@@ -389,8 +303,6 @@ def open_run(base, run_dir, plan) -> Path:
     copies.  Returns ``run_dir``."""
     base, run_dir = Path(base), Path(run_dir)
     plan.folder(run_dir)
-    if run_dir.resolve() == base.resolve():
-        return run_dir
     stamp_containers(base, run_dir.parents, plan)
     plan.text(*calcdirs.record(run_dir, role=calcdirs.RUN, root=base))
     return run_dir
@@ -467,12 +379,11 @@ def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     points take from upstream is the caller's (launch's gather), and what
     each starts from the walk's."""
     from .points import points_of
-    jobset, base, task, sh = (calc.jobset, Path(calc.base), calc.task,
-                              calc.shape)
+    jobset, base, task = calc.jobset, Path(calc.base), calc.task
     job = jobset.job(stage_name)
-    stage_dir = base / job_dir_names(jobset, sh)[job.name]
-    rn = run_names(jobset, job, sh)
-    run, fresh = resolve_attempt(stage_dir, rn)
+    stage_dir = base / job_dir_names(jobset)[job.name]
+    rn = run_names(jobset, job)
+    run, fresh = resolve_attempt(stage_dir)
     # THE RUNG'S PREPARED POINTS, by its kind's declaration (`jobset.points`),
     # its records as this plan holds them -- a prep composing the junction
     # in the same plan has not written its record yet -- each one whose deck
@@ -583,18 +494,15 @@ class HandOver:
     the continuation door, the gather door, a launch again keeping what its
     last run was given, the points' walk.
 
-    ``target`` is the run that takes -- an attempt, a point of a run of
-    points, or a flat calculation's folder -- named by its stage's
-    ``names`` as run ``run``; ``files`` each file it takes, with the run it
-    comes from; ``record`` which record says so: :data:`CONTINUED` -- the
-    one run it continues from, ``source`` (a taken-over point's is the run
-    that COMPUTED it, one hop, whatever folder its files are copied from)
-    -- or :data:`GATHERED`, each file with its run.  ``walk``: copied by the
-    walk just before the run starts (a point's start, which the point
-    before it may finish in the same walk), not with the plan."""
+    ``target`` is the run that takes -- a run, or a point of a run of
+    points; ``files`` each file it takes, with the run it comes from;
+    ``record`` which record says so: :data:`CONTINUED` -- the one run it
+    continues from, ``source`` (a taken-over point's is the run that
+    COMPUTED it, one hop, whatever folder its files are copied from) -- or
+    :data:`GATHERED`, each file with its run.  ``walk``: copied by the walk
+    just before the run starts (a point's start, which the point before it
+    may finish in the same walk), not with the plan."""
     target: Path
-    names: "RunNames"
-    run: int
     record: str
     files: Tuple[Tuple["runrecord.RunRef", str], ...] = ()
     source: Optional["runrecord.RunRef"] = None
@@ -614,16 +522,16 @@ class HandOver:
         """The files it takes, by name, in order."""
         return [name for _src, name in self.files]
 
-    def written_as_ended(self, base) -> Dict[str, str]:
+    def written_as_ended(self, base, label: str) -> Dict[str, str]:
         """THE FILES IT TAKES THAT WERE WRITTEN AS THEIR RUN ENDED
         (:func:`written_as_ended`, `running-a-job.md` § 3.6), each from the
-        folder it is taken from."""
+        folder it is taken from, whose logs are ``label``'s."""
         out: Dict[str, str] = {}
         by_folder: Dict[Path, List[str]] = {}
         for src, name in self.files:
             by_folder.setdefault(Path(src.path(base)), []).append(name)
         for folder, names in by_folder.items():
-            out.update(written_as_ended(folder, self.names.label, names))
+            out.update(written_as_ended(folder, label, names))
         return out
 
     def walk_copies(self, base, cwd) -> List[Tuple[str, str]]:
@@ -634,28 +542,21 @@ class HandOver:
                 for src, name in self.files]
 
 
-def written_as_ended(folder, label: str, files, *,
-                     run: Optional[str] = None) -> Dict[str, str]:
+def written_as_ended(folder, label: str, files) -> Dict[str, str]:
     """THE FILES WRITTEN AS THEIR RUN ENDED (`running-a-job.md` § 3.6):
     ``{name: why}`` for each of ``files`` in ``folder`` whose write time is
     at or after the second the run's monitor closed -- the monitor log's
     closing record (`parse/instruments/monitor.py`, ``ended_at``), read
     through the registry -- a file a scheduler's kill may have caught
-    mid-write.  The log is the newest of ``label``'s in the folder, or
-    ``run``'s own where a stage's runs share the folder (its name,
-    ``H2_01_coarse-run1``).  Empty where no monitor closed, or every file
-    was written before.  A fact shown, never a veto."""
+    mid-write.  The log is the newest try's of ``label``'s in the folder.
+    Empty where no monitor closed, or every file was written before.  A
+    fact shown, never a veto."""
     from datetime import datetime
     from .. import runfiles as _rf
     from ..parse import detect
     folder = Path(folder)
-    if run is not None:
-        rec = _rf.parse_run_name(run, label)
-        logs = (_rf.find(folder, label, role=".monitor.log", stage=rec.stage,
-                         run=rec.run) if rec is not None else [])
-    else:
-        logs = sorted(_rf.find(folder, label, role=".monitor.log"),
-                      key=lambda pr: (pr[1].run is None, pr[1].run or 0))
+    logs = sorted(_rf.find(folder, label, role=".monitor.log"),
+                  key=lambda pr: (pr[1].run is None, pr[1].run or 0))
     if not logs:
         return {}
     try:
@@ -687,8 +588,8 @@ def hand_over(base, h: HandOver, plan=None) -> List[str]:
     (`project-layout.md` § 1.6.5) -- unless the walk copies them
     (``h.walk``), and its record written beside the run
     (`runrecord.write_continued_from`, `write_gathered_from`).  Into
-    ``plan`` (`jobset.planned.Plan`); with none, now -- a flat run's
-    record, written with its launch record.  Returns the files copied."""
+    ``plan`` (`jobset.planned.Plan`); with none, now.  Returns the files
+    copied."""
     from .planned import Plan
     own = plan is None
     plan = Plan() if own else plan
@@ -698,8 +599,7 @@ def hand_over(base, h: HandOver, plan=None) -> List[str]:
             plan.copy(src.path(base) / name, Path(h.target) / name)
             copied.append(name)
     if h.record == CONTINUED:
-        runrecord.write_continued_from(h.target, h.source, names=h.names,
-                                       run=h.run, plan=plan)
+        runrecord.write_continued_from(h.target, h.source, plan=plan)
     else:
         runrecord.write_gathered_from(h.target, list(h.files), plan=plan)
     if own:
@@ -720,7 +620,7 @@ def prepare_attempt(calc, stage_name: str, *,
     and `launch` fills it as part of its own, written at the send; a caller
     with none has it written now.  ``calc`` is the calculation as the verb
     read it (A16): its plan -- the stage's row and the one it continues
-    from -- and its shape.
+    from.
 
     ``named`` says who chose ``continue_from``: the person, by ``--from``, or
     the launch, by default (`job-system.md` § 5.4) -- so a refusal quotes
@@ -756,10 +656,8 @@ def prepare_attempt(calc, stage_name: str, *,
     or a token — the same three spellings every other surface takes, and the
     same refusal when it matches none of them.
     """
-    jobset, base, sh = calc.jobset, Path(calc.base), calc.shape
-    if not sh.keeps_attempts_as_directories:
-        raise ValueError(FLAT_HAS_NO_ATTEMPTS)
-    dir_of = job_dir_names(jobset, sh)
+    jobset, base = calc.jobset, Path(calc.base)
+    dir_of = job_dir_names(jobset)
     refs = stage_refs(jobset)
     stage_name = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
                                    stage_name).name
@@ -777,8 +675,8 @@ def prepare_attempt(calc, stage_name: str, *,
     plan = Plan() if own else plan
     stage_dir = base / dir_of[stage_name]
     plan.folder(stage_dir)
-    rn = run_names(jobset, job, sh)
-    attempt, is_new = resolve_attempt(stage_dir, rn)
+    rn = run_names(jobset, job)
+    attempt, is_new = resolve_attempt(stage_dir)
     # AN ATTEMPT NEVER LAUNCHED, REUSED -- prepared again, or filled at the
     # launch after a refused send: what was put into it before is taken
     # out first, so it starts from what this one takes.  A changed mind
@@ -789,8 +687,7 @@ def prepare_attempt(calc, stage_name: str, *,
         empty_run(attempt, plan)
     # THE ONE OPENER (`open_run`): the attempt and every container down to
     # it, each saying what it is -- container or run, which no name says:
-    # the shape and whether a rung sweeps decide (`project-layout.md`
-    # § 1.4a).
+    # whether a rung sweeps decides (`project-layout.md` § 1.4a).
     open_run(base, attempt, plan)
     # THE RUN'S SCRATCH FOLDER, opened with the run (`engines/transport.md`
     # § 2a.11): the rung declares it (`Job.scratch_dir`).
@@ -804,12 +701,11 @@ def prepare_attempt(calc, stage_name: str, *,
     # run they came from, beside the run.
     hand = None
     if continue_from and not cold:
-        source = runrecord.RunRef.read(continue_from, shared=False)
+        source = runrecord.RunRef.read(continue_from)
         took = tuple((source, name) for name in names
                      if (source.path(base) / name).is_file())
         if took:
-            hand = HandOver(attempt, rn, FIRST_ATTEMPT, CONTINUED,
-                            files=took, source=source)
+            hand = HandOver(attempt, CONTINUED, files=took, source=source)
             hand_over(base, hand, plan)
     if own:
         plan.carry_out()
@@ -840,7 +736,7 @@ def continuation_files(calc, stage_name: str, continue_from: str, *,
     ``calc`` is the calculation as the verb read it (A16): the stage's row
     and the one the run came from are both its plan's.
     """
-    jobset, base, shape = calc.jobset, Path(calc.base), calc.shape
+    jobset, base = calc.jobset, Path(calc.base)
     said = (f"--from {continue_from!r}" if named else
             f"the run it continues from ({continue_from})")
     src = base / continue_from
@@ -855,7 +751,7 @@ def continuation_files(calc, stage_name: str, continue_from: str, *,
                          f"to carry its files.")
     # The pair, resolved here and nowhere else -- `--from` is what names
     # the source, so this is the first moment both stages are known.
-    dir_of = job_dir_names(jobset, shape)
+    dir_of = job_dir_names(jobset)
     names = (carry if carry is not None
              else warm_carry(job, _source_job(jobset, dir_of, continue_from)))
     if not names:
@@ -898,7 +794,7 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
 __all__ = [
     "Attempt", "CONTINUED", "GATHERED", "HandOver", "hand_over",
     "bench_owner", "bench_stage_of", "scratch_in", "ScratchFile",
-    "trial_work_dir", "materialize", "latest_attempt", "run_dir",
+    "materialize", "latest_attempt", "newest_launched", "newest_launch",
     "resolve_attempt", "ever_launched", "empty_run",
     "empty_old_points", "prepare_attempt", "open_sweep_run",
     "open_run",

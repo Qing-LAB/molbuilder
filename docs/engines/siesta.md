@@ -188,7 +188,7 @@ and memory too (`--domain`, `--time`, `--mem`):
 
 ```bash
 molbuilder describe --structure P/structure/hemeC.xyz --bundle P/optimization/hemeC \
-    --engine siesta --calculation optimization --shape flat --psml-lib pseudopotential
+    --engine siesta --calculation optimization --psml-lib pseudopotential
 molbuilder jobset prep task --group 1 --bundle P/optimization/hemeC --target this \
     --np 4 --cpus-per-task 1
 ```
@@ -782,13 +782,9 @@ tab can render the structure before SIESTA produces any output. The `.molwatch.l
 format itself is engine-agnostic and specified in `pyscf.md`.
 
 **A stage's log is named for the deck that produced it** —
-`<label>_<NN>_<stage>.molwatch.log` beside `<label>_<NN>_<stage>.fdf` — and
-where the stages share a directory, the flat shape, each run's own,
-`<label>_<NN>_<stage>-run<N>.molwatch.log`: prep seeds the first run's
-*(the run's number since 2026-10-06, plan W57 decision 2)*. One rule, derived
-from the deck rather than declared separately, which is what keeps a directory's
-stages separable — the filename is the separation, and the person picks one
-([`job-contracts.md § 2.3`](?doc=execution/job-contracts.md)); the table for every
+`<label>_<NN>_<stage>.molwatch.log` beside `<label>_<NN>_<stage>.fdf`, seeded
+by prep into the stage's first run. One rule, derived from the deck rather than
+declared separately; the table for every
 name in the system is [`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)
 and the reasoning is [`stages.md § 7`](?doc=engines/stages.md).
 

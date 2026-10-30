@@ -65,7 +65,7 @@ def sweep(isolated_projects_root, monkeypatch):
                             engine_ladder("siesta", "publishable"),
                             engine="siesta",
                             calculation="optimization",
-                            shape="hierarchical", name="JOB",
+                            name="JOB",
                             source=str(tree / "h2.xyz")),
         calc)
     from conftest import write_pseudos

@@ -280,12 +280,11 @@ If that sentence will not come, the honest answer is *unsure*, not *cut*.
    card showed one arbitrary node's cores`.
 
 ```python
-def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output():
-    """A rung with no output of its own must not report a sibling's state.
+def test_a_warm_retry_keeps_each_tries_history_apart():
+    """A warm retry must not append its steps to the try before it.
 
-    `project-layout.md` § 1: in flat, one directory holds every stage and the
-    token in the filename is what selects. Measured 2026-09-08 — without the
-    narrowing, a stage that had never run reported the newest stage's `.out`.
+    `job-contracts.md` § 2.2: SIESTA's history is named for the try, so a
+    retry's steps never land in the file the try before it wrote.
     """
 ```
 
@@ -521,9 +520,13 @@ a 404 (`test_negative_body_assert_lint.py`), runtime text written into the page
 as markup (`test_xss_audit.py`), the catalogue's facts disagreeing with the config
 classes that carry them through their loaders (`test_catalogue_agreement.py`),
 a catalogue item with no panel to sit in
-(`test_every_catalogue_item_declares_a_panel`), and the notebook shepherd's
+(`test_every_catalogue_item_declares_a_panel`), the notebook shepherd's
 stop grace overrunning the supervisor's
-(`test_the_shepherds_grace_stays_under_the_supervisors`). Three that read text until 2026-10-16 now ask the outcome or
+(`test_the_shepherds_grace_stays_under_the_supervisors`), and the run
+script's `--cold` exception widened from the label to every file of its shape
+(`test_the_exception_is_anchored_on_the_label_not_widened_to_a_star`) — no
+file a run leaves today shows it, since every engine file the sweep removes
+still matches no widened pattern, so the rendered arm is read. Three that read text until 2026-10-16 now ask the outcome or
 went to review: your `projects/` tree touched by the suite is watched while
 every test runs (the guard in `conftest.py`, § 2a); a vendored file shipped
 without its licence is asked of the built wheel

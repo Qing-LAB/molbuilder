@@ -293,31 +293,10 @@ def to_gpu(mf):
             "  and finishing on the CPU would make that announcement false.")
 
 
-#: A RUN'S NUMBER AS ITS RUN SCRIPT IS GIVEN IT (``--run N``): a whole
-#: number with no leading zero -- the one pattern the run script checks in
-#: bash (`runwrap._run_index_block`) and a PySCF script in Python
-#: (:func:`run_given`).
+#: A TRY'S NUMBER AS ITS RUN SCRIPT IS GIVEN IT (``--run N``): a whole
+#: number with no leading zero -- the one pattern the run script checks
+#: (`runwrap._run_index_block`).
 RUN_NUMBER = "0|[1-9][0-9]*"
-
-
-def run_given(argv=None) -> int:
-    """THIS RUN'S NUMBER, as its run script gave it -- ``--run N`` on the
-    script's command line (`engines/pyscf.md` § 2): the number `launch`
-    decided, which the files the script names for one run carry where its
-    stage's names say so (`runfiles.RunNames`, rendered into the script as
-    templates).  A script started without one stops on its first lines,
-    saying so -- never a number guessed (plan W57 decision 6)."""
-    import re
-    import sys
-    args = list(sys.argv[1:] if argv is None else argv)
-    for i, word in enumerate(args[:-1]):
-        n = args[i + 1]
-        if word == "--run" and re.fullmatch(RUN_NUMBER, n):
-            return int(n)
-    raise SystemExit(
-        "this script names its files with its run's number, --run N, which "
-        "its run script gives it -- 'molbuilder jobset launch' starts the "
-        "run script, and decides the number.")
 
 
 __all__ = [
@@ -328,7 +307,7 @@ __all__ = [
     "physical_core_count", "NODE_CORES_VAR", "JOB_STARTED_VAR", "WALL_VAR",
     "WALL_SLACK_VAR",
     "probe_gpu",
-    "RUN_NUMBER", "run_given",
+    "RUN_NUMBER",
     "runtime_facts",
     "threads_for",
     "to_gpu",

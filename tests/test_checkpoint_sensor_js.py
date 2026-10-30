@@ -161,7 +161,7 @@ def test_a_calculation_is_named_by_its_description_not_by_its_depth(
     (described / TASK_FILENAME).write_text(_json.dumps({
         "schema": "molbuilder/task@1",
         "engine": {"name": "siesta"},
-                   "calculation": "optimization", "shape": "flat",
+                   "calculation": "optimization", "shape": "hierarchical",
         "run": {"name": "JOB", "id": "JOB_H2"},
         "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
         "varies": [], "stages": [],

@@ -225,8 +225,7 @@ def test_the_seam_verdict_is_measured_and_said(n_layers, verdict, severity):
         SiestaConfig(system_label=label),
         **role_answers("siesta", "transport", "electrode_L"))
     spec = spec_for(lead, cfg, calculation="transport",
-                    names=RunNames.of(label, "02_electrode_L",
-                                      "hierarchical"))
+                    names=RunNames(label, "02_electrode_L"))
     said = [i for i in _sc.render_deck(spec, lead, cfg).findings
             if i.where == "lead.seam"]
     assert [(i.severity, i.message) for i in said] == [

@@ -1,8 +1,8 @@
 """Project directory layout: ``projects/<project>/<topic>/<calculation>/``.
 
 The hierarchy organises work scientifically; what is inside a calculation
-is ``execution/project-layout.md`` § 1's, flat or hierarchical
-(``docs/execution/job-contracts.md`` § 2.5).
+is ``execution/project-layout.md`` § 1's (``docs/execution/job-contracts.md``
+§ 2.5).
 
 Categories of work in this module:
 
@@ -54,8 +54,8 @@ CANONICAL_TOPICS: Tuple[str, ...] = (
     + ("user",))
 
 
-# Name-validation regex.  Same character set the job-layout v1 spec
-# requires for the basename (no dots, no slashes, no spaces).
+# Name-validation regex.  The label grammar's character set
+# (`job-contracts.md` § 2.1): no dots, no slashes, no spaces.
 _NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -389,8 +389,8 @@ def _project_root_readme(project: str) -> str:
         f"This project follows the molbuilder canonical hierarchy.  Each\n"
         f"subdirectory has a brief `README.md` explaining its purpose:\n\n"
         f"```\n{canonical_lines}\n```\n\n"
-        f"See `docs/execution/job-contracts.md` for the full job-layout v1\n"
-        f"convention that the run-topic subdirectories follow.\n"
+        f"See `docs/execution/project-layout.md` for the layout a\n"
+        f"calculation's folders follow.\n"
     )
 
 

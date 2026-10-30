@@ -65,7 +65,7 @@ chosen in § 6):
 
 ```bash
 molbuilder jobset prep task --group 1        # resolves this machine, renders the
-                                       # deck and wrapper, builds the attempt
+                                       # deck and wrapper, opens the run
 molbuilder jobset launch task --group 1
 ```
 
@@ -132,7 +132,9 @@ edited, the machine the calculation is set to, the queue and asks the job
 request names, the notify card's values, every card's rows. A card reads that
 state and nothing it drew before; a folder opened anew — a description, a
 hand-over, an empty folder, a refused one — draws every card from it, and a
-card with nothing to show for that folder is hidden.
+card with nothing to show for that folder is hidden. **Until the folder's
+answer has landed, Save is held**, said in the save bar: what the page holds
+then is the last folder's, and nothing of it is written into this one.
 
 **And every folder-scoped answer names the folder it is about.** A consumer
 that has moved on discards it rather than rendering it. This is
@@ -164,7 +166,7 @@ the tab neither uses nor duplicates it.
 | | asks | answers |
 |---|---|---|
 | `checkpoint.py::_is_bundle_root` | *does this path declare itself the root of one multi-directory unit of work?* | one boolean, over `task.json` **or** `job-set.json` — enough to decide the folder owns its subdirectories (`checkpointing.md` **L1**) |
-| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* (a transport folder is always the FIRST state: the composite describes directly and never produces a hand-over — its `task.json` arrives finished, and this page opens it as an ordinary description and edits it, its shape and its rungs fixed by the kind, § 5.3) | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `_is_bundle_root` does not make and has no reason to |
+| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* (a transport folder is always the FIRST state: the composite describes directly and never produces a hand-over — its `task.json` arrives finished, and this page opens it as an ordinary description and edits it, its rungs fixed by the kind, § 5.3) | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `_is_bundle_root` does not make and has no reason to |
 
 **The invariant that does bind them**, and it holds today: a folder this page
 treats as a described calculation is one the checkpoint system also covers.
@@ -254,46 +256,15 @@ than silent ([`run-identity.md § 3`](?doc=execution/run-identity.md)).
 
 ---
 
-## 4. Shape — asked, never guessed
+## 4. Shape — one layout, never asked
 
-`"flat"` or `"hierarchical"`, and the page cannot be saved until one is chosen.
-
-| | what it means |
-|---|---|
-| **flat** | one directory. Stages and attempts told apart by filename — `…_01_coarse-run0.out`. One shared set of warm files, so each stage overwrites the last |
-| **hierarchical** | a directory per stage, a directory per attempt — `01_coarse/run-0/`. Every stage's state stays on disk |
-
-**No default, on purpose.** Inferring it — from the stage count, or from what is
-already on disk — would hand somebody a directory tree they never asked for, and
-the trade it decides (what survives after three stages have run) is theirs to
-make ([`stages.md § 6.7`](?doc=engines/stages.md),
-[`project-layout.md § 1.2`](?doc=execution/project-layout.md)).
-
-**A kind that fixes the shape shows it fixed.** A transport calculation is
-hierarchical — its five rungs exchange files through their own attempts
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) — and so is a
-SIESTA vibration — its one run's SIESTA calls each run in a folder of their
-own ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 1) — so on
-their folders the card shows that shape, says why, and offers no other. The
-sentence is the kind's part's on the engine (its `why` in the kind table, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3): the description's own reader
-refuses another shape with it, so a Save that sends one is refused, 400, in
-the words the card shows. **A hand-over of such a kind** is answered the
-same, from the engine and kind it carries: the card starts at that shape —
-the proposal drawn as choosing it draws one — and the hand-over does not
-wait on a shape (`awaiting`).
-
-**It is fixed once the calculation has produced.** Before the first produce it is
-free to change; after, it would orphan every deck, output and warm file. So once
-a stage is prepared — as a run or as a benchmark; a prep that was refused counts
-for none — the card shows the shape fixed, and Save refuses another, both naming
-the way back: the state saved before the first prep, restored
-([`execution/job-system.md`](?doc=execution/job-system.md) § 5.0).
-
-**One answer says both**: `prep.shape_fixed` — the shape and why, the way back
-included, or nothing while it may still change. The folder answer carries it
-(`shape_fixed`) and Save refuses with it, so the card and the refusal say the
-same sentence. When the folder's plan is one its readers refuse, the card says
-that instead, and Save refuses another shape with the same words.
+**The page asks no shape.** There is one layout — a directory per stage, a
+directory per run, `01_coarse/run-0/`, every stage's state on disk
+([`project-layout.md § 1`](?doc=execution/project-layout.md)) — and Save
+writes it into `task.json` as `"shape": "hierarchical"`
+([`stages.md § 6.7`](?doc=engines/stages.md)). A description stating any
+other is refused by name by the description's reader, and the page says that
+refusal as it says any other of that reader's.
 
 ---
 
@@ -485,13 +456,11 @@ the Stages card has:
 | **words** | *each rung's own values over the template — set first on the Transport tab, changed here after Describe*, in place of the refinement sentence of § 9's *add a stage* |
 | **the window, fitted** | a calculation that reuses a finished one: under the table, the transmission's window **fitted to the finished grid** — the range asked and how many times finer, the fitted ends and count, and *use these*, which writes them on the transmission's row, adding their columns first as a preset does (`setRowValues`; `lib/transport/fit.js`, the one builder the Transport tab draws too; [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 
-What a kind fixes — its shape and its stages; a SIESTA vibration its shape
-alone — is one answer, the kind's part on the engine in the kind table ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), which the reader's check asks and
-the folder answer serves (`fixed`, `shape_fixed`); the page keeps no list. *(Measured 2026-10-11 on
+What a kind fixes — its stages — is one answer, the kind's part on the engine in the kind table ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), which the reader's check asks and
+the folder answer serves (`fixed`); the page keeps no list. *(Measured 2026-10-11 on
 `AuBDTAu/transport/transport_lowbias`: the card offered + Add stage, × on
-every rung, the refinement sentence and a picker naming no rung; the shape
-card offered Flat, which Save then refused; and the reader accepted a ladder
-with a rung removed.)*
+every rung, the refinement sentence and a picker naming no rung; and the
+reader accepted a ladder with a rung removed.)*
 
 ---
 
@@ -854,7 +823,7 @@ rung's *unset* (`null`, [`job-request.md`](?doc=execution/job-request.md)
 § 3.2) is written in the editor, and taken only for an item whose unset is an
 answer. **A card that
 writes the job request is drawn only once there is one** — on a hand-over, from
-the shape's proposal (§ 4) — so no edit is made into nothing.
+the hand-over's proposal (§ 9a) — so no edit is made into nothing.
 
 **A rung that differs says so on itself.** `execution` is both
 calculation-wide and per stage (`job-request.md` § 3.2), and the two compose field
@@ -890,7 +859,7 @@ from what it says — what is computed, or how it runs:
 | | goes to | why |
 |---|---|---|
 | a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
-| a column, its cells, the shape, the id | `task.json` | what *changes* |
+| a column, its cells, the id | `task.json` | what *changes* |
 | a stage's group | `job-request.json`'s `stages` | the job it runs in ([`job-request.md`](?doc=execution/job-request.md) § 3.3) |
 | a **measure**-card setting | `job-request.json`'s `bench` | the points to try. A one-point NON-machine entry is the trials' value, laid over theirs alone *(user rule, 2026-08-20; trials only since 2026-09-30)*; a machine axis is only ever a point to measure |
 | a **run**-card setting | `job-request.json`'s `execution` | **one value each** — what the run uses (`job-request.md` § 3.2). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (`job-request.md` § 3.2a, and the row below); every other catalogue item is a run setting over the item's default |
@@ -924,13 +893,14 @@ from what it says — what is computed, or how it runs:
 stage in that tab so that this information is confirmed and clear".)*
 
 Beside the five files above, this card lists — **one line per stage** —
-what `prep` will produce for it: the directory, and the allocation that
-directory's wrapper will carry.
+what `prep` will produce for it: the stage's directory, and the allocation its
+wrapper will carry; and a line per stage a benchmark measures, with the
+directory its trials land in.
 
 ```
-  01_coarse   run-0/           8 × 6 · htc · 1-00:00:00 · 128G
-  02_tight    run-0/          16 × 6 · htc · 2-00:00:00 · 128G
-  bench       bench_<token>/   4,8,16 × 1,2 · general · 0-00:30:00
+  coarse           01_coarse/         mpi_np=8 · omp_threads=6 · htc · 1-00:00:00 · 128G
+  tight            02_tight/          mpi_np=16 · omp_threads=6 · htc · 2-00:00:00 · 128G
+  bench · coarse   01_coarse/bench/   mpi_np 4,8,16 × omp_threads 1,2 · general · 0-00:30:00
 ```
 
 **Each stage's memory need stands under its ask** — the memory door's line
@@ -940,14 +910,13 @@ the card states no ranks
 ([`job-request.md`](?doc=execution/job-request.md) § 3.1a):
 
 ```
-  05_transmission   run-1/   64 × 1 · public · 0-12:00:00 · 48G
-                    memory need: at most 49.3G at 64 ranks -- held 12.31G at 16 ranks × 1 thread, 05_transmission/run-0 on sg013 (the kernel's counter, the job's; finished)
+  transmission   05_transmission/   mpi_np=64 · omp_threads=1 · public · 0-12:00:00 · 48G
+                 memory need: at most 49.3G at 64 ranks -- held 12.31G at 16 ranks × 1 thread, 05_transmission/run-0 on sg013 (the kernel's counter, the job's; finished)
 ```
 
 **It is a confirmation, not a second answer.** The names and the numbers come
-from the same producer `prep` runs — flat and hierarchical name directories
-differently (§ 4), and a page that composed them would be free to disagree with
-the thing it is describing. What it adds is that you see all of it at once,
+from the same producer `prep` runs, and a page that composed them would be
+free to disagree with the thing it is describing. What it adds is that you see all of it at once,
 before you copy a command, rather than one group at a time in § 11's tabs.
 
 ### 7.2 What this calculation writes *(user, 2026-09-07)*
@@ -964,7 +933,7 @@ distinction the names themselves draw (`job-contracts.md` § 2.3):
 |---|---|
 | **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger — the catalogue's calculation-level rows |
 | **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them |
-| **one per rung** | everything stemmed on that rung's token, in the directory the shape puts it in, **spelled as that shape spells it**: an attempt's `run.json` and `.continued-from` in the hierarchy, a run's own `<base>-run<N>.run.json`, `<base>-run<N>.continued-from` and `<base>-run<N>.molwatch.log` in the flat shape — the card names the first run's, `-run0` |
+| **one per rung** | everything stemmed on that rung's token, in the rung's directory and its first run's — the files a try numbers named for the first try, `-run0`. A run's own records carry fixed names, `run.json` and `.continued-from`, the same in every run: they are on no rung's card, and listed with the run's files in `project-layout.md` § 5.3 |
 
 **Each group folds** *(user, 2026-10-13: "the 'what this calculation writes'
 panel should have the organization of the files clear by foldable segments
@@ -981,15 +950,14 @@ because molbuilder writes it — the catalogue is `runfiles.WRITTEN`
 (`job-contracts.md` § 2.2), and the card is a reading of it.
 
 **Every name is composed, not spelled.** `/api/task-setup/prep-plan` calls
-`runfiles.manifest(label, stage, *, shape, engine, when, calculation)` — a
+`runfiles.manifest(label, stage, *, engine, when, calculation)` — a
 rung's card on the label its files carry, the rung's own stem
 (`naming.StageHome.label`: a transport lead's `<label>_L-electrode` /
 `<label>_R-electrode`, [`job-contracts.md`](?doc=execution/job-contracts.md)
 § 2.1 rule 2), the calculation's group on the calculation's label with no
 stage — and the browser only lays the answer out; the route keeps no list of its own *(a
 hand-kept list of the calculation's records stood beside the call until plan
-B13, 2026-10-04 — and the per-rung names came in the flat shape's spelling for
-a hierarchical calculation)*. That matters here more than anywhere: the card's whole use
+B13, 2026-10-04)*. That matters here more than anywhere: the card's whole use
 is that you can look for these files afterwards, so a name it invented would send
 you looking for something nothing wrote — which is exactly what four readers were
 doing about geomeTRIC's trajectory until the grammar was written down.
@@ -1051,7 +1019,7 @@ sequenceDiagram
       Prep-->>You: refused: preview again (nothing written)
     end
     Prep->>Disk: the state saved, then decks + wrappers + run-N/
-    Prep-->>You: the answer: notes, checks, attempt
+    Prep-->>You: the answer: notes, checks, the run opened
 ```
 
 **And the window is covered while any of it runs.** A card edit, the save, a
@@ -1191,6 +1159,12 @@ the door takes no write that cannot say what it is writing over. The page's
 own edits are what it sends; another writer's stay in the file until the page
 has read them.
 
+**A calculation its readers refuse is not written over** — a template holding
+a run setting, a plan written before a rule, each naming `jobset migrate`. The
+folder answer carries their words (`refused`); the page shows the folder
+refused in them, every card hidden and Save held, and a Save sent anyway is
+refused, `409`, in the same words, **no state saved and nothing written**.
+
 **What a stage that has run computes is not changed by Save** *(the user,
 2026-10-27: "if something is run, then save will simply refuse to save … you
 have to return to a checkpoint to reprep if that's what is needed")*. Save
@@ -1260,12 +1234,15 @@ has not been saved is said by the save bar (§ 7a). **A card never writes over t
 parse**: while the editor holds something that is not valid JSON — an edit in
 progress — a card's change is refused, said at the top of the page, and the
 text is left as typed — **and the card shows what the text says**, never the
-refused value: a control a refused edit changed is put back, the shape's
-buttons and the cards' fields alike. **A hand-over's proposal is built once,
-from the hand-over as the page holds it**: picking a shape proposes the
-records, and a shape changed after edits one field (§ 4); a buffer edited by
-hand is never written over by a proposal — one that does not parse holds it,
-said, until it does.
+refused value: a control a refused edit changed is put back. **A hand-over's
+proposal is built once, from the hand-over as the page holds it**: opening the
+hand-over proposes the records, the folder's read ending when they land, and
+Save is held, said, from the hand-over's open until they land. A hand-over
+its reader refuses is refused as it opens, in the reader's words — one that
+does not read, is of another schema, lacks a key its proposal is built from
+(an older molbuilder wrote it) or names a kind on an engine the kind table
+does not hold — the folder answer's `{error}`, as a `task.json` its reader
+refuses is (§ 2.1); the page checks none of it again.
 
 ### 9a.1 Every card folds — the page opens as a checklist
 
@@ -1276,15 +1253,15 @@ bars, can you make only one of them will unfold at a give time?")*
 
 **Every card folds**, through the one foldable component
 ([`ui-contract.md`](?doc=web/ui-contract.md) § 4), and **its head says its
-answer** in a few words — where it saves; what the calculation is; the shape,
-and whether it is fixed; the machine; the queue and what it asks; the stages,
+answer** in a few words — where it saves; what the calculation is; the
+machine; the queue and what it asks; the stages,
 their groups and columns; the points to measure; the groups; where each group
 stands for Prep — so a folded card still gives what it holds.
 
 **A folder opened anew is a checklist** — picked in the sidebar, or the page
 loaded: every card in the main column folded to its head, except one that
-asks for you — a question still unanswered (the shape, § 4; the machine,
-§ 6), or a refusal or warning about its own subject (a machine record that
+asks for you — a question still unanswered (the machine, § 6), or a
+refusal or warning about its own subject (a machine record that
 cannot be read, a `molbuilder.json` that is never read) — which opens.
 Reading the same folder again — after a Save, a Prep, a restore — leaves
 every card as you left it. **The page's messages stand above the cards**,
@@ -1292,7 +1269,7 @@ outside every fold — what the folder is, a refusal, the preflight's notes
 on the last save — so a fold never hides one.
 
 **The main column is the order you work in**: where it saves, what came over,
-the shape, the machine, the queue, the stages, what to measure, what each
+the machine, the queue, the stages, what to measure, what each
 group runs, the task's Prep (§ 11) — and last the files themselves,
 `task.json` and `job-request.json`, folded: a place to check or correct the description, not a step. The save
 bar (§ 7a) is under all of it, on screen while you work through the column.
@@ -1387,7 +1364,7 @@ that resolves to nothing is silent by design.
   from the same catalogue this page reads
   ([`form-schema.md`](?doc=web/form-schema.md)).
 - **It launches nothing, and watches nothing run.** What has already run is
-  read from the folder — how many attempts exist, whether the last converged —
+  read from the folder — how many runs were launched, whether the last converged —
   because you cannot decide what `tight` should be without seeing how `coarse`
   went. That is the page's reason for existing, not a dashboard.
 - **It does not name a machine _in what it writes_.** Every value it writes
@@ -1446,10 +1423,9 @@ offered. A group `prep task` offers — not prepared as described, and
 preparable ([`job-system.md`](?doc=execution/job-system.md), *The task*,
 `prep task`, 2) — is **ticked when the folder opens**. A group **prepared and never launched**
 has a box you can tick: Prep prepares it again, whole — the way a change made
-after looking reaches a group not yet launched. A **launched** group on the
-hierarchical layout has a box too, for a change of its job request: Prep
-renders it again, each deck the same calculation as its runs ran, and refuses
-otherwise, naming the way back; on the flat layout its box is disabled
+after looking reaches a group not yet launched. A **launched** group has a
+box too, for a change of its job request: Prep renders it again, each deck the
+same calculation as its runs ran, and refuses otherwise, naming the way back
 ([`job-request.md`](?doc=execution/job-request.md) § 5). Under them the
 command for the pick (`prep task --group … --group …`) and the Preview / Prep
 pair that does what it does. Each ticked group is one
@@ -1486,7 +1462,7 @@ everything else you do with that job and its stages:
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
 rail's *What gets written* (§ 9a.1). A tab is one job and that list is the
-whole ladder: `01_coarse/` beside `02_medium/` is how you check that the shape
+whole ladder: `01_coarse/` beside `02_medium/` is how you check that the ladder
 is what you meant, and a per-tab copy would show you one line of it at a time.
 The rail travels beside the tabs, so both are visible at once without either
 being duplicated.
@@ -1511,7 +1487,7 @@ ladder ([`job-system.md`](?doc=execution/job-system.md) § 5.4), whose choice
 goes on its **launch** line, the first launch taking it — shows a
 **Continue from** choice: *the stage before it, its newest run* (the
 default), each run of that stage with what it was, or the calculation's
-structure (`--cold`, where the layout has one). Under it, what the choice
+structure (`--cold`). Under it, what the choice
 means: the default's own line — *continues from 01_coarse/run-1 (the stage
 before it; concluded rc=0 …)* — or, while the launch would refuse it, why,
 whole, with the commands it names. It is the folder's answer
@@ -1559,9 +1535,8 @@ own sentence under its two buttons, neither enabled — the way back in it;
 its lines are its launch, as `jobset status` prints them; a prep of it would be refused
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
-**The directory names come from the producer.** Flat and hierarchical name
-things differently (§ 4), and a page that composed them itself would be a
-second answer free to disagree with `prep` — the same rule § 6.2a states for
+**The directory names come from the producer.** A page that composed them
+itself would be a second answer free to disagree with `prep` — the same rule § 6.2a states for
 the grid. What § 7.1's list shows is what `prep` reports it would write.
 
 **Bench and run may ask for different queues and different walls**, and the
@@ -1587,7 +1562,7 @@ where a scheduler runs it (a group of several, its one header, once for the
 group: its first launch sends that, not a member's own), else the run script's stated counts (A13,
 [`architecture.md`](?doc=execution/architecture.md) § 5.2); every file it would write, folded under their count — all of it the
 answer a Prep gives, through the same renderer, said as what it would do: what
-the description's checks and each deck's own found, the attempt it would open
+the description's checks and each deck's own found, the run it would open
 and what it would bring in, what each stage's first launch will take and from
 which stage, and which config files answered (the first found
 is the record that won, [`configuration.md`](?doc=configuration.md) § 2.2) —
@@ -1621,7 +1596,7 @@ from the same answer:
   something else ([`job-request.md`](?doc=execution/job-request.md) § 5;
   [`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
-  attempt** — opened, and what was brought in: the stage's own files — or, on
+  run** — opened, and what was brought in: the stage's own files — or, on
   a transport rung that runs per point, one folder per point, each named by its
   frame and its voltage as the UI names a point
   (`lib/results/point-words.js`);

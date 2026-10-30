@@ -3,7 +3,7 @@
 The retry feature re-execs the wrapper with ``--continue`` when a SIESTA run
 failed in a RETRIABLE way.  Two detection points, each answered on a run made
 on the road with the real SIESTA (`tests/test_siesta_stopped_run_e2e.py`,
-`tests/test_siesta_flat_run_e2e.py`):
+`tests/test_siesta_optimization_run_e2e.py`):
 
   * SCF abort — with ``SCF.MustConverge`` (SIESTA's default, and molbuilder
     emits no override) an unconverged SCF stops the run NON-zero with
@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parents[1]
 # What the retries ask, answered on real output, is the e2e tier's: an SCF
 # stop on the stopped run made on the road
 # (`tests/test_siesta_stopped_run_e2e.py`), a relaxation out of moves on one
-# allowed a single move (`tests/test_siesta_flat_run_e2e.py`).
+# allowed a single move (`tests/test_siesta_optimization_run_e2e.py`).
 
 # The exact idioms the wrapper renders.  If these change in runwrap.py,
 # change them here in the same commit.
@@ -73,7 +73,7 @@ def _render(**kw) -> str:
 
     ``kw`` are allocation fields: the door takes the object whole (A8), so
     they are set on it rather than passed beside it."""
-    names = RunNames.of("JOB", "01_coarse", "flat")
+    names = RunNames("JOB", "01_coarse")
     return render_run_wrapper(Path("/x") / names.name(".fdf"),
                               machine_record=_machine(), names=names,
                               resources=Resources(**{

@@ -223,7 +223,7 @@ def point_transmission(where, label: str, spin: str) -> Dict:
             "transmission_file": one["files"]["transmission"]}
 
 
-def point_currents(where, token: str, spin: str, *,
+def point_currents(where, spin: str, *,
                    now: Optional[Dict] = None) -> Dict:
     """The current TBtrans printed at one point -- its own Landauer integral,
     parsed, never recomputed -- as the record says it
@@ -241,7 +241,7 @@ def point_currents(where, token: str, spin: str, *,
     older output is read only when the newest printed no current."""
     from ..parse.engines.siesta_reader import read_output
     out: Dict = {"current_a": None, "current_a_printed": None}
-    for i, path in enumerate(_outs_newest_first(where, token)):
+    for i, path in enumerate(_outs_newest_first(where)):
         reading = now if (i == 0 and now is not None) else read_output(path).now()
         loop = reading.get("tbtrans") or {}
         for k in ("k_points", "k_method"):
@@ -413,13 +413,13 @@ def iv_notes_placed(iv: Dict) -> List[Dict]:
     return out
 
 
-def _outs_newest_first(where: Path, token: str) -> List[Path]:
-    """A rung's engine outputs in ``where``, its NEWEST RUN first -- the
-    run door's (`runs.Run.outputs`), by the run number every one carries,
+def _outs_newest_first(where: Path) -> List[Path]:
+    """A rung's engine outputs in ``where``, its NEWEST TRY first -- the
+    run door's (`runs.Run.outputs`), by the try's number every one carries,
     never by file time (plan W38 M4): a copy, a touch or a restored folder
-    reorders the times and not the runs.  ``[]`` where no run of ours is."""
+    reorders the times and not the tries.  ``[]`` where no run of ours is."""
     from ..runs import run_of
-    run = run_of(where, stage=token)
+    run = run_of(where)
     return run.outputs if run is not None else []
 
 
@@ -522,10 +522,10 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             from ..jobset.continuation import point_rows
             from ..runrecord import launch_record
             from ..jobset.naming import stage_home
-            _names = stage_home(base, task, name).names(task.shape)
+            _names = stage_home(base, task, name).names
             try:
                 points, _ = point_rows(
-                    run, _names, task, name, launch=launch_record(run, _names),
+                    run, _names, task, name, launch=launch_record(run),
                     base=base)
             except Exception as exc:              # noqa: BLE001 -- said, never hidden
                 fact["unreadable"] = f"{run.relative_to(base)}: {exc}"
@@ -548,8 +548,8 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             # A RUNG THAT RUNS PER POINT, POINT BY POINT -- the report's
             # convergence card follows the selected point (`web/results.md`
             # § 2.5); the rung's own facts are its first point's.
-            fact["by_point"] = _rung_points(base, task, name, token, answers,
-                                            run=run)
+            fact["by_point"] = _rung_points(base, task, name, answers,
+                                            run=run, rung=fact)
             _bridge_charge_from_0v(fact["by_point"])
             # WHAT EACH POINT STARTED FROM AND TOOK -- the status door's own
             # reading of the point's `.continued-from` and `.gathered-from`
@@ -595,12 +595,11 @@ def _stage_facts(calc, label: str) -> List[Dict]:
                     fact["periodic"] = (
                         {**first["periodic"], "from": first["attempt"]}
                         if first.get("periodic") else
-                        _periodic_shift(base, task, name, token,
-                                        base / first["started_from"])
+                        _periodic_shift(base, base / first["started_from"])
                         if first.get("started_from") else None)
             out.append(fact)
             continue
-        outs = (_outs_newest_first(run, token)
+        outs = (_outs_newest_first(run)
                 if answers != "product" and run is not None else [])
         if not outs:
             out.append(fact)
@@ -610,13 +609,12 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             fact["periodic"] = (
                 {**fact["periodic"], "from": fact.get("attempt")}
                 if fact.get("periodic") else
-                _periodic_shift(base, task, name, token, run))
+                _periodic_shift(base, run))
         out.append(fact)
     return out
 
 
-def _periodic_shift(base: Path, task, stage: str, token: str,
-                    folder: Path) -> Optional[Dict]:
+def _periodic_shift(base: Path, folder: Path) -> Optional[Dict]:
     """THE SHIFT BETWEEN THE DEVICE'S ZERO AND THE SEED'S, where it was
     printed -- ``{vha_ev, from}``: the periodic start's `ts-Vha` of
     ``folder``'s own output, else of the run it continued from, back along
@@ -624,18 +622,16 @@ def _periodic_shift(base: Path, task, stage: str, token: str,
     the density file a run continues from, so the shift printed there is
     this run's; `engines/transport.md` § 2a.12) -- or ``None`` when no run
     of the chain is in the folder to say it."""
-    from ..jobset.naming import stage_home
     from ..runrecord import LaunchRecordError, read_continued_from
-    names = stage_home(base, task, stage).names(task.shape)
     seen: set = set()
     while folder is not None and folder.is_dir() and folder not in seen:
         seen.add(folder)
-        outs = _outs_newest_first(folder, token)
+        outs = _outs_newest_first(folder)
         shift = _science(outs[0], "scf").get("periodic") if outs else None
         if shift:
             return {**shift, "from": str(folder.relative_to(base))}
         try:
-            src = read_continued_from(folder, names, 0)
+            src = read_continued_from(folder)
         except LaunchRecordError:
             return None
         folder = src.path(base) if src is not None else None
@@ -802,21 +798,22 @@ def _contour_facts(contours: Dict) -> Dict:
     return out
 
 
-def _rung_points(base: Path, task, name: str, token: str,
-                 answers: str, run: Optional[Path] = None) -> List[Dict]:
+def _rung_points(base: Path, task, name: str, answers: str,
+                 run: Optional[Path] = None, *, rung: Dict) -> List[Dict]:
     """``[{frame, bias_v, point, attempt, state, detail, ...science}]`` --
     each point of a rung that runs per point, its state the run door's
     (`run_status`) and its own answer (:func:`_science`); ``run`` names the
-    run to read instead of the latest."""
+    run to read instead of the latest.  A point with no folder yet -- no run
+    opened, the rung described or prepared and not launched -- is the
+    rung's own row (``rung``: its state and detail, the status door's)."""
     from ..jobset.naming import stage_home
     from ..runs import concluded
-    names = stage_home(base, task, name).names(task.shape)
+    names = stage_home(base, task, name).names
     out: List[Dict] = []
     for pt, where, run in result_folders(base, task, name, run=run):
         entry: Dict = {**pt.to_wire(), "point": pt.words()}
         if where is None or not where.is_dir():
-            from ..jobset.runstatus import MISSING
-            entry.update(state=MISSING[0], detail=MISSING[1])
+            entry.update(state=rung["state"], detail=rung["detail"])
             out.append(entry)
             continue
         entry["attempt"] = str(where.relative_to(base))
@@ -825,7 +822,7 @@ def _rung_points(base: Path, task, name: str, token: str,
         # once where it can, `running-a-job.md` § 4.2).
         st = concluded(where, names, base=base, launched_in=run)
         entry.update(state=st.state, detail=st.detail)
-        outs = _outs_newest_first(where, token)
+        outs = _outs_newest_first(where)
         if outs:
             entry.update(_science(outs[0], answers))
         out.append(entry)
@@ -926,7 +923,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     pending: List[Dict] = []
     failed: List[Dict] = []
     home = stage_home(base, task, "transmission")
-    token, names = home.token, home.names(task.shape)
+    names = home.names
     regions = device_regions(junction)
     # THE JUNCTION'S ATOM INDEX MAP -- every junction rung's deck written from
     # it -- which each point's kept reading must state (`model/overview.md`
@@ -970,7 +967,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # its reading serves the run door (`keep_reading`: an output that
         # stated its own end is not read again), the loop's words and the
         # currents -- three readers, one read.
-        outs = _outs_newest_first(where, token)
+        outs = _outs_newest_first(where)
         now = None
         if outs:
             try:
@@ -1058,7 +1055,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # ITS CURRENT, and which it is (`engines/transport.md` § 2a.16): the
         # printed figures' total, or -- for a point that shares energies --
         # the record's over its joined grid.
-        currents = point_currents(where, token, spin, now=now)
+        currents = point_currents(where, spin, now=now)
         currents.update(
             joined_currents(read, pt.volts or 0.0,
                             BOLTZMANN_EV_K * deck_temperature_k(where),

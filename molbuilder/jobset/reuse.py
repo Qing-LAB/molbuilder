@@ -291,9 +291,7 @@ def _newest(calc, stage: str) -> Optional[Path]:
     """``stage``'s newest run in ``calc``."""
     from .materialize import latest_attempt
     from .naming import stage_home
-    home = stage_home(Path(calc.base), calc.task, stage)
-    return (latest_attempt(home.dir)
-            if home.dir is not None and home.dir.is_dir() else None)
+    return latest_attempt(stage_home(Path(calc.base), calc.task, stage).dir)
 
 
 def _at(calc, stage: str, run: Path, pt) -> Optional[Path]:
@@ -608,7 +606,7 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
                       + (why or f"the finished calculation holds no "
                                 f"{_words(pt)} point"))
     shown = f"{fbase.name}/{src.relative_to(fbase)}"
-    if not _given_the_same(finished, SHARING_RUNG, newest, src, mine):
+    if not _given_the_same(finished, newest, src, mine):
         return None, (f"{words} shares none -- it is not given what "
                       f"{shown} was given")
     now = once.deck_now(SHARING_RUNG, pt)
@@ -661,13 +659,13 @@ def _finished_point(finished, stage: str, pt):
     from .continuation import done
     from .naming import stage_home
     fbase, ftask = Path(finished.base), finished.task
-    names = stage_home(fbase, ftask, stage).names(ftask.shape)
+    names = stage_home(fbase, ftask, stage).names
     newest = _newest(finished, stage)
     if newest is None:
         return None, None, f"{fbase.name} holds no run of {stage}"
     shown = f"{fbase.name}/{newest.relative_to(fbase)}"
     try:
-        launch = launch_record(newest, names)
+        launch = launch_record(newest)
     except LaunchRecordError as exc:
         return None, newest, f"{shown}: {exc}"
     if launch is None:
@@ -716,7 +714,7 @@ def _member(calc, finished, stage: str, once, copied: set
     """``(its runs, copied; [])`` when ``stage`` is copied in, else ``([],
     what decided it)`` -- each stage it takes inputs from not copied in, and
     the finished run's state or each difference of its own deck."""
-    from ..paths import attempt_dir, attempts_in
+    from ..paths import FIRST_ATTEMPT, attempt_dir, attempts_in
     from ..runrecord import launch_record, read_copied_from
     from ..transport.stages import (frames_of, inputs_of, products_of,
                                     rung_points)
@@ -742,7 +740,7 @@ def _member(calc, finished, stage: str, once, copied: set
     if newest is None:
         return no(f"{stage}: the finished calculation holds no run of it")
     shown = f"{fbase.name}/{newest.relative_to(fbase)}"
-    names = home.names(ftask.shape)
+    names = home.names
     points = rung_points(calc.task, stage, frames=frames_of(calc.base))
     theirs = rung_points(ftask, stage, frames=frames_of(fbase))
     products = products_of(stage, ftask.label, base_dir=fbase)
@@ -759,7 +757,7 @@ def _member(calc, finished, stage: str, once, copied: set
         # describes held, done, in its newest run -- a rung run once here
         # takes its first frame at 0 V (`point_key`) -- and that run not
         # still going, so what is copied is what it left.
-        launch = launch_record(newest, names)
+        launch = launch_record(newest)
         if launch is None:
             return no(f"{stage}: {shown} was never launched")
         state, detail, _rows = points_state(
@@ -790,7 +788,7 @@ def _member(calc, finished, stage: str, once, copied: set
             # done door asks of a point (§ 2a.16, *is that point*); the deck
             # it is compared with below renders that point's energies only
             # when it is (:func:`that_point`).
-            ok, said = done(newest, names, launch=launch_record(newest, names),
+            ok, said = done(newest, names, launch=launch_record(newest),
                             products=products)
             if not ok:
                 return no(f"{stage}: {shown} is not done -- {said}")
@@ -798,7 +796,7 @@ def _member(calc, finished, stage: str, once, copied: set
     # THE SAME CALCULATION as the deck this calculation renders for it now,
     # at each of its results (`engines/transport.md` § 6.1).
     for pt, src in pairs:
-        differs = ran_otherwise(once, stage, src, token=home.token, point=pt)
+        differs = ran_otherwise(once, stage, src, point=pt)
         if differs:
             return no(f"{stage}: {fbase.name}/{src.relative_to(fbase)} "
                       f"ran another calculation -- {'; '.join(differs)}")
@@ -814,7 +812,7 @@ def _member(calc, finished, stage: str, once, copied: set
         # a result this calculation does not describe stays in its copy,
         # unread (*A group copied in*).
         return [_copy_of(finished, stage, attempt_dir(home.dir, n),
-                         here.dir / attempt_dir(home.dir, n).name,
+                         attempt_dir(here.dir, n),
                          unasked=unasked if attempt_dir(home.dir, n) == newest
                          else ())
                 for n in attempts_in(home.dir)], []
@@ -826,11 +824,11 @@ def _member(calc, finished, stage: str, once, copied: set
     for upstream, _filename in inputs_of(calc.task, stage):
         moved.update(_laid_here(calc, finished, upstream))
     return [_relaid_copy(finished, stage, newest,
-                         here.dir / attempt_dir(here.dir, 0).name,
+                         attempt_dir(here.dir, FIRST_ATTEMPT),
                          tuple((src, str(pt.rel) if pt is not None else "",
                                 origin(fbase, src))
                                for pt, src in pairs),
-                         moved=moved, names=names, unasked=unasked)], []
+                         moved=moved, unasked=unasked)], []
 
 
 def _unfinished(finished, stage: str) -> Optional[str]:
@@ -852,8 +850,8 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     if newest is None:
         return None
     fbase, ftask = Path(finished.base), finished.task
-    names = stage_home(fbase, ftask, stage).names(ftask.shape)
-    launch = launch_record(newest, names)
+    names = stage_home(fbase, ftask, stage).names
+    launch = launch_record(newest)
     if launch is None:
         return None
     state, _detail = stage_run_state(finished, stage, newest)
@@ -886,15 +884,14 @@ def _laid_here(calc, finished, stage: str) -> Dict[str, str]:
     in*): ``{the folder in the finished calculation: its folder here}``,
     both from their calculation's folder, ``run-0`` here; empty when the
     folders are the same, every run then copied whole under its own name."""
-    from ..paths import attempt_dir
+    from ..paths import FIRST_ATTEMPT, attempt_dir
     from ..transport.stages import frames_of, rung_points
     from .naming import stage_home
     newest = _newest(finished, stage)
     if newest is None:
         return {}
     fbase, base = Path(finished.base), Path(calc.base)
-    home = stage_home(base, calc.task, stage).dir
-    run = home / attempt_dir(home, 0).name
+    run = attempt_dir(stage_home(base, calc.task, stage).dir, FIRST_ATTEMPT)
     moved = {newest: run}
     for pt in rung_points(calc.task, stage, frames=frames_of(base)) or [None]:
         src = _at(finished, stage, newest, pt)
@@ -909,7 +906,7 @@ def _laid_here(calc, finished, stage: str) -> Dict[str, str]:
 
 def _relaid_copy(finished, stage: str, newest: Path, run: Path,
                  points: Tuple[Tuple[Path, str, str], ...], *,
-                 moved: Dict[str, str], names, unasked: Tuple[str, ...]
+                 moved: Dict[str, str], unasked: Tuple[str, ...]
                  ) -> Copy:
     """The newest run's results this calculation describes, as they will be
     copied re-laid (:func:`_member`): how that run ended; what is copied --
@@ -936,7 +933,7 @@ def _relaid_copy(finished, stage: str, newest: Path, run: Path,
             if f.is_file() and not never_carried(f.name):
                 size += f.stat().st_size
         given.append((run, tuple((fn, here(src)) for src, fn
-                                 in carried_gather(fbase, newest, names)),
+                                 in carried_gather(fbase, newest)),
                       None))
     for d in _scratch_folders(newest):
         if any(is_scratch(f.name) for f in d.iterdir()):
@@ -947,10 +944,10 @@ def _relaid_copy(finished, stage: str, newest: Path, run: Path,
                 left.append(f"{f.parent.relative_to(fbase)}/")
             elif not never_carried(f.name):
                 size += f.stat().st_size
-        prev = read_continued_from(src, names, 0) if rel else None
+        prev = read_continued_from(src) if rel else None
         given.append((run / rel if rel else run,
                       tuple((fn, here(r)) for r, fn
-                            in carried_gather(fbase, src, names)),
+                            in carried_gather(fbase, src)),
                       moved.get(str(prev)) if prev is not None else None))
     which = ", ".join(f"{fbase.name}/{src.relative_to(fbase)}"
                       for src, _rel, _made in points)
@@ -1030,10 +1027,9 @@ def copy_in(calc, decision: Decision, plan) -> None:
             empty_run(opened, plan)
             plan.remove_folder(opened)
     for c in decision.copies:
-        names = stage_home(base, task, c.stage).names(task.shape)
-        record = launch_record_path(c.source, names, 0)
+        record = launch_record_path(c.source)
         if c.points:
-            _copy_relaid(calc, c, record, plan, names=names)
+            _copy_relaid(calc, c, record, plan)
             continue
         for f in _files(c.source):
             # THE RUN'S OWN RECORDS are written for the copy, below; a
@@ -1045,7 +1041,7 @@ def copy_in(calc, decision: Decision, plan) -> None:
         plan.copy(record, c.run / record.name)
 
 
-def _copy_relaid(calc, c: Copy, record: Path, plan, *, names) -> None:
+def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
     """A RE-LAID COPY into ``plan`` (`engines/transport.md` § 2a.16, *A
     group copied in*): the run stamped as this calculation keeps it -- a
     run of points a container, a result run once here a run -- its scratch
@@ -1092,11 +1088,10 @@ def _copy_relaid(calc, c: Copy, record: Path, plan, *, names) -> None:
             write_copied_from(dest, made, plan=plan)
     for dest, gathered, continued in c.given:
         if gathered:
-            write_gathered_from(dest, [(RunRef.read(ref, shared=False), fn)
+            write_gathered_from(dest, [(RunRef.read(ref), fn)
                                        for fn, ref in gathered], plan=plan)
         if continued is not None:
-            write_continued_from(dest, RunRef.read(continued, shared=False),
-                                 names=names, run=0, plan=plan)
+            write_continued_from(dest, RunRef.read(continued), plan=plan)
     write_copied_from(c.run, c.copied_from, plan=plan)
     plan.copy(record, c.run / record.name)
 
@@ -1115,9 +1110,7 @@ def takes_over(calc, finished, stage: str, points, *, once,
     against the origin of what the finished point gathered.  The rest are
     walked."""
     from .gather import ran_otherwise
-    from .naming import stage_home
     fbase = Path(finished.base)
-    token = stage_home(fbase, finished.task, stage).token
     taken: List[Take] = []
     walked: List[object] = []
     why: List[str] = []
@@ -1132,13 +1125,13 @@ def takes_over(calc, finished, stage: str, points, *, once,
                 why.append(said)
             continue
         shown = f"{fbase.name}/{src.relative_to(fbase)}"
-        differs = ran_otherwise(once, stage, src, token=token, point=pt)
+        differs = ran_otherwise(once, stage, src, point=pt)
         if differs:
             walked.append(pt)
             why.append(f"{shown} ran another calculation -- "
                        f"{'; '.join(differs)}")
             continue
-        if not _given_the_same(finished, stage, newest, src, inputs(pt)):
+        if not _given_the_same(finished, newest, src, inputs(pt)):
             walked.append(pt)
             why.append(f"{pt.words()} is not given what {shown} was "
                        f"given")
@@ -1148,20 +1141,18 @@ def takes_over(calc, finished, stage: str, points, *, once,
                  tuple(dict.fromkeys(why)))
 
 
-def _given_the_same(finished, stage: str, run: Path, src: Path,
+def _given_the_same(finished, run: Path, src: Path,
                     mine: Dict[str, Optional[str]]) -> bool:
     """Whether each file this rung's point is given has the origin of what
-    the finished point ``src`` of ``stage``'s ``run`` was given -- what its
+    the finished point ``src`` of ``run`` was given -- what its
     run carries, its own record and, through `.continued-from`, what the
     runs it continues from gathered (`runrecord.carried_gather`: a device
     launched warm carries the seed's density its first launch gathered),
     and the point's own record (`runrecord.read_gathered_from`)."""
     from ..runrecord import carried_gather, read_gathered_from
-    from .naming import stage_home
-    fbase, ftask = Path(finished.base), finished.task
-    names = stage_home(fbase, ftask, stage).names(ftask.shape)
+    fbase = Path(finished.base)
     try:
-        theirs = {fn: ref for ref, fn in carried_gather(fbase, run, names)}
+        theirs = {fn: ref for ref, fn in carried_gather(fbase, run)}
         if src != run:
             theirs.update({fn: ref for ref, fn in read_gathered_from(src)})
     except LaunchRecordError:

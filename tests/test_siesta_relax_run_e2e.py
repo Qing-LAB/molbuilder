@@ -3,7 +3,7 @@ the relaxation record (`model/parse.md` § 5b.1), the two doors that answer
 it, and the vibration gate's verdicts on a structure that carries it (§ 2.2,
 the record table).
 
-``molbuilder describe --calculation vibration`` (hierarchical) -> ``prep task --group 1``
+``molbuilder describe --calculation vibration`` -> ``prep task --group 1``
 -> ``launch task --stage freq --mode direct``, on the road's CO2 in a 10 Å
 box, isolated, listed O O C with its carbon held: the `relax` call of the
 kind's one run in phases (`engines/vibration.md` § 5.11), at the kind's own

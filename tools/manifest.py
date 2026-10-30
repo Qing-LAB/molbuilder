@@ -46,18 +46,12 @@ def _shown(text: str) -> str:
 
 
 def _name(a: Artifact) -> str:
-    """The file's name, as each shape spells it."""
+    """The file's name, one spelling."""
     if a.name:
         return f"`{_shown(a.name)}`"
     head = "<base>" if a.staged else "<label>"
     run = "" if a.attempt == "never" else "-run<N>"
-    flat = f"`{head}{run}{_shown(a.role)}`"
-    if a.hierarchical:
-        return (f"`{a.hierarchical}` *(hierarchical)* · {flat} *(flat)*")
-    if a.attempt == "shared":
-        return (f"`{head}{_shown(a.role)}` *(hierarchical)* · {flat} "
-                f"*(flat)*")
-    return flat
+    return f"`{head}{run}{_shown(a.role)}`"
 
 
 def _notes(a: Artifact) -> str:

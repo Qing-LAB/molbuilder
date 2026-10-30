@@ -27,7 +27,7 @@ from tests.spectra._helpers import _spectra_cfg
 def _names():
     """A vibration stage's names (`runfiles.RunNames`), as the deck takes them."""
     from molbuilder.runfiles import RunNames
-    return RunNames.of("job", "01_vibration", "hierarchical")
+    return RunNames("job", "01_vibration")
 
 
 # Minimal PSML body covering the fields the parser reads.  Real

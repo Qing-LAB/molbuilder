@@ -211,9 +211,9 @@ The design intent ([`execution/job-system.md`](?doc=execution/job-system.md)):
 
 | Module | L | Role | Engine knowledge? |
 |---|---|---|---|
-| `jobset/` (`model` / `materialize` / `shape` / `prep` / `plan` / `submit` / `summarize` / `agreement` / `ledger` / `_cli`) | L2 | engine-agnostic staged-execution core | **none** (correct) |
+| `jobset/` (`model` / `materialize` / `prep` / `plan` / `submit` / `summarize` / `agreement` / `ledger` / `_cli`) | L2 | engine-agnostic staged-execution core | **none** (correct) |
 | `jobset/runstatus.py` | L2 | read-only per-stage status + warm-file inventory | none since U3 — derives from the § 4.2a rules files (W2 closed) |
-| `bench/` | L2 | benchmark sweep; a **JobSet producer** | siesta (sanctioned — producer) |
+| `bench/` | L2 | the benchmark's grid (`grid.py`) and the result reader (`result.py`); `prep bench` is the producer ([`execution/architecture.md`](?doc=execution/architecture.md) § 0) | none of its own — the result reader reads a run through `parse/` |
 | `runwrap.py` | L2 | the `.run.sh` / `.sbatch` launcher emitter | **deep** (see W1) |
 | `runtime_config.py` | L2 | `molbuilder.json` reader — one registry row per section (`configuration.md` § 4) | — (see W3) |
 | `diagnostics.py` | L2 | host capability snapshot + env-for-category routing | env-category tables (config, fine) |
@@ -307,7 +307,8 @@ When adding backend code, place it by concern **and** layer:
   irreducible per-structure primitive), registered so a single `validate(cfg)`
   reaches it. Never inline a new `preflight` outside the registry.
 - **A new execution verb** stays engine-agnostic if it is post-producer; engine
-  knowledge belongs in a *producer* (like `bench/to_jobset`). Never parse a
+  knowledge belongs in a *producer* — `prep`, through the engine seam
+  (`jobset/engines.py`). Never parse a
   `.fdf` in the `jobset` core.
 - **A new data codec** routes through the `Structure` authority
   (`to_dict` / `from_dict` / `to_wire`) and `persist.check_schema`; never

@@ -91,7 +91,7 @@ def test_load_by_multipart_unrecognised_format(client):
 
 
 # --------------------------------------------------------------------- #
-#  Directory mode (job-layout v1)                                       #
+#  Directory mode (a folder molbuilder lays out)                        #
 #                                                                       #
 #  The loader resolves a directory path to a single file through the   #
 #  run door (`model/parse.md` § 5.1-§ 5.2, job-contracts.md § 2.4).     #

@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ..runfiles import FIRST_ATTEMPT, ROLE_SPECTRA
+from ..runfiles import ROLE_SPECTRA
 from ..siesta.vibration_phases import (FC, OPTICAL, RELAX, Call, calls_of,
                                        entry_of, index_path, phase,
                                        products_of, read_index, summary)
@@ -45,12 +45,12 @@ def _declared_points_in(run, task, stage: str, base) -> List[Tuple[Path, Call]]:
     """A run's calls -- those its index lists (:func:`read_index`), each
     with its folder below the run; before launch wrote the index, the calls
     prep opened, the plan's row's phases (`Job.phases`).  The index is the
-    run's one, written at its first launch (a run folder holds one run of
-    points; a call's retries are the call's own)."""
+    run's one, written by the launch that opened the run; a call's retries
+    are the call's own tries."""
     from .naming import stage_home
     run = Path(run)
-    names = stage_home(base, task, stage).names(task.shape)
-    path = index_path(run, names, FIRST_ATTEMPT)
+    names = stage_home(base, task, stage).names
+    path = index_path(run, names)
     if not path.is_file():
         # BEFORE LAUNCH WROTE THE INDEX: the calls prep opened -- the
         # plan's row's phases (`Job.phases`), as a transport rung lists its
@@ -78,7 +78,7 @@ def _declared_containers(calc, stage: str) -> Tuple[str, ...]:
 def _declared_summary(rows, run, names) -> str:
     """The count's words for `status` (`points.PointsOf.summary`): the
     phases the run walks read off its index."""
-    path = index_path(run, names, FIRST_ATTEMPT)
+    path = index_path(run, names)
     try:
         phases = read_index(path).get("phases") or ()
     except (OSError, ValueError):
@@ -90,7 +90,7 @@ def _record_says(run, names, point: Call) -> Optional[str]:
     """What the run's index says against ``point`` being done: its record
     step's failure, where it failed (§ 5.11 § 7) -- ``None`` with no index
     yet, or no entry."""
-    path = index_path(run, names, FIRST_ATTEMPT)
+    path = index_path(run, names)
     if not path.is_file():
         return None
     row = entry_of(read_index(path), point) or {}
@@ -100,7 +100,7 @@ def _record_says(run, names, point: Call) -> Optional[str]:
 def _also_needs(run, names, task, stage: str, base) -> Optional[str]:
     """What the run needs beyond its calls done: its finish ended with exit
     0 (the index's entry) and its result on disk (§ 5.11 § 7)."""
-    path = index_path(run, names, FIRST_ATTEMPT)
+    path = index_path(run, names)
     if not path.is_file():
         return "no index of its calls"
     fin = (read_index(path).get("finish") or {})

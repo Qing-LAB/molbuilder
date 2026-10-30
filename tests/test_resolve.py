@@ -38,7 +38,7 @@ def _task(stages=None):
     ladder = (tuple(stages) if stages is not None
               else (Stage(name=STAGE, overrides={}),))
     return Task(
-        engine="siesta", shape="hierarchical", calculation="optimization",
+        engine="siesta", calculation="optimization",
         run=derive_run("relax", "C3H2S",
                        stage_names=tuple(s.name for s in ladder)),
         structure=StructureRef(source="bdt.xyz", formula="C3H2S", atoms=6),
@@ -398,8 +398,7 @@ def test_a_stage_override_naming_a_run_setting_is_refused(template):
     setting reaches the deck as the run card's pin, never as an override
     (`stages.md` § 6.8d, plan § 5w K5, SO-C1)."""
     ladder = (Stage(name="a", overrides={"use_gpu": True}),)
-    t = Task(engine="siesta", shape="hierarchical",
-             calculation="optimization",
+    t = Task(engine="siesta", calculation="optimization",
              run=derive_run("relax", "C3H2S", stage_names=("a",)),
              structure=StructureRef(source="bdt.xyz", formula="C3H2S",
                                     atoms=6),

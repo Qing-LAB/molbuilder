@@ -8,8 +8,8 @@ promises make it worth having and each is pinned here:
 2. it says what a ``Block`` produced — the visibility the check gate
    structurally cannot give (W11).
 
-Plus the one the flat layout forces: **two rungs of one calculation prep into
-the same directory, and their logs must not be the same file.**  Every prep
+Plus the one the calculation's root forces: **every rung's prep writes its
+log there, and two rungs' logs must not be the same file.**  Every prep
 writes it (M2e, 2026-10-05); that it is on disk where the card says is the
 catalogue's case table (`tests/data/the_catalogue.toml`).
 """
@@ -59,7 +59,7 @@ BDT = Structure(
     vacuum=(12.0, 12.0, 12.0))
 
 
-def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
+def _calculation(tmp_path, engine: str, name: str = "BDT"):
     """A described calculation, as `molbuilder describe` leaves one."""
     cfg, stages = ((SiestaConfig(system_label=name, mesh_cutoff=300.0),
                     engine_ladder("siesta", "publishable"))
@@ -68,10 +68,10 @@ def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
                     engine_ladder("pyscf", "publishable")))
     src = tmp_path / f"{name}.xyz"
     src.write_text(BDT.to_xyz())
-    dest = tmp_path / f"{name}-{engine}-{shape}"
+    dest = tmp_path / f"{name}-{engine}"
     D.write_description(D.build_description(
         BDT, cfg, stages, engine=engine,
-        calculation="optimization", shape=shape, name=name,
+        calculation="optimization", name=name,
         source=str(src)), dest)
     if engine == "siesta":
         write_pseudos(dest, ["S", "C", "H"])
@@ -96,15 +96,16 @@ def _the_log(dest):
 
 
 # --------------------------------------------------------------------- #
-#  2. The flat layout's own rule                                         #
+#  2. The name                                                           #
 # --------------------------------------------------------------------- #
 
 
-def test_the_name_says_engine_and_shape(tmp_path):
+def test_the_name_says_its_rung_and_engine(tmp_path):
     """The file is read after being copied off the machine, where the
-    directory it came from no longer says what it was."""
-    assert log_name("BDT", "01_coarse", "siesta", "flat") == \
-        "BDT_01_coarse.siesta.flat.pipeline.log"
+    directory it came from no longer says what it was -- and every rung's
+    lies at the calculation's root, so its stage token keeps two apart."""
+    assert log_name("BDT", "01_coarse", "siesta") == \
+        "BDT_01_coarse.siesta.hierarchical.pipeline.log"
 
 
 # --------------------------------------------------------------------- #
@@ -120,7 +121,7 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     (`template.SAID`, `engines/template.md` § 5.4): a flag here, never
     *allocation* for a value no allocation holds (the 2.27.0 review).
     """
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     _prep(dest, stages[0])
     text = _the_log(dest)
     chosen = [ln for ln in text.splitlines() if ln.startswith("  ⊕")]
@@ -139,10 +140,14 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     # THE DECK SAYS THE SAME, in its PROVENANCE block -- the record opened
     # months later, when the log is long gone (`job-contracts.md` § 3.2,
     # `engines/template.md` § 6.6 obligation 5) -- read through its reader.
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import find
     from molbuilder.script_emit import read_provenance_block
+    from molbuilder.task import of as task_of
     from molbuilder.template import SOURCE_WORDS
-    (deck, _rf), = find(dest, "BDT", role=".fdf")
+    # THE DECK LIES IN ITS STAGE'S FOLDER (`project-layout.md` § 5.2).
+    home = stage_home(dest, task_of(dest), stages[0])
+    (deck, _rf), = find(home.dir, "BDT", role=".fdf")
     block = read_provenance_block(deck.read_text(encoding="utf-8"))
     who = {k.split(".", 1)[1]: v
            for k, v in block.items() if k.startswith("parameters.")}
@@ -171,7 +176,7 @@ def test_the_engines_derived_context_is_in_the_log(tmp_path):
     ``(struct, cfg)`` and are nobody's config field; the log is where a
     reader outside the engine sees them.
     """
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     _prep(dest, stages[0])
     text = _the_log(dest)
     assert "this deck's own derived context (W10)" in text
@@ -186,7 +191,7 @@ def test_pyscfs_context_is_read_after_the_walk_not_before(tmp_path):
     layout.  A log that snapshotted the context at spec time would show
     SIESTA's answers and an empty dict for PySCF.
     """
-    dest, stages = _calculation(tmp_path, "pyscf", "flat")
+    dest, stages = _calculation(tmp_path, "pyscf")
     _prep(dest, stages[0])
     text = _the_log(dest)
     assert re.search(r"⊕\s+stability_checked\s+\S+\s+<- derived", text), text
@@ -203,7 +208,7 @@ def test_each_block_reports_what_it_produced(tmp_path):
     produced is exactly the visibility the gate structurally cannot give —
     and SIESTA's blocks are hundreds of the deck's lines.
     """
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     _prep(dest, stages[0])
     text = _the_log(dest)
     rendered = re.findall(r"^  out  Block\s+'([^']+)'\s+(.+)$", text, re.M)
@@ -221,7 +226,7 @@ def test_a_section_reports_which_items_declined(tmp_path):
     was never in the layout.  Telling those apart is most of what a reader
     comes here for — and only the parameters walk knows.
     """
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     _prep(dest, stages[0])
     text = _the_log(dest)
     assert re.search(r"^  out  Section\s+'Basis & grid'\s+\d+ lines\s+"
@@ -235,14 +240,14 @@ def test_a_slot_that_answers_nothing_says_so(tmp_path):
     answers both.  A blank where a slot's answer belongs cannot be told from a
     slot nobody looked at, which is the whole reason W5 exists.
     """
-    dest, stages = _calculation(tmp_path, "pyscf", "flat")
+    dest, stages = _calculation(tmp_path, "pyscf")
     _prep(dest, stages[0])
     text = _the_log(dest)
     assert re.search(r"out  bench_marks\s+nothing \(W5\)", text), text
     assert re.search(r"out  validate_subject\s+nothing \(W5\)", text), text
     assert re.search(r"out  check_rules\s+answered", text), text
 
-    other, other_stages = _calculation(tmp_path, "siesta", "flat")
+    other, other_stages = _calculation(tmp_path, "siesta")
     _prep(other, other_stages[0])
     siesta = _the_log(other)
     assert re.search(r"out  bench_marks\s+answered", siesta), siesta
@@ -258,7 +263,7 @@ def test_both_gates_report_their_verdict(tmp_path):
     other's job (`script-preparation.md` § 4.3), so the log carries both:
     **validate** on the settings, **check** on the written file.
     """
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     _prep(dest, stages[0])
     text = _the_log(dest)
     assert "STEP 3.3 · VALIDATE" in text and "STEP 3.11 · CHECK" in text
@@ -332,7 +337,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
         return dataclasses.replace(seam, spec_for=_spec_for)
 
     monkeypatch.setattr(P, "engine_seam", _with_one_hook_swapped)
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     with pytest.raises(TypeError) as caught:
         if hook == "relabel":
             prep_bench(open_calculation(dest), stages[0],
@@ -402,7 +407,7 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
 
     # 2. the real one: a prep of a GPU-without-ELPA calculation refuses with
     #    SIESTA's own sentence, through every layer between.
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     # THE GPU ON, AND THE DIAGONALIZER STATED ScaLAPACK -- not ELPA, the
     # default (`engines/siesta.md` § 7) -- on the run card.
     from support.road import read_request, write_request
@@ -448,7 +453,7 @@ def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
     hold; what a test can see is
     the file each engine's prep actually left, and that is held here.
     """
-    dest, stages = _calculation(tmp_path, engine, "flat")
+    dest, stages = _calculation(tmp_path, engine)
     _prep(dest, stages[0])
     stray, prev = [], ""
     for ln in _the_log(dest).splitlines():
@@ -478,7 +483,7 @@ def test_a_block_row_carries_no_items_values_or_sources(tmp_path):
     grew item names, it would mean something was reaching inside a Block,
     which is the freedom W11 says a Block is paying for.
     """
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     _prep(dest, stages[0])
     rows = [ln for ln in _the_log(dest).splitlines()
             if ln.startswith("  out  Block")]
@@ -506,7 +511,7 @@ def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path):
     """
     from molbuilder.jobset.errors import PrepError
 
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, "siesta")
     for psml in dest.glob("*.psml"):     # what the engine cannot start without
         psml.unlink()
     with pytest.raises(PrepError):
@@ -531,7 +536,7 @@ def test_both_engines_traverse_the_same_sequence(tmp_path):
     seqs = {}
     for engine in ("siesta", "pyscf"):
         (tmp_path / engine).mkdir(exist_ok=True)
-        dest, stages = _calculation(tmp_path / engine, engine, "flat")
+        dest, stages = _calculation(tmp_path / engine, engine)
         _prep(dest, stages[0])
         seqs[engine] = [re.sub(r" — .*", "", ln.strip())
                         for ln in _the_log(dest).splitlines()
