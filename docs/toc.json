@@ -194,6 +194,9 @@
         },
         {
           "path": "execution/asu-sol.md"
+        },
+        {
+          "path": "execution/runs-of-points.md"
         }
       ]
     },

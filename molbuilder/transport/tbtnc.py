@@ -309,6 +309,7 @@ def point_readings(calc) -> List[Dict]:
     A point still running, or stopped, is none: its data file is TBtrans's
     while it writes, and a partial one after; a run not launched has no
     row, and no point finished."""
+    from ..calcdirs import RunPlace
     from ..jobset.continuation import points_state
     from ..jobset.naming import stage_home
     from ..runrecord import LaunchRecordError, launch_record
@@ -324,13 +325,19 @@ def point_readings(calc) -> List[Dict]:
             continue
         if launch is None:
             continue
-        rows.update({p["folder"]: p for p in points_state(
-            run, names, task, "transmission", launch=launch, base=base)[2]})
+        try:
+            got = points_state(run, names, task, "transmission",
+                               launch=launch, base=base)[2]
+        except LaunchRecordError:
+            # ITS INDEX DOES NOT READ -- an older molbuilder's: no point of
+            # it is read, the stage's row saying why.
+            continue
+        rows.update({p["folder"]: p for p in got})
     return [{"point": pt, "folder": where,
              "readings": readings(where, task.label)}
             for pt, where, run in folders
             if where is not None
-            and (rows.get(f"{run.name}/{pt.rel}") or {}).get("state")
+            and (rows.get(RunPlace.of(run).walked(pt.rel)) or {}).get("state")
             == "finished"]
 
 

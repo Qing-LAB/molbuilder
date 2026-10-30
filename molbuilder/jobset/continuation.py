@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
+from ..calcdirs import RunPlace
 from ..runrecord import LaunchRecordError
 from .ladder import independent, inputs_of, stage_before
 
@@ -107,30 +108,29 @@ def usable(state: Optional[str]) -> bool:
     return state == "finished"
 
 
-def done(folder, names, *, launch=None, products=(),
-         launched_in=None, verdict_counts: bool = True,
-         record_says: Optional[str] = None) -> Tuple[bool, str]:
+def done(folder, names, *, launch=None, must_hold=(),
+         launched_in=None, verdict_counts: bool = True) -> Tuple[bool, str]:
     """THE DONE-DOOR (`engines/transport.md` § 2a.11): whether the run, or a
     swept run's point, in ``folder`` is DONE -- ``(True, "done")`` -- or what
     it is instead, in the run door's words.  Done is three facts, all read
     from the folder's own files: it **finished** (the one status door,
     :func:`usable`); its run **converged** where it has an SCF or a
     relaxation (the same scan, `RunStatus.verdict`); and it **holds**
-    ``products`` -- what the rungs downstream take from it -- and, a
-    transmission point that shares energies with a finished calculation's
-    point, its ``shared/`` with its ``.copied-from`` (`engines/transport.md`
-    § 2a.16).  ``launch`` is
+    what it must -- ``must_hold``, ``[(product, words)]``, its kind's
+    declaration's (`points.PointsOf.must_hold`; a transport rung's,
+    `transport.stages.must_hold`): what the rungs downstream take from it,
+    and where it shares energies, its ``shared/`` with its ``.copied-from``
+    (`engines/transport.md` § 2a.16).  ``launch`` is
     the launch record the folder's run was sent with (a point's is its
     run's), and ``launched_in`` the folder it lies in when not ``folder``
     (a point's run's folder; `run_status`).  ``verdict_counts`` False where
     the kind says a point's verdict is not its done -- a vibration's
     relaxation call, done finished, converged or not
-    (`points.PointsOf.verdict_counts`).  ``record_says`` what the run's own
-    record says against the point being done, where its kind keeps one --
-    a vibration call whose record step failed (`points.PointsOf.
-    record_says`).  What a finished point lacks is said in the one rule's
-    words (`_run_ending.not_done_why`), which the vibration job's own
-    record step asks too."""
+    (`points.PointsOf.verdict_counts`).  A point whose own step failed
+    concluded failed, so finished says it (`execution/runs-of-points.md`
+    § 4.1).  What a finished point lacks is said in the one rule's words
+    (`_run_ending.not_done_why`), which the job's side asks too
+    (`runpoints.rows_of`)."""
     from ..parse.dirs import run_status
     from ..parse.engines._run_ending import holds, not_done_why
     folder = Path(folder)
@@ -144,38 +144,12 @@ def done(folder, names, *, launch=None, products=(),
         return False, "not run"
     if not usable(st.state):
         return False, st.detail or st.state
-    if record_says:
-        return False, record_says
     why = not_done_why(st.verdict, counts=verdict_counts,
-                       missing=[words for product, words
-                                in must_hold(folder, products)
+                       missing=[words for product, words in must_hold
                                 if not holds(folder, product)])
     if why:
         return False, why
     return True, "done"
-
-
-def must_hold(folder, products, *, deck_text: Optional[str] = None
-              ) -> List[Tuple[Any, str]]:
-    """WHAT A FINISHED POINT IN ``folder`` MUST HOLD TO BE DONE, each with
-    the words its absence is said in (`_run_ending.not_done_why`): its
-    ``products``, and, a transmission point that shares energies with a
-    finished calculation's point (its deck records the sharing), its
-    ``shared/`` with its ``.copied-from`` (`engines/transport.md` § 2a.16).
-    The deck is the run's in ``folder`` (`energies.sharing_of`), or
-    ``deck_text``, a prepared deck's that no run holds yet -- launch writing
-    a run's index.  The one list the done door asks and a transport run's
-    index carries for its job's side (`transport.points_index`, § 2a.11)."""
-    from ..parse.engines._run_ending import product_words
-    from ..runfiles import COPIED_FROM_FILE
-    from ..transport.energies import SHARED_DIR, Contours, sharing_of
-    out = [(p, product_words(p)) for p in products]
-    if (Contours.of_deck(deck_text) if deck_text is not None
-            else sharing_of(Path(folder))) is not None:
-        out.append((f"{SHARED_DIR}/{COPIED_FROM_FILE}",
-                    f"the energies it shares ({SHARED_DIR}/ holds no "
-                    f"{COPIED_FROM_FILE})"))
-    return out
 
 
 def read_run(base: Path, task, stage: str, attempt: Path,
@@ -539,16 +513,15 @@ def point_done(declared, run, pdir, pt, names, *, task, stage: str, base,
     """Whether the point ``pt`` of a run of points, in ``pdir`` below
     ``run``, is DONE -- the done door (:func:`done`) asked with its kind's
     declaration (`points.PointsOf`): what the point must hold, whether its
-    verdict counts, what the run's own record says against it.  The one
-    question status (:func:`point_rows`) and launch's walks ask of a point."""
+    verdict counts (`execution/runs-of-points.md` § 4.2).  The one question
+    status (:func:`point_rows`) and launch's walk ask of a point."""
     return done(pdir, names, launch=launch, launched_in=run,
-                products=declared.products_of(stage, task.label, base,
-                                              point=pt),
-                verdict_counts=declared.verdict_counts(stage, pt),
-                record_says=declared.record_says(run, names, pt))
+                must_hold=declared.must_hold(stage, task.label, base, pt,
+                                             pdir),
+                verdict_counts=declared.verdict_counts(stage, pt))
 
 
-def point_rows(run, names, task, stage: str, *, launch, base):
+def point_rows(run, names, task, stage: str, *, launch, base, index=None):
     """A SWEPT RUN'S POINTS AS `status` READS THEM -- `StageStatus.points`'
     rows for ``run``: the folder each ran in, whether it is done, what it
     started from (its `.continued-from`), what it is a copy of -- a point
@@ -558,14 +531,23 @@ def point_rows(run, names, task, stage: str, *, launch, base):
     run's own gather).  The one per-point
     reader (`engines/transport.md` § 2a.11): the status door asks it for a
     stage's latest run, the record for the run a transmission gathered
-    (§ 2a.12), so the two never read a point two ways.  Returns ``(rows,
-    running)``, the second whether any point not done is running."""
+    (§ 2a.12), so the two never read a point two ways.  Each row in the
+    job's own shape too (`runpoints.rows_of`, `execution/runs-of-points.md`
+    § 4.7): ``rel``, ``words``, ``phase``, ``round``, ``needs`` -- launch's,
+    from the run's index (``index``, read here when not handed in) --
+    ``ended`` and ``ran``, so one rule answers both sides.  Returns
+    ``(rows, running)``, the second whether any point not done is
+    running."""
+    from ..parse.dirs.job import FINAL_STATES
     from ..parse.engines._run_ending import verdict_words
+    from ..runpoints import entry_of, index_at
     from ..runs import concluded
     from ..runrecord import copied_of, read_continued_from
     from .points import points_of
     declared = points_of(task)
     gathered = gathered_lines(run)
+    if index is None:
+        index = index_at(run, names) or {}
     pts, running = [], False
     for pdir, pt in declared.points_in(run, task, stage, base):
         ok, why = point_done(declared, run, pdir, pt, names, task=task,
@@ -597,8 +579,17 @@ def point_rows(run, names, task, stage: str, *, launch, base):
         except LaunchRecordError as exc:
             copied, unread = None, str(exc)
         took = [g for g in gathered_lines(pdir) if g not in gathered]
+        entry = entry_of(index, pt.rel) or {}
         pts.append({**pt.to_wire(),
-                    "point": pt.words(), "folder": f"{run.name}/{pt.rel}",
+                    # THE JOB'S SHAPE (`runpoints.rows_of`): which point,
+                    # its words, phase, round and needs as launch listed it.
+                    "rel": pt.rel, "words": pt.words(),
+                    "phase": entry.get("phase"), "round": entry.get("round"),
+                    "needs": list(entry.get("needs") or ()),
+                    "ended": state in FINAL_STATES,
+                    "ran": state == "finished", "not_run": None,
+                    "point": pt.words(),
+                    "folder": RunPlace.of(run).walked(pt.rel),
                     "state": state, "done": ok, "why": why,
                     # ITS RUN'S STATE IN THE STATUS DOOR'S WORDS.
                     "detail": st.detail if st is not None else None,
@@ -609,32 +600,43 @@ def point_rows(run, names, task, stage: str, *, launch, base):
                     "verdict_words": verdict_words(verdict),
                     "started_from": src, "start_unread": unread,
                     # WHAT LAUNCH TOOK IT OVER FROM, its run's own index
-                    # (`points.PointsOf.taken_from`).
-                    "taken_from": declared.taken_from(run, names, pt),
+                    # (`runpoints.taken_from`).
+                    "taken_from": entry.get("taken_from") or None,
                     "copied_from": copied, "took": took})
     return pts, running
 
 
-def points_verdict(pts, summary: str, *, by_done: bool = False
+def points_verdict(pts, summary: str, *, record, index
                    ) -> "tuple[str, str]":
-    """A run of points' state once nothing in it runs -- THE RUN'S STATE IS
-    ITS POINTS' RUNS': finished when every one finished -- converged or not,
-    which is the converged column's (`job-system.md`, rule 4) -- else
-    failed; with ``by_done``, its kind's rule (`points.PointsOf.
-    finished_by_done`), finished only when every point is DONE (a
-    vibration's calls, `engines/vibration.md` § 5.11 § 7).  The first point
-    not done says why, after ``summary``, the count in the kind's words
-    (`points.PointsOf.summary`).  The one rule, asked by
+    """A run of points' state once nothing in it runs -- the job's own rule
+    (`runpoints.run_state`, `execution/runs-of-points.md` § 4.4) over
+    `status`'s rows: by its kind's ``finished`` (``record``, the kind
+    table's), every point done or every point ran; a finish step that
+    exited non-zero (the run's ``index``), failed.  Its words after
+    ``summary``, the count in the kind's words.  Asked by
     :func:`points_state` and by the transport record for the run its
-    transmission gathered (`engines/transport.md` § 2a.12); the state is
-    `_run_ending.points_state`'s, which a transport run's job asks too."""
-    from ..parse.engines._run_ending import points_state
-    state = points_state(p["state"] for p in pts)
-    if by_done and any(not p["done"] for p in pts):
-        state = "failed"
-    first = next((p for p in pts if not p["done"]), None)
-    return state, (summary if first is None
-                   else f"{summary}; {first['point']}: {first['why']}")
+    transmission gathered (`engines/transport.md` § 2a.12)."""
+    from ..runpoints import run_state
+    state, why = run_state(pts, {"finished": record.finished,
+                                 "unit": record.unit,
+                                 "finish": (index or {}).get("finish")})
+    return state, (f"{summary}; {why}" if why else summary)
+
+
+def count_of(task, run, names, pts, index=None) -> str:
+    """A RUN OF POINTS' COUNT in its kind's words -- the kind table's
+    record's ``count`` part over `status`'s rows and the facts launch wrote
+    into the run's index (``index``, read here when not handed in), the
+    job's count's own words (`execution/runs-of-points.md` § 4.7)."""
+    from ..kind_table import part
+    from ..runpoints import index_at
+    from .points import record_of
+    rec = record_of(task)
+    if index is None:
+        index = index_at(run, names) or {}
+    facts = index.get("facts") or {}
+    return part(rec.count, record=f"{task.calculation} on {task.engine}",
+                key="points.count")(pts, facts)
 
 
 def taken_over(p) -> bool:
@@ -667,20 +669,22 @@ def gathered_lines(folder) -> List[str]:
         return [str(exc)]
 
 
-#: A POINT THE ENDED WALK NEVER REACHED, as every reader of a run of
-#: points says it (`engines/transport.md` § 2a.11): failed, never one still
-#: to come.
-NEVER_REACHED = "the walk ended before it reached this point"
-
 
 def never_reached(pts) -> list:
     """``pts`` of a run of points that has ended, each point still pending
-    or queued -- one its walk never reached -- failed, :data:`NEVER_REACHED`
-    its why: the one rule `status`, the record and a run's own finish count
-    such a point by (`engines/transport.md` § 2a.11, `run-reports.md`
-    § 2.9)."""
-    return [dict(p, state="failed", why=NEVER_REACHED)
-            if p["state"] in ("pending", "queued") else p for p in pts]
+    or queued -- one its walk never ran -- failed, its why the job's own
+    (`runpoints.why_not_run`, `execution/runs-of-points.md` § 4.5): *it
+    builds on <words>, which failed*, or `runpoints.NEVER_REACHED`."""
+    from ..runpoints import why_not_run
+    pts = list(pts)
+    out = []
+    for p in pts:
+        if p["state"] in ("pending", "queued"):
+            why = why_not_run(pts, p["rel"])
+            p = dict(p, state="failed", ended=True, ran=False, why=why,
+                     not_run=why)
+        out.append(p)
+    return out
 
 
 def points_state(run, names, task, stage: str, *, launch, base
@@ -698,11 +702,13 @@ def points_state(run, names, task, stage: str, *, launch, base
     A run the job the reader runs inside sent (:func:`_own_job_s`) is read
     by its points alone: its walk has returned, and the job, the reader's
     own, is still going (`job-system.md` § 6.0, *A sequence of groups*)."""
-    from .points import points_of
-    declared = points_of(task)
+    from ..runpoints import index_at
+    from .points import points_of, record_of
+    declared, record = points_of(task), record_of(task)
+    index = index_at(run, names) or {}
     pts, running = point_rows(run, names, task, stage, launch=launch,
-                              base=base)
-    summary = declared.summary(pts, run, names)
+                              base=base, index=index)
+    summary = count_of(task, run, names, pts, index)
     if running:
         return "running", summary, pts
     walked = _walked_here(pts)
@@ -718,9 +724,9 @@ def points_state(run, names, task, stage: str, *, launch, base
             return "queued", (f"queued as job {jid}" if jid
                               else "launched, nothing run yet"), pts
         pts = never_reached(pts)
-        state, detail = points_verdict(pts, declared.summary(pts, run,
-                                                             names),
-                                       by_done=declared.finished_by_done)
+        state, detail = points_verdict(pts, count_of(task, run, names, pts,
+                                                     index),
+                                       record=record, index=index)
         return state, (detail + (" -- its walk ended before any point "
                                  "started" if own else
                                  " -- its job ended before any point "
@@ -730,9 +736,8 @@ def points_state(run, names, task, stage: str, *, launch, base
         return "running", summary + " (between two points)", pts
     # THE WALK HAS ENDED: a point it never reached is failed.
     pts = never_reached(pts)
-    summary = declared.summary(pts, run, names)
-    state, detail = points_verdict(pts, summary,
-                                   by_done=declared.finished_by_done)
+    summary = count_of(task, run, names, pts, index)
+    state, detail = points_verdict(pts, summary, record=record, index=index)
     # WHAT THE RUN NEEDS BEYOND ITS POINTS, by its kind (`points.PointsOf.
     # also_needs`): a vibration's finish, which writes the result after its
     # last call (`engines/vibration.md` § 5.11 § 7) -- still running while

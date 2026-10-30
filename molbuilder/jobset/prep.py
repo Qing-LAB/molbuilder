@@ -205,14 +205,12 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, provenance,
                 # WHETHER A RE-RUN CONTINUES (`Job.resumes`): the wrapper
                 # says a retry of a run that cannot resume repeats it
                 # (`running-a-job.md` § 3.5) -- a point's own where the
-                # rung renders each point its own (`Rung.wrapper_at`: a
-                # vibration phase's, with its two Python steps and its
-                # monitor a member of the run, `engines/vibration.md`
-                # § 5.11 § 3, § 7a).
+                # rung renders each point its own (`Rung.wrapper_at`), and
+                # every point of a run of points its report steps and its
+                # kind's own steps (`PointOfRun`,
+                # `execution/runs-of-points.md` § 1.2).
                 resumes=point_facts.get("resumes", job.resumes),
-                steps=point_facts.get("steps"),
-                member=point_facts.get("member"),
-                reports=point_facts.get("reports", False),
+                point=point_facts.get("point"),
                 plan=plan,
                 # WHAT THE RENDERING SAYS (`gpu.md` G6), onto the answer.
                 notes=notes,
@@ -544,12 +542,11 @@ class Rung:
     #: ``(sources, point) -> sources``: the rows a point's deck states --
     #: a vibration phase's, the items its role reads; every row by default.
     sources_at: Callable = lambda sources, point: sources
-    #: ``point -> {resumes, steps, member, reports}``: how a point's run
-    #: script is rendered beyond the job's own facts -- a vibration phase's
-    #: `resumes`, its two Python steps and its monitor as a member of the run
-    #: (`engines/vibration.md` § 5.11 § 3, § 7a); a transport point's
-    #: monitor a member and its two report steps (`engines/transport.md`
-    #: § 2a.11); ``{}`` renders the job's.
+    #: ``point -> {resumes}``: how a point's run script is rendered beyond
+    #: the job's own facts and what every point of a run of points has
+    #: (`runwrap.PointOfRun`) -- a vibration phase's `resumes`, its
+    #: warm-files section's (`engines/vibration.md` § 5.11 § 6); ``{}``
+    #: renders the job's.
     wrapper_at: Callable = lambda point: {}
     #: ``point -> bool``: whether a point's deck relaxes -- its progress
     #: log's targets (`_seed_trajectory_log`); by default the render kind's
@@ -586,8 +583,9 @@ def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
     (§ 5.11 § 3).  Which phases run is the stage's config's: each `PHASES`
     row's switch (`already_relaxed` turns the relaxation off,
     `compute_raman` off the optical calls).  Each phase's run script
-    is rendered with its own `resumes` and its two Python steps
-    (:attr:`Rung.wrapper_at`)."""
+    is rendered with its own `resumes` (:attr:`Rung.wrapper_at`); its
+    report steps and the kind's own steps are every run of points'
+    (`PointOfRun`, the kind table's ``steps``)."""
     from ..siesta.vibration_phases import (FC, RELAX, Call, phase, phases_on,
                                            run_size_words)
     from ..transport.sort import deck_sort_key, sort_by
@@ -609,7 +607,8 @@ def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
     # phase's deck and run script every call of it copies (§ 5.11 § 2).
     on = phases_on(cfg0)
     stage_dir = stage_home(base, task, pset.stage).dir
-    points = tuple((stage_dir / p.name, Call(p.name, p.name)) for p in on)
+    points = tuple((calcdirs.prepared_folder(stage_dir, c.prepared), c)
+                   for c in (Call(p.name, p.name) for p in on))
     log.step("the run's phases: " + ", ".join(p.name for p in on))
     # THE FINISH'S FORCE CRITERION is the relaxation phase's own tolerance
     # (`engines/vibration.md` § 5.5): the one yardstick the run relaxes to
@@ -631,16 +630,10 @@ def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
                    if part == FC and not element.is_trial else {})}
 
     def wrapper_at(point):
-        # EACH PHASE'S RUN SCRIPT (§ 5.11 § 3): the phase's `resumes` from
-        # its warm-files section, its two Python steps, and its monitor a
-        # member of the run's (§ 7a).
-        rule = phase(point.phase)
-        return {"resumes": warm_list("siesta", rule.warm_kind, base).resumes,
-                "steps": (("plan", point.phase), ("record", point.phase)),
-                # ...its way up to the run a CALL's (§ 7a): a planned
-                # phase's calls lie below a container named after it.
-                "member": (Call(rule.name, "call") if rule.planned
-                           else point).to_run}
+        # EACH PHASE'S RUN SCRIPT (§ 5.11 § 6): the phase's `resumes` from
+        # its warm-files section -- what a retry in place does.
+        return {"resumes": warm_list("siesta", phase(point.phase).warm_kind,
+                                     base).resumes}
 
     def sources_at(sources, point):
         # A PHASE'S DECK STATES THE ROWS ITS ROLE READS (the catalogue's
@@ -767,10 +760,6 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
                     # that runs once, its one point.
                     "contours": (contours or {}).get(point_key(point))},
                 points=points, at_point=at_point,
-                # EACH POINT REPORTS AS A MEMBER OF ITS RUN
-                # (`engines/transport.md` § 2a.11): its monitor a member,
-                # its way up to the run's, and its two report steps.
-                wrapper_at=lambda pt: {"member": pt.to_run, "reports": True},
                 struct_at=lambda pt: at_frame(struct, pt),
                 provide_data=provide_data, job_facts=job_facts)
 
@@ -1354,8 +1343,21 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # was written (`machine.require_activation`) -- whichever machine it describes.
     # A SCAN'S POINTS hold a deck each, so each gets the job's wrapper too.
     # EACH POINT'S FOLDER, and how its run script is rendered beyond the
-    # job's own facts (`Rung.wrapper_at`).
-    _points = [(d, rung.wrapper_at(pt)) for d, pt in rung.points]
+    # job's own facts: A POINT OF A RUN OF POINTS -- its monitor a member,
+    # its report steps, its kind's own steps (the kind table's record) and
+    # its relaunch (the declaration) -- the same for every kind
+    # (`execution/runs-of-points.md` § 3, op. 1); and what the rung adds
+    # (`Rung.wrapper_at`: a vibration phase's `resumes`).
+    from .points import points_of, record_of
+    from ..runwrap import PointOfRun
+    _declared, _record = points_of(calc.task), record_of(calc.task)
+    _points = [(d, {**rung.wrapper_at(pt),
+                    "point": PointOfRun(
+                        relaunch=_declared.relaunch_of(pset.stage, pt),
+                        verdict_counts=_declared.verdict_counts(pset.stage,
+                                                                pt),
+                        steps=dict(_record.steps))})
+               for d, pt in rung.points]
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment,
@@ -1385,7 +1387,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # stage (§ 5.0, 2a: its files rendered again).
         home = stage_home(base, task, stage)
         gone = empty_old_points(
-            home.dir, [pt.rel for _d, pt in rung.points], plan,
+            home.dir, [pt.prepared for _d, pt in rung.points], plan,
             keep=(LAUNCH_DIR, Path(bench_container(home.token)).name))
         planned = calc.with_plan(js)
         if not copied and ever_launched(planned, planned.job(stage)):
@@ -1620,10 +1622,10 @@ def _open_attempts(calc, stage: str, *, plan, copied: bool = False,
         sweep = open_sweep_run(calc, stage, plan=plan)
         # EACH POINT'S LOG, from the point's folder below the stage into
         # the run's point.
-        seeded = {pt.rel: d for d, pt in points}
+        seeded = {pt.prepared: d for d, pt in points}
         for pdir, point in sweep.points:
             _move_progress_channel_into(pdir, plan,
-                                        seeded=seeded.pop(point.rel))
+                                        seeded=seeded.pop(point.prepared))
         # A PREPARED FOLDER THE RUN OPENS NO POINT FOR -- a vibration's
         # optical phase, whose calls its job plans (`PointsOf.containers`)
         # -- has no run of its own to write a log: its seed is taken out.
@@ -1637,25 +1639,27 @@ def _open_attempts(calc, stage: str, *, plan, copied: bool = False,
 
 def walk_words(calc, stage: str, *, read=None) -> str:
     """A RUN OF POINTS' ONE JOB, in words -- the one composer both doors
-    print and a placement refusal names it by: its points in the kind's
-    word, counted as its declaration knows them at prep
-    (`PointsOf.rung_points`) -- and where the stage's job plans more in a
-    container below the run (`PointsOf.containers`, a vibration's optical
+    print and a placement refusal names it by: its points in its unit
+    (the kind table's record), counted as its declaration knows them at
+    prep (`PointsOf.rung_points`) -- and where the stage's job plans more in
+    a container below the run (`PointsOf.containers`, a vibration's optical
     calls), the rest planned in the job -- and the walls it asks: the
-    stage's one where its points share it (`PointsOf.one_wall`), else
-    their sum.  ``read`` reads a record the prep's plan holds and the disk
-    does not yet -- a junction's, composed by this prep -- as the
-    declaration reads it at the run's opening."""
-    from .points import points_of
-    pts = points_of(calc.task)
+    stage's one where its points share it (the record's ``wall``), else
+    their sum (`execution/runs-of-points.md` § 2.1).  ``read`` reads a
+    record the prep's plan holds and the disk does not yet -- a junction's,
+    composed by this prep -- as the declaration reads it at the run's
+    opening."""
+    from .points import points_of, record_of
+    from ..kind_table import WALL_ONE
+    pts, rec = points_of(calc.task), record_of(calc.task)
     known = len(pts.rung_points(calc, stage, read=read))
-    unit = pts.unit
-    planned = pts.planned_in_job and bool(pts.containers(calc, stage))
+    unit = rec.unit
+    planned = bool(pts.containers(calc, stage))
     count = (f"its {unit}s -- {known} known at prep, the rest planned in "
              f"the job" if planned else
              f"its {known} {unit}{'s' if known != 1 else ''}")
     return (f"one job walking {count} ("
-            + ("the stage's one wall" if pts.one_wall
+            + ("the stage's one wall" if rec.wall == WALL_ONE
                else "their walls summed")
             + ")")
 
@@ -1915,8 +1919,8 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     name = point_token(element.point) if element.point else stage_name
 
     # THE CALCULATION'S KIND answers what it carries and whether a re-run of
-    # it resumes (`job-contracts.md` § 4.2a); a run in phases renders each
-    # phase's run script with that phase's own section (`Rung.wrapper_at`).
+    # it resumes (`job-contracts.md` § 4.2a); a run of points renders each
+    # prepared point's run script with its own section (`Rung.wrapper_at`).
     kind = str(task.calculation)
     with _calling("warm_for", engine=task.engine, where=name):
         warm = seam.warm_for(element.label, element.values, kind, base_dir)
@@ -2539,7 +2543,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         from .points import rung_points_of
         _rung_pts = rung_points_of(pcalc, stage)
         if _rung_pts:
-            run_dir = run_dir / _rung_pts[0].rel
+            run_dir = calcdirs.prepared_folder(run_dir,
+                                               _rung_pts[0].prepared)
     # WHAT IT WILL LAUNCH WITH -- prep writes a deck and its launch
     # together, once (`architecture.md` A3), and launch sends what it wrote.
     # A13: the end point, as the header and the run script carry it.

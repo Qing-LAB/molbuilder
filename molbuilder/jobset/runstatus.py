@@ -42,7 +42,7 @@ from .plan import resources_text
 # question -- could a stage here hand state to the next one? -- asked of the
 # one door with the calculation's folder, so its own list answers.
 from ..warmfiles import warm_list as _warm_list
-from ..paths import attempt_name
+from ..paths import attempt_dir, attempt_name
 
 
 
@@ -118,13 +118,16 @@ class StageStatus:
     #: does for you*, 4).  Beside the state, never folded into it: a run can
     #: finish and not converge (`parse.dirs.run_status`).
     converged: Optional[str] = None
-    #: A rung's points, frames outer and voltages inner -- the point's wire
-    #: form (`stages.Point.to_wire`: ``frame``, ``of``, ``bias_v``) with
-    #: ``point`` (its words), ``folder``, ``state`` (its run's), ``opened``
-    #: (its folder is there), ``converged`` (its run's verdict), ``done``,
-    #: ``why``, ``started_from`` (``start_unread``, the reader's words, when
-    #: its record does not read) and ``took`` each, read from the point's
-    #: own files (`point_rows`; `engines/transport.md` § 2a.11) -- or ``[]``.
+    #: A run of points' points, in the listing order -- each the job's row
+    #: shape (`runpoints.rows_of`: ``rel``, ``words``, ``phase``,
+    #: ``round``, ``needs``, ``ended``, ``ran``, ``not_run``) with the
+    #: point's wire form (its kind's ``to_wire()``), ``point`` (its words),
+    #: ``folder``, ``state`` (its run's), ``opened`` (its folder is there),
+    #: ``converged`` (its run's verdict), ``done``, ``why``,
+    #: ``started_from`` (``start_unread``, the reader's words, when its
+    #: record does not read) and ``took``, read from the point's own files
+    #: (`continuation.point_rows`, `execution/runs-of-points.md` § 4.7) --
+    #: or ``[]``.
     points: List[Dict[str, Any]] = field(default_factory=list)
     #: What the run GATHERED from the rungs upstream -- ``<file> <- <run>``
     #: each, the run's own ``.gathered-from`` (`runrecord.read_gathered_from`;
@@ -281,13 +284,13 @@ MISSING = ("missing", "the job set names this run's folder; it is not on "
 def run_folders(base, task, stage_dir, stage: str):
     """EVERY RUN OF A STAGE, as folders -- ``(n, folder, point)``: each
     attempt ``run-<n>`` in order and, for a rung of points, each of its
-    points' folders there (`transport.stages.points_in`), ``point`` ``None``
+    points' folders there (`PointsOf.points_in`), ``point`` ``None``
     for a run with no point level.  The one lister the Results tab's every
     run (:func:`every_run`) and the memory a stage needs (`jobset.memory`)
     ask."""
     root = Path(base)
     for n in attempts_in(Path(stage_dir)):
-        run_dir = Path(stage_dir) / attempt_name(n)
+        run_dir = attempt_dir(Path(stage_dir), n)
         folders: List[tuple] = []
         from .points import points_of
         declared = points_of(task) if task is not None else None
@@ -301,7 +304,7 @@ def run_folders(base, task, stage_dir, stage: str):
 def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     """EVERY RUN OF A STAGE, each with its own state -- the root's bird's-eye
     (`web/results.md` § 2.4): each attempt in order and, for a swept rung,
-    each attempt's points (`transport.stages.points_in`), read as `status`
+    each attempt's points (`PointsOf.points_in`), read as `status`
     reads a run (`run_state_of`) -- a launched run of points' points as
     `status` reads them, once per run (`continuation.points_state`): a point
     its ended walk never reached failed -- with the file it opens,
@@ -318,20 +321,26 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
 
     def _point_row(n: int, pt) -> Optional[dict]:
         # A LAUNCHED RUN OF POINTS' ROW FOR ``pt``, read once per run.
+        run_dir = attempt_dir(root / st.dir, n)
         if n not in by_run:
             got: Dict[str, dict] = {}
-            run_dir = root / st.dir / attempt_name(n)
             try:
                 launch = launch_record(run_dir)
             except LaunchRecordError:
                 launch = None
             if launch is not None:
-                _s, _d, pts = points_state(
-                    run_dir, stage_home(root, task, st.ref.name).names, task,
-                    st.ref.name, launch=launch, base=root)
-                got = {p["folder"]: p for p in pts}
+                try:
+                    _s, _d, pts = points_state(
+                        run_dir, stage_home(root, task, st.ref.name).names,
+                        task, st.ref.name, launch=launch, base=root)
+                except LaunchRecordError:
+                    # AN INDEX THAT DOES NOT READ is said on the stage's
+                    # row (:func:`_sweep_status`); each run then answers
+                    # by its own door.
+                    pts = []
+                got = {p["rel"]: p for p in pts}
             by_run[n] = got
-        return by_run[n].get(f"{attempt_name(n)}/{pt.rel}")
+        return by_run[n].get(pt.rel)
 
     for n, folder, pt in run_folders(root, task, root / st.dir, st.ref.name):
         run = run_of(folder)
@@ -423,13 +432,20 @@ def _sweep_status(calc, job, *, run: Path, names, columns: dict
     except LaunchRecordError as e:
         return StageStatus(state="unreadable", detail=str(e),
                            attempt=run.name, **columns)
-    if launch is None:
-        pts, _running = point_rows(run, names, task, job.name, base=base,
-                                   launch=launch)
-    else:
-        # THE ONE RULE the gather asks too (`continuation.points_state`).
-        state, detail, pts = points_state(run, names, task, job.name,
-                                          launch=launch, base=base)
+    try:
+        if launch is None:
+            pts, _running = point_rows(run, names, task, job.name,
+                                       base=base, launch=launch)
+        else:
+            # THE ONE RULE the gather asks too (`continuation.points_state`).
+            state, detail, pts = points_state(run, names, task, job.name,
+                                              launch=launch, base=base)
+    except LaunchRecordError as e:
+        # ITS INDEX DOES NOT READ -- an older molbuilder's, naming `jobset
+        # migrate` (`runpoints.read_index`): said on the stage's row, never
+        # the whole status.
+        return StageStatus(state="unreadable", detail=str(e),
+                           attempt=run.name, launch=launch, **columns)
     # CONVERGED, in its own column (`job-system.md`, rule 4): the first
     # point whose output says it did not, in that verdict's own words (a
     # relaxation's `geometry NO`, an SCF's `SCF NO`); yes for a rung that
@@ -988,7 +1004,11 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
                         else f"; {p['start_unread']}" if p.get("start_unread")
                         else f"; copied from {p['copied_from']}"
                         if p.get("copied_from")
-                        else "; from what it gathered"
+                        # NO RECORD OF ITS OWN: it started from what its run
+                        # gathered, or what prep wrote -- the run's line's
+                        # own rule (`job-system.md` § 5.3).
+                        else ("; from what it gathered" if s.gathered
+                              else "; from what prep wrote")
                         if p["opened"] else "")
                      + (f"; took {', '.join(p['took'])}" if p.get("took")
                         else "")))

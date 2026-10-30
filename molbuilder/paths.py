@@ -65,6 +65,14 @@ def frame_token(frame: int) -> str:
     return f"f{int(frame):03d}"
 
 
+def frame_index(token) -> Optional[int]:
+    """The frame index a folder token names -- ``f003`` is 3 -- the reader
+    of :func:`frame_token`; ``None`` for a name that is no frame's."""
+    name = str(token)
+    return int(name[1:]) if (len(name) > 1 and name[0] == "f"
+                             and name[1:].isdigit()) else None
+
+
 def attempt_dir(container, n: int) -> Path:
     """The directory attempt *n* of this stage or trial runs in."""
     return Path(container) / attempt_name(n)

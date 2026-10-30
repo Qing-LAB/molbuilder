@@ -3,7 +3,7 @@
 **Role:** guide
 **Domain:** execution
 
-**Companions:** [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
+**Companions:** [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) (a run of points: its words, data, operations and doors); [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
 — the single-job wrapper this framework runs many of;
 [`execution/job-contracts.md`](?doc=execution/job-contracts.md) — the run-dir
 layout, the wrapper files, and the `job-set.json` / parameter vocabulary this
@@ -87,6 +87,7 @@ one does not state.
 | **stage** | one step of the calculation's ladder — `coarse`, `relax`, `device` — named in the description, prepared with its group, and again until it is launched — and after, for its job request (*The task*, below; [`job-request.md`](?doc=execution/job-request.md) § 5) |
 | **group** | stages that share one job — the stages one number names in the job request ([`job-request.md`](?doc=execution/job-request.md) § 3.3), prepared together and launched together, none building on another, walked in the ladder's order (`project-layout.md` § 1.6.6) |
 | **run** | one launch of a stage (`jobset launch task`). Every launch is a new run, numbered on from the last: its own folder, `01_coarse/run-0`, `run-1`, … A stage that sweeps the bias (transport, `low_bias_approximation: false`) holds a folder per voltage inside its run (`transport.md` § 2a.11). Inside a run, each start of its wrapper is a **try**, its files carrying `-run<N>` (`project-layout.md` § 1.6.1). The code, and some pages, call a run's folder its **attempt**. A run a transport calculation copies in from a finished one it reuses is that calculation's launch, its launch record kept ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
+| **run of points** · **point** | a run whose work is several engine runs, each a **point** — a run folder of its own below the run: a transport rung's frames × voltages, a SIESTA vibration's calls. One launch, one job walking its points, one state, one report; its words, its data, its operations and its rules are [`runs-of-points.md`](?doc=execution/runs-of-points.md)'s |
 | **warm / cold** | what a run starts from. **Warm**: the restart files (density, geometry, optimiser history — the restart-file list, [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) a run left. **Cold**: none of them — the engine starts from the deck alone |
 | **saved state** | a checkpoint of the whole calculation folder ([`checkpointing.md`](?doc=execution/checkpointing.md)): an id, a note, the time. `molbuilder checkpoint save / list / restore / tag` |
 
@@ -209,8 +210,9 @@ that file's own door:
 | | **finished** / **failed** | it concluded with exit code 0 / with another — or with none that can be told, a marker empty or not reading — or its output says the engine stopped; a stop the marker never saw is the scheduler's own line, else the monitor's closing record | `<base>-run<N>.concluded` and its `rc=`; the output's ending; the scheduler's error file `run.json` names (`scheduler.stderr`); `<base>-run<N>.monitor.log` | § 5.3 | `runrecord.ending`, and the same door |
 | | **unreadable** | its launch record is there and does not read | `run.json` | § 5.3 | `runrecord.launch_record` |
 | | *converged* — its own column, never the state | the engine's own output says so | `<base>-run<N>.out` | § 5.3 | the same scan |
-| a point of a run of points | **done** / **not done** | its run finished, converged, and left what the rungs after it take | its marker, its output, those files | § 5.3, § 5.4 | `continuation.done` |
-| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going — never the job a reader runs inside, a sequence's, whose own runs of points it reads by their points (§ 6.0); queued: no point the run walks itself has started and its job is not over (cancelled in the queue, or a process that died before its first point, is a run that ended); else finished: every point's run finished, converged or not — a vibration's, every call done, its kind's rule (`PointsOf.finished_by_done`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); failed: a point's run did not finish — it failed, or the walk stopped before it — or, a vibration's, a call finished without being done; the first point not done named | its `run.json`, its points' files (the row above), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`, else the run door's `runs.concluded`) — `status`, the gather, `jobset scratch` and the transport record ask it alike |
+| a point of a run of points | **done** / **not done** | its run finished, converged where its verdict counts, and holds what it must — what the rungs after it take, a call's product — by its kind's declaration (`PointsOf.must_hold`, `verdict_counts`; [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.2) | its marker, its output, those files | § 5.3, § 5.4 | `continuation.point_done` |
+| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going — never the job a reader runs inside, a sequence's, whose own runs of points it reads by their points (§ 6.0); queued: no point the run walks itself has started and its job is not over (cancelled in the queue, or a process that died before its first point, is a run that ended); else finished by its kind's record (the kind table's `finished`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3): every point's run finished, converged or not — a transport rung's — or every point done and what the run needs beyond them, a vibration's: every call done, its finish ended with exit 0 and its result at the run's root; a finish step that exited non-zero, failed (`runpoints.run_state`, the one rule both sides ask) ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); failed: a point's run did not finish — it failed, or the walk stopped before it — or, a vibration's, a call finished without being done, or its finish not done; the first point not done named | its `run.json`, its points' files (the row above), the run's index (the points taken over, the finish's entry), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`, else the run door's `runs.concluded`) — `status`, the gather, `jobset scratch` and the transport record ask it alike |
+| | **unreadable** | its index is there and does not read — one an older molbuilder wrote naming `jobset migrate`, its path said; on the stage's row, never the whole status | the run's index | § 5.3 | `runpoints.read_index` (`runstatus._sweep_status`) |
 
 **What a run started from is a record, not a state**: `.continued-from` —
 the one run it continues from — and `.gathered-from` — a transport rung's
@@ -425,7 +427,8 @@ a `run-N` a launch again opened — *opened by a launch whose send was refused*
 — `--stage`, the stage launched again alone. A first send refused saved the
 folder's state first; the next one saves it again when anything changed, and
 the way back is the state saved before the first launch that went. **A run of points** (a stage that
-sweeps the bias) is one run, its state one rule that `status`, the gather,
+sweeps the bias, a SIESTA vibration's stage;
+[`runs-of-points.md`](?doc=execution/runs-of-points.md)) is one run, its state one rule that `status`, the gather,
 `jobset scratch` and the transport record all ask (`continuation.points_state`,
 `continuation.stage_run_state` for any stage's run): *running* while a point runs, or
 between two points while a job launched from this machine that holds the run
@@ -438,7 +441,7 @@ queue, or a process that died before its first point, is a run that ended,
 *— its job ended before any point started*; else *finished*
 once every point's run finished, converged or not — the *converged* column
 says *SCF NO* when one did not; a vibration's once every call is done, its
-kind's rule (`PointsOf.finished_by_done`) — or *failed* when a point's run
+kind's rule (the kind table's `finished`, *done*), and its finish too — or *failed* when a point's run
 did not finish, or a vibration's call is not done, naming the first point
 not done. A walk that stopped among its
 points — some run, the rest never reached — is a run that ended, failed,
@@ -769,7 +772,7 @@ they are typed, and written down too.
 | **R-L13** | `--from` on a transport rung, or `--cold` at its first launch — its inputs are its kind's; but a rung of points of a calculation that reuses a finished one, whose first launch takes that calculation's points over: there `--cold` takes none ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `--gather`, launched again; `--cold` launched again | `continuation.cannot_be_named`, `ready.first_launch_takes` |
 | **R-L14** | `--gather` at a first launch, on a stage that is not a transport rung, on a transport rung that gathers nothing (the seed, a lead), or with `--from`; `--from` with `--cold` | the flag that does it, or none — a rung that gathers nothing, launched again without `--gather` | `submit._plan_member`, `continuation.cannot_be_named` |
 | **R-L17** | launched again warm, and its newest launched run left none of the files it takes | `--cold` | `submit._launch_again` |
-| **R-L18** | a run of points launched again warm, every point done; or, at its first launch in a calculation that reuses a finished one, every point one that calculation computed the same — nothing left to walk ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | warm, every point done: `--cold`; at a first launch over a finished calculation: its group prepared again, which copies it in (§ 2a.16, *A narrower question*), or `--cold` | `submit._points_walk`; a vibration's — every call done and its finish too — `submit._phased_walk` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6) |
+| **R-L18** | a run of points launched again warm, every point done and nothing more needed — a vibration's finish done too; or, at its first launch in a calculation that reuses a finished one, every point one that calculation computed the same — nothing left to walk ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | warm, every point done: `--cold`; at a first launch over a finished calculation: its group prepared again, which copies it in (§ 2a.16, *A narrower question*), or `--cold` | `submit._points_walk` — `_all_done`, which asks what the run needs beyond its points (`PointsOf.also_needs`; [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 17; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 6) |
 | **R-L21** | a record the plan reads does not read — a run's launch record, `.continued-from`, `.gathered-from` — or a job of the plan no file can be named for: a deck named on no stage, or not on its label; or the calculation's own `warm-files.toml` does not read — not TOML, or not stamped `molbuilder/warm-files@1` (*`<path>` does not read: …*), or another engine's, or a section or row the vocabulary does not take | the record's own words | each reader (`runrecord.LaunchRecordError`; the naming authority, `naming.NamingError`; the warm-file vocabulary, `warmfiles.WarmFilesError`), refused once by `submit.plan_launch` (`_refusal_kinds`) |
 | **R-L22** | at the send, the folder is not what it was when planned — the plan made again from it now (the calculation opened again, a benchmark's set read again) differs, or is refused | launch again, to see the new plan | `submit.send_launch` (`_same_folder`) |
 | **R-L23** | at the send, nobody to ask and no `--yes` | `--yes` | `submit.send_launch` |
@@ -1211,12 +1214,14 @@ Walk through it with the *why* for each piece:
   are **copied** into each job's folder as real files (user, 2026-08-24): a run
   directory holds everything it needs, and a link holds nothing
   ([`project-layout.md § 1.0`](?doc=execution/project-layout.md)).
-- **`Job.finish`** names the bundle the wrapper runs around the engine —
-  its plan step before it, its record step after it — when the engine alone
-  leaves no result — a SIESTA vibration's `mb_vibration.pyz`
-  (`engines/vibration.md` § 5.11 § 3), beside each phase's deck — copied
-  from the deck's spec; absent for every other job and for a
-  benchmark trial.
+- **`Job.finish`** names the bundle whose verbs a run of points' report
+  steps run around the engine — its plan step before it, its record step
+  after it, its finish step once no point is left to run (the kind table's
+  `steps`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.1) —
+  when the engine alone leaves no result — a SIESTA vibration's
+  `mb_vibration.pyz` (`engines/vibration.md` § 5.11 § 3), beside each
+  phase's deck — copied from the deck's spec; absent for every other job and
+  for a benchmark trial.
 - **`Job.resumes`** says whether a re-run of the job continues from what the
   last one left — the rung's own kind's warm-files fact
   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a); a SIESTA
@@ -2366,10 +2371,13 @@ flowchart LR
 ```
 
 * **When the files are copied**: with the launch's plan, written at the send
-  after the yes — except a point's start, which the walk copies just before
+  after the yes — except a point's start — a device point's `.TSDE`, a
+  vibration's `fc` call's `.DM` — which the walk copies just before
   the point runs, since the point before it may finish in the same walk; a
-  point whose start cannot be copied is not run.
-* **When the record is written**: with the files.
+  point whose start cannot be copied is not run
+  ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 5).
+* **When the record is written**: with the files — a point's start's with
+  the launch's plan, before the walk copies its files.
 * **How a run is named in a record** — one spelling, written and read one
   way (`runrecord.RunRef`): its folder from the calculation's —
   `01_coarse/run-0`, a point's `04_device/run-0/v0.2`.
@@ -2389,7 +2397,10 @@ PySCF vibration's does not) and the stage takes something from a run
 (`restart: clean` takes nothing). **A run of points** takes over, warm,
 every point done in its latest run — a bias sweep's points, a SIESTA
 vibration's calls ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.11 § 6) — and `status` says that for it. The next `run-<n>` is opened
+§ 5.11 § 6) — and walks the rest, each point not done again from its start
+or, where its kind says so, continued from its own last run's warm files
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, *Plan the
+walk*); `status` says that for it. The next `run-<n>` is opened
 through the one opener — warm with the restart files the newest launched run
 left, cold with none; a transport rung's gathered inputs are copied from the
 run each names, with their record (`.gathered-from`) — warm, a file the stage
@@ -2590,9 +2601,10 @@ per-trial bound ends at it); what it did not reach is measured again from the
 state saved before the benchmark's prep.
 **A transport bias sweep is not a benchmark** *(user, 2026-10-05: "bias scan is
 its own mechanism — this is parameter sweep, not some … computation resource
-experiment")*: it is one calculation swept over a parameter — one run, its
-points done or not done, read from each point's own files
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). What it shares
+experiment")*: it is one calculation swept over a parameter — one run of
+points, its points done or not done, read from each point's own files
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11;
+[`runs-of-points.md`](?doc=execution/runs-of-points.md)). What it shares
 with a benchmark's walk and a group's is the **walk script** alone — one
 generator for every job that runs several members in order — each with its
 own settings: a device sweep hands each point the `.TSDE` of the closest
@@ -2768,7 +2780,9 @@ else `allocation.domain` (a benchmark's: `prep --domain`, else
 with its source, and **places the whole request of every job it writes a
 header for** on the queue it names, printing its fit on the target's record: a
 stage's; a group's, its members' walls summed and their largest memory; a run
-of points', one job walking every point, their walls summed; a benchmark's
+of points', one job walking every point, their walls summed — or the stage's
+one wall, where its points share it (the kind table's `wall`, a vibration's
+calls); a benchmark's
 shelf's, its trials' shared request, the benchmark's wall the shelf's
 (`shelves.shelf_request`). A GPU run naming a queue with no GPUs, a wall
 longer than the queue allows, more memory than its nodes hold is prepared all
@@ -3307,7 +3321,7 @@ flowchart TB
     subgraph B["the submission builder — how members are sent"]
         B1["one member, one job<br/>submit._plan_stage"]
         B2["a group's members, one job walking them<br/>submit._plan_group"]
-        B3["a run's points, one job walking them<br/>submit._points_walk · submit._phased_walk"]
+        B3["a run's points, one job walking them<br/>submit._points_walk"]
         B4["a benchmark's trials<br/>submit._plan_shelves · _plan_bench_here"]
     end
     subgraph X["save, write, send, record"]
@@ -3346,8 +3360,8 @@ flowchart TB
 | entry | the verb's one function, whichever surface called; owns the save and the record | `prep.prep_task` (a task's groups), `prep.prep_bench` (one stage's benchmark) | `submit.plan_launch` (the plan, a refusal written down) → `submit.send_launch` |
 | the work | which members: by the job request's groups, matched by their members | `_prep_groups`: the groups picked — a pick missing a group a changed job's members are in is refused, naming it (`group.formed_again`); a launched member prepared again only as the same calculation (R-P5) | `_the_group`: the group named or offered, or one stage launched again; a launched group's members fixed |
 | member planner | one member — what it is, what it takes, its checks, its run — planned with nothing written | `prep.plan_stage`: inputs, step 2 resolved, launch values stated and placed, the steps planned (`prep_calculation`) | `submit._plan_member`: `_first_launch` (what it builds on, from the ready door; what prep wrote sent as it is, § 6.0) or `_launch_again` (from `materialize.newest_launched`); `_plan_trial` for a benchmark's trial |
-| run filler | fill the member's run — one run folder, or a run of points | `prep_calculation` opens `run-0` with the stage's own files (`materialize.prepare_attempt`, `open_sweep_run`) — nothing taken from another run | the same openers, then prep's own files back (`_prep_files_back`) and what it takes, each one hand-over carried out by `materialize.hand_over` (§ 5.4): the run it continues from (`prepare_attempt`), a gather (`gather.gather_into`) or the one its last run was given (`_carry_the_gather`); a run of points' takeovers and starts (`_points_walk`; a vibration's calls, `_phased_walk`) |
-| submission builder | how the members are sent — it asks the member planner for each member, then builds the job | — (prep sends nothing; every job's one header is planned with its members — a group's, a run of points' walk's, a benchmark's shelves', `prep.walk_header_of`) | one job (`_plan_stage`, which hands a run of points to `_points_walk`, a vibration's run in phases to `_phased_walk`); a group's walk (`_plan_group`); a benchmark's shelves (`_plan_shelves`, `_plan_bench_here`) |
+| run filler | fill the member's run — one run folder, or a run of points | `prep_calculation` opens `run-0` with the stage's own files (`materialize.prepare_attempt`, `open_sweep_run`) — nothing taken from another run | the same openers, then prep's own files back (`_prep_files_back`) and what it takes, each one hand-over carried out by `materialize.hand_over` (§ 5.4): the run it continues from (`prepare_attempt`), a gather (`gather.gather_into`) or the one its last run was given (`_carry_the_gather`); a run of points' takeovers and starts (`_points_walk`, every kind's, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3) |
+| submission builder | how the members are sent — it asks the member planner for each member, then builds the job | — (prep sends nothing; every job's one header is planned with its members — a group's, a run of points' walk's, a benchmark's shelves', `prep.walk_header_of`) | one job (`_plan_stage`, which hands a run of points to `_points_walk`); a group's walk (`_plan_group`); a benchmark's shelves (`_plan_shelves`, `_plan_bench_here`) |
 | save, write, send, record | only once the plan is whole | `checkpoint.save_before`, `Plan.carry_out`, `_record_prepared` | `send_launch`: the folder as planned, the save at a group's first launch, `Plan.carry_out`, `_go`, each member's `run.json` |
 
 **The doors** — one answer each, asked by every layer above and by `status`,
@@ -3455,9 +3469,10 @@ For someone extending the framework:
 | A run's own records — `run.json` read and written through `persist`, how a run ended (its conclusion marker), `.continued-from`, `.gathered-from`, a run as they name it (`RunRef`); a run's latest try (`newest_run`) | `molbuilder/runrecord.py` |
 | What a prep receives, assembled once (A12) — the run's `(allocation, pins, chosen)` and the bench's `(points, pins, translation)`, the bench grid's cell checks, and the notes a person is told; the conductor's own assembly, beside it | `molbuilder/jobset/prep_inputs.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
-| The launch verb's one entry — the plan (`plan_launch` → `LaunchPlan`: the calculation's copy of its machine's record, read once, first, `_machine_of`; the work, `_the_group`; the submission builders, `_plan_stage`, `_plan_group`, `_points_walk`, `_phased_walk`, a benchmark's `_plan_shelves` and `_plan_bench_here`; the one member planner, `_plan_member` — `_first_launch`, `_launch_again` — and a trial's, `_plan_trial`; placements; the exact lines), then the send (`send_launch`): the one sender, the one launch request (`_sbatch_request`); a sweep sent to a scheduler goes one job per shelf, never one per trial (§ 6.0) | `molbuilder/jobset/submit.py` |
+| The launch verb's one entry — the plan (`plan_launch` → `LaunchPlan`: the calculation's copy of its machine's record, read once, first, `_machine_of`; the work, `_the_group`; the submission builders, `_plan_stage`, `_plan_group`, `_points_walk` (a run of points' one walk), a benchmark's `_plan_shelves` and `_plan_bench_here`; the one member planner, `_plan_member` — `_first_launch`, `_launch_again` — and a trial's, `_plan_trial`; placements; the exact lines), then the send (`send_launch`): the one sender, the one launch request (`_sbatch_request`); a sweep sent to a scheduler goes one job per shelf, never one per trial (§ 6.0) | `molbuilder/jobset/submit.py` |
 | Per-stage status roll-up (reuses `run_status`), and each group's next step (`render_steps`); each member of a job as `molbuilder jobs` shows it (`job_members`); which of a calculation's scratch a run still going keeps, and why (`scratch_answer` → `ScratchAnswer`), what `jobset scratch` shows and removes | `molbuilder/jobset/runstatus.py` |
-| What a run continues from — the default, a named run, or why it is refused — as one `Continuation`, the files it carries included; a stage launched again (`relaunch`); the one rule for a run to build on (§ 5.4) | `molbuilder/jobset/continuation.py` |
+| What a run continues from — the default, a named run, or why it is refused — as one `Continuation`, the files it carries included; a stage launched again (`relaunch`); the one rule for a run to build on (§ 5.4); a run of points' points as `status` reads them, from their own files, and its state and count (`point_done`, `point_rows`, `points_state`, `count_of`) | `molbuilder/jobset/continuation.py` |
+| A run of points, declared — the pair's declaration (`PointsOf`, `points_of`), its record in the kind table (`record_of`), its walls (`walls_of`), a stage's prepared points (`rung_points_of`); each kind's own, `vibration_points.py`, `transport_points.py`; the run's index and its rules are `molbuilder/runpoints.py` ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2, § 6) | `molbuilder/jobset/points.py` |
 | A group — its number in `job-request.json` (`JobRequest.group_of`, `named`): what a stage builds on (`ladder.upstream_of`), the defaults (`default_groups`), the check (`check_groups`), what the members share (`SHARED`, `envelope`), a prepared job's members (`members_of`) matched by membership (`same_members`) and the groups a prep forms again (`formed_again`), the job's files' names (`names_for`; a job already written, `header_of`) | `molbuilder/jobset/group.py` |
 | The ready door — the task read once (`task_state` → `TaskState`); each stage's answer (`readiness`: described / prepared — ready to launch, or why not — / launched); a launched group's members fixed (`launched_without`, `joined_launched`) and a prepared job's members changed (`regrouped`); what a first launch takes, every kind's refusal with it (`first_launch_takes`); the groups and the offers `prep task` and `launch task` make (*The task*) | `molbuilder/jobset/ready.py` |
 | Every command a verb or a refusal prints for a person to type, and the one way back (`way_back`, `redo_launched`); a launch and the way back as a text read later says them (a deck's header, a run script's banner, a result's remedy) | `molbuilder/jobset/commands.py`; `molbuilder/identity.py::launch_as_typed`, `deck_launch`, `way_back_words` |

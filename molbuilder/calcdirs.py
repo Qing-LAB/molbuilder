@@ -37,12 +37,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional, Tuple
 
-# TWO WAYS, because this module travels beside a job in
-# ``mb_vibration.pyz`` (`runwrap.VIBRATION_COMPANIONS`), where the
-# package is not installed.
+# TWO WAYS, because this module travels beside a job in ``mb_monitor.pyz``
+# and ``mb_vibration.pyz`` (`runwrap.MONITOR_COMPANIONS`,
+# `VIBRATION_COMPANIONS`), where the package is not installed.
 try:                                       # inside molbuilder
     from .identity import parse_token
     from .paths import BENCH_DIRNAME, attempt_index, trial_point
@@ -277,3 +277,93 @@ def where(directory) -> Where:
                  trial=trial,
                  point="/".join(below) if what == POINT else None,
                  run_folder=root.joinpath(*parts[:deep]) if deep else None)
+
+
+def _levels(rel: str) -> Tuple[str, ...]:
+    """The folder levels of ``rel`` -- a point's path below its run or its
+    stage (`execution/runs-of-points.md` § 2.4) -- refused by name when it
+    is absolute or climbs out (``..``); ``()`` for ``""``, a point with no
+    level."""
+    if not rel:
+        return ()
+    p = PurePosixPath(str(rel))
+    if p.is_absolute() or ".." in p.parts:
+        raise ValueError(f"{rel!r} is no folder below a run or a stage: a "
+                         f"point's folder is a relative path that stays "
+                         f"below it")
+    return p.parts
+
+
+def prepared_folder(stage_dir, rel: str) -> Path:
+    """A POINT'S PREPARED FOLDER below its stage -- where prep writes its
+    deck and run script (`execution/runs-of-points.md` § 2.4): the point's
+    own ``prepared`` (`stages.Point.prepared`, `vibration_phases.Call.
+    prepared`), at prep, before any run is open; :meth:`RunPlace.prepared`
+    once one is."""
+    return Path(stage_dir).joinpath(*_levels(rel))
+
+
+@dataclass(frozen=True)
+class RunPlace:
+    """A RUN'S PLACES, COMPOSED -- the writing half of the grammar
+    :func:`where` reads (`project-layout.md` § 1.4a;
+    `execution/runs-of-points.md` § 2.4): the stage's folder and the run's
+    ``run-<n>/`` in it, and every folder a run of points holds or reads --
+    a point's below the run, a container's, the run's scratch, a point's
+    prepared folder below the stage -- each composed from the point type's
+    own words (``rel``: which folder below the run; ``prepared``: which
+    below the stage), and each spelled as the walk script names it from the
+    stage's folder.  Of every folder it composes, :func:`where` reads back
+    the same run (``run_folder``) and the same point (``point``).  File
+    names inside a folder are the catalogue's (`runfiles`), never
+    composed here."""
+    stage_dir: Path
+    run_dir: Path
+
+    @classmethod
+    def of(cls, run_dir) -> "RunPlace":
+        """The places of the run in ``run_dir`` -- a ``run-<n>/`` folder,
+        refused by name otherwise."""
+        run_dir = Path(run_dir)
+        if attempt_index(run_dir.name) is None:
+            raise ValueError(f"{run_dir} is no run's folder (run-<n>/)")
+        return cls(stage_dir=run_dir.parent, run_dir=run_dir)
+
+    @classmethod
+    def at(cls, folder) -> "RunPlace":
+        """The places of the run ``folder`` lies in -- a point's, a
+        container's, the run's own -- by :func:`where`; refused by name
+        for a folder below no run."""
+        got = where(folder).run_folder
+        if got is None:
+            raise ValueError(f"{folder} lies below no run (its folders' "
+                             f"records name none)")
+        return cls.of(got)
+
+    def point(self, rel: str) -> Path:
+        """THE FOLDER OF THE POINT ``rel`` below the run -- a container's
+        too; the run itself for a point with no level (``""``)."""
+        return self.run_dir.joinpath(*_levels(rel))
+
+    def prepared(self, rel: str) -> Path:
+        """A point's PREPARED FOLDER ``rel`` below the stage
+        (:func:`prepared_folder`)."""
+        return prepared_folder(self.stage_dir, rel)
+
+    def scratch(self, name: str) -> Path:
+        """The run's SCRATCH folder ``name`` -- the rung's ``scratch_dir``
+        (`Job.scratch_dir`)."""
+        return self.run_dir.joinpath(*_levels(name))
+
+    def walked(self, rel: str, name: Optional[str] = None) -> str:
+        """A folder below the run as the walk script -- and every row that
+        names a point's folder -- names it from the stage's folder:
+        ``run-1/f001/v0.2``; with ``name``, a file in it,
+        ``run-1/fc/CO2.DM``."""
+        return "/".join((self.run_dir.name, *_levels(rel))
+                        + ((name,) if name else ()))
+
+    def walked_all(self, rel: str) -> str:
+        """Every folder below the container ``rel``, as the walk's loop step
+        names them from the stage's folder: ``run-1/optical/*/``."""
+        return self.walked(rel) + "/*/"

@@ -203,13 +203,15 @@ def _the_result(run, stage: str = "freq", n: int = 0):
 
 def _index_of(run, stage: str = "freq", n: int = 0) -> dict:
     """The run's index -- its calls, what each is, how each ended, the
-    finish -- the file of its role among the run's own, read by its one
-    reader (`siesta.vibration_phases.read_index`)."""
-    from molbuilder.runfiles import ROLE_PHASES, find
-    from molbuilder.siesta.vibration_phases import read_index
+    finish -- read by its one reader where its one door places it
+    (`runpoints.index_of`, `read_index`; `execution/runs-of-points.md`
+    § 2.3)."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.runpoints import index_of, read_index
     from molbuilder.task import of as task_of
-    (path, _rf), = find(run.attempt(stage, n), task_of(run.bundle).label,
-                        role=ROLE_PHASES)
+    names = stage_home(run.bundle, task_of(run.bundle), stage).names
+    path = index_of(run.attempt(stage, n), names)
+    assert path is not None, "the run holds no index of its calls"
     return read_index(path)
 
 
@@ -231,7 +233,8 @@ def _the_optical_record(run, computed_in, n: int = 0):
     from molbuilder.postprocess import parse as through_the_registry
     from molbuilder.runfiles import ROLE_OPTICAL
     from molbuilder.runs import on_label_at, run_of
-    from molbuilder.siesta.vibration_phases import OPTICAL, calls_of, entry_of
+    from molbuilder.runpoints import entry_of
+    from molbuilder.siesta.vibration_phases import OPTICAL, calls_of
     from molbuilder.spectra.optical_data import read_optical_data
     d = _the_result(run, n=n)
     folder = run.attempt("freq", n)
@@ -250,10 +253,11 @@ def _the_optical_record(run, computed_in, n: int = 0):
     ds = xarray.load_dataset(path, group="frames")
     assert ds["eps2"].dims == ("frame", "photon_energy_ev", "spin")
     for k, (f, c) in enumerate(zip(frames, calls)):
-        row = entry_of(index, c)
+        row = entry_of(index, c.rel)
         assert f["state"] == "finished", (c.rel, f["state"])
         assert (f["mode"], f["side"], f["dq_amu12_ang"]) == (
-            c.mode, int(c.side or 0), row.get("dq_amu12_ang")), (f, row)
+            c.mode, int(c.side or 0), row["facts"].get("dq_amu12_ang")), \
+            (f, row)
         assert f["computed_in"] == computed_in[c.name], (c.rel, f)
         got = through_the_registry(run_of(folder / c.rel).on_label(".EPSIMG"))
         assert got.result_kind == "dielectric" and list(got.spin) == \
@@ -495,10 +499,11 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     assert f000.current is True, f000.current
     # THE INDEX: every call, how it ended, the selection, the finish.
     index = _index_of(run)
-    assert index["phases"] == [RELAX, FC, OPTICAL]
-    assert [(c["phase"], c["exit"]) for c in index["calls"]] == \
-        [(RELAX, 0), (FC, 0)] + [(OPTICAL, 0)] * n, index["calls"]
-    assert index["selection"]["applied"] == _PICKED_MODES, index["selection"]
+    assert index["facts"]["phases"] == [RELAX, FC, OPTICAL]
+    assert [(c["phase"], c["exit"]) for c in index["points"]] == \
+        [(RELAX, 0), (FC, 0)] + [(OPTICAL, 0)] * n, index["points"]
+    assert index["facts"]["selection"]["applied"] == _PICKED_MODES, \
+        index["facts"]
     assert index["finish"]["exit"] == 0, index["finish"]
     # the optical calls: the equilibrium, then each mode's two sides,
     # each a folder below the run's `optical/` holding the optical deck and
@@ -521,14 +526,14 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     # EACH MILESTONE SAYS ITS PHASE'S OUTCOME, from the record its step
     # wrote, and the run's count after it (`run-reports.md` § 2.9).
     after_relax, after_fc = told(run, "milestone", "freq")
-    rec = index["calls"][0]["relaxation"]
+    rec = index["points"][0]["facts"]["relaxation"]
     assert after_relax.startswith(
         f"running (the relaxation "
         f"{'converged' if rec['converged'] else 'did not converge'} in "
         f"{rec['n_steps']} move"), after_relax
     assert f"(tol {rec['force_tolerance_ev_ang']:g}))" in after_relax, \
         after_relax
-    assert "| the run: relax done · fc pending · optical: after fc |" \
+    assert "| the run: relax done · fc queued · optical: after fc |" \
         in after_relax, after_relax
     imaginary = sum(bool(m["has_imag"]) for m in d["modes"])
     assert after_fc.startswith(
@@ -584,6 +589,32 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
         "a refused launch opened a run")
 
 
+def test_every_folder_of_the_run_reads_back_as_its_run_and_call(
+        real_co2_vibration):
+    """`execution/runs-of-points.md` § 2.4: the folder grammar's two halves
+    are inverses -- of every call's folder the run's places compose
+    (`calcdirs.RunPlace`), a planned optical call's below its container
+    too, the folder door (`calcdirs.where`) reads back the same run and the
+    same call, and the walk's name for it, from the stage's folder, is that
+    folder.  THE SILENT FAILURE: launch or the planner composing a call's
+    folder one way while its report steps, finding their call by `where`,
+    read another -- the run's index never stamped, the run silent."""
+    from molbuilder import calcdirs
+    from molbuilder.siesta.vibration_phases import FC, OPTICAL, RELAX, Call
+    run = real_co2_vibration
+    folder = run.attempt("freq")
+    rels = [e["rel"] for e in _index_of(run)["points"]]
+    assert rels == [Call(RELAX, RELAX).rel, Call(FC, FC).rel] + [
+        Call(OPTICAL, name).rel for name in _OPTICAL_CALLS], rels
+    place = calcdirs.RunPlace.of(folder)
+    for rel in rels:
+        at = place.point(rel)
+        w = calcdirs.where(at)
+        assert (w.what, w.point, w.run_folder) == (
+            calcdirs.POINT, rel, folder.resolve()), (rel, w)
+        assert (place.stage_dir / place.walked(rel)).resolve() == at.resolve()
+
+
 def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     """`execution/run-reports.md` § 2.8: the reading pass says SIESTA's
     optical calculation underway from its opening line -- read by the
@@ -636,7 +667,7 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
         reader.feed(ln)
     assert reader.now().get("part") is None, reader.now().get("part")
     # THE MEMBER MONITOR, as the call's run script starts it -- the run's
-    # folder its `--launched-in` -- read once the call has ended.
+    # folder found by its folder's record -- read once the call has ended.
     names = stage_home(run.bundle, task, "freq").names
     watched = WatchedRun(names=names, run=FIRST_TRY, directory=call,
                          launched_in=folder)
@@ -653,7 +684,8 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     assert "each optical call takes " in text, text
     assert st.call_elapsed_s is not None and "this call" in text, text
     # THE RUN'S CLOCK, from its first call's start in its index.
-    rows = vp.rows_of(index, folder, task.label)
+    from molbuilder.runpoints import rows_of
+    rows = rows_of(index, folder)
     first = min(stamp_time(r["started"]).timestamp() for r in rows
                 if r.get("started"))
     assert abs(st.elapsed_s - (now - first)) < 1.0, (st.elapsed_s, now - first)
@@ -870,7 +902,7 @@ def test_ticked_the_run_measures_at_the_geometry_as_given(ticked):
     from molbuilder.siesta.vibration_phases import FC
     status, _folder = _the_run(ticked)
     assert status.detail == "fc done", status.detail
-    assert _index_of(ticked)["phases"] == [FC]
+    assert _index_of(ticked)["facts"]["phases"] == [FC]
     assert notified(ticked, "freq") == ["start", "finish"]
     d = _the_result(ticked)
     # THE FORCE CONSTANTS END THE RUN, so the finish says their outcome
@@ -1468,7 +1500,8 @@ def stopped(real_co2_vibration, tmp_path_factory):
                     return False
                 index = _index_of(c, "freq", 1)
                 return any(r["phase"] == OPTICAL and r.get("started")
-                           and r["name"] not in done for r in index["calls"])
+                           and r["facts"]["name"] not in done
+                           for r in index["points"])
             _until(one_done_and_the_next_started, within=900,
                    what="an optical call of run-1 done, the next started")
             _stopped_by_its_line(c, "stop as its launch said", launched)
@@ -1526,12 +1559,12 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     finished = {p["call"] for p in run.stopped.points
                 if p["phase"] == OPTICAL and p["done"]}
     assert 0 < len(finished) < len(_OPTICAL_CALLS), run.stopped.points
-    before = {r["name"]: r for r in run.stopped_index["calls"]}
+    before = {r["facts"]["name"]: r for r in run.stopped_index["points"]}
     said = run.said["launch freq warm"]
     assert said.exit_code == 0, said.output
     assert ("takes over the relaxation, the force constants, frame 0, the "
             "equilibrium" in said.output
-            and f"done in run-1; runs the optical calls below run-2/optical/ "
+            and f"done in run-1; runs the calls below run-2/optical/ "
                 f"({len(_OPTICAL_CALLS) - len(finished)} to run again)"
             in said.output), \
         said.output
@@ -1541,7 +1574,7 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
                              f"({len(finished)} taken over)"), status.detail
     run1 = run.attempt("freq", 1).relative_to(run.bundle).as_posix()
     run2 = run.attempt("freq", 2).relative_to(run.bundle).as_posix()
-    index = {r["name"]: r for r in _index_of(run, n=2)["calls"]}
+    index = {r["facts"]["name"]: r for r in _index_of(run, n=2)["points"]}
     for p in status.points:
         name = p["call"]
         taken = p["phase"] in (RELAX, FC) or name in finished
@@ -1551,8 +1584,12 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
         assert index[name].get("taken_from") == (rel if taken else None), \
             index[name]
         if taken:
+            # A CALL TAKEN OVER keeps what its computing run knew of it --
+            # its facts -- and no stamp: it did not run in this run
+            # (`execution/runs-of-points.md` § 2.3).
             assert (index[name]["started"], index[name]["ended"]) == (
-                before[name]["started"], before[name]["ended"]), \
+                None, None), index[name]
+            assert index[name]["facts"] == before[name]["facts"], \
                 (index[name], before[name])
     # THE CALLS TAKEN OVER LEAVE NO RECORD STEP OF THIS RUN, so no
     # milestone; its finish counts the run as the status door does.
@@ -1606,14 +1643,13 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     reached, a file missing -- sending one message per call; and a finish
     naming one failed call of many, its count nowhere; a count that says
     "1 of 5" without saying whether the other 4 failed or wait."""
-    from molbuilder.siesta.vibration_phases import OPTICAL, rows_of
-    from molbuilder.task import of as task_of
+    from molbuilder.runpoints import rows_of
+    from molbuilder.siesta.vibration_phases import OPTICAL
     run = failed_parts
-    rows = rows_of(_index_of(run, n=2), run.attempt("freq", 2),
-                   task_of(run.bundle).label)
+    rows = rows_of(_index_of(run, n=2), run.attempt("freq", 2))
     optical = [r for r in rows if r["phase"] == OPTICAL]
-    taken = [r for r in optical if r["started_from"]]
-    ran = sorted((r for r in optical if not r["started_from"]),
+    taken = [r for r in optical if r["taken_from"]]
+    ran = sorted((r for r in optical if not r["taken_from"]),
                  key=lambda r: r["ended_at"])
     # THE PREMISE, by the one done rule: run-2 ran two calls or more, and
     # each ended not done for the one reason.

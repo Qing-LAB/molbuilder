@@ -27,8 +27,9 @@ here:
   * :mod:`.energies`  — a transmission point's grid, and the contours it
     computes when it shares energies with a finished point; :mod:`.window`
     — a wider window fitted to a finished grid.
-  * :mod:`.points_index` — a run of points' index: every point, what makes
-    it done, how it ended (launch writes it, each point's steps stamp it).
+  * :mod:`.run_words` — a run of points' count and a round's outcome, in
+    a transport rung's words (the index itself is every kind's,
+    `runpoints`).
   * :mod:`.conductance` — G/G0 = T(E_F) off a transmission;
     :mod:`.tbtnc` — a transmission point's DOS for the report;
     :mod:`.gf_files` — the leads' surface Green's function files, as

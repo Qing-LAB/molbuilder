@@ -60,7 +60,7 @@ def _notes(a: Artifact) -> str:
     if a.engine:
         bits.append(_ENGINE.get(a.engine, a.engine))
     if a.calculation:
-        bits.append(a.calculation)
+        bits.append(", ".join(a.calculations))
     out = f" *({', '.join(bits)})*" if bits else ""
     if a.only:
         out += f" — only: {a.only}"

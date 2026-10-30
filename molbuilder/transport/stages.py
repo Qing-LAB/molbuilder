@@ -168,6 +168,32 @@ class Point:
             + ([bias_token(self.volts)] if self.volts is not None else []))
 
     @property
+    def prepared(self) -> str:
+        """Its prepared folder below the stage -- its own, holding its deck
+        and run script (`execution/runs-of-points.md` § 1.1)."""
+        return self.rel
+
+    @property
+    def round(self) -> str:
+        """Its round in words -- the voltage it runs at: every frame's point
+        at one voltage is one round (`engines/transport.md` § 2a.11)."""
+        return f"{self.bias_v:g} V"
+
+    def facts(self) -> Dict[str, object]:
+        """What the point is, as its entry in the run's index keeps it
+        (`execution/runs-of-points.md` § 2.3, ``facts``)."""
+        return {"frame": self.frame, "of": self.of, "volts": self.volts,
+                "bias_v": self.bias_v,
+                "frame_words": (frame_words(self.frame, self.of)
+                                if self.frame is not None else None)}
+
+    @classmethod
+    def from_entry(cls, entry) -> "Point":
+        """The point an entry of the run's index is."""
+        f = entry.get("facts") or {}
+        return cls(frame=f.get("frame"), volts=f.get("volts"), of=f.get("of"))
+
+    @property
     def to_run(self) -> str:
         """THE WAY FROM THE POINT'S FOLDER UP TO ITS RUN'S, as a deck in
         the point names a file in the run's scratch folder
@@ -190,7 +216,7 @@ class Point:
         ``f001/v0.2``."""
         return " · ".join(
             ([frame_words(self.frame, self.of)] if self.frame is not None
-             else []) + [f"{self.bias_v:g} V"])
+             else []) + [self.round])
 
     def to_wire(self) -> Dict[str, object]:
         """THE POINT ON THE WIRE -- one form, for every answer that names a
@@ -235,10 +261,11 @@ def point_folders(base, task, stage: str, *, frames: Optional[int] = None
     (`engines/transport.md` § 2a.11).  ``frames`` is the cited set's count
     when the caller holds the junction (prep, before its record is on
     disk); else the record's (:func:`frames_of`)."""
+    from ..calcdirs import prepared_folder
     from ..jobset.naming import stage_home
     stage_dir = stage_home(base, task, stage).dir
     n = frames if frames is not None else frames_of(base)
-    return [(stage_dir / pt.rel, pt)
+    return [(prepared_folder(stage_dir, pt.prepared), pt)
             for pt in rung_points(task, stage, frames=n)]
 
 
@@ -249,9 +276,11 @@ def points_in(run, task, stage: str, *, base) -> List[Tuple[Path, Point]]:
     gained after the run was opened is not the run's (`job-system.md`,
     *Changed since prepared*).  The frames are the record's of the
     calculation at ``base``."""
-    return [(Path(run) / pt.rel, pt)
+    from ..calcdirs import RunPlace
+    place = RunPlace.of(run)
+    return [(place.point(pt.rel), pt)
             for pt in rung_points(task, stage, frames=frames_of(base))
-            if (Path(run) / pt.rel).is_dir()]
+            if place.point(pt.rel).is_dir()]
 
 
 def stage_inputs(stage: str, task_label: str):
@@ -317,9 +346,9 @@ def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
     `continuation.done` reads) -- and, with ``base_dir``, what a point
     hands to the next point: the calculation's ``along`` row, of the files
     this rung itself declares (the device's ``.TSDE``; the transmission
-    declares none).  THE ONE LIST `done` is asked with
-    (`engines/transport.md` § 2a.11): the gather, the walk and `status`
-    read it here and nowhere else."""
+    declares none).  The products a point must hold (:func:`must_hold`,
+    which adds a shared point's ``shared/``) and the gather reads
+    (`engines/transport.md` § 2a.11) -- here and nowhere else."""
     from ..runfiles import compose
     if stage == "transmission":
         from ..parse.engines.siesta_grammar import TBT_CHANNELS
@@ -336,6 +365,29 @@ def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
     if base_dir is not None:
         out += [f for f in hands_on(stage, task_label, base_dir)
                 if f not in out]
+    return out
+
+
+def must_hold(stage: str, task_label: str, folder, *, base_dir,
+              deck_text: Optional[str] = None) -> list:
+    """WHAT A POINT OF ``stage`` IN ``folder`` MUST HOLD TO BE DONE, each
+    with the words its absence is said in (`execution/runs-of-points.md`
+    § 1.3): its rung's products (:func:`products_of`), and, a transmission
+    point that shares energies with a finished calculation's point -- its
+    deck records the sharing -- its ``shared/`` with its ``.copied-from``
+    (`engines/transport.md` § 2a.16).  The deck is the one in ``folder``,
+    or ``deck_text``, a prepared deck's no run holds yet -- launch writing a
+    run's index."""
+    from ..parse.engines._run_ending import product_words
+    from ..runfiles import COPIED_FROM_FILE
+    from .energies import SHARED_DIR, Contours, sharing_of
+    out = [(p, product_words(p))
+           for p in products_of(stage, task_label, base_dir=base_dir)]
+    if (Contours.of_deck(deck_text) if deck_text is not None
+            else sharing_of(Path(folder))) is not None:
+        out.append((f"{SHARED_DIR}/{COPIED_FROM_FILE}",
+                    f"the energies it shares ({SHARED_DIR}/ holds no "
+                    f"{COPIED_FROM_FILE})"))
     return out
 
 

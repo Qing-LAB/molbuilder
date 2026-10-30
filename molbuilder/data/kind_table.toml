@@ -120,12 +120,26 @@ stage_roles = "every"
 # ...in one stage, `freq`, the harmonic analysis -- a new description's.
 ladder = ["freq"]
 relaxation = "The run's own relaxation (its `relax` phase)"
-points = "molbuilder.jobset.vibration_points:POINTS"
 rung = "molbuilder.jobset.prep:siesta_vibration_rung_of"
 # Its stages' force constants compared, where it has two or more
 # (`engines/vibration.md` § 5.9).
 sum = "molbuilder.jobset.vibration_sum:SUM"
 retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIESTA vibration is one run in phases -- its relaxation the run's first call, switched by already_relaxed (engines/vibration.md 5.11)" }
+
+# Its run is a run of points: each SIESTA call a point, the phases its rounds
+# (execution/runs-of-points.md 2.1; engines/vibration.md 5.11).  Finished
+# when every call is done -- its result is built from them all; its calls
+# share the stage's one wall; its own steps plan a call's coordinates,
+# record what it came to (planning the optical calls after the force
+# constants) and write the result once no call is left.
+[vibration.on.siesta.points]
+declaration = "molbuilder.jobset.vibration_points:POINTS"
+unit = "call"
+finished = "done"
+wall = "one"
+count = "molbuilder.siesta.vibration_phases:count_words"
+outcome = "molbuilder.runpoints:outcomes"
+steps = { before = "plan", after = "record", finish = "finish-run" }
 
 [vibration.on.pyscf]
 # It relaxes inside its one deck, so each of its stages is the
@@ -175,7 +189,6 @@ words = "TranSIESTA"
 # Its stages are its rungs, every one, in order (the seed among them: the
 # device starts from its density, user 2026-10-12).
 stage_roles = "own"
-points = "molbuilder.jobset.transport_points:POINTS"
 rung = "molbuilder.jobset.prep:transport_rung_of"
 # Which rung hands which file to which (the ladder's DAG), and the gather
 # that takes them at a rung's first launch (engines/transport.md § 6.1).
@@ -184,3 +197,16 @@ gather = "molbuilder.jobset.gather:gather_sources"
 # Its transmission points read into the calculation's record and data file,
 # current against voltage (engines/transport.md § 2a.12).
 sum = "molbuilder.jobset.transport_sum:SUM"
+
+# A swept rung's run is a run of points: a frame of the cited set and a
+# voltage each, a round one voltage at every frame (execution/runs-of-points.md
+# 2.1; engines/transport.md 2a.11).  Finished when every point ran,
+# converged or not -- the converged column says the rest; each point told the
+# card's wall, the job's their sum.  No steps of its own between its points.
+[transport.on.siesta.points]
+declaration = "molbuilder.jobset.transport_points:POINTS"
+unit = "point"
+finished = "ran"
+wall = "each"
+count = "molbuilder.transport.run_words:count_words"
+outcome = "molbuilder.transport.run_words:round_outcome"

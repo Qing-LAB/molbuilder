@@ -50,7 +50,10 @@ run from PATH as before.
 rather than its own stem (:func:`_migrate_lead_names`) -- every file before
 2.17.0, its prep's log before 2.23.2 -- renamed, and the plan's deck names
 with them.  A stage whose run script was written for the old names is said
-with its way on.
+with its way on.  A run of points' index as 2.42-2.54 wrote it -- a
+vibration's ``.phases.json``, a transport rung's ``.points.json`` of its
+earlier schema -- rewritten into the one index (:func:`_migrate_run_indexes`,
+2.55.0).
 
 **The template** (:func:`_decide_template`): the electronic state's items
 (M6, ``science/chemistry-correctness.md`` § 2a) -- PySCF's ``spin`` and the
@@ -90,7 +93,8 @@ CURRENT = ("nothing to migrate: it holds nothing an older molbuilder wrote "
            "-- its records are whole, its record of its machine is this "
            "molbuilder's, its leads' run files are on their own stem, and "
            "its template carries no item an older molbuilder meant "
-           "otherwise, renamed or a release retired")
+           "otherwise, renamed or a release retired, and its runs of points "
+           "keep this molbuilder's index")
 
 
 class MigrateError(ValueError):
@@ -287,12 +291,13 @@ _COMPUTED_ON_CARDS = ("restart", "density_fit")
 _RULE_DAYS = {"m6": "2026-09-28", "w57": "2026-10-06"}
 
 
-def _kept_as(rules) -> str:
-    """``.pre-<rule>`` -- the name an old file is kept under beside its
-    rewrite, once: the EARLIEST of the ``rules`` it was written before, each
-    a plan's code (:data:`_RULE_DAYS`), a day or a release (the template's
-    retired and renamed items carry either); two rules of one day are told
-    apart by name, so one file is kept under one name on every run."""
+def _kept_as(path: Path, rules) -> Path:
+    """Where an old file is kept beside its rewrite, once -- the catalogue's
+    name for it (`runfiles.KEPT_FILE`, ``<name>.pre-<rule>``): the EARLIEST
+    of the ``rules`` it was written before, each a plan's code
+    (:data:`_RULE_DAYS`), a day or a release (the template's retired and
+    renamed items carry either); two rules of one day are told apart by
+    name, so one file is kept under one name on every run."""
     import re
     from ..template import version_key
 
@@ -301,7 +306,9 @@ def _kept_as(rules) -> str:
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
             return (0, day, (), rule)
         return (1, "", version_key(rule), rule)
-    return ".pre-" + min(rules, key=when)
+    from ..runfiles import KEPT_FILE, fixed_name
+    return path.with_name(fixed_name(KEPT_FILE, kept=path.name,
+                                     rule=min(rules, key=when)))
 
 
 class _Writes(dict):
@@ -1069,6 +1076,162 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
     return said, moves, writes
 
 
+def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
+                                        "_Writes"]:
+    """A RUN OF POINTS' INDEX as molbuilder 2.42-2.54 wrote it, rewritten
+    into the one index every run of points keeps (`runpoints`,
+    `execution/runs-of-points.md` § 2.3, § 3 op. 18): a SIESTA vibration
+    run's ``.phases.json`` (``vibration-phases@1``) -- its file kept under
+    its old name's ``.pre-2.55.0`` -- and a transport run's ``.points.json``
+    of ``transport-points@1``, kept as every rewritten file is.  Each point
+    keeps what it was and how it ended.  A vibration's call is its kind's
+    declaration's (`vibration_phases.point_entry`): what it needs and must
+    hold, its round and its words -- the same answers launch writes today;
+    a transport point keeps its 2.54 entry's words, needs and must-hold,
+    its round its point's (`stages.Point.round`).  A point taken over keeps no
+    stamps: it did not run in that run.  Decided, never done here:
+    ``(said, moves, writes)``; nothing for a calculation with no such
+    index."""
+    from ..persist import json_text, read_json
+    from ..paths import attempt_dir, attempts_in
+    from ..runpoints import (OLDER_SCHEMAS, add_point, empty_index,
+                             index_path, older_index)
+    from .naming import stage_home
+    from .points import points_of, record_of
+    said: List[str] = []
+    moves: List[Tuple[Path, Path]] = []
+    writes = _Writes()
+    rule = "2.55.0"
+    base, task = Path(calc.base), calc.task
+    declared, record = points_of(task), record_of(task)
+    if declared is None or calc.jobset is None:
+        return said, moves, writes
+    for job in calc.jobset.jobs:
+        home = stage_home(base, task, job.name)
+        if not home.dir.is_dir():
+            continue
+        names = home.names
+        for n in attempts_in(home.dir):
+            run = attempt_dir(home.dir, n)
+            old_path, new_path = older_index(run, names), index_path(run, names)
+            if old_path.is_file():
+                src = old_path
+            elif new_path.is_file():
+                src = new_path
+            else:
+                continue
+            try:
+                old = read_json(src)
+            except (OSError, ValueError) as exc:
+                raise MigrateError(f"{src.relative_to(base)} does not read, "
+                                   f"so nothing was written: {exc}") from None
+            schema = old.get("schema") if isinstance(old, dict) else None
+            if schema not in OLDER_SCHEMAS:
+                continue
+            index = _index_of_2_54(old, schema, calc=calc, stage=job.name,
+                                   declared=declared, record=record,
+                                   add_point=add_point,
+                                   empty_index=empty_index)
+            writes.add(new_path, json_text(index), [rule])
+            kept = _kept_as(old_path, [rule]) if src == old_path else None
+            if kept is not None:
+                moves.append((old_path, kept))
+            said.append(f"{src.relative_to(base)}: the run's index as "
+                        f"molbuilder 2.54 wrote it, rewritten as "
+                        f"{new_path.name} -- one index for every run of "
+                        f"points (execution/runs-of-points.md 2.3)"
+                        + (f"; {old_path.name} kept as {kept.name}"
+                           if kept is not None else ""))
+    return said, moves, writes
+
+
+def _index_of_2_54(old: dict, schema: str, *, calc, stage: str, declared,
+                   record, add_point, empty_index) -> dict:
+    """A 2.54 index's points as the one index states them (`runpoints`):
+    a vibration's calls by its phases table, a transport rung's points as
+    its prepared points are -- what each is, what it needs and must hold
+    -- and how each ended, kept."""
+    from ..runpoints import OLDER_SCHEMAS
+    keep = ("started", "ended", "exit", "verdict", "not_run")
+    if schema == OLDER_SCHEMAS[0]:
+        from ..siesta.vibration_phases import Call, phase, point_entry
+        facts = {"phases": list(old.get("phases") or [])}
+        if old.get("selection") is not None:
+            facts["selection"] = old["selection"]
+        index = empty_index(stage=stage, record=record, facts=facts)
+        present = {c["phase"] for c in old.get("calls") or []}
+        own = ("phase", "name", "mode", "side", "frequency_cm1",
+               "dq_amu12_ang", "taken_from", "record_error") + keep
+        # IN THE LISTING ORDER (`runs-of-points.md` § 1.1): the phases in
+        # their table's order, each phase's calls as planned -- 2.54 wrote
+        # the calls a launch took over first.
+        from ..siesta.vibration_phases import PHASES
+        order = [p.name for p in PHASES]
+        calls = sorted(old.get("calls") or [],
+                       key=lambda c: (order.index(c["phase"]),
+                                      str(c.get("name") or "")))
+        for c in calls:
+            call = Call(phase=c["phase"], name=c.get("name"),
+                        mode=c.get("mode"), side=c.get("side"),
+                        frequency_cm1=c.get("frequency_cm1"),
+                        dq_amu12_ang=c.get("dq_amu12_ang"))
+            rule = phase(call.phase)
+            e = point_entry(call, calc.task.label)
+            row = add_point(
+                index, rel=e["rel"], words=e["words"], phase=e["phase"],
+                round=e["round"], must_hold=e["must_hold"],
+                verdict_counts=e["verdict_counts"],
+                needs=[Call(n, n).rel for n in rule.needs if n in present],
+                planned_by=(Call(rule.planned_by, rule.planned_by).rel
+                            if rule.planned else None),
+                taken_from=c.get("taken_from"),
+                facts={**e["facts"], **{k: v for k, v in c.items()
+                                        if k not in own}})
+            _kept_stamps(row, c, keep)
+            if c.get("record_error") and not c.get("taken_from"):
+                what, _sep, error = str(c["record_error"]).partition(": ")
+                row["step_error"] = {"what": what, "error": error or None}
+        index["finish"] = old.get("finish")
+        return index
+    # transport-points@1
+    from ..transport.stages import Point
+    prepared = {pt.rel: pt for pt in declared.rung_points(calc, stage)}
+    by_rel = {p["rel"]: p for p in old.get("points") or []}
+    order = [rel for rel in prepared if rel in by_rel] + [
+        rel for rel in by_rel if rel not in prepared]
+    index = empty_index(stage=stage, record=record,
+                        facts={k: old.get(k) for k in ("computes", "pair",
+                                                       "leads", "spin",
+                                                       "weights")})
+    for rel in order:
+        p = by_rel[rel]
+        pt = prepared.get(rel)
+        facts = (pt.facts() if pt is not None else
+                 {"frame": p.get("frame"), "frame_words": p.get("frame_words"),
+                  "bias_v": p.get("bias_v")})
+        row = add_point(
+            index, rel=rel, words=p.get("words") or rel, phase=stage,
+            round=(pt or Point(frame=p.get("frame"),
+                               volts=p.get("bias_v"))).round,
+            needs=[p["needs"]] if p.get("needs") else [],
+            must_hold=[(m, w) for m, w in p.get("must_hold") or []],
+            verdict_counts=bool(p.get("verdict_counts", True)),
+            taken_from=p.get("taken_from"),
+            facts={**facts, "window": p.get("window")})
+        _kept_stamps(row, p, keep)
+    return index
+
+
+def _kept_stamps(row: dict, old: dict, keep) -> None:
+    """How a point ended, as its 2.54 entry said -- none for a point taken
+    over, which did not run in that run."""
+    if old.get("taken_from"):
+        return
+    for k in keep:
+        if old.get(k) is not None:
+            row[k] = old[k]
+
+
 def migrate_state(base) -> List[str]:
     """Rewrite the calculation in ``base`` -- every step in the module's
     docstring, each decided before any is written -- and return what
@@ -1094,6 +1257,11 @@ def migrate_state(base) -> List[str]:
     lead_said, moves, lead_writes = _migrate_lead_names(calc)
     for path, (text, rules) in lead_writes.items():
         writes.add(path, text, rules)
+    ix_said, ix_moves, ix_writes = _migrate_run_indexes(calc)
+    moves += ix_moves
+    for path, (text, rules) in ix_writes.items():
+        writes.add(path, text, rules)
+    lead_said += ix_said
     try:
         decision = _migrate_template(rec, task)
     except MigrateError:
@@ -1129,7 +1297,7 @@ def migrate_state(base) -> List[str]:
     # A KEPT FILE IS NEVER WRITTEN OVER: it is the only copy of what the
     # file was before an earlier migration.
     # A NEW FILE -- the job request a split writes -- keeps nothing.
-    kept = {path: path.with_name(path.name + _kept_as(rules))
+    kept = {path: _kept_as(path, rules)
             for path, (_text, rules) in writes.items()
             if path.exists()}
     held = [k for k in kept.values() if k.exists()]

@@ -667,14 +667,15 @@ def _prepared_by_another(calc, job) -> Optional[str]:
     point (`transport.stages.point_folders`) -- else ``None``: this one wrote
     it, or the deck is not there to say."""
     from .. import __version__
+    from ..calcdirs import prepared_folder
     from ..script_emit import molbuilder_words, written_by
     from .naming import job_dir_names
     from .points import rung_points_of
     try:
         folder = Path(calc.base) / job_dir_names(calc.jobset)[job.name]
         points = rung_points_of(calc, job.name)
-        text = ((folder / points[0].rel if points else folder) / job.script
-                ).read_text(errors="replace")
+        text = ((prepared_folder(folder, points[0].prepared) if points
+                 else folder) / job.script).read_text(errors="replace")
     except (OSError, ValueError, KeyError):
         return None
     by = written_by(text)

@@ -44,7 +44,7 @@ import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 #: A stage artifact token: `01_coarse`, `02_electrode_L`.  The ordinal is
 #: **two or more** digits and the name is ``[A-Za-z0-9_]+`` -- `identity.py`'s
@@ -79,8 +79,8 @@ ROLE_CHK         = ".chk"
 ROLE_PYSCF_LOG   = ".log"                # PySCF's own log, a rung's own
 ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
 ROLE_SPECTRA_DATA = ".spectra.nc"        # the same result as structured data
-ROLE_PHASES      = ".phases.json"        # a run in phases: its calls, the index
-ROLE_POINTS      = ".points.json"        # a transport run of points: its index
+ROLE_POINTS      = ".points.json"        # a run of points: its index
+ROLE_PHASES      = ".phases.json"        # a run in phases' index of 2.42-2.54
 ROLE_OPTICAL     = ".optical.nc"         # a run in phases' optical calls, as data
 ROLE_INITIAL     = "_initial.xyz"
 ROLE_OPTIMIZED   = "_optimized.xyz"
@@ -893,11 +893,12 @@ class Artifact:
     #: which of them exist yet, and the alternative was for the page to
     #: subtract one list from another.
     when: str = "run"
-    #: Which CALCULATION writes it, or None for any.  A relaxation has no
-    #: spectrum, and a list that promised one would be describing a file the
-    #: run will never write -- the same fault in the other direction as a
-    #: file that is written and undeclared.
-    calculation: Optional[str] = None
+    #: Which CALCULATION writes it -- one kind, the kinds (a run of points'
+    #: index), or None for any.  A relaxation has no spectrum, and a list
+    #: that promised one would be describing a file the run will never
+    #: write -- the same fault in the other direction as a file that is
+    #: written and undeclared (:func:`written_by`).
+    calculation: Union[str, Tuple[str, ...], None] = None
     #: Does this file carry evidence of HOW THE RUN WENT, and of which kind?
     #: (`model/parse.md` § 5.5.)
     #:
@@ -970,6 +971,15 @@ class Artifact:
     #: (`Job.finish`), not by this flag.
     bundle: bool = False
 
+    @property
+    def calculations(self) -> "tuple[str, ...]":
+        """The kinds whose runs write it (:attr:`calculation`), read one
+        way -- ``()`` for a row naming none."""
+        if self.calculation is None:
+            return ()
+        return ((self.calculation,) if isinstance(self.calculation, str)
+                else tuple(self.calculation))
+
 
 #: THE FIXED NAMES -- files molbuilder writes that are not named on the label,
 #: spelled ONCE, here; each owner imports its own (`job-contracts.md` § 2.2,
@@ -1003,6 +1013,15 @@ PYSCF_BUNDLE = "mb_pyscf.pyz"
 MAKOV_PAYNE_SCRIPT = "makov_payne_correction.py"
 BENCH_RESULT_FILE = "bench-result.json"
 LAUNCH_DIR = "launch"
+
+
+def written_by(a: "Artifact", calculation: str, *, any_: bool = False) -> bool:
+    """Whether the row ``a`` is written by ``calculation`` -- the kind it
+    names, one of the kinds it names; a row naming none answers ``any_``
+    (every calculation's file, where a list wants those too)."""
+    if a.calculation is None:
+        return any_
+    return str(calculation) in a.calculations
 
 
 def bundle_names(deck: str, finish: Optional[str]) -> "tuple[str, ...]":
@@ -1123,41 +1142,38 @@ WRITTEN: "tuple[Artifact, ...]" = (
              listed_by="engine_index", counted_by=("geometric",)),
     # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
     # finish after the force-constant run (`engines/vibration.md` § 5.5).
-    # A RUN IN PHASES -- its index (`engines/vibration.md` § 5.11 § 7): every
-    # SIESTA call of the run, what each is, from what, how it ended; the
-    # finish's entry.
-    Artifact(ROLE_PHASES, "the index of a run in phases: every SIESTA call "
-                          "of the run -- its phase and folder, what it is "
-                          "(the relaxation; the force constants; a mode's "
-                          "side at its displacement), what it was written "
-                          "from and seeded with, how it ended, whether it "
-                          "was taken over -- and the finish's entry; "
-                          "one per run, named for its first try, -run0, "
-                          "whichever try writes to it",
+    # A RUN OF POINTS -- its index (`execution/runs-of-points.md` § 2.3):
+    # every point of the run, what it needs and must hold, how it ended as
+    # the job saw it -- a transport rung's points, a SIESTA vibration's calls.
+    Artifact(ROLE_POINTS, "the index of a run of points: every point of the "
+                          "run in the listing order -- its folder, words, "
+                          "phase and round, what it needs and must hold, "
+                          "whether it was taken over and from where, the "
+                          "point that planned it -- each point's start, "
+                          "end, exit, verdict and outcome as the job saw "
+                          "them, the kind's facts about the run, and its "
+                          "finish step's entry; one per run, named for its "
+                          "first try, -run0, whichever try writes to it",
+             attempt="always", engine="siesta",
+             calculation=("vibration", "transport"), kind="record",
+             writer="launch, for the points it opens (`submit._points_walk`); "
+                    "each point's report steps (`mb_monitor.pyz point`); a "
+                    "planner's own step for the points it plans "
+                    "(`spectra.siesta_vibration`)",
+             door="runpoints.read_index"),
+    # ...AND THE ONE A RUN IN PHASES KEPT FROM 2.42 TO 2.54: read by nothing
+    # but `jobset migrate`, which rewrites it into the run's index; every
+    # reader of a run's points refuses it naming that command
+    # (`runpoints.index_of`).
+    Artifact(ROLE_PHASES, "a SIESTA vibration run's index as molbuilder "
+                          "2.42-2.54 wrote it, before a run of points had "
+                          "one index; `jobset migrate` rewrites it into the "
+                          "run's index (its .points.json)",
              attempt="always", engine="siesta", calculation="vibration",
              kind="record",
-             writer="launch, for the calls it opens (`submit`); the run's "
-                    "own python for the rest (`spectra.siesta_vibration`: "
-                    "the plan, record and finish verbs)",
-             door="siesta.vibration_phases.read_index"),
-    # A TRANSPORT RUN OF POINTS -- its index (`engines/transport.md`
-    # § 2a.11): every point of a device or transmission run, what makes it
-    # done, and how each ended as its report steps saw it.
-    Artifact(ROLE_POINTS, "the index of a transport run of points: every "
-                          "point of the run in the walk's order -- its "
-                          "folder, frame and voltage, the point it needs, "
-                          "whether it was taken over and from where, what "
-                          "it must hold to be done -- the cited set's "
-                          "weights, and each point's start, end, exit and "
-                          "verdict as its report steps saw them; one per "
-                          "run, named for its first try, -run0, whichever "
-                          "try writes to it",
-             attempt="always", engine="siesta", calculation="transport",
-             kind="record",
-             writer="launch, for the points it opens (`submit`); each "
-                    "point's report steps (`mb_monitor.pyz point`) for the "
-                    "rest",
-             door="transport.points_index.read_index"),
+             writer="molbuilder 2.42-2.54 (launch and the run's own python)",
+             door="jobset.migrate.migrate_state",
+             only="a run launched by molbuilder 2.42-2.54"),
     Artifact(ROLE_SPECTRA, "the spectrum this run computed: frequencies, "
                               "the strengths the engine computes, "
                               "thermochemistry -- written by the run itself",
@@ -1588,10 +1604,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "a milestone, a failed part and its reason, finish -- and "
                   "when",
              when="launch", level="run", kind="record",
-             writer="`mb_monitor.pyz notify` (the run's start, milestones, "
-                    "failed parts and finish, sent by its plan and record "
-                    "steps, `runrecord.note_notified`); a member monitor, "
-                    "for every event it sends (`monitor`)",
+             writer="`mb_monitor.pyz notify` (a run of points' start, "
+                    "milestones, failed parts and finish, sent by its "
+                    "points' report steps, `runrecord.note_notified`); a "
+                    "member monitor, for every event it sends (`monitor`)",
              door="runrecord.read_notified"),
     Artifact(name=CONTINUED_FROM_FILE,
              what="the run this one continues from -- a stage's run, a run "
@@ -2029,7 +2045,7 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
     calculation produces is the one to open, during the run and after it.
     """
     named = [a.role for a in ON_THE_LABEL
-             if calculation and a.calculation == calculation
+             if calculation and written_by(a, calculation)
              and a.kind != "record"]
     spoken = [a.role for a in ON_THE_LABEL
               if a.output == "stdout" and a.role not in named]
@@ -2158,7 +2174,7 @@ def manifest(label: str, stage: Optional[str], *,
             continue
         if when and a.when not in when:
             continue
-        if calculation and a.calculation and a.calculation != calculation:
+        if calculation and not written_by(a, calculation, any_=True):
             continue
         # EACH ROW'S NAME as the stage's names spell it (:func:`_template`,
         # what :class:`RunNames` reads), the first try's where the name
@@ -2243,7 +2259,7 @@ def fixed(level: Optional[str] = None,
             continue
         if when and a.when not in when:
             continue
-        if calculation and a.calculation and a.calculation != calculation:
+        if calculation and not written_by(a, calculation, any_=True):
             continue
         if engine and a.engine and a.engine != engine:
             continue

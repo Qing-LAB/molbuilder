@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
 from molbuilder.identity import parse_token
-from molbuilder.paths import attempt_index, trial_label
+from molbuilder.paths import trial_label
 
 if TYPE_CHECKING:
     from molbuilder.transport.stages import Point
@@ -200,29 +200,39 @@ class Run:
     def prepared(self) -> Path:
         """THE FOLDER PREP WROTE THIS RUN'S FILES IN -- its deck, the
         `.validation.txt` beside it, its run script (`project-layout.md`
-        § 5.2) -- which launch copies into the run: the nearest folder of
-        the stage, at the run's place with its run level taken out, that
-        holds the run's deck.  A stage's ``run-<n>/`` is the stage's
-        folder, a bias point's ``run-<n>/f001/v0/`` the stage's
-        ``f001/v0/``; a call the job plans, ``run-<n>/optical/f003/``, runs
-        the deck prep wrote for its phase, ``optical/``
-        (`engines/vibration.md` § 5.11 § 2); a benchmark trial's deck is
-        rendered into its run, ``run-0``, so its run's own folder is it."""
+        § 5.2) -- which launch copies into the run.  A stage's ``run-<n>/``
+        is the stage's folder; a point of a run of points, its prepared
+        folder (the point's ``prepared``, by its kind's declaration,
+        `PointsOf.points_in`): a bias point's ``run-<n>/f001/v0/`` the
+        stage's ``f001/v0/``, a call the job plans,
+        ``run-<n>/optical/f003/``, its phase's ``optical/``
+        (`engines/vibration.md` § 5.11 § 2) -- each composed by the folder
+        door (`calcdirs.RunPlace`, `execution/runs-of-points.md` § 2.4); a
+        benchmark trial's deck is rendered into its run, ``run-0``, so its
+        run's own folder is it."""
         if self.trial:
             return self.folder
-        try:
-            parts = self.folder.resolve().relative_to(
-                self.place.root.resolve()).parts
-        except ValueError:
+        at = self.place.where
+        if at.run_folder is None:
             return self.folder
-        folder = self.place.root.joinpath(
-            *(p for p in parts if attempt_index(p) is None))
-        stage_dir = self.place.root / self.stage
-        deck = self.deck
-        if deck is not None:
-            while folder != stage_dir and not (folder / deck.name).is_file():
-                folder = folder.parent
-        return folder
+        place = calcdirs.RunPlace.of(at.run_folder)
+        if at.what != calcdirs.POINT:
+            return place.stage_dir
+        from .jobset.points import points_of
+        from .runrecord import LaunchRecordError
+        declared = points_of(self.place.task)
+        try:
+            point = (next((pt for _f, pt in declared.points_in(
+                at.run_folder, self.place.task, parse_token(self.stage)[1],
+                Path(self.place.root)) if pt.rel == at.point), None)
+                if declared is not None else None)
+        except LaunchRecordError:
+            # ITS RUN'S INDEX DOES NOT READ -- an older molbuilder's: the
+            # stage's folder, the run's row saying why
+            # (`runstatus._sweep_status`).
+            point = None
+        return (place.prepared(point.prepared) if point is not None
+                else place.stage_dir)
 
     @property
     def stage_deck(self) -> Optional[Path]:
@@ -893,23 +903,28 @@ def _as_its_point(run: Run, st):
     at = run.place.where
     if at.what != calcdirs.POINT or st.state not in ("pending", "queued"):
         return st
-    from molbuilder.jobset.continuation import NEVER_REACHED, points_state
+    from molbuilder.jobset.continuation import points_state
     from molbuilder.jobset.points import points_of
     from molbuilder.runrecord import LaunchRecordError, launch_record
     if points_of(run.place.task) is None:
         return st
     try:
         launch = launch_record(run.launched_in)
+        if launch is None:
+            # A RUN PREP OPENED AND NOBODY LAUNCHED: its points are still
+            # to come, never reached by a walk that never ran.
+            return st
+        _state, _detail, rows = points_state(
+            run.launched_in, run.names, run.place.task,
+            parse_token(run.stage)[1], launch=launch, base=run.place.root)
     except LaunchRecordError:
+        # ITS RUN'S RECORDS DO NOT READ: the point answers by its own
+        # folder, the run's row saying why (`runstatus._sweep_status`).
         return st
-    _state, _detail, rows = points_state(
-        run.launched_in, run.names, run.place.task,
-        parse_token(run.stage)[1], launch=launch, base=run.place.root)
-    rel = f"{run.launched_in.name}/{at.point}"
-    row = next((r for r in rows if r["folder"] == rel), None)
-    if row is None or row["why"] != NEVER_REACHED:
+    row = next((r for r in rows if r["rel"] == at.point), None)
+    if row is None or not row.get("not_run"):
         return st
-    return replace(st, state="failed", detail=NEVER_REACHED)
+    return replace(st, state="failed", detail=row["not_run"])
 
 
 def points_root_state(place: Place, folder) -> Optional[Dict[str, Any]]:

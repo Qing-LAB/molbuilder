@@ -2,7 +2,7 @@
 
 **Role:** contract
 **Domain:** execution
-**Companions:** [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+**Companions:** [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) (a run of points: its words, data, operations and doors); [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 — the run directory's own rules, the topic list, the filename conventions;
 [`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet the
 per-stage folders come from; [`engines/stages.md`](?doc=engines/stages.md) — what
@@ -441,7 +441,7 @@ benchmark is this*, `materialize.bench_owner`, `bench_stage_of`):
 | the root — `task.json` is here | `calculation` | none: a container |
 | `<NN>_<stage>/` | `stage` | container |
 | `run-<n>/`, below a stage or a trial | `attempt` | run — a container when its stage runs per point |
-| below a run of points — `f001/`, `v0.2/`, `f001/v0.2/` | `point` | run; a frame's folder above its voltages, a container |
+| below a run of points — `f001/`, `v0.2/`, `f001/v0.2/`; `relax/`, `fc/`, `optical/f003/` | `point` | run; a container where it holds points — a frame's folder above its voltages, a vibration's `optical/`, opened with the run ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4) |
 | below a stage, the folder prep renders a point's deck into | `point` | container |
 | a device run's `tsgf/` | `scratch` — read alone, no run asked of it, nothing in it opens | scratch, which says it |
 | `<NN>_<stage>/bench/` | `benchmark` | container |
@@ -460,7 +460,10 @@ is one table, the directory door's ([`model/parse.md`](?doc=model/parse.md)
 § 5.2): a run is asked its state and its record; a run of points' root —
 `run-<n>/` of a rung that runs per point — is read as its run of points: its
 state, its points, and the point it is at
-([`architecture.md`](?doc=execution/architecture.md) § 3.2); a calculation's
+([`architecture.md`](?doc=execution/architecture.md) § 3.2); the way up from
+a point to its run is this record and nothing rendered a second time — the
+job, the monitor and the kind's steps ask `calcdirs.where` too
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4); a calculation's
 root, its ladder; the engine's scratch, nothing.
 
 #### Absence narrows the answer; it does not refuse the directory
@@ -731,8 +734,11 @@ every gate it has.
 *One vocabulary with `job-system.md` § Words: a **run** is one launch — the
 `run-<n>/` folder (the code's name for it is `attempt`: `latest_attempt`,
 `attempt_dir`); a **try** is one start of the wrapper inside it, which every
-file of it carries as `-run<N>`. A bias sweep's run holds a folder per point,
-and each point folder holds that point's tries (`transport.md` § 2a.11). A
+file of it carries as `-run<N>`. A run of points — a bias sweep's, a SIESTA
+vibration's ([`runs-of-points.md`](?doc=execution/runs-of-points.md)) — holds
+a folder per point, and each point folder holds that point's tries
+(`transport.md` § 2a.11); its index is named for the run's first try,
+`-run0`, whichever try a point is on. A
 frame set's frames are a level above the voltages — `run-<n>/f000/v0.2/` for frame index 0,
 a level for each axis that varies (`transport.md` § 2a.11).*
 
@@ -776,8 +782,12 @@ it before committing a week of cluster time.
 
 **One opener makes every run folder** —
 `jobset/materialize.py::open_run`: a stage's run (prep's `run-0`, and the
-next one a launch opens), a bias point's folder inside a swept rung's run
-(`run-<n>/v<V>/`, `open_sweep_run`), and a benchmark trial's run. It creates the folder and every container above it that does not exist
+next one a launch opens), a point's folder inside a run of points
+(`run-<n>/v<V>/`, a vibration's `run-<n>/fc/`, `open_sweep_run`), and a
+benchmark trial's run; a point a run's own job plans — a vibration's optical
+call — is opened in the job by its planner's step, through the opener's
+travelling core (`calcdirs.record`, `planned.bring`;
+[`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 11). It creates the folder and every container above it that does not exist
 yet — the stage, a benchmark's `bench/`, a swept rung's `run-<n>/` — stamping
 each (§ 1.4a; invariant 6b); a submission's `launch/` is
 made and stamped a container by the prep or the send that first writes in it
@@ -828,7 +838,7 @@ Two small files answer the two questions *(the second decided by the user,
 |---|---|---|---|---|
 | `run.json` (`molbuilder/run-launch@1`) | `launch`, into the run | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, **what it continued from**, and for a run a sequence of groups' job sent **the sequence** — its mode, command, job id and placement then the job's ([`job-system.md`](?doc=execution/job-system.md) § 6.0) | not launched: `launch` runs in this run |
 | `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle> <verb>)`** (`parse/dirs/job.FINISH_FAILED`); when the job had no python of its env, `no env python (<path>)` (`NO_ENV_PYTHON`) | still running, or force-stopped: the files cannot tell which |
-| `.continued-from` | `launch`, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) | with the files it takes — a stage's run continuing from another, a run of points continuing, a point's start, a point taken over (the run that computed it, one hop) | which run, as every record names one (`runrecord.RunRef`): its folder from the calculation's | the run starts from the structure, or from what it gathered |
+| `.continued-from` | `launch`, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) | with the files it takes — a stage's run continuing from another, a run of points continuing, a point continued from its own last run, a point taken over (the run that computed it, one hop); a point's start with the launch's plan, its files copied by the walk just before the point runs | which run, as every record names one (`runrecord.RunRef`): its folder from the calculation's | the run starts from the structure, or from what it gathered |
 
 - **`run.json` is written at launch, never at completion** — written when the
   job finished, it would leave a running direct run reading as never
@@ -2572,8 +2582,8 @@ with a copy of each stage file it reads.
 | `<label>_initial.molstruct.json` *(PySCF)* | the input geometry's cell and labels | the PySCF deck | none | result |
 | `<label>_optimized.molstruct.json` *(PySCF)* | the relaxed geometry's cell and labels -- the sidecar of the restart file `_optimized.xyz` | the PySCF deck | none | result |
 | `<label>.constraints.txt` *(PySCF)* — only: atoms are held | which atoms are held still, in geomeTRIC's own format | the PySCF deck | none | derived |
-| `<base>-run<N>.phases.json` *(SIESTA, vibration)* | the index of a run in phases: every SIESTA call of the run -- its phase and folder, what it is (the relaxation; the force constants; a mode's side at its displacement), what it was written from and seeded with, how it ended, whether it was taken over -- and the finish's entry; one per run, named for its first try, -run0, whichever try writes to it | launch, for the calls it opens (`submit`); the run's own python for the rest (`spectra.siesta_vibration`: the plan, record and finish verbs) | `siesta.vibration_phases.read_index` | record |
-| `<base>-run<N>.points.json` *(SIESTA, transport)* | the index of a transport run of points: every point of the run in the walk's order -- its folder, frame and voltage, the point it needs, whether it was taken over and from where, what it must hold to be done -- the cited set's weights, and each point's start, end, exit and verdict as its report steps saw them; one per run, named for its first try, -run0, whichever try writes to it | launch, for the points it opens (`submit`); each point's report steps (`mb_monitor.pyz point`) for the rest | `transport.points_index.read_index` | record |
+| `<base>-run<N>.points.json` *(SIESTA, vibration, transport)* | the index of a run of points: every point of the run in the listing order -- its folder, words, phase and round, what it needs and must hold, whether it was taken over and from where, the point that planned it -- each point's start, end, exit, verdict and outcome as the job saw them, the kind's facts about the run, and its finish step's entry; one per run, named for its first try, -run0, whichever try writes to it | launch, for the points it opens (`submit._points_walk`); each point's report steps (`mb_monitor.pyz point`); a planner's own step for the points it plans (`spectra.siesta_vibration`) | `runpoints.read_index` | record |
+| `<base>-run<N>.phases.json` *(SIESTA, vibration)* — only: a run launched by molbuilder 2.42-2.54 | a SIESTA vibration run's index as molbuilder 2.42-2.54 wrote it, before a run of points had one index; `jobset migrate` rewrites it into the run's index (its .points.json) | molbuilder 2.42-2.54 (launch and the run's own python) | `jobset.migrate.migrate_state` | record |
 | `<label>.spectra.json` *(vibration)* | the spectrum this run computed: frequencies, the strengths the engine computes, thermochemistry -- written by the run itself | the run itself: the PySCF deck, or a SIESTA vibration's `fc` record step and its finish (`mb_vibration.pyz`) | `parse.sidecars.spectra.SpectraSidecarFileParser` | result |
 | `<label>.spectra.nc` *(vibration)* | the spectrum as data on its grids -- the structure, the modes, the thermochemistry, every variable stating itself (NetCDF-4); the JSON's sha256 beside | the run itself, with the JSON (`sidecars.spectra.write_spectra_payload`) | `spectra.datafile.read_spectra_data` | result |
 | `<label>.optical.nc` *(SIESTA, vibration)* | the optical calls as data on their grids -- each frame's eps2 over the photon energies, its mode, side and geometry, its SCF facts, and the settings the calls read (NetCDF-4) | the run's own record steps -- the force constants', every frame pending, then each optical call's -- and its finish (`spectra.siesta_vibration`, `spectra.optical_data.write_optical_data`) | `spectra.optical_data.read_optical_data` | result |
@@ -2596,7 +2606,7 @@ with a copy of each stage file it reads.
 | `<base>-run<N>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act | `runrecord.ending` | record |
 | `<base>-run<N>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
 | `run.json` | the launch record: how, where and when the run was sent, and what it continued from | launch (`runrecord.write_launch`) | `runrecord.launch_record` | record |
-| `notified.json` | the run's notification record: every event sent for the run -- start, a step, the periodic report, its wall near, a milestone, a failed part and its reason, finish -- and when | `mb_monitor.pyz notify` (the run's start, milestones, failed parts and finish, sent by its plan and record steps, `runrecord.note_notified`); a member monitor, for every event it sends (`monitor`) | `runrecord.read_notified` | record |
+| `notified.json` | the run's notification record: every event sent for the run -- start, a step, the periodic report, its wall near, a milestone, a failed part and its reason, finish -- and when | `mb_monitor.pyz notify` (a run of points' start, milestones, failed parts and finish, sent by its points' report steps, `runrecord.note_notified`); a member monitor, for every event it sends (`monitor`) | `runrecord.read_notified` | record |
 | `.continued-from` — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a walked point's start, a taken-over point's computing run (one hop) | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) -- with the files it takes | `runrecord.read_continued_from` | record |
 | `.gathered-from` *(transport)* | what a rung took, from which upstream run | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_gathered_from`) -- a rung's first launch or a `--gather` (`jobset.gather.transport_inputs`), or a launch again keeping what its last run was given | `runrecord.read_gathered_from` | record |
 | `.copied-from` *(transport)* — only: a transport calculation that reuses a finished one | the finished calculation's run, or point, this one is a copy of, tree-relative | prep, copying a group in from the finished calculation it reuses (`jobset.reuse.copy_in`), before the run's launch record; a rung of points' first launch, in each point it takes over (`jobset.reuse.take_into`) and each point's `shared/`, written last (`jobset.reuse.shared_into`) -- through `runrecord.write_copied_from` | `runrecord.read_copied_from` | record |

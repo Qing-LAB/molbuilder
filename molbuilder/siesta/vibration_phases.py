@@ -1,29 +1,26 @@
 """A SIESTA VIBRATION AS ONE RUN IN PHASES -- the phases, each SIESTA call
-a point of the run, and the run's index (`engines/vibration.md` § 5.11).
+a point of the run (`engines/vibration.md` § 5.11; the framework,
+`execution/runs-of-points.md`).
 
 MODULE  siesta.vibration_phases (floor 1 + stdlib; travels in
         ``mb_vibration.pyz`` and ``mb_monitor.pyz``,
         `runwrap.VIBRATION_COMPANIONS`, `runwrap.MONITOR_COMPANIONS`)
 ROLE    the one table of the phases (:data:`PHASES`): what each phase's
-        deck is, what turns it on, where its calls' coordinates and seed
+        deck is, what turns it on, where its calls' coordinates and start
         come from, what a call must hold to be done, which warm-files
-        section it reads, which phases it needs -- read by prep (the decks
-        and run scripts), launch (the walk, the calls it opens and takes
-        over), the run's own python (the plan, record and finish verbs)
-        and every reader of the run's state.  The index -- one per run, at
-        its root, named for its first try
-        (``<label>_<stage>-run0.phases.json``, :func:`index_path`,
-        :func:`write_index` / :func:`read_index`) -- lists every call: what it is, from what, how it
-        ended -- written by launch for the calls it opens and by the run's
-        own python for the rest, rewritten whole; its rows by the one
-        done rule (:func:`rows_of`) and their count (:func:`summary`) are
-        what the run's python, its finish and a member monitor's line say
-        (`run-reports.md` § 2.8).  The kind's declaration
-        as a rung of points is floor 4's, `jobset.vibration_points`, which
-        asks this module's calls, their state and the run's count.
-USED-BY `jobset.prep`, `jobset.submit`, `jobset.vibration_points`,
-        `spectra.siesta_vibration`, `parse.sidecars.vibration_phases`,
-        `monitor`
+        section it reads, which phases it needs, what a relaunch does with
+        a call not done, and which phase's step plans its calls -- read by
+        prep (the decks and run scripts), the pair's declaration
+        (`jobset.vibration_points`: launch's walk, `status`) and the run's
+        own python (its steps).  The call (:class:`Call`), a point of the
+        run; a call's entry in the run's index (:func:`point_entry`), the
+        one shape launch and the force constants' step write; and the
+        count in the vibration's words (:func:`count_words`, the kind
+        table's ``count`` part).  The index itself, its stamps and its
+        rules are every run of points' (`runpoints`).
+USED-BY `jobset.prep`, `jobset.vibration_points`, `spectra.siesta_vibration`,
+        `siesta.vibration_deck`, `mode_frames`, `spectra.displacement_sweep`,
+        `monitor` (the count, through the index's part)
 """
 from __future__ import annotations
 
@@ -35,24 +32,15 @@ from typing import Any, Dict, List, Optional, Tuple
 # VIBRATION_COMPANIONS`, `runwrap.MONITOR_COMPANIONS`), where the package
 # is not installed.
 try:                                       # inside molbuilder
-    from .. import runrecord as _rr
-    from ..runfiles import ROLE_PHASES, compose
+    from ..calcdirs import RunPlace
+    from ..paths import frame_index
+    from ..runfiles import compose
+    from ..runpoints import AGAIN, CONTINUE
 except ImportError:                        # beside a job
-    import runrecord as _rr  # type: ignore[no-redef]
-    from runfiles import ROLE_PHASES, compose
-
-SCHEMA = "molbuilder/vibration-phases@1"
-
-#: What one point of the run is called -- each SIESTA call (`run-reports.md`
-#: § 2.8, `call_unit`): read by the run of points' declaration and the
-#: monitor.
-UNIT = "call"
-
-#: The run's index written whole, and a call not done in the words a failed
-#: part and a failed finish name it by -- every run of points' own
-#: (`runrecord`).
-write_index = _rr.write_index
-not_done_words = _rr.not_done_words
+    from calcdirs import RunPlace  # type: ignore[no-redef]
+    from paths import frame_index  # type: ignore[no-redef]
+    from runfiles import compose  # type: ignore[no-redef]
+    from runpoints import AGAIN, CONTINUE  # type: ignore[no-redef]
 
 #: The phases' names -- one spelling each, the folder below the stage and
 #: below a run that holds the phase's deck, and a call's.
@@ -86,17 +74,28 @@ class PhaseRule:
     #: Whether a call's VERDICT counts toward done -- its SCF converged
     #: (`_run_ending.not_done_why`): not a relaxation's, done finished,
     #: converged or not (§ 5, § 6).  Read by this machine's done door
-    #: (`jobset.vibration_points`) and by the job's own record step.
+    #: (`jobset.vibration_points`), and copied into each call's entry in
+    #: the run's index, which the job judges it by (`runpoints.rows_of`).
     verdict_counts: bool
     #: The warm-files section a call of this phase reads, launched again
     #: not done (§ 6).
     warm_kind: str
-    #: The phases a call of this one needs ended normally (§ 5).
+    #: The phases a call of this one needs to have RAN (§ 5;
+    #: `runs-of-points.md` § 1.2).
     needs: Tuple[str, ...]
-    #: Whether the phase's calls are PLANNED IN THE JOB, each in a folder
-    #: below a container named after the phase (§ 3): a member monitor's
-    #: way up to the run is a call's, not the phase folder's (§ 7a).
-    planned: bool = False
+    #: What a launch again does with a call not done (`runs-of-points.md`
+    #: § 1.2): runs it ``again`` from its start, or ``continue``s it from
+    #: its own last state, its job's warm files handed over (§ 6).
+    relaunch: str = AGAIN
+    #: The phase whose call's step PLANS this phase's calls in the job,
+    #: each in a folder below a container named after the phase (§ 3) --
+    #: ``None`` for a phase whose call prep prepares.
+    planned_by: Optional[str] = None
+
+    @property
+    def planned(self) -> bool:
+        """Whether the phase's calls are planned in the job."""
+        return self.planned_by is not None
 
 
 #: THE TABLE (§ 5.11 § 3, *Data, not code*): in the order the walk runs them.
@@ -104,7 +103,8 @@ PHASES: Tuple[PhaseRule, ...] = (
     PhaseRule(RELAX, part="relax", role="relaxation",
               switch=("already_relaxed", True),
               coordinates="structure", seed=None, products=(),
-              verdict_counts=False, warm_kind="optimization", needs=()),
+              verdict_counts=False, warm_kind="optimization", needs=(),
+              relaunch=CONTINUE),
     PhaseRule(FC, part="fc", role="force_constants", switch=None,
               coordinates=RELAX, seed=(RELAX, ".DM"), products=(".FC",),
               verdict_counts=True, warm_kind="vibration", needs=(RELAX,)),
@@ -112,7 +112,7 @@ PHASES: Tuple[PhaseRule, ...] = (
               switch=("compute_raman", False),
               coordinates=FC, seed=(FC, ".DM"), products=(".EPSIMG",),
               verdict_counts=True, warm_kind="optical", needs=(FC,),
-              planned=True),
+              planned_by=FC),
 )
 
 
@@ -175,10 +175,11 @@ class Call:
         return f"{self.phase}/{self.name}"
 
     @property
-    def to_run(self) -> str:
-        """The way from the call's folder up to its run's: ``..`` per
-        level."""
-        return "/".join([".."] * len(self.rel.split("/")))
+    def prepared(self) -> str:
+        """Its prepared folder below the stage -- the phase's, which holds
+        the deck and run script every call of the phase runs
+        (`runs-of-points.md` § 1.1)."""
+        return self.phase
 
     def words(self) -> str:
         """The call as a message names it: *the relaxation*, *the force
@@ -200,194 +201,75 @@ class Call:
         ``frame``, ``of`` and ``bias_v`` beside them, as every point's wire
         form carries them (`transport.stages.Point.to_wire`) -- a frame
         index for an optical call, no voltage."""
-        frame = (int(self.name[1:]) if self.phase == OPTICAL and self.name
-                 and self.name.startswith("f") and self.name[1:].isdigit()
+        frame = (frame_index(self.name) if self.phase == OPTICAL and self.name
                  else None)
         return {"phase": self.phase, "call": self.name, "mode": self.mode,
                 "side": self.side, "frequency_cm1": self.frequency_cm1,
                 "dq_amu12_ang": self.dq_amu12_ang,
                 "frame": frame, "of": self.of, "bias_v": None}
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {"phase": self.phase, "name": self.name, "mode": self.mode,
-                "side": self.side, "frequency_cm1": self.frequency_cm1,
+    def facts(self) -> Dict[str, Any]:
+        """What the call is, as its entry in the run's index keeps it
+        (`runs-of-points.md` § 2.3, ``facts``)."""
+        return {"name": self.name, "mode": self.mode, "side": self.side,
+                "frequency_cm1": self.frequency_cm1,
                 "dq_amu12_ang": self.dq_amu12_ang}
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any], *, of: Optional[int] = None
-                  ) -> "Call":
-        return cls(phase=str(d["phase"]), name=d.get("name"),
-                   mode=d.get("mode"), side=d.get("side"),
-                   frequency_cm1=d.get("frequency_cm1"),
-                   dq_amu12_ang=d.get("dq_amu12_ang"), of=of)
+    def from_entry(cls, entry: Dict[str, Any], *, of: Optional[int] = None
+                   ) -> "Call":
+        """The call an entry of the run's index is."""
+        f = entry.get("facts") or {}
+        return cls(phase=str(entry["phase"]), name=f.get("name"),
+                   mode=f.get("mode"), side=f.get("side"),
+                   frequency_cm1=f.get("frequency_cm1"),
+                   dq_amu12_ang=f.get("dq_amu12_ang"), of=of)
 
 
 # --------------------------------------------------------------------- #
-#  The index -- every call of the run, what it is, how it ended           #
+#  A call in the run's index (`runpoints`)                               #
 # --------------------------------------------------------------------- #
-
-def index_path(run_dir, names) -> Path:
-    """Where the run's index lies: at the run's root, named for its first
-    try, ``<label>_<stage>-run0.phases.json`` (`runfiles.ROLE_PHASES`,
-    `runrecord.index_path`)."""
-    return _rr.index_path(run_dir, names, ROLE_PHASES)
-
-
-def empty_index(phases) -> Dict[str, Any]:
-    """An index with no call yet -- what launch starts from: ``phases`` the
-    ones the run walks (its job's row, `model.Job.phases`), which the
-    count's words read (:func:`summary`).  The run's notifications are the
-    monitor's own record, not the index's (`runrecord.notified`, § 5.11
-    § 7)."""
-    return {"schema": SCHEMA, "phases": list(phases), "calls": [],
-            "finish": None}
-
-
-def read_index(path) -> Dict[str, Any]:
-    """The index at ``path``, refused by name when it is not one of this
-    schema (`runrecord.read_index`)."""
-    return _rr.read_index(path, SCHEMA)
-
 
 def calls_of(index: Dict[str, Any]) -> List[Call]:
-    """Every call the index lists, in its order, each with how many its
-    phase holds."""
-    rows = index.get("calls") or []
+    """Every call the run's index lists, in its order, each with how many
+    its phase holds."""
+    rows = index.get("points") or []
     counts: Dict[str, int] = {}
     for r in rows:
         counts[r["phase"]] = counts.get(r["phase"], 0) + 1
-    return [Call.from_dict(r, of=counts[r["phase"]]) for r in rows]
+    return [Call.from_entry(r, of=counts[r["phase"]]) for r in rows]
 
 
-def entry_of(index: Dict[str, Any], call: Call) -> Optional[Dict[str, Any]]:
-    """The index's entry for ``call``, or ``None``."""
-    for r in index.get("calls") or []:
-        if r.get("phase") == call.phase and r.get("name") == call.name:
-            return r
-    return None
+def must_hold(call: Call, label: str) -> List[Tuple[str, str]]:
+    """What a call must hold to be done, each with the words its absence is
+    said in: its phase's products, named on the label
+    (`runfiles.compose`); none for a relaxation, done finished (§ 5)."""
+    return [(compose(label, suf), compose(label, suf))
+            for suf in phase(call.phase).products]
 
 
-def add_call(index: Dict[str, Any], call: Call, **facts) -> Dict[str, Any]:
-    """``call`` added to the index with ``facts`` (its deck's and
-    coordinates' sha256, its seed, where it was computed) -- or its entry
-    updated, where it is listed already."""
-    row = entry_of(index, call)
-    if row is None:
-        row = call.to_dict()
-        index.setdefault("calls", []).append(row)
-    row.update(facts)
-    return row
+def point_entry(call: Call, label: str) -> Dict[str, Any]:
+    """THE CALL'S ENTRY in the run's index, as launch and the force
+    constants' step write it (`runpoints.add_point`; `runs-of-points.md`
+    § 2.3): its folder and words, its phase -- its round too -- what it
+    must hold and whether its verdict counts, what it is.  Its needs, its
+    planner and where it was taken over from are the writer's."""
+    return {"rel": call.rel, "words": call.words(), "phase": call.phase,
+            "round": call.phase, "must_hold": must_hold(call, label),
+            "verdict_counts": phase(call.phase).verdict_counts,
+            "facts": call.facts()}
 
 
-# --------------------------------------------------------------------- #
-#  The run's count, size and files, as its declaration as a rung of     #
-#  points asks them (`jobset.vibration_points`)                          #
-# --------------------------------------------------------------------- #
-
-def rows_of(index: Dict[str, Any], run_dir, label: str) -> List[Dict[str, Any]]:
-    """EACH CALL THE INDEX LISTS, BY THE ONE DONE RULE (§ 5.11 § 6, § 7;
-    `continuation.done` asks the same pieces): done when it ended with exit
-    0, its record step did not fail, its SCF converged where its phase's
-    verdict counts (`PhaseRule.verdict_counts`, the verdict its record step
-    read) and it holds its phase's products (:func:`products_of`) -- the
-    last two said in the rule's own words (`_run_ending.not_done_why`).
-    Each row carries the call's words, its start and end as the index
-    stamped them, and the run it was taken over from, where it was --
-    what :func:`summary` counts, the run's own record step asks (the walk
-    and the run's state) and a member monitor reads (`run-reports.md`
-    § 2.8).  ``run_dir`` is the run's folder, ``label`` the calculation's."""
-    try:                                   # inside molbuilder
-        from ..parse.engines._run_ending import not_done_why
-    except ImportError:                    # beside a job
-        from _run_ending import not_done_why  # type: ignore[no-redef]
-    rows = []
-    for row in index.get("calls") or []:
-        call = Call.from_dict(row)
-        # A CALL THE ENDED WALK NEVER RAN (:func:`close`) ended with it,
-        # not done -- its why the index's.
-        never = row.get("not_run")
-        ran = row.get("ended") is not None
-        ended = ran or never is not None
-        said = row.get("verdict")
-        why = never or "; ".join(w for w in (
-            (f"exit {row.get('exit')}" if ran
-             and row.get("exit") not in (0, "0") else None),
-            row.get("record_error")) if w) or None
-        if ended and why is None:
-            why = not_done_why(
-                (said["of"], bool(said["converged"])) if said else None,
-                counts=phase(call.phase).verdict_counts,
-                missing=[name for name in products_of("", label, None,
-                                                      point=call)
-                         if not (Path(run_dir) / call.rel / name).is_file()])
-        ok = ended and why is None
-        rows.append({"phase": row["phase"], "name": row.get("name"),
-                     "rel": call.rel, "words": call.words(), "done": ok,
-                     "ended": ended, "started": row.get("started"),
-                     "ended_at": row.get("ended"),
-                     "started_from": row.get("taken_from"),
-                     "taken_from": row.get("taken_from"),
-                     "state": ("finished" if ok else
-                               "failed" if ended else "pending"),
-                     "why": why, "not_run": never})
-    return rows
-
-
-def still_to_run(index: Dict[str, Any], rows) -> List[Dict[str, Any]]:
-    """THE CALLS THE WALK MAY STILL RUN (§ 5.11 § 5): not ended, and every
-    phase each needs -- of those the run walks -- holding a call done
-    (`PhaseRule.needs`, the walk's).  A call whose need did not end done is
-    not run, so the finish runs once none is left."""
-    walked = set(index.get("phases") or ())
-    done = {r["phase"] for r in rows if r["done"]}
-    return [r for r in rows if not r["ended"]
-            and all(n in done for n in phase(r["phase"]).needs
-                    if n in walked)]
-
-
-def run_state(rows) -> "tuple[str, Optional[str]]":
-    """THE RUN'S STATE, once no call is left to run, by the one done rule:
-    finished when every call is done (§ 5.11 § 7), else failed naming the
-    first call not done and how many when more than one is -- ``None``
-    when every call is done."""
-    rows = list(rows)
-    left = [r for r in rows if not r["done"]]
-    if not left:
-        return "finished", None
-    return "failed", (not_done_words(left[0])
-                      + (f"; {len(left)} of {len(rows)} calls not done"
-                         if len(left) > 1 else ""))
-
-
-def close(index: Dict[str, Any], rows) -> Dict[str, Any]:
-    """THE WALK OVER -- no call left to run (:func:`still_to_run`): each
-    call it never ran stamped so in the index, ``not_run`` its why -- the
-    phase it needs that did not end done, or the walk that never reached
-    it -- so the run's count and state say it as the status door does a
-    call the ended walk never reached: failed (`run-reports.md` § 2.9), as
-    a transport run's are (`transport.points_index.close`).  Asked by the
-    record step that runs the finish, before it."""
-    walked = set(index.get("phases") or ())
-    done = {r["phase"] for r in rows if r["done"]}
-    words = {r["phase"]: r["words"] for r in rows}
-    for r in rows:
-        if r["ended"]:
-            continue
-        need = next((n for n in phase(r["phase"]).needs
-                     if n in walked and n not in done), None)
-        entry_of(index, Call(r["phase"], r.get("name")))["not_run"] = (
-            f"{words.get(need, need)} did not end done" if need
-            else "the walk never reached it")
-    return index
-
-
-def summary(rows, phases=()) -> str:
-    """The count in the run's words: *relax done · fc done · optical 7 of
-    11 (4 taken over, 2 failed)* -- the calls taken over, and those that
-    ended without being done, each said where there are any; the optical
-    phase with no call yet, where the run walks it (``phases``, the
-    index's), *after fc* -- or, the force constants done, *no mode
-    picked*."""
+def count_words(rows, facts) -> str:
+    """THE RUN'S COUNT in the vibration's words (the kind table's
+    ``count`` part, `runs-of-points.md` § 4.7): *relax done · fc done ·
+    optical 7 of 11 (4 taken over, 2 failed)* -- the calls taken over, and
+    those that ended without being done, each said where there are any;
+    a planned phase with no call yet, where the run walks it (``facts``'
+    ``phases``), *after fc* -- or, its planner done, *no mode picked*.
+    ``rows`` are the job's (`runpoints.rows_of`) or `status`'s
+    (`continuation.point_rows`): one shape."""
+    phases = tuple((facts or {}).get("phases") or ())
     try:                                   # inside molbuilder
         from ..parse.dirs.job import FINAL_STATES
     except ImportError:                    # beside a job, the monitor's
@@ -400,21 +282,20 @@ def summary(rows, phases=()) -> str:
         got = by.get(p.name)
         if not got:
             if p.planned and by and p.name in phases:
-                # BEFORE THE CALL ITS COORDINATES COME FROM, or after it
-                # with no mode picked -- the selection's answer (§ 5.11 § 7).
-                source_done = any(r["done"] for r in by.get(p.coordinates)
-                                  or [])
-                parts.append(f"{p.name}: no mode picked" if source_done
-                             else f"{p.name}: after {p.coordinates}")
+                # BEFORE THE CALL THAT PLANS IT, or after it with no mode
+                # picked -- the selection's answer (§ 5.11 § 7).
+                planner_done = any(r["done"] for r in by.get(p.planned_by)
+                                   or [])
+                parts.append(f"{p.name}: no mode picked" if planner_done
+                             else f"{p.name}: after {p.planned_by}")
             continue
         n_done = sum(bool(r["done"]) for r in got)
         # TAKEN OVER is the index's ``taken_from`` (`continuation.taken_over`),
         # the key the job's rows and the status door's rows share.
-        taken = sum(bool(r.get("taken_from")) and not r.get("copied_from")
-                    for r in got if r["done"])
+        taken = sum(bool(r.get("taken_from")) for r in got if r["done"])
         # ENDED WITHOUT BEING DONE -- one rule for the job's rows and
         # `status`'s, each row's ``state`` its run's, as a transport run's
-        # count says it (`transport.points_index.summary`).
+        # count says it (`transport.run_words.count_words`).
         failed = sum(1 for r in got
                      if not r["done"] and r.get("state") in FINAL_STATES)
         if len(got) == 1:
@@ -481,27 +362,16 @@ def run_size_words(cfg, n_free: int, n_modes: int) -> str:
     return "the run: " + " · ".join(parts)
 
 
-def products_of(stage: str, label: str, base, point: Optional[Call] = None
-                ) -> List[str]:
-    """What a call must hold to be done: its phase's products, named on the
-    label (`runfiles.compose`); ``[]`` for a relaxation, or asked with no
-    call."""
-    if point is None:
-        return []
-    return [compose(label, suf) for suf in phase(point.phase).products]
-
-
 def force_constants_call(run_dir) -> Path:
     """THE FORCE-CONSTANT CALL of the run at ``run_dir`` -- its folder below
     the run (`Call.rel`): the call whose deck measured the force constants
     and which leaves the engine's `.FC` (§ 5.11 § 2), the one a reader of
     the run's force constants or of the deck they were measured with
     takes (the sweep summary, a mode's frame set)."""
-    return Path(run_dir) / Call(FC, FC).rel
+    return RunPlace.of(run_dir).point(Call(FC, FC).rel)
 
 
-__all__ = ["SCHEMA", "UNIT", "RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES",
-           "phase", "phases_on", "IR_CHARGES", "Call", "index_path", "empty_index",
-           "read_index", "write_index", "calls_of", "entry_of", "add_call",
-           "rows_of", "still_to_run", "run_state", "close", "not_done_words",
-           "summary", "products_of", "force_constants_call"]
+__all__ = ["RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES", "phase",
+           "phases_on", "IR_CHARGES", "Call", "calls_of", "must_hold",
+           "point_entry", "count_words", "run_size_words",
+           "force_constants_call"]

@@ -1,104 +1,104 @@
 """A TRANSPORT RUNG'S RUN OF POINTS, DECLARED -- a frame of the cited set
 and a voltage each, decided at prep (`engines/transport.md` § 2a.11), and
-this is the declaration the kind table names for the pair (``points``,
-`execution/architecture.md` § 3.3).
+this is the declaration the kind table's record names for the pair
+(``declaration``, `execution/runs-of-points.md` § 2.2).
 
 MODULE  jobset.transport_points (floor 4, beside `jobset.points`): the
-        rungs' points, their folders, inputs and products are
+        rungs' points, their folders, what each must hold and hands on are
         `transport.stages`'s, which lower floors read; what a reader of a
         run's points asks is answered here, from them.
 """
 from __future__ import annotations
 
-from ..transport.points_index import UNIT, summary
-from ..transport.stages import (STAGE_FACT, frames_of, hands_on, points_in,
-                                products_of, rung_points)
-from .points import PointsOf
+from pathlib import Path
+
+from ..transport.stages import (STAGE_FACT, Point, frames_of, hands_on,
+                                must_hold, points_in, rung_points)
+from .points import PointsOf, Start
+
+
+def _deck_text(deck):
+    """A deck's text, its includes read in (`parse.fdf.read_deck`)."""
+    from ..parse.fdf import read_deck
+    return read_deck(Path(deck))
 
 
 def _declared_rung_points(calc, stage: str, *, read=None):
     return rung_points(calc.task, stage, frames=frames_of(calc.base, read=read))
 
 
-def _declared_summary(rows, run, names) -> str:
-    return summary(rows)
-
-
 def _declared_points_in(run, task, stage: str, base):
     return points_in(run, task, stage, base=base)
 
 
-def _declared_products(stage: str, label: str, base, point=None):
-    return products_of(stage, label, base_dir=base)
-
-
-def _taken_from(run, names, point):
-    """The run ``point`` was taken over from, as launch wrote it into the
-    run's index (`engines/transport.md` § 2a.11)."""
-    from ..transport.points_index import entry_of, index_path, read_index
-    path = index_path(run, names)
-    if not path.is_file():
-        return None
-    return (entry_of(read_index(path), point.rel) or {}).get(
-        "taken_from") or None
-
-
-def _run_index(calc, stage: str, run, names, points):
-    """THE RUN'S INDEX, as launch writes it (`engines/transport.md` § 2a.11;
-    `transport.points_index`): every point of the run in the walk's order --
-    its folder, words and frame's, voltage, the point it needs, the run it
-    was taken over from, the energy grid its deck describes
-    (`energies.deck_window`) and what it must hold to be done, each with the
-    words its absence is said in (`continuation.must_hold`, asked of its
-    prepared deck) -- with what the rung's points compute (the
-    kind table's ``computes``), the leads' pair, the spin the decks state
-    (`record.spin_of`) and the frames' weights, where the cited set states
-    them (`frameset.read`).  ``(path, index)``."""
-    from pathlib import Path
-    from ..frameset import read as read_frame_set
-    from ..parse.fdf import parse_fdf_params, read_deck
-    from ..structure import frame_words
-    from ..transport.compose import recorded_junction
+def _entry(calc, stage: str, point: Point, deck) -> dict:
+    """The point's entry in the run's index (`runs-of-points.md` § 2.3):
+    its words, the rung its one phase, its voltage its round, and what it
+    is -- its frame and voltage, and the energy grid its deck describes
+    (`energies.deck_window`), what a transmission round's outcome puts its
+    printed energies on."""
     from ..transport.energies import deck_window
-    from ..transport.points_index import add_point, empty_index, index_path
+    return {"words": point.words(), "phase": stage, "round": point.round,
+            "facts": {**point.facts(),
+                      "window": (list(deck_window(_deck_text(deck)) or ())
+                                 or None)}}
+
+
+def _must_hold(stage: str, label: str, base, point, folder, deck=None):
+    return must_hold(stage, label, folder, base_dir=base,
+                     deck_text=_deck_text(deck) if deck is not None else None)
+
+
+def _start_of(calc, stage: str, point: Point, points) -> Start:
+    """A POINT'S START (`engines/transport.md` § 2a.9, § 2a.11): the closest
+    voltage computed before it IN ITS FRAME -- of the points before it in
+    the listing, the nearest in volts, the later on a tie (the SIESTA
+    manual: "copy the TSDE from the closest, previously, calculated bias")
+    -- and the files the rung hands on (`stages.hands_on`: the device's
+    ``.TSDE``); it needs that point.  A frame's first voltage, and every
+    point of a rung that hands nothing on (the transmission), starts from
+    what its run gathered: frames never start from one another."""
+    hand = hands_on(stage, calc.task.label, calc.base)
+    if not hand:
+        return Start()
+    mine = [q for q in points if q.frame == point.frame]
+    earlier = mine[:mine.index(point)]
+    if not earlier:
+        return Start()
+    prior = min(reversed(earlier),
+                key=lambda q: abs(float(q.volts) - float(point.volts)))
+    return Start(source=prior, files=tuple(hand), needs=(prior,))
+
+
+def _run_facts(calc, stage: str, *, carried, deck) -> dict:
+    """The run's facts, for its index (`runs-of-points.md` § 2.3): what its
+    points compute (the kind table's ``computes``), the leads' pair and
+    each lead as their ``TS.Elecs`` blocks name them, the spin the decks
+    state (`record.spin_of`) and the frames' weights, where the cited set
+    states them (`frameset.read`) -- what a round's outcome reads."""
+    from ..frameset import read as read_frame_set
+    from ..parse.fdf import parse_fdf_params
+    from ..transport.compose import recorded_junction
     from ..transport.record import spin_of
     from ..transport.transiesta import LEAD_NAMES, LEAD_PAIR
-    from .continuation import must_hold
-    base, task = Path(calc.base), calc.task
-    recorded = recorded_junction(base)
+    recorded = recorded_junction(Path(calc.base))
     rows = (read_frame_set(recorded.structure) if recorded is not None
             else None)
-    script = calc.job(stage).script
-    decks = {rp.point.rel: read_deck(Path(rp.prepared) / script)
-             for rp in points}
-    index = empty_index(
-        stage=stage, computes=STAGE_FACT[stage], pair=LEAD_PAIR,
-        leads=LEAD_NAMES,
-        spin=spin_of(parse_fdf_params(decks[points[0].point.rel],
-                                      source=script)),
-        weights=rows.weights if rows is not None else None)
-    products = products_of(stage, task.label, base_dir=base)
-    for rp in points:
-        pt = rp.point
-        deck = decks[pt.rel]
-        add_point(index, rel=pt.rel, words=pt.words(), frame=pt.frame,
-                  frame_words=(frame_words(pt.frame, pt.of)
-                               if pt.frame is not None else None),
-                  bias_v=pt.bias_v, needs=rp.needs,
-                  must_hold=must_hold(rp.prepared, products, deck_text=deck),
-                  verdict_counts=POINTS.verdict_counts(stage, pt),
-                  window=deck_window(deck), taken_from=rp.taken_from)
-    return index_path(run, names), index
+    return {"computes": STAGE_FACT[stage], "pair": LEAD_PAIR,
+            "leads": list(LEAD_NAMES),
+            "spin": spin_of(parse_fdf_params(_deck_text(deck),
+                                             source=Path(deck).name)),
+            "weights": (list(rows.weights) if rows is not None
+                        and rows.weights is not None else None)}
 
 
-#: THE DECLARATION, named by the kind table (the pair's ``points``): a
-#: transport rung's points are a frame of the cited set and a voltage each,
-#: decided at prep.
+#: THE DECLARATION, named by the kind table's record (the pair's
+#: ``points.declaration``): a transport rung's points are a frame of the
+#: cited set and a voltage each, decided at prep.
 POINTS = PointsOf(rung_points=_declared_rung_points,
                   points_in=_declared_points_in,
-                  products_of=_declared_products,
-                  hands_on=hands_on,
-                  summary=_declared_summary,
-                  taken_from=_taken_from,
-                  run_index=_run_index,
-                  unit=UNIT)
+                  entry=_entry,
+                  point_of=Point.from_entry,
+                  must_hold=_must_hold,
+                  start_of=_start_of,
+                  run_facts=_run_facts)

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .. import script_emit as _sc
+from ..calcdirs import RunPlace, prepared_folder
 from ..deck_record import same_calculation
 from ..runrecord import RunRef
 from .errors import PrepError, user_error_as_prep
@@ -206,7 +207,8 @@ def transport_inputs(calc, stage: str, *, point=None,
                     + f" {why}.  {first}{q2}")
         # WHERE THE FILE IS: the run -- or, for an upstream that runs per
         # point, its point at this one.
-        where = newest / point.rel if up_points else newest
+        where = (RunPlace.of(newest).point(point.rel) if up_points
+                 else newest)
         # THE SAME ENGINE INPUT, not the same bytes (`engines/transport.md`
         # § 6.1): what SIESTA reads of the deck that ran against the deck
         # the upstream rung renders NOW (plan § 5w K11, T-F30) -- never the
@@ -430,7 +432,8 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     job = calc.jobset.job(stage) if calc.jobset is not None else None
     home = stage_home(base, task, stage)
     if job is not None and home.dir is not None:
-        at = home.dir / point.rel if point is not None else home.dir
+        at = (prepared_folder(home.dir, point.prepared)
+              if point is not None else home.dir)
         text = _sc.merge_user_custom_from_target(text, at / job.script)
     return text
 

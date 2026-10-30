@@ -3,7 +3,7 @@
 **Role:** contract
 **Domain:** model
 **Module:** `molbuilder/parse/` · **Tests:** `tests/parse/` (~106 tests).
-**Companions:** [`structure.md`](?doc=model/structure.md) (a `StructureResult` carries a `Structure`);
+**Companions:** [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) (a run of points: its words, data, operations and doors); [`structure.md`](?doc=model/structure.md) (a `StructureResult` carries a `Structure`);
 `engines/siesta.md` + `engines/pyscf.md` (the decks whose outputs the leaf
 parsers read — the SIESTA family's output lines are § 5d.5 here);
 [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.3 (what the
@@ -597,7 +597,9 @@ molbuilder/parse/
 │   └── _helpers.py
 │
 ├── sidecars/      # molbuilder JSON sidecars → SidecarResult (FileParsers)
-│   ├── molstruct.py · spectra.py · transport.py · fc_sweep.py
+│   ├── molstruct.py · spectra.py · transport.py · fc_sweep.py · notified.py
+│   ├── run_points.py          # registered `run-points-json`: a run of points' index, read through
+│   │                          #   its one reader, `runpoints.read_index` (execution/runs-of-points.md § 2.3)
 │   └── _helpers.py
 │
 └── dirs/          # what a run folder's files say, read on floor 1 (§ 5)

@@ -44,11 +44,11 @@ RUN_LAUNCH_SCHEMA = "molbuilder/run-launch@1"
 
 
 class LaunchRecordError(ValueError):
-    """A launch record that is there and does not read -- neither JSON, nor
-    a ``molbuilder/run-launch`` record.  Never *launched* or *not
-    launched*: whether the run was launched cannot be told from it, so
-    every reader stops and names the file (`execution/architecture.md`
-    § 3.2)."""
+    """A run's record of its launch that is there and does not read -- its
+    launch record, neither JSON nor a ``molbuilder/run-launch`` record, or
+    a run of points' index (`runpoints.read_index`).  Never *launched* or
+    *not launched*: what the launch did cannot be told from it, so every
+    reader stops and names the file (`execution/architecture.md` § 3.2)."""
 
 
 @dataclass(frozen=True)
@@ -236,8 +236,8 @@ NOTIFIED_SCHEMA = "molbuilder/run-notified@1"
 def stamp() -> str:
     """THE CLOCK every record of a run is stamped with -- UTC, to the
     second, ``Z``: the launch record's `launched_at`, the ending's
-    `asked_at`, a run in phases' index (each call's start and end, the
-    finish's; `siesta.vibration_phases`).  One spelling, so two records of
+    `asked_at`, a run of points' index (each point's start and end, the
+    finish's; `runpoints`).  One spelling, so two records of
     one run compare -- and the job's own address (`joblist`) and a sequence
     of groups' record (`jobset.sequence`), which a run's is compared with
     (:func:`stamp_time`)."""
@@ -351,39 +351,6 @@ def newest_output(where, names: "_rf.RunNames") -> Optional[Path]:
 #  A run of points' index -- what every kind's index shares              #
 #  (`engines/vibration.md` § 5.11 § 7, `engines/transport.md` § 2a.11)   #
 # --------------------------------------------------------------------- #
-
-def index_path(run_dir, names: "_rf.RunNames", role: str) -> Path:
-    """Where a run of points keeps its index, ``role`` its kind's
-    catalogue row: at the run's root, named for its first try -- launch
-    writes it there, and every try of the run reads it."""
-    return Path(run_dir) / names.name(role, run=_rf.FIRST_TRY)
-
-
-def read_index(path, schema: str) -> dict:
-    """A run of points' index at ``path``, refused by name -- the file
-    named -- when it is not one of ``schema``."""
-    p = Path(path)
-    try:
-        d = _persist().read_json(p)
-        _persist().check_schema(d.get("schema") if isinstance(d, dict)
-                                else "", schema, label=p.name)
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"{p.name}: {exc}") from exc
-    return d
-
-
-def write_index(path, index: dict) -> Path:
-    """A run of points' index written whole, atomically
-    (`persist.write_json`)."""
-    return _persist().write_json(path, index)
-
-
-def not_done_words(row: dict) -> str:
-    """A point of a run not done, in the words a failed part and a failed
-    finish name it by (`run-reports.md` § 2.9): its words, and why by its
-    kind's done rule."""
-    return f"{row['words']}: not done -- {row['why'] or row['state']}"
-
 
 def write_launch(where: Path, *, mode: str, command: List[str],
                  job_id: Optional[str] = None,
@@ -680,6 +647,5 @@ def copied_in(stage_dir) -> Optional[str]:
 
 
 __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run",
-           "newest_output", "index_path", "read_index", "write_index",
-           "not_done_words",
+           "newest_output",
            "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "sent_wall_s", "write_gathered_from", "read_gathered_from", "carried_gather", "write_copied_from", "read_copied_from", "copied_of", "copied_in"]

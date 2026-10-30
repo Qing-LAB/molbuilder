@@ -205,11 +205,14 @@ stating because it is easy to break by accretion.
 - **The shell must outlive the engine.** The engine is run, not `exec`'d
   (§ 2.0a), so the wrapper can read its exit code, decide a warm retry (§ 3.5),
   **finish the calculation when the engine alone leaves no result** — each
-  call of a SIESTA vibration runs its record step with `mb_vibration.pyz` on
-  the job's own python, the force-constant call's deriving the modes and the
-  last call's the finish, the result at the run's root ([`engines/vibration.md`](?doc=engines/vibration.md)
-  § 5.11 § 3); its failure is the job's — and write the conclusion marker as its
-  last act ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3).
+  point of a run of points runs its report steps with `mb_monitor.pyz` on
+  the job's own python, which run the kind's own steps in their place: a
+  SIESTA vibration's force-constant call's record step deriving the modes,
+  and, once no call is left, the run's finish, the result at the run's root
+  ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operations
+  9 and 10; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11
+  § 3); a kind's step that fails after a clean engine is the job's — and
+  write the conclusion marker as its last act ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3).
 
 Everything else — resolving which directory to run in, creating it, arranging
 files, recording the launch — is **decision and arrangement**, and none of it
@@ -572,17 +575,20 @@ until it lands every `SCF_NOT_CONV … (required)` stop is retried.*
 
 ```mermaid
 flowchart LR
-    P["a call of a run in phases:<br/>its plan step first"] --> X["SIESTA exits"]
+    P["a point of a run of points:<br/>point started, its kind's before-step"] --> X["SIESTA exits"]
+    P -->|"its before-step failed: no engine"| S
     X --> Q{"how did it end?"}
     Q -->|"stopped on SCF_NOT_CONV, not diverged"| B{"budget left?"}
-    Q -->|"a relaxation out of moves"| B
-    Q -->|"a failure"| S["a call of a run in phases:<br/>its record step, told the exit"]
+    Q -->|"a relaxation out of moves"| B2{"budget left?"}
+    Q -->|"a failure"| S["a point of a run of points:<br/>point ended, told the exit"]
     S --> C["conclude: write -runN.concluded"]
-    Q -->|"a clean exit"| F{"a finish to run?<br/>(Job.finish)"}
+    Q -->|"a clean exit"| F{"a point of a<br/>run of points?"}
     F -->|"no"| C
-    F -->|"yes: its exit status is the job's"| C
+    F -->|"yes: point ended -- its kind's after-step, the job's on failure;<br/>no point left, the run's finish"| C
     B -->|"yes"| R["re-exec with --continue --run N+1"]
     B -->|"no: say so"| S
+    B2 -->|"yes"| R
+    B2 -->|"no: say so, the run's end clean"| F
 ```
 
 **A retry stays in its run**: the wrapper re-execs itself in the same
@@ -716,7 +722,7 @@ as asked, and the person decides.
 | **monitor** — utilisation every 10 s, progress, notifications | `-runN.monitor.log` · `-runN.util.csv` | both | start to end | a person; the run record |
 | **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) | `-runN.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
 | **failure hint** — how the run ended, where its output and log are; for `propor`, the causes (§ 3.1a) | the session log | SIESTA | on a nonzero exit | a person |
-| **conclusion marker** — exit code and time, and the words that say why where a step of ours stopped it: the job had no python of its env (`…; no env python (<path>)`), or its finish — or a run in phases' plan or record step — failed or could not run (`…; finish failed (<bundle> <verb>)`, `…; finish cannot load (<bundle>)`) | `-runN.concluded` | both | the wrapper's last act, main line only — after the job's finish, when it has one | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
+| **conclusion marker** — exit code and time, and the words that say why where a step of ours stopped it: the job had no python of its env (`…; no env python (<path>)`), or a point's own step — its kind's step before its engine, or after a clean one ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3) — failed or could not run (`…; finish failed (<bundle> <verb>)`, `…; finish cannot load (<bundle>)`) | `-runN.concluded` | both | the wrapper's last act, main line only — after a point's `point ended`, when it is one | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 
 **The monitor** is `mb_monitor.pyz`, one file beside every deck, reading the
 run with the framework's own readers. What it reads, when it speaks (never
@@ -865,15 +871,17 @@ folder, where the record lies and the file it names is named from
 of a point's state asks) — so a sweep the scheduler stopped reads `failed`
 at every point not done, the ones the walk never reached too.
 
-**A job with a finish is not done when its engine is**
-([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5, § 5.11 § 3): a
-SIESTA vibration's last call's record step runs the finish after SIESTA ends,
-and only then concludes. So an output that states its end speaks for the ENGINE, and
-the job's own evidence decides: a marker naming a failed finish reads
+**A point with a step after its engine is not done when its engine is**
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 10;
+[`engines/vibration.md`](?doc=engines/vibration.md) § 5.5, § 5.11 § 3): its
+`point ended` runs its kind's after-step — a SIESTA vibration's record step
+— and, no call left, the run's finish, and only then does the point
+conclude. So an output that states its end speaks for the ENGINE, and
+the job's own evidence decides: a marker naming a failed step reads
 `failed`; with no marker yet, the run's session log saying the step after the
-engine began (`finish started:`, `wrapper_log.FINISH_STARTED` — a call's plan
-step, before its engine, logs `plan step:` and never this) reads `running` — *the
-engine ended; the job's finish is deriving the result* — and `failed` once the
+engine began (`finish started:`, `wrapper_log.FINISH_STARTED`, logged by
+`point ended` as the after-step begins; a before-step never logs it) reads
+`running` — *the engine ended; the job's step is deriving the result* — and `failed` once the
 scheduler's line or the monitor's closing record says the job went: a
 walltime or a kill inside the finish, which leaves no marker. A marker `rc=0` is a finished job.
 

@@ -2,7 +2,7 @@
 
 **Role:** contract
 **Domain:** engines
-**Companions:** [`engines/siesta.md`](?doc=engines/siesta.md) (the base `.fdf`
+**Companions:** [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) (a run of points: its words, data, operations and doors); [`engines/siesta.md`](?doc=engines/siesta.md) (the base `.fdf`
 emitter transport extends); [`model/structure-annotations.md`](?doc=model/structure-annotations.md)
 (the region-label *vocabulary* the derivation reads);
 [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) (the Au pseudo
@@ -2382,7 +2382,9 @@ which are the run's on purpose (*What a run's points share*, below). The stage f
 holds no deck at the stage level: every deck is a point's.
 
 **A point is done or not done** — read from the point's own files by one door
-(`continuation.done`), never from a second record: **done** when its run
+(`continuation.point_done`, the done door asked with the rung's declaration,
+[`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.2),
+never from a second record: **done** when its run
 finished, its SCF converged by the engine's own output (the device's), and it
 holds what the rungs downstream take from it (the DAG, `stage_inputs`: the
 device's `.TS.HSX`; the transmission's `.TBT.nc` — or, on a polarized
@@ -2402,9 +2404,10 @@ launched from this machine, by one rule (`continuation.points_state`, *One
 door for each place* below; `job-system.md`, *What marks each state*). Every
 reader asks it — `status`, the gather, `jobset scratch`, the run door (the
 Results tab's ladder and a point's own folder), the record's points and the
-data file's `device_state`: a point the ended walk never reached is failed,
-*the walk ended before it reached this point* (`continuation.never_reached`),
-never one still to come — in
+data file's `device_state`: a point the ended walk never ran is failed,
+never one still to come, its why the job's own — *it builds on <the point>,
+which failed*, or *the walk ended before it reached this point*
+(`runpoints.why_not_run`, asked by `continuation.never_reached`) — in
 `status`'s count, the record and the run's own finish alike
 (`run-reports.md` § 2.9).
 
@@ -2433,43 +2436,60 @@ device's `AuBDT_04_device-sweep.sbatch`) — one allocation for every point,
 their walls summed (`group.envelope`), sent as it is at every launch of the
 rung, warm or cold, the wall alone restated by `--time` — the walk script the
 launch writes, `…-sweep.run.sh`, and its log, `…-sweep.log`
-(`submit._points_walk`). Run here, each point is told its card's wall
+(`submit._points_walk`, the one walk of every run of points,
+[`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3,
+*Plan the walk*). Run here, each point is told its card's wall
 (`MB_WALL_S`, `running-a-job.md` § 3.6) — inside a sequence's queue job, the
 job's wall from the job's start (`job-system.md` § 6.0).
 
 **The run reports as one run** *(R-e's transport half, the user,
 2026-10-29; [`execution/run-reports.md`](?doc=execution/run-reports.md)
-§ 2.4, § 2.9)*: one `start`, a milestone each time a voltage is done at
-every frame — **the round** — a failed point said at once, once per reason,
-and one `finish`. Three pieces, the vibration's (`engines/vibration.md`
-§ 5.11 § 7a) extended:
+§ 2.4, § 2.9)*: one `start`, a milestone each time a voltage's round has
+ended at every frame, done or not — **the round** — a failed point said at once, once per reason,
+and one `finish`. Three pieces, every run of points'
+([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 2, § 3,
+§ 4.6) — the rung's record in the kind table, `[transport.on.siesta.points]`:
+its declaration (`jobset/transport_points.py`), its unit *point*, finished
+when every point *ran*, converged or not, its points' walls *each* the
+card's (the job's their sum), its words, and no steps of its own between
+its points:
 
 - **The run's index**, `<label>_<NN>_<stage>-run0.points.json` at the
-  run's root — one per run, named for its first try
-  (`transport.points_index`, which travels with the monitor):
-  launch writes every point of the run in the walk's order — its folder,
-  words, frame and voltage, the point it needs (a device point's, the point
-  it starts from, where this walk runs it), whether it was taken over and
-  from where, what
-  makes it done (the stage's products, and a sharing point's `shared/`,
-  `continuation.must_hold`) and the energy grid its deck describes — and
-  the frames' weights where the cited set states them; each point's report
-  steps stamp its start, its end, its engine's exit and its verdict as its
-  ending reads it. **The
+  run's root — every run of points' one index (`runpoints`, which travels
+  with the monitor; [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md)
+  § 2.3). What the rung puts in it, by its declaration: each point's words,
+  the rung its one phase and its voltage its round (`Point.round`, *0.2 V*),
+  its facts — frame, the frame's words, the voltage — and the energy grid
+  its deck describes; the point it needs (a device point's, the point it
+  starts from, where this walk runs it); what makes it done (the stage's
+  products, and a sharing point's `shared/`, `transport.stages.must_hold`);
+  and the run's facts — what its points compute, the leads' pair and names,
+  the spin, and the frames' weights where the cited set states them. Launch
+  writes every point in the listing order, whether it was taken over and
+  from where; each point's report steps stamp its start, its end, its
+  engine's exit and its verdict as its ending reads it. **The
   index is what the job saw, never a second record of a point's state**:
   every reader on this side — `status`, the gather, the record — reads the
   points' own files, as above; the job's side, which has no molbuilder,
-  reads the index by the same pieces (`_run_ending.not_done_why`).
-- **Each point's two report steps**, in its run script: `mb_monitor.pyz
-  point started` before its engine and `point ended --exit <rc>` after it,
-  on the failure path too — the run's `start` sent by the first, a
-  `part_failed`, a round's `milestone` or the run's `finish` by the second
-  (`run-reports.md` § 2.9). **A report step never fails its point**: what
-  it cannot do is logged in the point's session log.
-- **Each point's monitor is a member** of its run (`--member --launched-in
-  <run>`): no `start` or `finish` of its own, its N-hour clock from the run's
-  notification record, the wall warned of once for the run, its status line
-  the run's count and its own point (`run-reports.md` § 2.8).
+  judges each point by its entry, by the same pieces
+  (`_run_ending.not_done_why`).
+- **Each point's two report steps**, in its run script — every run of
+  points' (`runwrap.PointOfRun`): `mb_monitor.pyz point started` before its
+  engine and `point ended --exit <rc>` after it, on the failure path too —
+  the run's `start` sent by the first, a `part_failed`, a round's
+  `milestone` or the run's `finish` by the second (`run-reports.md` § 2.9).
+  Its words are the rung's — the count, *k of N points done, m failed
+  (F frames × V voltages)*, and a round's outcome, each frame's NEGF
+  iterations or its G/G₀ at E_F and the frames' average — in
+  `transport/run_words.py` (`count_words`, `round_outcome`, the kind table's
+  `count` and `outcome`), which travels with the monitor. **A report step
+  never fails its point**: what it cannot do is logged in the point's
+  session log.
+- **Each point's monitor is a member** of its run (`--member`, its run found
+  by its folder's record): no `start` or `finish` of its own, its N-hour
+  clock from the run's notification record, the wall warned of once for the
+  run, its status line the run's count and its own point (`run-reports.md`
+  § 2.8).
 
 A walk stopped by the person, or killed, sends no `finish`; the run door
 reads it failed. Nor does a walk one of whose points ended before its first
@@ -2494,7 +2514,9 @@ computed from, and their `.gathered-from`, whatever the new run gathered —
 and the walk runs the points not done. **Cold** (`--cold`), nothing is taken over and every point
 runs. Launch shows which points it takes over and which it runs, and asks once.
 A warm launch with every point done is **refused**, naming the `--cold` line —
-no run is opened with nothing to run in it. Every run is kept, and an I–V is
+no run is opened with nothing to run in it
+([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3,
+operation 17). Every run is kept, and an I–V is
 always one run whole — a transmission point that shares energies with a
 finished calculation it reuses holds them in its own `shared/`, inside that
 run (§ 2a.16).
@@ -2554,7 +2576,8 @@ points' verdict is said. Beside the state, how many of its points are done,
 and how many ended without being done, counted failed as a vibration's
 calls are (`run-reports.md` § 2.9), with its axes (*3 of 5 points done
 (1 frame × 5 voltages)*, *3 of 5 points done, 1 failed (1 frame × 5
-voltages)* — `transport.points_index.summary`, the job's own count too —
+voltages)* — `transport.run_words.count_words`, the kind table's `count`,
+the job's own count too —
 and *(between two points)* while the walk is between them);
 `status <stage>` says what the run gathered and what it continued from, read
 at the point (*0 V, 0.2 V taken over from run-1; the rest walked* — taken
@@ -4428,7 +4451,8 @@ point; [`model/parse.md`](?doc=model/parse.md) § 5e), and its own `shared/`
 when it shared energies itself — and **`.copied-from`, written last**, naming
 the point it is a copy of: a folder without it is a copy cut short. A
 point that shares energies is done when its own run is, and its `shared/`
-holds that record (`continuation.done`).
+holds that record (`continuation.done`, asked with what the point must hold,
+`transport.stages.must_hold`).
 
 **The point's result is its grid, joined** — by one door that reads a
 point's energies and every value on them, from its own run and its `shared/`,

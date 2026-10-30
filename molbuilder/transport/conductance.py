@@ -9,7 +9,7 @@ ROLE    the one rule, and the one rule of the transmission it is read on --
         report step for its round's milestone (`execution/run-reports.md`
         § 2.9): so the number a message says is the record's rule, on the
         values it is given.
-USED-BY `transport.record`, `transport.points_index`
+USED-BY `transport.record`, `transport.run_words`
 """
 from __future__ import annotations
 

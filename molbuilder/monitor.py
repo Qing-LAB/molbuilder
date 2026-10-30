@@ -122,10 +122,10 @@ try:                                        # inside molbuilder
     from .parse.engines.siesta_reader import SiestaReader
     from .parse.engines.tbtrans import loop_words
     from .parse.instruments.scf_timing_rows import timing_of
-    from .siesta import vibration_phases as _vp
+    from . import calcdirs as _cd
+    from . import runpoints as _rp
     from .trajectory_log import keys as _K
-    from .transport import points_index as _pi
-    from .wrapper_log import LOG_CLOCK, LOG_LINE
+    from .wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
 except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_cards as _cards
@@ -138,10 +138,10 @@ except ImportError:                         # beside the job
     from siesta_reader import SiestaReader
     from tbtrans import loop_words
     from scf_timing_rows import timing_of
-    import vibration_phases as _vp
+    import calcdirs as _cd
+    import runpoints as _rp
     import keys as _K
-    import points_index as _pi
-    from wrapper_log import LOG_CLOCK, LOG_LINE
+    from wrapper_log import FINISH_STARTED, LOG_CLOCK, LOG_LINE
 
 
 @dataclass
@@ -229,8 +229,8 @@ class JobStatus:
     part: Optional[str] = None
     part_since: Optional[float] = None
     scf_converged: Optional[bool] = None
-    #: A MEMBER'S RUN (§ 2.8): the run's count in its own words (its
-    #: index's reader, :data:`RUN_INDEXES`), this point's -- ``call_unit``
+    #: A MEMBER'S RUN (§ 2.8): the run's count in its own words (its one
+    #: index, `runpoints`), this point's -- ``call_unit``
     #: what one is called in the kind's words, a vibration's *call*, a
     #: transport sweep's *point* -- and this point's clock, ``elapsed_s``
     #: being the run's.
@@ -519,47 +519,41 @@ class WatchedRun:
         return st
 
     def _read_run(self, st: JobStatus, now_epoch: float) -> None:
-        """A MEMBER'S RUN (`run-reports.md` § 2.8; `engines/vibration.md`
-        § 5.11 § 7a; `engines/transport.md` § 2a.11): its count and this
-        call, in the run's own words, from its index through its kind's one
-        reader and one done rule (:data:`RUN_INDEXES`); the run's
-        clock from its first call this run computed, this call's from this
-        monitor's start; and the pace of the phase underway's calls, once
-        one has finished.  An index that does not read -- being rewritten,
-        or none -- leaves the line without them.  The index is the run's,
-        in its folder and named for its first try, whichever try this call
-        is in -- a call retried in place reads the run it belongs to."""
-        found = _run_index_of(self.launched_in, self.names)
-        if found is None:
-            return
-        reader, idx = found
+        """A MEMBER'S RUN (`run-reports.md` § 2.8; `execution/
+        runs-of-points.md` § 3, op. 15): its count and this point, in its
+        kind's words, from the run's one index and its one rule each
+        (`runpoints`); the run's clock from its first point this run
+        computed, this point's from this monitor's start; and the pace of
+        the phase underway's points, once one has finished.  An index that
+        does not read -- being rewritten, or none -- leaves the line
+        without them.  The index is the run's, in its folder and named for
+        its first try, whichever try this point is in."""
         try:
+            idx = _rp.index_of(self.launched_in, self.names)
+            if idx is None:
+                return
             version = idx.stat().st_mtime_ns
-        except OSError:
+        except (OSError, ValueError):
             return
         if self._run_cache is None or self._run_cache[0] != version:
             try:
-                index = reader.read(idx)
-                rows = reader.rows(index, self.launched_in, self.label)
+                index = _rp.read_index(idx)
+                rows = _rp.rows_of(index, self.launched_in)
             except (OSError, ValueError, KeyError, TypeError):
                 return
             self._run_cache = (version, index, rows)
         _version, index, rows = self._run_cache
-        try:
-            rel = Path(os.path.relpath(self.directory,
-                                       self.launched_in)).as_posix()
-        except ValueError:
-            rel = None
+        rel = _point_of(self.directory)[1]
         me = next((r for r in rows if r["rel"] == rel), None)
-        # THIS CALL IS RUNNING -- its monitor is its witness; the index
-        # says it pending until its record step writes its end.
-        st.run_words = reader.summary(
-            [dict(r, state="running") if r is me and not r["ended"] else r
-             for r in rows], index)
+        try:
+            st.run_words = _rp.count(index, rows)
+        except (ValueError, KeyError, TypeError):
+            return
         if me is None:
             return
+        unit = index["unit"]
         st.call_words = me["words"]
-        st.call_unit = reader.unit
+        st.call_unit = unit
         st.call_elapsed_s = st.elapsed_s
         clock = _run_clock(rows, now_epoch)
         if clock is not None:
@@ -567,21 +561,25 @@ class WatchedRun:
         same = [r for r in rows if r["phase"] == me["phase"]]
         if len(same) < 2:
             return
-        # THE PACE, over the calls this run computed -- as its clock is --
-        # never one taken over from an earlier run's allocation.
+        # THE PACE, over the points this run computed -- as its clock is --
+        # never one taken over from an earlier run's allocation; a phase's,
+        # said with the phase where the run has more than one
+        # (`runs-of-points.md` § 4.7).
         took = []
         for r in same:
-            if r["done"] and not r.get("started_from"):
+            if r["ran"] and not r.get("taken_from"):
                 a = _rr.stamp_time(r.get("started"))
                 b = _rr.stamp_time(r.get("ended_at"))
                 if a is not None and b is not None:
                     took.append((b - a).total_seconds())
-        st.unit_words = reader.unit_words(me)
+        st.unit_words = (f"{me['phase']} {unit}"
+                         if len({r["phase"] for r in rows}) > 1 else unit)
+        # THE POINTS THE PACE IS TAKEN OVER: those of the phase this run
+        # computed -- ran here, never one taken over (§ 4.7).
         st.units_done = sum(1 for r in same
-                            if r["done"] and not r.get("started_from"))
-        # LEFT: what the walk will still run of this phase, by the kind's
-        # own rule.
-        st.units_left = sum(1 for r in reader.left(index, rows)
+                            if r["ran"] and not r.get("taken_from"))
+        # LEFT: what the walk will still run of this phase, by the one rule.
+        st.units_left = sum(1 for r in _rp.still_to_run(rows)
                             if r["phase"] == me["phase"])
         if took:
             st.unit_s = sum(took) / len(took)
@@ -665,72 +663,13 @@ class WatchedRun:
         return st
 
 
-@dataclass(frozen=True)
-class RunIndex:
-    """ONE KIND OF RUN OF POINTS' INDEX, as the monitor reads it
-    (`run-reports.md` § 2.8): where the run keeps it, its reader, its rows
-    by the kind's one done rule -- each with ``phase``, ``rel``, ``words``,
-    ``done``, ``ended``, ``started``, ``ended_at``, ``started_from``,
-    ``state`` -- the count in the kind's words, and what one of its points
-    is called and a unit of its pace."""
-    path: Callable
-    read: Callable
-    rows: Callable
-    summary: Callable
-    #: what one point of the run is called -- *call*, *point* -- its
-    #: index module's own word (``UNIT``)
-    unit: str
-    #: ``row -> words``: a unit of the pace, for a point's row
-    unit_words: Callable
-    #: ``(index, rows) -> rows``: the points the walk will still run, by
-    #: the kind's own rule (its index module's ``still_to_run``)
-    left: Callable
-
-
-#: THE RUNS OF POINTS THE MONITOR READS, each by its own index's reader,
-#: which travels in this bundle: a SIESTA vibration's run in phases
-#: (`siesta.vibration_phases`) and a transport sweep's run of points
-#: (`transport.points_index`).  A run's index is the first whose file its
-#: folder holds (:func:`_run_index_of`).
-RUN_INDEXES: Tuple[RunIndex, ...] = (
-    RunIndex(path=_vp.index_path, read=_vp.read_index, rows=_vp.rows_of,
-             summary=lambda rows, index: _vp.summary(
-                 rows, index.get("phases") or ()),
-             unit=_vp.UNIT,
-             unit_words=lambda row: f"{row['phase']} {_vp.UNIT}",
-             # A CALL THE WALK WILL STILL RUN -- never one whose phase needs
-             # a call that did not end done (`engines/vibration.md` § 5.11
-             # § 5).
-             left=_vp.still_to_run),
-    RunIndex(path=_pi.index_path, read=_pi.read_index,
-             rows=lambda index, run_dir, label: _pi.rows_of(index, run_dir),
-             summary=lambda rows, index: _pi.summary(rows),
-             unit=_pi.UNIT, unit_words=lambda row: _pi.UNIT,
-             # A POINT THE WALK WILL STILL RUN -- never one after a point of
-             # its frame that ended without being done (§ 2a.9).
-             left=lambda index, rows: _pi.still_to_run(rows)),
-)
-
-
-def _run_index_of(run_dir: Path, names: "_rf.RunNames"
-                  ) -> Optional[Tuple[RunIndex, Path]]:
-    """THE RUN'S INDEX AND ITS READER (:data:`RUN_INDEXES`): the first
-    whose file the run's folder holds -- named for the run's first try,
-    whichever try a point is in -- or ``None``."""
-    for reader in RUN_INDEXES:
-        path = reader.path(run_dir, names)
-        if path.is_file():
-            return reader, path
-    return None
-
-
 def _run_clock(rows: List[Dict[str, Any]], now_epoch: float
                ) -> Optional[float]:
     """A RUN OF POINTS' CLOCK (`run-reports.md` § 2.8): since its first call
     this run computed started -- a call taken over from an earlier run is
     not this run's time; ``None`` before one has started."""
     starts = [t for t in (_rr.stamp_time(r["started"]) for r in rows
-                          if r.get("started") and not r.get("started_from"))
+                          if r.get("started") and not r.get("taken_from"))
               if t is not None]
     return (max(0.0, now_epoch - min(starts).timestamp()) if starts
             else None)
@@ -2276,10 +2215,10 @@ def run_monitor(watched: "WatchedRun", *,
                 member: bool = False) -> JobStatus:
     """Periodically read + log + notify until the watched job ends.
 
-    ``member``: this run is one call of a run of points, which reports as
-    one run (`run-reports.md` § 2.4; `engines/vibration.md` § 5.11 § 7a) --
-    it sends no `start` and no `finish` of its own, those are the run's
-    Python steps', and its N-hour clock counts from the last event the
+    ``member``: this run is one point of a run of points, which reports as
+    one run (`run-reports.md` § 2.4; `execution/runs-of-points.md` § 1.4) --
+    it sends no `start` and no `finish` of its own, those are its points'
+    report steps', and its N-hour clock counts from the last event the
     run's notification record holds (``watched.launched_in``).  Every
     monitor writes each event it sends into its run's record.
 
@@ -2568,8 +2507,8 @@ def run_monitor(watched: "WatchedRun", *,
             # `elif`: a step and a period landing on the same wake is one
             # thing worth saying, not two.  The step is the more informative
             # of them, so it wins and resets the clock.  A MEMBER asks its
-            # run's record first: the run's Python steps speak too -- a
-            # milestone its call's record step sent while this monitor
+            # run's record first: its points' report steps speak too -- a
+            # milestone its point's report step sent while this monitor
             # still watched (`run-reports.md` § 2.9) -- and the N hours
             # count from the run's last word.
             if member:
@@ -2759,14 +2698,15 @@ def main(argv=None) -> int:
     if args[:1] == ["ending"]:
         return _ending.main(args[1:])
     if args[:1] == [POINT_VERB]:
-        # A TRANSPORT POINT'S REPORT STEPS: its start and end into the run's
-        # index, and the run's events (`engines/transport.md` § 2a.11).
+        # A POINT'S REPORT STEPS, every run of points': its start and end
+        # into the run's index, its kind's own steps in their place, and
+        # the run's events (`execution/runs-of-points.md` § 3, ops 9-10).
         return _point_main(args[1:])
     if args[:1] == ["notify"]:
         # A RUN OF POINTS REPORTS AS ONE RUN: its start, milestones, failed
-        # parts and finish, sent by the run's own python through this verb
-        # (`engines/vibration.md` § 5.11 § 7a; `run-reports.md` § 2.4,
-        # § 2.9).
+        # parts and finish, sent by its points' report steps through this
+        # verb (`execution/runs-of-points.md` § 4.6; `run-reports.md`
+        # § 2.4, § 2.9).
         return _notify_main(args[1:])
     import argparse
     p = argparse.ArgumentParser(
@@ -2842,19 +2782,18 @@ def main(argv=None) -> int:
                         + ", ".join(_fields.NAMES)
                         + "); omit for all of them, pass '' for none")
     # A MEMBER OF A RUN OF POINTS (`run-reports.md` § 2.4): the run's
-    # folder holds its launch record and its notification record; the
-    # run's start and finish are its Python steps'.
+    # folder -- found by this folder's record -- holds its launch record and
+    # its notification record; the run's start and finish are its points'
+    # report steps'.
     p.add_argument("--member", action="store_true", dest="member",
-                   help="this run is one call of a run of points: no start "
-                        "or finish of its own, its clock the run's")
-    p.add_argument("--launched-in", default=None, dest="launched_in",
-                   help="the run's folder, from here -- where its launch "
-                        "record and notification record lie")
+                   help="this run is one point of a run of points: no start "
+                        "or finish of its own, its clock the run's -- the "
+                        "run found by this folder's record")
     a = p.parse_args(args)
     watched = WatchedRun(names=_rf.RunNames(a.label, a.stage),
                          run=a.try_n, directory=Path(a.directory),
-                         launched_in=(Path(a.directory) / a.launched_in
-                                      if a.launched_in else None))
+                         launched_in=(_run_of(Path(a.directory))
+                                      if a.member else None))
     signal.signal(signal.SIGTERM, _on_stop_signal)
     if hasattr(signal, "SIGUSR1"):
         signal.signal(signal.SIGUSR1, _on_stop_signal)
@@ -2888,9 +2827,9 @@ NOTIFY_CHANNELS_VAR = "MB_NOTIFY_CHANNELS"
 NOTIFY_REPORT_VAR = "MB_NOTIFY_REPORT"
 
 
-#: A TRANSPORT POINT'S TWO REPORT STEPS (`engines/transport.md` § 2a.11):
-#: the verb and its two words, as the point's run script renders them
-#: (`runwrap._report_block`).
+#: A POINT'S TWO REPORT STEPS (`execution/runs-of-points.md` § 3,
+#: operations 9 and 10): the verb and its two words, as every point's run
+#: script renders them (`runwrap._point_block`).
 POINT_VERB, POINT_STARTED, POINT_ENDED = "point", "started", "ended"
 
 
@@ -2902,124 +2841,210 @@ def _point_say(level: str, message: str) -> None:
     sys.stderr.flush()
 
 
+def _point_of(folder: Path) -> "Tuple[Optional[Path], Optional[str]]":
+    """THE RUN A POINT'S FOLDER LIES IN, AND WHICH POINT IT IS -- its path
+    below the run -- by the folder door (`calcdirs.where`: ``run_folder``,
+    ``point``; `execution/runs-of-points.md` § 2.4); ``(None, None)`` for a
+    folder below no run."""
+    try:
+        w = _cd.where(Path(folder).resolve())
+    except (OSError, ValueError):
+        return None, None
+    if w.run_folder is None:
+        return None, None
+    return Path(w.run_folder).resolve(), w.point
+
+
+def _run_of(folder: Path) -> Optional[Path]:
+    """The run a point's folder lies in (:func:`_point_of`)."""
+    return _point_of(folder)[0]
+
+
+def _kind_step(bundle: Optional[str], verb: str, *args: str) -> int:
+    """ONE OF THE KIND'S OWN STEPS, run in its place (`runs-of-points.md`
+    § 1.2): the job's bundle beside the deck, with the job's python -- this
+    one -- its lines in the point's session log; its exit."""
+    import subprocess
+    import sys
+    if not bundle or not Path(bundle).is_file():
+        _point_say("ERROR", f"report step: {bundle or 'the job bundle'} is "
+                            f"not beside the deck -- its {verb} step not run")
+        return 1
+    return subprocess.run([sys.executable, bundle, verb, *args]).returncode
+
+
 def _point_main(argv) -> int:
-    """``mb_monitor.pyz point started|ended --label L --stage S --run N
-    --launched-in UP [--exit RC]`` -- ONE OF A TRANSPORT POINT'S TWO REPORT
-    STEPS, run in the point's folder by its run script, ``N`` the point's
-    try and ``UP`` the way up to its run's folder (`engines/transport.md`
-    § 2a.11; `run-reports.md` § 2.4, § 2.9).
+    """``mb_monitor.pyz point started|ended --label L --stage S --deck D
+    [--exit RC --output OUT] [--bundle B --before V --after V --finish V]``
+    -- ONE OF A POINT'S TWO REPORT STEPS, run in the point's folder by its
+    run script, the one report path of every run of points
+    (`execution/runs-of-points.md` § 3, operations 9 and 10; `run-reports.md`
+    § 2.4, § 2.9).  The run is found by the folders' records
+    (:func:`_run_of`).
 
     ``started``, before the engine: the point's start into the run's index
-    (`points_index.stamp_start`; a try retried in place keeps the first's)
-    and the run's `start`, sent once whichever point asks first.
-    ``ended``, after it, success or failure: its end, its engine's exit
-    and its verdict into the index (`points_index.stamp_end`, the verdict
-    by the status door's own rule, `_run_ending.verdict_of`), then what the
-    run's rule calls for -- with no point left to run, the `finish`: the
-    run's state by the status door's rule over the index
-    (`points_index.run_state`), the first point not done and how many, and
-    the outcome of this point's round; else, none of this point's round
-    left to run, the
-    round's `milestone`; else, this point not done, a `part_failed`, once
-    per reason (`points_index`).  **It never fails its point**: what it
-    cannot do is said in the point's session log, and its exit is only
-    logged by the run script."""
+    (`runpoints.stamp_start`; a try retried in place keeps the first's);
+    its kind's step before the engine, where it has one (``--before``);
+    the run's `start`, sent once whichever point asks first.  Exits with
+    that step's code: **its failure is the point's** -- the run script then
+    starts no engine.
+
+    ``ended``, after the engine, success or failure: its end, its engine's
+    exit and its verdict into the index (`runpoints.stamp_end`, the verdict
+    by the status door's own reader, `_run_ending.verdict_of`); its kind's
+    step after the engine (``--after``), which reads its point already
+    stamped -- its failure after a clean engine the point's, a
+    ``step_error`` stamped where the step wrote none; then what the run's
+    rule calls for (`runpoints.said`): with no point left to run, the index
+    closed, the kind's finish step (``--finish``) run and its entry
+    stamped, and the run's `finish` sent with its state; else a round's
+    `milestone`, or a `part_failed` once per reason.  Exits with the
+    after-step's code after a clean engine, else 0.
+
+    **The report never fails a point**: what it cannot do -- an index that
+    does not read, a message not sent -- is said in the point's session
+    log."""
     import argparse
     p = argparse.ArgumentParser(prog="mb_monitor point")
     p.add_argument("verb", choices=(POINT_STARTED, POINT_ENDED))
     p.add_argument("--label", required=True)
     p.add_argument("--stage", required=True)
-    p.add_argument("--run", type=int, required=True, dest="try_n",
-                   help="the point's try, as its run script was given it")
-    p.add_argument("--launched-in", required=True, dest="launched_in",
-                   help="the run's folder, from the point's")
+    p.add_argument("--deck", required=True)
     p.add_argument("--exit", type=int, default=None, dest="exit_code",
                    help="the engine's exit (point ended)")
+    p.add_argument("--output", default=None,
+                   help="the engine's output, its verdict's source "
+                        "(point ended)")
+    p.add_argument("--bundle", default=None,
+                   help="the job's bundle, whose verbs the kind's steps are")
+    p.add_argument("--before", default=None)
+    p.add_argument("--after", default=None)
+    p.add_argument("--finish", default=None)
     a = p.parse_args(argv)
     here = Path.cwd().resolve()
-    run_dir = (here / a.launched_in).resolve()
     names = _rf.RunNames(a.label, a.stage)
-    rel = Path(os.path.relpath(here, run_dir)).as_posix()
-    path = _pi.index_path(run_dir, names)
-    try:
-        index = _pi.read_index(path)
-        if a.verb == POINT_STARTED:
-            _pi.stamp_start(index, rel, _rr.stamp())
-        else:
-            if a.exit_code is None:
-                raise ValueError("point ended is told the engine's exit "
-                                 "(--exit)")
-            out = here / names.name(".out", run=a.try_n)
-            verdict = None
-            if out.is_file():
-                try:
-                    verdict = _ending.verdict_of([_ending.ending_of(out)])
-                except Exception as exc:               # noqa: BLE001
-                    _point_say("WARN", f"report step: {out.name}'s verdict "
-                                       f"not read -- {exc}")
-            _pi.stamp_end(index, rel, _rr.stamp(), a.exit_code, verdict)
-        _pi.write_index(path, index)
-    except (OSError, ValueError) as exc:
-        _point_say("WARN", f"report step: the run's index not stamped -- "
-                           f"{exc}")
-        return 1
-    said = ["--label", a.label, "--stage", a.stage, "--dir", str(run_dir)]
+    run_dir, rel = _point_of(here)
+    if run_dir is None:
+        _point_say("WARN", f"report step: {here} lies below no run (the "
+                           f"folders' records) -- the run's index not "
+                           f"stamped")
+    path = _rp.index_path(run_dir, names) if run_dir is not None else None
+
+    def _write(change) -> Optional[Dict[str, Any]]:
+        # THE INDEX, read, changed and written whole -- what cannot be is
+        # said in the session log, never the point's failure.
+        if path is None:
+            return None
+        try:
+            index = _rp.read_index(path)
+            change(index)
+            _rp.write_index(path, index)
+            return index
+        except (OSError, ValueError, KeyError) as exc:
+            _point_say("WARN", f"report step: the run's index not stamped "
+                               f"-- {exc}")
+            return None
+    said_as = (["--label", a.label, "--stage", a.stage, "--dir",
+                str(run_dir)] if run_dir is not None else None)
     if a.verb == POINT_STARTED:
-        return _notify_main(["start"] + said)
-    rows = _pi.rows_of(index, run_dir)
-    mine = next(r for r in rows if r["rel"] == rel)
-    left = _pi.still_to_run(rows)
-    round_left = [r for r in left if r["bias_v"] == mine["bias_v"]]
-    outcome = None
-    if not round_left:
-        # THE ROUND'S OUTCOME, read from its points' own files; words that
-        # cannot be composed are logged, never the reason a run is silent.
+        _write(lambda index: _rp.stamp_start(index, rel, _rr.stamp()))
+        rc = (_kind_step(a.bundle, a.before, a.deck) if a.before else 0)
+        if rc != 0:
+            # ITS OWN STEP COULD NOT RUN: said as the step's, in the index
+            # (`runs-of-points.md` § 2.3, ``step_error``) -- the engine never
+            # runs, and the run script tells `point ended` this exit.
+            _write(lambda index: _rp.stamp_step_error(
+                index, rel, f"{a.bundle} {a.before} exited {rc}"))
+        if said_as is not None:
+            _notify_main(["start"] + said_as)
+        return rc
+    if a.exit_code is None:
+        _point_say("WARN", "report step: point ended is told the engine's "
+                           "exit (--exit)")
+        return 0
+    verdict = None
+    out = here / a.output if a.output else None
+    if out is not None and out.is_file():
         try:
-            outcome = _pi.round_words(index, rows, mine["bias_v"], run_dir,
-                                      names)
+            verdict = _ending.verdict_of([_ending.ending_of(out)])
         except Exception as exc:                       # noqa: BLE001
-            _point_say("WARN", f"report step: the round at "
-                               f"{mine['bias_v']:g} V not put in words -- "
-                               f"{type(exc).__name__}: {exc}")
-    if not left:
-        # THE WALK IS OVER: a point it never ran is said failed, as the
-        # status door says it (`points_index.close`), in the index the
-        # finish's count is read from.
+            _point_say("WARN", f"report step: {out.name}'s verdict not read "
+                               f"-- {exc}")
+    _write(lambda index: _rp.stamp_end(index, rel, _rr.stamp(), a.exit_code,
+                                       verdict))
+    rc = 0
+    if a.after:
+        _point_say("INFO", f"{FINISH_STARTED} {a.bundle} {a.after} {a.deck} "
+                           f"{a.output or ''}")
+        rc = _kind_step(a.bundle, a.after, a.deck, a.output or "", "--exit",
+                        str(a.exit_code))
+        if rc != 0 and a.exit_code == 0:
+            # AFTER A CLEAN ENGINE, the step's failure is the point's; after
+            # a failed one, the engine's is, and the step's is logged
+            # (`runs-of-points.md` § 3, op. 10).
+            _write(lambda index: _rp.stamp_step_error(
+                index, rel, f"{a.bundle} {a.after} exited {rc}"))
+    back = rc if a.exit_code == 0 else 0
+    if said_as is None:
+        return back
+    try:
+        index = _rp.read_index(path)
+        rows = _rp.rows_of(index, run_dir)
+    except (OSError, ValueError, KeyError) as exc:
+        _point_say("WARN", f"report step: the run's index not read -- {exc}")
+        return back
+    outcome = None
+    if _rp.round_ended(rows, rel):
+        # THE ROUND'S OUTCOME; words that cannot be composed are logged,
+        # never the reason a run is silent.
         try:
-            _pi.write_index(path, _pi.close(index, rows))
-            rows = _pi.rows_of(index, run_dir)
-        except (OSError, ValueError) as exc:
-            _point_say("WARN", f"report step: the points never run not "
-                               f"stamped -- {exc}")
-        state, why = _pi.run_state(rows)
-        detail = "; ".join(w for w in (why, outcome) if w) or None
-        return _notify_main(["finish"] + said + ["--state", state]
-                            + (["--detail", detail] if detail else []))
-    if not round_left:
-        return _notify_main(["milestone"] + said
-                            + (["--detail", outcome] if outcome else []))
-    if not mine["done"]:
+            outcome = _rp.round_outcome(index, rows, rel, run_dir, names)
+        except Exception as exc:                       # noqa: BLE001
+            _point_say("WARN", f"report step: the round's outcome not put in "
+                               f"words -- {type(exc).__name__}: {exc}")
+    got = _rp.said(rows, rel, outcome)
+    if got is None:
+        return back
+    event, detail, reason = got
+    if event == "finish":
+        # THE WALK IS OVER: a point it never ran said failed, as the status
+        # door says it; the kind's finish step; the run's state by its one
+        # rule (`runpoints.run_state`).
+        closed = _write(lambda index: _rp.close(index, rows))
+        if closed is not None:
+            index, rows = closed, _rp.rows_of(closed, run_dir)
+        fin = None
+        if a.finish:
+            began = _rr.stamp()
+            fin = _kind_step(a.bundle, a.finish, a.deck)
+            stamped = _write(lambda index: _rp.stamp_finish(
+                index, began, _rr.stamp(), fin))
+            if stamped is not None:
+                index, rows = stamped, _rp.rows_of(stamped, run_dir)
+        state, why = _rp.run_state(rows, index)
+        words = "; ".join(w for w in (why, detail) if w) or None
+        _notify_main(["finish"] + said_as + ["--state", state]
+                     + (["--detail", words] if words else []))
+    elif event == "milestone":
+        _notify_main(["milestone"] + said_as + ["--detail", detail])
+    else:
         # SAID ONCE PER REASON (`run-reports.md` § 2.9): the `notify` verb
         # sends no second failure for a reason the run already reported.
-        return _notify_main(["part_failed"] + said + [
-            "--detail", _pi.not_done_words(mine),
-            "--reason", mine["why"] or mine["state"]])
-    return 0
+        _notify_main(["part_failed"] + said_as + ["--detail", detail,
+                                                  "--reason", reason])
+    return back
 
 
 def _notify_main(argv) -> int:
     """``mb_monitor.pyz notify start|milestone|part_failed|finish --label L
     --stage S --dir RUN [--state S --detail D --reason R]`` -- ONE event for
-    a
-    run of points, sent by its Python steps -- a vibration's record steps,
-    a transport point's report steps (:func:`_point_main`) -- through the
-    channels and card the monitor uses, with the run's identity, and
-    written into the run's notification record (`engines/vibration.md`
-    § 5.11 § 7a; `engines/transport.md` § 2a.11; `run-reports.md` § 2.4,
-    § 2.9).  Every event says the run's count -- the start's, its points
-    before any has ended -- and, once a point has started, its clock, read
-    from its index by its kind's reader (:data:`RUN_INDEXES`), which the
-    step sending it has just written.  The channels and
+    a run of points, sent by its points' report steps (:func:`_point_main`)
+    through the channels and card the monitor uses, with the run's
+    identity, and written into the run's notification record
+    (`execution/runs-of-points.md` § 4.6; `run-reports.md` § 2.4, § 2.9).
+    Every event says the run's count -- the start's, its points before any
+    has ended -- and, once a point has started, its clock, read from its one
+    index (`runpoints`), which the step sending it has just written.  The channels and
     report fields are the policy's, from the environment the call's run
     script set (:data:`NOTIFY_CHANNELS_VAR`, :data:`NOTIFY_REPORT_VAR`);
     none set up, nothing is sent -- the record holds what was said all the
@@ -3055,7 +3080,8 @@ def _notify_main(argv) -> int:
                      f"{exc}")
         sent = []
     # THE RUN STARTS ONCE: a start the record already holds is not sent
-    # again -- whichever call's plan step asks (§ 5.11 § 7a).
+    # again -- whichever point's `point started` asks
+    # (`execution/runs-of-points.md` § 3, op. 9).
     if a.event == "start" and any(e.get("event") == "start" for e in sent):
         return 0
     # A FAILED PART SPEAKS ONCE PER REASON (`run-reports.md` § 2.9): a run
@@ -3082,14 +3108,13 @@ def _notify_main(argv) -> int:
     # the step sending the event has just written -- the start's, its
     # points before any has ended (plan § 1af).
     try:
-        found = _run_index_of(watched.directory, watched.names)
-        if found is None:
+        idx = _rp.index_of(watched.directory, watched.names)
+        if idx is None:
             raise ValueError("the run's folder holds no index of its "
                              "points")
-        reader, idx = found
-        index = reader.read(idx)
-        rows = reader.rows(index, watched.directory, watched.label)
-        st.run_words = reader.summary(rows, index)
+        index = _rp.read_index(idx)
+        rows = _rp.rows_of(index, watched.directory)
+        st.run_words = _rp.count(index, rows)
         clock = _run_clock(rows, now)
     except Exception as exc:                       # noqa: BLE001
         # THE MESSAGE GOES OUT WITHOUT THEM: an index that does not

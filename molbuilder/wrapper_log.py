@@ -42,9 +42,10 @@ LOG_CLOCK = "%H:%M:%S%z"
 
 #: The line every section opens with (``_log STAGE`` in ``env_activation``).
 WRAPPER_LOG_START = "===== molbuilder wrapper start ====="
-#: The message the wrapper logs as the job's FINISH begins -- the step it runs
-#: after the engine when the engine alone leaves no result (`runwrap.
-#: _finish_block`, `engines/vibration.md` § 5.5).  `run_status` reads it: an
+#: The message logged as a point's after-step begins -- the kind's own
+#: step after the engine, which leaves the result the engine alone does not
+#: (`monitor._point_main`, `execution/runs-of-points.md` § 3, op. 10;
+#: `engines/vibration.md` § 5.5).  `run_status` reads it: an
 #: output that ended, beside this line and no conclusion yet, is a job still
 #: deriving its result, not a finished one (`running-a-job.md` § 4.2).
 FINISH_STARTED = "finish started:"

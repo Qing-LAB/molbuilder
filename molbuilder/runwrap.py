@@ -42,6 +42,7 @@ from .identity import hand_run, way_back_words
 from .jobset.errors import WrapperError
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
+from .runpoints import AGAIN, CONTINUE
 from .runrecord import conclude_line
 from .runtime_info import (JOB_STARTED_VAR, NODE_CORES_VAR, RUN_NUMBER,
                            THREAD_SOURCES, WALL_SLACK_VAR, WALL_VAR)
@@ -297,7 +298,7 @@ def _run_index_block(names, stdout_role: str, target_env: str) -> str:
 def _monitor_block(names, notify_on_scf: bool,
                    notify_every_hours: float, notify_channels,
                    notify_report, *, cores: str, gpu: bool,
-                   member: Optional[str] = None) -> str:
+                   member: bool = False) -> str:
     """Bash that launches the background monitor -- the SAME block for every
     engine (`running-a-job.md` § 4.1, `run-reports.md` § 2.3).
 
@@ -307,11 +308,11 @@ def _monitor_block(names, notify_on_scf: bool,
     reads through `runfiles`, and reads them through the framework's readers
     that travel beside it (:data:`MONITOR_COMPANIONS`).  ``member`` makes it
     a MEMBER of a run of points' monitor (`run-reports.md` § 2.4;
-    `engines/vibration.md` § 5.11 § 7a): the way from this call's folder up
-    to the run's (``..``), whose launch record it counts the wall from and
-    whose notification record its clock reads -- it sends no `start` and no
-    `finish` of its own: the run reports as one run, those sent by its
-    Python steps.
+    `execution/runs-of-points.md` § 1.4): it finds its run by its folder's
+    record (`calcdirs.where`), counts the wall from the run's launch record
+    and its clock from the run's notification record, and sends no `start`
+    and no `finish` of its own -- the run reports as one run, those sent by
+    its points' report steps.
 
     It tells it WHAT THE JOB HOLDS too (`run-reports.md` § 2.1a): ``cores``
     is the shell arithmetic for the cores this engine is launched on -- a run
@@ -354,7 +355,7 @@ def _monitor_block(names, notify_on_scf: bool,
         f'--label "{names.label}" --stage "{names.stage}" '
         + f'--run "$_run_n" --util --cores "{cores}" '
         + ("--gpu " if gpu else "")
-        + (f'--member --launched-in "{member}" ' if member else "")
+        + ("--member " if member else "")
         + '--interval "${MB_MONITOR_INTERVAL:-10}" '
         + ('--notify-on-scf ' if notify_on_scf else "")
         + (f'--notify-every-hours {notify_every_hours:g} '
@@ -388,151 +389,110 @@ def _monitor_block(names, notify_on_scf: bool,
     )
 
 
-def _finish_block(finish: Optional[str], script_name: str, *,
-                  after: Optional[Sequence[str]],
-                  failed: bool = False) -> str:
-    """The job's step after its engine: the finish bundle beside the deck,
-    run with the job's own python (``$_mb_py``, the activated env's, checked
-    once the try's number is, `running-a-job.md` § 2.2a) on the deck and
-    its output with the job's own ``after`` words -- a run in phases'
-    ``record <phase>`` (`engines/vibration.md` § 5.11 § 3), told the
-    engine's exit code: a finish arrives with its steps.  After a clean
-    exit, before the conclusion is written, its failure is the job's: the
-    conclusion records its exit status and the wrapper exits with it.
-    ``failed`` renders it for the engine's failure path: run so the record
-    says how the call ended, its own failure logged, the conclusion the
-    engine's.  Empty when the job has no finish."""
-    if finish is None or after is None:
+@dataclass(frozen=True)
+class PointOfRun:
+    """THIS RUN IS A POINT OF A RUN OF POINTS (`execution/runs-of-points.md`
+    § 1.1): its monitor a member of the run's, its two report steps around
+    its engine -- and, where its kind works between its points, the kind's
+    own steps, which the report steps run in their place: ``steps``, a verb
+    of the job's bundle (``finish``) per moment, ``before``, ``after`` and
+    ``finish`` (the kind table's record, `kind_table.RunOfPoints.steps`).
+    ``relaunch`` is what a launch again does with the point not done --
+    ``again`` or ``continue`` (`PointsOf.relaunch_of`) -- and
+    ``verdict_counts`` whether its verdict counts toward done
+    (`PointsOf.verdict_counts`): what the advice after a stop says."""
+    relaunch: str = AGAIN
+    verdict_counts: bool = True
+    steps: Optional[Dict[str, str]] = None
+
+    def step(self, moment: str) -> Optional[str]:
+        return (self.steps or {}).get(moment)
+
+
+def _point_block(names, verb: str, point: Optional[PointOfRun],
+                 finish: Optional[str], script_name: str, *,
+                 failed: bool = False) -> str:
+    """ONE OF A POINT'S TWO REPORT STEPS (`execution/runs-of-points.md`
+    § 3, operations 9 and 10): the monitor's bundle, run with the job's own
+    python in the point's folder -- ``point started`` before the engine,
+    ``point ended`` after it, success or failure, told the engine's exit and
+    the output -- which stamp the run's index, run the kind's own steps in
+    their place and say the run's events.  **The report never fails the
+    point**: what it cannot do is logged here.  **The kind's own step
+    does**, as it always has: one before the engine that fails starts no
+    engine, and one after a clean engine that fails is the job's -- the
+    conclusion names it (`FINISH_FAILED`), the script exits with its code;
+    after a failed engine its failure is logged and the conclusion stays the
+    engine's (``failed``).  Empty for a run that is no point."""
+    if point is None:
         return ""
-    # The marker's words for a failed finish, and the log line that says the
-    # finish began, are their READERS' (`parse/dirs/job.py`,
-    # `wrapper_log`, which travel and read them beside the job).
+    from .monitor import POINT_ENDED, POINT_VERB
     from .parse.dirs.job import FINISH_FAILED
-    from .wrapper_log import FINISH_STARTED
-    words = " ".join(after)
-    call = (f'"$_mb_py" {finish} {words} {script_name} "$_out_file" '
-            f'--exit "$_siesta_exit"')
-    pad = "    " if failed else ""
-    # WHOSE THE CONCLUSION IS: the step's after a clean engine, the
-    # engine's on its failure path.
-    whose = ([f"{pad}# result at the run's root.  Its failure is logged, and the\n",
-              f"{pad}# conclusion stays the engine's.\n"] if failed else
-             [f"{pad}# result at the run's root.  ITS FAILURE IS THE JOB'S --\n",
-              f"{pad}# the conclusion records its exit status and this wrapper exits\n",
-              f"{pad}# with it; its lines and any traceback are in this session log.\n"])
-    head = (
-        f"\n"
-        f"{pad}# --- The calculation's own result (engines/vibration.md 5.5) ---\n"
-        f"{pad}# The engine left what the result is derived from, not the result:\n"
-        f"{pad}# {finish}, beside this deck, runs here with the job's own python,\n"
-        f"{pad}# records how this call ended and, where it falls to it, writes the\n"
-        + "".join(whose) +
-        f'{pad}_log INFO "{FINISH_STARTED} {finish} {words} {script_name} $_out_file"\n'
-        f"{pad}set +e\n"
-        f'{pad}if [ -f {finish} ]; then\n'
-        f"{pad}    {call}\n"
-        f"{pad}    _mb_finish_rc=$?\n"
-        f"{pad}else\n"
-        f'{pad}    _log ERROR "finish: {finish} is not beside the deck -- '
-        f'the result was not derived"\n'
-        f"{pad}    _mb_finish_rc=1\n"
-        f"{pad}fi\n"
-        f"{pad}set -e\n"
-    )
-    if failed:
-        # THE ENGINE FAILED: the record step says so in the index; its own
-        # failure is logged, and the conclusion stays the engine's.
-        return head + (
-            f'{pad}[ "$_mb_finish_rc" -eq 0 ] || _log ERROR "{finish} {words} '
-            f'exited with code $_mb_finish_rc after the engine failed"\n')
-    return head + (
-        f'if [ "$_mb_finish_rc" -ne 0 ]; then\n'
-        f'    echo "===== the finish ({finish} {words}) exited with code '
-        f'$_mb_finish_rc: no result -- see $_runwrap_log =====" >&2\n'
-        # THE MARKER NAMES THE FAILED FINISH, so `run_status` reads the job
-        # as failed although the engine's own output ended cleanly -- an
-        # engine that errs after its end line (an MPI teardown) carries no
-        # such words and keeps the output's verdict (`parse/dirs/job.py`).
-        + "    " + conclude_line('"$_mb_finish_rc"',
-                                  f"{FINISH_FAILED} ({finish} {words})")
-        + "\n"
-        '    exit "$_mb_finish_rc"\n'
-        "fi\n"
-    )
-
-
-def _before_block(finish: Optional[str], script_name: str,
-                  before: Optional[Sequence[str]],
-                  after: Optional[Sequence[str]] = None) -> str:
-    """The job's step BEFORE its engine -- a run in phases' ``plan <phase>``
-    (`engines/vibration.md` § 5.11 § 3): the finish bundle beside the deck,
-    run with the job's own python on the deck, after the bundle's load
-    check and before the engine starts.  Its failure is the job's: nothing
-    is started, the step after the engine (``after``) is told how the call
-    ended -- so the run's index says it, § 5.11 § 5 -- and the conclusion
-    records it.  Empty when the job states no step before the engine."""
-    if finish is None or not before:
-        return ""
-    from .parse.dirs.job import FINISH_FAILED
-    words = " ".join(before)
-    return (
-        f"# --- The call planned (engines/vibration.md 5.11 3) ---------\n"
-        f"# {finish} {words}: this call's coordinates and its entry in the\n"
-        f"# run's index, written with the job's own python before the engine\n"
-        f"# starts.  ITS FAILURE IS THE JOB'S: nothing is started, and the\n"
-        f"# step after the engine records how the call ended.\n"
-        f'_log INFO "plan step: {finish} {words} {script_name}"\n'
-        f"set +e\n"
-        f'"$_mb_py" {finish} {words} {script_name}\n'
-        f"_mb_plan_rc=$?\n"
-        f"set -e\n"
-        f'if [ "$_mb_plan_rc" -ne 0 ]; then\n'
-        f'    echo "===== {finish} {words} exited with code $_mb_plan_rc: '
-        f'the engine was not started -- see $_runwrap_log =====" >&2\n'
-        # THE CALL ENDED BEFORE ITS ENGINE: the step after it says so, as
-        # it says an engine's failure (`_finish_block`, its failure path).
-        + ('    _siesta_exit="$_mb_plan_rc"\n'
-           + _finish_block(finish, script_name, after=after, failed=True)
-           if after is not None else "")
-        + "    " + conclude_line('"$_mb_plan_rc"',
-                                  f"{FINISH_FAILED} ({finish} {words})")
-        + "\n"
-        '    exit "$_mb_plan_rc"\n'
-        "fi\n"
-    )
-
-
-def _report_block(names, member: str, verb: str, *, pad: str = "") -> str:
-    """ONE OF A POINT'S TWO REPORT STEPS (`engines/transport.md` § 2a.11;
-    `run-reports.md` § 2.4, § 2.9): the monitor's bundle, run with the job's
-    own python, told which run and which try -- ``point started`` before
-    the engine, which stamps the point's start in the run's index and sends
-    the run's `start` once; ``point ended`` after it, told the engine's
-    exit, which stamps how the point ended and sends what the run's rule
-    calls for -- a failed part, a round's milestone, the run's `finish`.
-    **It never fails the point**: what it cannot do is logged here, and the
-    conclusion stays the engine's."""
-    from .monitor import POINT_ENDED, POINT_STARTED, POINT_VERB
+    ended = verb == POINT_ENDED
+    own = [(m, point.step(m)) for m in (("after", "finish") if ended
+                                        else ("before",)) if point.step(m)]
     words = f"{POINT_VERB} {verb}"
     call = (f'"$_mb_py" {MONITOR_BUNDLE} {words} --label "{names.label}" '
-            f'--stage "{names.stage}" --run "$_run_n" '
-            f'--launched-in "{member}"'
-            + (' --exit "$_siesta_exit"' if verb == POINT_ENDED else ""))
-    return (
-        f"{pad}# --- The run's report step: {words} (run-reports.md 2.9) ---\n"
-        f"{pad}# This point's {'start' if verb == POINT_STARTED else 'end'} "
-        f"into the run's index, and the run's message it\n"
-        f"{pad}# calls for.  IT NEVER FAILS THIS POINT: what it cannot do is\n"
-        f"{pad}# logged here.\n"
-        f"{pad}if [ -f {MONITOR_BUNDLE} ]; then\n"
-        f"{pad}    {call} \\\n"
-        f'{pad}        || _log WARN "report step: {words} exited $? -- the '
-        f"run's index or its message may lack this point\"\n"
-        f"{pad}else\n"
-        f'{pad}    _log WARN "report step: {MONITOR_BUNDLE} is not beside the '
-        f'deck -- {words} not run"\n'
-        f"{pad}fi\n"
-    )
+            f'--stage "{names.stage}" --deck "{script_name}"'
+            + (' --exit "$_siesta_exit" --output "$_out_file"' if ended
+               else "")
+            + (f' --bundle "{finish}"' if own else "")
+            + "".join(f' --{m} "{v}"' for m, v in own))
+    # WHOSE FAILURE THIS IS: the kind's step's, where it runs one that
+    # decides the point -- before the engine, or after a clean one.
+    decides = bool(own) and not failed and (point.step("before") if not ended
+                                            else point.step("after"))
+    pad = "    " if failed else ""
+    head = (f"{pad}# --- The run's report step: {words} "
+            f"(execution/runs-of-points.md 3) ---\n"
+            f"{pad}# This point's {'end, exit and verdict' if ended else 'start'}"
+            f" into the run's index"
+            + (f", its own step{'s' if len(own) > 1 else ''} "
+               f"({', '.join(f'{finish} {v}' for _m, v in own)}) run in "
+               f"{'their' if len(own) > 1 else 'its'} place" if own else "")
+            + ", and the run's message it calls for.\n"
+            f"{pad}# THE REPORT NEVER FAILS THIS POINT: what it cannot do is "
+            f"logged here.\n")
+    if not decides:
+        return head + (
+            f"{pad}if [ -f {MONITOR_BUNDLE} ]; then\n"
+            f"{pad}    {call} \\\n"
+            f'{pad}        || _log WARN "report step: {words} exited $? -- '
+            f"the run's index or its message may lack this point\"\n"
+            f"{pad}else\n"
+            f'{pad}    _log WARN "report step: {MONITOR_BUNDLE} is not beside '
+            f'the deck -- {words} not run"\n'
+            f"{pad}fi\n")
+    step = point.step("after" if ended else "before")
+    what = f"{finish} {step}"
+    return head + (
+        "# ITS OWN STEP'S FAILURE IS THE POINT'S"
+        + (": the engine is not started, and the step after it is told how "
+           "the point ended.\n" if not ended else
+           ": the conclusion names it.\n")
+        + "set +e\n"
+        f"if [ -f {MONITOR_BUNDLE} ]; then\n"
+        f"    {call}\n"
+        f"    _mb_point_rc=$?\n"
+        f"else\n"
+        f'    _log ERROR "report step: {MONITOR_BUNDLE} is not beside the deck '
+        f'-- {words} not run, nor this point\'s own step ({what})"\n'
+        f"    _mb_point_rc=1\n"
+        f"fi\n"
+        "set -e\n"
+        f'if [ "$_mb_point_rc" -ne 0 ]; then\n'
+        f'    echo "===== this point\'s own step ({what}) exited with code '
+        f'$_mb_point_rc'
+        + (": the engine was not started" if not ended else "")
+        + ' -- see $_runwrap_log =====" >&2\n'
+        + ('    _siesta_exit="$_mb_point_rc"\n'
+           + _point_block(names, POINT_ENDED, point, finish, script_name,
+                          failed=True)
+           if not ended else "")
+        + "    " + conclude_line('"$_mb_point_rc"',
+                                  f"{FINISH_FAILED} ({what})") + "\n"
+        '    exit "$_mb_point_rc"\n'
+        "fi\n")
 
 
 def _finish_check_block(finish: Optional[str]) -> str:
@@ -1660,7 +1620,9 @@ def _ending_arms(*arms) -> str:
 
 def _retry_texts(resumes: bool,
                  restart_honoured: Optional[bool],
-                 member: bool = False) -> Dict[str, Optional[str]]:
+                 relaunch: Optional[str] = None,
+                 verdict_counts: bool = True
+                 ) -> Dict[str, Optional[str]]:
     """What a retry of this run does, in the words every retry text uses --
     ONE description (`running-a-job.md` § 3.5): a run whose kind cannot
     resume (`Job.resumes`, the kind's warm-files fact) re-runs from its first
@@ -1674,24 +1636,29 @@ def _retry_texts(resumes: bool,
     ``wall`` what follows a stop at the wall, ``capped`` a relaxation still
     capped once the budget is spent.
 
-    **A POINT OF A RUN** (``member``: a vibration's call, a transport
-    point) is not continued by a launch again from its own state: launch
-    takes the run's points done over and runs the rest as its run's rule
-    starts a point not done (`engines/vibration.md` § 5.11 § 6,
-    `engines/transport.md` § 2a.11) -- and a relaxation capped unconverged
-    counts done for its run (§ 5.11 § 5) -- so a point's words say that,
-    never *launch again to continue*."""
+    **A POINT OF A RUN OF POINTS** (``relaunch`` -- its declared relaunch,
+    `execution/runs-of-points.md` § 1.2) is not continued by a launch again
+    as a run of its own is: launch takes the run's points done over and,
+    for this one not done, runs it ``again`` from its start or
+    ``continue``s it from its own last state, its warm files handed over --
+    and a point whose verdict does not count (``verdict_counts``, its
+    declaration's) counts done capped as it stands -- so a point's words
+    say that, never *launch again to continue*."""
     texts = _run_retry_texts(resumes, restart_honoured)
-    if member:
-        again = ("a launch again takes the run's points done over and runs "
-                 "this one again, as its run's rule starts a point not done")
+    if relaunch is not None:
+        again = ("a launch again takes the run's points done over and "
+                 + ("continues this one from its own last state"
+                    if relaunch == CONTINUE else
+                    "runs this one again from its start"))
+        after = (f"this point stays not done: {again} -- to change a "
+                 f"setting, " + way_back_words(True))
         texts.update(
             wall=f"this point is not done -- {again}",
-            after=(f"this point stays not done: {again} -- to change a "
-                   f"setting, " + way_back_words(True)),
-            capped=("the relaxation counts done for its run as it stands -- "
-                    "to relax further, launch the stage with --cold, or "
-                    + way_back_words(True, "give it more steps")))
+            after=after,
+            capped=(("this point counts done for its run as it stands -- "
+                     "to relax further, launch the stage with --cold, or "
+                     + way_back_words(True, "give it more steps"))
+                    if not verdict_counts else after))
     return texts
 
 
@@ -2166,27 +2133,19 @@ def render_run_wrapper(script_path: Path, *,
                         warm: Optional[Sequence[str]] = None,
                         deck_text: Optional[str] = None,
                         notes: Optional[list] = None,
-                        steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
-                        member: Optional[str] = None,
-                        reports: bool = False) -> str:
+                        point: Optional[PointOfRun] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     ``notes`` receives what the rendering has to say and does not refuse
     (`gpu.md` G6: the target's record lists no GPU build of SIESTA) -- the
     same out-list `prep` hands every step, so a sentence reaches its answer.
 
-    ``steps`` are a run in phases' two Python steps (`engines/vibration.md`
-    § 5.11 § 3), each the words the ``finish`` bundle is run with: before
-    the engine (``plan <phase>``) and after it, success or failure
-    (``record <phase>``, told the engine's exit code) -- a finish arrives
-    with its steps, prep giving every finish its two.  ``member`` makes the
-    run script's monitor a member of a run of
-    points' (§ 7a): the way from the call's folder up to the run's.
-    ``reports`` runs the run's two report steps around the engine -- a
-    transport point's (`engines/transport.md` § 2a.11): the monitor's
-    bundle's ``point started`` before it and ``point ended`` after it,
-    success or failure, which stamp the run's index and send the run's
-    events; their failure is logged, never the point's (:func:`_report_block`).
+    ``point`` makes the run a POINT OF A RUN OF POINTS
+    (:class:`PointOfRun`, `execution/runs-of-points.md` § 1.1): its monitor
+    a member of the run's, its two report steps around the engine
+    (:func:`_point_block`) -- which run the kind's own steps, verbs of the
+    ``finish`` bundle, where it has them -- and its relaunch said after a
+    stop.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.
     With the object passed whole there is no subset to choose, and *which*
@@ -2318,15 +2277,11 @@ def render_run_wrapper(script_path: Path, *,
             f"{', '.join(sorted(_FINISH_BUNDLES))}; it cannot finish a "
             f"{category} job with {finish!r}")
     from .monitor import POINT_ENDED, POINT_STARTED
-    if reports and not member:
+    if point is not None and point.steps and finish is None:
         raise WrapperError(
-            f"`{script_path.name}`: a point's report steps stamp its run's "
-            f"index, and the point names no run above it (its monitor is "
-            f"no member)")
-    if steps is not None and finish is None:
-        raise WrapperError(
-            f"`{script_path.name}`: a job's Python steps run its finish "
-            f"bundle, and the job names none (engines/vibration.md 5.11)")
+            f"`{script_path.name}`: a point's own steps are verbs of its "
+            f"job's bundle, and the job names none "
+            f"(execution/runs-of-points.md 2.1)")
 
     # WHETHER THIS RUN USES THE GPU is its request -- `jobset.model.
     # gpu_request`, the one door (`execution/architecture.md` § 3.2) -- read
@@ -2462,7 +2417,10 @@ def render_run_wrapper(script_path: Path, *,
     # retry's own message, a retry's Mode line, the --continue usage
     # and the line after the budget is spent (`running-a-job.md` § 3.5).
     _retry = _retry_texts(resumes, _restart_honoured,
-                          member=member is not None)
+                          relaunch=(point.relaunch if point is not None
+                                    else None),
+                          verdict_counts=(point.verdict_counts
+                                          if point is not None else True))
     _py_reads_prior = (_py_deck_reads_prior(deck_text)
                        if suffix == ".py" else None)
 
@@ -3534,11 +3492,12 @@ def render_run_wrapper(script_path: Path, *,
                              notify_every_hours, notify_channels,
                              notify_report,
                              cores="$_mb_cores", gpu=gpu_mode,
-                             member=member)
+                             member=point is not None)
             + _finish_check_block(finish)
-            + _before_block(finish, script_name,
-                            steps[0] if steps is not None else None,
-                            after=(steps[1] if steps is not None else None))
+            # THE POINT'S START, AND ITS OWN STEP BEFORE ITS ENGINE, where
+            # its kind has one -- a vibration call's coordinates
+            # (`execution/runs-of-points.md` § 3, op. 9).
+            + _point_block(names, POINT_STARTED, point, finish, script_name)
             # THE RECORD OF WHAT THE ENGINE WILL READ, once every step before
             # it has written what it reads -- a call's plan step its
             # coordinates (`engines/vibration.md` § 5.11 § 4).  PySCF
@@ -3546,8 +3505,6 @@ def render_run_wrapper(script_path: Path, *,
             # objects back); SIESTA cannot, so the run script echoes the
             # deck it is about to hand over.
             + _effective_parameters_block(script_path)
-            + (_report_block(names, member, POINT_STARTED)
-               if reports else "")
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
                f'_siesta_retry_max={_retries}\n'
                f'# Retry: re-exec this wrapper as the run\'s NEXT TRY --\n'
@@ -3694,11 +3651,8 @@ def render_run_wrapper(script_path: Path, *,
                   f'        echo "SCF still unconverged after '
                   f'$_siesta_retry_max retry(s); {_retry["after"]}." >&2\n']
                  if _retries > 0 else None))
-            + _finish_block(finish, script_name,
-                            after=(steps[1] if steps is not None else None),
-                            failed=True)
-            + (_report_block(names, member, POINT_ENDED, pad="    ")
-               if reports else "")
+            + _point_block(names, POINT_ENDED, point, finish, script_name,
+                           failed=True)
             + '    # CONCLUDED -- an error is a conclusion (project-\n'
             '    # layout.md 1.6, "the other file"): the engine returned\n'
             '    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
@@ -3732,9 +3686,7 @@ def render_run_wrapper(script_path: Path, *,
                if _retries > 0 else "")
             + f'echo "{_prog_label} completed: $_launch_cmd {script_name} -> '
             + '$_out_file"\n'
-            + _finish_block(finish, script_name,
-                            after=(steps[1] if steps is not None else None))
-            + (_report_block(names, member, POINT_ENDED) if reports else "")
+            + _point_block(names, POINT_ENDED, point, finish, script_name)
             + conclude_line(0) + "\n"
         )
     else:
@@ -3757,7 +3709,7 @@ def render_run_wrapper(script_path: Path, *,
                              cores="$_omp_threads",
                              # the run's GPU request, read above -- its
                              # script's GPU probe runs on the same value
-                             gpu=gpus.uses, member=member)
+                             gpu=gpus.uses, member=point is not None)
             # NOT `exec`: the shell has to outlive the engine to conclude.
             + f"set +e\n"
             f"{inner}\n"
@@ -4037,14 +3989,21 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     # THE ATOMS A RUN HELD, 0-based through the one numbering door, which
     # the SIESTA reading pass states for every reader of it.
     "engine_atom_index.py": "molbuilder.engine_atom_index",
-    # A MEMBER'S RUN -- its index, read through its one reader and the one
-    # done rule (`siesta.vibration_phases`, `run-reports.md` § 2.8).
+    # A RUN OF POINTS -- its index, its stamps and its one rule each
+    # (`runpoints`, `execution/runs-of-points.md` § 2.3, § 4), read and
+    # written by each point's report steps and a member's line; the way up
+    # from a point to its run, its folder's record (`calcdirs`, with the
+    # layout's names it reads, `paths`).
+    "runpoints.py":        "molbuilder.runpoints",
+    "calcdirs.py":         "molbuilder.calcdirs",
+    "paths.py":            "molbuilder.paths",
+    # ...AND EACH KIND'S WORDS, the parts its kind table record names: a
+    # vibration's count (`siesta.vibration_phases`); a transport rung's count
+    # and a round's outcome -- the conductance at E_F by the record's own
+    # rule (`transport.run_words`, `transport.conductance`; `run-reports.md`
+    # § 2.8, § 2.9).
     "vibration_phases.py": "molbuilder.siesta.vibration_phases",
-    # A TRANSPORT RUN OF POINTS -- its index, its rows by the one done rule
-    # and what a round's milestone says, and the conductance at E_F by the
-    # record's own rule (`transport.points_index`, `transport.conductance`;
-    # `run-reports.md` § 2.8, § 2.9).
-    "points_index.py":     "molbuilder.transport.points_index",
+    "run_words.py":        "molbuilder.transport.run_words",
     "conductance.py":      "molbuilder.transport.conductance",
     # ...AND A TRANSMISSION POINT'S ENERGIES JOINED by the record's own rule
     # (`transport.energies.joined`), its sharing record's block named by the
@@ -4091,7 +4050,7 @@ _ENDING_UNREADABLE = (f"the ending cannot be read here ({MONITOR_BUNDLE} "
 #: waits on and reads by their exit status -- `loads` answers whether the
 #: bundle loads on this python and nothing else, so the wrapper can ask it
 #: once (`_mb_ending_able`) -- and the run's own steps, `notify` and a
-#: transport point's `point` (`run-reports.md` § 2.4).
+#: point's report steps, `point` (`execution/runs-of-points.md` § 3).
 #:
 #: WRITTEN IN THE PYTHON EVERY INTERPRETER PARSES -- no f-strings, no print
 #: function -- because its whole job is to report a python that cannot load
@@ -4241,9 +4200,9 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "runfiles.py":             "molbuilder.runfiles",
     "identity.py":             "molbuilder.identity",
     "constants.py":            "molbuilder.constants",
-    # A RUN IN PHASES (`engines/vibration.md` § 5.11): the plan step makes
-    # a call's folder and its files through the same doors this machine's
-    # launch uses -- the plan, the place record and the names' rules, the
+    # A RUN IN PHASES (`engines/vibration.md` § 5.11): the force constants'
+    # record step makes each optical call's folder and its files through
+    # the same doors this machine's launch uses -- the plan, the place record and the names' rules, the
     # copier -- and picks the modes with PySCF's own selector.
     "planned.py":              "molbuilder.jobset.planned",
     "calcdirs.py":             "molbuilder.calcdirs",
@@ -4251,6 +4210,8 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "selection.py":            "molbuilder.spectra.selection",
     "deck_lines.py":           "molbuilder.siesta.deck_lines",
     "vibration_phases.py":     "molbuilder.siesta.vibration_phases",
+    # THE RUN'S INDEX, which the steps read and write (`runpoints`).
+    "runpoints.py":            "molbuilder.runpoints",
     "runrecord.py":            "molbuilder.runrecord",
     # THE RELAXATION RECORD'S ONE FUNCTION (`parse/contract.py`, the
     # relax call's record in the index); the keys it reads are a member
@@ -4265,10 +4226,12 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
 
 #: THE ONE FILE that is a SIESTA vibration's Python: a Python zip
 #: application of :data:`VIBRATION_COMPANIONS` whose ``__main__`` runs
-#: `spectra.siesta_vibration.main` -- its verbs ``plan`` and ``record`` are
-#: the run in phases' steps around each call, and the ``record`` step that
-#: leaves no call to run runs the finish, which writes the result at the
-#: run's root (`engines/vibration.md` § 5.11 § 3).  Every phase's deck
+#: `spectra.siesta_vibration.main` -- its verbs ``plan``, ``record`` and
+#: ``finish-run`` are the vibration's own steps, which each call's report
+#: steps run in their place (the kind table's ``steps``,
+#: `execution/runs-of-points.md` § 1.2): before a call's engine, after it,
+#: and the run's finish once no call is left, which writes the result at
+#: the run's root (`engines/vibration.md` § 5.11 § 3).  Every phase's deck
 #: names it (`DeckSpec.finish`), `prep` copies that onto the job
 #: (`Job.finish`) and writes it beside each phase's run script, and every
 #: call is brought a copy.
@@ -4442,9 +4405,7 @@ def render_wrappers(script_path: Path, *,
                     resumes: bool = True,
                     warm: Optional[Sequence[str]] = None,
                     deck_text: Optional[str] = None,
-                    steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
-                    member: Optional[str] = None,
-                    reports: bool = False) -> RenderedWrapper:
+                    point: Optional[PointOfRun] = None) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
 
     ``deck_text`` is the deck as it will be written, for one `prep` has
@@ -4506,7 +4467,7 @@ def render_wrappers(script_path: Path, *,
         n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
         finish=finish, resumes=resumes, warm=warm, deck_text=deck_text,
-        notes=_notes, steps=steps, member=member, reports=reports)
+        notes=_notes, point=point)
     _validate_rendered_wrapper(text, script_path)
     # THE STAGE'S NAMES NAME IT (`runfiles.RunNames`), as every file of it.
     files = [(names.name(".run.sh"), text)]
@@ -4567,9 +4528,7 @@ def write_run_wrapper(script_path: Path, *,
                       resumes: bool = True,
                       warm: Optional[Sequence[str]] = None,
                       plan=None, notes: Optional[list] = None,
-                      steps: Optional[Tuple[Sequence[str], Sequence[str]]] = None,
-                      member: Optional[str] = None,
-                      reports: bool = False) -> Path:
+                      point: Optional[PointOfRun] = None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     ``plan`` (`jobset.planned.Plan`) receives the files instead of the disk,
@@ -4600,7 +4559,7 @@ def write_run_wrapper(script_path: Path, *,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir, finish=finish,
                                resumes=resumes, warm=warm,
-                               steps=steps, member=member, reports=reports,
+                               point=point,
                                # THE DECK AS THE PLAN HOLDS IT, a block
                                # read from a file beside it inlined.
                                deck_text=(read_deck(script_path,

@@ -3,6 +3,7 @@
 **Role:** contract
 **Domain:** execution
 **Companions:**
+[`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) (a run of points: its words, data, operations and doors);
 [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.1 — the wrapper's
 instruments, of which the monitor is one; § 4.2 — how a run directory's state
 is read; § 3.5 — the warm retries;
@@ -82,18 +83,18 @@ never what a machine found — and adds one: never a secret.
 for notification that means no notification"*) — nothing is sent, the start
 and the end included. A calculation with a `notify` block speaks on seven
 occasions: the two it ticks, which combine; its wall near; its start and its
-end; and, for a run of points that reports as one run, a phase that ended
+end; and, for a run of points that reports as one run, a round that ended
 with the run going on, and a part that failed with the run going on (§ 2.9).
 
 | occasion | `event` | set by | sent |
 |---|---|---|---|
-| **it started** | `start` | a `notify` block | once, when the monitor starts watching a run — a run of points: once per run, sent by the step that starts its first point — a vibration's plan step of its first call (`mb_monitor.pyz notify start`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a), a transport sweep's report step of the first point to start (`mb_monitor.pyz point started`, [`engines/transport.md`](?doc=engines/transport.md) § 2a.11); its points' member monitors send none |
+| **it started** | `start` | a `notify` block | once, when the monitor starts watching a run — a run of points: once per run, sent by the report step before the engine of the first point to start (`mb_monitor.pyz point started`, [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 9) — a vibration's call or a transport sweep's point alike; its points' member monitors send none |
 | **a step finished** — its SCF converged | `scf_converged` | `notify.on_scf_converged` | on the first wake after a step that moves the geometry finishes (§ 2.2) — never a force-constant displacement; one message per wake, however many finished since the last |
 | **every N hours** | `periodic` | `notify.every_hours` — a number of hours; `null` is never | N hours after the last message; the first, N hours after the start |
-| **its wall is near** | `wall_near` | a `notify` block, on a job sent with a wall | once: for a run of points, when the calls left need more than the wall leaves at the pace its finished calls measured (§ 2.8); else when the time the job has left falls below the longest step it has taken (§ 2.2) — the step it is in may not finish (§ 2.1b) |
-| **a phase ended, and the run goes on** | `milestone` | a `notify` block, on a run of points that reports as one run | at once, by the record step of the call that ends the phase, when the run still has calls to run: the phase's outcome in words (§ 2.9) — a phase whose end is the run's is said by the `finish` |
-| **a part failed, and the run goes on** | `part_failed` | a `notify` block, on a run of points that reports as one run | at once, by the record step of a call that ended without being done, when the run still has calls to run: which call, and why (§ 2.9) — a failure that ends the run is said by the `finish` |
-| **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes — a run in phases: by the record step that completes its index (`notify finish`), with the run's state, and the outcome of the phase its last call ended (§ 2.9) |
+| **its wall is near** | `wall_near` | a `notify` block, on a job sent with a wall | once: for a run of points, when the points left need more than the wall leaves at the pace its finished points measured (§ 2.8); else when the time the job has left falls below the longest step it has taken (§ 2.2) — the step it is in may not finish (§ 2.1b) |
+| **a round ended, and the run goes on** — a vibration's phase, a transport sweep's voltage at every frame | `milestone` | a `notify` block, on a run of points that reports as one run | at once, by the report step after the engine (`point ended`) of the point that ends its round, when the run still has points to run: the round's outcome in words (§ 2.9) — a round whose end is the run's is said by the `finish` |
+| **a part failed, and the run goes on** | `part_failed` | a `notify` block, on a run of points that reports as one run | at once, by the report step after the engine of a point that ended without being done, when its round still has points to run: which point, and why (§ 2.9) — a failure that ends the run is said by the `finish` |
+| **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes — a run of points: by the report step after the engine of the point that leaves none to run, once its index is closed and its kind's finish step, where it has one, has run, with the run's state, and the outcome of the round that point ended (§ 2.9) |
 
 Every message carries the same report (§ 4.1a): the state and where the run is
 — in its structure where one is declared (§ 2.8) — SCF phase and iteration, energy, each residual against its criterion, the
@@ -103,12 +104,12 @@ of its loop (a transmission's, [`model/parse.md`](?doc=model/parse.md) § 5d.5)
 
 - **Nothing else is sent.** Between the start and the end a message goes out
   only on the two occasions the calculation ticked, once when its wall is
-  near (§ 2.1b), and — for a run of points — when a phase ends or a part
+  near (§ 2.1b), and — for a run of points — when a round ends or a part
   fails with the run going on (§ 2.9). Every wake's reading is in
   the monitor log (§ 2.5); the channels hear what the policy asks for.
 - **Every message restarts the N-hour clock** — a step's, the wall's
   warning, a milestone, a part's failure — and a step and a period due on the
-  same wake are one message, the step's. A run of points' calls count it
+  same wake are one message, the step's. A run of points' points count it
   from the last event the run's record holds (§ 2.4).
 - **The start and the end are not ticks**: a calculation that reports at all
   reports them — they bracket every report, and a run that finishes at 3 am
@@ -195,14 +196,15 @@ its own job states ([`running-a-job.md`](?doc=execution/running-a-job.md)
 § 3.6). A record or a wall that does not read, or a header that
 states no start (one written before it did), is said once in a `[WALL]`
 line, and nothing is counted. **A run of points' points**: a member's
-monitor — a vibration's call, a transport sweep's point (§ 2.4) — reads the
-run's one launch record through `--launched-in` and counts as the run's; a
+monitor — a vibration's call, a transport sweep's point (§ 2.4) — finds its
+run by its folder's record (`calcdirs.where`), reads the run's one launch
+record there and counts as the run's; a
 point, one SCF or one transmission, states no steps: what warns for a member
 is its run's pace, below.
 
 **It warns once, and only where it can say why**: for a run of points whose
-index states its calls (§ 2.8), when the calls left need more than the wall
-leaves at the pace its finished calls measured — *6h left; 120 optical calls
+index states its points (§ 2.8), when the points left need more than the wall
+leaves at the pace its finished points measured — *6h left; 120 optical calls
 left at 2h each (1 done) need about 10d -- the run may not finish before the
 wall* (the rule agreed with the user on 2026-10-26, [`plans/plan.md`](?doc=plans/plan.md)
 § 1af); otherwise when the time left falls below the longest step the run has
@@ -302,7 +304,8 @@ directory of shipped modules reads as a directory of decks.
 | how it ended: `state`, `detail`, each SCF phase's convergence, whether a relaxation relaxed, the exit code | `run_status` over this run's files (`parse/dirs/job.py`) — the Results tab's own answer, with its own order of evidence ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), built on the one door that says whether the run ended on its own (`runrecord.ending`); a SIESTA run's stderr from the session log whose first section is the run (`wrapper_log`) | `job.py` · `_run_ending.py` · `end_lines.py` · `wrapper_log.py` · `runrecord.py` |
 | which fields a report may carry, and how a card says each | the one declaration, `report_fields` (§ 4.1a): `ReportField.said`, the span rule's `span_words` and a share's `pct_words` | `report_fields.py` |
 | which fields a card shows for an event, in what order, for each receiver | the layout file, through its reader `report_cards` (§ 4.1c) | `report_cards.py` · `report-cards.json`, the bundle's one data member |
-| a member's run (§ 2.8): its count, its own point, its points' starts and ends | the run's index, read by its one reader and the one done rule — a vibration's `vibration_phases.read_index`, `rows_of`, `summary`, the record step's own; a transport sweep's `transport.points_index.read_index`, `rows_of`, `summary`, the report steps' own — the kind's found through `monitor.RUN_INDEXES` | `vibration_phases.py` · `points_index.py` |
+| a member's run (§ 2.8): its count, its own point, its points' starts and ends | the run's index, every run of points' one ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3), found by the point's folder's record (`calcdirs.where`) and read by its one reader and the one rule each — `runpoints.read_index`, `rows_of`, `still_to_run`, the report steps' own — and its count in the kind's words, the part the index names (the kind table's `count`, `runpoints.count`: a vibration's `vibration_phases.count_words`, a transport sweep's `transport.run_words.count_words`) | `runpoints.py` · `calcdirs.py` · `paths.py` · `vibration_phases.py` · `run_words.py` |
+| a run of points' report steps (§ 2.4): a point's verdict, a round's outcome | the status door's own verdict reader (`_run_ending.verdict_of`), and the part the index names (the kind table's `outcome`): a vibration's, its calls' own outcomes (`runpoints.outcomes`); a transport sweep's, read from each point's own files by the record's own rules (`transport.run_words.round_outcome` — `conductance.at_fermi`, `energies.joined`) | `_run_ending.py` · `run_words.py` · `conductance.py` · `energies.py` · `deck_record.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
 | the wall it was sent with (§ 2.1b) | the run's launch record, `runrecord.launch_record` — `placed_on.time`, read by `runrecord.sent_wall_s` through the wall's one parser, `scheduler.quantities.parse_walltime`, which travels with it | `runrecord.py` |
 | when the job started (§ 2.1b) | its header's `MB_JOB_STARTED`, written by `runwrap.render_sbatch`, its name `runtime_info.JOB_STARTED_VAR` -- the job's clock's names, `MB_WALL_S` and `MB_WALL_SLACK_S` beside it | `mb_monitor.py` |
@@ -396,30 +399,35 @@ A run directory's own state — `pending`, `queued`, `running`, `failed`,
 A report never says `pending` or `queued`: a monitor exists only while its run
 runs.
 
-**A run of points reports as one run** — a SIESTA vibration's calls
+**A run of points reports as one run**
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operations 9
+and 10, § 4.6) — a SIESTA vibration's calls
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a) and a
 transport sweep's points, frames × voltages
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11): each point's
 run script starts its own monitor as a
-**member** (`--member --launched-in <run>`), which watches that point, sends
+**member** (`--member`), which finds its run by its folder's record
+(`calcdirs.where`), watches that point, sends
 `scf_converged`, `periodic` and `wall_near` by the policy, counts its clock
-from the run's own record, and sends neither `start` nor `finish`; the run's
-`start` is sent once by the step before its first point's engine — a
-vibration's plan step, a transport point's report step — a `milestone` or a
-`part_failed` by the step after a point's engine (§ 2.9), and its `finish` by
-the step after the run's last point, each through the bundle's `notify` verb
-(`mb_monitor.pyz notify <event> --label <label> --stage <stage> --dir <run>`,
-no try's number: the run's folder holds no try of its own), which reads the
-policy from the environment the run script exports (`MB_NOTIFY_CHANNELS`,
-`MB_NOTIFY_REPORT`), skips a `start` already sent and a `part_failed` of a
-reason already reported (§ 2.9), and writes the run's notification record,
-`notified.json`, and its lines into the run's `<stem>-run0.monitor.log`
-(§ 2.5). Every event carries the run's count, read from the run's index
-after the step that sends it wrote it — the `start`'s, the run's points
-before any has ended, those taken over among them done — and, once a point
-has started, the run's clock (§ 2.8). A transport sweep's points are walked by one
-job; a walk stopped by the person, or killed, sends no `finish`, and the run
-door reads the run failed — as a vibration's — and nor does a walk one of
+from the run's own record, and sends neither `start` nor `finish`. **The
+run's events are its points' report steps'** — the monitor bundle's `point`
+verb, which each point's run script runs with the job's python around its
+engine, and which runs the kind's own steps in their place: `point started`
+before the engine sends the run's `start`, once; `point ended` after it,
+success or failure, a `milestone` or a `part_failed` (§ 2.9), and, once no
+point is left to run, the run's `finish` — each through the bundle's
+`notify` verb (`mb_monitor.pyz notify <event> --label <label> --stage <stage>
+--dir <run>`, no try's number: the run's folder holds no try of its own),
+which reads the policy from the environment the run script exports
+(`MB_NOTIFY_CHANNELS`, `MB_NOTIFY_REPORT`), skips a `start` already sent and
+a `part_failed` of a reason already reported (§ 2.9), and writes the run's
+notification record, `notified.json`, and its lines into the run's
+`<stem>-run0.monitor.log` (§ 2.5). Every event carries the run's count, read
+from the run's index after the step that sends it wrote it — the `start`'s,
+the run's points before any has ended, those taken over among them done —
+and, once a point has started, the run's clock (§ 2.8). A run of points is
+walked by one job; a walk stopped by the person, or killed, sends no
+`finish`, and the run door reads the run failed — nor does a walk one of
 whose points ended before its first report step, the index never seeing it
 end (`engines/transport.md` § 2a.11).
 
@@ -429,7 +437,7 @@ end (`engines/transport.md` § 2a.11).
 |---|---|---|---|---|
 | `<stem>-runN.monitor.log` | the monitor — and, at a run of points' root, `<stem>-run0.monitor.log` by the `notify` verb, the run's own events (§ 2.4) | appended from its start to its closing lines | a person; `parse/instruments/monitor.py` ([`model/parse.md`](?doc=model/parse.md) § 5c.1); `run_status`, its closing record ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) | the monitor never started — the wrapper's log says why (*monitor: not started …*) — or it died loading: its `starting` line and the error, no `started` (§ 2.6) |
 | `<stem>-runN.util.csv` | the monitor | a header and a first row at start, then change-gated rows (§ 2.1) | the bench summary; `utilisation` (§ 5c.1 there) | nothing was sampled |
-| `notified.json` beside the run's launch record | every monitor, for each event it sends; and, for a run of points, the `notify` verb. A call's member monitor and its record step can write at one moment, both in the call's job on one node, so each read-and-append is one step under a lock on the folder (`runrecord.note_notified`); a filesystem that refuses locks gets the event written unlocked | each event said for the run, with its time, and a failed part's reason (`runrecord.read_notified`) — said, whether or not a channel took it: with no channel set up the event is still recorded | the member monitors (a `wall_near` already sent is not sent again; the N-hour clock from the last event); the `notify` verb (a `start`, or a `part_failed` of a reason already reported, is not sent again, § 2.9) | no event said for the run |
+| `notified.json` beside the run's launch record | every monitor, for each event it sends; and, for a run of points, the `notify` verb, which its points' report steps call. A point's member monitor and its report step can write at one moment, both in the point's job on one node, so each read-and-append is one step under a lock on the folder (`runrecord.note_notified`); a filesystem that refuses locks gets the event written unlocked | each event said for the run, with its time, and a failed part's reason (`runrecord.read_notified`) — said, whether or not a channel took it: with no channel set up the event is still recorded | the member monitors (a `wall_near` already sent is not sent again; the N-hour clock from the last event); the `notify` verb (a `start`, or a `part_failed` of a reason already reported, is not sent again, § 2.9) | no event said for the run |
 | `<state dir>/reports/<user>.jsonl` | the listener, on the server | one line per accepted report | `jq`, pandas (§ 4.1a) | no report reached the listener |
 
 `<stem>` is `<label>_<stage>` and N the try's number
@@ -520,7 +528,7 @@ Nothing else reaches stderr in a healthy run.
 |---|---|---|
 | `--label` · `--stage` · `--run` | the deck's label, its stage token, the try the wrapper was given (`--run N`) | which try, all three required; every file named through `runfiles` |
 | `--watch-pid` | `$$`, the wrapper's own PID | stop when it goes; `0` watches none |
-| `--member` · `--launched-in <run>` | a run of points' point — a vibration's call, a transport sweep's point (`runwrap._monitor_block`, the point's `member`) | this monitor is one point's of a run that reports as one run: no `start`, no `finish`, its clock the run's record's (§ 2.4) |
+| `--member` | every point of a run of points — a vibration's call, a transport sweep's point (`runwrap._monitor_block`, rendered for a `runwrap.PointOfRun`) | this monitor is one point's of a run that reports as one run: its run found by its folder's record (`calcdirs.where`, `monitor._run_of`), no `start`, no `finish`, its clock the run's record's (§ 2.4) |
 | `--dir` | not passed: the wrapper starts it in the run's directory | the run's directory, for `molbuilder monitor` pointed at a run from elsewhere |
 | `--util` | always | sample into `util.csv` |
 | `--cores` | the wrapper's launch (§ 2.1a) | the cpu % denominator of a run started directly |
@@ -535,7 +543,11 @@ Nothing else reaches stderr in a healthy run.
 
 The bundle's second verb, `mb_monitor.pyz ending OUTPUT [--stderr FILE]
 [QUESTION [ARG]]`, is `_run_ending`'s door, which the wrapper asks
-([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6).
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6). Two more are a
+run of points' (§ 2.4): `point started|ended --label --stage --deck [--exit
+--output] [--bundle --before --after --finish]`, a point's report steps,
+and `notify <event> --label --stage --dir <run> [--state --detail
+--reason]`, one event for the run.
 `molbuilder monitor` runs the same monitor from the package, for a job you
 point it at.
 
@@ -544,7 +556,7 @@ point it at.
 | `MB_MONITOR` | the wrapper | `0` starts no monitor |
 | `MB_MONITOR_INTERVAL` | the wrapper | seconds between wakes |
 | `MB_NOTIFY_URL` · `MB_NOTIFY_KEY` | the monitor | report to this one URL instead of the channel file (§ 3) |
-| `MB_NOTIFY_CHANNELS` · `MB_NOTIFY_REPORT` | the `notify` verb | the policy a run of points' run script exports for the events its steps send — `start`, `milestone`, `part_failed`, `finish` (§ 2.4) |
+| `MB_NOTIFY_CHANNELS` · `MB_NOTIFY_REPORT` | the `notify` verb | the policy a run of points' run script exports for the events its report steps send — `start`, `milestone`, `part_failed`, `finish` (§ 2.4) |
 | `MOLBUILDER_CONFIG_DIR` · `XDG_CONFIG_HOME` | the monitor | where `secrets/notify` is (§ 1) |
 | `MB_JOB_ID` | the monitor | inside a scheduler's job (§ 2.1a); the report's `job` — the scheduler's id, said in molbuilder's name by the job's header ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) |
 | `MB_CPUS_ON_NODE` · `MB_CPUS_PER_TASK` | the monitor | the cores held when no affinity mask answers, as the job's header says them |
@@ -612,30 +624,33 @@ the first of 121 calls.
 **The line says where the run is in its structure, and each structure is
 declared where its other readers read it** — never a case the monitor knows
 by name. A new part of an engine's output is a row of its grammar; a new run
-of points is its index's reader; a new clock or count is a report field.
+of points is its kind's record and declaration
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 7); a new clock
+or count is a report field.
 
 | the structure | declared in | what the line says from it |
 |---|---|---|
 | **the parts of an engine's output** — the SCF, a TranSIESTA device's set-up, SIESTA's optical calculation; each begins with a line the engine prints, and some print nothing more until they end | the engine's grammar: the SCF and a TranSIESTA device's set-up are read by their own rows (`siesta_grammar.scf_row`, the `ts:` facts); every part that begins with a line of its own is a row of one table, `siesta_grammar.PARTS` — the part, the line that begins it, its words, and its note: what is true of its output while it runs (the optical calculation's, *it prints nothing until it ends*, `Src/optical.F`). The reading pass reads the table by one rule (`_section_rules`, as its other rules); the latest part begun is underway (`SiestaReader.part`), until the SCF's next row speaks again or the run ends | the part underway in the reading pass's one sentence, and since when — *SIESTA's optical calculation -- it prints nothing until it ends (since 20:02)* (`doing`, [`model/parse.md`](?doc=model/parse.md) § 2b). *Since* is when the monitor first read the part underway, within one wake |
 | **which part a fact belongs to** | each report field's declaration (`report_fields.FIELDS`, § 4.1a): its `part` — `scf` for the SCF's iterations and rate, `run` for the rest; the residuals are the SCF's | a part's facts said together: the part underway's as they stand, a part that has ended as ended — *its SCF converged in 6 iterations (33s), dDmax 5e-06 (tol 1e-05)* — never a finished SCF's last row as the row in flight; on a card, a field whose part has ended (`ReportField.ended`) is left off the grid for the summary line, the record carrying the part underway (§ 4.1a) |
-| **a run of points' position** — a vibration run's calls ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a) | the run's index (`<label>_01_freq-run0.phases.json` at the run's root — one per run, named for its first try whichever try a call is on, a call retried in place included), read through its one reader and the one done rule — `vibration_phases.read_index`, `rows_of`, `summary`: the rows and words the run's own record step reads — which travel in the monitor's bundle; read again only when the index changes | a member monitor (§ 2.4) says its run's count and its own call, its own call running — its monitor is its witness, where the index says a call not ended pending — *the run: relax done · fc done · optical 0 of 121 \| this call: frame 0, the equilibrium* |
-| **a transport sweep's position** — a device or transmission run's points ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | the run's index (`<label>_<NN>_<stage>-run0.points.json` at the run's root — one per run, named for its first try), which launch writes — every point, its frame, voltage and what makes it done — and each point's report steps stamp; read through its one reader and the one done rule — `transport.points_index.read_index`, `rows_of`, `summary` — which travel in the monitor's bundle; read again only when the index changes. The kind's index is found by the readers the monitor carries (`monitor.RUN_INDEXES`), each asked for its file in the run's folder | the same as a vibration's — *the run: 7 of 12 points done, 1 failed (3 frames × 4 voltages) \| this point: frame index 1 (of 3) · 0.4 V* — the pace over the points this run computed |
-| **the clocks** — the run's and, for a member, its call's | the run's start — a member's, its run's first call's start in the index (the calls this run computed, not those taken over; a call retried in place keeps its first try's start), else this monitor's own start — and a member's call, from its own monitor's start; each a report field (§ 4.1a); the job's wall as § 2.1b counts it. The run's finish, which its walk sends once (§ 2.4), says the run's clock from the same index | each named — *the run 5h · this call 2h*, the wall beside them, *wall 12h: 7h left*; a run that is no member says *the run* alone |
+| **a run of points' position** — a vibration run's calls ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a), a device or transmission run's points ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | the run's index ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3: `<label>_<NN>_<stage>-run0.points.json` at the run's root — one per run, named for its first try whichever try a point is on, a point retried in place included), which launch writes — every point, what it needs and must hold — and each point's report steps stamp; found by the point's folder's record (`calcdirs.where`) and read through its one reader and the one rule each — `runpoints.read_index`, `rows_of`, `still_to_run` — and the count's words the index names (`runpoints.count`), all of which travel in the monitor's bundle; read again only when the index changes | a member monitor (§ 2.4) says its run's count and its own point, in the kind's words, its own point running — its monitor is its witness, where the index says a point not ended pending — *the run: relax done · fc done · optical 0 of 121 \| this call: frame 0, the equilibrium*; *the run: 7 of 12 points done, 1 failed (3 frames × 4 voltages) \| this point: frame index 1 (of 3) · 0.4 V* — the pace over the points this run computed |
+| **the clocks** — the run's and, for a member, its point's | the run's start — a member's, its run's first point's start in the index (the points this run computed, not those taken over; a point retried in place keeps its first try's start), else this monitor's own start — and a member's point, from its own monitor's start; each a report field (§ 4.1a); the job's wall as § 2.1b counts it. The run's finish, which its last point's report step sends once (§ 2.4), says the run's clock from the same index | each named — *the run 5h · this call 2h*, the wall beside them, *wall 12h: 7h left*; a run that is no member says *the run* alone |
 
 **The pace and what is left** — read from the same structures, over the
 run's **units of work**: the engine's steps (§ 2.2: a geometry move, a
-displacement, a PySCF step), or a run of points' calls, each with its start
+displacement, a PySCF step), or a run of points' points, each with its start
 and end in the index. Once a unit of the phase underway has finished, the
-line says how long the finished ones took — a run of points' calls this run
+line says how long the finished ones took — a run of points' points this run
 computed, as its clock counts them, never one taken over from an earlier
 run — and, where the structure states how many there are (a run's index
 does; an engine's steps are counted as they come), how many are left — the
-calls not yet ended, a call that ended without being done not being walked
-again ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3) —
-and the time they need at that pace, beside the wall's time left: *each optical call takes 2h (1 done) -- the 120 left
-need about 10d at that pace*. It is arithmetic on what
+phase's points still to run, a point that ended without being done not
+being walked again ([`runs-of-points.md`](?doc=execution/runs-of-points.md)
+§ 4.3, § 4.7) — and the time they need at that pace, beside the wall's time
+left, said in the kind's unit with the phase before it where the run has
+more than one phase: *each optical call takes 2h (1 done) -- the 120 left
+need about 10d at that pace*; *each point takes 40m (3 done)*. It is arithmetic on what
 the run measured: it judges nothing, warns once (`wall_near`, below), and
-stops nothing (§ 5). The events a run of points sends at a phase's end and
+stops nothing (§ 5). The events a run of points sends at a round's end and
 at a part's failure are § 2.9's. A pace is one phase's: a
 force-constant call and an optical call cost differently, as two SCF phases
 do (§ 2.7).
@@ -670,37 +685,41 @@ by its count and pace, in the periodic report (§ 2.8).
 vibration's calls ([`engines/vibration.md`](?doc=engines/vibration.md)
 § 5.11 § 7a), and a transport sweep's points — a device or a transmission
 run of frames × voltages ([`engines/transport.md`](?doc=engines/transport.md)
-§ 2a.11) *(R-e's transport half, the user, 2026-10-29)*. After each point's
-engine a step of its run script writes how the point ended into the run's
-index and reads the index: a vibration's record step (`mb_vibration.pyz
-record`), a transport point's report step (`mb_monitor.pyz point ended`) —
-which **never fails its point**: a report it cannot make is logged in the
-point's session log, and the point's ending is its engine's. A transport
+§ 2a.11) *(R-e's transport half, the user, 2026-10-29)* — one framework
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.6). After each
+point's engine its report step (`mb_monitor.pyz point ended`) writes how the
+point ended into the run's index, runs its kind's step after the engine
+where it has one — a vibration call's `mb_vibration.pyz record` — and reads
+the index; the report step **never fails its point** for its own sake: a
+report it cannot make is logged in the point's session log, and the point's
+ending is its engine's, or its kind's step's. A transport
 calculation's single runs — the seed, each lead — report alone, their
 `start` and `finish` their whole report.
 
-**When.** A point's step first writes how the point ended into the
-index. It then asks the walk's own question: does the run still have points
-to run? A point still to run is listed, not ended, and every point it needs
-ended as the walk needs it — a vibration call the phases before its own,
-each holding a call done (`vibration_phases.still_to_run`); a device point the point it
-starts from — the closest voltage before it in its frame, where the walk runs
-it — whose run **finished** — ended with exit 0, converged or not: *a voltage
-that does not finish ends the chain that starts from it*
+**When.** A point's report step first stamps how the point ended. It then
+asks the walk's own question: does the run still have points to run? A
+point still to run is listed, not ended, and every point it needs that has
+ended, up its chain, **ran** — ended with exit 0 and no failure of its own
+step, converged or not (`runpoints.still_to_run`): a vibration's `fc` call
+needs `relax`, an optical call `fc`; a device point the point it starts
+from — the closest voltage before it in its frame, where the walk runs it:
+*a voltage that does not finish ends the chain that starts from it*
 (`engines/transport.md` § 2a.9), and one that finished unconverged hands
-its state on, though not done — and so on up its chain; a transmission
-point none (`transport.points_index.still_to_run`).
+its state on, though not done; a transmission point none.
 
 | the point | points left to run | sent |
 |---|---|---|
-| not done, by the one done rule (`vibration_phases.rows_of`, `transport.points_index.rows_of`) — and, on a transport sweep, not the last of its round | yes | `part_failed`: the point, and why it is not done — once per reason (below) |
-| a vibration's call, done, the last of its phase to end | yes | `milestone`: the phase's outcome |
-| a transport sweep's point, done or not, the last of its **round** — the voltage's points at every frame, none of them still to run *(the user, 2026-10-26: "one voltage across every frame would be a transport milestone")* | yes | `milestone`: the round's outcome, each frame's point in it |
+| any | none | the `finish` (§ 2): the index closed — each point the walk never ran stamped why, *it builds on <words>, which failed* or *the walk ended before it reached this point*, and counted failed, as the status door lists a point the ended walk never reached (`runpoints.close`) — the kind's finish step run where it has one (a vibration's `finish-run`); then the run's state by the one rule over the index, by its kind's `finished` (`runpoints.run_state`): a vibration's finished when every call is done, a transport sweep's when every point ran, converged or not (`_run_ending.points_state`, the status door's rule); a finish step that exited non-zero makes it failed, *the finish exited N*; the first point not done, in the order `status` lists them, and how many; and the outcome of the round this point ended |
+| the last of its **round** to end, done or not — a vibration's phase; a transport sweep's voltage at every frame *(the user, 2026-10-26: "one voltage across every frame would be a transport milestone")* | yes | `milestone`: the round's outcome (below), else *<words>: done* — *<words>: not done -- <why>* for a point not done |
+| not done, by the one done rule (`runpoints.rows_of`), its round not ended | yes | `part_failed`: the point, and why it is not done — once per reason (below) |
 | any other | yes | nothing — the count is the periodic report's |
-| any | none | the `finish` (§ 2): the run's state by the one rule over the index — a vibration's finished when every call is done; a transport sweep's by the status door's rule, finished when every point's run finished, converged or not (`continuation.points_verdict`, `_run_ending.points_state`), a point the walk never ran — a vibration's call, a transport point — stamped so in the index first and counted failed, as the status door lists a point the ended walk never reached (`vibration_phases.close`, `points_index.close`) — the first point not done, in the order `status` lists them, and how many, and the outcome of the phase or the round this point ended |
 
-**What a milestone says** — the phase's outcome, from the record the step
-has just written and nothing else:
+The rule is `runpoints.said`. **What a milestone says** — the round's
+outcome, the kind table's `outcome` part over the round's points: a
+vibration's, each call's own outcome as its record step wrote it into the
+index (`runpoints.outcomes`); a transport sweep's, read from each point's
+own files (`transport.run_words.round_outcome`) — from the records the steps
+have just written and nothing else:
 
 | the phase | its outcome | read from |
 |---|---|---|
@@ -718,7 +737,7 @@ do about it is the person's.
 
 **What a part's failure says**: the point, by its words (`Call.words`,
 `transport.stages.Point.words`), and why it is not done, by the one rule's
-words — the exit, what the record step could not do, or
+words — the exit, what its own step could not do, or
 `_run_ending.not_done_why` — *mode 7 (4271 cm⁻¹), +δQ: not done -- exit 1*;
 *frame index 1 (of 3) · 0.4 V: not done -- finished, not converged (SCF
 NO)*. A failed `finish` names the first call not done in the same
@@ -728,9 +747,9 @@ exit 1; 9 of 121 calls not done*.
 **A failure is said once per reason.** Calls of one run often fail alike:
 once the wall is reached every call started after it stops at once, and a
 file every call needs, missing, fails each the same way. A failure's
-**reason** is the call's exit where it was not 0 (*exit 1*), else what the
-record step could not do (*the optical calls' record was not written*), else
-the rule's words (*finished without CO2.EPSIMG*) — never an error's own
+**reason** is the call's exit where it was not 0 (*exit 1*), else what its
+own step could not do (*the optical calls' record was not written*), else
+the rule's words (*finished without CO2.EPSIMG*) (`runpoints.reason`) — never an error's own
 text, which can name the call's own files. A `part_failed` whose reason the
 run has already reported is not sent again; the `notify` verb asks the run's
 notification record, where each failure's reason is kept (§ 2.5). **The
@@ -746,7 +765,7 @@ or the failure in its parentheses, then the run's count; and the run's clock
 (`elapsed_s`), as the layout gives it (§ 4.1c):
 
 ```text
-running (the relaxation converged in 41 moves: the largest force on the free atoms 0.0381 eV/Ang (tol 0.04)) | the run: relax done · fc pending · optical: after fc | the run 6h
+running (the relaxation converged in 41 moves: the largest force on the free atoms 0.0381 eV/Ang (tol 0.04)) | the run: relax done · fc queued · optical: after fc | the run 6h
 ```
 
 **Sent whatever the ticks**, as the wall's warning is: a calculation with a
@@ -754,7 +773,7 @@ running (the relaxation converged in 41 moves: the largest force on the free ato
 into the run's notification record (§ 2.5). A member monitor counts its
 N-hour clock from the run's last word: from the record when it starts, and
 from the record again before it sends a `periodic` — a milestone its own
-call's record step sent while it still watched restarts the clock too
+point's report step sent while it still watched restarts the clock too
 (§ 2).
 
 **It decides nothing and stops nothing** (§ 5). The outcome is stated
@@ -992,7 +1011,7 @@ when — because somebody parses it later with no session to ask:
 | `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near`, `milestone`, `part_failed` or `finish` (§ 2); `test` from the setup page's button (§ 4.1b) |
 | `state` | the monitor | `running`, then `finished` or `failed` (§ 2.3) |
 | `text` | the monitor | the summary line: the state and its detail, then every fact below that the run has stated, in words and units — what a chat card shows |
-| `call_unit` | the monitor | what one point of a run of points is called in its kind's word — `call` for a vibration's, `point` for a transport sweep's, each stated in its index's module (`vibration_phases.UNIT`, `points_index.UNIT`), which the monitor reads (`RUN_INDEXES`, § 2.8) — which a card's `call_elapsed_s` label says (`report_cards`); absent for a run that is no member |
+| `call_unit` | the monitor | what one point of a run of points is called in its kind's word — `call` for a vibration's, `point` for a transport sweep's — the kind table's `unit`, copied into the run's index, which the monitor reads (§ 2.8; [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.1) — which a card's `call_elapsed_s` label says (`report_cards`); absent for a run that is no member |
 | `part` | the monitor | the part of the run underway, as the reading pass names it (§ 2.8) — absent while the SCF speaks and once the run has ended; a card's grid leaves a field whose part has ended for the summary line |
 | `elapsed_s` … `eta_s` | the monitor | the report fields, below |
 | `v` | the listener | the record's shape, `1`, so a reader a year from now does not infer it from which keys happen to be present |
@@ -1008,7 +1027,7 @@ card all read; each is read by § 2.3's readers:
 | `elapsed_s` | s — a length of time, said in words on a card (`6h`, `ui-contract.md` § 4) | the run's clock: wall time since its monitor started — a member's, since its run's first call this run computed started (§ 2.8) | every run |
 | `call_elapsed_s` | s, a length of time | a member's own point's clock, since its monitor started (§ 2.8) — its card's label names it in the kind's word, *this call* for a vibration's, *this point* for a transport sweep's (`report_cards`, the report's `call_unit`) | `vibration` and `transport` on SIESTA: a run of points' call or point |
 | `units_done` | — | the run's units of work finished: an engine's steps, or the phase underway's calls — a transport sweep's points — a run of points computed, those its pace is the mean of (§ 2.8) | `optimization`, `vibration`, `transport` |
-| `units_left` | — | what the walk will still run, where the run's index states how many there are: the phase underway's calls not yet ended; a transport sweep's points not yet ended, never one after a point of its frame whose run did not finish (`points_index.still_to_run`) | `vibration`, `transport` on SIESTA |
+| `units_left` | — | what the walk will still run, where the run's index states how many there are: the phase underway's points still to run — a vibration's calls, a transport sweep's points — never one whose need, up its chain, ended without running (`runpoints.still_to_run`) | `vibration`, `transport` on SIESTA |
 | `unit_s` | s, a length of time | the mean a finished unit took | `optimization`, `vibration`, `transport` |
 | `left_at_pace_s` | s, a length of time | the time the calls or points left need at that mean | `vibration`, `transport` on SIESTA |
 | `n_iters` | — | SCF iterations so far in the current phase: SIESTA's timing rows, a PySCF run's SCF history across its finished steps — part `scf` (§ 2.8) | every run |
@@ -1269,7 +1288,8 @@ asks, and what the wrapper then does is the wrapper's
 | how it reaches the monitor | the flags on the `mb_monitor.pyz` line (§ 2.6), rendered by `runwrap._monitor_block` |
 | which run it watches | `--label` / `--stage` / `--run`; every file named through `runfiles` (§ 2.3) |
 | what it reads, and with what | the framework's own readers in `mb_monitor.pyz` — `runwrap.MONITOR_COMPANIONS` (§ 2.3) |
-| when to fire | `monitor.run_monitor` (§ 2); for a run of points, its start, milestones, failed parts and finish by its steps — a vibration's (`spectra.siesta_vibration.plan_call`, `record_call`), a transport sweep's report steps (`monitor._point_main`, `mb_monitor.pyz point`) — through `mb_monitor.pyz notify` (§ 2.4, § 2.9) |
+| when to fire | `monitor.run_monitor` (§ 2); for a run of points, its start, milestones, failed parts and finish by its points' report steps (`monitor._point_main`: `mb_monitor.pyz point started`, `point ended`) — every kind's — through `mb_monitor.pyz notify` (§ 2.4, § 2.9) |
+| a run of points' index, and the one rule each it is judged by | `runpoints` ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3, § 4) — `rows_of`, `still_to_run`, `close`, `run_state`, `said`, `reason` |
 | what the summary line says | `monitor.JobStatus.as_text` (§ 4.1a), from the run's declared structure (§ 2.8) |
 | which fields a report may carry | `molbuilder/report_fields.py` (§ 4.1a) |
 | what a channel name resolves to | `monitor.load_channels` → `<config dir>/secrets/notify` (§ 3) |

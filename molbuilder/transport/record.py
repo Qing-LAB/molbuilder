@@ -38,6 +38,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
+from ..calcdirs import RunPlace
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
 from .conductance import at_fermi, per_spin_channel
@@ -538,16 +539,23 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
         # the stage's newest (§ 2a.12): the same per-point reader
         # (`continuation.point_rows`), asked for that run.
         points = s.points
+        points_run = (base / s.dir / s.attempt if s.dir and s.attempt
+                      else None)
+        gathered = None
         if run is not None and s.attempt and s.dir \
                 and run != base / s.dir / s.attempt and s.points:
-            from ..jobset.continuation import point_rows
+            # ITS POINTS AND ITS STATE BY THE STATUS DOOR'S ONE RULE for a
+            # run of points (`continuation.points_state`), never a second.
+            from ..jobset.continuation import points_state
             from ..runrecord import launch_record
             from ..jobset.naming import stage_home
             _names = stage_home(base, task, name).names
+            points_run = run
             try:
-                points, _ = point_rows(
+                gathered = points_state(
                     run, _names, task, name, launch=launch_record(run),
                     base=base)
+                points = gathered[2]
             except Exception as exc:              # noqa: BLE001 -- said, never hidden
                 fact["unreadable"] = f"{run.relative_to(base)}: {exc}"
                 points = []
@@ -555,7 +563,9 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
             fact["taken"] = [
                 {"frame": p.get("frame"), "of": p.get("of"),
                  "bias_v": p.get("bias_v"),
-                 "attempt": (f"{s.dir}/{p['folder']}" if s.dir and p.get("folder")
+                 "attempt": (str(RunPlace.of(points_run).point(p["rel"])
+                                 .relative_to(base))
+                             if points_run is not None and p.get("rel")
                              else None),
                  "started_from": p.get("started_from"),
                  # THE POINT IT IS A COPY OF, the finished calculation's
@@ -590,13 +600,9 @@ def _stage_facts(calc, label: str, *, status) -> List[Dict]:
             # are that run's): its points' states, and a detail naming both.
             if run is not None and s.attempt and s.dir \
                     and run != base / s.dir / s.attempt and points:
-                # ITS STATE BY THE STATUS DOOR'S ONE RULE for a run of
-                # points (`continuation.points_verdict`), on the rows that
-                # door read for this run (`point_rows`, above), never a
-                # second rule.
-                from ..jobset.continuation import points_verdict
-                from .points_index import summary
-                fact["state"], said = points_verdict(points, summary(points))
+                # ITS STATE, as the status door read it for this run
+                # (`continuation.points_state`, above).
+                fact["state"], said = gathered[0], gathered[1]
                 fact["detail"] = (f"{said}; the run the transmission "
                                   f"gathered ({fact['attempt']}); the "
                                   f"stage's newest run is "
@@ -849,7 +855,8 @@ def _rung_points(base: Path, task, name: str, answers: str,
         # THE POINT'S STATE: the status door's row, as the ladder reads it
         # (`runstatus.every_run`); the one door's own read (`runs.concluded`,
         # with its run's launch record) only where no row was handed in.
-        row = said.get(f"{run.name}/{pt.rel}") if run is not None else None
+        row = (said.get(RunPlace.of(run).walked(pt.rel))
+               if run is not None else None)
         if row is not None:
             entry.update(state=row["state"],
                          detail=row["detail"] if row["done"] else row["why"])
@@ -1020,7 +1027,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # the one door's own read (`runs.concluded`, with its run's launch
         # record) only for a run the status door has no rows for.  One
         # that does not read is said.
-        row = rows.get(f"{run.name}/{pt.rel}") if run is not None else None
+        row = (rows.get(RunPlace.of(run).walked(pt.rel))
+               if run is not None else None)
         if row is not None:
             state = row["state"]
             why = row["detail"] if row["done"] else row["why"]

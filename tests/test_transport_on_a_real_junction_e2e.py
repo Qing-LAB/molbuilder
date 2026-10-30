@@ -2245,15 +2245,15 @@ def _same_words(said: str, want: str, rel: float = 1e-3) -> None:
 
 def _run_index(run, stage: str, n: int):
     """The run's index and its rows by the one done rule, as the job read
-    them (`transport.points_index`)."""
+    them (`runpoints`, `execution/runs-of-points.md` § 2.3, § 4)."""
+    from molbuilder import runpoints as rp
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
-    from molbuilder.transport import points_index as pi
     task = task_of(run.bundle)
     names = stage_home(run.bundle, task, stage).names
     folder = run.attempt(stage, n)
-    index = pi.read_index(pi.index_path(folder, names))
-    return index, pi.rows_of(index, folder)
+    index = rp.read_index(rp.index_path(folder, names))
+    return index, rp.rows_of(index, folder)
 
 
 def _round_said(rec, stage: str, volts: float, frames: int) -> str:
@@ -2331,6 +2331,7 @@ def test_a_frame_sets_point_says_its_run_and_itself(junction):
     its first point's start.  The silent failure: a point's card saying
     only its own SCF, nothing of the six."""
     import time
+    from molbuilder.calcdirs import RunPlace
     from molbuilder.jobset.naming import stage_home
     from molbuilder.monitor import WatchedRun
     from molbuilder.runrecord import stamp_time
@@ -2341,7 +2342,8 @@ def test_a_frame_sets_point_says_its_run_and_itself(junction):
     folder = run.attempt("device")
     _index, rows = _run_index(run, "device", 0)
     me = rows[-1]
-    watched = WatchedRun(names=names, run=0, directory=folder / me["rel"],
+    watched = WatchedRun(names=names, run=0,
+                         directory=RunPlace.of(folder).point(me["rel"]),
                          launched_in=folder)
     now = time.time()
     st = watched.read(now - 1.0, now)
@@ -2354,6 +2356,36 @@ def test_a_frame_sets_point_says_its_run_and_itself(junction):
     first = min(stamp_time(r["started"]).timestamp() for r in rows)
     assert abs(st.elapsed_s - (now - first)) < 1.0, (st.elapsed_s,
                                                       now - first)
+
+
+def test_every_folder_of_a_device_run_reads_back_as_its_run_and_point(
+        junction):
+    """`execution/runs-of-points.md` § 2.4: the folder grammar's two halves
+    are inverses -- of every point folder the run's places compose
+    (`calcdirs.RunPlace`), the folder door (`calcdirs.where`) reads back
+    the same run and the same point, and the walk's name for it, from the
+    stage's folder, is that folder; the run's scratch reads as its run's
+    scratch.  THE SILENT FAILURE: launch composing a point's folder one way
+    while its report steps, finding their point by `where`, read another --
+    the run's index never stamped, the run silent."""
+    from molbuilder import calcdirs
+    from molbuilder.jobset.model import JobSet
+    run = junction.from_pair
+    folder = run.attempt("device")
+    index, _rows = _run_index(run, "device", 0)
+    rels = [e["rel"] for e in index["points"]]
+    assert len(rels) == _N_FRAMES * len(_BIAS), rels
+    place = calcdirs.RunPlace.of(folder)
+    for rel in rels:
+        at = place.point(rel)
+        w = calcdirs.where(at)
+        assert (w.what, w.point, w.run_folder) == (
+            calcdirs.POINT, rel, folder.resolve()), (rel, w)
+        assert (place.stage_dir / place.walked(rel)).resolve() == at.resolve()
+    scratch_dir = JobSet.of(run.bundle).job("device").scratch_dir
+    assert scratch_dir, "the device rung declares its scratch folder"
+    w = calcdirs.where(place.scratch(scratch_dir))
+    assert (w.what, w.run_folder) == (calcdirs.SCRATCH, folder.resolve()), w
 
 
 def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
@@ -2455,9 +2487,8 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
     _index, rows = _run_index(c, "device", n)
     first, then = rows
     assert first["ended"] and first["state"] == "failed", first
-    assert then["not_run"] == (f"its frame's chain ended at "
-                               f"{first['words']}, which did not finish"), \
-        then
+    assert then["not_run"] == (f"it builds on {first['words']}, which "
+                               f"failed"), then
     assert notified(c, "device", n) == ["start", "finish"]
     finish, = told(c, "finish", "device", n)
     count = _count(0, 2, 1, failed=2)
@@ -2483,7 +2514,6 @@ def test_a_point_the_ended_walk_never_reached_reads_failed_everywhere(
     `record._rung_points`); a point's folder read without its run's rows
     (`runs._as_its_point` answering ``st``)."""
     from molbuilder.calculation import open as open_calculation
-    from molbuilder.jobset.continuation import NEVER_REACHED
     from molbuilder.runs import folder_answer, run_answer
     from molbuilder.transport.datafile import read_data_file
     from molbuilder.transport.export import export
@@ -2492,13 +2522,19 @@ def test_a_point_the_ended_walk_never_reached_reads_failed_everywhere(
     c = junction.aborted
     device = stage_status(c.bundle, "device")
     never = point_row(device, _BIAS[1])
-    assert never["state"] == "failed" and not never["done"], device.points
+    # WHY IT NEVER RAN, as the job said it in the run's index -- one
+    # sentence on both sides (`execution/runs-of-points.md` § 4.5).
+    _index, (first, then) = _run_index(c, "device", device.attempts[-1])
+    said = then["not_run"]
+    assert said == f"it builds on {first['words']}, which failed", said
+    assert (never["state"], never["done"], never["why"]) == (
+        "failed", False, said), device.points
     folder = c.bundle / device.dir / never["folder"]
     calc = open_calculation(c.bundle)
     by = next(s for s in collect_record(calc, partial=True)["stages"]
               if s["stage"] == "device")["by_point"]
     at = next(p for p in by if p["bias_v"] == _BIAS[1])
-    assert (at["state"], at["detail"]) == ("failed", NEVER_REACHED), at
+    assert (at["state"], at["detail"]) == ("failed", said), at
     got = export(calc, "netcdf")
     (tmp_path / got.name).write_bytes(got.files[got.name])
     V = {k: v["data"]
@@ -2507,10 +2543,9 @@ def test_a_point_the_ended_walk_never_reached_reads_failed_everywhere(
     assert [str(s) for s in V["device_state"][..., k].ravel()] == [
         "failed"], V["device_state"]
     assert [str(s) for s in V["device_detail"][..., k].ravel()] == [
-        NEVER_REACHED], V["device_detail"]
+        said], V["device_detail"]
     status = folder_answer(folder)["status"]
-    assert (status["state"], status["detail"]) == ("failed", NEVER_REACHED), \
-        status
+    assert (status["state"], status["detail"]) == ("failed", said), status
     assert run_answer(folder)["state"] == "failed", run_answer(folder)
 
 
@@ -2531,7 +2566,7 @@ def test_a_stopped_walk_says_no_finish_and_its_warm_launch_one(junction):
     warm = stage_status(c.bundle, "device").attempts[-1]
     assert notified(c, "device", warm) == ["start", "finish"]
     _index, rows = _run_index(c, "device", warm)
-    assert [(r["bias_v"], r["done"], bool(r["started_from"]))
+    assert [(r["bias_v"], r["done"], bool(r["taken_from"]))
             for r in rows] == [(_BIAS[0], True, True),
                                (_BIAS[1], True, False)], rows
     finish, = told(c, "finish", "device", warm)
@@ -4693,8 +4728,8 @@ def test_a_voltage_starts_from_the_closest_one_before_it_in_its_frame(
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.naming import stage_home
     from molbuilder.jobset.submit import plan_launch
+    from molbuilder import runpoints as rp
     from molbuilder.task import of as task_of
-    from molbuilder.transport import points_index as pi
     from molbuilder.transport.stages import Point
     signed = reused["signed"]
     plan = plan_launch(open_calculation(signed.bundle), mode="direct",
@@ -4703,13 +4738,13 @@ def test_a_voltage_starts_from_the_closest_one_before_it_in_its_frame(
                                  mode="direct", flags=["--cold"]))
     names = stage_home(signed.bundle, task_of(signed.bundle),
                        "device").names
-    planned = pi.index_path(signed.attempt("device"), names)
+    planned = rp.index_path(signed.attempt("device"), names)
     (tmp_path / planned.name).write_text(plan.writes.read_text(planned))
-    index = pi.read_index(tmp_path / planned.name)
-    needs = {e["bias_v"]: e["needs"] for e in index["points"]}
+    index = rp.read_index(tmp_path / planned.name)
+    needs = {e["facts"]["bias_v"]: e["needs"] for e in index["points"]}
     def at(v):
-        return Point(frame=None, volts=v).rel
-    assert needs == {0.0: None, 0.2: at(0.0), 0.4: at(0.2), -0.2: at(0.0),
+        return [Point(frame=None, volts=v).rel]
+    assert needs == {0.0: [], 0.2: at(0.0), 0.4: at(0.2), -0.2: at(0.0),
                      -0.4: at(-0.2)}, needs
 
 
@@ -4768,13 +4803,13 @@ def test_a_sharing_points_round_says_the_records_conductance(reused, which):
     computes only part of its grid -- a wider window's wings, a finer
     one's energies between the finished ones -- and the round that point
     ends in says its G/G0 as the record does, T(E_F) on the grid joined --
-    whole, as the job reads each point (`points_index.point_fact`): the
+    whole, as the job reads each point (`run_words.point_fact`): the
     message prints four digits, which this junction's T(E), near 1 across
     the window, cannot tell apart.  The silent failure: a conductance
     interpolated across the energies the point did not compute itself."""
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
-    from molbuilder.transport.points_index import point_fact
+    from molbuilder.transport.run_words import point_fact
     from support.real_runs import notified, told
     c = reused[which]
     assert notified(c, "transmission", 0) == ["start", "milestone", "finish"]

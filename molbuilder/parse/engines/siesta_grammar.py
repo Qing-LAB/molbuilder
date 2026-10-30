@@ -74,7 +74,7 @@ def rows_of_phase(history, phase: str) -> list:
     device's NEGF cycles (:data:`PHASE_NEGF`) apart from its periodic start
     (:data:`PHASE_PERIODIC`): the one rule the record's facts of a phase and
     a device round's milestone count by (`transport.record`,
-    `transport.points_index`)."""
+    `transport.run_words`)."""
     return [c for c in history or () if c.get("phase") == phase]
 
 #: The line opening each step, in SIESTA's own words and with its own number

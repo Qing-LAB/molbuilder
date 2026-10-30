@@ -192,7 +192,7 @@ def latest_attempt(stage_dir: Path) -> Optional[Path]:
 def newest_on_label(stage_dir: Path, role: str
                     ) -> Tuple[Optional[Path], Optional[Path]]:
     """THE STAGE'S NEWEST ATTEMPT AND ITS FILE IN ``role`` on the label
-    (`runs.on_label_at`: a run's own folder, or a run in phases' root) --
+    (`runs.on_label_at`: a run's own folder, or a run of points' root) --
     ``(None, None)`` before its first attempt, ``(attempt, None)`` where it
     holds none yet.  The one answer to *this stage's result*."""
     attempt = latest_attempt(stage_dir)
@@ -354,10 +354,11 @@ def bring_files(jobset: JobSet, job, base, src_dir, run, names, plan
 
 @dataclass(frozen=True)
 class SweepRun:
-    """A swept stage's run (`engines/transport.md` § 2a.11): its folder, its
-    points in walk order -- ``[(run-<n>/<point>, Point)]``, each frame's
-    voltages in turn (`transport.stages.rung_points`) -- and whether it is a
-    fresh one (``False``: the unlaunched run prep opened, reused)."""
+    """A run of points' run (`execution/runs-of-points.md` § 2.4): its
+    folder, its prepared points in the listing order --
+    ``[(run-<n>/<point>, point)]`` (`PointsOf.rung_points`) -- and whether
+    it is a fresh one (``False``: the unlaunched run prep opened,
+    reused)."""
     stage:  str
     dir:    Path
     points: List[Tuple[Path, object]]
@@ -391,24 +392,26 @@ def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     # (`job-system.md`: what prep wrote is sent as it is).
     declared = points_of(task)
     deck = Path(job.script).name
-    sources = dict((pt, stage_dir / pt.rel) for pt in declared
+    place = calcdirs.RunPlace.of(run)
+    sources = dict((pt, place.prepared(pt.prepared)) for pt in declared
                    .rung_points(calc, stage_name, read=plan.read_text)
-                   if plan.is_file(stage_dir / pt.rel / deck))
-    points = [(run / pt.rel, pt) for pt in sources]
+                   if plan.is_file(place.prepared(pt.prepared) / deck))
+    points = [(place.point(pt.rel), pt) for pt in sources]
     if not fresh:
         empty_run(run, plan)
     for pdir, pt in points:
         open_run(base, pdir, plan)
         bring_files(jobset, job, base, sources[pt], pdir, rn, plan)
-    # THE FOLDERS THE RUN HOLDS BESIDES ITS POINTS, by its kind's
-    # declaration (`points.PointsOf.containers`): a vibration's optical
-    # calls' container (`engines/vibration.md` § 5.11 § 2).
-    for rel in declared.containers(calc, stage_name):
-        open_container(base, run / rel, plan)
+    # THE CONTAINERS THE RUN HOLDS FOR ITS PLANNED POINTS, by its kind's
+    # declaration (`points.PointsOf.containers`, `execution/runs-of-
+    # points.md` § 1.1): a vibration's optical calls' (`engines/vibration.md`
+    # § 5.11 § 2).
+    for c in declared.containers(calc, stage_name):
+        open_container(base, place.point(c.point.rel), plan)
     # THE RUN'S SCRATCH FOLDER, opened with the run (`engines/transport.md`
     # § 2a.11): the rung declares it (`Job.scratch_dir`).
     if job.scratch_dir:
-        open_scratch(base, run / job.scratch_dir, plan)
+        open_scratch(base, place.scratch(job.scratch_dir), plan)
     return SweepRun(stage=stage_name, dir=run, points=points, fresh=fresh)
 
 
@@ -533,14 +536,6 @@ class HandOver:
         for folder, names in by_folder.items():
             out.update(written_as_ended(folder, label, names))
         return out
-
-    def walk_copies(self, base, cwd) -> List[Tuple[str, str]]:
-        """What the walk copies just before the run starts: ``(file, folder)``
-        pairs, each from ``cwd``, the folder the walk runs in."""
-        dst = os.path.relpath(self.target, cwd)
-        return [(os.path.relpath(src.path(base) / name, cwd), dst)
-                for src, name in self.files]
-
 
 def written_as_ended(folder, label: str, files) -> Dict[str, str]:
     """THE FILES WRITTEN AS THEIR RUN ENDED (`running-a-job.md` § 3.6):
@@ -692,7 +687,8 @@ def prepare_attempt(calc, stage_name: str, *,
     # THE RUN'S SCRATCH FOLDER, opened with the run (`engines/transport.md`
     # § 2a.11): the rung declares it (`Job.scratch_dir`).
     if job.scratch_dir:
-        open_scratch(base, attempt / job.scratch_dir, plan)
+        open_scratch(base, calcdirs.RunPlace.of(attempt)
+                     .scratch(job.scratch_dir), plan)
 
     brought = bring_files(jobset, job, base, stage_dir, attempt, rn, plan)
 

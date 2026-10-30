@@ -13,7 +13,7 @@ as its broadening, 10⁻⁴ eV at the catalogue's defaults).
 
 **It travels beside a job** in the monitor's bundle
 (`runwrap.MONITOR_COMPANIONS`), so a transmission run's report step joins a
-point's energies by this same rule (`transport.points_index`): imported from
+point's energies by this same rule (`transport.run_words`): imported from
 the package here, from its copy there; reading a deck stays the package's.
 """
 from __future__ import annotations
@@ -220,7 +220,7 @@ def joined(folder: Path, read: Callable[[Path], Dict], *,
     of its grid.  ``window_of`` answers that grid for a folder, ``None`` for
     a point that does not share -- by default the sharing its deck records
     (:func:`sharing_of`); beside a job, which reads no deck, the run's
-    index's (`points_index`)."""
+    index's (`transport.run_words`)."""
     own = read(folder)
     shared = Path(folder) / SHARED_DIR
     if not shared.is_dir():

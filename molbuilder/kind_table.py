@@ -18,8 +18,10 @@ engine's own name for it, how its stages play
 its roles (its rungs, every one in order, where a stage's role is its
 name), the ladder a new description starts from, what relaxes the
 structure first, a stage older versions wrote that it no longer holds, and
-the code parts the pair names -- its run of points, its rung's builder, the
-inputs its rungs take and their gather, and what `summarize task` adds up.  The engines a kind
+its run of points (its record, `execution/runs-of-points.md` § 2.1), and
+the code parts the pair names -- its run of points' declaration, its rung's
+builder, the inputs its rungs take and their gather, and what `summarize
+task` adds up.  The engines a kind
 runs on are its parts -- no second list says which engine runs which kind
 -- and each is the engine table's (`engine_table`).
 
@@ -70,8 +72,24 @@ _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
 _PART_KEYS = ("words", "stage_roles", "points", "rung",
               "inputs", "gather", "sum", "retired", "ladder", "relaxation")
 
-#: The parts a pair may name, each ``module:NAME`` (:func:`part_of`).
+#: The parts a pair may name, each ``module:NAME`` (:func:`part_of`) --
+#: ``points`` its run of points' declaration (:attr:`RunOfPoints.declaration`).
 PART_REFS = ("points", "rung", "inputs", "gather", "sum")
+
+#: A RUN OF POINTS' RECORD (`execution/runs-of-points.md` § 2.1): when its
+#: run is finished -- every point DONE, or every point RAN, the words the
+#: job reads in the index launch copies the record into (`runpoints.DONE`,
+#: `runpoints.RAN`: the job holds no kind table, and this table loads before
+#: the package can import that module) -- and whether its points share ONE
+#: wall or are told EACH their own.
+FINISHED = ("done", "ran")
+WALL_ONE, WALL_EACH = "one", "each"
+WALLS = (WALL_ONE, WALL_EACH)
+#: The moments a kind's own steps run at, around a point's engine
+#: (`runs-of-points.md` § 1.2): before it, after it, and the run's finish.
+STEP_MOMENTS = ("before", "after", "finish")
+_POINTS_KEYS = ("declaration", "unit", "finished", "wall", "count",
+                "outcome", "steps")
 
 
 class KindTableError(ValueError):
@@ -137,6 +155,34 @@ class FixedCharge:
 
 
 @dataclass(frozen=True)
+class RunOfPoints:
+    """A PAIR'S RUN OF POINTS, as the kind table states it
+    (`execution/runs-of-points.md` § 2.1): what never changes for the pair
+    -- the floor-4 part that declares its points, what one point is called,
+    when its run is finished, its wall, its words (parts of floor 1 that
+    travel beside the job) and its own steps around a point's engine."""
+    #: ``module:NAME`` of its declaration (`jobset.points.PointsOf`).
+    declaration: str
+    #: What one point is called in a person's words -- *point*, *call*.
+    unit: str
+    #: When the run is finished (:data:`FINISHED`): every point ``done``,
+    #: or every point ``ran``.
+    finished: str
+    #: Whether its points share ``one`` wall or are told ``each`` their own
+    #: (:data:`WALLS`).
+    wall: str
+    #: ``module:NAME`` of the count's words, ``(rows, facts) -> str``.
+    count: str
+    #: ``module:NAME`` of a round's outcome, ``(index, rows, round, run_dir,
+    #: names) -> Optional[str]``.
+    outcome: str
+    #: Its own steps, each a verb of the job's bundle, by moment
+    #: (:data:`STEP_MOMENTS`) -- ``{}`` for a kind that works not between
+    #: its points.
+    steps: Mapping[str, str] = None  # type: ignore[assignment]
+
+
+@dataclass(frozen=True)
 class KindOnEngine:
     """A kind's part on one engine: what the pair decides."""
     kind: str
@@ -156,9 +202,9 @@ class KindOnEngine:
     #: one stage, ``freq``, which a person may add to) -- or ``None``: its
     #: engine's ladder (the engine table's ``presets``).
     ladder: Optional[Tuple[str, ...]] = None
-    #: ``module:NAME`` of its run of points' declaration (floor 4), or
-    #: ``None`` for a pair whose every rung runs once.
-    points: Optional[str] = None
+    #: Its run of points (:class:`RunOfPoints`), or ``None`` for a pair
+    #: whose every rung runs once.
+    run_of_points: Optional[RunOfPoints] = None
     #: ``module:NAME`` of its rung's builder (the conductor's), or ``None``.
     rung: Optional[str] = None
     #: For a kind whose rungs take inputs: ``module:NAME`` of
@@ -178,6 +224,13 @@ class KindOnEngine:
     #: What relaxes the structure first, in a person's words, where the
     #: pair relaxes before it measures -- a vibration's -- or ``None``.
     relaxation: Optional[str] = None
+
+    @property
+    def points(self) -> Optional[str]:
+        """``module:NAME`` of its run of points' declaration (floor 4), or
+        ``None`` for a pair whose every rung runs once."""
+        return (self.run_of_points.declaration
+                if self.run_of_points is not None else None)
 
 
 @dataclass(frozen=True)
@@ -276,6 +329,43 @@ def _refuse(where: str, why: str) -> None:
     raise KindTableError(f"{TABLE_FILE.name} {where}: {why}")
 
 
+def _run_of_points(where: str, body: object) -> RunOfPoints:
+    """A pair's run of points read and checked (`runs-of-points.md`
+    § 2.1): every key it must state, each value one of its words; a part's
+    resolving is the floor's that asks it."""
+    if not isinstance(body, dict):
+        _refuse(where, "is not a table")
+    unknown = sorted(set(body) - set(_POINTS_KEYS))
+    if unknown:
+        _refuse(where, f"unknown key(s) {', '.join(unknown)} -- a run of "
+                       f"points states {', '.join(_POINTS_KEYS)}")
+    missing = [k for k in _POINTS_KEYS if k != "steps" and k not in body]
+    if missing:
+        _refuse(where, f"no {', '.join(missing)} -- a run of points states "
+                       f"each (execution/runs-of-points.md 2.1)")
+    for key, words in (("finished", FINISHED), ("wall", WALLS)):
+        if body[key] not in words:
+            _refuse(where, f"{key} is {body[key]!r} -- one of "
+                           f"{', '.join(words)}")
+    for key in ("declaration", "count", "outcome"):
+        if ":" not in str(body[key]):
+            _refuse(where, f"{key} is {body[key]!r} -- a part is "
+                           f"\"module:NAME\"")
+    steps = body.get("steps") or {}
+    if not isinstance(steps, dict):
+        _refuse(where, f"steps is {steps!r} -- a table of its moments, "
+                       f"{', '.join(STEP_MOMENTS)}")
+    odd = sorted(set(steps) - set(STEP_MOMENTS))
+    if odd:
+        _refuse(where, f"steps names {', '.join(odd)} -- its moments are "
+                       f"{', '.join(STEP_MOMENTS)}")
+    return RunOfPoints(declaration=str(body["declaration"]),
+                       unit=str(body["unit"]), finished=body["finished"],
+                       wall=body["wall"], count=str(body["count"]),
+                       outcome=str(body["outcome"]),
+                       steps={k: str(v) for k, v in steps.items()})
+
+
 def _part(kind: str, engine: str, body: object,
           roles: Tuple[str, ...]) -> KindOnEngine:
     where = f"[{kind}.on.{engine}]"
@@ -340,10 +430,14 @@ def _part(kind: str, engine: str, body: object,
                                        and relaxation):
         _refuse(where, "relaxation is a sentence -- what relaxes the "
                        "structure first")
+    points = body.get("points")
     return KindOnEngine(kind=kind, engine=engine, words=body.get("words"),
                         stage_roles=sr,
                         stages=stages, ladder=ladder,
-                        points=body.get("points"), rung=body.get("rung"),
+                        run_of_points=(_run_of_points(f"[{kind}.on.{engine}"
+                                                      f".points]", points)
+                                       if points is not None else None),
+                        rung=body.get("rung"),
                         inputs=body.get("inputs"), gather=body.get("gather"),
                         sum=body.get("sum"), retired=retired,
                         relaxation=relaxation)
@@ -491,6 +585,14 @@ def pair(calculation: str, engine: str) -> Optional[KindOnEngine]:
     return got.parts.get(str(engine)) if got is not None else None
 
 
+def run_of_points(calculation: str, engine: str) -> Optional[RunOfPoints]:
+    """``calculation``'s run of points on ``engine`` (`execution/
+    runs-of-points.md` § 2.1) -- ``None`` for a pair whose every rung runs
+    once, or no such pair."""
+    got = pair(calculation, engine)
+    return got.run_of_points if got is not None else None
+
+
 def lead_of(stage: Optional[str]) -> Optional[str]:
     """The region the lead named ``stage`` is cut from, or ``None``: the
     stage is no kind's lead."""
@@ -578,8 +680,8 @@ def part(ref: str, *, record: str, key: str) -> Any:
 
 
 __all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
-           "ROLE_OPENS", "PART_REFS",
-           "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
+           "ROLE_OPENS", "PART_REFS", "FINISHED", "WALL_ONE", "WALL_EACH", "WALLS", "STEP_MOMENTS",
+           "RunOfPoints", "run_of_points", "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
            "pair", "lead_of", "rung_label", "role_set", "part_of", "part",
            "export_of"]

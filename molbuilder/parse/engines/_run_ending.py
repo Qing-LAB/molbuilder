@@ -309,8 +309,8 @@ def verdict_of(endings) -> Optional[Tuple[str, bool]]:
     speaking output's first -- ``("geometry", ok)`` for a relaxation, else
     ``("SCF", ok)`` -- or ``None`` when they say neither yet: the one rule,
     asked by the status door (`parse.dirs.job.RunStatus.verdict`) and by a
-    SIESTA vibration's own record step for each call
-    (`engines/vibration.md` § 5.11 § 6).  A PySCF relaxation states its
+    run of points' report step for each point (`runpoints.stamp_end`,
+    `execution/runs-of-points.md` § 4.2).  A PySCF relaxation states its
     verdict in its progress log's footer beside a stdout that states none
     (`model/parse.md` § 2b, P-S1)."""
     said = list(endings)
@@ -336,8 +336,8 @@ def not_done_why(verdict: Optional[Tuple[str, bool]], *, counts: bool,
     counts (*finished, not converged (SCF NO)*), or it lacks a product it
     must hold (*finished without <file>*) -- or ``None``: the one rule and
     its words, asked by the done door (`jobset.continuation.done`) and by a
-    SIESTA vibration's own record step (`engines/vibration.md` § 5.11
-    § 6).  ``missing`` the products not held, each as its message names
+    run of points' job over its index (`runpoints.rows_of`,
+    `execution/runs-of-points.md` § 4.2).  ``missing`` the products not held, each as its message names
     it."""
     if counts and verdict is not None and not verdict[1]:
         return f"finished, not converged ({verdict_words(verdict)})"
@@ -353,8 +353,8 @@ def points_state(states) -> str:
     not -- which is the converged column's (`job-system.md`, rule 4) --
     else ``failed``.  The one rule, asked over ``states``, each point's run
     state, by the status door (`jobset.continuation.points_verdict`) and by
-    a transport run's report step for its finish (`transport.points_index`,
-    `run-reports.md` § 2.9)."""
+    a run of points' report step for its finish (`runpoints.run_state`,
+    `execution/runs-of-points.md` § 4.4)."""
     return "finished" if all(s == "finished" for s in states) else "failed"
 
 
@@ -364,8 +364,8 @@ def holds(folder, product) -> bool:
     there (a polarized transmission's two channel files stand where the
     unpolarized one does; `transport.stages.products_of`)?  The done
     rule's own question, asked by the done door (`jobset.continuation.
-    done`) and by a transport run's report step over its index
-    (`transport.points_index.rows_of`)."""
+    done`) and by a run of points' report step over its index
+    (`runpoints.rows_of`)."""
     folder = Path(folder)
     if isinstance(product, str):
         return (folder / product).is_file()

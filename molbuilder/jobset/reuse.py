@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+from ..calcdirs import RunPlace
 from ..parse.fdf import read_deck
 from ..runrecord import LaunchRecordError
 
@@ -305,7 +306,8 @@ def _at(calc, stage: str, run: Path, pt) -> Optional[Path]:
     if not theirs:
         return run if point_key(pt) == (0, 0.0) else None
     match = {point_key(q): q for q in theirs}.get(point_key(pt))
-    return run / match.rel if match is not None else None
+    return (RunPlace.of(run).point(match.rel) if match is not None
+            else None)
 
 
 def _given_at(calc, upstream: str, run: Path, pt) -> Optional[Path]:
@@ -318,7 +320,8 @@ def _given_at(calc, upstream: str, run: Path, pt) -> Optional[Path]:
     if not theirs:
         return run
     match = {point_key(q): q for q in theirs}.get(point_key(pt))
-    return run / match.rel if match is not None else None
+    return (RunPlace.of(run).point(match.rel) if match is not None
+            else None)
 
 
 def decide(calc, numbers: Sequence[int]) -> Optional[Reuse]:
@@ -679,7 +682,7 @@ def _finished_point(finished, stage: str, pt):
     the done-door's words (`continuation.done`); ``why`` ``None`` for a
     point the finished calculation does not hold."""
     from ..runrecord import launch_record
-    from ..transport.stages import products_of
+    from ..transport.stages import must_hold
     from .continuation import done
     from .naming import stage_home
     fbase, ftask = Path(finished.base), finished.task
@@ -698,7 +701,8 @@ def _finished_point(finished, stage: str, pt):
     if src is None:
         return None, newest, None
     ok, why = done(src, names, launch=launch,
-                   products=products_of(stage, ftask.label, base_dir=fbase),
+                   must_hold=must_hold(stage, ftask.label, src,
+                                       base_dir=fbase),
                    launched_in=newest)
     if not ok:
         return None, newest, (f"{fbase.name}/{src.relative_to(fbase)} is "
@@ -740,7 +744,7 @@ def _member(calc, finished, stage: str, once, copied: set
     the finished run's state or each difference of its own deck."""
     from ..paths import FIRST_ATTEMPT, attempt_dir, attempts_in
     from ..runrecord import launch_record, read_copied_from
-    from ..transport.stages import (frames_of, inputs_of, products_of,
+    from ..transport.stages import (frames_of, inputs_of, must_hold,
                                     rung_points)
     from .continuation import done, points_state, read_run, usable
     from .gather import ran_otherwise
@@ -767,7 +771,6 @@ def _member(calc, finished, stage: str, once, copied: set
     names = home.names
     points = rung_points(calc.task, stage, frames=frames_of(calc.base))
     theirs = rung_points(ftask, stage, frames=frames_of(fbase))
-    products = products_of(stage, ftask.label, base_dir=fbase)
     if points and not theirs:
         # THIS CALCULATION RUNS POINTS WHERE THE FINISHED ONE RAN ONCE: its
         # one result is a point here (frame 0, 0 V), taken over at the
@@ -794,7 +797,9 @@ def _member(calc, finished, stage: str, once, copied: set
             if src is None:
                 return no(f"{stage}: {shown} holds no "
                           f"{_words(pt)} point")
-            ok, said = done(src, names, launch=launch, products=products,
+            ok, said = done(src, names, launch=launch,
+                            must_hold=must_hold(stage, ftask.label, src,
+                                                base_dir=fbase),
                             launched_in=newest)
             if not ok:
                 return no(f"{stage}: {fbase.name}/{src.relative_to(fbase)} "
@@ -813,7 +818,8 @@ def _member(calc, finished, stage: str, once, copied: set
             # it is compared with below renders that point's energies only
             # when it is (:func:`that_point`).
             ok, said = done(newest, names, launch=launch_record(newest),
-                            products=products)
+                            must_hold=must_hold(stage, ftask.label, newest,
+                                                base_dir=fbase))
             if not ok:
                 return no(f"{stage}: {shown} is not done -- {said}")
         pairs.append((None, newest))
@@ -867,7 +873,7 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     It decides nothing: a stage run once is copied when its run finished
     (the user, 2026-10-25)."""
     from ..runrecord import launch_record
-    from ..transport.stages import frames_of, products_of, rung_points
+    from ..transport.stages import frames_of, must_hold, rung_points
     from .continuation import done, stage_run_state
     from .naming import stage_home
     newest = _newest(finished, stage)
@@ -881,12 +887,14 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     state, _detail = stage_run_state(finished, stage, newest)
     if state in ("pending", "queued", "running"):
         return None
-    products = products_of(stage, ftask.label, base_dir=fbase)
     theirs = rung_points(ftask, stage, frames=frames_of(fbase))
     missed = []
     for pt in theirs or [None]:
-        folder = newest / pt.rel if pt is not None else newest
-        ok, said = done(folder, names, launch=launch, products=products,
+        folder = (RunPlace.of(newest).point(pt.rel) if pt is not None
+                  else newest)
+        ok, said = done(folder, names, launch=launch,
+                        must_hold=must_hold(stage, ftask.label, folder,
+                                            base_dir=fbase),
                         launched_in=newest if pt is not None else None)
         if not ok:
             missed.append(f"{pt.words() if pt is not None else 'its result'}"
@@ -920,7 +928,8 @@ def _laid_here(calc, finished, stage: str) -> Dict[str, str]:
     for pt in rung_points(calc.task, stage, frames=frames_of(base)) or [None]:
         src = _at(finished, stage, newest, pt)
         if src is not None:
-            moved[src] = run / pt.rel if pt is not None else run
+            moved[src] = (RunPlace.of(run).point(pt.rel)
+                          if pt is not None else run)
     if all(src.relative_to(newest) == dest.relative_to(run)
            for src, dest in moved.items()):
         return {}
@@ -969,7 +978,7 @@ def _relaid_copy(finished, stage: str, newest: Path, run: Path,
             elif not never_carried(f.name):
                 size += f.stat().st_size
         prev = read_continued_from(src) if rel else None
-        given.append((run / rel if rel else run,
+        given.append((RunPlace.of(run).point(rel),
                       tuple((fn, here(r)) for r, fn
                             in carried_gather(fbase, src)),
                       moved.get(str(prev)) if prev is not None else None))
@@ -1087,7 +1096,6 @@ def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
                             LAUNCH_RECORD_FILE)
     from ..runrecord import (RunRef, write_continued_from, write_copied_from,
                              write_gathered_from)
-    from ..transport.energies import SHARED_DIR
     from ..warmfiles import never_carried
     from .materialize import open_scratch
     base = Path(calc.base)
@@ -1098,21 +1106,21 @@ def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
         c.run, role=calcdirs.CONTAINER if of_points else calcdirs.RUN,
         root=base))
     for d in _scratch_folders(c.source):
-        open_scratch(base, c.run / d.name, plan)
+        open_scratch(base, RunPlace.of(c.run).scratch(d.name), plan)
     if of_points:
         for f in sorted(c.source.iterdir()):
             if (f.is_file() and f.name not in records
                     and not never_carried(f.name)):
                 plan.copy(f, c.run / f.name)
     for src, rel, made in c.points:
-        dest = c.run / rel if rel else c.run
+        dest = RunPlace.of(c.run).point(rel)
         if rel:
             plan.text(*calcdirs.record(dest, role=calcdirs.RUN, root=base))
         for f in sorted(src.iterdir()):
             if (f.is_file() and f.name not in records
                     and not never_carried(f.name)):
                 plan.copy(f, dest / f.name)
-        carry_shared(src / SHARED_DIR, dest / SHARED_DIR, plan, root=base)
+        carry_shared(src, dest, plan, root=base)
         if rel:
             write_copied_from(dest, made, plan=plan)
     for dest, gathered, continued in c.given:
@@ -1207,7 +1215,6 @@ def take_into(calc, takes: Sequence[Take], points, plan, *,
     from ..warmfiles import never_carried
     records = {CALCDIR_FILE, CONTINUED_FROM_FILE, COPIED_FROM_FILE,
                GATHERED_FROM_FILE, LAUNCH_RECORD_FILE, *given}
-    from ..transport.energies import SHARED_DIR
     folder_of = {point_key(pt): pdir for pdir, pt in points}
     for t in takes:
         pdir = folder_of[point_key(t.point)]
@@ -1216,22 +1223,26 @@ def take_into(calc, takes: Sequence[Take], points, plan, *,
                     and not never_carried(f.name)):
                 plan.copy(f, pdir / f.name)
         # ITS SHARED ENERGIES, with it (§ 2a.16).
-        carry_shared(t.source / SHARED_DIR, pdir / SHARED_DIR, plan,
-                     root=calc.base)
+        carry_shared(t.source, pdir, plan, root=calc.base)
         write_copied_from(pdir, t.copied_from, plan=plan)
 
 
-def carry_shared(src: Path, dest: Path, plan, *, root) -> None:
-    """A point's ``shared/`` carried whole into ``dest`` -- with the point
-    taken over, warm or from the finished calculation, or into a run that
-    walks the point again -- each folder of it stamped anew with its role
-    where it now lies in the calculation at ``root``, its ``.copied-from``
-    last, so a copy cut short reads as none (`engines/transport.md`
-    § 2a.16); nothing where ``src`` holds no ``shared/``."""
+def carry_shared(src: Path, dest: Path, plan, *, root) -> bool:
+    """The ``shared/`` of the point folder ``src`` carried whole into the
+    point folder ``dest``'s -- with the point taken over, warm or from the
+    finished calculation, or into a run that walks the point again -- each
+    folder of it stamped anew with its role where it now lies in the
+    calculation at ``root``, its ``.copied-from`` last, so a copy cut short
+    reads as none (`engines/transport.md` § 2a.16); nothing where ``src``
+    holds no ``shared/`` whole.  Whether it carried one.  The one place a
+    point's ``shared/`` is composed (`execution/runs-of-points.md` § 2.4,
+    *shared*)."""
     from .. import calcdirs
     from ..runfiles import CALCDIR_FILE, COPIED_FROM_FILE
+    from ..transport.energies import SHARED_DIR
+    src, dest = Path(src) / SHARED_DIR, Path(dest) / SHARED_DIR
     if not (src / COPIED_FROM_FILE).is_file():
-        return
+        return False
     for f in _files(src):
         if f.name == CALCDIR_FILE:
             plan.text(*calcdirs.record(dest / f.parent.relative_to(src),
@@ -1239,6 +1250,7 @@ def carry_shared(src: Path, dest: Path, plan, *, root) -> None:
         elif f.name != COPIED_FROM_FILE or f.parent != src:
             plan.copy(f, dest / f.relative_to(src))
     plan.copy(src / COPIED_FROM_FILE, dest / COPIED_FROM_FILE)
+    return True
 
 
 def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
@@ -1254,15 +1266,13 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
     there."""
     from .. import calcdirs
     from ..projects import find_projects_root
-    from ..runfiles import COPIED_FROM_FILE
     from ..runrecord import write_copied_from
     from ..transport.energies import SHARED_DIR, Contours
     contours = (Contours.of_deck(read_deck(deck)) if deck.is_file() else None)
     if contours is None:
         return
     dest = Path(pdir) / SHARED_DIR
-    if held is not None and (held / COPIED_FROM_FILE).is_file():
-        carry_shared(held, dest, plan, root=calc.base)
+    if held is not None and carry_shared(held, pdir, plan, root=calc.base):
         return
     tree = Path(find_projects_root(Path(calc.base))).resolve()
     src = tree / contours.source
@@ -1276,7 +1286,7 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
     plan.text(*calcdirs.record(dest, role=calcdirs.SHARED, root=calc.base))
     for f in files:
         plan.copy(f, dest / f.name)
-    carry_shared(src / SHARED_DIR, dest / SHARED_DIR, plan, root=calc.base)
+    carry_shared(src, dest, plan, root=calc.base)
     # THE POINT IT IS A COPY OF, one hop -- read in the calculation that
     # point lies in, the finished one or one that one shared with.
     write_copied_from(dest, origin(calcdirs.where(src).root, src), plan=plan)
