@@ -38,6 +38,7 @@ def _run(calc, base, *, say) -> Summed:
                   ledger={"out": str(out), "data": str(data),
                           "points": len(rec["points"]),
                           "pending": len(rec["pending"]),
+                          "not_run": len(rec["not_run"]),
                           "failed": len(rec["failed"]),
                           "readings": readings})
 

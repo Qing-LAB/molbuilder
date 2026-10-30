@@ -953,8 +953,9 @@ T(E_F), the conductance and the current (total and as printed), the device
 DOS, the leads' spectral and bulk DOS and the transmission eigenchannels —
 TBtrans's k-averaged text files on the data file's energies — and the PDOS by
 region from each point's kept reading of its data file (*A point's digest*,
-below; [`model/parse.md`](?doc=model/parse.md) § 5e); the points without a transmission as `pending` (said *not ended*) or
-`failed`, in their run's words; for a frame set, each point's frame and that frame's
+below; [`model/parse.md`](?doc=model/parse.md) § 5e); the points without a transmission as `pending` (said *not ended*),
+`not_run` (said *not run*: its ended walk never started it) or `failed`, in
+their run's words; for a frame set, each point's frame and that frame's
 `customized` rows, the I–V per frame, the mode's average at each voltage
 (§ 2a.12, built 2026-10-10) and the frame set it is taken over, cited whole —
 its rows with their meanings, the vibration, the masses (`frame_set`, built
@@ -2398,17 +2399,20 @@ read 0 of N done and was walked again)*. Its
 record is
 what its wrapper already writes as it ends — the conclusion marker and the
 outputs. A point has no record of its own beyond that: *queued*, *running*,
-*finished* and *failed* are the **run's**, read from the run's launch record,
+*finished*, *failed* and *not run* are the **run's**, read from the run's launch record,
 its points' files — each point's run by the one status door — and the jobs
 launched from this machine, by one rule (`continuation.points_state`, *One
 door for each place* below; `job-system.md`, *What marks each state*). Every
 reader asks it — `status`, the gather, `jobset scratch`, the run door (the
 Results tab's ladder and a point's own folder), the record's points and the
-data file's `device_state`: a point the ended walk never ran is failed,
-never one still to come, its why the job's own — *it builds on &lt;the point&gt;,
+data file's `device_state`: a point the ended walk never ran is **not
+run** — never *failed*, which is a point that ran and ended with an error,
+and never one still to come *(the user, 2026-10-30: "definitely not
+'failed'")* — its why the job's own — *it builds on &lt;the point&gt;,
 which failed*, or *the walk ended before it reached this point*
-(`runpoints.why_not_run`, asked by `continuation.never_reached`) — in
-`status`'s count, the record and the run's own finish alike
+(`runpoints.why_not_run`, asked by `continuation.never_reached`;
+[`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3,
+§ 4.5) — in `status`'s count, the record and the run's own finish alike
 (`run-reports.md` § 2.9).
 
 **The walk.** `launch task` sends one job walking the run's points not done —
@@ -2478,8 +2482,8 @@ its points:
   engine and `point ended --exit <rc>` after it, on the failure path too —
   the run's `start` sent by the first, a `part_failed`, a round's
   `milestone` or the run's `finish` by the second (`run-reports.md` § 2.9).
-  Its words are the rung's — the count, *k of N points done, m failed
-  (F frames × V voltages)*, and a round's outcome, each frame's NEGF
+  Its words are the rung's — the count, *k of N points done, m failed, j
+  not run (F frames × V voltages)*, and a round's outcome, each frame's NEGF
   iterations or its G/G₀ at E_F and the frames' average — in
   `transport/run_words.py` (`count_words`, `round_outcome`, the kind table's
   `count` and `outcome`), which travels with the monitor. **A report step
@@ -2568,15 +2572,17 @@ started*, asked once of that job or else of the run door, which asks the
 scheduler and writes its answer (`running-a-job.md` § 4.2); else its points' verdict
 (`continuation.points_verdict`): *finished* when every point's run finished,
 converged or not, which the converged column says (*SCF NO* when a point did
-not converge), or *failed* when a point's run did not finish, naming the
+not converge), or *failed* when a point failed or is not run, naming the
 first point not done. A walk that stopped among its points — some run,
-the rest never reached — is a run that ended, failed, never one still queued;
+the rest not run — is a run that ended, failed, never one still queued;
 where no job holding the run is on file, or this machine cannot tell, the
 points' verdict is said. Beside the state, how many of its points are done,
-and how many ended without being done, counted failed as a vibration's
-calls are (`run-reports.md` § 2.9), with its axes (*3 of 5 points done
-(1 frame × 5 voltages)*, *3 of 5 points done, 1 failed (1 frame × 5
-voltages)* — `transport.run_words.count_words`, the kind table's `count`,
+how many failed — ran and ended with an error — and how many are not run —
+never started by its ended walk — as a vibration's calls are counted
+(`run-reports.md` § 2.9); a point that ran and did not converge is *not
+done*, the converged column saying why; with its axes (*3 of 5 points done
+(1 frame × 5 voltages)*, *3 of 5 points done, 1 failed, 1 not run (1 frame ×
+5 voltages)*, *4 of 5 points done, 1 not done (1 frame × 5 voltages)* — `transport.run_words.count_words`, the kind table's `count`,
 the job's own count too —
 and *(between two points)* while the walk is between them);
 `status <stage>` says what the run gathered and what it continued from, read
@@ -2640,8 +2646,8 @@ another frame, and a
 voltage that does not finish ends **the chain that starts from it** while the
 walk goes on with every other point. The seed is frame 0's geometry (the approximate gate,
 § 2a.9: a nearby geometry's density is a start, not a result). `status` counts
-*k of N points done (F frames × V voltages)* — *, m failed* beside it where
-points ended without being done; warm takes the done points over
+*k of N points done (F frames × V voltages)* — *, m failed* and *, j not
+run* beside it where points failed or are not run; warm takes the done points over
 and runs the rest — a point not done starting from the closest done voltage
 before it in its frame, else the seed — and cold runs them all: rule 3 at the
 point, unchanged. Run here, any of these is left running in the background
@@ -3165,7 +3171,7 @@ part — their rows, masses and average — is laid out by their post-process
 | `tbt_k_points` · `tbt_k_method` · `loop_elapsed_s` | frame, bias_v | raw | the transverse k-points the point's TBtrans run used and how they were chosen, and its passes' loop time summed (`model/parse.md` § 5c.1, § 5d.5) |
 | `copied_from` · `shared_from` · `shared_held` · `shared_computed` | frame, bias_v | state | a calculation that reuses a finished one (§ 2a.16): the run a point is a copy of; the finished point whose energies it shares, how many it holds and how many its own run computes — a point not done too |
 | `dos_per_orbital_reading` | frame, bias_v | state | each point's data-file reading, the DOS by region's (`model/parse.md` § 5e): `kept`, or each data file's state in its words — `not read yet`, `out of date`, `being read by …`; a reading `summarize task` just tried that failed or that another reading holds, in that reading's words — `dos_region` the fill value where it is not kept |
-| `point_why` · `point_progress` | frame, bias_v | state | a point not done: why, in its run's words — pending, or failed and what stopped it — and how far its TBtrans loop got, running or where it stopped (`model/parse.md` § 5d.1b) |
+| `point_why` · `point_progress` | frame, bias_v | state | a point not done: why, in its run's words — pending, not run and why, or failed and what stopped it — and how far its TBtrans loop got, running or where it stopped (`model/parse.md` § 5d.1b) |
 | `dos_why` | frame, bias_v | state | a done point with no DOS: why, in its reader's words — its DOS variables the fill value |
 | `transmission` | frame, bias_v, energy_ev | derived | per spin channel — the one, or $(T_\uparrow + T_\downarrow)/2$ — what G is computed from |
 | `conductance_g0` | frame, bias_v | derived | $G / G_0 = T$ at $E - E_F = 0$, linearly interpolated |
@@ -3180,8 +3186,8 @@ part — their rows, masses and average — is laid out by their post-process
 | `average_transmission` · `average_delta_transmission` | bias_v, energy_ev | derived | the mode's average at the stated weights, and its change from frame 0's |
 | `average_conductance_g0` · `average_conductance_change_percent` | bias_v | derived | at E_F, and in per cent of frame 0's |
 | `average_why` · `average_conductance_why` | bias_v | state | why the average is none — at every voltage the reason there is none (one structure, the weights not stated), or the frames this voltage's waits for — and why the averaged conductance or its change is none |
-| `point_state` | frame, bias_v | state | the transmission point's run state, the run door's word (`finished`, `failed`, `pending` …) — beside `done` |
-| `device_state` · `device_detail` · `device_scf_converged` | frame, bias_v | state | the device point's run state and the run door's sentence for it, and whether its SCF converged (1, 0) |
+| `point_state` | frame, bias_v | state | the transmission point's run state, the run door's word (`finished`, `failed`, `not run`, `pending` …) — beside `done` |
+| `device_state` · `device_detail` · `device_scf_converged` | frame, bias_v | state | the device point's run state (`not run` among them, § 2a.11) and the run door's sentence for it, and whether its SCF converged (1, 0) |
 | `device_energy_ev` · `device_negf_cycles` · `device_dq` | frame, bias_v | raw | the NEGF phase's last energy — never compared across points or calculations (§ 1.1) — how many NEGF cycles ran, and the last one's `dQ` — the charge its open boundaries did not conserve, every column summed less the neutral count (*The device's charges*) |
 | `device_charge` | frame, bias_v, charge_part | raw | the last NEGF cycle's Mulliken populations — electrons, positive, not a net charge — column by column, as TranSIESTA printed them |
 | `device_d_change_from_0v` | frame, bias_v | derived | $D(V) - D(0\ \mathrm{V})$: the bridge's net Mulliken population at this voltage less the same frame's at 0 V, both the last NEGF cycle's; the fill value where the frame has no finished 0 V point, and at 0 V itself 0 (§ 2a.12, *The device's charges*) |
@@ -6100,7 +6106,7 @@ be.
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library (`_emit_basis_and_xc` was deleted 2026-09-18; `_emit_transiesta_block` became `emit_electrode_declarations` on 2026-09-29, its values moving to the catalogue) |
 | Kind gate | `validation/transport.py` (`validate_transport_kind`, the kind table's `validator`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c); on the device, which reads them, the pole energy's 20-pole floor and the temperature's 10 K floor (§ 6.1c); on the transmission, its window against the bias window (P2, § 2a.10). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
-| Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run reads as **pending**, never as a failure |
+| Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run yet reads as **pending**, one its ended walk never started as **not run** — never as a failure |
 | The frames' post-process | `molbuilder/frame_average.py` | outside transport's execution: the frames' average at their stated weights, its summary lines, the data file's frame part, what a page is answered of the frames, and a mode's vocabulary and assumptions (§ 2a.12, § 3.8.1) — called by the record, the data file and the describe door |
 | Data file | `transport/datafile.py` | the record's composition as `<label>.transport.nc` — every point's raw outputs beside what is derived from them, on one grid, each variable defined (§ 2a.12) — and its reader |
 | The frames' rows | `molbuilder/frameset.py` | the rows as written and each frame's weight (`model/structure.md` § 2.2f), read by the frames' post-process |

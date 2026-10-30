@@ -505,6 +505,16 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     assert index["facts"]["selection"]["applied"] == _PICKED_MODES, \
         index["facts"]
     assert index["finish"]["exit"] == 0, index["finish"]
+    # EVERY CALL'S START, its `.continued-from` as `status` reads it
+    # (`execution/runs-of-points.md` § 1.2): the force constants from the
+    # relaxation, each optical call from the force constants -- written by
+    # its planner's step as it opened the call -- the relaxation none.
+    # THE SILENT FAILURE: an optical call said to start from what prep
+    # wrote, where it starts from the force constants' density.
+    run0 = run.attempt("freq").relative_to(run.bundle).as_posix()
+    starts = {p["call"]: p["started_from"] for p in status.points}
+    assert starts == {RELAX: None, FC: f"{run0}/{RELAX}",
+                      **{c: f"{run0}/{FC}" for c in _OPTICAL_CALLS}}, starts
     # the optical calls: the equilibrium, then each mode's two sides,
     # each a folder below the run's `optical/` holding the optical deck and
     # what SIESTA left (`vibration_phases.calls_of`, `Call.rel`)
@@ -1584,14 +1594,14 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
         taken = p["phase"] in (RELAX, FC) or name in finished
         rel = f"{run1}/{p['phase']}" + (f"/{name}" if p["phase"] == OPTICAL
                                          else "")
-        # WHAT IT STARTED FROM, as `status` says it: taken over, the call that
-        # computed it; an optical call walked again, its planner's words from
-        # the index -- a planned point's start has no record of its own
-        # (`runs-of-points.md` § 1.2, *start*).
+        # WHAT IT STARTED FROM, its `.continued-from` as `status` reads it:
+        # taken over, the call that computed it; an optical call walked
+        # again, the force constants' call in this run, whose `.DM` the loop
+        # step copies in -- recorded by launch as it opened the call again
+        # (`runs-of-points.md` § 1.2, *start*; § 3, op. 6).
         walked_optical = p["phase"] == OPTICAL and not taken
         assert p["started_from"] == (
-            rel if taken else f"{index[FC]['words']}, copied by the walk"
-            if walked_optical else None), p
+            rel if taken else f"{run2}/{FC}" if walked_optical else None), p
         assert index[name].get("taken_from") == (rel if taken else None), \
             index[name]
         if taken:

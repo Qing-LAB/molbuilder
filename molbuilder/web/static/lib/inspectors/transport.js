@@ -139,6 +139,7 @@ const WORKSPACE_TAG = "results:transport";
         host.innerHTML = "";
         const pts = Array.isArray(rec.points) ? rec.points : [];
         const pending = Array.isArray(rec.pending) ? rec.pending : [];
+        const notRun = Array.isArray(rec.not_run) ? rec.not_run : [];
         const failed = Array.isArray(rec.failed) ? rec.failed : [];
         const stages = Array.isArray(rec.stages) ? rec.stages : [];
         state.points = pts;
@@ -149,8 +150,9 @@ const WORKSPACE_TAG = "results:transport";
         // § 2a.12); one structure is one.
         state.nFrames = Number(state.average.frames) || 1;
         // THE STARTING POINT: the first that exists -- a transmission's, or
-        // one still to come or failed, whose device run may already speak.
-        const first = pts[0] || pending[0] || failed[0];
+        // one still to come, not run or failed, whose device run may
+        // already speak.
+        const first = pts[0] || pending[0] || notRun[0] || failed[0];
         if (state.bias === null && first) state.bias = first.bias_v;
 
         const wrap = _el("div", "transport-record");
@@ -168,6 +170,9 @@ const WORKSPACE_TAG = "results:transport";
             /* THE POINTS NOT ENDED -- the record's `pending`: described,
              * queued or running (`execution/runs-of-points.md` § 1.3). */
             + (pending.length ? " · " + pending.length + " not ended" : "")
+            /* NEVER STARTED by its ended walk: *not run*, never failed
+             * (`execution/runs-of-points.md` § 1.3). */
+            + (notRun.length ? " · " + notRun.length + " not run" : "")
             + (failed.length ? " · " + failed.length + " failed" : "")
             + (rec.energies_relative_to_ef ? " · energies relative to E_F"
                                            : "")));

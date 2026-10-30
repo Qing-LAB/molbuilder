@@ -632,7 +632,7 @@ or count is a report field.
 |---|---|---|
 | **the parts of an engine's output** — the SCF, a TranSIESTA device's set-up, SIESTA's optical calculation; each begins with a line the engine prints, and some print nothing more until they end | the engine's grammar: the SCF and a TranSIESTA device's set-up are read by their own rows (`siesta_grammar.scf_row`, the `ts:` facts); every part that begins with a line of its own is a row of one table, `siesta_grammar.PARTS` — the part, the line that begins it, its words, and its note: what is true of its output while it runs (the optical calculation's, *it prints nothing until it ends*, `Src/optical.F`). The reading pass reads the table by one rule (`_section_rules`, as its other rules); the latest part begun is underway (`SiestaReader.part`), until the SCF's next row speaks again or the run ends | the part underway in the reading pass's one sentence, and since when — *SIESTA's optical calculation -- it prints nothing until it ends (since 20:02)* (`doing`, [`model/parse.md`](?doc=model/parse.md) § 2b). *Since* is when the monitor first read the part underway, within one wake |
 | **which part a fact belongs to** | each report field's declaration (`report_fields.FIELDS`, § 4.1a): its `part` — `scf` for the SCF's iterations and rate, `run` for the rest; the residuals are the SCF's | a part's facts said together: the part underway's as they stand, a part that has ended as ended — *its SCF converged in 6 iterations (33s), dDmax 5e-06 (tol 1e-05)* — never a finished SCF's last row as the row in flight; on a card, a field whose part has ended (`ReportField.ended`) is left off the grid for the summary line, the record carrying the part underway (§ 4.1a) |
-| **a run of points' position** — a vibration run's calls ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a), a device or transmission run's points ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | the run's index ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3: `<label>_<NN>_<stage>-run0.points.json` at the run's root — one per run, named for its first try whichever try a point is on, a point retried in place included), which launch writes — every point, what it needs and must hold — and each point's report steps stamp; found by the point's folder's record (`calcdirs.where`) and read through its one reader and the one rule each — `runpoints.read_index`, `rows_of`, `still_to_run` — and the count's words the index names (`runpoints.count`), all of which travel in the monitor's bundle; read again only when the index changes | a member monitor (§ 2.4) says its run's count and its own point, in the kind's words, its own point running (its start is stamped before its engine) — *the run: relax done · fc done · optical 0 of 121 done \| this call: the equilibrium*; *the run: 7 of 12 points done, 1 failed (3 frames × 4 voltages) \| this point: frame index 1 (of 3) · 0.4 V* — the pace over the points this run computed |
+| **a run of points' position** — a vibration run's calls ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7a), a device or transmission run's points ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) | the run's index ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3: `<label>_<NN>_<stage>-run0.points.json` at the run's root — one per run, named for its first try whichever try a point is on, a point retried in place included), which launch writes — every point, what it needs and must hold — and each point's report steps stamp; found by the point's folder's record (`calcdirs.where`) and read through its one reader and the one rule each — `runpoints.read_index`, `rows_of`, `still_to_run` — and the count's words the index names (`runpoints.count`), all of which travel in the monitor's bundle; read again only when the index changes | a member monitor (§ 2.4) says its run's count and its own point, in the kind's words, its own point running (its start is stamped before its engine) — *the run: relax done · fc done · optical 0 of 121 done \| this call: the equilibrium*; *the run: 7 of 12 points done, 1 failed, 2 not run (3 frames × 4 voltages) \| this point: frame index 1 (of 3) · 0.4 V* — the pace over the points this run computed |
 | **the clocks** — the run's and, for a member, its point's | the run's start — a member's, its run's first point's start in the index (the points this run computed, not those taken over; a point retried in place keeps its first try's start), else this monitor's own start — and a member's point, from its own monitor's start; each a report field (§ 4.1a); the job's wall as § 2.1b counts it. The run's finish, which its last point's report step sends once (§ 2.4), says the run's clock from the same index | each named — *the run 5h · this call 2h*, the wall beside them, *wall 12h: 7h left*; a run that is no member says *the run* alone |
 
 **The pace and what is left** — read from the same structures, over the
@@ -709,7 +709,7 @@ its state on, though not done; a transmission point none.
 
 | the point | points left to run | sent |
 |---|---|---|
-| any | none | the `finish` (§ 2): the index closed — each point the walk never ran stamped why, *it builds on &lt;words&gt;, which failed* or *the walk ended before it reached this point*, and counted failed, as the status door lists a point the ended walk never reached (`runpoints.close`) — the kind's finish step run where it has one (a vibration's `finish-run`); then the run's state by the one rule over the index, by its kind's `finished` (`runpoints.run_state`): a vibration's finished when every call is done, a transport sweep's when every point ran, converged or not (`_run_ending.points_state`, the status door's rule); a finish step that exited non-zero makes it failed, *the finish exited N*; the first point not done, in the order `status` lists them, and how many; and the outcome of the round this point ended |
+| any | none | the `finish` (§ 2): the index closed — each point the walk never ran stamped why, *it builds on &lt;words&gt;, which failed* or *the walk ended before it reached this point*, and said *not run*, never *failed*, as the status door lists a point the ended walk never reached (`runpoints.close`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.5) — the kind's finish step run where it has one (a vibration's `finish-run`); then the run's state by the one rule over the index, by its kind's `finished` (`runpoints.run_state`): a vibration's finished when every call is done, a transport sweep's when every point ran, converged or not (`_run_ending.points_state`, the status door's rule); a finish step that exited non-zero makes it failed, *the finish exited N*; the first point not done, in the order `status` lists them — *&lt;words&gt;: not run -- &lt;why&gt;* for one the walk never started (`runpoints.not_done_words`) — and how many; and the outcome of the round this point ended |
 | the last of its **round** to end, done or not — a vibration's phase; a transport sweep's voltage at every frame *(the user, 2026-10-26: "one voltage across every frame would be a transport milestone")* | yes | `milestone`: the round's outcome (below), else *&lt;words&gt;: done* — *&lt;words&gt;: not done -- &lt;why&gt;* for a point not done |
 | not done, by the one done rule (`runpoints.rows_of`), its round not ended | yes | `part_failed`: the point, and why it is not done — once per reason (below) |
 | any other | yes | nothing — the count is the periodic report's |
@@ -741,8 +741,10 @@ words — the exit, what its own step could not do, or
 `_run_ending.not_done_why` — *mode 7 (4271 cm⁻¹), +δQ: not done -- exit 1*;
 *frame index 1 (of 3) · 0.4 V: not done -- finished, not converged (SCF
 NO)*. A failed `finish` names the first point not done in the same
-words, and how many are not done when more than one is — *…: not done --
-exit 1; 9 of 121 calls not done*.
+words — *&lt;words&gt;: not run -- &lt;why&gt;* for a point the walk never
+started (`runpoints.not_done_words`, as `status` says the run's state) —
+and how many are not done when more than one is — *…: not done -- exit 1; 9 of 121 calls not
+done*.
 
 **A failure is said once per reason.** Points of one run often fail alike:
 once the wall is reached every point started after it stops at once, and a
@@ -754,10 +756,13 @@ text, which can name the point's own files. A `part_failed` whose reason the
 run has already reported is not sent again; the `notify` verb asks the run's
 notification record, where each failure's reason is kept (§ 2.5). **The
 run's count says how many points failed** in every report and on every
-surface that shows it — *optical 60 of 121 done (40 failed)*, a call that ended
-without being done counted there and never among the points still to run
-*(the user, 2026-10-29)* — and the `finish` names the first point not done and
-how many are. So a run speaks of its failures as one run, never as one
+surface that shows it *(the user, 2026-10-29)*, **and how many are not run**
+— *optical 60 of 121 done (40 failed)*, *optical 5 of 7 done (1 failed, 1
+not run)*: *failed* a point that ran and ended with an error, *not run* one
+its ended walk never started — never *failed* *(the user, 2026-10-30:
+"definitely not 'failed'")* — neither among the points still to run
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3, § 1.4) — and
+the `finish` names the first point not done and how many are. So a run speaks of its failures as one run, never as one
 message per point, and its count says how many there are.
 
 **The card.** The title — the run, its job and its state, then *— a point

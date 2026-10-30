@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@15``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@16``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -78,7 +78,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@15"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@16"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -839,9 +839,9 @@ def _rung_points(base: Path, task, name: str, answers: str,
     run to read instead of the latest.  A point with no folder yet -- no run
     opened, the rung described or prepared and not launched -- is the
     rung's own row (``rung``: its state and detail, the status door's).
-    A point the ended walk never reached is failed, as the rows say it
-    (`continuation.never_reached`, `engines/transport.md` § 2a.11), never
-    one still to come."""
+    A point the ended walk never reached is *not run*, as the rows say it
+    (`continuation.never_reached`, `engines/transport.md` § 2a.11) --
+    never one still to come, never failed."""
     from ..jobset.naming import stage_home
     from ..runs import concluded
     names = stage_home(base, task, name).names
@@ -943,6 +943,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..jobset.naming import stage_home
     from ..parse.dirs.job import FINAL_STATES
     from ..parse.dirs.record import tbtrans_loop
+    from ..runpoints import NOT_RUN
     from ..parse.engines._run_ending import keep_reading, version_of
     from ..parse.engines.siesta_reader import read_output
     from ..runfiles import JUNCTION_FILE
@@ -964,6 +965,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                  else None)
     points_out: List[Dict] = []
     pending: List[Dict] = []
+    not_run: List[Dict] = []
     failed: List[Dict] = []
     home = stage_home(base, task, "transmission")
     names = home.names
@@ -988,8 +990,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     # THE TRANSMISSION'S POINTS AS THE STATUS DOOR READ THEM -- each one's
     # state, what it is a copy of -- one per point folder below its run
     # (`continuation.points_state`): a point the ended walk never reached
-    # is failed there, never one still to come (`engines/transport.md`
-    # § 2a.11).
+    # is *not run* there -- never one still to come, never failed
+    # (`engines/transport.md` § 2a.11).
     rows = {r["folder"]: r for s in status.stages
             if s.name == "transmission" for r in (s.points or ())}
     # WHAT TBTRANS AVERAGED AT EACH FOLDER, read once for the transmission
@@ -1065,6 +1067,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                     **({"estimated_at": progress["estimated_at"]}
                        if "estimated_at" in progress else {})}
             (pending if state in ("pending", "queued", "running")
+             else not_run if state == NOT_RUN
              else failed).append(entry)
             continue
         # WHAT TBTRANS WROTE, through the family's one reader -- a point
@@ -1167,6 +1170,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                                   f"{p['state']} ({p['why']})"
                                   for p in got) + ")\n"
                       for what, got in (("pending", pending),
+                                        ("not run", not_run),
                                         ("failed", failed)) if got))
 
     try:
@@ -1279,6 +1283,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             rung["progress"]["measured"] = {
                 k: measured.get(k)
                 for k in ("frame", "of", "bias_v", "loop_elapsed_s")}
+    record["not_run"] = not_run
     record["failed"] = failed
     return record
 
@@ -1626,6 +1631,8 @@ def iv_table_text(record: Dict) -> str:
              f"{len(record['points'])} point(s)"
              + (f", {len(record['pending'])} not ended"
                 if record.get("pending") else "")
+             + (f", {len(record['not_run'])} not run"
+                if record.get("not_run") else "")
              + (f", {len(record['failed'])} failed"
                 if record.get("failed") else "")]
     lines.append(f"  {'frame':>5}  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
@@ -1644,7 +1651,8 @@ def iv_table_text(record: Dict) -> str:
             + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
             + "  "
             + (f"{i0:>13.4e}" if i0 is not None else f"{'--':>13}"))
-    for what, said in (("pending", "not ended"), ("failed", "failed")):
+    for what, said in (("pending", "not ended"), ("not_run", "not run"),
+                       ("failed", "failed")):
         for p in record.get(what, ()):
             lines.append(f"  {_frame(p):>5}  {p['bias_v']:>8.3f}  "
                          f"{said:>12}  {p['state']:>12}  ({p['why']})")

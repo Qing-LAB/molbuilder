@@ -271,9 +271,9 @@ def count_words(rows, facts) -> str:
     (`continuation.point_rows`): one shape."""
     phases = tuple((facts or {}).get("phases") or ())
     try:                                   # inside molbuilder
-        from ..parse.dirs.job import FINAL_STATES
+        from ..runpoints import NOT_RUN
     except ImportError:                    # beside a job, the monitor's
-        from job import FINAL_STATES  # type: ignore[no-redef]
+        from runpoints import NOT_RUN  # type: ignore[no-redef]
     parts: List[str] = []
     by: Dict[str, list] = {}
     for r in rows:
@@ -293,21 +293,24 @@ def count_words(rows, facts) -> str:
         # TAKEN OVER is the index's ``taken_from`` (`continuation.taken_over`),
         # the key the job's rows and the status door's rows share.
         taken = sum(bool(r.get("taken_from")) for r in got if r["done"])
-        # ENDED WITHOUT BEING DONE -- one rule for the job's rows and
-        # `status`'s, each row's ``state`` its run's, as a transport run's
-        # count says it (`transport.run_words.count_words`).
-        failed = sum(1 for r in got
-                     if not r["done"] and r.get("state") in FINAL_STATES)
+        # FAILED -- it ran and ended with an error -- and NOT RUN -- its
+        # ended walk never started it -- each its row's ``state``, one rule
+        # for the job's rows and `status`'s, as a transport run's count
+        # says them (`transport.run_words.count_words`).
+        failed = sum(1 for r in got if r.get("state") == "failed")
+        not_run = sum(1 for r in got if r.get("state") == NOT_RUN)
+        # RAN TO ITS END AND NOT DONE (`runs-of-points.md` § 1.3).
+        not_done = sum(1 for r in got
+                       if r.get("state") == "finished" and not r["done"])
         if len(got) == 1:
-            # ONE CALL: its word by the rule the count uses -- failed when
-            # it ended without being done, whatever state its row producer
-            # gave it (the job's rows and the status door's name the same
-            # rule, `run-reports.md` § 2.9).
+            # ONE CALL: done, not done, or its row's own state word.
             parts.append(f"{p.name} "
-                         f"{'done' if n_done else 'failed' if failed else got[0]['state']}")
+                         f"{'done' if n_done else 'not done' if not_done else got[0]['state']}")
         else:
             notes = ([f"{taken} taken over"] if taken else []) + (
-                [f"{failed} failed"] if failed else [])
+                [f"{failed} failed"] if failed else []) + (
+                [f"{not_run} not run"] if not_run else []) + (
+                [f"{not_done} not done"] if not_done else [])
             parts.append(f"{p.name} {n_done} of {len(got)} done"
                          + (f" ({', '.join(notes)})" if notes else ""))
     return " · ".join(parts) if parts else "no call yet"

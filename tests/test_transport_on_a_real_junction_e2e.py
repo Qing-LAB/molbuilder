@@ -2285,9 +2285,11 @@ def _round_said(rec, stage: str, volts: float, frames: int) -> str:
         + f"; the frames' average {avg['conductance_g0']:.4g}")
 
 
-def _count(done: int, n: int, frames: int, failed: int = 0) -> str:
+def _count(done: int, n: int, frames: int, failed: int = 0,
+           not_run: int = 0) -> str:
     return (f"{done} of {n} points done"
             + (f", {failed} failed" if failed else "")
+            + (f", {not_run} not run" if not_run else "")
             + f" ({frames} frame{'' if frames == 1 else 's'} × "
               f"{len(_BIAS)} voltages)")
 
@@ -2478,8 +2480,8 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
     frame's chain, and the walk never runs the next voltage.
     `run-reports.md` § 2.9: the run's `finish` comes after the point that
     ended the chain, the run failed; the voltage never run is said so,
-    where its chain ended, and counted failed, as `status` counts a point
-    the ended walk never reached.  The silent failures: a finish that never
+    where its chain ended, and counted *not run* -- never failed, it did not
+    run (`execution/runs-of-points.md` § 1.3) -- as `status` counts it.  The silent failures: a finish that never
     comes, waiting on a point the walk will not run; a count that disagrees
     with `status`."""
     from support.real_runs import notified, stage_status, told
@@ -2493,7 +2495,7 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
                                f"failed"), then
     assert notified(c, "device", n) == ["start", "finish"]
     finish, = told(c, "finish", "device", n)
-    count = _count(0, 2, 1, failed=2)
+    count = _count(0, 2, 1, failed=1, not_run=1)
     assert finish.startswith(
         f"failed ({first['words']}: not done -- {first['why']}; 2 of 2 "
         f"points not done; {_BIAS[0]:g} V: not done -- {first['why']}) | "
@@ -2502,16 +2504,17 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
         device.state, device.detail)
 
 
-def test_a_point_the_ended_walk_never_reached_reads_failed_everywhere(
+def test_a_point_the_ended_walk_never_reached_reads_not_run_everywhere(
         junction, tmp_path):
     """`engines/transport.md` § 2a.11: a point the ended walk never reached
-    is failed (`continuation.never_reached`), never one still to come -- as
-    `status` states it, so the record's point (the Results tab's), the data
-    file's device state, the Results tab's folder answer and the run's
-    state each say it, every one asking the status rows.  The device whose
-    first voltage did not finish: its second, never run.  THE SILENT
-    FAILURE: the page, the data file and the folder calling the point
-    pending while `status` counts it failed.  MUTATIONS THIS MUST FAIL
+    is *not run* (`continuation.never_reached`) -- never one still to come,
+    and never *failed*: it did not run (`execution/runs-of-points.md`
+    § 1.3) -- as `status` states it, so the record's point (the Results
+    tab's), the data file's device state, the Results tab's folder answer
+    and the run's state each say it, every one asking the status rows.  The
+    device whose first voltage did not finish: its second, never run.  THE
+    SILENT FAILURES: the page, the data file and the folder calling the
+    point pending, or failed, while `status` counts it not run.  MUTATIONS THIS MUST FAIL
     AGAINST: the record's point state the run door's own (`concluded`,
     `record._rung_points`); a point's folder read without its run's rows
     (`runs._as_its_point` answering ``st``)."""
@@ -2530,25 +2533,25 @@ def test_a_point_the_ended_walk_never_reached_reads_failed_everywhere(
     said = then["not_run"]
     assert said == f"it builds on {first['words']}, which failed", said
     assert (never["state"], never["done"], never["why"]) == (
-        "failed", False, said), device.points
+        "not run", False, said), device.points
     folder = c.bundle / device.dir / never["folder"]
     calc = open_calculation(c.bundle)
     by = next(s for s in collect_record(calc, partial=True)["stages"]
               if s["stage"] == "device")["by_point"]
     at = next(p for p in by if p["bias_v"] == _BIAS[1])
-    assert (at["state"], at["detail"]) == ("failed", said), at
+    assert (at["state"], at["detail"]) == ("not run", said), at
     got = export(calc, "netcdf")
     (tmp_path / got.name).write_bytes(got.files[got.name])
     V = {k: v["data"]
          for k, v in read_data_file(tmp_path / got.name)["variables"].items()}
     k = list(V["bias_v"]).index(_BIAS[1])
     assert [str(s) for s in V["device_state"][..., k].ravel()] == [
-        "failed"], V["device_state"]
+        "not run"], V["device_state"]
     assert [str(s) for s in V["device_detail"][..., k].ravel()] == [
         said], V["device_detail"]
     status = folder_answer(folder)["status"]
-    assert (status["state"], status["detail"]) == ("failed", said), status
-    assert run_answer(folder)["state"] == "failed", run_answer(folder)
+    assert (status["state"], status["detail"]) == ("not run", said), status
+    assert run_answer(folder)["state"] == "not run", run_answer(folder)
 
 
 def test_a_stopped_walk_says_no_finish_and_its_warm_launch_one(junction):

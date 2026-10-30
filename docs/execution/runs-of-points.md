@@ -80,7 +80,7 @@ names each is § 2.4.
 
 | word | what it is | a transport rung | a SIESTA vibration |
 |---|---|---|---|
-| **start** | what a point starts from: another point of the run — its **source** — and the files it takes from it. One hand-over (§ 3, op. 5); a planned point's has no record, and `status` says it from the index: its planner's words, *copied by the walk*. A point with no start begins from what its run gathered, or from what prep wrote | the closest earlier voltage in its frame, its `.TSDE`; a frame's first voltage none (its gathered seed) | `fc` from `relax`'s `.DM`; an optical frame from `fc`'s `.DM`; `relax` none |
+| **start** | what a point starts from: another point of the run — its **source** — and the files it takes from it. One hand-over (§ 3, op. 5), its record `.continued-from`: a prepared point's written by launch, a planned point's by its planner's step as it opens the point (launch's, opening it again), and `jobset migrate`'s for a point an older molbuilder left without one; the files copied by the walk just before the point runs. A point with no start begins from what its run gathered, or from what prep wrote | the closest earlier voltage in its frame, its `.TSDE`; a frame's first voltage none (its gathered seed) | `fc` from `relax`'s `.DM`; an optical frame from `fc`'s `.DM`; `relax` none |
 | **need** | a point that must have **ran** (§ 1.3) before this one runs: its start's source, and any whose result it reads. Up the chain, a need that ended without running ends what builds on it | its start's source | `fc` needs `relax`; an optical frame needs `fc` |
 | **taken over** | a point **done** in the stage's newest launched run, copied whole into the new run by a warm launch and not run again — its record naming the run that computed it, one hop | | |
 | **relaunch** | what a launch again does with a point not done: **again** — from its start, as the first walk ran it; or **continue** — from its own last state, its job's warm files handed over from its last run's folder | again | `relax` continue; `fc` and the optical frames again |
@@ -95,10 +95,13 @@ names each is § 2.4.
 |---|---|
 | **ran** | the point's run finished: its engine exited 0 and its own steps succeeded — converged or not. A point taken over ran |
 | **done** | it ran, its verdict says converged where its verdict counts, and it holds what it must — its products, each with the words its absence is said in |
-| **failed** | it ended without running |
-| **ended** | it ran or failed, it was taken over, or the walk ended without running it |
+| **failed** | it ran and ended with an error: its engine exited non-zero, or its own step failed |
+| **not run** | its job ended and the walk never started it — no try of its own in its folder, whatever its job came to — its reason beside it (§ 4.5). Never *failed*: it did not run *(the user, 2026-10-30: "definitely not 'failed'")* |
+| **not done** | it ran to its end, and is not done: not converged where that counts, or a file it must leave missing |
+| **queued** | launched and not started yet: its job waits in the queue, or the walk has not reached it; *pending* before any launch |
+| **ended** | it ran or failed, it was taken over, or it is not run |
 | **still to run** | not ended, and every need up its chain that has ended ran |
-| **the run finished** | **done**: every point done — the kind's result is built from them all (a vibration's); **ran**: every point ran, converged or not — the converged column says the rest (a transport rung's). Otherwise failed, naming the first point not done in the listing order |
+| **the run finished** | **done**: every point done — the kind's result is built from them all (a vibration's); **ran**: every point ran, converged or not — the converged column says the rest (a transport rung's). Otherwise failed — a point failed, is not run, or (a vibration's) is not done — naming the first point not done in the listing order |
 
 | | a transport rung | a SIESTA vibration |
 |---|---|---|
@@ -110,7 +113,7 @@ names each is § 2.4.
 | word | what it is | a transport rung | a SIESTA vibration |
 |---|---|---|---|
 | **the index** | the run's one record of its points as the job sees them, at the run's root (§ 2.3) | | |
-| **count** | the run's progress, in the kind's words; its *failed* counts the points that ended without being done | *7 of 12 points done, 1 failed (3 frames × 4 voltages)* | *relax done · fc done · optical 7 of 11 done (4 taken over)* |
+| **count** | the run's progress, in the kind's words; beside the points done, how many *failed*, are *not run* and ran but are *not done* | *7 of 12 points done, 1 failed, 2 not run, 1 not done (3 frames × 4 voltages)* | *relax done · fc done · optical 7 of 11 done (4 taken over)* |
 | **outcome** | what a point came to, in its kind's words, written by its after-step; a **round's outcome** is the kind's words over the round's points | the round's: each frame's NEGF iterations, or its G/G₀ at E_F and the frames' average | the relaxation's moves and largest force; the force constants' modes, stationarity and the frames planned |
 | **events** | `start`, `milestone`, `part_failed`, `finish` — [`run-reports.md`](?doc=execution/run-reports.md) § 2.9 | | |
 
@@ -382,20 +385,20 @@ In the order of a run's life. Each is done by one door, on one side.
 | 2 | **plan the walk** | this machine · `launch`, before the question | the stage's newest launched run: each point by the done rule, its index (the points it took over, the points each planner planned) | nothing: the plan — which points are taken over, which are walked, each walked point's start and needs, the rounds' order, the loop steps | `submit._points_walk` |
 | 3 | **take a point over** | launch · the send | the done point's folder | its copy but the engine's scratch, and its record naming the run that computed it | `submit._take_over` → `materialize.hand_over` |
 | 4 | **continue a point** | launch · the send | its last run's folder | its job's warm files, and its record | `materialize.hand_over` |
-| 5 | **hand a start** | launch records it; the walk copies it | the source's files | the record now; the files just before the point runs — a planned point's, by its loop step, with no record | `materialize.hand_over` (`walk=True`), the walk |
-| 6 | **open a planned point again** | launch · the send | its prepared folder; the inputs its planning wrote in the last run | its folder, its deck and those inputs — never the last run's outputs | `materialize.open_run`, `bring_files` |
+| 5 | **hand a start** | launch records it; the walk copies it | the source's files | the record now; the files just before the point runs — a planned point's by its loop step | `materialize.hand_over` (`walk=True`), the walk |
+| 6 | **open a planned point again** | launch · the send | its prepared folder; the inputs its planning wrote in the last run | its folder, its deck and those inputs — never the last run's outputs — and its start's record (op. 5) | `materialize.open_run`, `bring_files`, `materialize.hand_over` |
 | 7 | **write the index** | launch · the send | the declaration's entries, the kind table's record | the index | `runpoints.empty_index`, `add_point` |
 | 8 | **walk** | the job | the walk script | the walk's log | `submit._walk_script` |
 | 9 | **a point started** | the job · before the engine | the index | `started`; the before-step's work; the run's `start`, once | `mb_monitor.pyz point started` |
 | 10 | **a point ended** | the job · after the engine | the index; the point's output | `ended`, `exit`, `verdict`; the after-step's work and `step_error`; the run's end — `not_run`, the finish step, `finish` — and its events | `mb_monitor.pyz point ended` |
-| 11 | **plan points** | the job · a planner's after-step | what its point computed | each planned point's folder, its inputs, its entry | the kind's after-step, through `runpoints.add_point` and the opener's travelling core (`calcdirs.record`, `planned.bring`) |
+| 11 | **plan points** | the job · a planner's after-step | what its point computed | each planned point's folder, its inputs, its start's record (its planner, op. 5), its entry | the kind's after-step, through `runpoints.add_point` and the opener's travelling core (`calcdirs.record`, `planned.bring`) |
 | 12 | **judge a point** | both sides | the job: its entry and its files; this machine: its own files | — | `runpoints.rows_of`; `continuation.point_done` |
 | 13 | **the run's state** | both sides | the points judged; this machine: the jobs launched from it | — | `runpoints.run_state`; `continuation.points_state` |
 | 14 | **count** | both sides | the points judged, the index's `facts` | — | the record's `count` |
 | 15 | **say where the run is** | the job · each point's monitor | the index | its status line: the count, this point, the clocks, the pace, what is left | `monitor` |
 | 16 | **read a run of points** | this machine · `status`, Task setup, the Results ladder, the transport record, the run door | each point's own files; the run's launch record; the index's `taken_from`, planned points and `finish` | — | `continuation.point_rows`, `points_state`; `runstatus`; `runs` |
 | 17 | **refuse a warm launch with nothing to run** | launch | every point done, and the run finished (§ 4.4) | the refusal, naming `--cold` | `submit._all_done` |
-| 18 | **rewrite an older index** | this machine · `jobset migrate` | a run's index written by molbuilder 2.54 (`.phases.json`, `.points.json` of `transport-points@1`) | the run's index | `jobset.migrate` |
+| 18 | **rewrite an older index** | this machine · `jobset migrate` | a run's index written by molbuilder 2.54 (`.phases.json`, `.points.json` of `transport-points@1`); a point's folder an older molbuilder left without its start's record | the run's index; the start's record (`.continued-from`) | `jobset.migrate` |
 
 **Plan the walk (2), in full.** The points are the run's opened points and,
 warm, each point the newest launched run's index lists as **planned by** a
@@ -480,8 +483,10 @@ step's `needs`).
 
 On the job, once no point is left to run: `finished` — **done**: every
 point done; **ran**: every point ran (`_run_ending.points_state`) — else
-`failed`; its words the first point not done in the listing order, and *k
-of N &lt;unit&gt;s not done* when more than one is. A finish step that exited
+`failed`; its words the first point not done in the listing order —
+*&lt;words&gt;: not done -- &lt;why&gt;*, or *&lt;words&gt;: not run --
+&lt;why&gt;* for one the walk never started (`runpoints.not_done_words`) —
+and *k of N &lt;unit&gt;s not done* when more than one is. A finish step that exited
 non-zero makes the run failed, *the finish exited N* (`runpoints.run_state`).
 On this machine the same rule over its rows (`continuation.points_verdict`
 asks `run_state`), with what only this machine can see — *queued*, *running*, *between
@@ -496,8 +501,9 @@ Once no point is left to run, each point not ended is stamped `not_run`:
 failed — or *the walk ended before it reached this point*
 (`runpoints.why_not_run`). `status` says the same of a point the ended walk
 never reached, asking that rule over its rows, which carry each point's
-`needs` from the index (`continuation.never_reached`); both are
-**failed**.
+`needs` from the index (`continuation.never_reached`). Both read **not
+run** — never *failed*: the point did not run; the run is failed, its first
+point not done named.
 
 ### 4.6 What a point's end says
 
@@ -537,7 +543,7 @@ Every file has one reader; every side asks it.
 | how a point's run ended | its conclusion marker | `parse.dirs.run_status` (with the run's launch record) | `status` (`continuation.point_rows`) |
 | what its output says it converged | its output | `_run_ending.verdict_of` | `point ended` (stamped); `status` (through `run_status`) |
 | what it holds | its folder | `_run_ending.holds` | both sides |
-| what it started from | `.continued-from` — a planned point has none: `status` says its planner's words from the index, *copied by the walk* (`continuation.point_rows`) | `runrecord.read_continued_from` | `status`; the run record (`parse.dirs.record`, the Run panel's *Started from*); launch (taking over, one hop) |
+| what it started from | `.continued-from` — every point with a start, a planned point's written by its planner's step | `runrecord.read_continued_from` | `status`; the run record (`parse.dirs.record`, the Run panel's *Started from*); launch (taking over, one hop) |
 | what the run gathered | `.gathered-from` | `runrecord.read_gathered_from` | `status`, the record |
 | the run's launch | `run.json` | `runrecord.launch_record` | `status`; each point's monitor (the wall) |
 | what the run has said | `notified.json` | `runrecord.read_notified` | the `notify` verb; each point's monitor |
@@ -549,7 +555,7 @@ Every file has one reader; every side asks it.
 
 | door | floor | what it offers |
 |---|---|---|
-| `runpoints` | 1, travels in `mb_monitor.pyz` and every bundle whose steps write the index | the index: `index_path`, `index_of`, `read_index` and its refusal of an older molbuilder's, `OlderIndexError`, `index_at`, `write_index`, `empty_index`, `add_point`, `entry_of`, `planned_by`, `taken_from`; the stamps: `stamp_start`, `stamp_end`, `stamp_step_error`, `stamp_finish`, and a kind's own step's facts and outcome, `note`; the rules: `rows_of`, `still_to_run`, `why_not_run`, `close`, `run_state`, `round_ended`, `said`, `reason`; the words: `count`, `round_outcome`, `outcomes`, `not_done_words`, `NEVER_REACHED`; a part resolved beside the job: `part` |
+| `runpoints` | 1, travels in `mb_monitor.pyz` and every bundle whose steps write the index | the index: `index_path`, `index_of`, `read_index` and its refusal of an older molbuilder's, `OlderIndexError`, `index_at`, `write_index`, `empty_index`, `add_point`, `entry_of`, `planned_by`, `taken_from`; the stamps: `stamp_start`, `stamp_end`, `stamp_step_error`, `stamp_finish`, and a kind's own step's facts and outcome, `note`; the rules: `rows_of`, `still_to_run`, `why_not_run`, `close`, `run_state`, `round_ended`, `said`, `reason`; the words: `count`, `round_outcome`, `outcomes`, `not_done_words`, `NOT_RUN`, `NEVER_REACHED`; a part resolved beside the job: `part` |
 | `kind_table` | 1 | `run_of_points(kind, engine)` — the record of § 2.1; a part resolved on this machine, `part` |
 | `calcdirs` | 1, travels | the folders (§ 2.4): `where` reads which run and which point a folder is; `RunPlace` composes them — `point`, `prepared`, `scratch`, `walked`, `walked_all`; `prepared_folder` at prep |
 | `jobset.points` | 4 | `PointsOf`, `points_of(task)`, `record_of(task)`, `rung_points_of`, `walls_of` |

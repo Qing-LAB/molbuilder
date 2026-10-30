@@ -28,11 +28,11 @@ from typing import Any, Dict, Optional, Sequence
 try:                                       # inside molbuilder
     from .. import runrecord as _rr
     from ..calcdirs import RunPlace
-    from ..parse.dirs.job import FINAL_STATES
+    from ..runpoints import NOT_RUN
     from ..runpoints import why_not_run
 except ImportError:                        # beside a job
     import runrecord as _rr  # type: ignore[no-redef]
-    from job import FINAL_STATES  # type: ignore[no-redef]
+    from runpoints import NOT_RUN  # type: ignore[no-redef]
     from runpoints import why_not_run  # type: ignore[no-redef]
     from calcdirs import RunPlace  # type: ignore[no-redef]
 
@@ -45,20 +45,27 @@ SCF, PRODUCT = "scf", "product"
 
 def count_words(rows, facts=None) -> str:
     """THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
-    § 2a.11): *k of N points done, m failed (F frames × V voltages)* -- a
-    point that ended without being done counted failed, as a vibration's
-    call is (`run-reports.md` § 2.9), where there are any.  ``rows`` the
-    job's (`runpoints.rows_of`) or `status`'s (`continuation.point_rows`),
-    each row's ``state`` its run's: ended is a state its run ended in
-    (`job.FINAL_STATES`)."""
+    § 2a.11): *k of N points done, m failed, j not run, i not done (F
+    frames × V voltages)* -- *failed* a point that ran and ended with an
+    error, *not run* one its ended walk never started, *not done* one that
+    ran to its end and is not done (`runs-of-points.md` § 1.3), each said
+    where there are any.  ``rows`` the job's (`runpoints.rows_of`) or
+    `status`'s (`continuation.point_rows`), each row's ``state`` its
+    run's."""
     rows = list(rows)
     n_done = sum(bool(r["done"]) for r in rows)
-    failed = sum(1 for r in rows
-                 if not r["done"] and r.get("state") in FINAL_STATES)
+    failed = sum(1 for r in rows if r.get("state") == "failed")
+    not_run = sum(1 for r in rows if r.get("state") == NOT_RUN)
+    # RAN TO ITS END AND NOT DONE -- not converged where that counts, or a
+    # file it must leave missing (`runs-of-points.md` § 1.3, § 1.4).
+    not_done = sum(1 for r in rows
+                   if r.get("state") == "finished" and not r["done"])
     n_frames = len({r.get("frame") for r in rows})
     n_volts = len({r["bias_v"] for r in rows})
     return (f"{n_done} of {len(rows)} points done"
             + (f", {failed} failed" if failed else "")
+            + (f", {not_run} not run" if not_run else "")
+            + (f", {not_done} not done" if not_done else "")
             + f" ({n_frames} frame{'' if n_frames == 1 else 's'} × "
               f"{n_volts} voltage{'' if n_volts == 1 else 's'})")
 

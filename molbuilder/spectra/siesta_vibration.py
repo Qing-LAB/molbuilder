@@ -98,7 +98,8 @@ try:                                        # inside molbuilder
                             RunNames, beside_the_deck, find_fixed,
                             fixed_name, parse)
     from ..paths import frame_token, run_folder_of
-    from ..runrecord import newest_output, read_continued_from, stamp
+    from ..runrecord import (RunRef, newest_output, read_continued_from,
+                             stamp, write_continued_from)
     from .. import runpoints as _rp
     from ..siesta.deck_lines import coordinates_text
     from ..siesta.vibration_phases import (FC, IR_CHARGES, OPTICAL, RELAX,
@@ -142,8 +143,9 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                           ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck,
                           find_fixed, fixed_name, parse)
     from paths import frame_token, run_folder_of  # type: ignore[no-redef]
-    from runrecord import (newest_output,  # type: ignore[no-redef]
-                           read_continued_from, stamp)
+    from runrecord import (RunRef,  # type: ignore[no-redef]
+                           newest_output, read_continued_from, stamp,
+                           write_continued_from)
     import runpoints as _rp  # type: ignore[no-redef]
     from deck_lines import coordinates_text
     from vibration_phases import (FC, IR_CHARGES, OPTICAL,  # type: ignore[no-redef]
@@ -860,6 +862,12 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
              *beside_the_deck(here.deck.name, VIBRATION_BUNDLE, here.names)]
     shared = sorted(f"{PSEUDO_DIR}/{p.name}" for p, _fields
                     in find_fixed(here.root / PSEUDO_DIR, PSEUDO_FILE))
+    # EACH CALL'S START, recorded as every point's is (`runs-of-points.md`
+    # § 1.2, § 3 op. 5, 11): the call of its phase's seed -- the force
+    # constants' -- whose files the walk's loop step copies in just before
+    # it runs.
+    seed = phase(OPTICAL).seed[0]
+    source = RunRef.at(here.root, here.place.point(Call(seed, seed).rel))
     for call, positions in frames:
         folder = here.place.point(call.rel)
         plan.folder(folder)
@@ -871,6 +879,7 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
         plan.text(*calcdirs.record(folder, role=calcdirs.RUN, root=here.root))
         plan.text(folder / COORDINATES_FILE,
                   coordinates_text(run.elements, positions, species))
+        write_continued_from(folder, source, plan=plan)
     plan.carry_out()
     # EACH CALL'S ENTRY in the run's index (`runpoints.add_point`): what it
     # is, what it needs -- the phases its row names -- and what plans it,
@@ -997,10 +1006,14 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
     calls = [c for c in calls_of(index) if c.phase == OPTICAL]
     if not calls:
         return None
-    # EACH FRAME'S STATE by the run's one rule: finished where the call is
-    # DONE -- its spectrum stands -- failed where it ended otherwise.
+    # EACH FRAME'S STATE by the run's one rule (`runs-of-points.md`
+    # § 1.3): finished where the call is DONE -- its spectrum stands --
+    # not done where it ran to its end without, failed where it ended
+    # with an error, not run where its ended walk never started it.
     states = {r["name"]: ("finished" if r["done"] else
-                          "failed" if r["ended"] else "pending")
+                          "not done" if r["state"] == "finished" else
+                          r["state"] if r["state"] in ("failed", _rp.NOT_RUN)
+                          else "pending")
               for r in _rp.rows_of(index, here.run_dir)
               if r["phase"] == OPTICAL}
     atoms = res.atom_index_map_stated()

@@ -62,8 +62,12 @@ DONE, RAN = "done", "ran"
 #: runs it AGAIN from its start, or CONTINUES it from its own last state.
 AGAIN, CONTINUE = "again", "continue"
 
-#: A POINT THE ENDED WALK NEVER REACHED, as every reader says it
-#: (`runs-of-points.md` § 4.5; `continuation.never_reached`): failed.
+#: A POINT ITS ENDED WALK NEVER STARTED -- its state, as every reader says
+#: it (`runs-of-points.md` § 1.3, § 4.5): *not run*, never *failed*, for it
+#: did not run (the user, 2026-10-30: "definitely not 'failed'").  The one
+#: spelling, which the run door's vocabulary takes too (`job.RUN_STATES`).
+NOT_RUN = "not run"
+#: ...and its reason where no need up its chain failed: the walk stopped.
 NEVER_REACHED = "the walk ended before it reached this point"
 
 #: THE INDEXES AN OLDER MOLBUILDER WROTE (2.42-2.54): a SIESTA vibration's
@@ -311,8 +315,9 @@ def rows_of(index: Dict[str, Any], run_dir) -> List[Dict[str, Any]]:
     (`_run_ending.not_done_why`) says nothing against its verdict where it
     counts and the files it must hold; ``ended`` -- it ran, failed, was
     taken over, or the walk never ran it; ``state`` its run's, as the
-    status door says it -- ``finished`` (it ran), ``failed``, ``running``
-    (started), ``queued``;
+    status door says it -- ``finished`` (it ran), ``failed`` (it ran and
+    ended with an error), ``not run`` (the ended walk never started it,
+    :data:`NOT_RUN`), ``running`` (started), ``queued``;
     ``why`` it is not done."""
     place = RunPlace.of(run_dir)
     rows = []
@@ -355,6 +360,7 @@ def rows_of(index: Dict[str, Any], run_dir) -> List[Dict[str, Any]]:
                      # stamped, else waits in the walk.
                      "state": (("running" if e.get("started") else "queued")
                                if not ended else
+                               NOT_RUN if never is not None else
                                "finished" if ran else "failed"),
                      "why": why, "not_run": never})
     return rows
@@ -404,8 +410,8 @@ def why_not_run(rows, rel: str) -> str:
 def close(index: Dict[str, Any], rows) -> Dict[str, Any]:
     """THE WALK OVER -- no point left to run: each point it never ran
     stamped so, ``not_run`` its why (:func:`why_not_run`), so the run's
-    count and state say it failed, as the status door says a point the
-    ended walk never reached."""
+    count and state say it *not run* (:data:`NOT_RUN`), as the status door
+    says a point the ended walk never reached."""
     rows = list(rows)
     for r in rows:
         if not r["ended"]:
@@ -415,8 +421,10 @@ def close(index: Dict[str, Any], rows) -> Dict[str, Any]:
 
 def not_done_words(row: Dict[str, Any]) -> str:
     """A point not done, in the words a failed part and a failed finish name
-    it by (`run-reports.md` § 2.9): its words, and why."""
-    return f"{row['words']}: not done -- {row['why'] or row['state']}"
+    it by (`run-reports.md` § 2.9): its words, and why -- *not run* for one
+    the walk never started (`runs-of-points.md` § 4.4)."""
+    said = "not run" if row.get("state") == NOT_RUN else "not done"
+    return f"{row['words']}: {said} -- {row['why'] or row['state']}"
 
 
 def run_state(rows, index: Dict[str, Any]) -> Tuple[str, Optional[str]]:
@@ -539,7 +547,8 @@ def part(ref: str) -> Any:
         raise ValueError(f"{ref!r} does not resolve: {exc}") from exc
 
 
-__all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NEVER_REACHED",
+__all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN",
+           "NEVER_REACHED",
            "OLDER_SCHEMAS", "MIGRATE", "OlderIndexError", "index_path",
            "older_index",
            "index_of", "read_index", "index_at", "write_index",

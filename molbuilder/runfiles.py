@@ -1621,12 +1621,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
              door="runrecord.read_notified"),
     Artifact(name=CONTINUED_FROM_FILE,
              what="the run this one continues from -- a stage's run, a run "
-                  "of points, a walked point's start, a taken-over point's "
-                  "computing run (one hop)",
+                  "of points, a point's start (a walked point's, a planned "
+                  "point's), a taken-over point's computing run (one hop)",
              when="launch", level="run", kind="record",
              writer="launch, by its one hand-over (`materialize.hand_over`, "
                     "through `runrecord.write_continued_from`) -- with the "
-                    "files it takes",
+                    "files it takes; a planner's own step for each point it "
+                    "plans; `jobset migrate` for a point an older molbuilder "
+                    "left without one",
              door="runrecord.read_continued_from",
              only="it continues from an earlier run"),
     Artifact(name=CALCDIR_FILE,

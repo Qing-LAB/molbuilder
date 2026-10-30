@@ -2663,6 +2663,16 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         for f in inputs.get(entry_of(prev_index, pt.rel)["planned_by"], ()):
             if (last.point(pt.rel) / f).is_file():
                 plan.writes.copy(last.point(pt.rel) / f, pdir / f)
+        # ITS START'S RECORD, as its planner wrote it the first time (§ 3,
+        # op. 5, 6): the point it starts from in this run, its files copied
+        # by the loop step just before it runs.
+        start = declared.start_of(calc, stage, pt, every)
+        if start.source is not None:
+            at = RunRef.at(base, place.point(start.source.rel))
+            hand_over(base, HandOver(pdir, CONTINUED, source=at,
+                                     files=tuple((at, f)
+                                                 for f in start.files),
+                                     walk=True), plan.writes)
     # EVERY WALKED POINT THAT SHARES ENERGIES is given them (`_shares`).
     for pdir, pt in walked:
         if pt.rel not in is_planned:

@@ -1126,22 +1126,64 @@ def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
                 raise MigrateError(f"{src.relative_to(base)} does not read, "
                                    f"so nothing was written: {exc}") from None
             schema = old.get("schema") if isinstance(old, dict) else None
-            if schema not in OLDER_SCHEMAS:
-                continue
-            index = _index_of_2_54(old, schema, calc=calc, stage=job.name,
-                                   declared=declared, record=record,
-                                   add_point=add_point,
-                                   empty_index=empty_index)
-            writes.add(new_path, json_text(index), [rule])
-            kept = _kept_as(old_path, [rule]) if src == old_path else None
-            if kept is not None:
-                moves.append((old_path, kept))
-            said.append(f"{src.relative_to(base)}: the run's index as "
-                        f"molbuilder 2.54 wrote it, rewritten as "
-                        f"{new_path.name}"
-                        + (f"; {old_path.name} kept as {kept.name}"
-                           if kept is not None else ""))
+            if schema in OLDER_SCHEMAS:
+                index = _index_of_2_54(old, schema, calc=calc,
+                                       stage=job.name, declared=declared,
+                                       record=record, add_point=add_point,
+                                       empty_index=empty_index)
+                writes.add(new_path, json_text(index), [rule])
+                kept = _kept_as(old_path, [rule]) if src == old_path else None
+                if kept is not None:
+                    moves.append((old_path, kept))
+                said.append(f"{src.relative_to(base)}: the run's index as "
+                            f"molbuilder 2.54 wrote it, rewritten as "
+                            f"{new_path.name}"
+                            + (f"; {old_path.name} kept as {kept.name}"
+                               if kept is not None else ""))
+            else:
+                index = old
+            # EVERY POINT'S START, recorded as 2.56.0 records it
+            # (`runs-of-points.md` § 1.2): an older molbuilder's planner
+            # opened its points with none, and 2.54 walked a vibration's
+            # force constants with none -- the point each starts from in
+            # its run, by the declaration (`PointsOf.start_of`).
+            starts = _missing_starts(calc, job.name, run, index, declared)
+            for marker, source in starts:
+                writes.add(marker, f"{source}\n", ["2.56.0"])
+            if starts:
+                said.append(f"{run.relative_to(base)}: {len(starts)} "
+                            f"point(s) given their start's record "
+                            f"(.continued-from)")
     return said, moves, writes
+
+
+def _missing_starts(calc, stage: str, run: Path, index: dict, declared):
+    """``[(marker, source)]`` for each point of ``run``'s ``index`` that
+    has a start and whose folder holds no `.continued-from` -- planned, or
+    walked in that run, never one taken over (its record names the run
+    that computed it): where its record goes, and the point it starts from
+    in that run (`PointsOf.start_of`); ``[]`` where every one has its
+    record."""
+    from ..calcdirs import RunPlace
+    from ..runrecord import RunRef, continued_from_marker
+    place = RunPlace.of(run)
+    points = [declared.point_of(e) for e in index.get("points") or []]
+    out = []
+    for e, pt in zip(index.get("points") or [], points):
+        folder = place.point(e["rel"])
+        if e.get("taken_from") or not folder.is_dir():
+            continue
+        if not e.get("planned_by") and e.get("started") is None:
+            continue
+        if continued_from_marker(folder).is_file():
+            continue
+        start = declared.start_of(calc, stage, pt, points)
+        if start.source is None:
+            continue
+        out.append((continued_from_marker(folder),
+                    RunRef.at(Path(calc.base),
+                              place.point(start.source.rel))))
+    return out
 
 
 def _index_of_2_54(old: dict, schema: str, *, calc, stage: str, declared,

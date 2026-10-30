@@ -211,12 +211,15 @@ that file's own door:
 | | **unreadable** | its launch record is there and does not read | `run.json` | § 5.3 | `runrecord.launch_record` |
 | | *converged* — its own column, never the state | the engine's own output says so | `<base>-run<N>.out` | § 5.3 | the same scan |
 | a point of a run of points | **done** / **not done** | its run finished, converged where its verdict counts, and holds what it must — what the rungs after it take, a call's product — by its kind's declaration (`PointsOf.must_hold`, `verdict_counts`; [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.2) | its marker, its output, those files | § 5.3, § 5.4 | `continuation.point_done` |
-| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going — never the job a reader runs inside, a sequence's, whose own runs of points it reads by their points (§ 6.0); queued: no point the run walks itself has started and its job is not over (cancelled in the queue, or a process that died before its first point, is a run that ended); else finished by its kind's record (the kind table's `finished`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3): every point's run finished, converged or not — a transport rung's — or every point done and what the run needs beyond them, a vibration's: every call done, its finish ended with exit 0 and its result at the run's root; a finish step that exited non-zero, failed (`runpoints.run_state`, the one rule both sides ask) ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); failed: a point's run did not finish — it failed, or the walk stopped before it — or, a vibration's, a call finished without being done, or its finish not done; the first point not done named | its `run.json`, its points' files (the row above), the run's index (the points taken over, the finish's entry), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`, else the run door's `runs.concluded`) — `status`, the gather, `jobset scratch` and the transport record ask it alike |
+| | **not run** | its job ended and its walk never started it — never *failed*: it did not run *(the user, 2026-10-30: "definitely not 'failed'")*; its reason beside it, *it builds on &lt;words&gt;, which failed* or *the walk ended before it reached this point* ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3, § 4.5). *failed* is a point that ran and ended with an error; *queued*, one launched and not started yet | the run's index (`not_run`, stamped as the walk closes); this machine: its folder still to come once the walk has ended | § 5.3 | `runpoints.rows_of` (the job's); `continuation.never_reached` (`status`), `runs._as_its_point` (the run door) |
+| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going — never the job a reader runs inside, a sequence's, whose own runs of points it reads by their points (§ 6.0); queued: no point the run walks itself has started and its job is not over (cancelled in the queue, or a process that died before its first point, is a run that ended); else finished by its kind's record (the kind table's `finished`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3): every point's run finished, converged or not — a transport rung's — or every point done and what the run needs beyond them, a vibration's: every call done, its finish ended with exit 0 and its result at the run's root; a finish step that exited non-zero, failed (`runpoints.run_state`, the one rule both sides ask) ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); failed: a point failed, or is not run — the walk stopped before it (the row above) — or, a vibration's, a call finished without being done, or its finish not done; the first point not done named | its `run.json`, its points' files (the row above), the run's index (the points taken over, the finish's entry), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`, else the run door's `runs.concluded`) — `status`, the gather, `jobset scratch` and the transport record ask it alike |
 | | **unreadable** | its index is there and does not read — one an older molbuilder wrote naming `jobset migrate`, named by its run folder and file name (`runpoints.OlderIndexError`, the row's `older_index`); on the stage's row, never the whole status | the run's index | § 5.3 | `runpoints.read_index` (`runstatus._sweep_status`) |
 
 **What a run started from is a record, not a state**: `.continued-from` —
 the one run it continues from — and `.gathered-from` — a transport rung's
-inputs, each from its run — written by the one hand-over (§ 5.4) and read
+inputs, each from its run — written by the one hand-over (§ 5.4) — a
+planned point's start by its planner's step as it opens the point
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.2) — and read
 by `status`, the transport record and the Run panel (§ 5.3 of the manifest);
 a run's own `continued_from` is its `run.json`'s, written with it.
 
@@ -441,12 +444,14 @@ queue, or a process that died before its first point, is a run that ended,
 *— its job ended before any point started*; else *finished*
 once every point's run finished, converged or not — the *converged* column
 says *SCF NO* when one did not; a vibration's once every call is done, its
-kind's rule (the kind table's `finished`, *done*), and its finish too — or *failed* when a point's run
-did not finish, or a vibration's call is not done, naming the first point
+kind's rule (the kind table's `finished`, *done*), and its finish too — or *failed* when a point
+failed — it ran and ended with an error — or is *not run* — its walk never
+started it — or a vibration's call is not done, naming the first point
 not done. A walk that stopped among its
-points — some run, the rest never reached — is a run that ended, failed,
+points — some run, the rest not run — is a run that ended, failed,
 never one still queued; where no job holding the run is on file, or this machine
-cannot tell, the points say the state. Its row counts the points done.
+cannot tell, the points say the state. Its row counts the points done, and
+beside them how many failed and how many are not run.
 
 #### The next step — every group, where it stands, and the line that moves it
 
@@ -2347,7 +2352,14 @@ finished one keeps its manifest ([`engines/transport.md`](?doc=engines/transport
 comes from; and its record — `.continued-from`, the one run it continues
 from, or `.gathered-from`, each input with its run. One function carries
 every hand-over out, `materialize.hand_over` — it copies the files and
-writes the record. A point a transport calculation takes over from a finished
+writes the record. The start of a point no launch can know — a planned
+point's, a SIESTA vibration's optical call's from the force constants of
+its run — is recorded in the job by its planner's step as it opens the
+point, through the same writer (`runrecord.write_continued_from`), its files
+copied by the walk's loop step; a launch that opens the point again records
+it through `materialize.hand_over`
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operations 5,
+6 and 11). A point a transport calculation takes over from a finished
 one it reuses, and the energies a transmission point shares with a finished
 point, copied into its `shared/` at every launch that walks it, are copied by
 the reuse's own two (`reuse.take_into`, `reuse.shared_into`), each recorded in
@@ -2368,6 +2380,7 @@ flowchart LR
     C & G & K & P --> H --> X
     X --> CP["the files, copied —<br/>with the launch's plan, or by the walk<br/>just before the point runs"]
     X --> R[".continued-from · .gathered-from<br/>runrecord.write_continued_from · write_gathered_from"]
+    PL["a planner's step, in the job —<br/>a planned point's start, as it opens the point"] --> R
 ```
 
 * **When the files are copied**: with the launch's plan, written at the send
@@ -2377,7 +2390,12 @@ flowchart LR
   point whose start cannot be copied is not run
   ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 5).
 * **When the record is written**: with the files — a point's start's with
-  the launch's plan, before the walk copies its files.
+  the launch's plan, before the walk copies its files; a planned point's by
+  its planner's step as it opens the point, before the loop step copies its
+  files, and with the launch's plan when a launch opens it again. Every
+  point with a start has its record — one an older molbuilder left without
+  is given it by `jobset migrate`, never a point taken over (its record names
+  the run that computed it).
 * **How a run is named in a record** — one spelling, written and read one
   way (`runrecord.RunRef`): its folder from the calculation's —
   `01_coarse/run-0`, a point's `04_device/run-0/v0.2`.

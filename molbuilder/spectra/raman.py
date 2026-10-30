@@ -45,6 +45,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 from ..constants import HC_EV_NM
+from ..runpoints import NOT_RUN
 from .activity import CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU, relative_to_strongest
 
 #: The view's data file, written only by an export (`model/datafiles.md` § 1).
@@ -409,9 +410,10 @@ def raman_view(result, optical: Mapping[str, Any], *, laser_nm: float,
             states = {name: shown(s)
                       for name, s, a in (("+δQ", 1, plus), ("−δQ", -1, minus))
                       if a is None}
+            said = set(states.values())
             rows.append((m, None, None,
-                         "failed" if "failed" in states.values()
-                         else NOT_ENDED,
+                         next((w for w in ("failed", NOT_RUN, "not done")
+                               if w in said), NOT_ENDED),
                          "; ".join(f"the {name} side {state}"
                                    for name, state in states.items())))
             continue

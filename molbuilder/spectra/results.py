@@ -83,7 +83,12 @@ except ImportError:                         # beside a job, in a bundle
 #          `spectra.derived` and checked on read (engines/vibration.md
 #          § 6.6).  A v4-v6 file reads as before: no masses, its derived
 #          values computed on read.
-SCHEMA_VERSION = 13  # 13: the OPTICAL CALLS' CITATION, `optical` -- on a
+SCHEMA_VERSION = 14  # 14: an optical frame's state may be `not run` --
+#                    its run's walk ended before starting it, never
+#                    `failed` -- or `not done` -- it ran to its end and is
+#                    not done (execution/runs-of-points.md § 1.3); a v4-v13
+#                    file reads as it is.
+#                    13: the OPTICAL CALLS' CITATION, `optical` -- on a
 #                    SIESTA run of points whose optical phase ran: the data
 #                    file they are recorded in and its sha256, the light's
 #                    direction, the displacement, the selection as asked and
@@ -120,7 +125,8 @@ SCHEMA_VERSION = 13  # 13: the OPTICAL CALLS' CITATION, `optical` -- on a
 #                    v4-v7 file reads as before, its range read under v8's
 #                    name (`from_dict`).
 #: Every version the reader serves as the v9 shape.
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12, 13})
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+                                      14})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -227,7 +233,7 @@ _RESULTS_KEYS = frozenset({
 
 #: A FRAME'S STATE as the optical citation states it -- the run's one done
 #: rule's words (`engines/vibration.md` § 5.11 § 6, § 7).
-OPTICAL_STATES = ("finished", "failed", "pending")
+OPTICAL_STATES = ("finished", "not done", "failed", "not run", "pending")
 #: The optical citation's keys (`engines/vibration.md` § 6.2).
 _OPTICAL_KEYS = frozenset({"data_file", "data_sha256", "direction",
                            "displacement_ang", "selection", "reference",

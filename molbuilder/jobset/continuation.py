@@ -545,7 +545,7 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
     from ..parse.engines._run_ending import verdict_words
     from ..runpoints import entry_of, index_at
     from ..runs import concluded
-    from ..runrecord import copied_of, read_continued_from
+    from ..runrecord import copied_of, newest_run, read_continued_from
     from .points import points_of
     declared = points_of(task)
     gathered = gathered_lines(run)
@@ -565,6 +565,13 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
               if opened else None)
         state = ("finished" if ok else st.state if st is not None
                  else "pending")
+        if state == "failed" and newest_run(pdir, names) is None:
+            # A POINT ITS WALK NEVER BEGAN -- no try of its own in its
+            # folder -- whatever its run's job came to (a scheduler's stop
+            # read as the point's end): it waits in the walk, and once the
+            # walk is over it is *not run*, never failed
+            # (:func:`never_reached`, `execution/runs-of-points.md` § 1.3).
+            state = "queued"
         verdict = st.verdict if st is not None else None
         converged = verdict[1] if verdict is not None else None
         running = running or state == "running"
@@ -583,13 +590,6 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
             copied, unread = None, str(exc)
         took = [g for g in gathered_lines(pdir) if g not in gathered]
         entry = entry_of(index, pt.rel) or {}
-        if src is None and unread is None and opened and entry.get(
-                "planned_by"):
-            # A PLANNED POINT'S START, from the run's index: the point
-            # that planned it, whose files its loop step copied.
-            planner = entry_of(index, entry["planned_by"]) or {}
-            src = (f"{planner.get('words') or entry['planned_by']}, "
-                   f"copied by the walk")
         pts.append({**pt.to_wire(),
                     # THE JOB'S SHAPE (`runpoints.rows_of`): which point,
                     # its words, phase, round and needs as launch listed it.
@@ -686,13 +686,13 @@ def never_reached(pts) -> list:
     or queued -- one its walk never ran -- failed, its why the job's own
     (`runpoints.why_not_run`, `execution/runs-of-points.md` § 4.5): *it
     builds on <words>, which failed*, or `runpoints.NEVER_REACHED`."""
-    from ..runpoints import why_not_run
+    from ..runpoints import NOT_RUN, why_not_run
     pts = list(pts)
     out = []
     for p in pts:
         if p["state"] in ("pending", "queued"):
             why = why_not_run(pts, p["rel"])
-            p = dict(p, state="failed", ended=True, ran=False, why=why,
+            p = dict(p, state=NOT_RUN, ended=True, ran=False, why=why,
                      not_run=why)
         out.append(p)
     return out
@@ -708,8 +708,8 @@ def points_state(run, names, task, stage: str, *, launch, base
     started (a run that walks none -- a run copied in whole -- is read by
     its points); else the points' verdict (:func:`points_verdict`) --
     ``finished``, or ``failed`` naming the first point not done, a chain
-    that stopped among them: a point never reached is failed
-    (:func:`never_reached`), no point queued.
+    that stopped among them: a point the ended walk never began is *not
+    run* (:func:`never_reached`), no point queued.
     A run the job the reader runs inside sent (:func:`_own_job_s`) is read
     by its points alone: its walk has returned, and the job, the reader's
     own, is still going (`job-system.md` § 6.0, *A sequence of groups*)."""
@@ -745,7 +745,7 @@ def points_state(run, names, task, stage: str, *, launch, base
     if (any(not p["done"] for p in pts) and not _own_job_s(launch)
             and _walk_going(base, run)):
         return "running", summary + " (between two points)", pts
-    # THE WALK HAS ENDED: a point it never reached is failed.
+    # THE WALK HAS ENDED: a point it never began is *not run*.
     pts = never_reached(pts)
     summary = count_of(task, run, names, pts, index)
     state, detail = points_verdict(pts, summary, record=record, index=index)

@@ -53,11 +53,13 @@ try:                                        # inside molbuilder
     from ... import runfiles as _rf
     from ... import runrecord as _rr
     from ... import wrapper_log as _wl
+    from ...runpoints import NOT_RUN
     from ..engines import _run_ending as _re
 except ImportError:                         # beside a job, as the monitor's
     import runfiles as _rf
     import runrecord as _rr
     import wrapper_log as _wl
+    from runpoints import NOT_RUN  # type: ignore[no-redef]
     import _run_ending as _re
 
 
@@ -378,8 +380,11 @@ def _stderr_of(run_dir: Path, path: Path, logs: Dict[str, Dict[Any, Path]],
 #: ``unreadable`` is a run whose launch record (`run.json`) does not read:
 #: its state cannot be told -- launched or not -- so it is said, the file
 #: named in its detail, and never followed.
+#: ``not run`` is a point of a run of points its ended walk never started
+#: (`runpoints.NOT_RUN`): ended, and never ``failed`` -- it did not run.
 RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running",
-                                 "finished", "failed", "unreadable")
+                                 "finished", "failed", NOT_RUN,
+                                 "unreadable")
 
 #: The states in which more can still arrive -- launched and not over.  What a
 #: Results viewer follows (`web/results.md` § 4.1): a run never launched writes
@@ -387,7 +392,7 @@ RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running",
 LIVE_STATES: "tuple[str, ...]" = ("queued", "running")
 #: The states a run has ended in -- what a loop is said *stopped* in
 #: (`model/parse.md` § 5d.5); `unreadable` is neither live nor over.
-FINAL_STATES: "tuple[str, ...]" = ("finished", "failed")
+FINAL_STATES: "tuple[str, ...]" = ("finished", "failed", NOT_RUN)
 
 
 @dataclass(frozen=True)

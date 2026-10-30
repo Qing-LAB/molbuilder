@@ -329,7 +329,8 @@ def _variables() -> Tuple[Var, ...]:
             "electrode and its coupling", dtype=S),
         Var("point_state", ("frame", "bias_v"), "state", "",
             "the transmission point's state",
-            "the run door's word for its run (finished, failed, pending ...)",
+            "the run door's word for its run (finished, failed, not run, "
+            "pending ...)",
             dtype=S),
         Var("device_state", ("frame", "bias_v"), "state", "",
             "the device point's state", "the run door's word for its run",
@@ -656,8 +657,9 @@ def data_file_bytes(base_dir, task, record: Dict, *,
                 values["dos_total_by_spin"][f, b, s] = channel["total"]
             for k, curve in enumerate(channel.get("eigenchannels") or ()):
                 values["eigenchannel_transmission"][f, b, s, k] = curve
-    for p in list(record.get("pending") or ()) + list(record.get("failed")
-                                                       or ()):
+    for p in (list(record.get("pending") or ())
+              + list(record.get("not_run") or ())
+              + list(record.get("failed") or ())):
         f, b = at(p)
         values["point_state"][f, b] = p.get("state") or ""
         values["point_folder"][f, b] = p.get("attempt") or ""

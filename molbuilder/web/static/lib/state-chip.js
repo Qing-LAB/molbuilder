@@ -33,6 +33,9 @@
         unknown:    "warn",
         unreadable: "bad",
         failed:     "bad",
+        /* never started by its ended walk -- not a failure of its own
+         * (`execution/runs-of-points.md` § 1.3). */
+        "not run":  "warn",
     };
 
     function stateTone(state) {

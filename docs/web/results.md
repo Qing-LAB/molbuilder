@@ -468,7 +468,8 @@ between two points while its job is going (a sequence's group launch reading
 its own job's run by its points instead, [`execution/job-system.md`](?doc=execution/job-system.md) § 6.0); *queued* while nothing it walks
 has started; *finished* once every point's run finished, converged or not —
 its converged column says *SCF NO* when one did not — else *failed*; its
-detail counts the points done and names the first not done
+detail counts the points done, how many failed and how many are *not run* —
+never started by its ended walk — and names the first not done
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). A run a
 transport calculation copied in from a finished one it reuses is shown as any
 run, *copied from* the run its `.copied-from` names beside its state
@@ -476,7 +477,9 @@ run, *copied from* the run its `.copied-from` names beside its state
 
 The page's empty-state card draws it: one row per rung in ladder order, the
 state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), whether its run
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) — *not run*, a
+point its ended walk never started, in the warn tone, never the bad tone
+of *failed* ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3) — whether its run
 converged (`SCF yes` / `NO`, `geometry yes` / `NO` for a relaxation, `—` before
 its output says or for a run that converges nothing, TBtrans's) beside it, then
 the detail — and after it, ` · ` between them, a queued rung's standing (above)
@@ -653,7 +656,7 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 ```
 ┌ the ladder card (§ 2.4) ─────────────────────────────────────────────────┐
 └──────────────────────────────────────────────────────────────────────────┘
-┌ Transport — <label> ─ treatment: … · frames · points · not ended · failed┐
+┌ Transport — <label> ── … · frames · points · not ended · not run · failed┐
 │ ┌ Device (MolView, read-only) ─────┐ ┌ [ T(E) | DOS | I–V ] ───────────┐ │
 │ │ the device's structure at the     │ │ T(E): one curve per bias, log T, │ │
 │ │ selected frame, its box, its      │ │ E − E_F; the selected bias bold, │ │
@@ -1078,7 +1081,8 @@ parser flags as in-progress are shown in the list but kept out of the plots.
 
 A viewer showing a file **follows the run the file belongs to**: it polls
 while the run is **live** — queued or running — and stops when it is not:
-finished, failed, or never launched, when nothing more will arrive. *Live* is
+finished, failed, *not run* (a point its ended walk never started), or never
+launched, when nothing more will arrive. *Live* is
 the run's state, and that state has one door: `run_status`, built on how the
 run's process ended (`runrecord.ending` —
 [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2,

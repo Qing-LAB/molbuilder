@@ -894,14 +894,16 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
 def _as_its_point(run: Run, st):
     """A POINT OF A RUN OF POINTS IS READ AS ITS RUN'S POINTS ARE
     (`engines/transport.md` § 2a.11; `engines/vibration.md` § 5.11 § 7):
-    one still to come by its own folder -- ``pending`` or ``queued`` -- is
-    its row of the run's points (`continuation.points_state`), so a point
-    the ended walk never reached reads failed
-    (`continuation.never_reached`), never still to come.
+    one still to come by its own folder -- ``pending`` or ``queued`` -- or
+    ``failed`` by its job's end alone is its row of the run's points
+    (`continuation.points_state`), so a point the ended walk never began
+    reads *not run* (`continuation.never_reached`), never still to come and
+    never failed.
     ``st``, the run door's own answer, for any other run and any other
     state."""
     at = run.place.where
-    if at.what != calcdirs.POINT or st.state not in ("pending", "queued"):
+    if (at.what != calcdirs.POINT
+            or st.state not in ("pending", "queued", "failed")):
         return st
     from molbuilder.jobset.continuation import points_state
     from molbuilder.jobset.points import points_of
@@ -924,7 +926,8 @@ def _as_its_point(run: Run, st):
     row = next((r for r in rows if r["rel"] == at.point), None)
     if row is None or not row.get("not_run"):
         return st
-    return replace(st, state="failed", detail=row["not_run"])
+    from molbuilder.runpoints import NOT_RUN
+    return replace(st, state=NOT_RUN, detail=row["not_run"])
 
 
 def points_root_state(place: Place, folder) -> Optional[Dict[str, Any]]:
