@@ -37,7 +37,8 @@ try:                                       # inside molbuilder
     from . import persist as _persist
     from . import runfiles as _rf
     from .calcdirs import RunPlace
-    from .parse.engines._run_ending import holds, not_done_why, points_state
+    from .parse.engines._run_ending import (NOT_RUN, holds, not_done_why,
+                                            points_state)
     from .runrecord import LaunchRecordError
     #: Where this module was imported from: the package, or the bundle
     #: beside a job -- where a part the index names is resolved too
@@ -46,8 +47,8 @@ try:                                       # inside molbuilder
 except ImportError:                        # beside a job
     import persist as _persist  # type: ignore[no-redef]
     import runfiles as _rf  # type: ignore[no-redef]
-    from _run_ending import (holds,  # type: ignore[no-redef]
-                             not_done_why, points_state)
+    from _run_ending import (NOT_RUN,  # type: ignore[no-redef]
+                             holds, not_done_why, points_state)
     from runrecord import LaunchRecordError  # type: ignore[no-redef]
     from calcdirs import RunPlace  # type: ignore[no-redef]
     _IN_PACKAGE = False
@@ -62,12 +63,9 @@ DONE, RAN = "done", "ran"
 #: runs it AGAIN from its start, or CONTINUES it from its own last state.
 AGAIN, CONTINUE = "again", "continue"
 
-#: A POINT ITS ENDED WALK NEVER STARTED -- its state, as every reader says
-#: it (`runs-of-points.md` § 1.3, § 4.5): *not run*, never *failed*, for it
-#: did not run (the user, 2026-10-30: "definitely not 'failed'").  The one
-#: spelling, which the run door's vocabulary takes too (`job.RUN_STATES`).
-NOT_RUN = "not run"
-#: ...and its reason where no need up its chain failed: the walk stopped.
+#: A POINT ITS ENDED WALK NEVER STARTED is :data:`NOT_RUN` -- spelled
+#: beside the run of points' state rule (`_run_ending.points_state`) --
+#: and its reason where no need up its chain failed: the walk stopped.
 NEVER_REACHED = "the walk ended before it reached this point"
 
 #: THE INDEXES AN OLDER MOLBUILDER WROTE (2.42-2.54): a SIESTA vibration's

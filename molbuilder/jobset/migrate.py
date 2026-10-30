@@ -1096,7 +1096,7 @@ def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
     from ..paths import attempt_dir, attempts_in
     from ..runpoints import (OLDER_SCHEMAS, add_point, empty_index,
                              index_path, older_index)
-    from .naming import stage_home
+    from .naming import ladder_homes
     from .points import points_of, record_of
     said: List[str] = []
     moves: List[Tuple[Path, Path]] = []
@@ -1106,8 +1106,11 @@ def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
     declared, record = points_of(task), record_of(task)
     if declared is None or calc.jobset is None:
         return said, moves, writes
-    for job in calc.jobset.jobs:
-        home = stage_home(base, task, job.name)
+    # EACH STAGE OF THE DESCRIPTION AS THIS MIGRATION DECIDED IT, by its
+    # folder's one door (`naming.ladder_homes`) -- never the plan's jobs:
+    # a stage the records step folded into another (a SIESTA vibration's
+    # `relax`, 2.42.0) is no stage of it, and ran as no run of points.
+    for home in ladder_homes(base, task):
         if not home.dir.is_dir():
             continue
         names = home.names
@@ -1128,7 +1131,7 @@ def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
             schema = old.get("schema") if isinstance(old, dict) else None
             if schema in OLDER_SCHEMAS:
                 index = _index_of_2_54(old, schema, calc=calc,
-                                       stage=job.name, declared=declared,
+                                       stage=home.name, declared=declared,
                                        record=record, add_point=add_point,
                                        empty_index=empty_index)
                 writes.add(new_path, json_text(index), [rule])
@@ -1147,7 +1150,7 @@ def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
             # opened its points with none, and 2.54 walked a vibration's
             # force constants with none -- the point each starts from in
             # its run, by the declaration (`PointsOf.start_of`).
-            starts = _missing_starts(calc, job.name, run, index, declared)
+            starts = _missing_starts(calc, home.name, run, index, declared)
             for marker, source in starts:
                 writes.add(marker, f"{source}\n", ["2.56.0"])
             if starts:

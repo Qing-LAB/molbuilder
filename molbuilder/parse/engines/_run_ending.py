@@ -347,6 +347,15 @@ def not_done_why(verdict: Optional[Tuple[str, bool]], *, counts: bool,
     return None
 
 
+#: A POINT ITS ENDED WALK NEVER STARTED -- its state, as every reader says
+#: it (`execution/runs-of-points.md` § 1.3, § 4.5): *not run*, never
+#: *failed*, for it did not run (the user, 2026-10-30: "definitely not
+#: 'failed'").  The one spelling, here beside the run's state rule, so the
+#: run door's vocabulary (`job.RUN_STATES`) and the index's reader
+#: (`runpoints`) both take it from below them.
+NOT_RUN = "not run"
+
+
 def points_state(states) -> str:
     """A RUN OF POINTS' STATE once nothing in it runs -- THE RUN'S STATE IS
     ITS POINTS' RUNS': ``finished`` when every one finished, converged or
