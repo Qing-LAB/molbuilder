@@ -92,8 +92,10 @@ answers its own question — *which rung is next*, *which setting is fastest*,
   name**: a file of the folder is one of its `files`, the report is the
   `report` row, the point at work's file its own row, a picked run's folder
   its row's `dir`; a row that opens its calculation's report says so
-  (`opens_report`). Its own translations are MolView's frame display and the
-  one wording of a point (`lib/results/point-words.js`, § 2.5). Which
+  (`opens_report`). Its own translations are MolView's frame display, the
+  one wording of a point (`lib/results/point-words.js`, § 2.5), and a path
+  it only shows, from the projects folder as the sidebar names it
+  (`projects.relativeToProjects`). Which
   presenter shows a file stays the presenter registry's (`presenters.md`).
 
 ### 0.4 Designed, not built yet
@@ -110,7 +112,9 @@ answers its own question — *which rung is next*, *which setting is fastest*,
   answer (`ladder`, `points`, `point`) and every path whole. § 0.2, § 2,
   § 2.4 and § 3a describe them as they will be. Today the route builds the
   ladder itself (`jobset_status`, `runstatus.every_run`), a run of points'
-  root opens nothing and hides the Run panel, a transmission point is found
+  root opens its own result where it holds one, else nothing — its note
+  saying it is a run of points, each point a folder below it — and hides
+  the Run panel, a transmission point is found
   by `runs.transmission_point`, and the page joins a folder and a file name
   itself.
 
@@ -166,7 +170,7 @@ point — the point the ladder's row for the run names too (§ 2.4). The menu li
 opens it with that point selected, as the ladder row's *open* does; the
 folder's own files stay listed below it, and the meta line gives the report
 its age alone, counting the folder's own files. The header says so —
-*<folder> — its result is its calculation's report, <the report>* — and does
+*&lt;folder&gt; — its result is its calculation's report, &lt;the report&gt;* — and does
 not flag it as a file outside the folder. A return to the tab, reading the
 folder again, keeps the point you picked since. The Run panel above it is the
 transmission run's record — TBtrans's loop among it (§ 3a) — and the file
@@ -488,9 +492,8 @@ refuses it, first`* — and each later group's words: a group a sequence still
 going holds, *goes in job N — after group K* (one job launching several
 groups in turn, [`execution/job-system.md`](?doc=execution/job-system.md)
 § 6.0, *A sequence of groups*), its runs read as any once it is launched. It is a hint, read
-only — the page launches nothing — and it **says when it was read**, *read at
-14:05; returning to this tab, or Reload from current project dir, reads it
-again*: the panel reads the ladder again when the tab is shown again or the
+only — the page launches nothing — and it **says when it was read**, *What
+is next — read at 14:05; Reload reads it again*: the panel reads the ladder again when the tab is shown again or the
 folder reloaded, never on a timer, so a run that ends while you watch is not
 shown ended until then *(the user, 2026-10-15)*.
 A person who opens a five-rung transport calculation therefore sees which of
@@ -650,7 +653,7 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 ```
 ┌ the ladder card (§ 2.4) ─────────────────────────────────────────────────┐
 └──────────────────────────────────────────────────────────────────────────┘
-┌ Transport — <label> ─── treatment · frames · points · pending · failed ──┐
+┌ Transport — <label> ─ treatment: … · frames · points · not ended · failed┐
 │ ┌ Device (MolView, read-only) ─────┐ ┌ [ T(E) | DOS | I–V ] ───────────┐ │
 │ │ the device's structure at the     │ │ T(E): one curve per bias, log T, │ │
 │ │ selected frame, its box, its      │ │ E − E_F; the selected bias bold, │ │
@@ -669,7 +672,7 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 │ │ one row per rung: state chip, detail (the transmission's loop at its    │ │
 │ │ running point, the points after it, a finished point's loop)            │ │
 │ │ E_F, energy, iterations,                                                │ │
-│ │ converged, the attempt it came from; the                                │ │
+│ │ converged, the run it came from; the                                    │ │
 │ │ chain — relaxation → seed, leads → device → transmission, read from     │ │
 │ │ each rung's `.gathered-from`; the DFT–NEGF caveat                       │ │
 │ └─────────────────────────────────────────────────────────────────────────┘ │
@@ -687,7 +690,7 @@ exists or is named here; nothing worked out in the browser:
 |---|---|---|
 | ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` (built) |
 | a transmission's loop | each point's TBtrans output through the reading pass, in its one sentence (`tbtrans.loop_words`, `model/parse.md` § 5d.5) — what the point's run record states as `computation.time.progress` · `estimated_at` (§ 5d.1b) | `/api/transport/record`: each point not finished whose run wrote its output — running, or stopped — carries `progress` `{said, estimated_at}`, `estimated_at` only while an estimate stands; the transmission rung carries its running point's, with that point (`frame`, `of`, `bias_v`), how many points are still to come after it (`after`) and the last finished point in the ladder's order with its loop (`measured`: its point and `loop_elapsed_s`, its passes' loops summed, `model/parse.md` § 5c.1). The rung's row: *at 0.2 V: unpolarized (1 of 1): 40 % done, about 3h left (TBtrans's estimate) · estimated 10m ago — 3 more points after it; the loop at 0 V took 6h*; the point's line: its `said` and the age. A point named as every page names one (`lib/results/point-words.js`), a time and an age as every page says them (`lib/time-ago.js`, [`ui-contract.md`](?doc=web/ui-contract.md) § 4) |
-| device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) — opened in the user order (`openMolecule(…, {restore: true})`, the load route's `restore`), its notice saying so — a junction whose order is not recorded (I9) opened as a viewer opens it, in TranSIESTA's order, marked, the record's `order_unstated` line above it; `junction.xyz` itself stays the engine's record ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
+| device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) — opened in the user order (`openMolecule(…, {restore: true})`, the load route's `restore`), its notice saying so — a junction whose order is not recorded (I9) opened as a viewer opens it, in TranSIESTA's order, marked — MolView's notice says so — and the record's way on below it (`order_way`); `junction.xyz` itself stays the engine's record ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
 | T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record — per spin channel, $(T_\uparrow + T_\downarrow)/2$ for a polarized point — each channel kept in `channels` and their sum in `transmission_total` (`record.point_transmission`) |
 | DOS and PDOS | from the transmission run's files, each read by the SIESTA family's parser ([`model/parse.md`](?doc=model/parse.md) § 5e; [`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`), from TBtrans's k-averaged `<label>.TBT.AVDOS`; the **left** lead's spectral DOS (`TBT.DOS.A`, `.TBT.AVADOS_<L>` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, the plan's § 5u.1 step 7, archived 2026-10-28); both leads' bulk DOS (`TBT.DOS.Elecs`, `.TBT.AVBDOS_<lead>`); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F — from the point's **digest**, the data file `<label>.TBT.nc`'s device DOS per orbital, k-averaged once and kept beside it | per point in the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on the data file's energies, $E - E_F$ (`tbtnc.point_dos`) — `by_label` present only when the point's digest is kept; a block holding no curve is no DOS, its `dos_why` said instead (`tbtnc.NO_CURVE`: TBtrans wrote none, or not every part of a sharing point's grid holds one) |
 | a point's digest | each finished transmission point's data files, their reading kept or not — at the top of the DOS tab: one line per data file, *its point: its file (its size) — kept / not read yet / out of date / being read by whom, k-point i of n, since when*; **Read the DOS per orbital** when one is not kept and not being read, or its reading's process on this host is gone; **Read again** (every one, kept or not); **Take over** when one is being read on another host; while any reading runs — this tab's, another tab's, `summarize task`'s, another host's — the line is asked again every 2 s and the rest of the report stays in use; when it ends, the record is fetched again — the regions drawn, a selection's PDOS asked again | `GET /api/transport/digest?path=` the readings' states, nothing read; `POST /api/transport/digest` `{path, fresh, take_over}` reads them in the request (`tbtnc.read_points`); per point in the record as `digest` (since 2.31.0) |
@@ -754,8 +757,8 @@ sisl reads it, counted from 0; `molbuilder atom-index` shows both, and the
 post-processing document how to use them* — the last a link to
 [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md).
 A junction whose order is not recorded (I9) is drawn as TranSIESTA lists it,
-and the line then says that instead, in the record's words
-(`order_unstated`).
+and the line is not drawn: MolView's notice says so, and the record's way on
+is said below the drawing, in its words (`order_way`).
 
 **Shared, not copied** — what this needs from modules that exist:
 
@@ -954,7 +957,7 @@ answer as `points`) carries **the point the run is at** — the point that is
 running; else the last, in the walk's order, whose run holds an engine output;
 none before any has — with that point's record, its one wire form, its folder
 and the row of the file it opens, each path whole. The panel leads with the
-run's count — the view's detail, *relax done · fc done · optical 7 of 21* —
+run's count — the view's detail, *relax done · fc done · optical 7 of 21 done* —
 and names the point in the page's one wording (`lib/results/point-words.js`,
 § 2.5), *at work: mode 12 (1250 cm⁻¹), −δQ*; its Deck section is that
 point's. **What the folder opens is the view's** (`points.opens`): the run's
@@ -1087,7 +1090,8 @@ and the run its name reads back to (`runs.run_answer`: the run door's
 state for a run's file, the run of points' view for a file at a run of
 points' root) — or `null` for
 a file that belongs to no run, an upload. A run whose launch record does not
-read is `unreadable`, never live, the file named in its `detail` — the
+read — or a run of points whose records do not, at its root
+(`runs.points_root_state`) — is `unreadable`, never live, the file named in its `detail` — the
 viewer stops and says it *(it carried a `problem` no page read beside the
 files' state until 2026-10-06, and a run with no output read `running`
 forever)*. **A viewer never decides from the

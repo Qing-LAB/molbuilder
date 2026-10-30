@@ -249,8 +249,8 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
         out["setup"] = setup
     findings = [
         {"id": "asked-not-used",
-         "text": (f"{r['item']}: the run asked for {r.get('asked')!s}, "
-                  f"and the engine used "
+         "text": (f"{r['item']}: the run asked for "
+                  f"{_value_text(r.get('asked'))}, and the engine used "
                   f"{_used_text(r.get('used'))}")}
         for r in rows if r.get("differs")]
     if findings:
@@ -258,8 +258,17 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     return out
 
 
+def _value_text(value: Any) -> str:
+    """A value as a person reads it: a block's rows as text, `` / ``
+    between rows."""
+    if isinstance(value, (list, tuple)):
+        return " / ".join(" ".join(map(str, r)) if isinstance(r, (list, tuple))
+                          else " ".join(str(r).split()) for r in value)
+    return str(value)
+
+
 def _used_text(used: Any) -> str:
     if isinstance(used, dict):
         readings = used.get("readings") or [used]
         return " then ".join(str(r.get("value")) for r in readings)
-    return str(used)
+    return _value_text(used)

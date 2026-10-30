@@ -80,8 +80,8 @@ ROLE_PYSCF_LOG   = ".log"                # PySCF's own log, a rung's own
 ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
 ROLE_SPECTRA_DATA = ".spectra.nc"        # the same result as structured data
 ROLE_POINTS      = ".points.json"        # a run of points: its index
-ROLE_PHASES      = ".phases.json"        # a run in phases' index of 2.42-2.54
-ROLE_OPTICAL     = ".optical.nc"         # a run in phases' optical calls, as data
+ROLE_PHASES      = ".phases.json"        # a SIESTA vibration's index of 2.42-2.54
+ROLE_OPTICAL     = ".optical.nc"         # a SIESTA vibration's optical calls, as data
 ROLE_INITIAL     = "_initial.xyz"
 ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
@@ -887,11 +887,13 @@ class Artifact:
     #: Which engine writes it, or None for both.
     engine: Optional[str] = None
     #: WHEN it appears -- "setup" (the description hand-over), "prep" (the
-    #: deck and its wrapper), "run" (everything the launch produces) or
+    #: deck and its wrapper), "run" (everything the launch produces),
     #: "summarize" (what `jobset summarize task` writes from results that
-    #: exist, never the launch).  A card that lists a run's files has to say
-    #: which of them exist yet, and the alternative was for the page to
-    #: subtract one list from another.
+    #: exist, never the launch) or "older" (what an older molbuilder wrote
+    #: and this one only reads to rewrite: listed only where it is asked
+    #: for by name, :func:`manifest`).  A card that lists a run's files has
+    #: to say which of them exist yet, and the alternative was for the page
+    #: to subtract one list from another.
     when: str = "run"
     #: Which CALCULATION writes it -- one kind, the kinds (a run of points'
     #: index), or None for any.  A relaxation has no spectrum, and a list
@@ -931,7 +933,7 @@ class Artifact:
     #: Where it sits: ``calculation`` (the root), ``stage`` (a stage's
     #: folder), ``run`` (a run's folder), ``bench`` (a benchmark's container),
     #: ``launch`` (a launch group's folder), or ``transient`` (only while a
-    #: write runs).
+    #: write runs) -- said in words by :data:`LEVEL_WHERE`.
     level: str = "run"
     #: Who writes it, and when -- one line.
     writer: str = ""
@@ -979,6 +981,16 @@ class Artifact:
             return ()
         return ((self.calculation,) if isinstance(self.calculation, str)
                 else tuple(self.calculation))
+
+
+#: WHERE A FILE OF EACH LEVEL LANDS (:attr:`Artifact.level`), in the words a
+#: card listing it says them in (:func:`manifest`'s ``where``); a transient
+#: file's moment is its ``only``.
+LEVEL_WHERE = {"calculation": "in the calculation's folder",
+               "stage": "in the stage's folder",
+               "run": "in each run's folder",
+               "bench": "in a benchmark's container",
+               "launch": "in its launch group's folder"}
 
 
 #: THE FIXED NAMES -- files molbuilder writes that are not named on the label,
@@ -1145,17 +1157,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # A RUN OF POINTS -- its index (`execution/runs-of-points.md` § 2.3):
     # every point of the run, what it needs and must hold, how it ended as
     # the job saw it -- a transport rung's points, a SIESTA vibration's calls.
-    Artifact(ROLE_POINTS, "the index of a run of points: every point of the "
-                          "run in the listing order -- its folder, words, "
-                          "phase and round, what it needs and must hold, "
-                          "whether it was taken over and from where, the "
-                          "point that planned it -- each point's start, "
-                          "end, exit, verdict and outcome as the job saw "
-                          "them, the kind's facts about the run, and its "
-                          "finish step's entry; one per run, named for its "
-                          "first try, -run0, whichever try writes to it",
+    Artifact(ROLE_POINTS, "the run's index: every point, what it needs and "
+                          "must hold, whether it was taken over, and how "
+                          "each ended as the job saw it -- one per run",
              attempt="always", engine="siesta",
              calculation=("vibration", "transport"), kind="record",
+             only="a run of points: a SIESTA vibration, a device or "
+                  "transmission rung over several frames or voltages",
              writer="launch, for the points it opens (`submit._points_walk`); "
                     "each point's report steps (`mb_monitor.pyz point`); a "
                     "planner's own step for the points it plans "
@@ -1170,17 +1178,17 @@ WRITTEN: "tuple[Artifact, ...]" = (
                           "one index; `jobset migrate` rewrites it into the "
                           "run's index (its .points.json)",
              attempt="always", engine="siesta", calculation="vibration",
-             kind="record",
+             when="older", kind="record",
              writer="molbuilder 2.42-2.54 (launch and the run's own python)",
              door="jobset.migrate.migrate_state",
              only="a run launched by molbuilder 2.42-2.54"),
     Artifact(ROLE_SPECTRA, "the spectrum this run computed: frequencies, "
                               "the strengths the engine computes, "
-                              "thermochemistry -- written by the run itself",
+                              "thermochemistry",
              staged=False, calculation="vibration", kind="result",
              writer="the run itself: the PySCF deck, or a SIESTA "
-                    "vibration's `fc` record step and its finish "
-                    "(`mb_vibration.pyz`)",
+                    "vibration's job, after the force constants and at its "
+                    "end (`mb_vibration.pyz`)",
              door="parse.sidecars.spectra.SpectraSidecarFileParser",
              listed_by="user_index"),
     # THE SAME RESULT AS STRUCTURED DATA, written beside the JSON at every
@@ -1194,10 +1202,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`sidecars.spectra.write_spectra_payload`)",
              door="spectra.datafile.read_spectra_data",
              listed_by="user_index"),
-    # A RUN IN PHASES' OPTICAL CALLS AS DATA, rewritten by the run's own
+    # A SIESTA VIBRATION'S OPTICAL CALLS AS DATA, rewritten by the run's own
     # record step after each optical call and by its finish
     # (`engines/vibration.md` § 5.11 § 8): the record of the Raman phase so
-    # far.
+    # far -- none where the run planned no optical call.
     Artifact(ROLE_OPTICAL, "the optical calls as data on their grids -- each "
                            "frame's eps2 over the photon energies, its mode, "
                            "side and geometry, its SCF facts, and the "
@@ -1209,6 +1217,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "its finish (`spectra.siesta_vibration`, "
                     "`spectra.optical_data.write_optical_data`)",
              door="spectra.optical_data.read_optical_data",
+             only="Raman asked, and a mode picked for it",
              listed_by="user_index"),
     # ---- the wrapper --------------------------------------------------
     Artifact(".run.sh", "the wrapper — activates the environment, tees "
@@ -1336,7 +1345,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              attempt="always", kind="record", writer="the monitor",
              door="parse.instruments.util_csv.UtilCsvFileParser"),
     Artifact(".scf-timing.log", "wall time per SCF iteration — on a "
-                                "TranSIESTA device, both its phases",
+                                "TranSIESTA device, both its SCF loops "
+                                "(SIESTA's, then TranSIESTA's)",
              attempt="always",
              engine="siesta", kind="record",
              writer="the run script's tee of the output's SCF lines",
@@ -1595,9 +1605,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
              door="runrecord.launch_record"),
     # THE RUN'S NOTIFICATION RECORD -- every event sent for the run, when
     # (`run-reports.md` § 2.5, § 2.9; `engines/vibration.md` § 5.11 § 7a):
-    # a run in phases speaks as one run, its start, milestones, failed parts
-    # and finish sent by its Python steps, and each member monitor's N-hour
-    # clock counts from the last event this record holds.
+    # a run of points speaks as one run, its start, milestones, failed parts
+    # and finish sent by its points' report steps, and each member monitor's
+    # N-hour clock counts from the last event this record holds.
     Artifact(name=NOTIFIED_RECORD_FILE,
              what="the run's notification record: every event sent for the "
                   "run -- start, a step, the periodic report, its wall near, "
@@ -1638,10 +1648,11 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="prep, beside each run script "
                     "(`runwrap.write_run_wrapper`); a copy in each run"),
     Artifact(name=VIBRATION_BUNDLE,
-             what="the run in phases' Python -- each call's `plan` and "
-                  "`record` steps and the finish: the coordinates, the "
-                  "index, the modes from `.FC`, the result and the optical "
-                  "calls' data file (`engines/vibration.md` § 5.11 § 3)",
+             what="the SIESTA vibration's own steps -- each call's `plan` "
+                  "and `record` and the run's `finish-run`: the coordinates, "
+                  "the index, the modes from `.FC`, the result and the "
+                  "optical calls' data file (`engines/vibration.md` § 5.11 "
+                  "§ 3)",
              engine="siesta", calculation="vibration",
              when="prep", level="stage", kind="derived",
              writer="prep, in each phase's folder beside its run script "
@@ -2024,7 +2035,7 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
       every phase boundary and it carries its own `phase_*` flags, so it is
       the live view AND the final result — there is no moment when it is the
       wrong file to open.  A row of kind ``record`` naming the calculation
-      -- a run in phases' index -- is the run's own bookkeeping, listed as
+      -- a run of points' index -- is the run's own bookkeeping, listed as
       an aspect of the run and never what a person opens first.
     * a ``"stdout"`` role is the engine's own account, and it speaks whether
       or not the run has ended (§ 5.5).  For SIESTA it IS the trajectory --
@@ -2157,11 +2168,15 @@ def manifest(label: str, stage: Optional[str], *,
     ``when`` narrows to the moments asked for (:attr:`Artifact.when`) -- the
     Task-setup page already lists the SETUP's own files with their existence
     state, so its second card asks for everything else rather than subtracting
-    one list from the other.
+    one list from the other.  With none asked, every moment but an older
+    molbuilder's: a file this one never writes is listed only when asked
+    for by name (``"older"``).
 
     A file written only sometimes carries its condition, ``only``; each
-    row says the folder it lands in, ``level`` -- a rung's pipeline log is
-    the calculation's, at its root.
+    row says the folder it lands in, ``level``, and in words, ``where``
+    (:data:`LEVEL_WHERE`) -- a rung's pipeline log is the calculation's, at
+    its root.  ``engine`` given fills a name's engine field: the pipeline
+    log a SIESTA prep writes is named for SIESTA.
 
     Every name comes out of :func:`compose`, so a card cannot show a spelling
     the writers do not use -- which is the failure this module exists for.
@@ -2172,7 +2187,7 @@ def manifest(label: str, stage: Optional[str], *,
             continue
         if engine and a.engine and a.engine != engine:
             continue
-        if when and a.when not in when:
+        if (a.when not in when) if when else a.when == "older":
             continue
         if calculation and not written_by(a, calculation, any_=True):
             continue
@@ -2180,15 +2195,18 @@ def manifest(label: str, stage: Optional[str], *,
         # what :class:`RunNames` reads), the first try's where the name
         # carries the try's number.  A FIELD HAS NO VALUE UNTIL THE FILE
         # IS WRITTEN, so the card shows the field's NAME:
-        # `<label>_<stage>.runwrap-<stamp>.log`.
+        # `<label>_<stage>.runwrap-<stamp>.log` -- but the engine, which the
+        # description names.
         run = FIRST_TRY if _numbered(a) else None
-        name = _FIELD_RE.sub(lambda m: f"<{m.group(1)}>",
-                             _template(a, label, stage).replace(
-                                 RUN_FIELD, str(run)))
+        name = _FIELD_RE.sub(
+            lambda m: (engine if m.group(1) == "engine" and engine
+                       else f"<{m.group(1)}>"),
+            _template(a, label, stage).replace(RUN_FIELD, str(run)))
         rows.append({"name": name,
                      "what": a.what,
                      "when": a.when,
                      "level": a.level,
+                     "where": LEVEL_WHERE.get(a.level, ""),
                      "only": a.only})
     return rows
 

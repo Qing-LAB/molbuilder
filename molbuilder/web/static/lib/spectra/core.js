@@ -1253,7 +1253,10 @@
     function _showRunStatus(results) {
         const run = state.fileState.run;
         if (state.machine === "WATCHING") {
+            // THE RUN'S OWN COUNT beside it (`runs-of-points.md` § 1.4):
+            // the server's words, never counted here.
             setStatus(els.watchStatus, _watchProgressLine(results)
+                      + (run && run.detail ? " — " + run.detail : "")
                       + " — following, every "
                       + (WATCH_INTERVAL_MS / 1000) + " s.", "muted");
         } else if (run && run.state === "unreadable") {
@@ -1875,7 +1878,7 @@
         if (_ramanOptical(r)) {
             const head = "SIESTA's optical calculation at \u00b1\u03b4Q "
                 + "along each picked mode, \u03b4 = "
-                + r.raman_fd_step_ang + " \u00c5";
+                + Number(r.raman_fd_step_ang).toPrecision(3) + " \u00c5";
             const v = r.raman;
             if (v) return head + "; at " + v.laser_nm + " nm, broadened to "
                 + v.broaden_words + " eV (the run's "
@@ -2394,7 +2397,9 @@
         let out = results.phase_relaxation || "empty";
         if (rx.n_steps != null) out += " \u2014 " + rx.n_steps + " steps";
         out += force;
-        if (rx.warning) out += " \u26a0 " + rx.warning;
+        // A WARNING ONLY WHERE DUE: a relaxation within its criterion has
+        // its force said once, above.
+        if (rx.warning && rx.converged !== true) out += " \u26a0 " + rx.warning;
         return out;
     }
 

@@ -237,7 +237,7 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
             f"pinned to it: choose another name")
 
     # THE RUN, AND ITS RESULT, through the one door for a result on the
-    # label (`runs.on_label_at`): a run's own folder, or a run in phases'
+    # label (`runs.on_label_at`): a run's own folder, or a run of points'
     # root, where its finish writes it (`engines/vibration.md` § 5.11 § 2).
     place = place_of(Path(run_folder))
     if not place.ours or place.problem:
@@ -255,7 +255,7 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
             f"({place.task.label}{ROLE_SPECTRA}) -- one whose finish has "
             f"written it")
     # THE RUN WHOSE DECK MEASURED THE FORCE CONSTANTS: the folder named --
-    # PySCF's one run -- or, a run in phases' root, its force-constant call
+    # PySCF's one run -- or, a run of points' root, its force-constant call
     # (`vibration_phases.force_constants_call`).
     run = run_of(Path(run_folder)) or run_of(force_constants_call(run_folder))
     if run is None:

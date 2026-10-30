@@ -387,7 +387,7 @@ class Job:
     #: § 2), in ladder order, this one among them (`project-layout.md`
     #: § 1.6.6); ``None`` for a group of one.
     members:    Optional[List[str]] = None
-    #: THE PHASES OF A RUN IN PHASES, in the order the run walks them -- a
+    #: THE PHASES OF A RUN OF POINTS, in the order the run walks them -- a
     #: SIESTA vibration stage's calls as its prep switched them on
     #: (`siesta.vibration_phases.PHASES`; `engines/vibration.md` § 5.11):
     #: what launch opens and walks, and what the run's own python follows.

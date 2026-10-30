@@ -4200,7 +4200,7 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "runfiles.py":             "molbuilder.runfiles",
     "identity.py":             "molbuilder.identity",
     "constants.py":            "molbuilder.constants",
-    # A RUN IN PHASES (`engines/vibration.md` § 5.11): the force constants'
+    # A RUN OF POINTS (`engines/vibration.md` § 5.11): the force constants'
     # record step makes each optical call's folder and its files through
     # the same doors this machine's launch uses -- the plan, the place record and the names' rules, the
     # copier -- and picks the modes with PySCF's own selector.

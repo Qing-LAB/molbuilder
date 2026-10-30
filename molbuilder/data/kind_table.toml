@@ -124,7 +124,7 @@ rung = "molbuilder.jobset.prep:siesta_vibration_rung_of"
 # Its stages' force constants compared, where it has two or more
 # (`engines/vibration.md` § 5.9).
 sum = "molbuilder.jobset.vibration_sum:SUM"
-retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIESTA vibration is one run in phases -- its relaxation the run's first call, switched by already_relaxed (engines/vibration.md 5.11)" }
+retired = { stage = "relax", role = "relaxation", since = "2.42.0", why = "a SIESTA vibration is one run of points -- its relaxation the run's first call, switched by already_relaxed (engines/vibration.md 5.11)" }
 
 # Its run is a run of points: each SIESTA call a point, the phases its rounds
 # (execution/runs-of-points.md 2.1; engines/vibration.md 5.11).  Finished

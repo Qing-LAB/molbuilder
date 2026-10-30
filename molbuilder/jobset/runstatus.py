@@ -79,6 +79,11 @@ class StageStatus:
     state:      str
     detail:     str
     warm_files: List[str] = field(default_factory=list)  # restart files present
+    #: Whether what does not read, in an ``unreadable`` row, is a run's
+    #: index an older molbuilder wrote -- its reader's refusal's class
+    #: (`runpoints.OlderIndexError`), never its words -- whose way on is
+    #: `jobset migrate` (:func:`_steps`).
+    older_index: bool = False
     #: Which run this status was read from (``run-0``; a run of points', its
     #: points inside it), or ``None`` when no run is opened.
     attempt: Optional[str] = None
@@ -129,7 +134,7 @@ class StageStatus:
     #: (`continuation.point_rows`, `execution/runs-of-points.md` § 4.7) --
     #: or ``[]``.
     points: List[Dict[str, Any]] = field(default_factory=list)
-    #: What the run GATHERED from the rungs upstream -- ``<file> <- <run>``
+    #: What the run GATHERED from the rungs upstream -- ``<file> ← <run>``
     #: each, the run's own ``.gathered-from`` (`runrecord.read_gathered_from`;
     #: `engines/transport.md` § 2a.11) -- or ``[]`` for a stage that gathers
     #: nothing.  A sweep's point adds what it alone took in its own row.
@@ -305,9 +310,10 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     """EVERY RUN OF A STAGE, each with its own state -- the root's bird's-eye
     (`web/results.md` § 2.4): each attempt in order and, for a swept rung,
     each attempt's points (`PointsOf.points_in`), read as `status`
-    reads a run (`run_state_of`) -- a launched run of points' points as
-    `status` reads them, once per run (`continuation.points_state`): a point
-    its ended walk never reached failed -- with the file it opens,
+    reads a run (`run_state_of`) -- a run of points as the run it is, its
+    own row before its points: its state and count as `status` reads it,
+    once per run (`continuation.points_state`), and its points' rows: a
+    point its ended walk never reached failed -- with the file it opens,
     root-relative: the run door's answer (`runs.openable`) -- the root's
     `task.json` for a transmission run, whose result is the report at its
     point (§ 0.1).  ``[]`` for a stage nothing has prepared."""
@@ -317,36 +323,55 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
         return []
     root = Path(base)
     rows: List[Dict[str, Any]] = []
-    by_run: Dict[int, Dict[str, dict]] = {}
+    by_run: Dict[int, tuple] = {}
+    listed: set = set()
 
-    def _point_row(n: int, pt) -> Optional[dict]:
-        # A LAUNCHED RUN OF POINTS' ROW FOR ``pt``, read once per run.
-        run_dir = attempt_dir(root / st.dir, n)
+    def _read(n: int) -> tuple:
+        # A RUN OF POINTS, READ ONCE: ``(state, detail, {rel: row})`` --
+        # as its stage's row reads its newest run (:func:`_sweep_status`):
+        # pending before it is launched, its points' state once it is, a
+        # record that does not read unreadable, said.  Points with no row
+        # here answer by their own door.
         if n not in by_run:
-            got: Dict[str, dict] = {}
+            run_dir = attempt_dir(root / st.dir, n)
             try:
                 launch = launch_record(run_dir)
-            except LaunchRecordError:
-                launch = None
-            if launch is not None:
-                try:
-                    _s, _d, pts = points_state(
+                if launch is None:
+                    got = ("pending", _pending_detail(
+                        run_dir, "prepared, not launched"), {})
+                else:
+                    s_, d_, pts = points_state(
                         run_dir, stage_home(root, task, st.ref.name).names,
                         task, st.ref.name, launch=launch, base=root)
-                except LaunchRecordError:
-                    # AN INDEX THAT DOES NOT READ is said on the stage's
-                    # row (:func:`_sweep_status`); each run then answers
-                    # by its own door.
-                    pts = []
-                got = {p["rel"]: p for p in pts}
+                    got = (s_, d_, {p["rel"]: p for p in pts})
+            except LaunchRecordError as exc:
+                got = ("unreadable", str(exc), {})
             by_run[n] = got
-        return by_run[n].get(pt.rel)
+        return by_run[n]
 
     for n, folder, pt in run_folders(root, task, root / st.dir, st.ref.name):
+        if pt is not None and n not in listed:
+            listed.add(n)
+            # THE RUN OF POINTS' OWN ROW, before its first point's: its
+            # state and count, and the file its folder opens -- its own
+            # result where its root holds one (`runs.openable`).
+            run_dir = attempt_dir(root / st.dir, n)
+            state, detail, _pts = _read(n)
+            opens, _trail = openable(run_dir)
+            rows.append({
+                "run": attempt_name(n),
+                **dict.fromkeys(("frame", "of", "bias_v")),
+                "dir": str(run_dir.relative_to(root)),
+                "state": state, "detail": detail, "converged": None,
+                "opens": (str(Path(opens).resolve().relative_to(
+                    root.resolve())) if opens else None),
+                "deck": None, "validation": None,
+                "copied_from": _copied(root, run_dir),
+            })
         run = run_of(folder)
         if run is None:
             continue
-        row = _point_row(n, pt) if pt is not None else None
+        row = _read(n)[2].get(pt.rel) if pt is not None else None
         # THE RUN'S ROWS ANSWER ITS POINTS, read once per run; the run
         # door's own reading only for a run that has none (a single run,
         # or one not launched).
@@ -443,9 +468,12 @@ def _sweep_status(calc, job, *, run: Path, names, columns: dict
     except LaunchRecordError as e:
         # ITS INDEX DOES NOT READ -- an older molbuilder's, naming `jobset
         # migrate` (`runpoints.read_index`): said on the stage's row, never
-        # the whole status.
+        # the whole status; which refusal it is, carried for its next step.
+        from ..runpoints import OlderIndexError
         return StageStatus(state="unreadable", detail=str(e),
-                           attempt=run.name, launch=launch, **columns)
+                           attempt=run.name, launch=launch,
+                           older_index=isinstance(e, OlderIndexError),
+                           **columns)
     # CONVERGED, in its own column (`job-system.md`, rule 4): the first
     # point whose output says it did not, in that verdict's own words (a
     # relaxation's `geometry NO`, an SCF's `SCF NO`); yes for a rung that
@@ -757,8 +785,12 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                 step = (live.state, f"{live.state}, let it finish",
                         [command("status", base=base)])
             elif bad is not None and bad.state == "unreadable":
+                # A RECORD THAT DOES NOT READ, in its reader's words; an
+                # index an older molbuilder wrote has its way on -- told by
+                # its refusal's class (`runpoints.OlderIndexError`).
                 step = (bad.state, f"{bad.name}: " + reason_of(bad.detail),
-                        [])
+                        [command("migrate", base=base)]
+                        if bad.older_index else [])
             elif bad is not None:
                 # LAUNCHED AGAIN: a run of points takes over every point
                 # done in its latest run (`engines/transport.md` § 2a.11,
@@ -794,7 +826,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     elif out and task_summary(task) is not None:
         out[-1] = dataclasses.replace(
             out[-1], next=True,
-            words="finished -- every group has; read what they gathered",
+            words="finished -- every group has; gather the results",
             lines=[command("summarize", "task", base=base)])
     return out
 
@@ -972,7 +1004,9 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
         # runs, never the run-level marker alone.
         src = s.launch.get("continued_from")
         rows.append(("continued from",
-                     _sweep_took_over(s, status.base) if s.points
+                     # NOTHING SAID while the run's records do not read.
+                     "-" if s.state == "unreadable"
+                     else _sweep_took_over(s, status.base) if s.points
                      else src if src
                      else "nothing -- it started from what it gathered"
                      if s.gathered else

@@ -450,8 +450,8 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     run = real_co2_vibration
     status, folder = _the_run(run)
     n = len(_OPTICAL_CALLS)
-    assert status.detail == f"relax done · fc done · optical {n} of {n}", \
-        status.detail
+    assert status.detail == \
+        f"relax done · fc done · optical {n} of {n} done", status.detail
     calls = {(p["phase"], p["call"]): p for p in status.points}
     assert [k[0] for k in calls] == [RELAX, FC] + [OPTICAL] * n, list(calls)
     # the ordinary relaxation deck, from the same held-first copy: Broyden
@@ -545,7 +545,7 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
                       d["relaxation"]["converged"]]
     assert (f"-- {stationary} at this level of theory; {n} optical calls "
             f"planned)") in after_fc, after_fc
-    assert f"| the run: relax done · fc done · optical 0 of {n} |" \
+    assert f"| the run: relax done · fc done · optical 0 of {n} done |" \
         in after_fc, after_fc
     # HOW IT WAS COMPUTED, the force-constant deck cited (§ 6.2): by its
     # sha256, every keyword and block as the engine read them but the
@@ -675,7 +675,7 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
     st = watched.read(now - 1.0, now)
     text = st.as_text()
     n = len(_OPTICAL_CALLS)
-    assert st.run_words and f"optical {n} of {n}" in st.run_words, text
+    assert st.run_words and f"optical {n} of {n} done" in st.run_words, text
     assert st.call_words and st.call_words.startswith(
         f"mode {_PICKED_MODES[0]} "), text
     assert "SIESTA's optical calculation" not in text, text
@@ -1222,7 +1222,9 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
                 + ("+\u03b4Q" if c.side > 0 else "\u2212\u03b4Q"))
     calls = calls_of(_index_of(run))
     assert {c.phase for c in calls} >= {RELAX, FC, "optical"}, calls
-    want = sorted(f"run-0 \u00b7 {said(c)}" for c in calls)
+    # THE RUN'S OWN ROW too, named by its run alone, before its calls'
+    # (`web/results.md` § 2.4: a run of points as the run it is).
+    want = sorted(["run-0"] + [f"run-0 \u00b7 {said(c)}" for c in calls])
 
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -1562,16 +1564,18 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     before = {r["facts"]["name"]: r for r in run.stopped_index["points"]}
     said = run.said["launch freq warm"]
     assert said.exit_code == 0, said.output
-    assert ("takes over the relaxation, the force constants, frame 0, the "
+    assert ("takes over the relaxation, the force constants, the "
             "equilibrium" in said.output
-            and f"done in run-1; runs the calls below run-2/optical/ "
+            and f"done in run-1; runs the calls planned by the force "
+                f"constants, in run-2/optical/ "
                 f"({len(_OPTICAL_CALLS) - len(finished)} to run again)"
             in said.output), \
         said.output
     status, _folder = _the_run(run, n=2)
     n = len(_OPTICAL_CALLS)
     assert status.detail == (f"relax done · fc done · optical {n} of {n} "
-                             f"({len(finished)} taken over)"), status.detail
+                             f"done ({len(finished)} taken over)"), \
+        status.detail
     run1 = run.attempt("freq", 1).relative_to(run.bundle).as_posix()
     run2 = run.attempt("freq", 2).relative_to(run.bundle).as_posix()
     index = {r["facts"]["name"]: r for r in _index_of(run, n=2)["points"]}
@@ -1580,7 +1584,14 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
         taken = p["phase"] in (RELAX, FC) or name in finished
         rel = f"{run1}/{p['phase']}" + (f"/{name}" if p["phase"] == OPTICAL
                                          else "")
-        assert p["started_from"] == (rel if taken else None), p
+        # WHAT IT STARTED FROM, as `status` says it: taken over, the call that
+        # computed it; an optical call walked again, its planner's words from
+        # the index -- a planned point's start has no record of its own
+        # (`runs-of-points.md` § 1.2, *start*).
+        walked_optical = p["phase"] == OPTICAL and not taken
+        assert p["started_from"] == (
+            rel if taken else f"{index[FC]['words']}, copied by the walk"
+            if walked_optical else None), p
         assert index[name].get("taken_from") == (rel if taken else None), \
             index[name]
         if taken:
@@ -1679,11 +1690,11 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     assert said.startswith(
         f"running ({first['words']}: not done -- {first['why']}) | the "
         f"run: relax done · fc done · optical {len(taken)} of "
-        f"{len(optical)} ({len(taken)} taken over, 1 failed) |"), said
+        f"{len(optical)} done ({len(taken)} taken over, 1 failed) |"), said
     left = [r for r in rows if not r["done"]]
     finish, = told(run, "finish", "freq", n=2)
     assert finish.startswith(
         f"failed ({left[0]['words']}: not done -- {left[0]['why']}; "
         f"{len(left)} of {len(rows)} calls not done) | the run: relax done "
-        f"· fc done · optical {len(taken)} of {len(optical)} "
+        f"· fc done · optical {len(taken)} of {len(optical)} done "
         f"({len(taken)} taken over, {len(ran)} failed) |"), finish

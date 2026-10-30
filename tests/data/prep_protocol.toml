@@ -95,23 +95,23 @@ template = { compute_raman = true }
 # Raman for's default picks; a vibration's template
 # carries the catalogue's recommended relax_steps, 100, a try -- the
 # retries are the run card's, said beside it.
-said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 x 1 free atom) · optical 3 single points (1 + 2 x 1 mode), each .EPSIMG about 0.8 MB (15,001 photon energies, one spin channel; 0.4 MB more with two)",
-        "one job walking its calls -- 2 known at prep, the rest planned in the job (the stage's one wall)"]
+said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 × 1 free atom) · optical 3 calls (1 + 2 × 1 mode), each .EPSIMG about 0.8 MB (15,001 photon energies, one spin channel; 0.4 MB more with two)",
+        "one job walking its calls -- 2 prepared, the rest planned by the job (one wall for the whole run)"]
 
 [[case]]
 name = "...and one as described -- Compute Raman off, its default, no optical phase -- says its two calls, none planned in the job, on the stage's one wall"
 calculation = "vibration"
 stage = "freq"
-said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 x 1 free atom)",
-        "one job walking its 2 calls (the stage's one wall)"]
-said_lacks = ["the rest planned in the job", "1 free atom) · optical"]
+said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 × 1 free atom)",
+        "one job walking its 2 calls (one wall for the whole run)"]
+said_lacks = ["the rest planned by the job", "1 free atom) · optical"]
 
 [[case]]
 name = "...and Raman for a frequency range, at most the modes the run reports: 3 x the free atoms less the whole-body motions the held atoms leave -- the road's H2, atom 0 held, its stretch alone (science/normal-modes.md 3.1), only the run knowing which lie in the range"
 calculation = "vibration"
 stage = "freq"
 template = { compute_raman = true, raman_modes = "range", raman_freq_min_cm1 = 100.0 }
-said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 x 1 free atom) · optical up to 3 single points (1 + 2 x the modes within the range, at most 1), each .EPSIMG about 0.8 MB"]
+said = ["the run: relax up to 100 geometry steps a try · fc 7 SCFs (1 + 6 × 1 free atom) · optical up to 3 calls (1 + 2 × the modes within the range, at most 1), each .EPSIMG about 0.8 MB"]
 
 [[case]]
 name = "...and Raman for a range stated nowhere -- neither end given -- is refused at prep, naming the setting and the ways on, before a deck is written (engines/vibration.md 3.1)"

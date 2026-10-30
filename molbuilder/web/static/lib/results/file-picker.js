@@ -721,7 +721,7 @@
                     if (chosen === null) {
                         if (results.length === 0) {
                             _populatePlaceholder(selEl,
-                                "(no result files yet — click Reload)");
+                                "(no result file in this folder)");
                         } else {
                             _populate(selEl, cachedGroups, null);
                             _prependUnchosen(selEl,

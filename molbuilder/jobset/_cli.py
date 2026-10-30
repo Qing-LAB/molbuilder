@@ -957,23 +957,14 @@ def describe_cmd(structure, bundle: str,
 @click.argument("stage", required=False, default=None)
 @_bundle_option()
 def status_cmd(stage, bundle: str) -> None:
-    """Show every stage of the description, with its group -- its run state
-    (finished / running / failed / queued / pending), or the ready door's
-    (described; prepared, ready to launch or waiting for what it names),
-    which warm-restart
-    files are present -- and each group's next step, the line that moves
-    it, the first group not finished marked.  The stages are listed from the moment `molbuilder describe` writes them, the
-    ones not prepared yet among them (job-system.md § 5.3).  Read-only --
-    molbuilder informs; you decide whether to continue or switch.  Reuses
-    the same directory decoder as the Results tab.
+    """Show each stage, its group and its state -- finished, running,
+    failed, queued or pending once prepared; described, ready to launch or
+    waiting before -- its warm files, and each group's next step with the
+    line that moves it.  Read-only.
 
-    With a STAGE -- its name, or '#N' its number (quoted: bash reads a bare
-    # as a comment), like every other verb -- it
-    answers the other question instead: *what this one is and what happened
-    to it* -- its deck, what it carries, its resources, its runs, its
-    launch record and what it continued from.  That form is only answerable
-    because a run is a folder of its own and a launch is a record
-    (project-layout.md § 1.5, § 1.6).
+    With a STAGE (its name, or '#N' quoted): what it is and what happened
+    to it -- its deck, what it carries, its resources, its runs, its launch
+    record, what it continued from and, for a run of points, each point.
     """
     from ..calcdirs import described as _described
     base = Path(bundle)
@@ -2711,7 +2702,8 @@ def migrate_cmd(bundle: str) -> None:
     """Rewrite what an older molbuilder wrote in a calculation -- the road
     every reader names when it refuses such a file: the description and the
     plans, the copy of the machine's record, a transport lead's files on
-    its own stem, and the
+    its own stem, a run's index of points that molbuilder 2.54 or before
+    wrote, and the
     template's older, renamed and retired items and the run settings it
     held, a value moved onto the run card.
 

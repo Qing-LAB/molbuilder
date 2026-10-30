@@ -1802,8 +1802,8 @@ def test_a_walk_of_points_is_placed_at_prep_its_walls_summed(junction):
     is sent; the scheduler decides (`scheduler.md` R6)."""
     r = junction.walk.said["prep on short"]
     assert r.exit_code == 0, r.output
-    for words in (f"one job walking its {len(_BIAS)} points (their walls "
-                  f"summed)", "-t 0-01:20:00",
+    for words in (f"one job walking its {len(_BIAS)} points (each "
+                  f"point's wall, summed)", "-t 0-01:20:00",
                   "1h20m is over short's wall (01:00:00)"):
         assert words in r.output, r.output
 
@@ -1848,7 +1848,8 @@ def test_launched_cold_every_point_runs_again(junction):
     assert device.attempt == "run-1", device.attempt
     zero, then = (point_row(device, v) for v in _BIAS)
     assert zero["started_from"] is None and zero["done"], zero
-    assert f"{label}.DM <- 01_seed/run-0" in device.gathered, device.gathered
+    assert f"{label}.DM \u2190 01_seed/run-0" in device.gathered, \
+        device.gathered
     assert then["started_from"] == f"04_device/run-1/v{_BIAS[0]:g}", then
 
 
@@ -1982,7 +1983,8 @@ def test_the_transmission_takes_the_devices_newest_run_whole(junction):
     transmission = stage_status(junction.bundle, "transmission")
     for v in _BIAS:
         took = point_row(transmission, v)["took"]
-        assert f"{label}.TS.HSX <- 04_device/run-1/v{v:g}" in took, (v, took)
+        assert f"{label}.TS.HSX \u2190 04_device/run-1/v{v:g}" in took, \
+            (v, took)
 
 
 # --------------------------------------------------------------------- #
@@ -2175,7 +2177,7 @@ def test_a_points_run_panel_says_how_its_run_was_launched(junction):
         launch = record["computation"]["launch"]
         assert launch["mode"] == "direct" and launch["launched_at"], launch
         assert "continued_from" not in launch, launch
-        given = {f"{g['file']} <- {g['from']}"
+        given = {f"{g['file']} \u2190 {g['from']}"
                  for g in record["deck"].get("gathered_from", ())}
         assert gathered <= given, (v, gathered - given)
     assert runs.folder_answer(run.attempt("device"))["status"] is None
@@ -4426,9 +4428,9 @@ def _runs_of(made, stage):
 
 
 def _resolves(bundle, said) -> bool:
-    """A ``<file> <- <run>`` line the status door states: the file is in
+    """A ``<file> ← <run>`` line the status door states: the file is in
     that run's folder of this calculation."""
-    fn, _, ref = said.partition(" <- ")
+    fn, _, ref = said.partition(" \u2190 ")
     return (Path(bundle) / ref / fn).is_file()
 
 
@@ -4564,10 +4566,10 @@ def test_a_question_the_finished_results_answer_is_copied_in(
     device, transmission = mine["device"], mine["transmission"]
     if transmission.points:
         for p, d in zip(transmission.points, device.points):
-            assert (f"{label}.TS.HSX <- {device.dir}/{d['folder']}"
+            assert (f"{label}.TS.HSX \u2190 {device.dir}/{d['folder']}"
                     in p["took"]), (p, d)
     else:
-        assert (f"{label}.TS.HSX <- {device.dir}/{device.attempt}"
+        assert (f"{label}.TS.HSX \u2190 {device.dir}/{device.attempt}"
                 in transmission.gathered), transmission.gathered
     # THE RECORD: the voltages asked, each the finished result, copied.
     def by_point(run):

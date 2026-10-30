@@ -454,7 +454,7 @@ laser:
 > smoothed by 0.0272114 eV). When this limit is meaningful:
 > [the method, § 3.1](?doc=science/vibrational-optical-response.md). A picked mode whose two sides are
 not both done reads its state in both cells, the laser's and the static
-one — `pending` or `failed` — the reason on hover; a mode no call was made
+one — `not ended` or `failed` — the reason on hover (*the +δQ side not ended*); a mode no call was made
 for, `—`. The table's CSV names the
 two columns the same way, `raman_strength_a4_amu_along_z_633nm_0.0272114eV`
 and `raman_strength_static_a4_amu_along_z_0.0272114eV` — a PySCF result's
@@ -890,7 +890,9 @@ going was shown as a snapshot unless someone pressed *Start watching*
 is followed until its phases finish)*. If you pick a spectrum whose calculation
 is still running, the viewer **follows it by itself — it polls
 `/api/spectra/load` every 2 seconds** and redraws as new modes arrive, and the
-status line above the phase dots says it is following. (That's a faster
+status line above the phase dots says it is following, the run's own
+detail beside it — a run of points' count (`execution/runs-of-points.md`
+§ 1.4). (That's a faster
 cadence than the trajectory viewer's 15 seconds — a spectrum job produces its
 phases in quicker bursts.) The poll stops when the run is no longer live —
 finished, failed or never launched, the state the server sends with the file

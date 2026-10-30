@@ -338,21 +338,21 @@ as its five parts, below):
 **An extension** (`engines/transport.md` § 2a.16, *Extending it* and *On
 the page*; the describe door's `extend`) draws the five parts in order,
 each card headed as its part and the prose about citing not shown:
-1. *EXTENDING <name>* — the voltages, frames and window it describes, its
+1. *EXTENDING &lt;name&gt;* — the voltages, frames and window it describes, its
    finished results copied wherever nothing changed — and its way out, *Start
    a new calculation from this junction with these settings*, which cites
    the junction shown again as a calculation that reuses nothing, every card
    starting from the values chosen in the finished one (the lock's `chosen`;
    a value nobody chose blank, the lock's `blank`); 2. the junction — a
-   choice of <name>'s junction as it ran or a frame set of it, whose *Choose
+   choice of &lt;name&gt;'s junction as it ran or a frame set of it, whose *Choose
    a frame set…* opens the picker, which refuses a set whose first frame is
    another junction where it is picked, the junction held staying; 3. what
    you can change — the voltages, added or removed, their treatment, and
    the device's and the transmission's tabs alone, the transmission's beside
    the window fitted to the finished grid (`/api/transport/fit`), each
    saying what a change re-runs (`extend.says`, drawn as it is), and above
-   the tabs a value typed for <name> before, restored, with *Use <name>'s
-   own values*; 4. *Fixed by <name>*, folded — the shared values and the
+   the tabs a value typed for &lt;name&gt; before, restored, with *Use &lt;name&gt;'s
+   own values*; 4. *Fixed by &lt;name&gt;*, folded — the shared values and the
    seed's and the leads', from the schema's `locked`, served with `reuses`;
    the shared panel, the charge-and-spin card and those stages' tabs are not
    drawn, and nothing of them is sent; 5. the plan — what is copied and what
@@ -361,7 +361,7 @@ each card headed as its part and the prose about citing not shown:
    the fixed rungs holding the finished calculation's own values; a changed
    fixed value, or its rename or its label changed, is refused by name with
    nothing written. Citing anything else leaves the extension: *NEW
-   CALCULATION from <citation>*, every card back, the voltages 0.0.
+   CALCULATION from &lt;citation&gt;*, every card back, the voltages 0.0.
 
 **A reload keeps the citation and what the forms hold**, through the
 workspace's one door, each under the tab's own tag

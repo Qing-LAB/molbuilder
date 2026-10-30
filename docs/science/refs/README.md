@@ -3,7 +3,7 @@
 Backing material for [`../normal-modes.md`](?doc=science/normal-modes.md).
 Every entry's bibliographic record was checked against Crossref and the
 publisher on **2026-09-21**; the result of each check is recorded beside the
-entry in [`../references.bib`](?doc=science/references.bib).
+entry in `../references.bib`.
 
 Each article is stored as the PDF **and** as a `.txt` rendering, so the prose
 can be grepped and quoted without opening a reader. The `.txt` files are

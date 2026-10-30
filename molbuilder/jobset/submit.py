@@ -2094,12 +2094,13 @@ def _all_launched(jobset: JobSet, base: Path, *, count: int,
                      base))
 
 
-def _empty_scratch_fn(when: str) -> List[str]:
+def _empty_scratch_fn(when: str, head: str) -> List[str]:
     """THE RUN'S SCRATCH FOLDER, EMPTIED (`engines/transport.md` § 2a.11,
     *What a run's points share*): the walk's ``empty_scratch`` -- the files
     the one answer names an engine's scratch (`warmfiles.scratch_families`,
     each family a glob of the shell's) and nothing else, and what went,
-    with its size in du's words, to the log."""
+    with its size in du's words, to the log, each line under the walk's
+    ``head``."""
     import shlex as _sh
     from ..warmfiles import scratch_families
     globs = " ".join("*" + _sh.quote(f[1:]) for f in scratch_families())
@@ -2107,7 +2108,7 @@ def _empty_scratch_fn(when: str) -> List[str]:
         "empty_scratch() {",
         '    _d="$1"',
         '    if [ ! -d "${_d}" ]; then',
-        f'        echo "[group] {when} $(basename "${{_d}}")/ not there -- '
+        f'        echo "{head} {when} $(basename "${{_d}}")/ not there -- '
         f'nothing emptied" >> "$LOG"; return 0',
         "    fi",
         f'    _gone=$(cd "${{_d}}" && ls -d -- {globs} 2>/dev/null '
@@ -2116,10 +2117,10 @@ def _empty_scratch_fn(when: str) -> List[str]:
         f'        _size=$(cd "${{_d}}" && du -ch -- {globs} 2>/dev/null '
         f'| tail -1 | cut -f1)',
         f'        (cd "${{_d}}" && rm -f -- {globs})',
-        f'        echo "[group] {when} $(basename "${{_d}}")/ emptied -- '
+        f'        echo "{head} {when} $(basename "${{_d}}")/ emptied -- '
         f'${{_gone}}(${{_size}})" >> "$LOG"',
         "    else",
-        f'        echo "[group] {when} $(basename "${{_d}}")/ empty" >> "$LOG"',
+        f'        echo "{head} {when} $(basename "${{_d}}")/ empty" >> "$LOG"',
         "    fi",
         "}",
     ]
@@ -2155,7 +2156,8 @@ def _walk_script(name: str, steps, *, where: str, log: str,
                  empties: Optional[Dict[int, str]] = None,
                  empty_at_end: Optional[str] = None,
                  walls: Optional[Sequence[Optional[int]]] = None,
-                 one_start: bool = False, enters: str = "") -> str:
+                 one_start: bool = False, enters: str = "",
+                 tag: str = "group") -> str:
     """THE ONE WALK SCRIPT -- what runs several members one after another in
     one submission: a benchmark's trials (a shelf sent to a queue, or its
     unlaunched trials run here, `generator.md` § 4.3a), a group's stages
@@ -2200,11 +2202,14 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     ``enters``: the environment the walk's own steps run in, entered before
     the first -- a sequence's, whose steps run molbuilder: molbuilder's own,
     by the one bootstrap every script uses (`runwrap.env_bootstrap`).
+    ``tag`` heads every line of its log, ``[<tag>]`` -- ``walk`` for a run
+    of points' walk, whose members are its points, not a group's stages.
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
     from ..runtime_info import JOB_STARTED_VAR
     when = "$(date '+%Y-%m-%dT%H:%M:%S')"
+    head = f"[{tag}]"
     lines = [
         "#!/usr/bin/env bash",
         f"# {GroupNames(name).name('.run.sh')} -- {where}, in sequence",
@@ -2226,7 +2231,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         # that could not be copied among them -- so a walk left in the
         # background loses nothing (`job-system.md` § 6.0).
         'exec 2>> "$LOG"',
-        f'echo "[group] {when} start {member_word}s={len(steps)} per-{member_word}-bound='
+        f'echo "{head} {when} start {member_word}s={len(steps)} per-{member_word}-bound='
         f'{f"{bound_s}s" if bound_s else "none"} '
         'job=${MB_JOB_ID:-none} node=$(hostname) '
         'alloc_ntasks=${MB_NTASKS:-unset} '
@@ -2242,28 +2247,28 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         # STOPPED BY THE PERSON -- Ctrl-C, a lost terminal, a cancel --
         # the walk starts no further member (bash runs this after the
         # running member returns; one under a per-member bound ends at it).
-        f'_walk_stopped() {{ echo "[group] {when} stopped -- no further '
+        f'_walk_stopped() {{ echo "{head} {when} stopped -- no further '
         f'{member_word}" >> "$LOG"; exit 130; }}',
         "trap _walk_stopped INT TERM HUP",
-        *(_empty_scratch_fn(when) if empties or empty_at_end else []),
+        *(_empty_scratch_fn(when, head) if empties or empty_at_end else []),
         "run_member() {",
         '    _name="$1"; _dir="$2"; shift 2',
         "    _t0=$(date +%s)",
-        f'    echo "[group] {when} -> ${{_name}} starts" >> "$LOG"',
+        f'    echo "{head} {when} -> ${{_name}} starts" >> "$LOG"',
         (f'    ( cd "${{_dir}}" && timeout -k 30 {bound_s} '
          '"$@" ) >> "$LOG" 2>&1'
          if bound_s else
          '    ( cd "${_dir}" && "$@" ) >> "$LOG" 2>&1'),
         "    _rc=$?",
         '    if [ "${_rc}" -eq 124 ]; then',
-        (f'        echo "[group] ${{_name}} hit the {bound_s}s '
+        (f'        echo "{head} ${{_name}} hit the {bound_s}s '
          f'per-{member_word} bound -- killed; its artifacts read incomplete" >> "$LOG"'
          if bound_s else
-         '        echo "[group] ${_name} killed (124)" >> "$LOG"'),
+         f'        echo "{head} ${{_name}} killed (124)" >> "$LOG"'),
         "    fi",
         '    if [ "${_rc}" -ne 0 ]; then fails=$((fails+1)); fi',
         "    _t1=$(date +%s)",
-        f'    echo "[group] {when} <- ${{_name}} finished rc=${{_rc}} '
+        f'    echo "{head} {when} <- ${{_name}} finished rc=${{_rc}} '
         'took=$(( _t1 - _t0 ))s" >> "$LOG"',
         "    return ${_rc}",
         "}",
@@ -2277,7 +2282,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         told = f"{WALL_VAR}={int(wall)} " if wall else ""
         # WHAT ITS FAILURE DOES: with ``needs``, its flag stays 0 and the
         # steps that build on it are not run; else nothing, the rest run.
-        failed = (f' || {{ echo "[group] {when} {member} failed -- what '
+        failed = (f' || {{ echo "{head} {when} {member} failed -- what '
                   f'builds on it is not run" >> "$LOG"; }}'
                   if needs is not None else " || true")
         if isinstance(run_sh, WalkLoop):
@@ -2292,11 +2297,11 @@ def _walk_script(name: str, steps, *, where: str, log: str,
             if run_sh.skip:
                 run.append(
                     f'    case " {" ".join(run_sh.skip)} " in *" $_n "*) '
-                    f'echo "[group] {when} {member}@$_n taken over -- not '
+                    f'echo "{head} {when} {member}@$_n taken over -- not '
                     f'run" >> "$LOG"; continue ;; esac')
             if copies:
                 run.append(
-                    f'    if ! {copies}; then echo "[group] {when} '
+                    f'    if ! {copies}; then echo "{head} {when} '
                     f'{member}@$_n not run -- its start could not be '
                     f'copied" >> "$LOG"; fails=$((fails+1)); continue; fi')
             run += [f'    {told}run_member "{member}@$_n" "$_d" '
@@ -2322,11 +2327,11 @@ def _walk_script(name: str, steps, *, where: str, log: str,
                                      f"{_shlex.quote(dst)}/"
                                      for src, dst in before)
                 run = ([f"if {copies}; then"]
-                       + [f'    echo "[group] {member}: starts from {src}" '
+                       + [f'    echo "{head} {member}: starts from {src}" '
                           f'>> "$LOG"' for src, _dst in before]
                        + [f"    {call}",
                           "else",
-                          f'    echo "[group] {when} {member} not run -- its '
+                          f'    echo "{head} {when} {member} not run -- its '
                           f'start could not be copied" >> "$LOG"',
                           "    fails=$((fails+1))",
                           "fi"])
@@ -2340,12 +2345,12 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         lines += [f"if {' && '.join(f'[ "${{_ok_{n}}}" -eq 1 ]' for n in on)}; then",
                   *[f"    {r}" for r in run],
                   "else",
-                  f'    echo "[group] {when} {member} not run -- what it '
+                  f'    echo "{head} {when} {member} not run -- what it '
                   f'builds on failed or did not run" >> "$LOG"',
                   "fi"]
     if empty_at_end:
         lines.append(f"empty_scratch {_shlex.quote(empty_at_end)}")
-    lines += [f'echo "[group] {when} done fails=${{fails}}" >> "$LOG"',
+    lines += [f'echo "{head} {when} done fails=${{fails}}" >> "$LOG"',
               "exit $(( fails > 0 ))", ""]
     return "\n".join(lines)
 
@@ -2778,7 +2783,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                                              for f in start.files)
                                        if start.source is not None else ())),
                       "", ()))
-        said.append(f"the {record.unit}s below {place.walked(c.point.rel)}/"
+        said.append(f"the {record.unit}s planned by "
+                    f"{c.planner.words()}, in {place.walked(c.point.rel)}/"
                     + (f" ({len(again)} to run again)" if again else ""))
     # THE RUN'S INDEX (§ 3, op. 7): every point in the listing order, the
     # kind table's record copied, the kind's facts about the run -- those
@@ -2826,7 +2832,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
         empties=empties, empty_at_end=scratch_at,
         walls=([_wall_s(job.resources)] * len(steps)
                if _own_walls(mode, inside) else None),
-        one_start=record.wall == WALL_ONE)
+        one_start=record.wall == WALL_ONE, tag="walk")
     return _Walk(member, script, gn, stage_dir)
 
 

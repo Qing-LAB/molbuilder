@@ -139,9 +139,9 @@ def done(folder, names, *, launch=None, must_hold=(),
     st = run_status(folder, names.stem, launch=launch,
                     launched_in=launched_in)
     if st.state in ("pending", "queued"):
-        # NOTHING RAN HERE YET: queued and pending are the RUN's state, said
-        # on its row; a point is done or not done.
-        return False, "not run"
+        # NOTHING RAN HERE YET: not done, in the run door's word for where
+        # it stands -- queued in a launched walk, pending before a launch.
+        return False, st.state
     if not usable(st.state):
         return False, st.detail or st.state
     why = not_done_why(st.verdict, counts=verdict_counts,
@@ -296,7 +296,7 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
                 f"its first launch, and anew with --gather when it is "
                 f"launched again (job-system.md § 5.4).")
     if not independent(task):
-        # ANY OTHER LINKED STAGE -- a vibration's, one run in phases on
+        # ANY OTHER LINKED STAGE -- a vibration's, one run of points on
         # SIESTA, PySCF's one deck -- builds on the calculation's structure;
         # a run of another stage is not its input (a `freq` run's `.XV` is
         # a displaced geometry), and a first launch has nothing to start
@@ -531,7 +531,10 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
     run's own gather).  The one per-point
     reader (`engines/transport.md` § 2a.11): the status door asks it for a
     stage's latest run, the record for the run a transmission gathered
-    (§ 2a.12), so the two never read a point two ways.  Each row in the
+    (§ 2a.12), so the two never read a point two ways.  A planned point
+    has no `.continued-from` -- its loop step copies its start with no
+    record (`execution/runs-of-points.md` § 1.2) -- so its start is said
+    from the run's index: its planner's words, copied by the walk.  Each row in the
     job's own shape too (`runpoints.rows_of`, `execution/runs-of-points.md`
     § 4.7): ``rel``, ``words``, ``phase``, ``round``, ``needs`` -- launch's,
     from the run's index (``index``, read here when not handed in) --
@@ -580,6 +583,13 @@ def point_rows(run, names, task, stage: str, *, launch, base, index=None):
             copied, unread = None, str(exc)
         took = [g for g in gathered_lines(pdir) if g not in gathered]
         entry = entry_of(index, pt.rel) or {}
+        if src is None and unread is None and opened and entry.get(
+                "planned_by"):
+            # A PLANNED POINT'S START, from the run's index: the point
+            # that planned it, whose files its loop step copied.
+            planner = entry_of(index, entry["planned_by"]) or {}
+            src = (f"{planner.get('words') or entry['planned_by']}, "
+                   f"copied by the walk")
         pts.append({**pt.to_wire(),
                     # THE JOB'S SHAPE (`runpoints.rows_of`): which point,
                     # its words, phase, round and needs as launch listed it.
@@ -658,12 +668,13 @@ def _walked_here(pts) -> list:
 
 
 def gathered_lines(folder) -> List[str]:
-    """``<file> <- <run>`` for each entry of ``folder``'s ``.gathered-from``
+    """``<file> ← <run>`` for each entry of ``folder``'s ``.gathered-from``
     (`runrecord.read_gathered_from`), in the order taken; ``[]`` when there
     is none."""
     from ..runrecord import read_gathered_from
     try:
-        return [f"{fn} <- {src}" for src, fn in read_gathered_from(folder)]
+        return [f"{fn} \u2190 {src}"
+                for src, fn in read_gathered_from(folder)]
     except LaunchRecordError as exc:
         # SAID ON ITS ROW, in its reader's words -- never the whole status.
         return [str(exc)]

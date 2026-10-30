@@ -769,8 +769,8 @@ clock. The output reads `failed` with the wall as its cause, in SIESTA's own
 line (`siesta_grammar.OUT_OF_TIME_MARKER`; the `SCF_NOT_CONV` warning it
 prints on the way out is not the cause); the wrapper does not warm-retry it,
 and says what a launch again does with the run — a single run continues
-from the files it saved, a call of a run in phases as its run's rule starts
-a call not done. Every line a person sees of the wall is
+from the files it saved, a point of a run of points as its run's rule starts
+a point not done. Every line a person sees of the wall is
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6's
 table.
 

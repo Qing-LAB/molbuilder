@@ -145,8 +145,8 @@ def read_concluded(text: Optional[str]) -> Optional[dict]:
     "note": note}`` -- ``at`` and ``note`` only when stated -- or ``None``
     when the text is not one.  The note is what the wrapper adds when the
     job had no python of its env (`parse.dirs.job.NO_ENV_PYTHON`), or its
-    finish -- or a run in phases' plan or record step -- failed or cannot
-    run (`FINISH_FAILED`, `FINISH_CANNOT_LOAD`).  THE one reader of that
+    finish -- or a point's own step, before or after its engine -- failed
+    or cannot run (`FINISH_FAILED`, `FINISH_CANNOT_LOAD`).  THE one reader of that
     line.
     """
     head = text.splitlines()[0] if text else ""
@@ -297,7 +297,7 @@ def note_notified(where, event: str, at: float,
     the run does not report twice (`run-reports.md` § 2.9) -- written whole
     through `persist`, so it is whole or absent
     (`execution/architecture.md` § 2.1).  THE RECORD HAS TWO WRITERS -- a
-    call's member monitor and its record step's `notify` verb, which can
+    point's member monitor and its report step's `notify` verb, which can
     speak at the same moment -- so the read and the write are one step,
     under a lock on the folder: an event appended by the one is never lost
     to the other.  Both run in the call's job, on one node, which is all

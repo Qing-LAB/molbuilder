@@ -734,7 +734,7 @@ def _migrate_records(rec: "_Records"):
             # those whose `stages` name that role and no other of the kind
             # -- an item every role reads, alone or as a set (`scf`), is
             # the others' to state.  Any other value the retired stage set
-            # for its own run is a conflict, named -- one run in phases
+            # for its own run is a conflict, named -- one run of points
             # computes every phase at one value.
             from ..kind_table import kind
             from ..template import catalogue, select
@@ -756,7 +756,7 @@ def _migrate_records(rec: "_Records"):
                     raise MigrateError(
                         f"stage {relax.get('name')!r} overrides "
                         f"{', '.join(clash)}, which stage {st.get('name')!r} "
-                        f"does not state the same way -- one run in phases "
+                        f"does not state the same way -- one run of points "
                         f"carries one value for each, every phase computed "
                         f"at it (engines/vibration.md 5.11 9): state "
                         f"{'it' if len(clash) == 1 else 'them'} on "
@@ -1138,8 +1138,7 @@ def _migrate_run_indexes(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
                 moves.append((old_path, kept))
             said.append(f"{src.relative_to(base)}: the run's index as "
                         f"molbuilder 2.54 wrote it, rewritten as "
-                        f"{new_path.name} -- one index for every run of "
-                        f"points (execution/runs-of-points.md 2.3)"
+                        f"{new_path.name}"
                         + (f"; {old_path.name} kept as {kept.name}"
                            if kept is not None else ""))
     return said, moves, writes

@@ -9,7 +9,8 @@ The fdf library writes one line per key SIESTA looks up: ``<key> <value>
 label -- followed by ``# above item originally: <key> <value> [<unit>]`` when
 it converted the spelling it was given.  ``#:block?`` / ``#:defined?`` lines
 are its own lookups and carry no value; ``%block`` ... ``%endblock`` hold
-blocks verbatim.
+blocks verbatim, and a block echoed with no ``%endblock`` ends at the next
+lookup line.
 
 **A key may be read more than once, and not always to the same value.**  Each
 call site passes its own default, so a key the deck does not set can read
@@ -89,9 +90,13 @@ def read_fdf_log(text: str, source: str = "<text>"
         if block is not None:
             if low.startswith("%endblock"):
                 block = None
-            else:
+                continue
+            if not low.startswith("#:"):
                 blocks[block].append(line)
-            continue
+                continue
+            # A BLOCK ECHOED WITH NO ``%endblock`` (``Optical.Vector``):
+            # fdf's next lookup line ends it -- a lookup is never a row.
+            block = None
         if low.startswith("%block"):
             parts = line.split(None, 1)
             block = fdf_key(parts[1].strip()) if len(parts) > 1 else ""

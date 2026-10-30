@@ -198,7 +198,7 @@ copied, and its size, prep's Preview says (§ 11.1) ([`engines/transport.md`](?d
 label every emitted file is stemmed on. **A calculation that extends a finished one keeps the Transport tab's limits**
 (`engines/transport.md` § 2a.16, *Extending it*): the stage table's rows of
 the rungs that run once — the seed, the leads — and the shared values
-read-only, saying *fixed by <the finished calculation>* (a column a kept rung
+read-only, saying *fixed by &lt;the finished calculation&gt;* (a column a kept rung
 states a value in is not removed: its × held, saying the same), with the same way out
 (a new calculation from the junction, on the Transport tab); the device's and
 the transmission's rows, the bias list and the treatment as on any
@@ -228,7 +228,9 @@ folder still opens.
 **Under them, every value shared by every stage** — *Shared by every
 stage*: each item the catalogue marks `shared` for this calculation's kind,
 by its label, with its value and whose it is (*from the junction you cited ·
-you set this · not chosen · not recorded*), read-only
+you set this · not chosen · not recorded*) — a blank one by what the
+catalogue calls unset (`null_label`, such as *(auto)*), what the engine then
+does (`not_set`) in its hover — read-only
 ([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 3,
 *2026-10-11*) — and, for a value only some rungs read, which ones
 (`template.shared_scope_words`: *read by the device and transmission rungs
@@ -739,13 +741,16 @@ door; `validation.task`). A member whose value
 differs is shown beside the field (*electrode_L: 8*), never overwritten unasked,
 and for a value the job shares prep refuses the disagreement by name until it
 is settled. **The wall is the members' own, and the job asks for their SUM** — a row
-per member, *wall clock · <stage>*, each that stage's own time, and beneath the
+per member, *wall clock · &lt;stage&gt;*, each that stage's own time, and beneath the
 rows the rule said in words: the group's stages run one after another in a
 single job, so the scheduler is asked for the sum of the rows, not the longest
 *(the user, 2026-10-18, on Sol: a day typed on each of three stages was a
 three-day job, and the card had not said so)*. The sum itself is the Preview's
 to show — its `--time` header line — and the page sums nothing (`group.envelope`
-is the one rule, `job-system.md` § 5.0). The memory is the calculation's
+is the one rule, `job-system.md` § 5.0). A run of points' card says its one
+job in prep's words (`prep.walk_words`, the folder answer's `walks`): one
+wall for the whole run, or each point's, the job asking their sum
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.2). The memory is the calculation's
 (`allocation.mem`, the largest of what the job holds). *+ Add setting* offers what at least one
 member reads. **A row that stands has no ×** — a launch row, a benchmark's, or
 one the calculation states: its blank clears it (the select's blank option,
@@ -932,8 +937,8 @@ distinction the names themselves draw (`job-contracts.md` § 2.3):
 | group | what is in it |
 |---|---|
 | **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger — the catalogue's calculation-level rows |
-| **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them |
-| **one per rung** | everything stemmed on that rung's token, in the rung's directory and its first run's — the files a try numbers named for the first try, `-run0`. A run's own records carry fixed names, `run.json` and `.continued-from`, the same in every run: they are on no rung's card, and listed with the run's files in `project-layout.md` § 5.3 |
+| **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them — one that lands in each run (a vibration's result) says so on its line |
+| **one per rung** | everything stemmed on that rung's token, in the rung's directory and its first run's — the files a try numbers named for the first try, `-run0` — and, for a run of points, its walk in `launch/` (its run script, header and log, `runfiles.GroupNames.of_points`) in place of a header of its own; a rung's file at the root (its prep's pipeline log) says where. A run's own records carry fixed names, `run.json` and `.continued-from`, the same in every run: they are on no rung's card, and listed with the run's files in `project-layout.md` § 5.3 |
 
 **Each group folds** *(user, 2026-10-13: "the 'what this calculation writes'
 panel should have the organization of the files clear by foldable segments
@@ -966,8 +971,9 @@ The description says which calculation and which engine, and both narrow the
 list: a SIESTA run is not told about `.py`, and a relaxation is not promised a
 `.spectra.json`. A family — the wrapper's session log, one per launch — is
 shown with its field's name, `<base>.runwrap-<stamp>.log`, rather than with an
-invented timestamp. A file only an opt-in switch writes, or only a machine with
-a queue, says so on its line.
+invented timestamp — but the engine, which the description names, filled. A
+file only an opt-in switch writes, or only a machine with a queue, says so on
+its line; a file only an older molbuilder wrote is not listed.
 
 **And which restart-file list the calculation follows** *(plan W36 ⑧,
 2026-10-03; user: "provide information on the task setup web ui")*. The card's
@@ -1265,8 +1271,9 @@ refusal or warning about its own subject (a machine record that
 cannot be read, a `molbuilder.json` that is never read) — which opens.
 Reading the same folder again — after a Save, a Prep, a restore — leaves
 every card as you left it. **The page's messages stand above the cards**,
-outside every fold — what the folder is, a refusal, the preflight's notes
-on the last save — so a fold never hides one.
+outside every fold — what the folder is, a refusal, the task's groups that
+cannot be read, the preflight's notes on the last save — so a fold never
+hides one.
 
 **The main column is the order you work in**: where it saves, what came over,
 the machine, the queue, the stages, what to measure, what each
@@ -1316,8 +1323,8 @@ because they are a fact about the box, not about this calculation.
 [`job-request.md`](?doc=execution/job-request.md) § 3.5. Nothing set up — no tick, and
 both lists at *every* — writes no block, and no block is no report at all; a
 calculation that reports anything also reports its start and its end, its
-wall coming near — and, for a run of points, a phase's end and each kind of
-failure — so they are not offered, and the card's hint says so *(the user,
+wall coming near — and, for a run of points, a round's end (a phase; a
+voltage at every frame) and each kind of failure — so they are not offered, and the card's hint says so *(the user,
 2026-10-29)* ([`run-reports.md`](?doc=execution/run-reports.md) § 2, § 2.9). A
 block is written whole: the period not ticked as `null`, *every* channel or
 field as `["*"]`:
@@ -1434,7 +1441,9 @@ the boxes start again from the new offer. **Each group's next step is always
 there** *(the user, 2026-10-23: "task setup does not remember the last
 state")*: under the groups, what `jobset status` prints under *each group,
 and what is next* — a group ready to launch with its launch line, one
-waiting with what it waits for, the next one marked — from the folder's
+waiting with what it waits for, a group not prepared with its words alone —
+its prep line is the pick's below, composed with the machine chosen — the
+next one marked — from the folder's
 answer (`runstatus.jobset_status`'s `steps`), so a Save, a reload or a
 reopened page shows what a Prep's answer showed. **A ticked group already
 prepared as this prep would prepare it now** has nothing to write
@@ -1597,14 +1606,13 @@ from the same answer:
   [`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
   run** — opened, and what was brought in: the stage's own files — or, on
-  a transport rung that runs per point, one folder per point, each named by its
-  frame and its voltage as the UI names a point
-  (`lib/results/point-words.js`);
+  a run of points, each prepared point opened, named as the UI names a point
+  (`lib/results/point-words.js`, `runPointWords`);
 * **what each stage's first launch will take** — the stage before it's newest
   run, a transport rung's gather — copied at that launch, never at prep;
 * **where it was placed, and the fit of what it sends** — the queue and
   where each value came from, then the job sent with its header in one line
-  and its fit on that queue's machines: a run's own, a run of points' one
+  on a Prep's answer (a preview shows it line for line) and its fit on that queue's machines: a run's own, a run of points' one
   walk, each benchmark shelf, a group's one job once after its last member
   ([`scheduler.md`](?doc=execution/scheduler.md) R4, R6) — the lines the
   terminal prints;

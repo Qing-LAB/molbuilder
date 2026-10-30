@@ -35,6 +35,21 @@ they apply (§ 4), what is read and by which reader (§ 5), the doors (§ 6)
 and what a new kind of run of points is (§ 7). A kind's own chapter says
 only what is its own — what its points are and what they mean.
 
+## In one example
+
+A device run of a junction cited with 2 frames, at 0 V and 0.2 V: four
+points, one job (`T` the calculation's label, its device stage
+`04_device`).
+
+| step | what happens | what it writes |
+|---|---|---|
+| **prep** | writes each point's deck and run script, and opens the run | the prepared folders `04_device/f000/v0/`, `f000/v0.2/`, `f001/v0/`, `f001/v0.2/`; the run `04_device/run-0/`, a folder for each point |
+| **launch** | plans the walk: two rounds, 0 V then 0.2 V; each 0.2 V point starts from its frame's 0 V point | the index `run-0/T_04_device-run0.points.json`, four points; the walk `launch/T_04_device-sweep.run.sh` |
+| **the walk** | runs `f000/v0` and `f001/v0` from what the run gathered; then `f000/v0.2` and `f001/v0.2`, each from its frame's 0 V `.TSDE`, copied just before it runs | each point's output in its folder; its start, end and exit in the index |
+| **the events** | where the description asks for reports: `start` as the first point starts; `milestone` as the 0 V round ends — *0 V -- frame index 0 (of 2): converged in 41 NEGF iterations; frame index 1 (of 2): converged in 38 NEGF iterations*; `finish`, with the run's state, once no point is left | `run-0/notified.json` |
+| **status** | say `f001/v0.2` exited 1: the run *failed*, naming it, *frame index 1 (of 2) · 0.2 V*, and why; its count *3 of 4 points done, 1 failed (2 frames × 2 voltages)*; its next step, a launch again | nothing |
+| **launch again** | warm: opens `run-1/`, takes over the three points done in `run-0` — copied whole, each naming the point that computed it — and walks `f001/v0.2` again, from the `.TSDE` of `f001/v0` taken over | `run-1/` and its own index |
+
 ---
 
 ## 1. The words
@@ -65,13 +80,13 @@ names each is § 2.4.
 
 | word | what it is | a transport rung | a SIESTA vibration |
 |---|---|---|---|
-| **start** | what a point starts from: another point of the run — its **source** — and the files it takes from it. One hand-over ([`job-system.md`](?doc=execution/job-system.md) § 5.4): recorded when the launch is planned, its files copied by the walk just before the point runs. A planned point's start is copied by its loop step as the walk reaches it, with no hand-over record — launch does not know the point when it plans; its kind's facts in the index say it. A point with no start begins from what its run gathered, or from what prep wrote | the closest earlier voltage in its frame, its `.TSDE`; a frame's first voltage none (its gathered seed) | `fc` from `relax`'s `.DM`; an optical frame from `fc`'s `.DM`; `relax` none |
+| **start** | what a point starts from: another point of the run — its **source** — and the files it takes from it. One hand-over (§ 3, op. 5); a planned point's has no record, and `status` says it from the index: its planner's words, *copied by the walk*. A point with no start begins from what its run gathered, or from what prep wrote | the closest earlier voltage in its frame, its `.TSDE`; a frame's first voltage none (its gathered seed) | `fc` from `relax`'s `.DM`; an optical frame from `fc`'s `.DM`; `relax` none |
 | **need** | a point that must have **ran** (§ 1.3) before this one runs: its start's source, and any whose result it reads. Up the chain, a need that ended without running ends what builds on it | its start's source | `fc` needs `relax`; an optical frame needs `fc` |
 | **taken over** | a point **done** in the stage's newest launched run, copied whole into the new run by a warm launch and not run again — its record naming the run that computed it, one hop | | |
 | **relaunch** | what a launch again does with a point not done: **again** — from its start, as the first walk ran it; or **continue** — from its own last state, its job's warm files handed over from its last run's folder | again | `relax` continue; `fc` and the optical frames again |
 | **wall** | **one** — the run's points share the stage's one wall, counted from the run's start; **each** — every point is told the card's wall, the job's wall their sum | each | one |
 | **the walk** | the job's script that runs the run's points round by round, `launch/<stem>-sweep.run.sh`: a **walk step** for each prepared point it runs, a **loop step** for each container — the planned points there when the step comes | | |
-| **the kind's steps** | the kind's own work in the job around a point's engine, verbs of the job's bundle: **before** (what the engine reads), **after** (what the point came to — and, for a planner, the points it plans), and the run's **finish step** once no point is left to run | none | `plan` (the call's coordinates), `record` (the relaxation's record; the force constants' analysis, the result, the optical frames planned; the optical data), `finish-run` (the result, final) |
+| **the kind's steps** | the kind's own work in the job around a point's engine, verbs of the job's bundle: **before** (what the engine reads), **after** (what the point came to — and, for a planner, the points it plans), and the run's **finish step** once no point is left to run | none | `plan` (before), `record` (after), `finish-run` (finish) — § 8 |
 | **report steps** | the two steps around every point's engine — `point started`, `point ended` — which stamp the index, run the kind's steps in their place, and say the run's events | | |
 
 ### 1.3 How a point and the run are judged
@@ -95,7 +110,7 @@ names each is § 2.4.
 | word | what it is | a transport rung | a SIESTA vibration |
 |---|---|---|---|
 | **the index** | the run's one record of its points as the job sees them, at the run's root (§ 2.3) | | |
-| **count** | the run's progress, in the kind's words; its *failed* counts the points that ended without being done | *7 of 12 points done, 1 failed (3 frames × 4 voltages)* | *relax done · fc done · optical 7 of 11 (4 taken over)* |
+| **count** | the run's progress, in the kind's words; its *failed* counts the points that ended without being done | *7 of 12 points done, 1 failed (3 frames × 4 voltages)* | *relax done · fc done · optical 7 of 11 done (4 taken over)* |
 | **outcome** | what a point came to, in its kind's words, written by its after-step; a **round's outcome** is the kind's words over the round's points | the round's: each frame's NEGF iterations, or its G/G₀ at E_F and the frames' average | the relaxation's moves and largest force; the force constants' modes, stationarity and the frames planned |
 | **events** | `start`, `milestone`, `part_failed`, `finish` — [`run-reports.md`](?doc=execution/run-reports.md) § 2.9 | | |
 
@@ -106,7 +121,8 @@ names each is § 2.4.
 Four declarations, each with one door; nothing in the shared code names a
 kind, a phase or a file of one — but the indexes an older molbuilder wrote,
 which `runpoints` refuses by name and `jobset migrate` rewrites
-(`runpoints.OLDER_SCHEMAS`, `older_index`; § 3, op. 18).
+(`runpoints.OLDER_SCHEMAS`, `older_index`, refused as `OlderIndexError`;
+§ 3, op. 18).
 
 | declaration | holds | its door |
 |---|---|---|
@@ -289,18 +305,24 @@ CO2/                                  the calculation (task.json)
 
 **The levels**:
 
-| level | what it is | its name — and who names it | its record (`calcdir.json` role) | what it holds | composed by | read by |
-|---|---|---|---|---|---|---|
-| **stage folder** | one stage of the calculation | `<NN>_<stage>` — `naming.stage_home(base, task, stage).dir` | container | its prepared folders, its runs, `launch/` | prep | `calcdirs.where`: *what* = stage |
-| **prepared folder** | where prep writes a point's deck and run script — what every run copies | the point's `prepared`: a transport point's own folder (`f001/v0.2`), a vibration call's phase (`fc`, `optical`) | container | the deck, the run script, the files beside them (`runfiles.beside_the_deck`) | `RunPlace.prepared(rel)`; at prep, `calcdirs.prepared_folder(stage_dir, rel)` | `where`: *what* = point, *point* = its path below the stage |
-| **launch folder** | the job that walks the run | `launch` — `runfiles.LAUNCH_DIR`; its files `<stem>-sweep.*`, `runfiles.GroupNames.of_points` | container | the walk script, its header, its log | launch | `where`: *what* = support |
-| **run** | one launch of the stage: the run of points | `run-<n>` — `paths.attempt_name(n)`, `paths.attempt_dir` | container | its launch record, its notification record, its index, its monitor log, its gathered inputs, the kind's result — each named by the catalogue (`runfiles`) | the opener (`materialize.open_sweep_run`), at prep for `run-0`, at a launch after | `where`: *what* = attempt, *run_folder* = itself |
-| **point** | one engine run of the run | the point's `rel` — a transport point `f<NNN>/v<V>`, or `f<NNN>` where only the frame varies and `v<V>` where only the voltage does (`paths.frame_token`, `task.bias_token`; `stages.Point.rel`), a vibration call its phase (`relax`, `fc`; `vibration_phases.Call.rel`) | run | its own copies of the deck and run script, its output, session log, monitor log, conclusion; its `.continued-from` / `.gathered-from` | `RunPlace.point(rel)` | `where`: *what* = point, *point* = its `rel`, *run_folder* = its run |
-| **frame folder** | a transport run's level above its voltages, where both vary — where only the frame varies, the frame's folder is its point | `f<NNN>` — `paths.frame_token` | container | the frame's points | the opener | `where`: *what* = point |
-| **container** | a folder below the run for points the job plans | the planned phase's name (`optical`) — `Call(phase).rel` | container | its planned points | the opener, with the run (`PointsOf.containers`) | `where`: *what* = point |
-| **planned point** | a point the job adds while the run goes | `<container>/f<NNN>` — `paths.frame_token` of its place in the planning (`Call.rel`) | run | as a point | the planner's own step, through the opener's travelling core (`calcdirs.record`, `planned.bring`) at `RunPlace.point(rel)`; a launch again at the same | `where`: *what* = point |
-| **scratch** | the engine's scratch of the run | the rung's `scratch_dir` (`tsgf`) — the warm-files vocabulary, `Job.scratch_dir` | scratch | the round's leads' surface Green's functions | the opener, `RunPlace.scratch(name)` | `where`: *what* = scratch |
-| **shared** | a transmission point's energies shared with a finished calculation | `shared` — `transport.energies.SHARED_DIR` | shared | the finished point's files, `.copied-from` | the reuse (`reuse.shared_into`, `carry_shared`) | `where`: *what* = shared |
+| level | what it is | its name — and who names it | its record (`calcdir.json` role) | what it holds | composed by |
+|---|---|---|---|---|---|
+| **stage folder** | one stage of the calculation | `<NN>_<stage>` — `naming.stage_home(base, task, stage).dir` | container | its prepared folders, its runs, `launch/` | prep |
+| **prepared folder** | where prep writes a point's deck and run script — what every run copies | the point's `prepared`: a transport point's own folder (`f001/v0.2`), a vibration call's phase (`fc`, `optical`) | container | the deck, the run script, the files beside them (`runfiles.beside_the_deck`) | `RunPlace.prepared(rel)`; at prep, `calcdirs.prepared_folder` |
+| **launch folder** | the job that walks the run | `launch` — `runfiles.LAUNCH_DIR`; its files `<stem>-sweep.*`, the same module's `GroupNames.of_points` | container | the walk script, its header, its log | launch |
+| **run** | one launch of the stage: the run of points | `run-<n>` — `paths.attempt_name(n)`, `paths.attempt_dir` | container | its launch record, its notification record, its index, its monitor log, its gathered inputs, the kind's result — each named by the catalogue (`runfiles`) | the opener (`materialize.open_sweep_run`), at prep for `run-0`, at a launch after |
+| **point** | one engine run of the run | the point's `rel` — a transport point `f<NNN>/v<V>`, or `f<NNN>` where only the frame varies and `v<V>` where only the voltage does (`paths.frame_token`, `task.bias_token`; `stages.Point.rel`), a vibration call its phase (`relax`, `fc`; `vibration_phases.Call.rel`) | run | its own copies of the deck and run script, its output, session log, monitor log, conclusion; its `.continued-from` / `.gathered-from` | `RunPlace.point(rel)` |
+| **frame folder** | a transport run's level above its voltages, where both vary — where only the frame varies, the frame's folder is its point | `f<NNN>` — `paths.frame_token` | container | the frame's points | the opener |
+| **container** | a folder below the run for points the job plans | the planned phase's name (`optical`) — `Call(phase).rel` | container | its planned points | the opener, with the run (`PointsOf.containers`) |
+| **planned point** | a point the job adds while the run goes | `<container>/f<NNN>` — `paths.frame_token` of its place in the planning (`Call.rel`) | run | as a point | the planner's own step, through the opener's travelling core (`calcdirs.record`, `planned.bring`) at `RunPlace.point(rel)`; a launch again at the same |
+| **scratch** | the engine's scratch of the run | the rung's `scratch_dir` (`tsgf`) — the warm-files vocabulary, `Job.scratch_dir` | scratch | the round's leads' surface Green's functions | the opener, `RunPlace.scratch(name)` |
+| **shared** | a transmission point's energies shared with a finished calculation | `shared` — `SHARED_DIR` of `transport.energies` | shared | the finished point's files, `.copied-from` | the reuse (`reuse.shared_into`, `carry_shared`) |
+
+Every level is read by `calcdirs.where`, which answers its *what*: the
+stage folder *stage*, the launch folder *support*, the run *attempt* (its
+*run_folder* itself), the scratch *scratch*, the shared folder *shared*,
+and every other level *point* — with its path below the stage or the run
+(*point*) and, below a run, the run it is in (*run_folder*).
 
 **Every name has one source.** A folder's name is the door in its row; a
 file's name is the catalogue's (`runfiles`: `RunNames.name(role)`,
@@ -459,7 +481,7 @@ step's `needs`).
 On the job, once no point is left to run: `finished` — **done**: every
 point done; **ran**: every point ran (`_run_ending.points_state`) — else
 `failed`; its words the first point not done in the listing order, and *k
-of N <unit>s not done* when more than one is. A finish step that exited
+of N &lt;unit&gt;s not done* when more than one is. A finish step that exited
 non-zero makes the run failed, *the finish exited N* (`runpoints.run_state`).
 On this machine the same rule over its rows (`continuation.points_verdict`
 asks `run_state`), with what only this machine can see — *queued*, *running*, *between
@@ -470,7 +492,7 @@ two points*, a walk that ended among its points
 ### 4.5 A point the walk never ran
 
 Once no point is left to run, each point not ended is stamped `not_run`:
-*it builds on <words>, which failed* — the first need up its chain that
+*it builds on &lt;words&gt;, which failed* — the first need up its chain that
 failed — or *the walk ended before it reached this point*
 (`runpoints.why_not_run`). `status` says the same of a point the ended walk
 never reached, asking that rule over its rows, which carry each point's
@@ -484,8 +506,8 @@ After `point ended` has stamped the point and run its after-step:
 | the point | points left to run | sent |
 |---|---|---|
 | any | none | `finish`: the run's state (§ 4.4) and its words; and the outcome of this point's round |
-| its round has no point left to run | yes | `milestone`: the round's outcome (the record's `outcome`), else *<words>: done* — *<words>: not done -- <why>* for a point not done |
-| not done | yes | `part_failed`: *<words>: not done -- <why>*, once per **reason** — its exit where not 0, else its step's `what`, else the rule's words |
+| its round has no point left to run | yes | `milestone`: the round's outcome (the record's `outcome`), else *&lt;words&gt;: done* — *&lt;words&gt;: not done -- &lt;why&gt;* for a point not done |
+| not done | yes | `part_failed`: *&lt;words&gt;: not done -- &lt;why&gt;*, once per **reason** — its exit where not 0, else its step's `what`, else the rule's words |
 | any other | yes | nothing — the count is the periodic report's |
 
 Every event carries the run's count and, once a point has started, the
@@ -510,12 +532,12 @@ Every file has one reader; every side asks it.
 
 | what | file | reader | who asks |
 |---|---|---|---|
-| the run's index | `<stem>-run0.points.json` | `runpoints.read_index` — another schema refused by name, an index of 2.54 naming `jobset migrate`; the registry parser `run-points-json` | the report steps, the kind's steps, the monitor; launch (the newest launched run's); `status` (taken over, planned points, the finish) |
+| the run's index | `<stem>-run0.points.json` | `runpoints.read_index` — another schema refused by name, an index of 2.54 naming `jobset migrate` (`OlderIndexError`, to which `status` answers with the `migrate` line as the next step); the registry parser `run-points-json` | the report steps, the kind's steps, the monitor; launch (the newest launched run's); `status` (taken over, planned points, the finish) |
 | where a point is | `calcdir.json` and the folders' names | `calcdirs.where` (its composing half, `calcdirs.RunPlace`, places every folder this table's readers are handed) | the report steps, the kind's steps, the monitor; the run door |
 | how a point's run ended | its conclusion marker | `parse.dirs.run_status` (with the run's launch record) | `status` (`continuation.point_rows`) |
 | what its output says it converged | its output | `_run_ending.verdict_of` | `point ended` (stamped); `status` (through `run_status`) |
 | what it holds | its folder | `_run_ending.holds` | both sides |
-| what it started from | `.continued-from` | `runrecord.read_continued_from` | `status`; launch (taking over, one hop) |
+| what it started from | `.continued-from` — a planned point has none: `status` says its planner's words from the index, *copied by the walk* (`continuation.point_rows`) | `runrecord.read_continued_from` | `status`; the run record (`parse.dirs.record`, the Run panel's *Started from*); launch (taking over, one hop) |
 | what the run gathered | `.gathered-from` | `runrecord.read_gathered_from` | `status`, the record |
 | the run's launch | `run.json` | `runrecord.launch_record` | `status`; each point's monitor (the wall) |
 | what the run has said | `notified.json` | `runrecord.read_notified` | the `notify` verb; each point's monitor |
@@ -527,7 +549,7 @@ Every file has one reader; every side asks it.
 
 | door | floor | what it offers |
 |---|---|---|
-| `runpoints` | 1, travels in `mb_monitor.pyz` and every bundle whose steps write the index | the index: `index_path`, `index_of`, `read_index`, `index_at`, `write_index`, `empty_index`, `add_point`, `entry_of`, `planned_by`, `taken_from`; the stamps: `stamp_start`, `stamp_end`, `stamp_step_error`, `stamp_finish`, and a kind's own step's facts and outcome, `note`; the rules: `rows_of`, `still_to_run`, `why_not_run`, `close`, `run_state`, `round_ended`, `said`, `reason`; the words: `count`, `round_outcome`, `outcomes`, `not_done_words`, `NEVER_REACHED`; a part resolved beside the job: `part` |
+| `runpoints` | 1, travels in `mb_monitor.pyz` and every bundle whose steps write the index | the index: `index_path`, `index_of`, `read_index` and its refusal of an older molbuilder's, `OlderIndexError`, `index_at`, `write_index`, `empty_index`, `add_point`, `entry_of`, `planned_by`, `taken_from`; the stamps: `stamp_start`, `stamp_end`, `stamp_step_error`, `stamp_finish`, and a kind's own step's facts and outcome, `note`; the rules: `rows_of`, `still_to_run`, `why_not_run`, `close`, `run_state`, `round_ended`, `said`, `reason`; the words: `count`, `round_outcome`, `outcomes`, `not_done_words`, `NEVER_REACHED`; a part resolved beside the job: `part` |
 | `kind_table` | 1 | `run_of_points(kind, engine)` — the record of § 2.1; a part resolved on this machine, `part` |
 | `calcdirs` | 1, travels | the folders (§ 2.4): `where` reads which run and which point a folder is; `RunPlace` composes them — `point`, `prepared`, `scratch`, `walked`, `walked_all`; `prepared_folder` at prep |
 | `jobset.points` | 4 | `PointsOf`, `points_of(task)`, `record_of(task)`, `rung_points_of`, `walls_of` |

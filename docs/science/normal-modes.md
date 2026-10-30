@@ -1834,7 +1834,7 @@ Under R3 it is removed before diagonalisation and the run reports 35.
 ## 11. References
 
 Cited by key; entries live in
-[`references.bib`](?doc=science/references.bib).
+`references.bib`.
 
 All five were checked against Crossref and the publishers' records on
 2026-09-21; the bibliography records each check. Access status and the one full

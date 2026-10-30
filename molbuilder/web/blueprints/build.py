@@ -2033,6 +2033,10 @@ def _folder_template(folder, label, *, found=None, engine=None,
                 "name": it.name, "label": it.label or it.name,
                 "unit": it.unit,
                 "value": own.value if own is not None and own.is_set else None,
+                # ...AND WHAT A BLANK ONE IS, as the catalogue calls unset
+                # (`null_label`, *(auto)*) and what the engine then does
+                # (`not_set`): blank is resolved, never "nothing".
+                "null_label": it.null_label, "not_set": it.not_set,
                 "said": SOURCE_WORDS[(own.source if own is not None else None)
                                      or "unrecorded"],
                 # ...and which rungs it is for, when not every one reads it.
@@ -2241,6 +2245,17 @@ def api_task_setup_prep_plan():
         except _PickerError as exc:
             return jsonify({"ok": False, "error": exc.message}), exc.status
 
+    # THE CALCULATION THE FOLDER HOLDS, as saved: what its runs held (the
+    # memory need) and which of its stages run as a run of points (the
+    # walk's files) -- a folder that holds none has neither.
+    saved = None
+    if folder is not None:
+        from molbuilder import calculation as _calculation
+        try:
+            saved = _calculation.open(folder)
+        except (_calculation.NotACalculation, OSError, ValueError):
+            saved = None
+
     # THE MEMORY EACH STAGE NEEDS, measured on its runs, at the ranks its
     # card states as edited (`job-request.md` § 3.1a) -- asked by the page
     # when the folder or a rank count changes (``need``), read in the
@@ -2249,20 +2264,22 @@ def api_task_setup_prep_plan():
     needs = {}
     if body.get("need"):
         from molbuilder.jobset.memory import need as _need
-        measured_in = None
-        if folder is not None:
-            from molbuilder import calculation as _calculation
-            try:
-                measured_in = _calculation.open(folder)
-            except (_calculation.NotACalculation, OSError, ValueError):
-                measured_in = None
         for st in task.stages:
             needs[st.name] = _need(
-                measured_in, st.name,
+                saved, st.name,
                 job_req.run_condition(st.name).get("mpi_np"))
     rows = []
     for st in task.stages:
         home = stage_home(folder, task, st.name)
+        files = manifest(home.label, home.token, engine=task.engine,
+                         calculation=task.calculation)
+        if _runs_points(saved, st.name):
+            # A RUN OF POINTS IS SENT AS ITS WALK (`execution/runs-of-points.md`
+            # § 2.4, the launch folder): its header is the walk's, in the
+            # stage's `launch/`, never one of its own.
+            sbatch = home.names.name(".sbatch")
+            files = ([f for f in files if f["name"] != sbatch]
+                     + _walk_files(home.names.stem))
         rows.append({"stage": st.name, "dir": home.token,
                      **({"need": needs[st.name].to_wire()} if needs else {}),
                      "ask": _ask_of(st.name),
@@ -2279,10 +2296,9 @@ def api_task_setup_prep_plan():
                      # filters it: a SIESTA run is not told about `.py`.
                      # ...ON THE LABEL ITS FILES CARRY: a transport lead's
                      # own stem (`StageHome.label`, `job-contracts.md` § 2.1
-                     # rule 2).
-                     "files": manifest(home.label, home.token,
-                                       engine=task.engine,
-                                       calculation=task.calculation)})
+                     # rule 2).  A file that lands outside the stage's
+                     # folder says where -- a prep's log, at the root.
+                     "files": _placed(files, ("stage", "run", "launch"))})
     bench = None
     if job_req.bench:
         # Every axis, with its points.  A row of length one is a DECISION and
@@ -2330,9 +2346,11 @@ def api_task_setup_prep_plan():
     # thing this cannot say: whether they are there yet.
     # And what `summarize task` writes there from results that exist -- the
     # transport record, a sweep's comparison -- whose own line says so.
-    once = manifest(task.label, None, engine=task.engine,
-                    when=("prep", "run", "summarize"),
-                    calculation=task.calculation)
+    # Each that lands elsewhere than the calculation's folder says where:
+    # a vibration's result, at each run's root.
+    once = _placed(manifest(task.label, None, engine=task.engine,
+                            when=("prep", "run", "summarize"),
+                            calculation=task.calculation), ("calculation",))
     out = {"ok": True, "stages": rows,
            "bench": bench, "bundle": bundle, "once": once,
            "warm": _warm_in_effect(task, folder)}
@@ -2340,6 +2358,50 @@ def api_task_setup_prep_plan():
         from molbuilder.jobset.memory import largest
         out["largest_need"] = largest(list(needs.values())).to_wire()
     return jsonify(out)
+
+
+def _placed(rows, home) -> list:
+    """A card group's file rows (`runfiles.manifest`), each that lands
+    outside the group's own place -- ``home``, the levels its head names --
+    keeping the catalogue's words for where it does (``where``); the rest
+    saying nothing of it (`web/task-setup.md` § 7.2)."""
+    return [dict(r, where=(r["where"] if r["level"] not in home else ""))
+            for r in rows]
+
+
+def _runs_points(calc, stage: str) -> bool:
+    """Whether ``stage`` of the calculation as saved runs as a run of
+    points -- its points as prepared, by its kind's declaration
+    (`jobset.points.rung_points_of`); ``False`` with no calculation, and
+    for a stage it does not hold or whose points do not read."""
+    if calc is None:
+        return False
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.points import rung_points_of
+    try:
+        return bool(rung_points_of(calc, stage))
+    except (OSError, ValueError, PrepError):
+        return False
+
+
+def _walk_files(stem: str) -> list:
+    """A RUN OF POINTS' WALK, in its stage's `launch/` -- the walk script,
+    its header and its log (`execution/runs-of-points.md` § 2.4, the
+    launch folder): each named by the one composer
+    (`runfiles.GroupNames.of_points`) and said in the catalogue's words,
+    its row found as every reader finds a launch group's file
+    (`runfiles.row_for`)."""
+    from molbuilder.runfiles import (LAUNCH_DIR, LEVEL_WHERE, GroupNames,
+                                     row_for)
+    gn = GroupNames.of_points(stem)
+    out = []
+    for tail in (".run.sh", ".sbatch", ".log"):
+        name = f"{LAUNCH_DIR}/{gn.name(tail)}"
+        a = row_for(name)
+        out.append({"name": name, "what": a.what, "when": a.when,
+                    "level": a.level, "where": LEVEL_WHERE[a.level],
+                    "only": a.only})
+    return out
 
 
 def _warm_in_effect(task, folder) -> "dict | None":
@@ -2373,6 +2435,26 @@ def _folder_continue_from(calc) -> dict:
             got = {"error": str(exc)}
         if got is not None:
             out[st.name] = got
+    return out
+
+
+def _folder_walks(calc) -> dict:
+    """``{stage: words}`` -- each stage that runs as a run of points, its
+    one job in prep's own words (`prep.walk_words`): the run card says
+    what its wall is -- one for the whole run, or each point's, the job
+    asking their sum (`execution/runs-of-points.md` § 1.2, *wall*).  A
+    stage whose points do not read is left out, as the folder's other
+    parts leave out what they cannot read."""
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.prep import walk_words
+    out = {}
+    for st in calc.task.stages:
+        if not _runs_points(calc, st.name):
+            continue
+        try:
+            out[st.name] = walk_words(calc, st.name)
+        except (OSError, ValueError, PrepError):
+            continue
     return out
 
 
@@ -2573,6 +2655,9 @@ def api_task_setup_folder():
         # count.
         "attempts": (_folder_attempts(_calc) if _calc is not None
                      else {"stages": {}}),
+        # EACH RUN OF POINTS' ONE JOB, in prep's words -- what its run
+        # card's wall is (`web/task-setup.md` § 6.2b).
+        "walks": _folder_walks(_calc) if _calc is not None else {},
         # WHAT EACH STAGE CAN CONTINUE FROM -- its default, the runs of the
         # stage before it with what each was, and `--cold` where it is a
         # choice (`job-system.md` § 5.4, plan W37): the Continue-from choice

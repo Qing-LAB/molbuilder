@@ -242,7 +242,7 @@ def write_json(path, obj: Any, *, mode: Optional[int] = None) -> Path:
 
 def sha256_of(path) -> str:
     """The sha256 of the file at ``path``, hex -- the one digest a record
-    states of a file it names (a run in phases' index: each call's deck
+    states of a file it names (a run of points' index: each call's deck
     and coordinates, `engines/vibration.md` § 5.11 § 7)."""
     from pathlib import Path
     return sha256_of_bytes(Path(path).read_bytes())

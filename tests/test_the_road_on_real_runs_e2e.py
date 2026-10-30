@@ -106,7 +106,7 @@ def test_a_run_here_left_in_the_background_loses_nothing_it_prints(
     medium = real_h2_layered.attempt("medium")
     said = run_answer(medium)
     assert (said["state"], said["detail"]) == ("finished",
-                                               "job_completed"), said
+                                               "ended, exit 0"), said
     comp = folder_answer(medium)["record"]["computation"]
     assert comp["host"]["hostname"], comp
     assert comp["time"]["engine_elapsed_s"] > 0, comp

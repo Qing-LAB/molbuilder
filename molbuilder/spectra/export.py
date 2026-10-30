@@ -41,7 +41,7 @@ def name_of(calc, fmt: str) -> str:
 
 def result_path(calc, folder=None) -> Path:
     """THE VIBRATION RESULT AN EXPORT OF ``calc`` IS OF -- the one in
-    ``folder`` where it holds one (a run's own folder, or a run in phases'
+    ``folder`` where it holds one (a run's own folder, or a run of points'
     root: the run the viewer shows, `runs.on_label_at`), else the
     calculation's, its stage's newest run's (`materialize.newest_on_label`).
     Refused by name: a calculation of another kind or not yet launched, a

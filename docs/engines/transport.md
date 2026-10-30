@@ -953,8 +953,8 @@ T(E_F), the conductance and the current (total and as printed), the device
 DOS, the leads' spectral and bulk DOS and the transmission eigenchannels —
 TBtrans's k-averaged text files on the data file's energies — and the PDOS by
 region from each point's kept reading of its data file (*A point's digest*,
-below; [`model/parse.md`](?doc=model/parse.md) § 5e); the points without a transmission as `pending` or `failed` in
-their run's words; for a frame set, each point's frame and that frame's
+below; [`model/parse.md`](?doc=model/parse.md) § 5e); the points without a transmission as `pending` (said *not ended*) or
+`failed`, in their run's words; for a frame set, each point's frame and that frame's
 `customized` rows, the I–V per frame, the mode's average at each voltage
 (§ 2a.12, built 2026-10-10) and the frame set it is taken over, cited whole —
 its rows with their meanings, the vibration, the masses (`frame_set`, built
@@ -1377,7 +1377,7 @@ self-consistently rather than imposed. The walk emptied `tsgf/` as it ended,
 as § 2a.11 says.
 
 **Step 5 · the transmission → `05_transmission/run-0/v0/T.TBT.nc`**, and
-`v0.2/`: what it took, `T.TS.HSX <- 04_device/run-0/v0` (and `v0.2`'s from
+`v0.2/`: what it took, its `.gathered-from`: `T.TS.HSX <- 04_device/run-0/v0` (and `v0.2`'s from
 `v0.2`) and the two leads' `.TSHS`. 401 energies from −1.995 to +1.995 eV —
 the catalogue's window then, −2…2 eV, 401 points, mid-rule — at one k-point (an
 isolated chain has nothing to sample in the electrode plane): **T(E)
@@ -2405,7 +2405,7 @@ door for each place* below; `job-system.md`, *What marks each state*). Every
 reader asks it — `status`, the gather, `jobset scratch`, the run door (the
 Results tab's ladder and a point's own folder), the record's points and the
 data file's `device_state`: a point the ended walk never ran is failed,
-never one still to come, its why the job's own — *it builds on <the point>,
+never one still to come, its why the job's own — *it builds on &lt;the point&gt;,
 which failed*, or *the walk ended before it reached this point*
 (`runpoints.why_not_run`, asked by `continuation.never_reached`) — in
 `status`'s count, the record and the run's own finish alike
@@ -2759,9 +2759,9 @@ walk's end:  tsgf/ emptied
   `*.TSGFL *.TSGFR` — and only a walk that empties a folder carries the
   step. It writes one
   line to the walk's log, its time first (`date '+%Y-%m-%dT%H:%M:%S'`):
-  what it removed, the size in `du`'s words — `[group] <time> tsgf/
-  emptied -- AuBDT.v0.TSGFL AuBDT.v0.TSGFR (99G)` — or `[group] <time> tsgf/ empty`
-  when it found none, or `[group] <time> tsgf/ not there -- nothing
+  what it removed, the size in `du`'s words — `[walk] <time> tsgf/
+  emptied -- AuBDT.v0.TSGFL AuBDT.v0.TSGFR (99G)` — or `[walk] <time> tsgf/ empty`
+  when it found none, or `[walk] <time> tsgf/ not there -- nothing
   emptied` when the run has no such folder. At every moment the folder holds
   the pair of the voltage being worked on, or nothing. A hundred voltages
   at 40 GiB a lead cost 80 GiB on disk, never 8 TiB, and a walk that reaches
@@ -2931,8 +2931,9 @@ no atom's row — its DOS is per region. A calculation whose junction's sidecar
 states no order record (written before the field) records no order until a
 prep finds it — `prep task`, with a group to prepare or none (*The first
 prep*): its data file and a selection's PDOS are refused by name, each naming
-that command, and the report says it beside the drawing, which lists the
-atoms as TranSIESTA does (the record's `order_unstated`) — one check, one
+that command, and the record says it (`order_unstated`); the report's
+drawing, which lists the atoms as TranSIESTA does, states it in the
+viewer's notice, and its way on below it (the record's `order_way`) — one check, one
 fact, each door saying its own way on (`transport.compose.recorded_junction`;
 I9).
 
@@ -2995,7 +2996,7 @@ its k-point × energy loop in its one sentence, as its run record states it
 share done and TBtrans's estimate of its time left, each completed pass's
 measured time, where it stopped), and `estimated_at` while that estimate
 stands. The transmission rung carries its running point's, naming that point,
-how many other points are still to come — every other point pending,
+how many other points are still to come — every other point not ended,
 whatever order the walk runs them in (round by round, § 2a.11) — and the
 last finished point in the ladder's order with its measured loop — the only
 time a point still to come is judged by; nothing projects it.
@@ -4006,9 +4007,9 @@ bias-independent ground every point stands on (§ 1.2); the **device** and the
 **Fixed is shown, read-only, with its way out**: every fixed value stays in
 view as the finished calculation states it — the schema served with
 `reuses` marks the shared panel's and the seed's and leads' fields
-*locked*, each *the value <name> ran with* (`transport.reuse.Extension`,
+*locked*, each *the value &lt;name&gt; ran with* (`transport.reuse.Extension`,
 the one rule, its value the one the finished calculation ran with), and
-the page lists them, folded, under *Fixed by <name>* (*On the page*) — and
+the page lists them, folded, under *Fixed by &lt;name&gt;* (*On the page*) — and
 one action, *Start a new calculation from this junction with these
 settings*, cites the junction again as a new calculation that
 reuses nothing, its cards starting from the values chosen in the finished
@@ -4133,12 +4134,12 @@ by (`transport.reuse.write_reusing`), which checks the set
   frame is that junction, a relaxation run's folder among them — and shows
   the answer before you confirm (`describe_attempt` with `reuses`): one
   whose first frame is the finished junction reads *FRAME 0 IS THE JUNCTION
-  <name> RAN*, followed by what it is; one whose first frame is another
+  &lt;name&gt; RAN*, followed by what it is; one whose first frame is another
   junction, or that does not compose, shows why it is refused, and the
   junction you had stays. Once a set is cited, the panel names it, says the
   device and the transmission run once per frame and that the plan
   Describe shows says which results are reused, and the viewer and the
-  frame card show it; choosing <name>'s junction goes back, and choosing
+  frame card show it; choosing &lt;name&gt;'s junction goes back, and choosing
   the frame set again brings back the one last cited; reloading the page
   keeps the set. *Start a new calculation from this junction with these
   settings* starts from the junction shown — the finished one, or the set
@@ -4554,7 +4555,7 @@ the size of what it copies.
   the device's and the transmission's tabs from its rungs' overrides, each
   saying what a change re-runs; the shared panel, the charge-and-spin card
   and the seed's and the leads' tabs not drawn, their values listed under
-  *Fixed by <name>*; the rename is its own and is not offered. **Describe**
+  *Fixed by &lt;name&gt;*; the rename is its own and is not offered. **Describe**
   writes what `molbuilder describe --reuses` writes, through the same
   writer ([`web/tabs.md`](?doc=web/tabs.md) § 4).
   **An extension has its own layout** *(the user, 2026-10-25: "when you
@@ -4564,39 +4565,39 @@ the size of what it copies.
   Picking a finished calculation's folder turns the page into five parts,
   in this order:
 
-  1. **What you are doing** — *EXTENDING <name>*, with what it describes:
+  1. **What you are doing** — *EXTENDING &lt;name&gt;*, with what it describes:
      its voltages, its frames, its energy window. One sentence says the
      rest: its finished results are copied where nothing changed — the
-     plan below names each — only what you change is computed, and <name>
+     plan below names each — only what you change is computed, and &lt;name&gt;
      is never modified. The card's prose about citing is not shown. The way out — *Start a new
      calculation from this junction with these settings* — sits on its own
      row, styled apart from the actions that stay, and names what it starts
-     from: <name>'s junction, or the frame set cited.
-  2. **The junction** — two choices: <name>'s junction as it ran, its frames
+     from: &lt;name&gt;'s junction, or the frame set cited.
+  2. **The junction** — two choices: &lt;name&gt;'s junction as it ran, its frames
      counted, or a frame set of it (*A frame set of the same junction*); the
      choice held is the one Describe writes.
   3. **What you can change** — the voltages (add or remove), the treatment,
      the energy window and its finer grid, and the device's and the
      transmission's settings — those two stages' tabs alone — each saying
      what a change re-runs.
-  4. **Fixed by <name>** — folded, view only: the shared values and the
-     seed's and the leads' values, each as <name> ran it. Changing one is a
+  4. **Fixed by &lt;name&gt;** — folded, view only: the shared values and the
+     seed's and the leads' values, each as &lt;name&gt; ran it. Changing one is a
      new calculation: the way out above.
-  5. **The plan, then Describe** — the plan of what is copied from <name>
+  5. **The plan, then Describe** — the plan of what is copied from &lt;name&gt;
      and what is computed, worked out again whenever anything above
      changes, before anything is written (`/api/transport/describe` with
      `plan: true`), and the sentence *nothing is copied until prep*; then
      Describe writes the description into the folder chosen in the
      sidebar.
 
-  The cards are numbered as these five parts. A value you typed for <name>
+  The cards are numbered as these five parts. A value you typed for &lt;name&gt;
   before, which the forms' note brings back, is said above the stages' tabs
-  — *Restored values you typed for <name> before: device SCF mixing weight
-  0.07* — with *Use <name>'s own values* beside it, which puts back each
-  value as <name> ran it, a value it never set blank. A field left blank is
+  — *Restored values you typed for &lt;name&gt; before: device SCF mixing weight
+  0.07* — with *Use &lt;name&gt;'s own values* beside it, which puts back each
+  value as &lt;name&gt; ran it, a value it never set blank. A field left blank is
   no value typed, never said.
   Citing anything that is not a transport calculation's folder leaves the
-  extension: the page reads *NEW CALCULATION from <citation>*, every card
+  extension: the page reads *NEW CALCULATION from &lt;citation&gt;*, every card
   as for a new calculation, and the voltages back to 0.0 — so the junction
   card's picker, while extending, says so on its button: *Choose another
   junction — leaves the extension…* *(the user, 2026-10-25)*. The rail

@@ -1545,6 +1545,12 @@ def is_notify_user(user) -> bool:
 #: (`run-reports.md` § 4.1b).
 USER_AGENT = "molbuilder (https://github.com/qqing/molbuilder, 1.0)"
 
+#: WHAT A RUN OF POINTS' EVENT ADDS TO ITS CARD'S TITLE, after the run's
+#: state (`run-reports.md` § 2.9, *The card*): a point not done, a round's
+#: end.  The card is otherwise laid out as any other of its state.
+EVENT_TITLE = {"part_failed": "a point failed", "milestone": "a round ended"}
+
+
 def _card(report: Dict[str, Any],
           items: "Optional[Tuple[str, ...]]",
           receiver: str,
@@ -1569,7 +1575,12 @@ def _card(report: Dict[str, Any],
     # a notification exists to save you (`stages.md` § 6.9).
     run = str(report.get("run") or "molbuilder")
     job = str(report.get("job") or "")
-    title = run + (f" · {job}" if job else "") + (f" — {state}" if state else "")
+    # A RUN OF POINTS' OWN EVENT says itself after the state, so a failed
+    # point or a round's end does not read as any periodic card.
+    event = EVENT_TITLE.get(str(report.get("event") or ""))
+    title = (run + (f" · {job}" if job else "")
+             + (f" — {state}" if state else "")
+             + (f" — {event}" if event else ""))
     # `items` IS A CEILING, NEVER A FLOOR (`stages.md` § 6.9): the layout's
     # order, narrowed by it, then by what the run stated, then cut at the
     # receiver's limit (`report_cards.Layout.fields`).
@@ -2469,11 +2480,12 @@ def run_monitor(watched: "WatchedRun", *,
             wall_warned = True
             _append(log, f"[{_iso(now)}] [WALL] "
                          f"{_fields.span_words(max(0.0, st.wall_left_s))} "
-                         f"left; {st.units_left} {st.unit_words}s left at "
+                         f"left on the wall; the {st.units_left} "
+                         f"{st.unit_words}s left need about "
+                         f"{_fields.span_words(st.left_at_pace_s)} at "
                          f"{_fields.span_words(st.unit_s)} each "
-                         f"({st.units_done} done) need about "
-                         f"{_fields.span_words(st.left_at_pace_s)} -- the "
-                         f"run may not finish before the wall")
+                         f"({st.units_done} done) -- the run may not "
+                         f"finish before it")
             _said(st, "wall_near", now)
         elif (not wall_warned and st.wall_left_s is not None
                 and st.left_at_pace_s is None

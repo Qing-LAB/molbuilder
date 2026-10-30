@@ -1,4 +1,4 @@
-"""A SIESTA VIBRATION AS ONE RUN IN PHASES -- the phases, each SIESTA call
+"""A SIESTA VIBRATION AS ONE RUN OF POINTS -- the phases, each SIESTA call
 a point of the run (`engines/vibration.md` § 5.11; the framework,
 `execution/runs-of-points.md`).
 
@@ -183,13 +183,13 @@ class Call:
 
     def words(self) -> str:
         """The call as a message names it: *the relaxation*, *the force
-        constants*, *frame 0, the equilibrium*, *mode 7 (4271 cm⁻¹), +δQ*."""
+        constants*, *the equilibrium*, *mode 7 (4271 cm⁻¹), +δQ*."""
         if self.phase == RELAX:
             return "the relaxation"
         if self.phase == FC:
             return "the force constants"
         if self.mode is None:
-            return "frame 0, the equilibrium"
+            return "the equilibrium"
         side = "+δQ" if (self.side or 0) > 0 else "−δQ"
         freq = (f" ({self.frequency_cm1:.0f} cm⁻¹)"
                 if self.frequency_cm1 is not None else "")
@@ -263,8 +263,8 @@ def point_entry(call: Call, label: str) -> Dict[str, Any]:
 def count_words(rows, facts) -> str:
     """THE RUN'S COUNT in the vibration's words (the kind table's
     ``count`` part, `runs-of-points.md` § 4.7): *relax done · fc done ·
-    optical 7 of 11 (4 taken over, 2 failed)* -- the calls taken over, and
-    those that ended without being done, each said where there are any;
+    optical 7 of 11 done (4 taken over, 2 failed)* -- the calls taken over,
+    and those that ended without being done, each said where there are any;
     a planned phase with no call yet, where the run walks it (``facts``'
     ``phases``), *after fc* -- or, its planner done, *no mode picked*.
     ``rows`` are the job's (`runpoints.rows_of`) or `status`'s
@@ -308,7 +308,7 @@ def count_words(rows, facts) -> str:
         else:
             notes = ([f"{taken} taken over"] if taken else []) + (
                 [f"{failed} failed"] if failed else [])
-            parts.append(f"{p.name} {n_done} of {len(got)}"
+            parts.append(f"{p.name} {n_done} of {len(got)} done"
                          + (f" ({', '.join(notes)})" if notes else ""))
     return " · ".join(parts) if parts else "no call yet"
 
@@ -325,7 +325,7 @@ def run_size_words(cfg, n_free: int, n_modes: int) -> str:
     words -- what prep says beside the wall (`engines/vibration.md` § 5.11
     § 9): the relaxation up to ``relax_steps`` geometry steps a try (its
     retries the run card's); the force constants ``1 + 6·n_free`` SCFs;
-    Raman ``1 + 2·N`` single points, ``N`` every one of the ``n_modes`` the
+    Raman ``1 + 2·N`` calls, ``N`` every one of the ``n_modes`` the
     run reports under *Raman for* ``all`` (prep's count, the rank rule,
     `validation.spectra.modes_of`), at most that within a range, which only
     the run can count; each ``.EPSIMG``'s size from its photon energies
@@ -340,14 +340,14 @@ def run_size_words(cfg, n_free: int, n_modes: int) -> str:
     if RELAX in on:
         parts.append(f"relax up to {int(cfg.relax_steps)} geometry steps a "
                      f"try")
-    parts.append(f"fc {_n(1 + 6 * n_free, 'SCF')} (1 + 6 x "
+    parts.append(f"fc {_n(1 + 6 * n_free, 'SCF')} (1 + 6 × "
                  f"{_n(n_free, 'free atom')})")
     if OPTICAL in on:
         if str(cfg.raman_modes) == "all":
-            calls = (f"{_n(1 + 2 * n_modes, 'single point')} (1 + 2 x "
+            calls = (f"{_n(1 + 2 * n_modes, 'call')} (1 + 2 × "
                      f"{_n(n_modes, 'mode')})")
         else:
-            calls = (f"up to {_n(1 + 2 * n_modes, 'single point')} (1 + 2 x "
+            calls = (f"up to {_n(1 + 2 * n_modes, 'call')} (1 + 2 × "
                      f"the modes within the range, at most {n_modes})")
         broaden = float(cfg.optical_broaden)
         if broaden > 0:

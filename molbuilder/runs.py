@@ -932,7 +932,8 @@ def points_root_state(place: Place, folder) -> Optional[Dict[str, Any]]:
     (`calcdirs.where`), of a kind whose rung runs per point
     (`jobset.points`) -- answers the run's state in the folder answer's
     shape, by the one rule for a run of points (`continuation.
-    stage_run_state`); ``None`` for any other place.  The calculation is
+    stage_run_state`) -- one whose records do not read is ``unreadable``,
+    its file named; ``None`` for any other place.  The calculation is
     opened once for it (`calculation.open`, A16)."""
     if not place.ours or place.role != calcdirs.CONTAINER:
         return None
@@ -945,11 +946,17 @@ def points_root_state(place: Place, folder) -> Optional[Dict[str, Any]]:
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.continuation import stage_run_state
     from molbuilder.jobset.points import rung_points_of
+    from molbuilder.runrecord import LaunchRecordError
     calc = open_calculation(place.root)
     stage = parse_token(at.stage)[1]
     if not rung_points_of(calc, stage):
         return None
-    state, detail = stage_run_state(calc, stage, Path(folder))
+    try:
+        state, detail = stage_run_state(calc, stage, Path(folder))
+    except LaunchRecordError as exc:
+        # ITS RECORDS DO NOT READ: ``unreadable``, the file named
+        # (`running-a-job.md` § 4.2).
+        state, detail = "unreadable", str(exc)
     return {"state": state, "detail": detail,
             "last_change_at": None, "active_source": None}
 

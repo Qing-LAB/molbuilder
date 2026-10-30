@@ -131,8 +131,11 @@
 }
 
 /* ---- The ladder of a calculation root (results.md § 2.4) ------------ */
+/* Wide content scrolls in its own box: at phone width the table scrolls,
+ * never the page. */
 .results-ladder {
     margin-bottom: var(--space-md);
+    overflow-x: auto;
 }
 .results-ladder-title {
     margin: 0 0 var(--space-sm);

@@ -640,16 +640,16 @@ def _build_status(out_paths: List[Path],
         if said_why:
             detail += f": {said_why}"
     elif ended and _finish_failed(said):
-        # THE ENGINE ENDED, THE JOB DID NOT: its finish -- the step that
-        # derives the result from what the engine left -- failed, and the
-        # marker says so in words no engine teardown writes
-        # (`project-layout.md` § 1.6.3).
+        # THE ENGINE ENDED, THE JOB DID NOT: its step after the engine --
+        # the kind's own step of a point (`execution/runs-of-points.md`
+        # § 1.2) -- failed, and the marker says so in words no engine
+        # teardown writes (`project-layout.md` § 1.6.3).
         state = "failed"
-        detail = (f"the engine ended, but the job's finish did not derive "
-                  f"the result ({said}); the session log says why")
+        detail = (f"the engine ended, but its step after the engine failed "
+                  f"({said}); the session log says why")
     elif end.concluded:
         if end.ok:
-            state, detail = "finished", ("job_completed" if ended
+            state, detail = "finished", ("ended, exit 0" if ended
                                          else f"concluded ({said})")
         else:
             state, detail = "failed", (

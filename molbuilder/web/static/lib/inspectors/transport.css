@@ -103,6 +103,9 @@
 .transport-iv td,
 .transport-iv th { text-align: right; }
 .transport-rungs th { text-align: left; }
+/* Wide content scrolls in its own box: at phone width the rungs table
+ * scrolls, never the page. */
+.transport-rungs-card { overflow-x: auto; }
 
 /* Every row of the points table picks its point -- under the low-bias
  * approximation its frame's 0 V slice. */

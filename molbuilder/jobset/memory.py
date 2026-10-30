@@ -8,7 +8,10 @@ each run of a stage held -- its run record's one memory peak, as the monitor
 measures it (`model/parse.md` § 5c.1), at the ranks its wrapper launched --
 and answers, for the ranks an asker resolved, at most how much the stage
 needs.  It refuses nothing; a run's state is asked of the status door, which
-records an ending it learns of as it does for every reader.
+records an ending it learns of as it does for every reader.  A stage whose
+runs' records do not read (`runrecord.LaunchRecordError` -- an index an
+older molbuilder wrote among them) has its need said as not read, in the
+reader's words: a check that cannot run says so.
 
 **The bound** -- a finished run that held X at N ranks needs at most
 X · max(1, M/N) at M ranks: an engine that gives every rank its own copy of
@@ -124,12 +127,17 @@ class Need:
     unmeasured: Tuple[str, ...] = ()
     #: A job's need (:func:`largest`): its words name the stage it is.
     of_job: bool = False
+    #: Why the stage's runs could not be read, in their reader's words --
+    #: ``""`` when they were.
+    unread: str = ""
 
     @property
     def line(self) -> str:
         """The door's words for it -- one sentence, which prep and Task setup
         print alike (`execution/job-request.md` § 3.1a)."""
-        if self.held is None:
+        if self.unread:
+            said = f"not read -- {self.unread}"
+        elif self.held is None:
             said = (f"nothing measured -- no finished run of {self.stage} "
                     f"has stated its memory")
         elif self.ranks is None and self.held.ranks is not None:
@@ -143,7 +151,7 @@ class Need:
             bound = ("at most" if self.held.read_from == "kernel counter"
                      else "about")
             said = f"{bound} {_up(self.gb)}G{at} -- {self.held.words()}"
-        if self.of_job and self.held is not None:
+        if self.of_job and (self.held is not None or self.unread):
             said = f"{self.stage}: {said}"
         if self.unfinished is not None:
             more = (f" (and {self.n_unfinished - 1} more giving no bound)"
@@ -218,11 +226,17 @@ def need(calc, stage: str, ranks) -> Need:
     with none stated, the measurement alone.  Nothing measured for a stage
     ``calc`` does not hold, or for no calculation (``None``)."""
     from ..identity import stage_key
+    from ..runrecord import LaunchRecordError
     ranks = _ranks(ranks)
     if calc is None or not any(stage_key(s.name) == stage_key(stage)
                                for s in calc.task.stages):
         return Need(stage, ranks, None)
-    helds = held_by(calc, stage)
+    try:
+        helds = held_by(calc, stage)
+    except LaunchRecordError as exc:
+        # A RUN'S RECORDS THAT DO NOT READ: what its stage needs is not
+        # known, and the reader's words say why.
+        return Need(stage, ranks, None, unread=str(exc))
     best: dict = {}
     for h in helds:
         if not h.finished:
@@ -244,7 +258,11 @@ def need(calc, stage: str, ranks) -> Need:
 def largest(needs: Sequence[Need]) -> Need:
     """A JOB'S NEED -- the largest of its stages' (a group's members, a
     sequence's groups), naming the stages nothing has measured; when none is
-    measured, that, of every stage."""
+    measured, that, of every stage.  A stage whose runs do not read leaves
+    the largest unknown: its need, not read, is the job's."""
+    unread = [n for n in needs if n.unread]
+    if unread:
+        return dataclasses.replace(unread[0], of_job=True)
     measured = [n for n in needs if n.gb is not None]
     unmeasured = tuple(n.stage for n in needs if n.gb is None)
     if not measured:

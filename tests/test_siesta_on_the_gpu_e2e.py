@@ -56,7 +56,7 @@ def test_a_run_asked_on_the_gpu_runs_the_gpu_build(real_h2_gpu):
     attempt = real_h2_gpu.attempt("coarse")
     said = run_answer(attempt)
     assert (said["state"], said["detail"]) == ("finished",
-                                               "job_completed"), said
+                                               "ended, exit 0"), said
     solver = folder_answer(attempt)["record"]["computation"]["solver"]
     assert solver["elpa_gpu"] == "nvidia-gpu", solver
 

@@ -620,7 +620,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         raise ValueError(
             f"SIESTA renders 'optimization', 'vibration' and 'transport'; "
             f"it has no {calculation!r} deck.")
-    # THE VIBRATION KIND on this engine is one run in phases, each phase's
+    # THE VIBRATION KIND on this engine is one run of points, each phase's
     # deck a PART of the kind (`siesta/vibration_deck.py`, `engines/
     # vibration.md` § 5.11 § 4): the relaxation, the optimisation layout;
     # the force-constant run, the optimisation deck's sections minus the

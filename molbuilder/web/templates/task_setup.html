@@ -74,12 +74,11 @@
 
       <details class="card fold" id="ts-came-card" hidden>
         <summary><h2>What came over</h2><span class="fold-sum" id="ts-came-card-sum"></span></summary>
-        <p class="hint">Read-only here — this is what the calculation
-          <em>is</em>. Its name and what it is of (its structure, or a
-          transport calculation's junction) name it: a different one is a new
-          calculation, described in a new folder. A transport calculation's
-          electrode rename and its bias list are corrected in
-          <code>task.json</code>, below.</p>
+        <p class="hint">Read-only &mdash; what the calculation <em>is</em>.
+          A different structure or junction is a new calculation, in a new
+          folder.<span id="ts-came-transport" hidden> Its electrode rename
+          and its bias list are corrected in <code>task.json</code>,
+          below.</span></p>
         <dl class="ts-facts" id="ts-facts"></dl>
         {#- A cited frame set's frames -- its count and, for a mode's set, its
             mode line and per-frame table -- by the one frame-set card
@@ -105,11 +104,9 @@
            wrote (preparing-for-another-machine.md 4). -->
       <details class="card fold" id="ts-target-card" hidden>
         <summary><h2>Which machine is this for</h2><span class="fold-sum" id="ts-target-card-sum"></span></summary>
-        <p class="hint">A deck carries the machine's numbers — ranks, memory,
-          whether there is a queue — so preparing it needs to know which
-          machine. <strong>There is no default when several could be
-          meant</strong>: being asked costs one click, being given the wrong
-          one costs a queue wait and an allocation.</p>
+        <p class="hint">Prep writes this machine's numbers into the deck.
+          <strong>With several on file there is no default</strong>: pick
+          one.</p>
         <div class="ts-choice" id="ts-target-choice"></div>
         <p class="ts-needs" id="ts-target-needs" data-attention>Needed before this can be
           prepared</p>
@@ -135,11 +132,9 @@
            S5). -->
       <details class="card fold" id="ts-queue-card" hidden>
         <summary><h2>Where it runs, and what it may use</h2><span class="fold-sum" id="ts-queue-card-sum"></span></summary>
-        <p class="hint">Pick a queue: <strong>what it allows</strong> is shown
-          under each field &mdash; the most you can ask for there. State what
-          this job needs; a smaller ask is usually scheduled sooner.
-          <strong>Left blank on a machine with a scheduler, prep refuses
-          it</strong>: a wall and a memory are stated, never proposed.</p>
+        <p class="hint">Pick a queue; under each field, <strong>the most it
+          allows</strong>. On a machine with a scheduler, prep refuses a blank
+          wall or memory.</p>
 
         <div class="ts-choice" id="ts-queue-choice"></div>
         <p class="ts-needs" id="ts-queue-needs">Pick a machine first</p>
@@ -272,8 +267,7 @@
         <summary><h2>What each group runs</h2><span class="fold-sum" id="ts-groups-card-sum"></span></summary>
         <p class="hint"><strong>One tab per group</strong> &mdash; each group
           is one job. In its tab: measuring a stage, and what the job will
-          <em>run</em> with, beside the exact commands. <em>What to
-          measure</em>, above, is a different question.</p>
+          <em>run</em> with, beside the exact commands.</p>
         <div id="ts-groups"></div>
       </details>
 
@@ -414,8 +408,9 @@
         <p class="hint">The files <strong>molbuilder</strong> names &mdash;
           not the engine's own outputs, which belong to the run and depend on
           its version. The deck and its wrapper appear at <em>prep</em>; the
-          logs when it <em>runs</em>. A name with <code>*</code> in it is a
-          family: one file per launch.</p>
+          logs when it <em>runs</em>. A name with a
+          <code>&lt;field&gt;</code> in it is a family: one file per
+          value.</p>
         <div id="ts-written"></div>
       </details>
 
@@ -438,8 +433,9 @@
           worth a message and it is written into this calculation's
           job request. Nothing ticked is no reports at all; <strong>once
           anything is, the run's start and end report too</strong>, and so
-          do its wall coming near and, for a run of many calls, each phase's
-          end and each kind of failure.</p>
+          do its wall coming near and, for a run of many engine runs &mdash; a
+          vibration's calls, a transport rung's points &mdash; each phase's or
+          voltage's end and each kind of failure.</p>
 
         <div class="ts-notify-opts">
           <label class="ts-notify-opt" for="ts-notify-scf">

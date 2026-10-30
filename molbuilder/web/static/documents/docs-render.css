@@ -125,6 +125,14 @@
     color: var(--dr-heading);
 }
 
+/* At a phone's width a word table scrolls in its own box rather than
+ * squeezing a text column to a word a line: each cell keeps a readable
+ * width (the page's narrow break, documents/style.css). */
+@media (max-width: 720px) {
+    .docs-render th,
+    .docs-render td { min-width: 9em; }
+}
+
 /* ---- display math ---------------------------------------------- */
 
 /* A formula wider than the column scrolls in its own box, as a code block,

@@ -7,7 +7,7 @@ optical calls in 2.42.0–2.43.0 and its strength at a laser in 2.44.0
 **Domain:** science
 **Companions:** [`engines/vibration.md`](?doc=engines/vibration.md) § 5.3 (the
 force-constant input), § 5.10 ② (the charge each mode moves), ③ (a mode's
-frames) and § 5.11 (one run in phases — Raman its optical phase); [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+frames) and § 5.11 (one run of points — Raman its optical phase); [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5 and § 2a (the displacement); [`normal-modes.md`](?doc=science/normal-modes.md)
 § 4a.6, § 4b.7 (the infrared of the free atoms, and Raman on SIESTA at
 a metal surface); `plans/plan.md` § 1ac.
@@ -983,7 +983,7 @@ point — at each frame of a mode, with the optical calculation in its input.**
   displacement's, and not the mode's.
 
 **Decided 2026-10-25** *(the user: "there is no intrinsic difference"; "i
-choose B")*: **one vibration run in phases**, PySCF's shape — the
+choose B")*: **one vibration run of points**, PySCF's shape — the
 relaxation, the force constants, then the optical phase: one SIESTA single
 point per frame, the equilibrium once and $\pm\delta Q$ along each selected
 mode, each SIESTA call in its own folder of the run. Prep writes every deck

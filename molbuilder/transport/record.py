@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@14``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@15``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -46,6 +46,8 @@ from .conductance import at_fermi, per_spin_channel
 if TYPE_CHECKING:
     from .stages import Point
 
+#: ``order_way``: ``order_unstated``'s way on alone, for the report, whose
+#: drawing states the fact; a reader takes it where present.
 #: ``@14``: ``frame_set`` is ``null`` where the citation is no frame set --
 #: one structure -- never a block naming a run as one.
 #: ``@13``: ``frame_set`` -- the frame set the average is taken over, cited
@@ -76,7 +78,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@14"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@15"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -86,13 +88,13 @@ TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@14"
 #: G0 = 2e²/h, both channels.
 CURRENT_MEANS = {
     "non-polarized": (
-        "current_a is the junction's total current, both spin channels: "
+        "the total current is the junction's, both spin channels: "
         "TBtrans prints one spin channel's (its Landauer integral has no "
         "factor 2 for spin), and the two channels of a non-polarized "
         "calculation carry the same current, so the total is twice the "
         "figure TBtrans printed."),
     "polarized": (
-        "current_a is the junction's total current, the sum of its two spin "
+        "the total current is the junction's, the sum of its two spin "
         "channels' currents as TBtrans printed each (empty when it printed "
         "only one)."),
     # A POINT THAT SHARES ENERGIES with a finished calculation's point
@@ -100,7 +102,7 @@ CURRENT_MEANS = {
     # energies' current alone.
     "joined": (
         "a point whose current_from is joined shares energies with a "
-        "finished calculation's point: its current_a is the record's, over "
+        "finished calculation's point: its current is the record's, over "
         "its joined grid -- each energy's transmission, times the grid's "
         "spacing, times the two leads' Fermi functions' difference, G0 times "
         "the sum (TBtrans's own rule) -- and no figure TBtrans printed "
@@ -1214,6 +1216,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # none (I9) -- the sentence the report says beside the drawing, which
         # then lists the atoms as TranSIESTA does; ``None`` otherwise.
         "order_unstated": order_unstated_said(base, recorded),
+        # ITS WAY ON ALONE, for the report, whose drawing states the fact
+        # itself (MolView's notice); ``None`` where the order is recorded.
+        "order_way": order_way_said(base, recorded),
         "points": points_out,
         # THE I-V: each point's own TBtrans current -- or, under the low-bias
         # approximation, computed by the record from the one 0 V slice for
@@ -1285,10 +1290,18 @@ def order_unstated_said(base: Path, recorded) -> Optional[str]:
     its way on, `prep task` (`engines/transport.md` § 1.1) -- or ``None``.
     ``recorded`` is `compose.recorded_junction`'s answer, ``None`` before
     anything was composed."""
+    way = order_way_said(base, recorded)
+    return None if way is None else f"{recorded.order_unstated}.  {way}"
+
+
+def order_way_said(base: Path, recorded) -> Optional[str]:
+    """The way on alone for a junction whose sidecar states no order
+    record -- `prep task` (`jobset.commands.order_recorded`) -- or
+    ``None`` where the order is recorded."""
     if recorded is None or not recorded.order_unstated:
         return None
     from ..jobset.commands import order_recorded
-    return f"{recorded.order_unstated}.  {order_recorded(base=base)}"
+    return order_recorded(base=base)
 
 
 def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
@@ -1611,7 +1624,7 @@ def iv_table_text(record: Dict) -> str:
     post-process's, `frame_average.summary_lines`)."""
     lines = [f"transport record — {record['label']}: "
              f"{len(record['points'])} point(s)"
-             + (f", {len(record['pending'])} pending"
+             + (f", {len(record['pending'])} not ended"
                 if record.get("pending") else "")
              + (f", {len(record['failed'])} failed"
                 if record.get("failed") else "")]
@@ -1631,10 +1644,10 @@ def iv_table_text(record: Dict) -> str:
             + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
             + "  "
             + (f"{i0:>13.4e}" if i0 is not None else f"{'--':>13}"))
-    for what in ("pending", "failed"):
+    for what, said in (("pending", "not ended"), ("failed", "failed")):
         for p in record.get(what, ()):
             lines.append(f"  {_frame(p):>5}  {p['bias_v']:>8.3f}  "
-                         f"{what:>12}  {p['state']:>12}  ({p['why']})")
+                         f"{said:>12}  {p['state']:>12}  ({p['why']})")
     iv = record.get("iv") or {}
     if iv.get("computed") == "low-bias-approximation":
         # THE RECORD'S OWN I-V, from each frame's 0 V slice

@@ -57,6 +57,11 @@ ASK_KEYS = ("laser_nm", "broaden_ev")
 #: The exported view's file, after the label (`model/datafiles.md` § 1).
 RAMAN_FILE = ".raman.nc"
 
+#: A side with no result yet, in the run's words
+#: (`execution/runs-of-points.md` § 1.3) -- a mode's state beside
+#: ``finished`` and ``failed``.
+NOT_ENDED = "not ended"
+
 #: How far SIESTA spreads one transition, in its widths (`Src/optical.F`:
 #: ``wi = ediff - 20*smooth``) -- the kernel's reach here too.
 _KERNEL_REACH = 20.0
@@ -395,13 +400,18 @@ def raman_view(result, optical: Mapping[str, Any], *, laser_nm: float,
         dq = float(m["dq_amu12_ang"])
         if plus is None or minus is None:
             # A SIDE NOT DONE: the row names it and its state -- never a
-            # number from one side.
-            states = {name: (sides.get(s) or {}).get("state") or "pending"
-                      for name, s, a in (("+dQ", 1, plus), ("-dQ", -1, minus))
+            # number from one side.  A side with no result is *not ended*
+            # (`execution/runs-of-points.md` § 1.3); `pending` is the data
+            # file's word for it, kept there.
+            def shown(side):
+                said = (sides.get(side) or {}).get("state")
+                return NOT_ENDED if said in (None, "pending") else said
+            states = {name: shown(s)
+                      for name, s, a in (("+δQ", 1, plus), ("−δQ", -1, minus))
                       if a is None}
             rows.append((m, None, None,
                          "failed" if "failed" in states.values()
-                         else "pending",
+                         else NOT_ENDED,
                          "; ".join(f"the {name} side {state}"
                                    for name, state in states.items())))
             continue
@@ -602,7 +612,7 @@ def _mode_vars():
             "at the laser; NaN when the strongest is at or below the Raman "
             "channel's band floor, band_floor_a4_amu"),
         Var("state", ("mode",), "state", "", "the mode's state",
-            "finished, or pending/failed with a side not done", dtype=str),
+            "finished, or not ended/failed with a side not done", dtype=str),
         Var("why", ("mode",), "state", "", "why a value is missing",
             "the side not done and its state; empty when finished",
             dtype=str),

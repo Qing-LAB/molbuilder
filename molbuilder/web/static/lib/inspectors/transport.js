@@ -158,14 +158,16 @@ const WORKSPACE_TAG = "results:transport";
         head.appendChild(_el("h3", "transport-title",
             "Transport — " + (rec.label || "(unlabelled)")));
         head.appendChild(_el("p", "transport-sub",
-            rec.treatment
+            "treatment: " + rec.treatment
             /* THE FLAG ITSELF, in the record's words (`record.
              * LOW_BIAS_SAID`; § 2a.10, *The labelling rule*). */
             + " · " + rec.low_bias_said
             + (state.nFrames > 1 ? " · " + state.nFrames + " frames" : "")
             + " · " + pts.length + " point" + (pts.length === 1 ? "" : "s")
             + " with a transmission"
-            + (pending.length ? " · " + pending.length + " pending" : "")
+            /* THE POINTS NOT ENDED -- the record's `pending`: described,
+             * queued or running (`execution/runs-of-points.md` § 1.3). */
+            + (pending.length ? " · " + pending.length + " not ended" : "")
             + (failed.length ? " · " + failed.length + " failed" : "")
             + (rec.energies_relative_to_ef ? " · energies relative to E_F"
                                            : "")));
@@ -179,9 +181,10 @@ const WORKSPACE_TAG = "results:transport";
         device.appendChild(molHost);
         /* A JUNCTION WHOSE ORDER IS NOT RECORDED -- its sidecar states none
          * (`model/overview.md` § 2.2a, I9) -- is drawn as TranSIESTA lists
-         * it, and the record says so, with its way on, in its own words. */
-        if (rec.order_unstated) {
-            device.appendChild(_el("p", "transport-note", rec.order_unstated));
+         * it: MolView's notice states the fact, and the record's way on is
+         * said below it, in its own words. */
+        if (rec.order_way) {
+            device.appendChild(_el("p", "transport-note", rec.order_way));
         }
         /* WHICH INDEX ITS ATOMS ARE NUMBERED BY (`model/overview.md`
          * § 2.2b; `web/results.md` § 2.5) -- the user's, the drawing put
@@ -331,8 +334,11 @@ const WORKSPACE_TAG = "results:transport";
         let follow = null;       // the next ask while another one reads
         const show = (points) => {
             const all = [];
+            // A POINT IN THE PAGE'S ONE WORDING (`web/results.md` § 2.5),
+            // from its wire form -- never the server's own words for it.
             points.forEach((p) => p.readings.forEach(
-                (r) => all.push({ ...r, words: p.words })));
+                (r) => all.push({ ...r, words: pointWords(
+                    p.point.frame, p.point.of, p.point.bias_v) })));
             const todo = all.filter((r) => r.state !== "kept");
             // WHOSE CLAIM: alive on this host stands; gone on this host is
             // stale, the next reading's; on another host (alive null) stands
@@ -726,7 +732,7 @@ const WORKSPACE_TAG = "results:transport";
         const card = _card("Rungs and provenance", "transport-rungs-card");
         const table = _el("table", "num-table transport-rungs");
         const head = _el("tr");
-        ["Rung", "State", "E_F [eV]", "E [eV]", "SCF", "Attempt"].forEach(
+        ["Rung", "State", "E_F [eV]", "E [eV]", "SCF", "Run"].forEach(
             (h) => head.appendChild(_el("th", null, h)));
         table.appendChild(head);
         stages.forEach((st) => {

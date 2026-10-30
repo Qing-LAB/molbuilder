@@ -84,7 +84,7 @@ except ImportError:                         # beside a job, in a bundle
 #          § 6.6).  A v4-v6 file reads as before: no masses, its derived
 #          values computed on read.
 SCHEMA_VERSION = 13  # 13: the OPTICAL CALLS' CITATION, `optical` -- on a
-#                    SIESTA run in phases whose optical phase ran: the data
+#                    SIESTA run of points whose optical phase ran: the data
 #                    file they are recorded in and its sha256, the light's
 #                    direction, the displacement, the selection as asked and
 #                    as applied, and each frame's state -- the Raman strength

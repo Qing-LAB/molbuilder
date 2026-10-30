@@ -82,7 +82,7 @@ informative:**
 | **public** | by partition | no | the default |
 | **debug** | **15 minutes** | no | `general` and `htc` only; for turnaround while troubleshooting |
 | **private** | by arrangement | **yes** — by the hardware's owners | the trade for using privately-owned nodes beyond `htc`'s 4 h |
-| **grp_<lab>** | by arrangement | conditional | lab-owned hardware; no fairshare impact for members |
+| **grp_&lt;lab&gt;** | by arrangement | conditional | lab-owned hardware; no fairshare impact for members |
 | **long** | **14 days** | no | not available by default — granted per user |
 | **class** | 24 hours | no | ≤ 32 cores, 320 GB, 4 GPUs, 2 running jobs |
 

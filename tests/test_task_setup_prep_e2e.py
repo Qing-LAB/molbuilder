@@ -581,7 +581,7 @@ def _rows(page):
         "   const n = r.querySelector('.ts-row-name');"
         "   const i = r.querySelector('.ts-runval');"
         "   if (!n || !i) continue;"
-        "   const name = (n.childNodes[0] || {}).textContent || '';"
+        "   const name = r.getAttribute('data-setting') || '';"
         "   out[name.trim()] = { kind: r.getAttribute('data-kind'),"
         "     value: i.value,"
         "     placeholder: i.tagName === 'SELECT' ? i.options[0].text"

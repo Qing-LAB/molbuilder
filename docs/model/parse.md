@@ -530,7 +530,7 @@ several parses (`running-a-job.md` § 4.2):
 from molbuilder.parse.dirs import run_status        # the package's door (R-RO2)
 
 st = run_status(Path("projects/BDT/optimization/run-0"))
-st.state, st.detail          # ("finished", "job_completed") -- a RunStatus
+st.state, st.detail          # ("finished", "ended, exit 0") -- a RunStatus
 st.active_source             # "BDT-run0.out"
 ```
 
@@ -1600,8 +1600,8 @@ record
 │   ├── host             hostname · user · cwd · conda_env · python · node_phys_cores ·
 │   │                    node_sockets · node_cores_per_socket · machine{node, cores, mem_gb, gpu}
 │   ├── launch           mode · command · job_id · launched_at · placed_on ·
-│   │                    continued_from · sequence · ranks_asked · threads · ranks ·
-│   │                    threads_engine
+│   │                    continued_from · started_from · sequence · ranks_asked ·
+│   │                    threads · ranks · threads_engine
 │   ├── time             run_start_local · run_end_local · engine_elapsed_s · s_per_iter ·
 │   │                    iters_measured · s_per_iter_<phase> · iters_measured_<phase> · rows_<phase> ·
 │   │                    progress · estimated_at
@@ -1650,7 +1650,7 @@ wrapper launched and its node, never its output
 | `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
-| `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
+| `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — started_from, a point's own `.continued-from` (`runrecord.read_continued_from`), present only where the marker is — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
 | `concluded` | `<base>-runN.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `deck_record.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
@@ -1738,8 +1738,9 @@ reading or readings.
 | `original` | the deck's spelling, from `# above item originally:` |
 | `readings` | instead of one reading: every distinct one, in order, for a key read to several values |
 
-`blocks[label]` holds each `%block` verbatim. An example, from a TranSIESTA
-device's log:
+`blocks[label]` holds each `%block` verbatim — a block echoed with no
+`%endblock` (`Optical.Vector`) ends at fdf's next lookup line, never a row
+of it. An example, from a TranSIESTA device's log:
 
 ```text
 MeshCutoff          150.0000000             Ry

@@ -168,7 +168,7 @@ suffix = ".FC"                  # the force constants, eV/A^2: the PRODUCT
 [[vibration.file]]
 suffix = ".FCC"                 # the same with the held atoms' rows zeroed
 
-# ---- optical: one call of a vibration run in phases ---------------------
+# ---- optical: one call of a vibration's run of points -------------------
 # A single point at one frame -- the equilibrium, or a mode's side at its
 # displacement -- seeded by the walk from the force-constant call's density
 # (siesta/vibration_phases.PHASES: seed) and run with SIESTA's optical

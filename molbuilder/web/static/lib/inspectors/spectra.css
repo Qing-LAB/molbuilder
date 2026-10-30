@@ -73,13 +73,13 @@
 
 .results-meta {
     display: grid;
-    grid-template-columns: max-content 1fr;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
     gap: var(--space-xs) var(--space-md);
     font-size: var(--text-sm);
     margin: 0;
 }
 .results-meta dt { color: var(--text-secondary); }
-.results-meta dd { margin: 0; }
+.results-meta dd { margin: 0; overflow-wrap: anywhere; }
 /* ---- Spectrum chart ---- */
 
 /* A control and its explanation are ONE block; the blocks sit side by

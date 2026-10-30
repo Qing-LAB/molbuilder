@@ -185,24 +185,32 @@
         const sc = _scope || { dir: "", diverged: false };
         if (els.fileReadout) {
             const dir = sc.dir || "";
+            /* A PATH AS SHOWN: from the projects folder, as the sidebar
+             * names it -- only shown; every path sent stays whole
+             * (results.md § 0.3). */
+            const shown = (p) => {
+                const proj = window.molbuilder && window.molbuilder.projects;
+                return (proj && proj.relativeToProjects
+                        && proj.relativeToProjects(p)) || p;
+            };
             let text;
             if (!dir) {
                 text = file ? _basename(file) : "No folder selected";
             } else if (!file) {
-                text = dir + " / (nothing selected)";
+                text = shown(dir) + " / (nothing selected)";
             } else if (_dirOf(file) === dir) {
-                text = dir + " / " + _basename(file);
+                text = shown(dir) + " / " + _basename(file);
             } else if (sc.point) {
                 /* THE FOLDER'S OWN ANSWER, outside it by design: a
                  * transmission run's result is its calculation's report at
                  * its point (results.md § 2). */
-                text = dir + "  \u2014 its result is its calculation's "
-                     + "report, " + file;
+                text = shown(dir) + "  \u2014 its result is its calculation's "
+                     + "report, " + shown(file);
             } else if (pickedRun && dir && file.startsWith(dir + "/")) {
                 /* A RUN PICKED OFF THE ROOT'S LADDER (results.md § 2.4):
                  * its folder under the calculation, by design -- not the
                  * divergence the readout below warns about. */
-                text = dir + " / " + file.slice(dir.length + 1);
+                text = shown(dir) + " / " + file.slice(dir.length + 1);
             } else {
                 /* THE FILE IS NOT IN THE BOUND FOLDER, so do not write it as
                  * if it were.  `<bound>/<basename>` is a path that does not
@@ -210,7 +218,7 @@
                  * a plausible name over another run's numbers.  It happens
                  * for one round-trip after every Reload, and permanently
                  * when that Reload's scan fails. */
-                text = dir + "  \u2014 showing " + file
+                text = shown(dir) + "  \u2014 showing " + shown(file)
                      + ", which is not in this folder";
             }
             if (sc.diverged) {
@@ -251,13 +259,22 @@
     const PLACE_NOTE_UNKNOWN =
         "This directory is not marked as part of a calculation, so only "
         + "what is in it can be shown \u2014 nothing about what it belongs to.";
+    //: A CONTAINER AT A RUN'S PLACE is a run of points' root
+    //: (`project-layout.md` § 1.4a): one run, its points below it
+    //: (`execution/runs-of-points.md` § 1.1).
+    const PLACE_NOTE_POINTS =
+        "This is a run of points: one run, each point a folder below it "
+        + "\u2014 open a point, or its calculation for every point's state.";
 
     function _renderPlaceNote(place) {
         const el = els.fallback
             && els.fallback.querySelector(".results-place-note");
         if (!el) return;
         const role = place && place.role;
-        el.textContent = role ? (PLACE_NOTE[role] || "") : PLACE_NOTE_UNKNOWN;
+        el.textContent = !role ? PLACE_NOTE_UNKNOWN
+            : (role === "container" && place.what === "attempt")
+            ? PLACE_NOTE_POINTS
+            : (PLACE_NOTE[role] || "");
         el.hidden = !el.textContent;
     }
 
@@ -279,11 +296,10 @@
         box.className = "results-ladder-steps";
         const head = document.createElement("p");
         head.className = "results-ladder-steps-head";
-        head.textContent = "Each group, and what is next \u2014 read at "
+        head.textContent = "What is next \u2014 read at "
             + new Date().toLocaleTimeString([], { hour: "2-digit",
                                                   minute: "2-digit" })
-            + "; returning to this tab, or Reload from current project dir, "
-            + "reads it again.";
+            + "; Reload reads it again.";
         box.appendChild(head);
         const list = document.createElement("ul");
         list.className = "results-ladder-steps-list";
@@ -459,15 +475,10 @@
         }
         const note = document.createElement("p");
         note.className = "inspector-card-note";
-        // EACH RUNG'S RUN WRITES ITS OWN RESULT in its directory (a
-        // vibration's spectrum in its `freq` attempt, engines/vibration.md
-        // 5.5); only a calculation that gathers its rungs -- transport's I-V
-        // record -- has one here (web/results.md 2.4).
-        note.textContent = "Each rung runs in its own directory below this one; "
-            + "every run of it is listed under the rung, and its \u201copen\u201d "
-            + "shows that run's result here.  A calculation that gathers its "
-            + "rungs into one result -- a transport calculation's report -- "
-            + "has it below, opened through the calculation's description.";
+        // A RUN PICKED OFF THE LADDER shows here while the sidebar stays on
+        // the calculation (web/results.md 2.4, 3a).
+        note.textContent = "\u201copen\u201d shows a run's result here; "
+            + "the sidebar stays on the calculation.";
         host.appendChild(note);
         host.hidden = false;
     }

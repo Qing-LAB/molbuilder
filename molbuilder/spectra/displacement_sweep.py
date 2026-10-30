@@ -106,7 +106,7 @@ def match_modes(reference, other, masses_amu) -> "tuple[list, list]":
 
 def sweep_stages(task) -> List[str]:
     """The stages of a vibration description, in ladder order -- on SIESTA
-    each one run in phases, its force constants among its calls
+    each one run of points, its force constants among its calls
     (`engines/vibration.md` § 5.11); two or more are a displacement sweep
     (§ 5.9)."""
     return [s.name for s in task.stages]
@@ -183,7 +183,7 @@ def collect_sweep(calc, *,
     for name in names:
         home = stage_home(base, task, name)
         # THE RUN'S OWN RESULT, at its root, through the one door for a
-        # stage's result (`materialize.newest_on_label`): a run in phases'
+        # stage's result (`materialize.newest_on_label`): a run of points'
         # root (`engines/vibration.md` § 5.11 § 2).
         attempt, spectrum = newest_on_label(home.dir, ROLE_SPECTRA)
         if attempt is None:

@@ -35,7 +35,7 @@ def finished(real_h2_layered):
     from molbuilder.runs import run_answer
     attempt = real_h2_layered.attempt("coarse")
     said = run_answer(attempt)
-    assert (said["state"], said["detail"]) == ("finished", "job_completed"), said
+    assert (said["state"], said["detail"]) == ("finished", "ended, exit 0"), said
     return attempt
 
 

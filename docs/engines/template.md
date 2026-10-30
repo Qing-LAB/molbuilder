@@ -1660,7 +1660,7 @@ absent, wherever a value is withheld; `values` the withheld choices it
 explains — absent, every one withheld there. A refusal's reason is the first
 row, in the file's order, that holds for the engine, the kind and the value
 (`template.why_not_offered`); a value no row explains is said as *"a <kind>
-on <engine> does not run it"*. Each reason is read from the engine's source
+on &lt;engine&gt; does not run it"*. Each reason is read from the engine's source
 (`science/chemistry-correctness.md` § 2a.3). The rows are checked when the
 catalogue loads: they stand only on an item with `offered`, `on` names an
 engine the item serves or a kind the kind table holds, every value is one of

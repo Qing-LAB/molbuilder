@@ -27,7 +27,7 @@ import { loadCodeMirror, modeFor } from "../lib/codemirror-load.js";
 import { clear as clearFindings,
          render as renderFindings } from "../lib/validation-findings.js";
 import { renderFrameSet } from "../lib/frameset/card.js";
-import { pointWords } from "../lib/results/point-words.js";
+import { runPointWords } from "../lib/results/point-words.js";
 import { fitRow } from "../lib/transport/fit.js";
 // THE PAGE'S FENCE (`ui-contract.md` § 10): every card edit, Save, Preview
 // and Prep takes it.
@@ -151,10 +151,25 @@ function el(tag, attrs, ...kids) {
     return n;
 }
 
+/** SERVER WORDS, with what they keep in backticks -- a command, a file, a
+ *  stage -- shown as code, never as a backtick, as the Results file card
+ *  shows the catalogue's (`lib/results/file-card.js`). */
+function codeWords(text) {
+    const out = document.createDocumentFragment();
+    String(text == null ? "" : text).split("`").forEach((part, i) => {
+        if (!part) return;
+        out.appendChild(i % 2 ? el("code", {}, part)
+                              : document.createTextNode(part));
+    });
+    return out;
+}
+
 function setState(kind, title, body) {
     $("ts-state").setAttribute("data-state", kind);
     $("ts-state-title").textContent = title;
-    $("ts-state-body").textContent  = body;
+    const words = $("ts-state-body");
+    words.textContent = "";
+    words.appendChild(codeWords(body));
     // A new state is about another moment -- or another folder -- so what
     // the last save's check said goes with it.
     const said = $("ts-state-findings");
@@ -465,7 +480,7 @@ function groupCell(stages, i) {
     let note = null;
     if (whyNot) {
         same.disabled = true;
-        note = el("small", { class: "ts-row-note" }, whyNot);
+        note = el("small", { class: "ts-row-note" }, codeWords(whyNot));
     }
     if (said && said.launched) {
         sel.disabled = true;
@@ -586,6 +601,7 @@ let _fitSeq   = 0;
 function freshFolderState() {
     return {
         runs:         {},         // stage name -> its runs launched (T5)
+        walks:        {},         // stage -> a run of points' one job, prep's words
         extraRunRows: new Map(),  // rows added to a run card, per stage
         fitBench:     {},         // the bench card's last posted axes
         pendingDrop:  "",         // the armed column drop
@@ -920,10 +936,11 @@ function runCard(task, members, every) {
           + "value each, written into every stage that reads it; the wall is "
           + "each stage's own, the job asking their sum. A blank row uses "
           + "the value shown in it; a launch value stated nowhere is "
-          + "refused at prep."
+          + "refused at prep." + walkSaid(members)
         : "One value each \u2014 not a grid. A blank row uses the value "
           + "shown in it; a launch value stated nowhere is refused at prep. "
-          + "A benchmark reports here but never fills this in."));
+          + "A benchmark reports here but never fills this in."
+          + walkSaid(members)));
     // WHERE THE CARD WRITES: the members' own cards, or the calculation's.
     const card = every ? [null] : members;
     const ownOf = (m) => (executionOf(m, false) || {});
@@ -981,6 +998,18 @@ function runCard(task, members, every) {
     // WHETHER IT FITS THE MACHINE is the preview's to say, from the job the
     // prep would write (`job-system.md` § 5.0's checkpoint 4).
     return box;
+}
+
+/** WHAT A RUN OF POINTS' WALL IS, for the members of a run card that run
+ *  as one -- the folder answer's `walks`, prep's own words
+ *  (`prep.walk_words`): one wall for the whole run, or each point's, the
+ *  job asking their sum (`runs-of-points.md` § 1.2).  ``""`` for none. */
+function walkSaid(members) {
+    const walks = _fs.walks || {};
+    const said = members.filter((m) => walks[m]);
+    if (!said.length) return "";
+    return said.map((m) => " " + (members.length > 1 ? m : "This stage")
+                           + " is " + walks[m] + ".").join("");
 }
 
 /** One row of a run card: the value ``name`` holds on ``members`` -- the
@@ -1089,12 +1118,18 @@ function runRow(task, name, members, opts) {
                               "aria-label": "Remove the row " + name }, "\u00d7");
         drop.addEventListener("click", o.remove);
     }
-    return el("div", { class: "ts-row",
+    // THE SETTING BY ITS LABEL, the catalogue's (or the run's own ask's,
+    // `lane_asks`); its name, which the files spell, in the hover.
+    const shown = o.label || (_meta[name] || {}).label
+        || (lane && lane.label) || name;
+    return el("div", { class: "ts-row", "data-setting": name,
                        "data-kind": value !== undefined ? "chosen"
                            : (members.length && behind ? "inherited"
                                                        : "unstated") },
-        el("div", { class: "ts-row-name", title: helpText(name) },
-           o.label || name,
+        el("div", { class: "ts-row-name",
+                    title: [name, helpText(name) || (lane && lane.help)]
+                        .filter(Boolean).join("\n\n") },
+           shown,
            notes.length ? el("small", { class: "ts-row-note" },
                              notes.join("; ")) : null,
            ...strays),
@@ -1759,6 +1794,13 @@ async function readFolder(projects, dir, opts) {
         // its job request, and the cards that write it -- awaited, so the
         // folder's read ends with the proposal landed (`aria-busy`).
         await proposeHandover();
+        // THE PROPOSAL LANDED: nothing is still needed but Save.
+        if (said.dir === _dir && _mode === "handover") {
+            setState("handover", "Handed over \u2014 not a description yet",
+                     "Stages proposed below \u2014 Save writes "
+                     + `${said.task_name} and ${said.request_name} and `
+                     + `removes ${said.handover_name}.`);
+        }
         return;
     }
 
@@ -1812,8 +1854,6 @@ async function readFolder(projects, dir, opts) {
         return;
     }
 
-    sayLoaded(task);
-
     _mode = "description"; _handover = null; _task = task;
     _request = request;
     /* AN EXTENSION'S LIMITS, before the cards that say them are drawn
@@ -1828,6 +1868,7 @@ async function readFolder(projects, dir, opts) {
             (said.attempts && said.attempts.stages) || {})) {
         _fs.runs[name] = st.attempts;
     }
+    _fs.walks = said.walks || {};
     _fs.benchRefusal = said.bench_refusal || null;
     /* WHAT EACH STAGE CAN CONTINUE FROM, the folder's answer (plan W37):
      * its default, the runs of the stage before it, `--cold` where it is a
@@ -1859,6 +1900,7 @@ async function readFolder(projects, dir, opts) {
     _fs.steps = said.steps || [];
     _fs.groups = said.groups || { stages: [], groups: [] };
     _fs.prepPick = null;
+    sayLoaded(task);
     applySetMachine();
     // THE CATALOGUE META COMES FIRST, and it is AWAITED: `renderStages`
     // asks `legalValues()` per cell to decide whether the column edits
@@ -2050,6 +2092,10 @@ function renderCameOver(obj, treatment, frameSet, shared) {
     /* THE CITED JUNCTION'S FRAMES, by the one card (transport.md § 3.8.1),
      * from the folder's answer; nothing for one structure or another kind. */
     renderFrameSet($("ts-frameset"), obj ? frameSet : null);
+    // WHERE A TRANSPORT CALCULATION'S RENAME AND BIAS LIST ARE CORRECTED,
+    // said on a transport calculation's card alone (§ 3).
+    const fixHere = $("ts-came-transport");
+    if (fixHere) fixHere.hidden = !(obj && obj.calculation === "transport");
     if (!obj) { card.hidden = true; return; }
     const run = obj.run || {};
     const st  = obj.structure || {};
@@ -2102,8 +2148,8 @@ function renderCameOver(obj, treatment, frameSet, shared) {
 /** EVERY VALUE SHARED BY EVERY STAGE, read-only, each with whose it is --
  *  the folder answer's `template.shared` (task-setup.md § 3,
  *  engines/template.md § 6.6 obligation 3), in the catalogue's category
- *  order and by each one's label.  A value nobody gave shows the template's answer, none, beside
- *  its words. */
+ *  order and by each one's label.  A value nobody gave shows what the
+ *  catalogue calls unset (*(auto)*), beside its words. */
 function renderShared(rows) {
     const wrap = $("ts-shared-wrap");
     const host = $("ts-shared");
@@ -2116,11 +2162,14 @@ function renderShared(rows) {
                             extensionSays("shared") || _fs.extension.error));
     }
     for (const r of rows || []) {
-        const value = renderValue(r.value, r.unit) || "\u2014";
+        // A BLANK ONE IS RESOLVED, never nothing: what the catalogue calls
+        // unset (`null_label`), and what the engine then does in the hover.
+        const value = renderValue(r.value, r.unit) || r.null_label || "\u2014";
         host.appendChild(el("div", null,
             el("dt", null, r.label),
-            el("dd", null, value + " \u00b7 " + r.said
-                           + (r.scope ? " \u00b7 " + r.scope : ""))));
+            el("dd", { title: (r.value == null && r.not_set) || null },
+               value + " \u00b7 " + r.said
+               + (r.scope ? " \u00b7 " + r.scope : ""))));
     }
 }
 
@@ -2410,6 +2459,14 @@ let _tmpl = { name: null, values: Object.create(null),
 /** THE FOLDER'S OWN LINE in the state box -- what is loaded -- which a
  *  card's question gives way to once it is answered. */
 function sayLoaded(task) {
+    /* THE TASK'S GROUPS THAT CANNOT BE READ stand above the cards, in their
+     * reader's words: nothing is prepared until what they name is done
+     * (§ 9a.1, the page's messages). */
+    const unread = (_fs.groups || {}).error || (_fs.ladder || {}).error;
+    if (unread) {
+        setState("refuse", "The task's groups cannot be read", unread);
+        return;
+    }
     const run  = (task && task.run) || {};
     const name = run.name || run.id || "(unnamed)";
     setState("loaded", `Loaded — ${name}`,
@@ -2664,7 +2721,8 @@ function paintNeed() {
     if (!note) return;
     const most = _fs.need && _fs.need.largest;
     note.hidden = !most;
-    note.textContent = most ? "memory need: " + most.line : "";
+    note.textContent = "";
+    if (most) note.append("memory need: ", codeWords(most.line));
 }
 
 /* A PLAN HIDDEN is a plan no need answer brings back: the one painted is
@@ -2771,12 +2829,15 @@ function hideWritten() {
 }
 
 function fileRow(f) {
-    /* A file written only sometimes says when (`only`, the catalogue's own
-     * words). */
+    /* A file written only sometimes says when (`only`), and one that lands
+     * outside its group's folder says where (`where`) -- the catalogue's
+     * own words, what they keep in backticks shown as code. */
     return el("li", {},
         el("span", { class: "ts-file-name" }, f.name),
-        el("span", { class: "ts-file-what" },
-           f.only ? f.what + " (only: " + f.only + ")" : f.what));
+        el("span", { class: "ts-file-what" }, codeWords(f.what),
+           f.where ? " \u00b7 " + f.where : null,
+           f.only ? " (only: " : null, f.only ? codeWords(f.only) : null,
+           f.only ? ")" : null));
 }
 
 /** One group of the card, A FOLD (`task-setup.md` § 7.2): its head the
@@ -2895,8 +2956,8 @@ function paintPlan(box, host, body) {
             // WHAT A RUN OF IT NEEDED, the memory door's line -- or that
             // nothing has measured it (`job-request.md` § 3.1a).
             ...((_fs.need && _fs.need.stages[row.stage])
-                ? [el("span", { class: "ts-plan-need" },
-                      "memory need: " + _fs.need.stages[row.stage].line)]
+                ? [el("span", { class: "ts-plan-need" }, "memory need: ",
+                      codeWords(_fs.need.stages[row.stage].line))]
                 : [])));
     }
     if (body.bench) {
@@ -3032,10 +3093,9 @@ function renderNext(task) {
                     : "Measure a stage \u2014 no axes are declared, so the "
                       + "target machine proposes the grid from its own "
                       + "record. ")
-                + "Worth doing on the cheapest rung that still has the "
-                + "expensive stage's shape; the verdict is reported, and you "
-                + "write it into the card below. Then launch it \u2014 one "
-                + "job per resource shelf \u2014 and summarize it."));
+                + "Measure where the expensive stage's shape is cheapest; "
+                + "summarize reports a verdict you type into the card "
+                + "below."));
             for (const name of g.members) {
                 block.appendChild(el("h4", { class: "ts-reports-head" },
                                      "measure " + name));
@@ -3062,10 +3122,9 @@ function renderNext(task) {
         block.appendChild(runCard(task, g.members));
 
         block.appendChild(el("p", { class: "hint" },
-            "Run it \u2014 at what the card above says, prepared with the "
-            + "task's Prep below, once saved. A launch value no row states is "
-            + "refused at prep; --np / --cpus-per-task / --time on the "
-            + "command line state one, or override the card."));
+            "Run it \u2014 prepared by Prep the task below, once saved; "
+            + "--np / --cpus-per-task / --time on the command line override "
+            + "the card."));
         /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): for a group of
          * one stage that continues from the stage before it -- its launch's
          * choice.  The folder's answer, the one the verb acts on. */
@@ -3132,7 +3191,7 @@ function taskPrepCard(task) {
     const err = gs.error || lad.error;
     if (err) {
         const p = el("p", { class: "hint", "data-attention": "" },
-                     "The task's groups cannot be read: " + err);
+                     "The task's groups cannot be read: ", codeWords(err));
         p.setAttribute("data-state", "bad");
         wrap.appendChild(p);
         return wrap;
@@ -3151,12 +3210,9 @@ function taskPrepCard(task) {
     _fs.prepPick = _fs.prepPick.filter(
         (n) => groups.some((g) => g.number === n && pickable(g)));
     wrap.appendChild(el("p", { class: "hint" },
-        "Prepare the task \u2014 pick the groups. Each group is one job; a "
-        + "group prepared and never launched is prepared again whole where "
-        + "what it would write differs, and has nothing to write where it "
-        + "does not; a launched one is prepared "
-        + "again for a change of its job request, its runs kept. What a stage "
-        + "takes from another stage's run is taken when it is launched."));
+        "Pick the groups to prepare \u2014 each group is one job. A group "
+        + "already prepared is written again only when something differs; "
+        + "a launched group keeps its runs."));
     // THE PLAN LIST'S OWN ROWS (`ts-planlist`), a box column added.
     const list = el("ul", { class: "ts-planlist" });
     for (const g of groups) {
@@ -3174,12 +3230,12 @@ function taskPrepCard(task) {
         const state = g.said;
         // A BOX NOT OFFERED SAYS WHY, in the group answer's words.
         const why = (box.disabled && g.why)
-            ? el("small", { class: "ts-row-note" }, g.why) : null;
+            ? el("small", { class: "ts-row-note" }, codeWords(g.why)) : null;
         const members = el("ul", { class: "ts-planlist" });
         for (const st of g.members) {
             const r = said[st] || {};
             const detail = el("span", { class: "ts-plan-detail" },
-                              r.detail || "");
+                              codeWords(r.detail || ""));
             if (r.why) detail.title = r.why;
             members.appendChild(el("li", {},
                 el("span", { class: "ts-planrow" },
@@ -3273,7 +3329,9 @@ function copiesOf(stage) {
 /** EACH GROUP'S NEXT STEP (§ 11), as `jobset status` prints it under
  *  *each group, and what is next* -- the folder's answer (`steps`), so the
  *  card says it whatever the page last did: a Save, a reload, a reopened
- *  folder.  The next one carries the lines that move it. */
+ *  folder.  The next one carries the lines that move it -- but a group not
+ *  prepared, whose line is its prep: that is the pick's below, composed
+ *  with the machine chosen (`/api/task-setup/commands`). */
 function nextSteps() {
     const steps = _fs.steps || [];
     if (!steps.length) return null;
@@ -3282,9 +3340,9 @@ function nextSteps() {
         const li = el("li", {}, el("span", { class: "ts-planrow" },
             el("span", { class: "ts-plan-stage" }, "group " + s.group),
             el("span", { class: "ts-plan-detail" },
-               s.stages.join(", ") + " \u2014 " + s.words
-               + (s.next ? " \u2014 next" : ""))));
-        if (s.next && s.lines.length)
+               s.stages.join(", ") + " \u2014 ", codeWords(s.words),
+               s.next ? " \u2014 next" : null)));
+        if (s.next && s.lines.length && s.state !== "not prepared")
             li.appendChild(el("pre", { class: "ts-cmd" }, s.lines.join("\n")));
         list.appendChild(li);
     }
@@ -3315,10 +3373,10 @@ function continueFromChoice(task, name, cf) {
     const note = el("p", { class: "hint ts-continue-note ts-keeps-lines" });
     if (sel.value === "") {
         if (cf.default) {
-            note.textContent = cf.default.line;
+            note.append(codeWords(cf.default.line));
         } else {
             // WHOLE, with the commands it names: they are the ways on.
-            note.textContent = String(cf.refused || "");
+            note.append(codeWords(cf.refused));
             note.setAttribute("data-state", "warn");
             note.setAttribute("data-attention", "");
         }
@@ -3769,7 +3827,8 @@ function _showPrepAnswers(wrap, say, r) {
 function _showPrepAnswer(wrap, say, r, head) {
     const box = el("div", { class: "ts-prep-answer" });
     const line = (text, state) => {
-        const d = el("div", { class: "ts-prep-answer-line" }, text);
+        const d = el("div", { class: "ts-prep-answer-line" },
+                     codeWords(text));
         if (state) d.setAttribute("data-state", state);
         box.appendChild(d);
         return d;
@@ -3792,7 +3851,8 @@ function _showPrepAnswer(wrap, say, r, head) {
         /* A REFUSAL SHOWS WHAT IT POINTS AT: the preflight's notes and what
          * the inputs said -- a bench's cells left out -- beside its own
          * sentence.  A refused prep wrote nothing (`job-system.md` § 5.0). */
-        say.textContent = r.error;
+        say.textContent = "";
+        say.append(codeWords(r.error));
         say.setAttribute("data-state", "bad");
         if (box.childNodes.length) wrap.appendChild(box);
         return;
@@ -3850,10 +3910,11 @@ function _showPrepAnswer(wrap, say, r, head) {
     }
     for (const p of (r.points || [])) {
         /* THE POINT IT IS, named as everywhere in the UI (point-words.js):
-         * its frame and its voltage. */
-        const at = pointWords(p.frame, p.of, p.bias_v);
-        line((would ? "would open run " : "Run ") + p.attempt
-             + (at ? " @ " + at : ""));
+         * a vibration's call by its phase, a transport point by its frame
+         * and its voltage. */
+        const at = runPointWords(p);
+        line((would ? "would open " : "opened ") + p.attempt
+             + (at ? " \u2014 " + at : ""));
     }
     /* A FORCE-CONSTANT STAGE'S `relax` RUN, its deck written at it -- the
      * server's line (`Continuation.line`, `engines/vibration.md` § 5.2a). */
@@ -3878,10 +3939,12 @@ function _showPrepAnswer(wrap, say, r, head) {
     /* THE MEMORY IT NEEDS at the ranks it is prepared with -- the terminal's
      * line (`job-request.md` § 3.1a): a hint, refusing nothing. */
     if (r.need) line("memory need: " + r.need.line);
-    if (r.launch && r.launch.said && !r.group) {
+    if (r.launch && !r.group) {
         // A RUN OF POINTS' ONE JOB, in the words prep composed for both
-        // doors (`prep.walk_words`).
-        line((r.launch.walk ? r.launch.walk + " -- " : "") + r.launch.said);
+        // doors (`prep.walk_words`) -- and the header in one line where no
+        // block shows it line for line: a Prep's answer, not a preview's.
+        if (r.launch.walk) line(r.launch.walk);
+        if (r.launch.said && !would) line(r.launch.said);
     }
     /* A BENCHMARK'S SHELVES, each the one job its launch sends, with its
      * fit on the benchmark's queue. */
@@ -4633,15 +4696,21 @@ function renderResolved(d) {
 
     facts.textContent = "";
     /* WHICH FILE SUPPLIED EACH SETTING -- the question provenance exists
-     * to answer. */
+     * to answer -- each by its key, as the file spells it. */
+    const froms = new Set();
     for (const [key, v] of Object.entries(d.effective || {})) {
+        froms.add(v.from || "?");
         facts.appendChild(el("div", null,
-            el("dt", null, key),
+            el("dt", null, el("code", {}, key)),
             el("dd", null, String(v.value || "\u2014")),
             el("dd", { class: "hint" }, "from " + (v.from || "?"))));
     }
+    /* WHAT WAS READ, unless it is the one source every setting above
+     * already names. */
     const found = (d.sources || []).filter((s) => s.found);
-    if (found.length) {
+    const repeats = found.length === 1 && froms.size === 1
+        && froms.has(found[0].scope) && !found[0].via;
+    if (found.length && !repeats) {
         facts.appendChild(el("div", null,
             el("dt", null, "read from"),
             el("dd", { class: "hint" },

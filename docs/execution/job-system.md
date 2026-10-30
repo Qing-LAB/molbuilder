@@ -212,7 +212,7 @@ that file's own door:
 | | *converged* — its own column, never the state | the engine's own output says so | `<base>-run<N>.out` | § 5.3 | the same scan |
 | a point of a run of points | **done** / **not done** | its run finished, converged where its verdict counts, and holds what it must — what the rungs after it take, a call's product — by its kind's declaration (`PointsOf.must_hold`, `verdict_counts`; [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.2) | its marker, its output, those files | § 5.3, § 5.4 | `continuation.point_done` |
 | a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going — never the job a reader runs inside, a sequence's, whose own runs of points it reads by their points (§ 6.0); queued: no point the run walks itself has started and its job is not over (cancelled in the queue, or a process that died before its first point, is a run that ended); else finished by its kind's record (the kind table's `finished`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3): every point's run finished, converged or not — a transport rung's — or every point done and what the run needs beyond them, a vibration's: every call done, its finish ended with exit 0 and its result at the run's root; a finish step that exited non-zero, failed (`runpoints.run_state`, the one rule both sides ask) ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); failed: a point's run did not finish — it failed, or the walk stopped before it — or, a vibration's, a call finished without being done, or its finish not done; the first point not done named | its `run.json`, its points' files (the row above), the run's index (the points taken over, the finish's entry), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`, else the run door's `runs.concluded`) — `status`, the gather, `jobset scratch` and the transport record ask it alike |
-| | **unreadable** | its index is there and does not read — one an older molbuilder wrote naming `jobset migrate`, its path said; on the stage's row, never the whole status | the run's index | § 5.3 | `runpoints.read_index` (`runstatus._sweep_status`) |
+| | **unreadable** | its index is there and does not read — one an older molbuilder wrote naming `jobset migrate`, named by its run folder and file name (`runpoints.OlderIndexError`, the row's `older_index`); on the stage's row, never the whole status | the run's index | § 5.3 | `runpoints.read_index` (`runstatus._sweep_status`) |
 
 **What a run started from is a record, not a state**: `.continued-from` —
 the one run it continues from — and `.gathered-from` — a transport rung's
@@ -479,7 +479,7 @@ read top to bottom:
 | prepared, never launched, what each takes there | **ready to launch** — and, for a member another molbuilder prepared (its deck's own record), who did | `launch task --group N`, a line for each mode the machine takes |
 | prepared, never launched, a member waiting | **waits for** the run it takes — that run's stage and group, and where it stands | — |
 | a run queued or running | **running** (or *queued*) | `status` |
-| a run failed or stopped, or a launch record that does not read | **failed** (*stopped*, *unreadable*), naming the stage | its launch again — `launch task --stage S`, which continues from its own latest run or starts over as its job says (`relaunch_continues`), `--cold` starting it over; and its way on, the one composer's (`commands.way_back`) — a run out of memory or wall goes on with its job request changed and its group prepared again ([`job-request.md`](?doc=execution/job-request.md) § 5), what it computes changed by the restore; for a record that does not read, its reader's words |
+| a run failed or stopped, or a launch record that does not read | **failed** (*stopped*, *unreadable*), naming the stage | its launch again — `launch task --stage S`, which continues from its own latest run or starts over as its job says (`relaunch_continues`), `--cold` starting it over; and its way on, the one composer's (`commands.way_back`) — a run out of memory or wall goes on with its job request changed and its group prepared again ([`job-request.md`](?doc=execution/job-request.md) § 5), what it computes changed by the restore; for a record that does not read, its reader's words — and, for an index an older molbuilder wrote (`runpoints.OlderIndexError`), the line `molbuilder jobset migrate` |
 | a run opened and not launched — a send refused (`materialize.opened_by_refused_send`: an unlaunched `run-<n>`, n > 0) | the stage, and *opened by a launch whose send was refused* | the launch that fills it (`commands.launch_pending`): `launch task --stage S` |
 | every member's newest run finished | **finished** | — |
 
@@ -533,7 +533,7 @@ each group, and what is next:
 ```
 
 and once the transmission has finished, the last group names the summary:
-*finished -- every group has; read what they gathered -- next:* `molbuilder
+*finished -- every group has; gather the results -- next:* `molbuilder
 jobset summarize task --bundle AuBDTAu/transport/lowbias_local`.
 
 #### `prep task`
@@ -1215,8 +1215,8 @@ Walk through it with the *why* for each piece:
   directory holds everything it needs, and a link holds nothing
   ([`project-layout.md § 1.0`](?doc=execution/project-layout.md)).
 - **`Job.finish`** names the bundle whose verbs a run of points' report
-  steps run around the engine — its plan step before it, its record step
-  after it, its finish step once no point is left to run (the kind table's
+  steps run around the engine — its before-step, its after-step, its finish
+  step once no point is left to run (the kind table's
   `steps`, [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.1) —
   when the engine alone leaves no result — a SIESTA vibration's
   `mb_vibration.pyz` (`engines/vibration.md` § 5.11 § 3), beside each
@@ -1677,7 +1677,7 @@ A calculation is described **once**, and prep only ever reads that description.
 **A preview is the same entry, stopping before the save**: the
 plan, shown — the answer a prep gives, said as what it would do: what it found
 (the deck's own checks among it), for each stage what its first launch will
-take and from which stage (*"at launch: takes <files> from <stage>'s newest
+take and from which stage (*"at launch: takes &lt;files&gt; from &lt;stage&gt;'s newest
 run, which must have finished"*) — which config
 files answered, every file it would write, the launch values the job would be
 launched with (A13, from the text it rendered: the header where a scheduler
@@ -1940,14 +1940,14 @@ and sizes, never reading a file, a file gone while it looks passed over
 saved, checkpointing.md S1):*, a line per file — its stage, its size, its
 path — then the count and the total; then each file a run still going
 keeps, `  kept: <path> -- <why>`; then, when any file is free, the line that
-empties them. With none, it says *no engine scratch in <folder>.*
+empties them. With none, it says *no engine scratch in &lt;folder&gt;.*
 
 **What a run still going keeps is asked of each run** — the run folder the
 file lies in (`paths.run_folder_of`), never its stage's newest run — by one
 answer that reads names, states and the jobs' files and removes nothing
 (`runstatus.scratch_answer` → `ScratchAnswer`: `found`, `kept` with why,
 `free`). A run keeps its scratch while a job launched from this machine that
-lists it is going, or this machine cannot tell — *job <id> -- <its words>*,
+lists it is going, or this machine cannot tell — *job &lt;id&gt; -- &lt;its words&gt;*,
 the jobs door's answer (`joblist.is_going`, the one `molbuilder jobs` asks,
 § 6.0a); while the run door reads it queued or running
 (`continuation.read_run`, the door `status` reads) — *queued*, *running*;
@@ -2291,7 +2291,7 @@ their gather ([`architecture.md`](?doc=execution/architecture.md) § 3.3):
 
 | | **independent stages** | **linked stages** |
 |---|---|---|
-| what they are | one calculation tuned several ways — an optimization's `coarse → medium → tight` | different jobs, each using another's output — transport's seed and leads → device → transmission (a SIESTA vibration's one stage is one run in phases, joined inside the run, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) |
+| what they are | one calculation tuned several ways — an optimization's `coarse → medium → tight` | different jobs, each using another's output — transport's seed and leads → device → transmission (a SIESTA vibration's one stage is one run of points, joined inside the run, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) |
 | the stages | named by you, as many as you like ([`engines/stages.md`](?doc=engines/stages.md) § 2) | the kind's own, each by its role ([`engines/template.md`](?doc=engines/template.md) § 6.4) |
 | what a stage starts from | **the stage before it, by default**: medium's first launch takes the newest attempt of the stage before it and copies that run's geometry, its density and — for the same optimiser — its history ([`project-layout.md`](?doc=execution/project-layout.md) § 2.3.4). A stage whose `restart` is `clean`, and the first stage, start from the calculation's structure | the stages before it, by the kind: **transport, files at the first launch** — the device the seed's density and the leads' Hamiltonians, the transmission the device's, each from the newest attempt that ended so and ran the same engine input as the deck that stage renders now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11); **a SIESTA vibration's stage, nothing** — its run relaxes first and hands the geometry to its own force-constant call ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 3) |
 | when the stage before has not finished | the stage is prepared all the same; its **launch** refuses before anything is sent, says why in the status door's words, and names what to do: launch the one before, let it finish, or run it again — or choose: `--from` an earlier run of it that finished, `--cold` the structure — a launch says these for one stage, so a member of a group of several is told to give it a group of its own first. One that finished without converging is taken, with a warning; one that failed is refused | transport: the **launch** refuses before anything is sent and names the stage to run first; a SIESTA vibration's stage builds on no other |
@@ -2943,7 +2943,7 @@ reaches the engine — to the run script alone it would wait for the engine to
 end; a run waited on is stopped at its terminal, with Ctrl-C, and `jobs
 stop` says so. A queue job: its kind's cancel, from where the record says
 the command is. The calculation's ledger records the stop (`stopped`, and
-how), and the verb says it: *stopped: SIGTERM to its process group, <pid>
+how), and the verb says it: *stopped: SIGTERM to its process group, &lt;pid&gt;
 -- `molbuilder jobs status` says how it ended* — or, in its place, the line
 it ran, `/usr/bin/scancel 62039301` on SLURM. The run then
 reads *failed — stopped before its

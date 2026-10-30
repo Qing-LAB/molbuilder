@@ -511,7 +511,7 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
     (`runrecord.launch_record`), read where it lies -- a point's in its
     run's folder above it (``launched_in``), as the run's state reads it
     (`runs.concluded`)."""
-    from ...runrecord import launch_record
+    from ...runrecord import launch_record, read_continued_from
     rec = launch_record(f.launched_in) or {}
     # `continued_from`: the run this one continued from, as its launch took it
     # (`job-system.md` § 5.4, plan W37) -- the launch's own hand-over,
@@ -528,10 +528,17 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
     # `run.json` is its run's and answers for every try in it, a warm
     # retry's among them (`project-layout.md` § 1.6.3): where the run
     # continued from is said of each.  Not of a point, which starts from
-    # the point before it (its own `.continued-from`).
+    # the point before it: `started_from`, its own `.continued-from`
+    # (`runs-of-points.md` § 1.2 *start*) -- stated only where the marker
+    # is, since a planned point's start is copied with no marker.
+    launch = {k: rec.get(k) for k in keys}
     if f.launched_in.resolve() == f.directory.resolve():
-        keys.append("continued_from")
-    return {"computation": {"launch": {k: rec.get(k) for k in keys}}}
+        launch["continued_from"] = rec.get("continued_from")
+    else:
+        source = read_continued_from(f.directory)
+        if source is not None:
+            launch["started_from"] = str(source)
+    return {"computation": {"launch": launch}}
 
 
 def _concluded(f: RunFiles) -> Dict[str, Any]:
@@ -637,7 +644,8 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                  "computation.launch.job_id", "computation.launch.launched_at",
                  "computation.launch.placed_on",
                  "computation.launch.sequence",
-                 "computation.launch.continued_from"),
+                 "computation.launch.continued_from",
+                 "computation.launch.started_from"),
                 (), _launch_record),
     Contributor("concluded", ("computation.exit",), (), _concluded),
     Contributor("deck", ("deck",), (), _deck),

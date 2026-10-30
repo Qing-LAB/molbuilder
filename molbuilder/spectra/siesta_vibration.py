@@ -569,7 +569,7 @@ def _finished(deck, output):
 
 
 # --------------------------------------------------------------------- #
-#  A run in phases: the kind's own steps of each call, run by its report  #
+#  A run of points: the kind's own steps of each call, run by its report #
 #  steps (`execution/runs-of-points.md` § 1.2; `engines/vibration.md`     #
 #  § 5.11 § 3)                                                           #
 # --------------------------------------------------------------------- #

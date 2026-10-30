@@ -288,7 +288,10 @@ job's stages' answers the job's (below). `ranks` is what the asker resolved:
 prep, the job's own, its `--np` over the card; Task setup, the card as
 edited — a card stating none, or a value the setting door refuses, gets the
 measurement alone. A stage the calculation does not hold, or a folder that
-holds no calculation, has nothing measured. Prep and Task setup print the
+holds no calculation, has nothing measured. A stage whose runs' records do
+not read (`runrecord.LaunchRecordError` — an index an older molbuilder
+wrote among them) has its need said *not read*, in the reader's words; a
+job holding one has that as its need. Prep and Task setup print the
 door's words, so the two say one sentence, under one name, *memory need*
 (`need` on the wire).
 
@@ -700,8 +703,8 @@ What each occasion is and what every message carries are
 [`run-reports.md`](?doc=execution/run-reports.md) § 2 and § 4.1a; which
 channels a list selects is § 3.0 there. **No `notify` block is no
 notification**, the start and the end included; a calculation with a block also
-reports its start and its end — and, for a run of points, a phase's end and a
-failed part ([`run-reports.md`](?doc=execution/run-reports.md) § 2.9) — so they
+reports its start and its end — and, for a run of points, a round's end (a
+phase; a voltage at every frame) and a failed part ([`run-reports.md`](?doc=execution/run-reports.md) § 2.9) — so they
 are not keys. `notify` present but empty
 is refused:
 absent and empty would be two spellings of one state. **`["*"]` and `[]` are

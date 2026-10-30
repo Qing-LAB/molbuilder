@@ -157,11 +157,11 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(run, tmp_path):
         sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
     rs = run_status(there, _ran(run).names.stem)
     assert (final.state, final.detail) == (rs.state, rs.detail) == (
-        "finished", "job_completed")
+        "finished", "ended, exit 0")
     assert final.converged == {"periodic": True}
     assert final.exit and final.exit.startswith("rc=0")
     closing = statuses(watched)[-1]
-    assert "finished (job_completed)" in closing
+    assert "finished (ended, exit 0)" in closing
     assert "converged: periodic yes" in closing
     assert final.relaxed is True and "geometry relaxed" in closing, closing
     assert "job ended" in watched.path(".monitor.log").read_text()

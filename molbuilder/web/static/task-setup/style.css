@@ -491,6 +491,8 @@
     letter-spacing: var(--ts-label-track);
     color: var(--text-muted);
 }
+/* A setting's key, as its file spells it -- not a label to set in caps. */
+.ts-facts dt code { text-transform: none; letter-spacing: normal; }
 .ts-facts dd {
     margin: 0;
     font-family: var(--font-mono);

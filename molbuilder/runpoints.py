@@ -66,14 +66,30 @@ AGAIN, CONTINUE = "again", "continue"
 #: (`runs-of-points.md` § 4.5; `continuation.never_reached`): failed.
 NEVER_REACHED = "the walk ended before it reached this point"
 
-#: THE INDEXES AN OLDER MOLBUILDER WROTE (2.42-2.54): a run in phases'
-#: own file, and a transport run of points' earlier schema -- each refused
-#: by its reader naming `jobset migrate`, which rewrites it into this one
-#: (`runs-of-points.md` § 3, op. 18).
+#: THE INDEXES AN OLDER MOLBUILDER WROTE (2.42-2.54): a SIESTA vibration's
+#: own file of its phases, and a transport run of points' earlier schema --
+#: each refused by its reader naming `jobset migrate`, which rewrites it
+#: into this one (`runs-of-points.md` § 3, op. 18).
 OLDER_SCHEMAS = ("molbuilder/vibration-phases@1",
                  "molbuilder/transport-points@1")
-MIGRATE = ("written by molbuilder 2.54 or before -- run `molbuilder jobset "
-           "migrate` in the calculation's folder, which rewrites it")
+MIGRATE = ("written by molbuilder 2.54 or before -- `molbuilder jobset "
+           "migrate` rewrites it")
+
+
+class OlderIndexError(LaunchRecordError):
+    """A RUN'S INDEX AN OLDER MOLBUILDER WROTE (:data:`OLDER_SCHEMAS`, or
+    its older file, :func:`older_index`), refused by its reader naming
+    `jobset migrate`, which rewrites it -- the class a reader tells that
+    way on by, never the refusal's words (`runstatus`: the next step's
+    line)."""
+
+
+def _older(path) -> OlderIndexError:
+    """The refusal of the older index at ``path``, named by its run's
+    folder and its own name -- where it is said, its stage is said beside
+    it."""
+    p = Path(path)
+    return OlderIndexError(f"{p.parent.name}/{p.name}: {MIGRATE}")
 
 
 # --------------------------------------------------------------------- #
@@ -88,7 +104,7 @@ def index_path(run_dir, names) -> Path:
 
 
 def older_index(run_dir, names) -> Path:
-    """Where a run in phases' index of molbuilder 2.42-2.54 lies
+    """Where a SIESTA vibration's index of molbuilder 2.42-2.54 lies
     (`runfiles.ROLE_PHASES`) -- what `jobset migrate` rewrites."""
     return Path(run_dir) / names.name(_rf.ROLE_PHASES, run=_rf.FIRST_TRY)
 
@@ -97,31 +113,32 @@ def index_of(run_dir, names) -> Optional[Path]:
     """THE RUN'S INDEX, where it has one -- ``None`` for a run launch has
     not written one for (a run prep opened and nobody launched, a rung that
     runs once).  One an older molbuilder wrote is refused by name
-    (:data:`MIGRATE`)."""
+    (:class:`OlderIndexError`)."""
     path = index_path(run_dir, names)
     if path.is_file():
         return path
     older = older_index(run_dir, names)
     if older.is_file():
-        raise LaunchRecordError(f"{older}: {MIGRATE}")
+        raise _older(older)
     return None
 
 
 def read_index(path) -> Dict[str, Any]:
     """The index at ``path``, refused by name when it does not read or is
     not one of this schema -- an older molbuilder's naming `jobset migrate`
-    -- as every record of a run is (`runrecord.LaunchRecordError`, a
-    ``ValueError``): said where the run is shown, never the whole
-    status."""
+    (:class:`OlderIndexError`) -- as every record of a run is
+    (`runrecord.LaunchRecordError`, a ``ValueError``): said where the run
+    is shown, never the whole status."""
     p = Path(path)
     try:
         d = _persist.read_json(p)
         said = d.get("schema") if isinstance(d, dict) else None
-        if said in OLDER_SCHEMAS:
-            raise ValueError(MIGRATE)
-        _persist.check_schema(said or "", SCHEMA, label=p.name)
+        if said not in OLDER_SCHEMAS:
+            _persist.check_schema(said or "", SCHEMA, label=p.name)
     except (OSError, ValueError) as exc:
         raise LaunchRecordError(f"{p}: {exc}") from exc
+    if said in OLDER_SCHEMAS:
+        raise _older(p)
     return d
 
 
@@ -523,7 +540,8 @@ def part(ref: str) -> Any:
 
 
 __all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NEVER_REACHED",
-           "OLDER_SCHEMAS", "MIGRATE", "index_path", "older_index",
+           "OLDER_SCHEMAS", "MIGRATE", "OlderIndexError", "index_path",
+           "older_index",
            "index_of", "read_index", "index_at", "write_index",
            "taken_from",
            "empty_index", "add_point", "entry_of", "planned_by", "why_not_run",

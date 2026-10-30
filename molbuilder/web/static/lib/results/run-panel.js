@@ -180,6 +180,9 @@ const FIELDS = {
     launched_at:    { label: "Launched at", fmt: utc },
     continued_from: { label: "Continued from", style: MONO,
                       none: "nothing -- it started from the structure" },
+    // A POINT'S START: the point it took its files from, stated only where
+    // its marker is (execution/runs-of-points.md § 1.2 *start*).
+    started_from:   { label: "Started from", style: MONO },
     // time
     run_start_local:  { label: "Started (the node's clock)", fmt: local },
     run_end_local:    { label: "Ended (the node's clock)", fmt: local },

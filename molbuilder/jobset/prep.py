@@ -570,7 +570,7 @@ def _described_rung(calc, pset, *, seam, sweep, log, plan,
 
 def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
                              contours=None) -> Rung:
-    """A SIESTA vibration's rung -- ONE RUN IN PHASES (`engines/vibration.md`
+    """A SIESTA vibration's rung -- ONE RUN OF POINTS (`engines/vibration.md`
     § 5.11): the relaxation, the force constants and the optical calls,
     each phase a point of the run with its own deck, written for its part
     by the one deck writer (§ 5.11 § 4) from the structure as given -- the
@@ -1641,11 +1641,12 @@ def walk_words(calc, stage: str, *, read=None) -> str:
     """A RUN OF POINTS' ONE JOB, in words -- the one composer both doors
     print and a placement refusal names it by: its points in its unit
     (the kind table's record), counted as its declaration knows them at
-    prep (`PointsOf.rung_points`) -- and where the stage's job plans more in
-    a container below the run (`PointsOf.containers`, a vibration's optical
-    calls), the rest planned in the job -- and the walls it asks: the
-    stage's one where its points share it (the record's ``wall``), else
-    their sum (`execution/runs-of-points.md` § 2.1).  ``read`` reads a
+    prep (`PointsOf.rung_points`), prepared -- and where the stage's job
+    plans more in a container below the run (`PointsOf.containers`, a
+    vibration's optical calls), the rest planned by the job -- and the
+    walls it asks: one for the whole run where its points share it (the
+    record's ``wall``), else each point's, summed
+    (`execution/runs-of-points.md` § 1.2, § 2.1).  ``read`` reads a
     record the prep's plan holds and the disk does not yet -- a junction's,
     composed by this prep -- as the declaration reads it at the run's
     opening."""
@@ -1655,12 +1656,12 @@ def walk_words(calc, stage: str, *, read=None) -> str:
     known = len(pts.rung_points(calc, stage, read=read))
     unit = rec.unit
     planned = bool(pts.containers(calc, stage))
-    count = (f"its {unit}s -- {known} known at prep, the rest planned in "
-             f"the job" if planned else
+    count = (f"its {unit}s -- {known} prepared, the rest planned by the "
+             f"job" if planned else
              f"its {known} {unit}{'s' if known != 1 else ''}")
     return (f"one job walking {count} ("
-            + ("the stage's one wall" if rec.wall == WALL_ONE
-               else "their walls summed")
+            + ("one wall for the whole run" if rec.wall == WALL_ONE
+               else f"each {unit}'s wall, summed")
             + ")")
 
 
